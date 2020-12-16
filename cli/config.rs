@@ -1,11 +1,10 @@
-use crate::flags::{Flags, resolve_urls};
+use crate::flags::{resolve_urls, Flags};
 use deno_core::serde_json::Value;
 use log::Level;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::net::SocketAddr;
-use deno_core::error::AnyError;
+use std::path::PathBuf;
 
 #[derive(Deserialize, Debug)]
 enum StringBool {
@@ -100,7 +99,7 @@ pub struct Lint {
 }
 
 impl Config {
-  pub fn to_flags(&self) -> Result<Flags, AnyError> {
+  pub fn to_flags(&self) -> Result<Flags, ()> {
     let mut flags = Flags::default();
 
     if !self.extra.is_empty() {
