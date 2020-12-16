@@ -11,7 +11,7 @@ const doesNotExists = "/does/not/exists/";
 const options = { encoding: "ascii" };
 const badOptions = { encoding: "bogus" };
 
-const mkdtempP = promisify(mkdtemp)
+const mkdtempP = promisify(mkdtemp);
 
 Deno.test({
   name: "[node/fs] mkdtemp",
@@ -31,11 +31,10 @@ Deno.test({
   fn: async () => {
     try {
       const directory = await mkdtempP(doesNotExists);
-      
+
       // should have thrown already...
       assert(!existsSync(directory));
       Deno.removeSync(directory);
-
     } catch (error) {
       assert(true);
     }
@@ -49,7 +48,6 @@ Deno.test({
       const directory = await mkdtempP(prefix, options);
       assert(existsSync(directory));
       Deno.removeSync(directory);
-
     } catch (error) {
       assert(false);
     }
@@ -61,11 +59,10 @@ Deno.test({
   fn: async () => {
     try {
       const directory = await mkdtempP(prefix, badOptions);
-      
+
       // should have thrown already...
       assert(!existsSync(directory));
       Deno.removeSync(directory);
-
     } catch (error) {
       assert(true);
     }
