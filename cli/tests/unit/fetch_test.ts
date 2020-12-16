@@ -689,22 +689,28 @@ unitTest(
   {
     perms: { net: true },
   },
+  async function fetchWithNonAsciiRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4545/non_ascii_redirect", {
+      redirect: "manual",
+    });
+    assertEquals(response.status, 301);
+    assertEquals(response.headers.get("location"), "/redirect®");
+    await response.text();
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
   async function fetchWithManualRedirection(): Promise<void> {
     const response = await fetch("http://localhost:4546/", {
       redirect: "manual",
     }); // will redirect to http://localhost:4545/
-    assertEquals(response.status, 0);
-    assertEquals(response.statusText, "");
-    assertEquals(response.url, "");
-    assertEquals(response.type, "opaqueredirect");
-    try {
-      await response.text();
-      fail(
-        "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)",
-      );
-    } catch (e) {
-      return;
-    }
+    assertEquals(response.status, 301);
+    assertEquals(response.url, "http://localhost:4546/");
+    assertEquals(response.type, "default");
+    assertEquals(response.headers.get("Location"), "http://localhost:4545/");
   },
 );
 

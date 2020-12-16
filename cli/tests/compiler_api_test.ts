@@ -199,3 +199,24 @@ Deno.test({
     });
   },
 });
+
+Deno.test({
+  name: `Deno.compile() - Allows setting of "importsNotUsedAsValues"`,
+  async fn() {
+    const [diagnostics] = await Deno.compile("/a.ts", {
+      "/a.ts": `import { B } from "./b.ts";
+        const b: B = { b: "b" };
+      `,
+      "/b.ts": `export interface B {
+        b: string;
+      };
+      `,
+    }, {
+      importsNotUsedAsValues: "error",
+    });
+    assert(diagnostics);
+    assertEquals(diagnostics.length, 1);
+    assert(diagnostics[0].messageText);
+    assert(diagnostics[0].messageText.includes("This import is never used"));
+  },
+});

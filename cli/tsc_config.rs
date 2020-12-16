@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs::canonicalize_path;
+use crate::fs_util::canonicalize_path;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -52,7 +52,7 @@ impl fmt::Display for IgnoredCompilerOptions {
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: &[&str] = &[
+pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
   "baseUrl",
@@ -64,7 +64,7 @@ const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "importHelpers",
   "inlineSourceMap",
   "inlineSources",
-  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
+  "isolatedModules",
   "module",
   "noEmitHelpers",
   "noLib",
@@ -83,7 +83,7 @@ const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "useDefineForClassFields",
 ];
 
-const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
+pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "assumeChangesOnlyAffectDirectDependencies",
   "build",
   "charset",

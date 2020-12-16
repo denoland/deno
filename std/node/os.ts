@@ -123,9 +123,9 @@ export function endianness(): "BE" | "LE" {
   return new Int16Array(buffer)[0] === 256 ? "LE" : "BE";
 }
 
-/** Not yet implemented */
+/** Return free memory amount */
 export function freemem(): number {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.systemMemoryInfo().free;
 }
 
 /** Not yet implemented */
@@ -185,14 +185,23 @@ export function tmpdir(): string | null {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Not yet implemented */
+/** Return total physical memory amount */
 export function totalmem(): number {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.systemMemoryInfo().total;
 }
 
-/** Not yet implemented */
+/** Returns operating system type (i.e. 'Windows_NT', 'Linux', 'Darwin') */
 export function type(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  switch (Deno.build.os) {
+    case "windows":
+      return "Windows_NT";
+    case "linux":
+      return "Linux";
+    case "darwin":
+      return "Darwin";
+    default:
+      throw Error("unreachable");
+  }
 }
 
 /** Not yet implemented */
@@ -222,3 +231,25 @@ export const constants = {
 };
 
 export const EOL = Deno.build.os == "windows" ? fsEOL.CRLF : fsEOL.LF;
+
+export default {
+  arch,
+  cpus,
+  endianness,
+  freemem,
+  getPriority,
+  homedir,
+  hostname,
+  loadavg,
+  networkInterfaces,
+  platform,
+  release,
+  setPriority,
+  tmpdir,
+  totalmem,
+  type,
+  uptime,
+  userInfo,
+  constants,
+  EOL,
+};

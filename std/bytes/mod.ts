@@ -1,12 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/** Find first index of binary pattern from a. If not found, then return -1
+/** Find first index of binary pattern from source. If not found, then return -1
  * @param source source array
  * @param pat pattern to find in source array
+ * @param start the index to start looking in the source
  */
-export function findIndex(source: Uint8Array, pat: Uint8Array): number {
+export function indexOf(
+  source: Uint8Array,
+  pat: Uint8Array,
+  start = 0,
+): number {
+  if (start >= source.length) {
+    return -1;
+  }
+  if (start < 0) {
+    start = 0;
+  }
   const s = pat[0];
-  for (let i = 0; i < source.length; i++) {
+  for (let i = start; i < source.length; i++) {
     if (source[i] !== s) continue;
     const pin = i;
     let matched = 1;
@@ -25,13 +36,24 @@ export function findIndex(source: Uint8Array, pat: Uint8Array): number {
   return -1;
 }
 
-/** Find last index of binary pattern from a. If not found, then return -1.
+/** Find last index of binary pattern from source. If not found, then return -1.
  * @param source source array
  * @param pat pattern to find in source array
+ * @param start the index to start looking in the source
  */
-export function findLastIndex(source: Uint8Array, pat: Uint8Array): number {
+export function lastIndexOf(
+  source: Uint8Array,
+  pat: Uint8Array,
+  start = source.length - 1,
+): number {
+  if (start < 0) {
+    return -1;
+  }
+  if (start >= source.length) {
+    start = source.length - 1;
+  }
   const e = pat[pat.length - 1];
-  for (let i = source.length - 1; i >= 0; i--) {
+  for (let i = start; i >= 0; i--) {
     if (source[i] !== e) continue;
     const pin = i;
     let matched = 1;
@@ -51,22 +73,22 @@ export function findLastIndex(source: Uint8Array, pat: Uint8Array): number {
 }
 
 /** Check whether binary arrays are equal to each other.
- * @param source first array to check equality
- * @param match second array to check equality
+ * @param a first array to check equality
+ * @param b second array to check equality
  */
-export function equal(source: Uint8Array, match: Uint8Array): boolean {
-  if (source.length !== match.length) return false;
-  for (let i = 0; i < match.length; i++) {
-    if (source[i] !== match[i]) return false;
+export function equals(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < b.length; i++) {
+    if (a[i] !== b[i]) return false;
   }
   return true;
 }
 
 /** Check whether binary array starts with prefix.
- * @param source srouce array
+ * @param source source array
  * @param prefix prefix array to check in source
  */
-export function hasPrefix(source: Uint8Array, prefix: Uint8Array): boolean {
+export function startsWith(source: Uint8Array, prefix: Uint8Array): boolean {
   for (let i = 0, max = prefix.length; i < max; i++) {
     if (source[i] !== prefix[i]) return false;
   }
@@ -77,7 +99,7 @@ export function hasPrefix(source: Uint8Array, prefix: Uint8Array): boolean {
  * @param source source array
  * @param suffix suffix array to check in source
  */
-export function hasSuffix(source: Uint8Array, suffix: Uint8Array): boolean {
+export function endsWith(source: Uint8Array, suffix: Uint8Array): boolean {
   for (
     let srci = source.length - 1, sfxi = suffix.length - 1;
     sfxi >= 0;
@@ -91,6 +113,7 @@ export function hasSuffix(source: Uint8Array, suffix: Uint8Array): boolean {
 /** Repeat bytes. returns a new byte slice consisting of `count` copies of `b`.
  * @param origin The origin bytes
  * @param count The count you want to repeat.
+ * @throws `RangeError` When count is negative
  */
 export function repeat(origin: Uint8Array, count: number): Uint8Array {
   if (count === 0) {
@@ -98,7 +121,7 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
   }
 
   if (count < 0) {
-    throw new Error("bytes: negative repeat count");
+    throw new RangeError("bytes: negative repeat count");
   } else if ((origin.length * count) / count !== origin.length) {
     throw new Error("bytes: repeat count causes overflow");
   }
@@ -111,23 +134,31 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
 
   const nb = new Uint8Array(origin.length * count);
 
-  let bp = copyBytes(origin, nb);
+  let bp = copy(origin, nb);
 
   for (; bp < nb.length; bp *= 2) {
-    copyBytes(nb.slice(0, bp), nb, bp);
+    copy(nb.slice(0, bp), nb, bp);
   }
 
   return nb;
 }
 
-/** Concatenate two binary arrays and return new one.
- * @param origin origin array to concatenate
- * @param b array to concatenate with origin
+/** Concatenate multiple binary arrays and return new one.
+ * @param buf binary arrays to concatenate
  */
-export function concat(origin: Uint8Array, b: Uint8Array): Uint8Array {
-  const output = new Uint8Array(origin.length + b.length);
-  output.set(origin, 0);
-  output.set(b, origin.length);
+export function concat(...buf: Uint8Array[]): Uint8Array {
+  let length = 0;
+  for (const b of buf) {
+    length += b.length;
+  }
+
+  const output = new Uint8Array(length);
+  let index = 0;
+  for (const b of buf) {
+    output.set(b, index);
+    index += b.length;
+  }
+
   return output;
 }
 
@@ -136,7 +167,7 @@ export function concat(origin: Uint8Array, b: Uint8Array): Uint8Array {
  * @param pat patter array
  */
 export function contains(source: Uint8Array, pat: Uint8Array): boolean {
-  return findIndex(source, pat) != -1;
+  return indexOf(source, pat) != -1;
 }
 
 /**
@@ -148,7 +179,7 @@ export function contains(source: Uint8Array, pat: Uint8Array): boolean {
  * @param off Offset into `dst` at which to begin writing values from `src`.
  * @return number of bytes copied
  */
-export function copyBytes(src: Uint8Array, dst: Uint8Array, off = 0): number {
+export function copy(src: Uint8Array, dst: Uint8Array, off = 0): number {
   off = Math.max(0, Math.min(off, dst.byteLength));
   const dstBytesAvailable = dst.byteLength - off;
   if (src.byteLength > dstBytesAvailable) {

@@ -1,10 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrowsAsync,
+  fail,
+} from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import * as bytes from "../bytes/mod.ts";
 import {
   acceptable,
+  acceptWebSocket,
   createSecAccept,
   createSecKey,
   createWebSocket,
@@ -16,6 +22,8 @@ import {
 } from "./mod.ts";
 import { decode, encode } from "../encoding/utf8.ts";
 import { delay } from "../async/delay.ts";
+import { serve } from "../http/server.ts";
+import { deferred } from "../async/deferred.ts";
 
 Deno.test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
@@ -319,7 +327,7 @@ Deno.test({
     assertEquals(decode(second.payload), "second");
     assertEquals(ping.opcode, OpCode.Ping);
     assertEquals(third.opcode, OpCode.BinaryFrame);
-    assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
+    assertEquals(bytes.equals(third.payload, new Uint8Array([3])), true);
   },
 });
 
@@ -453,4 +461,35 @@ Deno.test("[ws] WebSocket should act as asyncIterator", async () => {
   assertEquals(events[0], ["ping", encode("Hello")]);
   assertEquals(events[1], "Hello");
   assertEquals(events[2], { code: 1011, reason: "42" });
+});
+
+Deno.test("[ws] WebSocket protocol", async () => {
+  const promise = deferred();
+  const server = serve({ port: 5839 });
+
+  const ws = new WebSocket("ws://localhost:5839", ["foo", "bar"]);
+  ws.onopen = () => {
+    assertEquals(ws.protocol, "foo, bar");
+    ws.close();
+  };
+  ws.onerror = () => fail();
+  ws.onclose = () => {
+    server.close();
+    promise.resolve();
+  };
+
+  const x = await server[Symbol.asyncIterator]().next();
+  if (!x.done) {
+    const { conn, r: bufReader, w: bufWriter, headers } = x.value;
+    await acceptWebSocket({
+      conn,
+      bufReader,
+      bufWriter,
+      headers,
+    });
+
+    await promise;
+  } else {
+    fail();
+  }
 });

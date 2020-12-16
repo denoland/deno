@@ -318,6 +318,20 @@ declare namespace Deno {
     /** Import emit helpers (e.g. `__extends`, `__rest`, etc..) from
      * [tslib](https://www.npmjs.com/package/tslib). */
     importHelpers?: boolean;
+    /** This flag controls how `import` works, there are 3 different options:
+     * 
+     * - `remove`: The default behavior of dropping import statements which only
+     *   reference types.
+     * - `preserve`: Preserves all `import` statements whose values or types are
+     *   never used. This can cause imports/side-effects to be preserved.
+     * - `error`: This preserves all imports (the same as the preserve option),
+     *   but will error when a value import is only used as a type. This might
+     *   be useful if you want to ensure no values are being accidentally
+     *   imported, but still make side-effect imports explicit.
+     * 
+     * This flag works because you can use `import type` to explicitly create an
+     * `import` statement which should never be emitted into JavaScript. */
+    importsNotUsedAsValues?: "remove" | "preserve" | "error";
     /** Emit a single file with source maps instead of having a separate file.
      * Defaults to `false`. */
     inlineSourceMap?: boolean;
@@ -801,6 +815,10 @@ declare namespace Deno {
     windowChange: () => SignalStream;
   };
 
+  export type SetRawOptions = {
+    cbreak: boolean;
+  };
+
   /** **UNSTABLE**: new API, yet to be vetted
    *
    * Set TTY to be under raw mode or not. In raw mode, characters are read and
@@ -809,11 +827,19 @@ declare namespace Deno {
    * Reading from a TTY device in raw mode is faster than reading from a TTY
    * device in canonical mode.
    *
+   * The `cbreak` option can be used to indicate that characters that correspond
+   * to a signal should still be generated. When disabling raw mode, this option
+   * is ignored. This functionality currently only works on Linux and Mac OS.
+   *
    * ```ts
-   * Deno.setRaw(myTTY.rid, true);
+   * Deno.setRaw(myTTY.rid, true, { cbreak: true });
    * ```
    */
-  export function setRaw(rid: number, mode: boolean): void;
+  export function setRaw(
+    rid: number,
+    mode: boolean,
+    options?: SetRawOptions,
+  ): void;
 
   /** **UNSTABLE**: needs investigation into high precision time.
    *
@@ -1117,7 +1143,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.dir("home");
+     *   console.log("'env' permission is granted.");
      * } else {
      *   console.log("'env' permission is denied.");
      * }

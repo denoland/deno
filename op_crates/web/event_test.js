@@ -96,6 +96,35 @@ function eventIsTrusted() {
   assert(desc1.get === desc2.get);
 }
 
+function eventIsTrustedGetterName() {
+  const { get } = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
+  assert(get.name === "get isTrusted");
+  try {
+    Reflect.construct(get);
+    throw new Error("Should not have reached here");
+  } catch (e) {
+    assert(e.message.includes("not a constructor"));
+  }
+}
+function eventAbortSignal() {
+  let count = 0;
+  function handler() {
+    count++;
+  }
+  const et = new EventTarget();
+  const controller = new AbortController();
+  et.addEventListener("test", handler, { signal: controller.signal });
+  et.dispatchEvent(new Event("test"));
+  assert(count === 1);
+  et.dispatchEvent(new Event("test"));
+  assert(count === 2);
+  controller.abort();
+  et.dispatchEvent(new Event("test"));
+  assert(count === 2);
+  et.addEventListener("test", handler, { signal: controller.signal });
+  et.dispatchEvent(new Event("test"));
+  assert(count === 2);
+}
 function main() {
   eventInitializedWithType();
   eventInitializedWithTypeAndDict();
@@ -105,6 +134,8 @@ function main() {
   eventPreventDefaultSuccess();
   eventInitializedWithNonStringType();
   eventIsTrusted();
+  eventIsTrustedGetterName();
+  eventAbortSignal();
 }
 
 main();

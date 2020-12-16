@@ -1,4 +1,4 @@
-import Buffer from "../buffer.ts";
+import { Buffer } from "../buffer.ts";
 
 export const MAX_RANDOM_VALUES = 65536;
 export const MAX_SIZE = 4294967295;

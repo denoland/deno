@@ -22,10 +22,11 @@ use deno_core::Snapshot;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 /// Provide static assets that are not preloaded in the compiler snapshot.
-fn get_asset(asset: &str) -> Option<&'static str> {
+pub fn get_asset(asset: &str) -> Option<&'static str> {
   macro_rules! inc {
     ($e:expr) => {
       Some(include_str!(concat!("dts/", $e)))
@@ -46,6 +47,7 @@ fn get_asset(asset: &str) -> Option<&'static str> {
     "lib.webworker.importscripts.d.ts" => {
       inc!("lib.webworker.importscripts.d.ts")
     }
+    "lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
     _ => None,
   }
 }
@@ -60,6 +62,41 @@ fn get_maybe_hash(
     Some(crate::checksum::gen(&data))
   } else {
     None
+  }
+}
+
+/// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
+/// and so we have to detect the apparent media type based on extensions it
+/// supports.
+fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
+  let url = specifier.as_url();
+  let path = if url.scheme() == "file" {
+    if let Ok(path) = url.to_file_path() {
+      path
+    } else {
+      PathBuf::from(url.path())
+    }
+  } else {
+    PathBuf::from(url.path())
+  };
+  match path.extension() {
+    None => MediaType::Unknown,
+    Some(os_str) => match os_str.to_str() {
+      Some("ts") => {
+        if let Some(os_str) = path.file_stem() {
+          if let Some(file_name) = os_str.to_str() {
+            if file_name.ends_with(".d") {
+              return MediaType::Dts;
+            }
+          }
+        }
+        MediaType::TypeScript
+      }
+      Some("tsx") => MediaType::TSX,
+      Some("js") => MediaType::JavaScript,
+      Some("jsx") => MediaType::JSX,
+      _ => MediaType::Unknown,
+    },
   }
 }
 
@@ -247,12 +284,12 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ResolveArgs {
+pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
-  base: String,
+  pub base: String,
   /// A list of specifiers that should be resolved.
-  specifiers: Vec<String>,
+  pub specifiers: Vec<String>,
 }
 
 fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
@@ -337,7 +374,7 @@ pub fn exec(
     .root_names
     .iter()
     .map(|(s, mt)| {
-      let ext_media_type = MediaType::from(&s.as_str().to_owned());
+      let ext_media_type = get_tsc_media_type(s);
       if mt != &ext_media_type {
         let new_specifier = format!("{}{}", s, mt.as_ts_extension());
         root_map.insert(new_specifier.clone(), s.clone());
@@ -488,6 +525,27 @@ mod tests {
       actual,
       json!({"hash": "ae92df8f104748768838916857a1623b6a3c593110131b0a00f81ad9dac16511"})
     );
+  }
+
+  #[test]
+  fn test_get_tsc_media_type() {
+    let fixtures = vec![
+      ("file:///a.ts", MediaType::TypeScript),
+      ("file:///a.tsx", MediaType::TSX),
+      ("file:///a.d.ts", MediaType::Dts),
+      ("file:///a.js", MediaType::JavaScript),
+      ("file:///a.jsx", MediaType::JSX),
+      ("file:///a.cjs", MediaType::Unknown),
+      ("file:///a.mjs", MediaType::Unknown),
+      ("file:///a.json", MediaType::Unknown),
+      ("file:///a.wasm", MediaType::Unknown),
+      ("file:///a.js.map", MediaType::Unknown),
+      ("file:///.tsbuildinfo", MediaType::Unknown),
+    ];
+    for (specifier, media_type) in fixtures {
+      let specifier = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      assert_eq!(get_tsc_media_type(&specifier), media_type);
+    }
   }
 
   #[tokio::test]

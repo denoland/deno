@@ -16,13 +16,12 @@ const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
     Deno.listen({ transport: "tcp", port: 4541 });
   },
   runRequired(): void {
-    Deno.run({
-      cmd: [
-        "python",
-        "-c",
-        "import sys; sys.stdout.write('hello'); sys.stdout.flush()",
-      ],
+    const p = Deno.run({
+      cmd: Deno.build.os === "windows"
+        ? ["cmd.exe", "/c", "echo hello"]
+        : ["printf", "hello"],
     });
+    p.close();
   },
 };
 

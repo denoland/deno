@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertThrows, assertThrowsAsync, unitTest } from "./test_util.ts";
+import {
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(async function permissionInvalidName(): Promise<void> {
   await assertThrowsAsync(async () => {
@@ -24,4 +29,5 @@ unitTest(function permissionStatusIllegalConstructor() {
     TypeError,
     "Illegal constructor.",
   );
+  assertEquals(Deno.PermissionStatus.length, 0);
 });

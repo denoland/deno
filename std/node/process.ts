@@ -28,6 +28,25 @@ export const versions = {
   ...Deno.version,
 };
 
+/** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
+export function nextTick(this: unknown, cb: () => void): void;
+export function nextTick<T extends Array<unknown>>(
+  this: unknown,
+  cb: (...args: T) => void,
+  ...args: T
+): void;
+export function nextTick<T extends Array<unknown>>(
+  this: unknown,
+  cb: (...args: T) => void,
+  ...args: T
+) {
+  if (args) {
+    queueMicrotask(() => cb.call(this, ...args));
+  } else {
+    queueMicrotask(cb);
+  }
+}
+
 /** https://nodejs.org/api/process.html#process_process */
 // @deprecated `import { process } from 'process'` for backwards compatibility with old deno versions
 export const process = {
@@ -123,6 +142,7 @@ export const process = {
     // Getter also allows the export Proxy instance to function as intended
     return Deno.env.toObject();
   },
+  nextTick,
 };
 
 /**
@@ -142,23 +162,9 @@ export const env = new Proxy(process.env, {});
 // import process from './std/node/process.ts'
 export default process;
 
-// Define the type for the global declration
-type Process = typeof process;
-
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
   writable: true,
   configurable: false,
   value: "process",
 });
-
-Object.defineProperty(globalThis, "process", {
-  value: process,
-  enumerable: false,
-  writable: true,
-  configurable: true,
-});
-
-declare global {
-  const process: Process;
-}

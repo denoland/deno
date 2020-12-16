@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import Context from "./snapshot_preview1.ts";
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import Context, { ExitStatus } from "./snapshot_preview1.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 
@@ -90,6 +90,7 @@ for (const pathname of tests) {
             "--quiet",
             "--unstable",
             "--allow-all",
+            "--no-check",
             path.resolve(rootdir, "snapshot_preview1_test_runner.ts"),
             prelude,
             path.resolve(rootdir, pathname),
@@ -178,5 +179,98 @@ Deno.test("context_start", function () {
     },
     TypeError,
     "export _start must be a function",
+  );
+
+  try {
+    const context = new Context({
+      exitOnReturn: false,
+    });
+    context.start({
+      exports: {
+        _start() {
+          const exit = context.exports["proc_exit"] as CallableFunction;
+          exit(0);
+        },
+        memory: new WebAssembly.Memory({ initial: 1 }),
+      },
+    });
+  } catch (err) {
+    assert(err instanceof ExitStatus);
+    assertEquals(err.code, 0);
+  }
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.start({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+          _start() {},
+        },
+      });
+      context.start({
+        exports: {},
+      });
+    },
+    Error,
+    "WebAssembly.Instance has already started",
+  );
+});
+
+Deno.test("context_initialize", function () {
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          _initialize() {},
+        },
+      });
+    },
+    TypeError,
+    "must provide a memory export",
+  );
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          _start() {},
+          memory: new WebAssembly.Memory({ initial: 1 }),
+        },
+      });
+    },
+    TypeError,
+    "export _start must not be a function",
+  );
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+        },
+      });
+    },
+    TypeError,
+    "export _initialize must be a function",
+  );
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+          _initialize() {},
+        },
+      });
+      context.initialize({
+        exports: {},
+      });
+    },
+    Error,
+    "WebAssembly.Instance has already started",
   );
 });

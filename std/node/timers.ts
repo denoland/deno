@@ -12,3 +12,12 @@ export const setImmediate = (
   ...args: any[]
 ): number => window.setTimeout(cb, 0, ...args);
 export const clearImmediate = window.clearTimeout;
+
+export default {
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  setImmediate,
+  clearImmediate,
+};

@@ -3,14 +3,14 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  createResolvable,
+  deferred,
   unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { hrtime: false } }, async function performanceNow(): Promise<
   void
 > {
-  const resolvable = createResolvable();
+  const resolvable = deferred();
   const start = performance.now();
   setTimeout((): void => {
     const end = performance.now();
@@ -83,10 +83,12 @@ unitTest(function performanceMeasure() {
 
 unitTest(function performanceIllegalConstructor() {
   assertThrows(() => new Performance(), TypeError, "Illegal constructor.");
+  assertEquals(Performance.length, 0);
 });
 
 unitTest(function performanceEntryIllegalConstructor() {
   assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor.");
+  assertEquals(PerformanceEntry.length, 0);
 });
 
 unitTest(function performanceMeasureIllegalConstructor() {

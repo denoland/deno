@@ -126,26 +126,26 @@ base0123456789
 
 ## Streams
 
-### fromStreamReader
+### readerFromStreamReader
 
 Creates a `Reader` from a `ReadableStreamDefaultReader`.
 
 ```ts
-import { fromStreamReader } from "https://deno.land/std@$STD_VERSION/io/mod.ts";
+import { readerFromStreamReader } from "https://deno.land/std@$STD_VERSION/io/mod.ts";
 const res = await fetch("https://deno.land");
 const file = await Deno.open("./deno.land.html", { create: true, write: true });
 
-const reader = fromStreamReader(res.body!.getReader());
+const reader = readerFromStreamReader(res.body!.getReader());
 await Deno.copy(reader, file);
 file.close();
 ```
 
-### fromStreamWriter
+### writerFromStreamWriter
 
 Creates a `Writer` from a `WritableStreamDefaultWriter`.
 
 ```ts
-import { fromStreamWriter } from "https://deno.land/std@$STD_VERSION/io/mod.ts";
+import { writerFromStreamWriter } from "https://deno.land/std@$STD_VERSION/io/mod.ts";
 const file = await Deno.open("./deno.land.html", { read: true });
 
 const writableStream = new WritableStream({
@@ -153,7 +153,7 @@ const writableStream = new WritableStream({
     console.log(chunk);
   },
 });
-const writer = fromStreamWriter(writableStream.getWriter());
+const writer = writerFromStreamWriter(writableStream.getWriter());
 await Deno.copy(file, writer);
 file.close();
 ```

@@ -94,19 +94,16 @@ impl MediaType {
         },
       },
       Some(os_str) => match os_str.to_str() {
-        Some("ts") => match path.file_stem() {
-          Some(os_str) => match os_str.to_str() {
-            Some(file_name) => {
+        Some("ts") => {
+          if let Some(os_str) = path.file_stem() {
+            if let Some(file_name) = os_str.to_str() {
               if file_name.ends_with(".d") {
-                MediaType::Dts
-              } else {
-                MediaType::TypeScript
+                return MediaType::Dts;
               }
             }
-            None => MediaType::TypeScript,
-          },
-          None => MediaType::TypeScript,
-        },
+          }
+          MediaType::TypeScript
+        }
         Some("tsx") => MediaType::TSX,
         Some("js") => MediaType::JavaScript,
         Some("jsx") => MediaType::JSX,
@@ -171,16 +168,16 @@ impl Serialize for MediaType {
     S: Serializer,
   {
     let value = match self {
-      MediaType::JavaScript => 0 as i32,
-      MediaType::JSX => 1 as i32,
-      MediaType::TypeScript => 2 as i32,
-      MediaType::Dts => 3 as i32,
-      MediaType::TSX => 4 as i32,
-      MediaType::Json => 5 as i32,
-      MediaType::Wasm => 6 as i32,
-      MediaType::TsBuildInfo => 7 as i32,
-      MediaType::SourceMap => 8 as i32,
-      MediaType::Unknown => 9 as i32,
+      MediaType::JavaScript => 0_i32,
+      MediaType::JSX => 1_i32,
+      MediaType::TypeScript => 2_i32,
+      MediaType::Dts => 3_i32,
+      MediaType::TSX => 4_i32,
+      MediaType::Json => 5_i32,
+      MediaType::Wasm => 6_i32,
+      MediaType::TsBuildInfo => 7_i32,
+      MediaType::SourceMap => 8_i32,
+      MediaType::Unknown => 9_i32,
     };
     Serialize::serialize(&value, serializer)
   }
@@ -194,7 +191,7 @@ pub fn serialize_media_type<S>(mt: &MediaType, s: S) -> Result<S::Ok, S::Error>
 where
   S: Serializer,
 {
-  s.serialize_str(&format!("{}", mt))
+  s.serialize_str(&mt.to_string())
 }
 
 #[cfg(test)]
@@ -237,6 +234,23 @@ mod tests {
   }
 
   #[test]
+  fn test_from_specifier() {
+    let fixtures = vec![
+      ("file:///a/b/c.ts", MediaType::TypeScript),
+      ("file:///a/b/c.js", MediaType::JavaScript),
+      ("file:///a/b/c.txt", MediaType::Unknown),
+      ("https://deno.land/x/mod.ts", MediaType::TypeScript),
+      ("https://deno.land/x/mod.js", MediaType::JavaScript),
+      ("https://deno.land/x/mod.txt", MediaType::Unknown),
+    ];
+
+    for (specifier, expected) in fixtures {
+      let actual = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      assert_eq!(MediaType::from(&actual), expected);
+    }
+  }
+
+  #[test]
   fn test_serialization() {
     assert_eq!(json!(MediaType::JavaScript), json!(0));
     assert_eq!(json!(MediaType::JSX), json!(1));
@@ -252,15 +266,15 @@ mod tests {
 
   #[test]
   fn test_display() {
-    assert_eq!(format!("{}", MediaType::JavaScript), "JavaScript");
-    assert_eq!(format!("{}", MediaType::JSX), "JSX");
-    assert_eq!(format!("{}", MediaType::TypeScript), "TypeScript");
-    assert_eq!(format!("{}", MediaType::Dts), "Dts");
-    assert_eq!(format!("{}", MediaType::TSX), "TSX");
-    assert_eq!(format!("{}", MediaType::Json), "Json");
-    assert_eq!(format!("{}", MediaType::Wasm), "Wasm");
-    assert_eq!(format!("{}", MediaType::TsBuildInfo), "TsBuildInfo");
-    assert_eq!(format!("{}", MediaType::SourceMap), "SourceMap");
-    assert_eq!(format!("{}", MediaType::Unknown), "Unknown");
+    assert_eq!(MediaType::JavaScript.to_string(), "JavaScript");
+    assert_eq!(MediaType::JSX.to_string(), "JSX");
+    assert_eq!(MediaType::TypeScript.to_string(), "TypeScript");
+    assert_eq!(MediaType::Dts.to_string(), "Dts");
+    assert_eq!(MediaType::TSX.to_string(), "TSX");
+    assert_eq!(MediaType::Json.to_string(), "Json");
+    assert_eq!(MediaType::Wasm.to_string(), "Wasm");
+    assert_eq!(MediaType::TsBuildInfo.to_string(), "TsBuildInfo");
+    assert_eq!(MediaType::SourceMap.to_string(), "SourceMap");
+    assert_eq!(MediaType::Unknown.to_string(), "Unknown");
   }
 }

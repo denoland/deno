@@ -4,10 +4,12 @@
 members = [
   "cli",
   "core",
+  "runtime",
   "test_plugin",
   "test_util",
   "op_crates/fetch",
   "op_crates/web",
+  "op_crates/crypto"
 ]
 exclude = [
   "std/hash/_wasm"

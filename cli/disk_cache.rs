@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs as deno_fs;
+use crate::fs_util;
 use crate::http_cache::url_to_filename;
 use deno_core::url::{Host, Url};
 use std::ffi::OsStr;
@@ -46,7 +46,7 @@ impl DiskCache {
     })
   }
 
-  pub fn get_cache_filename(&self, url: &Url) -> PathBuf {
+  fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
     let mut out = PathBuf::new();
 
     let scheme = url.scheme();
@@ -105,31 +105,25 @@ impl DiskCache {
 
         out = out.join(remaining_components);
       }
-      scheme => {
-        unimplemented!(
-          "Don't know how to create cache name for scheme: {}\n  Url: {}",
-          scheme,
-          url
-        );
-      }
+      _ => return None,
     };
 
-    out
+    Some(out)
   }
 
   pub fn get_cache_filename_with_extension(
     &self,
     url: &Url,
     extension: &str,
-  ) -> PathBuf {
-    let base = self.get_cache_filename(url);
+  ) -> Option<PathBuf> {
+    let base = self.get_cache_filename(url)?;
 
     match base.extension() {
-      None => base.with_extension(extension),
+      None => Some(base.with_extension(extension)),
       Some(ext) => {
         let original_extension = OsStr::to_str(ext).unwrap();
         let final_extension = format!("{}.{}", original_extension, extension);
-        base.with_extension(final_extension)
+        Some(base.with_extension(final_extension))
       }
     }
   }
@@ -145,7 +139,7 @@ impl DiskCache {
       Some(ref parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
-    deno_fs::write_file(&path, data, crate::http_cache::CACHE_PERM)
+    fs_util::write_file(&path, data, crate::http_cache::CACHE_PERM)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
   }
 }
@@ -234,7 +228,7 @@ mod tests {
     for test_case in &test_cases {
       let cache_filename =
         cache.get_cache_filename(&Url::parse(test_case.0).unwrap());
-      assert_eq!(cache_filename, PathBuf::from(test_case.1));
+      assert_eq!(cache_filename, Some(PathBuf::from(test_case.1)));
     }
   }
 
@@ -280,7 +274,7 @@ mod tests {
           &Url::parse(test_case.0).unwrap(),
           test_case.1
         ),
-        PathBuf::from(test_case.2)
+        Some(PathBuf::from(test_case.2))
       )
     }
   }

@@ -43,7 +43,7 @@ pub type ModuleLoadId = i32;
 // that happened; not only first and final target. It would simplify a lot
 // of things throughout the codebase otherwise we may end up requesting
 // intermediate redirects from file loader.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModuleSource {
   pub code: String,
   pub module_url_specified: String,
@@ -105,7 +105,7 @@ pub trait ModuleLoader {
 
 /// Placeholder structure used when creating
 /// a runtime that doesn't support module loading.
-pub(crate) struct NoopModuleLoader;
+pub struct NoopModuleLoader;
 
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
@@ -127,6 +127,51 @@ impl ModuleLoader for NoopModuleLoader {
   ) -> Pin<Box<ModuleSourceFuture>> {
     async { Err(generic_error("Module loading is not supported")) }
       .boxed_local()
+  }
+}
+
+/// Basic file system module loader.
+///
+/// Note that this loader will **block** event loop
+/// when loading file as it uses synchronous FS API
+/// from standard library.
+pub struct FsModuleLoader;
+
+impl ModuleLoader for FsModuleLoader {
+  fn resolve(
+    &self,
+    _op_state: Rc<RefCell<OpState>>,
+    specifier: &str,
+    referrer: &str,
+    _is_main: bool,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    Ok(ModuleSpecifier::resolve_import(specifier, referrer)?)
+  }
+
+  fn load(
+    &self,
+    _op_state: Rc<RefCell<OpState>>,
+    module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<ModuleSpecifier>,
+    _is_dynamic: bool,
+  ) -> Pin<Box<ModuleSourceFuture>> {
+    let module_specifier = module_specifier.clone();
+    async move {
+      let path = module_specifier.as_url().to_file_path().map_err(|_| {
+        generic_error(format!(
+          "Provided module specifier \"{}\" is not a file URL.",
+          module_specifier
+        ))
+      })?;
+      let code = std::fs::read_to_string(path)?;
+      let module = ModuleSource {
+        code,
+        module_url_specified: module_specifier.to_string(),
+        module_url_found: module_specifier.to_string(),
+      };
+      Ok(module)
+    }
+    .boxed_local()
   }
 }
 
@@ -337,9 +382,9 @@ impl Stream for RecursiveModuleLoad {
 }
 
 pub struct ModuleInfo {
+  pub id: ModuleId,
   pub main: bool,
   pub name: String,
-  pub handle: v8::Global<v8::Module>,
   pub import_specifiers: Vec<ModuleSpecifier>,
 }
 
@@ -372,17 +417,12 @@ impl ModuleNameMap {
   pub fn get(&self, name: &str) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
-      let cond = self.inner.get(mod_name);
-      match cond {
-        Some(SymbolicModule::Alias(target)) => {
+      let symbolic_module = self.inner.get(mod_name)?;
+      match symbolic_module {
+        SymbolicModule::Alias(target) => {
           mod_name = target;
         }
-        Some(SymbolicModule::Mod(mod_id)) => {
-          return Some(*mod_id);
-        }
-        _ => {
-          return None;
-        }
+        SymbolicModule::Mod(mod_id) => return Some(*mod_id),
       }
     }
   }
@@ -408,15 +448,21 @@ impl ModuleNameMap {
 /// A collection of JS modules.
 #[derive(Default)]
 pub struct Modules {
-  pub(crate) info: HashMap<ModuleId, ModuleInfo>,
+  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
+  info: HashMap<ModuleId, ModuleInfo>,
   by_name: ModuleNameMap,
+  next_module_id: ModuleId,
 }
 
 impl Modules {
   pub fn new() -> Modules {
     Self {
+      handles_by_id: HashMap::new(),
+      ids_by_handle: HashMap::new(),
       info: HashMap::new(),
       by_name: ModuleNameMap::new(),
+      next_module_id: 1,
     }
   }
 
@@ -428,35 +474,33 @@ impl Modules {
     self.info.get(&id).map(|i| &i.import_specifiers)
   }
 
-  pub fn get_name(&self, id: ModuleId) -> Option<&String> {
-    self.info.get(&id).map(|i| &i.name)
-  }
-
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
     self.by_name.get(&specifier.to_string()).is_some()
   }
 
   pub fn register(
     &mut self,
-    id: ModuleId,
     name: &str,
     main: bool,
     handle: v8::Global<v8::Module>,
     import_specifiers: Vec<ModuleSpecifier>,
-  ) {
+  ) -> ModuleId {
     let name = String::from(name);
-    debug!("register_complete {}", name);
-
+    let id = self.next_module_id;
+    self.next_module_id += 1;
     self.by_name.insert(name.clone(), id);
+    self.handles_by_id.insert(id, handle.clone());
+    self.ids_by_handle.insert(handle, id);
     self.info.insert(
       id,
       ModuleInfo {
+        id,
         main,
         name,
         import_specifiers,
-        handle,
       },
     );
+    id
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {
@@ -468,11 +512,19 @@ impl Modules {
     self.by_name.is_alias(name)
   }
 
-  pub fn get_info(&self, id: ModuleId) -> Option<&ModuleInfo> {
-    if id == 0 {
-      return None;
+  pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
+    self.handles_by_id.get(&id).cloned()
+  }
+
+  pub fn get_info(
+    &self,
+    global: &v8::Global<v8::Module>,
+  ) -> Option<&ModuleInfo> {
+    if let Some(id) = self.ids_by_handle.get(global) {
+      return self.info.get(id);
     }
-    self.info.get(&id)
+
+    None
   }
 }
 

@@ -17,12 +17,9 @@ export function detect(content: string): EOL | null {
   if (!d || d.length === 0) {
     return null;
   }
-  const crlf = d.filter((x: string): boolean => x === EOL.CRLF);
-  if (crlf.length > 0) {
-    return EOL.CRLF;
-  } else {
-    return EOL.LF;
-  }
+  const hasCRLF = d.some((x: string): boolean => x === EOL.CRLF);
+
+  return hasCRLF ? EOL.CRLF : EOL.LF;
 }
 
 /** Format the file to the targeted EOL */

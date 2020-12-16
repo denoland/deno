@@ -32,12 +32,24 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 
 ### API
 
-#### `readMatrix(reader: BufReader, opt: ReadOptions = { comma: ",", trimLeadingSpace: false, lazyQuotes: false }): Promise<string[][]>`
+#### `readMatrix`
+
+```ts
+(reader: BufReader, opt: ReadOptions = {
+  comma: ",",
+  trimLeadingSpace: false,
+  lazyQuotes: false,
+}): Promise<string[][]>
+```
 
 Parse the CSV from the `reader` with the options provided and return
 `string[][]`.
 
-#### `parse(input: string | BufReader, opt: ParseOptions = { skipFirstRow: false }): Promise<unknown[]>`:
+#### `parse`
+
+```ts
+(input: string | BufReader, opt: ParseOptions = { skipFirstRow: false }): Promise<unknown[]>
+```
 
 Parse the CSV string/buffer with the options provided. The result of this
 function is as follows:
@@ -70,8 +82,8 @@ function is as follows:
 
 ##### `ReadOptions`
 
-- **`comma?: string;`**: Character which separates values. Default: `','`.
-- **`comment?: string;`**: Character to start a comment. Default: `'#'`.
+- **`comma?: string;`**: Character which separates values. Default: `","`.
+- **`comment?: string;`**: Character to start a comment. Default: `"#"`.
 - **`trimLeadingSpace?: boolean;`**: Flag to trim the leading space of the
   value. Default: `false`.
 - **`lazyQuotes?: boolean;`**: Allow unquoted quote in a quoted field or non
@@ -79,7 +91,114 @@ function is as follows:
 - **`fieldsPerRecord?`**: Enabling the check of fields for each row. If == 0,
   first row is used as referral for the number of fields.
 
-### Usage
+#### `stringify`
+
+```ts
+(data: DataItem[], columns: Column[], options?: StringifyOptions): Promise<string>
+```
+
+- **`data`** is the source data to stringify. It's an array of items which are
+  plain objects or arrays.
+
+  `DataItem: Record<string, unknown> | unknown[]`
+
+  ```ts
+  const data = [
+    {
+      name: "Deno",
+      repo: { org: "denoland", name: "deno" },
+      runsOn: ["Rust", "TypeScript"],
+    },
+  ];
+  ```
+
+- **`columns`** is a list of instructions for how to target and transform the
+  data for each column of output. This is also where you can provide an explicit
+  header name for the column.
+
+  `Column`:
+
+  - The most essential aspect of a column is accessing the property holding the
+    data for that column on each object in the data array. If that member is at
+    the top level, `Column` can simply be a property accessor, which is either a
+    `string` (if it's a plain object) or a `number` (if it's an array).
+
+    ```ts
+    const columns = [
+      "name",
+    ];
+    ```
+
+    Each property accessor will be used as the header for the column:
+
+    | name |
+    | :--: |
+    | Deno |
+
+  - If the required data is not at the top level (it's nested in other
+    objects/arrays), then a simple property accessor won't work, so an array of
+    them will be required.
+
+    ```ts
+    const columns = [
+      ["repo", "name"],
+      ["repo", "org"],
+    ];
+    ```
+
+    When using arrays of property accessors, the header names inherit the value
+    of the last accessor in each array:
+
+    | name |   org    |
+    | :--: | :------: |
+    | deno | denoland |
+
+  - If the data is not already in the required output format, or a different
+    column header is desired, then a `ColumnDetails` object type can be used for
+    each column:
+
+    - **`fn?: (value: any) => string | Promise<string>`** is an optional
+      function to transform the targeted data into the desired format
+
+    - **`header?: string`** is the optional value to use for the column header
+      name
+
+    - **`prop: PropertyAccessor | PropertyAccessor[]`** is the property accessor
+      (`string` or `number`) or array of property accessors used to access the
+      data on each object
+
+    ```ts
+    const columns = [
+      "name",
+      {
+        prop: ["runsOn", 0],
+        header: "language 1",
+        fn: (str: string) => str.toLowerCase(),
+      },
+      {
+        prop: ["runsOn", 1],
+        header: "language 2",
+        fn: (str: string) => str.toLowerCase(),
+      },
+    ];
+    ```
+
+    | name | language 1 | language 2 |
+    | :--: | :--------: | :--------: |
+    | Deno |    rust    | typescript |
+
+- **`options`** are options for the delimiter-separated output.
+
+  - **`headers?: boolean`**: Whether or not to include the row of headers.
+    Default: `true`
+
+  - **`separator?: string`**: Delimiter used to separate values. Examples:
+    - `","` _comma_ (Default)
+    - `"\t"` _tab_
+    - `"|"` _pipe_
+    - etc.
+
+### Basic Usage
 
 ```ts
 import { parse } from "https://deno.land/std@$STD_VERSION/encoding/csv.ts";
@@ -92,6 +211,67 @@ console.log(
 );
 // output:
 // [["a", "b", "c"], ["d", "e", "f"]]
+```
+
+```ts
+import {
+  Column,
+  stringify,
+} from "https://deno.land/std@$STD_VERSION/encoding/csv.ts";
+
+type Character = {
+  age: number;
+  name: {
+    first: string;
+    last: string;
+  };
+};
+
+const data: Character[] = [
+  {
+    age: 70,
+    name: {
+      first: "Rick",
+      last: "Sanchez",
+    },
+  },
+  {
+    age: 14,
+    name: {
+      first: "Morty",
+      last: "Smith",
+    },
+  },
+];
+
+let columns: Column[] = [
+  ["name", "first"],
+  "age",
+];
+
+console.log(await stringify(data, columns));
+// first,age
+// Rick,70
+// Morty,14
+//
+
+columns = [
+  {
+    prop: "name",
+    fn: (name: Character["name"]) => `${name.first} ${name.last}`,
+  },
+  {
+    prop: "age",
+    header: "is_adult",
+    fn: (age: Character["age"]) => String(age >= 18),
+  },
+];
+
+console.log(await stringify(data, columns, { separator: "\t" }));
+// name	is_adult
+// Rick Sanchez	true
+// Morty Smith	false
+//
 ```
 
 ## TOML
@@ -231,7 +411,7 @@ console.log(tomlObject);
 
 YAML parser / dumper for Deno.
 
-Heavily inspired from [js-yaml].
+Heavily inspired from [`js-yaml`](https://github.com/nodeca/js-yaml).
 
 ### Basic usage
 
@@ -358,18 +538,18 @@ console.log(encode(binaryData));
 // => LpTqp
 ```
 
-### Specifying a standard and delimeter
+### Specifying a standard and delimiter
 
 By default all functions are using the most popular Adobe version of ascii85 and
-not adding any delimeter. However, there are three more standards supported -
-btoa (different delimeter and additional compression of 4 bytes equal to 32),
+not adding any delimiter. However, there are three more standards supported -
+btoa (different delimiter and additional compression of 4 bytes equal to 32),
 [Z85](https://rfc.zeromq.org/spec/32/) and
 [RFC 1924](https://tools.ietf.org/html/rfc1924). It's possible to use a
 different encoding by specifying it in `options` object as a second parameter.
 
-Similarly, it's possible to make `encode` add a delimeter (`<~` and `~>` for
-Adobe, `xbtoa Begin` and `xbtoa End` with newlines between the delimeters and
-encoded data for btoa. Checksums for btoa are not supported. Delimeters are not
+Similarly, it's possible to make `encode` add a delimiter (`<~` and `~>` for
+Adobe, `xbtoa Begin` and `xbtoa End` with newlines between the delimiters and
+encoded data for btoa. Checksums for btoa are not supported. Delimiters are not
 supported by other encodings.)
 
 encoding examples:
@@ -382,9 +562,9 @@ import {
 const binaryData = new Uint8Array([136, 180, 79, 24]);
 console.log(encode(binaryData));
 // => LpTqp
-console.log(encode(binaryData, { standard: "Adobe", delimeter: true }));
+console.log(encode(binaryData, { standard: "Adobe", delimiter: true }));
 // => <~LpTqp~>
-console.log(encode(binaryData, { standard: "btoa", delimeter: true }));
+console.log(encode(binaryData, { standard: "btoa", delimiter: true }));
 /* => xbtoa Begin
 LpTqp
 xbtoa End */
