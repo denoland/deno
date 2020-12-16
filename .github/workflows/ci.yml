@@ -272,5 +272,5 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/master'
         run: |
-          gsutil cp ./artifacts/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil cp ./artifacts/*.zip gs://dl.deno.land/canary/$(cat ./artifacts/canary-latest.txt)/
           gsutil cp ./artifacts/canary-latest.txt gs://dl.deno.land/canary-latest.txt
