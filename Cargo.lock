@@ -1499,6 +1499,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "mio-named-pipes"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0840c1c50fd55e521b247f949c241c9997709f23bd7f023b9762cd561e935656"
+dependencies = [
+ "log",
+ "mio 0.6.22",
+ "miow 0.3.6",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "mio-uds"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afcb699eb26d4332647cc848492bbc15eafb26f08d0304550d5aa1f612e066f0"
+dependencies = [
+ "iovec",
+ "libc",
+ "mio 0.6.22",
+]
+
+[[package]]
 name = "miow"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2894,7 +2917,7 @@ dependencies = [
  "pty",
  "regex",
  "tempfile",
- "tokio 0.3.5",
+ "tokio 0.2.22",
  "warp",
 ]
 
@@ -2964,11 +2987,17 @@ dependencies = [
  "futures-core",
  "iovec",
  "lazy_static",
+ "libc",
  "memchr",
  "mio 0.6.22",
+ "mio-named-pipes",
+ "mio-uds",
  "num_cpus",
  "pin-project-lite 0.1.7",
+ "signal-hook-registry",
  "slab",
+ "tokio-macros 0.2.6",
+ "winapi 0.3.9",
 ]
 
 [[package]]
@@ -2989,7 +3018,7 @@ dependencies = [
  "pin-project-lite 0.2.0",
  "signal-hook-registry",
  "slab",
- "tokio-macros",
+ "tokio-macros 0.3.1",
  "winapi 0.3.9",
 ]
 
@@ -3004,6 +3033,17 @@ dependencies = [
  "pin-project-lite 0.1.7",
  "tokio 0.2.22",
  "tokio 0.3.5",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e44da00bfc73a25f814cd8d7e57a68a5c31b74b3152a0a1d1f590c97ed06265a"
+dependencies = [
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.48",
 ]
 
 [[package]]
