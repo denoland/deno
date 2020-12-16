@@ -7,10 +7,23 @@ use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
 
+macro_rules! itest(
+  ($name:ident {$( $key:ident: $value:expr,)*})  => {
+    #[test]
+    fn $name() {
+      (util::CheckOutputIntegrationTest {
+        $(
+          $key: $value,
+         )*
+        .. Default::default()
+      }).run()
+    }
+  }
+);
+
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let std_config = util::root_path().join("std/tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
     .current_dir(util::root_path())
@@ -18,8 +31,6 @@ fn std_tests() {
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
-    .arg("--config")
-    .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
     .arg("std/")
     .spawn()
@@ -914,7 +925,7 @@ fn ts_reload() {
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
-    .contains("\"host.writeFile(\\\"deno://002_hello.js\\\")\""));
+    .contains("host.writeFile(\"deno://002_hello.js\")"));
 }
 
 #[test]
@@ -2068,37 +2079,6 @@ fn deno_test_no_color() {
   assert!(out.contains("test ignored ... ignored"));
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
-
-macro_rules! itest(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
-
-// Unfortunately #[ignore] doesn't work with itest!
-#[allow(unused)]
-macro_rules! itest_ignore(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[ignore]
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
 
 itest!(_001_hello {
   args: "run --reload 001_hello.js",

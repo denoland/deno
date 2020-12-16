@@ -264,42 +264,43 @@ class Parser {
     const value = this._parseData(line.slice(idx + 1));
     return new KeyValuePair(key, value);
   }
-  // TODO (zekth) Need refactor using ACC
   _parseData(dataString: string): unknown {
     dataString = dataString.trim();
+    switch (dataString[0]) {
+      case '"':
+      case "'":
+        return this._parseString(dataString);
+      case "[":
+      case "{":
+        return this._parseInlineTableOrArray(dataString);
+      default: {
+        // Strip a comment.
+        const match = /#.*$/.exec(dataString);
+        if (match) {
+          dataString = dataString.slice(0, match.index).trim();
+        }
 
-    if (this._isDate(dataString)) {
-      return new Date(dataString.split("#")[0].trim());
+        switch (dataString) {
+          case "true":
+            return true;
+          case "false":
+            return false;
+          case "inf":
+          case "+inf":
+            return Infinity;
+          case "-inf":
+            return -Infinity;
+          case "nan":
+          case "+nan":
+          case "-nan":
+            return NaN;
+          default:
+            return this._parseNumberOrDate(dataString);
+        }
+      }
     }
-
-    if (this._isLocalTime(dataString)) {
-      return eval(`"${dataString.split("#")[0].trim()}"`);
-    }
-
-    const cut3 = dataString.substring(0, 3).toLowerCase();
-    const cut4 = dataString.substring(0, 4).toLowerCase();
-    if (cut3 === "inf" || cut4 === "+inf") {
-      return Infinity;
-    }
-    if (cut4 === "-inf") {
-      return -Infinity;
-    }
-
-    if (cut3 === "nan" || cut4 === "+nan" || cut4 === "-nan") {
-      return NaN;
-    }
-
-    // If binary / octal / hex
-    const hex = /^(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
-    if (hex && hex[0]) {
-      return hex[0].trim();
-    }
-
-    const testNumber = this._isParsableNumber(dataString);
-    if (testNumber && !isNaN(testNumber as number)) {
-      return testNumber;
-    }
-
+  }
+  _parseInlineTableOrArray(dataString: string): unknown {
     const invalidArr = /,\]/g.exec(dataString);
     if (invalidArr) {
       dataString = dataString.replace(/,]/g, "]");
@@ -320,7 +321,10 @@ class Parser {
       }
       return JSON.parse(dataString);
     }
-
+    throw new TOMLError("Malformed inline table or array literal");
+  }
+  _parseString(dataString: string): string {
+    const quote = dataString[0];
     // Handle First and last EOL for multiline strings
     if (dataString.startsWith(`"\\n`)) {
       dataString = dataString.replace(`"\\n`, `"`);
@@ -332,14 +336,88 @@ class Parser {
     } else if (dataString.endsWith(`\\n'`)) {
       dataString = dataString.replace(`\\n'`, `'`);
     }
-    return eval(dataString);
+    let value = "";
+    for (let i = 1; i < dataString.length; i++) {
+      switch (dataString[i]) {
+        case "\\":
+          i++;
+          // See https://toml.io/en/v1.0.0-rc.3#string
+          switch (dataString[i]) {
+            case "b":
+              value += "\b";
+              break;
+            case "t":
+              value += "\t";
+              break;
+            case "n":
+              value += "\n";
+              break;
+            case "f":
+              value += "\f";
+              break;
+            case "r":
+              value += "\r";
+              break;
+            case "u":
+            case "U": {
+              // Unicode character
+              const codePointLen = dataString[i] === "u" ? 4 : 6;
+              const codePoint = parseInt(
+                "0x" + dataString.slice(i + 1, i + 1 + codePointLen),
+                16,
+              );
+              value += String.fromCodePoint(codePoint);
+              i += codePointLen;
+              break;
+            }
+            case "\\":
+              value += "\\";
+              break;
+            default:
+              value += dataString[i];
+              break;
+          }
+          break;
+        case quote:
+          if (dataString[i - 1] !== "\\") {
+            return value;
+          }
+          break;
+        default:
+          value += dataString[i];
+          break;
+      }
+    }
+    throw new TOMLError("Incomplete string literal");
+  }
+  _parseNumberOrDate(dataString: string): unknown {
+    if (this._isDate(dataString)) {
+      return new Date(dataString);
+    }
+
+    if (this._isLocalTime(dataString)) {
+      return dataString;
+    }
+
+    // If binary / octal / hex
+    const hex = /^(0(?:x|o|b)[0-9a-f_]*)/gi.exec(dataString);
+    if (hex && hex[0]) {
+      return hex[0].trim();
+    }
+
+    const testNumber = this._isParsableNumber(dataString);
+    if (testNumber !== false && !isNaN(testNumber as number)) {
+      return testNumber;
+    }
+
+    return String(dataString);
   }
   _isLocalTime(str: string): boolean {
     const reg = /(\d{2}):(\d{2}):(\d{2})/;
     return reg.test(str);
   }
   _isParsableNumber(dataString: string): number | boolean {
-    const m = /((?:\+|-|)[0-9_\.e+\-]*)[^#]/i.exec(dataString.trim());
+    const m = /((?:\+|-|)[0-9_\.e+\-]*)[^#]/i.exec(dataString);
     if (!m) {
       return false;
     } else {
