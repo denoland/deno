@@ -141,12 +141,12 @@ async fn receive_udp(
     .resource_table
     .get::<UdpSocketResource>(rid)
     .ok_or_else(|| bad_resource("Socket has been closed"))?;
-  let mut socket = resource.rd_borrow_mut().await;
-  let (size, remote_addr) = socket
+  let (size, remote_addr) = resource
+    .rd_borrow_mut()
+    .await
     .recv_from(&mut zero_copy)
     .try_or_cancel(resource.cancel_handle())
     .await?;
-
   Ok(json!({
     "size": size,
     "remoteAddr": {
@@ -210,12 +210,12 @@ async fn op_datagram_send(
         .resource_table
         .get::<UdpSocketResource>(rid as u32)
         .ok_or_else(|| bad_resource("Socket has been closed"))?;
-      let mut socket = resource.wr_borrow_mut().await;
-      socket
-        .send_to(&zero_copy, &addr)
+      let byte_length = resource
+        .wr_borrow_mut()
         .await
-        .map(|byte_length| json!(byte_length))
-        .map_err(AnyError::from)
+        .send_to(&zero_copy, &addr)
+        .await?;
+      Ok(json!(byte_length))
     }
     #[cfg(unix)]
     SendArgs {
@@ -235,16 +235,14 @@ async fn op_datagram_send(
         .ok_or_else(|| {
           custom_error("NotConnected", "Socket has been closed")
         })?;
-      let local_addr = &resource.local_addr.as_pathname().unwrap();
       let mut socket = RcRef::map(&resource, |r| &r.socket)
         .try_borrow_mut()
         .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
       let cancel = RcRef::map(&resource, |r| &r.cancel);
       let byte_length = socket
-        .send_to(&zero_copy, local_addr)
+        .send_to(&zero_copy, address_path)
         .try_or_cancel(cancel)
         .await?;
-
       Ok(json!(byte_length))
     }
     _ => Err(type_error("Wrong argument format!")),

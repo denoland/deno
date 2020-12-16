@@ -44,7 +44,6 @@ impl Resource for UnixListenerResource {
 pub struct UnixDatagramResource {
   pub socket: AsyncRefCell<UnixDatagram>,
   pub cancel: CancelHandle,
-  pub local_addr: unix::net::SocketAddr,
 }
 
 impl Resource for UnixDatagramResource {
@@ -161,7 +160,6 @@ pub fn listen_unix_packet(
   let datagram_resource = UnixDatagramResource {
     socket: AsyncRefCell::new(socket),
     cancel: Default::default(),
-    local_addr: local_addr.clone(),
   };
   let rid = state.resource_table.add(datagram_resource);
 
