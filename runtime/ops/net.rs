@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::io::FullDuplexResource;
 use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
@@ -28,7 +27,6 @@ use std::cell::RefCell;
 use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::rc::Rc;
-use tokio::net::udp;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
@@ -67,7 +65,7 @@ async fn accept_tcp(
     .resource_table
     .get::<TcpListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
-  let mut listener = RcRef::map(&resource, |r| &r.listener)
+  let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
@@ -140,11 +138,11 @@ async fn receive_udp(
     .resource_table
     .get::<UdpSocketResource>(rid)
     .ok_or_else(|| bad_resource("Socket has been closed"))?;
-  let (size, remote_addr) = resource
-    .rd_borrow_mut()
-    .await
+  let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+  let cancel_handle = RcRef::map(&resource, |r| &r.cancel);
+  let (size, remote_addr) = socket
     .recv_from(&mut zero_copy)
-    .try_or_cancel(resource.cancel_handle())
+    .try_or_cancel(cancel_handle)
     .await?;
   Ok(json!({
     "size": size,
@@ -209,11 +207,8 @@ async fn op_datagram_send(
         .resource_table
         .get::<UdpSocketResource>(rid as u32)
         .ok_or_else(|| bad_resource("Socket has been closed"))?;
-      let byte_length = resource
-        .wr_borrow_mut()
-        .await
-        .send_to(&zero_copy, &addr)
-        .await?;
+      let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
+      let byte_length = socket.send_to(&zero_copy, &addr).await?;
       Ok(json!(byte_length))
     }
     #[cfg(unix)]
@@ -234,7 +229,7 @@ async fn op_datagram_send(
         .ok_or_else(|| {
           custom_error("NotConnected", "Socket has been closed")
         })?;
-      let mut socket = RcRef::map(&resource, |r| &r.socket)
+      let socket = RcRef::map(&resource, |r| &r.socket)
         .try_borrow_mut()
         .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
       let byte_length = socket.send_to(&zero_copy, address_path).await?;
@@ -390,7 +385,10 @@ impl Resource for TcpListenerResource {
   }
 }
 
-type UdpSocketResource = FullDuplexResource<udp::RecvHalf, udp::SendHalf>;
+struct UdpSocketResource {
+  socket: AsyncRefCell<UdpSocket>,
+  cancel: CancelHandle,
+}
 
 impl Resource for UdpSocketResource {
   fn name(&self) -> Cow<str> {
@@ -398,7 +396,7 @@ impl Resource for UdpSocketResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_read_ops()
+    self.cancel.cancel()
   }
 }
 
@@ -446,7 +444,10 @@ fn listen_udp(
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
-  let socket_resource = UdpSocketResource::new(socket.split());
+  let socket_resource = UdpSocketResource {
+    socket: AsyncRefCell::new(socket),
+    cancel: Default::default(),
+  };
   let rid = state.resource_table.add(socket_resource);
 
   Ok((rid, local_addr))

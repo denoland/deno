@@ -99,7 +99,7 @@ fn op_fs_events_open(
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(AnyError::from);
-      let mut sender = sender.lock().unwrap();
+      let sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);

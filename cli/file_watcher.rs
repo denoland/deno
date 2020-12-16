@@ -18,21 +18,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
-use tokio::time::{delay_for, Delay};
+use tokio::time::{sleep, Sleep};
 
 const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
 
 type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 struct Debounce {
-  delay: Delay,
+  sleep: Sleep,
   event_detected: Arc<AtomicBool>,
 }
 
 impl Debounce {
   fn new() -> Self {
     Self {
-      delay: delay_for(DEBOUNCE_INTERVAL_MS),
+      sleep: sleep(DEBOUNCE_INTERVAL_MS),
       event_detected: Arc::new(AtomicBool::new(false)),
     }
   }
@@ -52,9 +52,9 @@ impl Stream for Debounce {
       inner.event_detected.store(false, Ordering::Relaxed);
       Poll::Ready(Some(()))
     } else {
-      match inner.delay.poll_unpin(cx) {
+      match inner.sleep.poll_unpin(cx) {
         Poll::Ready(_) => {
-          inner.delay = delay_for(DEBOUNCE_INTERVAL_MS);
+          inner.sleep = sleep(DEBOUNCE_INTERVAL_MS);
           Poll::Pending
         }
         Poll::Pending => Poll::Pending,

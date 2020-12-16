@@ -129,7 +129,6 @@ where
     Cancelable::new(self, cancel_handle.into())
   }
 }
-
 impl<F> CancelFuture for F where F: Future {}
 
 pub trait CancelTryFuture
@@ -144,7 +143,6 @@ where
     TryCancelable::new(self, cancel_handle.into())
   }
 }
-
 impl<F> CancelTryFuture for F
 where
   F: TryFuture,

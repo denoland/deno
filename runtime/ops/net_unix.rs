@@ -19,7 +19,6 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::remove_file;
-use std::os::unix;
 use std::path::Path;
 use std::rc::Rc;
 use tokio::net::UnixDatagram;
@@ -73,12 +72,12 @@ pub(crate) async fn accept_unix(
     .resource_table
     .get::<UnixListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
-  let mut listener = RcRef::map(&resource, |r| &r.listener)
+  let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (unix_stream, _socket_addr) =
-    listener.accept().try_or_cancel(cancel).await?;
+    (&*listener).accept().try_or_cancel(cancel).await?;
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
@@ -113,12 +112,12 @@ pub(crate) async fn receive_unix_packet(
     .resource_table
     .get::<UnixDatagramResource>(rid)
     .ok_or_else(|| bad_resource("Socket has been closed"))?;
-  let mut socket = RcRef::map(&resource, |r| &r.socket)
+  let socket = RcRef::map(&resource, |r| &r.socket)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (size, remote_addr) =
-    socket.recv_from(&mut buf).try_or_cancel(cancel).await?;
+    (&*socket).recv_from(&mut buf).try_or_cancel(cancel).await?;
   Ok(json!({
     "size": size,
     "remoteAddr": {
@@ -131,7 +130,7 @@ pub(crate) async fn receive_unix_packet(
 pub fn listen_unix(
   state: &mut OpState,
   addr: &Path,
-) -> Result<(u32, unix::net::SocketAddr), AnyError> {
+) -> Result<(u32, tokio::net::unix::SocketAddr), AnyError> {
   if addr.exists() {
     remove_file(&addr).unwrap();
   }
@@ -149,7 +148,7 @@ pub fn listen_unix(
 pub fn listen_unix_packet(
   state: &mut OpState,
   addr: &Path,
-) -> Result<(u32, unix::net::SocketAddr), AnyError> {
+) -> Result<(u32, tokio::net::unix::SocketAddr), AnyError> {
   if addr.exists() {
     remove_file(&addr).unwrap();
   }

@@ -16,6 +16,7 @@ use deno_runtime::deno_fetch::reqwest::StatusCode;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
+use tokio_compat_02::FutureExt;
 
 pub fn get_user_agent() -> String {
   format!("Deno/{}", version::deno())
@@ -102,7 +103,7 @@ pub async fn fetch_once(
     let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
     request = request.header(IF_NONE_MATCH, if_none_match_val);
   }
-  let response = request.send().await?;
+  let response = request.send().compat().await?;
 
   if response.status() == StatusCode::NOT_MODIFIED {
     return Ok(FetchOnceResult::NotModified);

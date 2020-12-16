@@ -53,10 +53,10 @@ serde = { version = "1.0.116", features = ["derive"] }
 shell-escape = "0.1.5"
 sys-info = "0.7.0"
 termcolor = "1.1.0"
-tokio = { version = "0.2.22", features = ["full"] }
-tokio-rustls = "0.14.1"
+tokio = { version = "0.3.5", features = ["full"] }
+tokio-rustls = "0.21.1"
 # Keep in-sync with warp.
-tokio-tungstenite = "0.11.0"
+tokio-tungstenite = "0.12.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 # TODO(bartlomieju): remove dependency on warp, it's only used
 # for a WebSocket server in inspector.rs

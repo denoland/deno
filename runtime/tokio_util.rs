@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
-  tokio::runtime::Builder::new()
-    .basic_scheduler()
+  tokio::runtime::Builder::new_current_thread()
     .enable_io()
     .enable_time()
     // This limits the number of threads for blocking operations (like for
@@ -20,6 +19,6 @@ pub fn run_basic<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R>,
 {
-  let mut rt = create_basic_runtime();
+  let rt = create_basic_runtime();
   rt.block_on(future)
 }
