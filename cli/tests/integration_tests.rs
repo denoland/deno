@@ -3300,13 +3300,13 @@ itest!(redirect_cache {
 });
 
 itest!(deno_test_coverage {
-  args: "test --coverage=.test_coverage --unstable test_coverage.ts",
+  args: "test --coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
   exit_code: 0,
 });
 
 itest!(deno_test_run_test_coverage {
-  args: "test --allow-all --coverage=.test_run_test_coverage --unstable test_run_test_coverage.ts",
+  args: "test --allow-all --coverage --unstable test_run_test_coverage.ts",
   output: "test_run_test_coverage.out",
   exit_code: 0,
 });

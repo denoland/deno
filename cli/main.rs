@@ -79,6 +79,7 @@ use log::Level;
 use log::LevelFilter;
 use std::cell::RefCell;
 use std::env;
+use std::fs;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
@@ -1018,14 +1019,18 @@ async fn test_command(
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
 
-  // If the actual coverage flag is set, we set the environment variable so that subprocesses will
-  // forward it.
-  if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
-  }
-
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
+      // If the actual coverage flag is set:
+      // - We clear the coverage directory (this is the entry point).
+      // - We set the environment variable so that subprocesses will inherit it.
+      if flags.coverage {
+        fs::remove_dir_all(coverage_dir)?;
+        fs::create_dir_all(coverage_dir)?;
+
+        env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+      }
+
       let session = worker.create_inspector_session();
       let mut coverage_collector = tools::coverage::CoverageCollector::new(
         PathBuf::from(coverage_dir),
@@ -1050,7 +1055,7 @@ async fn test_command(
 
     // TODO(caspervonb) extract reporting into it's own subcommand.
     // For now, we'll only report for the command that passed --coverage as a flag.
-    if flags.coverage_dir.is_some() {
+    if flags.coverage {
       let mut exclude = test_modules.clone();
       let main_module_url = main_module.as_url().to_owned();
       exclude.push(main_module_url);
