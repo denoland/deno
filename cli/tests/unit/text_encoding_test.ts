@@ -51,14 +51,14 @@ unitTest(function atobThrows2(): void {
 });
 
 unitTest(function atobThrows3(): void {
-  let threw = true;
+  let threw = false;
   try {
     atob("foobar!!");
   } catch (DOMException) {
     threw = true;
   }
   assert(threw);
-})
+});
 
 unitTest(function btoaFailed(): void {
   const text = "你好";
