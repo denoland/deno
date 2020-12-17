@@ -362,25 +362,26 @@ Deno.test({
   },
 });
 
-Deno.test("Worker inherits permissions", async function(){
+Deno.test("Worker inherits permissions", async function () {
   const promise = deferred();
   const workerReadWildcard = new Worker(
-    new URL("./workers/read_check_worker.js", import.meta.url).href, {
+    new URL("./workers/read_check_worker.js", import.meta.url).href,
+    {
       type: "module",
       //TODO(Soremwar)
       //deno-lint-ignore ban-ts-comment
       //@ts-ignore
       deno: {
         namespace: true,
-      }
+      },
     },
   );
-  
-  workerReadWildcard.onmessage = ({data: hasPermission}) => {
+
+  workerReadWildcard.onmessage = ({ data: hasPermission }) => {
     assert(hasPermission);
     promise.resolve();
-  }
-  
+  };
+
   workerReadWildcard.postMessage(null);
 
   await promise;

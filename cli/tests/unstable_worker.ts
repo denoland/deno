@@ -1,5 +1,6 @@
 const w = new Worker(
-  new URL("workers/worker_unstable.ts", import.meta.url).href, {
+  new URL("workers/worker_unstable.ts", import.meta.url).href,
+  {
     type: "module",
     //TODO(Soremwar)
     //Fix d.ts definition
