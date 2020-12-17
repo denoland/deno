@@ -15,5 +15,5 @@ self.postMessage(server);
 
 // This line is the only difference between the two workers
 for await (const _request of server) {
-    // pass
+  // pass
 }
