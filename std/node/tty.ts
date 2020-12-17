@@ -89,6 +89,8 @@ function warnOnDeactivatedColors(env: Env) {
   }
 
   if (name !== '') {
+    // TODO(jopemachine): correct below statement
+
     // process.emitWarning(
     //   `The '${name}' env is ignored due to the 'FORCE_COLOR' env being set.`,
     //   'Warning'
