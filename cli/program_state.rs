@@ -107,12 +107,7 @@ impl ProgramState {
     };
 
     let coverage_dir = if flags.coverage {
-        let coverage_dir = dir
-          .root
-          .join("cov")
-          .to_str()
-          .unwrap()
-          .to_string();
+      let coverage_dir = dir.root.join("cov").to_str().unwrap().to_string();
       Some(coverage_dir)
     } else {
       env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()
