@@ -1,19 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
+use super::io::{std_file_resource, StreamResource};
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::AsyncMutFuture;
+use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::process::Command;
@@ -61,7 +64,19 @@ struct RunArgs {
 }
 
 struct ChildResource {
-  child: tokio::process::Child,
+  child: AsyncRefCell<tokio::process::Child>,
+}
+
+impl Resource for ChildResource {
+  fn name(&self) -> Cow<str> {
+    "child".into()
+  }
+}
+
+impl ChildResource {
+  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<tokio::process::Child> {
+    RcRef::map(self, |r| &r.child).borrow_mut()
+  }
 }
 
 fn op_run(
@@ -117,12 +132,9 @@ fn op_run(
 
   let stdin_rid = match child.stdin.take() {
     Some(child_stdin) => {
-      let rid = state.resource_table.add(
-        "childStdin",
-        Box::new(StreamResourceHolder::new(StreamResource::ChildStdin(
-          child_stdin,
-        ))),
-      );
+      let rid = state
+        .resource_table
+        .add(StreamResource::child_stdin(child_stdin));
       Some(rid)
     }
     None => None,
@@ -130,12 +142,9 @@ fn op_run(
 
   let stdout_rid = match child.stdout.take() {
     Some(child_stdout) => {
-      let rid = state.resource_table.add(
-        "childStdout",
-        Box::new(StreamResourceHolder::new(StreamResource::ChildStdout(
-          child_stdout,
-        ))),
-      );
+      let rid = state
+        .resource_table
+        .add(StreamResource::child_stdout(child_stdout));
       Some(rid)
     }
     None => None,
@@ -143,19 +152,18 @@ fn op_run(
 
   let stderr_rid = match child.stderr.take() {
     Some(child_stderr) => {
-      let rid = state.resource_table.add(
-        "childStderr",
-        Box::new(StreamResourceHolder::new(StreamResource::ChildStderr(
-          child_stderr,
-        ))),
-      );
+      let rid = state
+        .resource_table
+        .add(StreamResource::child_stderr(child_stderr));
       Some(rid)
     }
     None => None,
   };
 
-  let child_resource = ChildResource { child };
-  let child_rid = state.resource_table.add("child", Box::new(child_resource));
+  let child_resource = ChildResource {
+    child: AsyncRefCell::new(child),
+  };
+  let child_rid = state.resource_table.add(child_resource);
 
   Ok(json!({
     "rid": child_rid,
@@ -185,17 +193,13 @@ async fn op_run_status(
     s.borrow::<Permissions>().check_run()?;
   }
 
-  let run_status = poll_fn(|cx| {
-    let mut state = state.borrow_mut();
-    let child_resource = state
-      .resource_table
-      .get_mut::<ChildResource>(rid)
-      .ok_or_else(bad_resource_id)?;
-    let child = &mut child_resource.child;
-    child.poll_unpin(cx).map_err(AnyError::from)
-  })
-  .await?;
-
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ChildResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+  let mut child = resource.borrow_mut().await;
+  let run_status = (&mut *child).await?;
   let code = run_status.code();
 
   #[cfg(unix)]

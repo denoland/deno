@@ -31,8 +31,11 @@ fn get_line_index(
   specifier: &ModuleSpecifier,
 ) -> Result<Vec<u32>, AnyError> {
   let line_index = if specifier.as_url().scheme() == "asset" {
-    if let Some(source) = tsc::get_asset(specifier.as_url().path()) {
-      text::index_lines(source)
+    let server_state = state.snapshot();
+    if let Some(source) =
+      tsc::get_asset(specifier, &mut state.ts_runtime, &server_state)?
+    {
+      text::index_lines(&source)
     } else {
       return Err(custom_error(
         "NotFound",
@@ -256,7 +259,7 @@ pub fn handle_references(
 }
 
 pub fn handle_virtual_text_document(
-  state: ServerStateSnapshot,
+  state: &mut ServerState,
   params: lsp_extensions::VirtualTextDocumentParams,
 ) -> Result<String, AnyError> {
   let specifier = utils::normalize_url(params.text_document.uri);
@@ -274,8 +277,11 @@ pub fn handle_virtual_text_document(
   } else {
     match url.scheme() {
       "asset" => {
-        if let Some(text) = tsc::get_asset(url.path()) {
-          text.to_string()
+        let server_state = state.snapshot();
+        if let Some(text) =
+          tsc::get_asset(&specifier, &mut state.ts_runtime, &server_state)?
+        {
+          text
         } else {
           error!("Missing asset: {}", specifier);
           "".to_string()

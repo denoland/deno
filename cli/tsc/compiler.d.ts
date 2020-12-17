@@ -42,6 +42,7 @@ declare global {
 
   type LanguageServerRequest =
     | ConfigureRequest
+    | GetAsset
     | GetSyntacticDiagnosticsRequest
     | GetSemanticDiagnosticsRequest
     | GetSuggestionDiagnosticsRequest
@@ -60,6 +61,11 @@ declare global {
     method: "configure";
     // deno-lint-ignore no-explicit-any
     compilerOptions: Record<string, any>;
+  }
+
+  interface GetAsset extends BaseLanguageServerRequest {
+    method: "getAsset";
+    specifier: string;
   }
 
   interface GetSyntacticDiagnosticsRequest extends BaseLanguageServerRequest {

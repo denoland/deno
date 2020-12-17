@@ -153,13 +153,13 @@ impl MainWorker {
       let t = &mut op_state.resource_table;
       let (stdin, stdout, stderr) = ops::io::get_stdio();
       if let Some(stream) = stdin {
-        t.add("stdin", Box::new(stream));
+        t.add(stream);
       }
       if let Some(stream) = stdout {
-        t.add("stdout", Box::new(stream));
+        t.add(stream);
       }
       if let Some(stream) = stderr {
-        t.add("stderr", Box::new(stream));
+        t.add(stream);
       }
     }
 

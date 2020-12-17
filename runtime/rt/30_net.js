@@ -11,20 +11,16 @@
     0: "Read",
     1: "Write",
     2: "ReadWrite",
-    Read: 0,
+    Read: 0, // TODO: nonsense, remove me.
     Write: 1,
     ReadWrite: 2, // unused
   };
 
   function shutdown(rid, how) {
-    core.jsonOpSync("op_shutdown", { rid, how });
-    return Promise.resolve();
+    return core.jsonOpAsync("op_shutdown", { rid, how });
   }
 
-  function opAccept(
-    rid,
-    transport,
-  ) {
+  function opAccept(rid, transport) {
     return core.jsonOpAsync("op_accept", { rid, transport });
   }
 
@@ -36,11 +32,7 @@
     return core.jsonOpAsync("op_connect", args);
   }
 
-  function opReceive(
-    rid,
-    transport,
-    zeroCopy,
-  ) {
+  function opReceive(rid, transport, zeroCopy) {
     return core.jsonOpAsync(
       "op_datagram_receive",
       { rid, transport },
@@ -56,11 +48,7 @@
     #rid = 0;
     #remoteAddr = null;
     #localAddr = null;
-    constructor(
-      rid,
-      remoteAddr,
-      localAddr,
-    ) {
+    constructor(rid, remoteAddr, localAddr) {
       this.#rid = rid;
       this.#remoteAddr = remoteAddr;
       this.#localAddr = localAddr;
@@ -149,11 +137,7 @@
     #rid = 0;
     #addr = null;
 
-    constructor(
-      rid,
-      addr,
-      bufSize = 1024,
-    ) {
+    constructor(rid, addr, bufSize = 1024) {
       this.#rid = rid;
       this.#addr = addr;
       this.bufSize = bufSize;
@@ -213,9 +197,7 @@
     return new Listener(res.rid, res.localAddr);
   }
 
-  async function connect(
-    options,
-  ) {
+  async function connect(options) {
     let res;
 
     if (options.transport === "unix") {
