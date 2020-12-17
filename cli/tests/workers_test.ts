@@ -2,11 +2,6 @@
 
 // Requires to be run with `--allow-net` flag
 
-// FIXME(bartlomieju): this file is an integration test only because
-// workers are leaking ops at the moment - `worker.terminate()` is not
-// yet implemented. Once it gets implemented this file should be
-// again moved to `cli/js/` as an unit test file.
-
 import { assert, assertEquals } from "../../std/testing/asserts.ts";
 import { deferred } from "../../std/async/deferred.ts";
 
@@ -16,11 +11,11 @@ Deno.test({
     const promise = deferred();
 
     const jsWorker = new Worker(
-      new URL("subdir/test_worker.js", import.meta.url).href,
+      new URL("workers/test_worker.js", import.meta.url).href,
       { type: "module" },
     );
     const tsWorker = new Worker(
-      new URL("subdir/test_worker.ts", import.meta.url).href,
+      new URL("workers/test_worker.ts", import.meta.url).href,
       { type: "module", name: "tsWorker" },
     );
 
@@ -52,7 +47,7 @@ Deno.test({
     const promise = deferred();
 
     const nestedWorker = new Worker(
-      new URL("subdir/nested_worker.js", import.meta.url).href,
+      new URL("workers/nested_worker.js", import.meta.url).href,
       { type: "module", name: "nested" },
     );
 
@@ -72,7 +67,7 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = deferred();
     const throwingWorker = new Worker(
-      new URL("subdir/throwing_worker.js", import.meta.url).href,
+      new URL("workers/throwing_worker.js", import.meta.url).href,
       { type: "module" },
     );
 
@@ -93,7 +88,7 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = deferred();
     const w = new Worker(
-      new URL("subdir/worker_globals.ts", import.meta.url).href,
+      new URL("workers/worker_globals.ts", import.meta.url).href,
       { type: "module" },
     );
     w.onmessage = (e): void => {
@@ -112,7 +107,7 @@ Deno.test({
     const promise = deferred();
 
     const fetchingWorker = new Worker(
-      new URL("subdir/fetching_worker.js", import.meta.url).href,
+      new URL("workers/fetching_worker.js", import.meta.url).href,
       { type: "module" },
     );
 
@@ -139,7 +134,7 @@ Deno.test({
     const promise = deferred();
 
     const busyWorker = new Worker(
-      new URL("subdir/busy_worker.js", import.meta.url).href,
+      new URL("workers/busy_worker.js", import.meta.url).href,
       { type: "module" },
     );
 
@@ -172,7 +167,7 @@ Deno.test({
     const promise = deferred();
 
     const racyWorker = new Worker(
-      new URL("subdir/racy_worker.js", import.meta.url).href,
+      new URL("workers/racy_worker.js", import.meta.url).href,
       { type: "module" },
     );
 
@@ -200,7 +195,7 @@ Deno.test({
     const promise2 = deferred();
 
     const worker = new Worker(
-      new URL("subdir/event_worker.js", import.meta.url).href,
+      new URL("workers/event_worker.js", import.meta.url).href,
       { type: "module" },
     );
 
@@ -244,7 +239,7 @@ Deno.test({
     const promise1 = deferred();
 
     const worker = new Worker(
-      new URL("subdir/event_worker_scope.js", import.meta.url).href,
+      new URL("workers/event_worker_scope.js", import.meta.url).href,
       { type: "module" },
     );
 
@@ -273,12 +268,21 @@ Deno.test({
     const promise2 = deferred();
 
     const regularWorker = new Worker(
-      new URL("subdir/non_deno_worker.js", import.meta.url).href,
+      new URL("workers/non_deno_worker.js", import.meta.url).href,
       { type: "module" },
     );
     const denoWorker = new Worker(
-      new URL("subdir/deno_worker.ts", import.meta.url).href,
-      { type: "module", deno: true },
+      new URL("workers/deno_worker.ts", import.meta.url).href,
+      {
+        type: "module",
+        //TODO(Soremwar)
+        //Add type definitions for worker options
+        //deno-lint-ignore ban-ts-comment
+        //@ts-ignore
+        deno: {
+          namespace: true,
+        },
+      },
     );
 
     regularWorker.onmessage = (e): void => {
@@ -305,7 +309,7 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = deferred();
     const w = new Worker(
-      new URL("subdir/worker_crypto.js", import.meta.url).href,
+      new URL("workers/worker_crypto.js", import.meta.url).href,
       { type: "module" },
     );
     w.onmessage = (e): void => {
@@ -323,7 +327,7 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = deferred();
     const w = new Worker(
-      new URL("subdir/test_worker.ts", import.meta.url).href,
+      new URL("workers/test_worker.ts", import.meta.url).href,
       { type: "module", name: "tsWorker" },
     );
     const arr: number[] = [];
@@ -356,4 +360,7 @@ Deno.test({
     await promise;
     w.terminate();
   },
+});
+
+Deno.test("Worker nested permissions", async function () {
 });
