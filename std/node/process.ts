@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "./_utils.ts";
+import { Readable, Writable } from '../node/stream.ts'
 
 /** https://nodejs.org/api/process.html#process_process_arch */
 export const arch = Deno.build.arch;
@@ -157,7 +158,12 @@ export const argv = new Proxy(process.argv, {});
  * @example `import { env } from './std/node/process.ts'; console.log(env)`
  */
 // Proxy delegates --allow-env and --allow-read to request time, even for exports
-export const env = new Proxy(process.env, {});
+
+export interface Env {
+  [index: string]: string;
+}
+
+export const env: Env = new Proxy(process.env, {});
 
 // import process from './std/node/process.ts'
 export default process;
