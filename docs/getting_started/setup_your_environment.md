@@ -147,7 +147,7 @@ project (`npm init -y` as necessary), then add the following block to your
 #### LSP clients
 
 Deno has builtin support for the
-[Language server protocol](https://langserver.org) after version 1.6.0.
+[Language server protocol](https://langserver.org) as of version 1.6.0 or later.
 
 If your editor supports the LSP, you can use Deno as a language server for
 TypeScript and JavaScript.
