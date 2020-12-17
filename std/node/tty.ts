@@ -11,7 +11,7 @@ let OSRelease: string[];
 const COLORS_2 = 1;
 const COLORS_16 = 4;
 const COLORS_256 = 8;
-const COLORS_16m = 24;
+const COLORS_16M = 24;
 
 // Some entries were taken from `dircolors`
 // (https://linux.die.net/man/1/dircolors). The corresponding terminals might
@@ -54,13 +54,13 @@ const TERM_ENVS: TTY_ENVS = {
   "konsole": COLORS_16,
   "kterm": COLORS_16,
   "mlterm": COLORS_16,
-  "mosh": COLORS_16m,
+  "mosh": COLORS_16M,
   "putty": COLORS_16,
   "st": COLORS_16,
   // https://github.com/da-x/rxvt-unicode/tree/v9.22-with-24bit-color
-  "rxvt-unicode-24bit": COLORS_16m,
+  "rxvt-unicode-24bit": COLORS_16M,
   // https://gist.github.com/XVilka/8346728#gistcomment-2823421
-  "terminator": COLORS_16m,
+  "terminator": COLORS_16M,
 };
 
 const TERM_ENVS_REG_EXP = [
@@ -119,7 +119,7 @@ export function getColorDepth(env = nodeProcess.env) {
         return COLORS_256;
       case "3":
         warnOnDeactivatedColors(env);
-        return COLORS_16m;
+        return COLORS_16M;
       default:
         return COLORS_2;
     }
@@ -149,7 +149,7 @@ export function getColorDepth(env = nodeProcess.env) {
     if (+OSRelease[0] >= 10) {
       const build = +OSRelease[2];
       if (build >= 14931) {
-        return COLORS_16m;
+        return COLORS_16M;
       }
       if (build >= 10586) {
         return COLORS_256;
@@ -187,16 +187,16 @@ export function getColorDepth(env = nodeProcess.env) {
       ) {
         return COLORS_256;
       }
-      return COLORS_16m;
+      return COLORS_16M;
     case "HyperTerm":
     case "MacTerm":
-      return COLORS_16m;
+      return COLORS_16M;
     case "Apple_Terminal":
       return COLORS_256;
   }
 
   if (env.COLORTERM === "truecolor" || env.COLORTERM === "24bit") {
-    return COLORS_16m;
+    return COLORS_16M;
   }
 
   if (env.TERM) {
