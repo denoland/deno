@@ -107,7 +107,16 @@ declare class EventTarget {
      * invoked once after which the event listener will be removed.
      *
      * The event listener is appended to target's event listener list and is not
-     * appended if it has the same type, callback, and capture. */
+     * appended if it has the same type, callback, and capture.
+     *
+     * addEventListener() method attaches an event handler to the document.
+     *
+     * ```ts
+     *    document.addEventListener("click", function(){
+            document.getElementById("deno").innerHTML = "Hello Deno";
+          });
+     * ```
+    */
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
