@@ -1,8 +1,13 @@
 const w = new Worker(
-  new URL("subdir/worker_unstable.ts", import.meta.url).href,
-  {
+  new URL("workers/worker_unstable.ts", import.meta.url).href, {
     type: "module",
-    deno: true,
+    //TODO(Soremwar)
+    //Fix d.ts definition
+    //deno-lint-ignore ban-ts-comment
+    //@ts-ignore
+    deno: {
+      namespace: true,
+    },
     name: "Unstable Worker",
   },
 );
