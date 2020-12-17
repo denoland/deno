@@ -2321,11 +2321,12 @@ fn worker_post_undefined() {
     .arg("run")
     .arg("--reload")
     .arg("--unstable")
+    .arg("--allow-read")
     .arg("./worker_post_undefined_host.ts")
     .spawn()
     .expect("Failed to spawn script");
 
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  std::thread::sleep(std::time::Duration::from_secs(5));
 
   // the watcher process is still alive
   assert!(child.try_wait().unwrap().is_none());
