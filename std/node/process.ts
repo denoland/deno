@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "./_utils.ts";
-import { Readable, Writable } from '../node/stream.ts'
+import { Readable, Writable } from "../node/stream.ts";
 
 /** https://nodejs.org/api/process.html#process_process_arch */
 export const arch = Deno.build.arch;
