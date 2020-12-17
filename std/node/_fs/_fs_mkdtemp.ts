@@ -1,6 +1,6 @@
 // Copyright Node.js contributors. All rights reserved. MIT License.
 import { existsSync } from "./_fs_exists.ts";
-import { callbackify } from "../_util/_util_callbackify.ts";
+import { mkdir, mkdirSync } from "./_fs_mkdir.ts";
 import {
   ERR_INVALID_CALLBACK,
   ERR_INVALID_OPT_VALUE_ENCODING,
@@ -32,10 +32,14 @@ export function mkdtemp(
   const encoding: string | undefined = parseEncoding(optionsOrCallback);
   const path = tempDirPath(prefix);
 
-  const mkdirC = callbackify<string, object, void>(Deno.mkdir);
-  mkdirC(path, { recursive: false, mode: 0o700 }, (err: any, ret: any) => {
-    callback(err, err ? undefined : decode(path, encoding));
-  });
+  mkdir(
+    path,
+    { recursive: false, mode: 0o700 },
+    (err: Error | null | undefined) => {
+      if (err) callback(err);
+      else callback(undefined, decode(path, encoding));
+    },
+  );
 }
 
 // https://nodejs.org/dist/latest-v15.x/docs/api/fs.html#fs_fs_mkdtempsync_prefix_options
@@ -46,7 +50,7 @@ export function mkdtempSync(
   const encoding: string | undefined = parseEncoding(options);
   const path = tempDirPath(prefix);
 
-  Deno.mkdirSync(path, { recursive: false, mode: 0o700 });
+  mkdirSync(path, { recursive: false, mode: 0o700 });
   return decode(path, encoding);
 }
 
