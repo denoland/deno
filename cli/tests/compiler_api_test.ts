@@ -102,7 +102,9 @@ Deno.test({
             "b": "./b.ts",
           },
         },
-        importMapPath: "/import-map.json",
+        importMapPath: Deno.build.os == "windows"
+          ? "C:\\import-map.json"
+          : "/import-map.json",
         sources: {
           "/a.ts": `import * as b from "b"
             console.log(b);`,
