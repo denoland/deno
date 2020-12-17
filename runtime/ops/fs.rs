@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::std_file_resource;
-use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
+use super::io::StreamResource;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
@@ -185,13 +185,8 @@ fn op_open_sync(
   let (path, open_options) = open_helper(state, args)?;
   let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
-  let rid = state.resource_table.add(
-    "fsFile",
-    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-      tokio_file,
-      FileMetadata::default(),
-    ))))),
-  );
+  let resource = StreamResource::fs_file(tokio_file);
+  let rid = state.resource_table.add(resource);
   Ok(json!(rid))
 }
 
@@ -204,13 +199,8 @@ async fn op_open_async(
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(path)
     .await?;
-  let rid = state.borrow_mut().resource_table.add(
-    "fsFile",
-    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-      tokio_file,
-      FileMetadata::default(),
-    ))))),
-  );
+  let resource = StreamResource::fs_file(tokio_file);
+  let rid = state.borrow_mut().resource_table.add(resource);
   Ok(json!(rid))
 }
 

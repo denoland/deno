@@ -2,7 +2,7 @@
 
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
 
-<img align="right" src=https://deno.land/logo.svg height="150px">
+<img align="right" src=docs/images/deno3.png height="150px">
 
 Deno is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
 **TypeScript** that uses V8 and is built in Rust.

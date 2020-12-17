@@ -147,7 +147,7 @@ project (`npm init -y` as necessary), then add the following block to your
 #### LSP clients
 
 Deno has builtin support for the
-[Language server protocol](https://langserver.org).
+[Language server protocol](https://langserver.org) as of version 1.6.0 or later.
 
 If your editor supports the LSP, you can use Deno as a language server for
 TypeScript and JavaScript.
@@ -168,10 +168,6 @@ command = "deno"
 args = ["lsp"]
 ```
 
-If you don't see your favorite IDE on this list, maybe you can develop an
-extension. Our [community Discord group](https://discord.gg/deno) can give you
-some pointers on where to get started.
-
 ##### Example for Vim/Neovim
 
 After installing the [`vim-lsp`](https://github.com/prabirshrestha/vim-lsp) LSP
@@ -191,3 +187,72 @@ if executable("deno")
   augroup END
 endif
 ```
+
+##### Example for Sublime Text
+
+- Install the [Sublime LSP package](https://packagecontrol.io/packages/LSP)
+- Install the
+  [TypeScript package](https://packagecontrol.io/packages/TypeScript) to get
+  syntax highlighting
+- Add the following `.sublime-project` file to your project folder
+
+```json
+{
+  "settings": {
+    "LSP": {
+      "deno": {
+        "command": [
+          "deno",
+          "lsp"
+        ],
+        "initializationOptions": {
+          // "config": "", // Sets the path for the config file in your project
+          "enable": true,
+          // "importMap": "", // Sets the path for the import-map in your project
+          "lint": true,
+          "unstable": false
+        },
+        "enabled": true,
+        "languages": [
+          {
+            "languageId": "javascript",
+            "scopes": ["source.js"],
+            "syntaxes": [
+              "Packages/Babel/JavaScript (Babel).sublime-syntax",
+              "Packages/JavaScript/JavaScript.sublime-syntax"
+            ]
+          },
+          {
+            "languageId": "javascriptreact",
+            "scopes": ["source.jsx"],
+            "syntaxes": [
+              "Packages/Babel/JavaScript (Babel).sublime-syntax",
+              "Packages/JavaScript/JavaScript.sublime-syntax"
+            ]
+          },
+          {
+            "languageId": "typescript",
+            "scopes": ["source.ts"],
+            "syntaxes": [
+              "Packages/TypeScript-TmLanguage/TypeScript.tmLanguage",
+              "Packages/TypeScript Syntax/TypeScript.tmLanguage"
+            ]
+          },
+          {
+            "languageId": "typescriptreact",
+            "scopes": ["source.tsx"],
+            "syntaxes": [
+              "Packages/TypeScript-TmLanguage/TypeScriptReact.tmLanguage",
+              "Packages/TypeScript Syntax/TypeScriptReact.tmLanguage"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+If you don't see your favorite IDE on this list, maybe you can develop an
+extension. Our [community Discord group](https://discord.gg/deno) can give you
+some pointers on where to get started.

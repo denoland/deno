@@ -47,8 +47,8 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
 }
 
 fn main() {
-  // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
-  if env::var_os("RUSTDOCFLAGS").is_some() {
+  // Skip building from docs.rs.
+  if env::var_os("DOCS_RS").is_some() {
     return;
   }
 
@@ -62,7 +62,7 @@ fn main() {
   // Main snapshot
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let js_files = get_js_files("rt");
+  let js_files = get_js_files("js");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 }
 
