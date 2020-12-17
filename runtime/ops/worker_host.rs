@@ -25,6 +25,7 @@ use std::thread::JoinHandle;
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: u32,
+  pub parent_permissions: Permissions,
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   pub use_deno_namespace: bool,
@@ -275,7 +276,7 @@ fn merge_unary_permissions(
 }
 
 fn create_worker_permissions(
-  main_thread_permissions: Permissions,
+  main_thread_permissions: &Permissions,
   permission_args: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
   Ok(Permissions {
@@ -458,10 +459,9 @@ fn op_create_worker(
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno");
   }
-  let worker_permissions = create_worker_permissions(
-    state.borrow::<Permissions>().clone(),
-    args.permissions,
-  )?;
+  let parent_permissions = state.borrow::<Permissions>().clone();
+  let worker_permissions =
+    create_worker_permissions(&parent_permissions, args.permissions)?;
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
@@ -487,6 +487,7 @@ fn op_create_worker(
     let worker = (create_module_loader.0)(CreateWebWorkerArgs {
       name: worker_name,
       worker_id,
+      parent_permissions,
       permissions: worker_permissions,
       main_module: module_specifier.clone(),
       use_deno_namespace,
