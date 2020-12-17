@@ -2313,7 +2313,6 @@ fn workers() {
 }
 
 #[test]
-#[ignore]
 fn worker_post_undefined() {
   let t = TempDir::new().expect("tempdir fail");
 
@@ -2322,7 +2321,7 @@ fn worker_post_undefined() {
     .arg("run")
     .arg("--reload")
     .arg("--unstable")
-    .arg("./worker_port_undefined_host.ts")
+    .arg("./worker_post_undefined_host.ts")
     .spawn()
     .expect("Failed to spawn script");
 
