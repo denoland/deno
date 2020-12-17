@@ -361,6 +361,3 @@ Deno.test({
     w.terminate();
   },
 });
-
-Deno.test("Worker nested permissions", async function () {
-});
