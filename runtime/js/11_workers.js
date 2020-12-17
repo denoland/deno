@@ -125,7 +125,7 @@
       } = options;
 
       const workerDenoAttributes = {
-        namespace: !!(deno?.namespace ?? true),
+        namespace: !!(deno?.namespace ?? false),
         permissions: (deno?.permissions ?? "inherit") === "inherit"
           ? {}
           : deno?.permissions,

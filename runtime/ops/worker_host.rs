@@ -457,8 +457,10 @@ fn op_create_worker(
   let args_name = args.name;
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
-    super::check_unstable(state, "Worker.deno");
+    super::check_unstable(state, "Worker.deno.namespace");
   }
+  //TODO(Soremwar)
+  //Add unstable check for permissions
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions =
     create_worker_permissions(&parent_permissions, args.permissions)?;
