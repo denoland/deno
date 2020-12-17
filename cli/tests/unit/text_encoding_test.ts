@@ -50,6 +50,16 @@ unitTest(function atobThrows2(): void {
   assert(threw);
 });
 
+unitTest(function atobThrows3(): void {
+  let threw = true;
+  try {
+    atob("foobar!!");
+  } catch (DOMException) {
+    threw = true;
+  }
+  assert(threw);
+})
+
 unitTest(function btoaFailed(): void {
   const text = "你好";
   assertThrows(() => {
