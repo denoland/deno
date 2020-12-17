@@ -40,7 +40,7 @@ fn italic_bold(s: &str, internal: bool) -> String {
   }
 }
 
-// Keep in sync with `cli/rt/40_error_stack.js`.
+// Keep in sync with `runtime/js/40_error_stack.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
   let internal = frame
     .file_name
@@ -75,7 +75,7 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   result
 }
 
-// Keep in sync with `cli/rt/40_error_stack.js`.
+// Keep in sync with `runtime/js/40_error_stack.js`.
 fn format_frame(frame: &JsStackFrame) -> String {
   let internal = frame
     .file_name
