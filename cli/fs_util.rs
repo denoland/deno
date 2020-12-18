@@ -2,7 +2,7 @@
 
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
-use deno_crypto::rand;
+use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::{Error, Write};
