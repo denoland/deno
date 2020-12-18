@@ -430,10 +430,14 @@ Deno.test("Worker limit children permissions granularly", async function () {
     { permission: true, route: "read_check_worker.js" },
   ];
 
+  let checked = 0;
   worker.onmessage = ({ data }) => {
+    checked++;
     assertEquals(data.hasPermission, routes[data.index].permission);
     routes.shift();
-    promise.resolve();
+    if (checked === routes.length) {
+      promise.resolve();
+    }
   };
 
   routes.forEach(({ route }, index) =>
@@ -508,7 +512,9 @@ Deno.test("Nested worker limit children permissions granularly", async function 
     },
   ];
 
+  let checked = 0;
   worker.onmessage = ({ data }) => {
+    checked++;
     assertEquals(
       data.childHasPermission,
       routes[data.index].childHasPermission,
@@ -517,7 +523,9 @@ Deno.test("Nested worker limit children permissions granularly", async function 
       data.parentHasPermission,
       routes[data.index].parentHasPermission,
     );
-    promise.resolve();
+    if (checked === routes.length) {
+      promise.resolve();
+    }
   };
 
   // Index needed cause requests will be handled asynchronously
