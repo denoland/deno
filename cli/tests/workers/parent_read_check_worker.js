@@ -7,9 +7,6 @@ onmessage = async () => {
     new URL("./read_check_worker.js", import.meta.url).href,
     {
       type: "module",
-      //TODO(Soremwar)
-      //deno-lint-ignore ban-ts-comment
-      //@ts-ignore
       deno: {
         namespace: true,
         permissions: {

@@ -658,6 +658,18 @@ interface WorkerEventMap extends AbstractWorkerEventMap {
   "messageerror": MessageEvent;
 }
 
+/**
+ * "inherit" will take the permissions of the thread the worker is created in
+ */
+type WorkerPermissionBooleanOption = "inherit" | boolean;
+
+/**
+ * "inherit" will take the permissions of the thread the worker is created in
+ * You can provide a list of routes relative to the file the worker is created in
+ * to limit the access of the worker
+ */
+type WorkerPermissionListOption = "inherit" | boolean | Array<string | URL>;
+
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
@@ -667,24 +679,29 @@ declare class Worker extends EventTarget {
     options?: {
       type?: "classic" | "module";
       name?: string;
-      /** UNSTABLE: New API. Expect many changes; most likely this
-       * field will be made into an object for more granular
-       * configuration of worker thread (permissions, import map, etc.).
+      /** UNSTABLE: New API.
        *
-       * Set to `true` to make `Deno` namespace and all of its methods
-       * available to worker thread.
-       *
-       * Currently worker inherits permissions from main thread (permissions
-       * given using `--allow-*` flags).
-       * Configurable permissions are on the roadmap to be implemented.
+       * Set deno.namespace to `true` to make `Deno` namespace and all of its methods
+       * available to worker thread. The namespace is disabled by default.
+       * 
+       * Configure deno.permissions options to change the level of access the worker will
+       * have. By default it will inherit the permissions of it's parent thread. The permissions
+       * of a worker can't be extended beyond its parent's permissions reach.
        *
        * Example:
        *
        * ```ts
        * // mod.ts
        * const worker = new Worker(
-       *   new URL("deno_worker.ts", import.meta.url).href,
-       *   { type: "module", deno: true }
+       *   new URL("deno_worker.ts", import.meta.url).href, {
+       *     type: "module",
+       *     deno: {
+       *       namespace: true,
+       *       permissions: {
+       *         read: true,
+       *       },
+       *     },
+       *   }
        * );
        * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
@@ -712,7 +729,18 @@ declare class Worker extends EventTarget {
        * hello world2
        *
        */
-      deno?: boolean;
+      deno?: {
+        namespace?: boolean;
+        permissions?: {
+          env?: WorkerPermissionBooleanOption;
+          hrtime?: WorkerPermissionBooleanOption;
+          net?: WorkerPermissionListOption;
+          plugin?: WorkerPermissionBooleanOption;
+          read?: WorkerPermissionListOption;
+          run?: WorkerPermissionBooleanOption;
+          write?: WorkerPermissionListOption;
+        };
+      };
     },
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;

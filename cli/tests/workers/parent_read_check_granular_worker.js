@@ -2,9 +2,6 @@ const worker = new Worker(
   new URL("./read_check_granular_worker.js", import.meta.url).href,
   {
     type: "module",
-    //TODO(Soremwar)
-    //deno-lint-ignore ban-ts-comment
-    //@ts-ignore
     deno: {
       namespace: true,
       permissions: {
