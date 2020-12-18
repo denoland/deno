@@ -364,7 +364,7 @@ Deno.test({
 
 Deno.test("Worker inherits permissions", async function () {
   const promise = deferred();
-  const workerReadWildcard = new Worker(
+  const worker = new Worker(
     new URL("./workers/read_check_worker.js", import.meta.url).href,
     {
       type: "module",
@@ -377,13 +377,79 @@ Deno.test("Worker inherits permissions", async function () {
     },
   );
 
-  workerReadWildcard.onmessage = ({ data: hasPermission }) => {
+  worker.onmessage = ({ data: hasPermission }) => {
     assert(hasPermission);
     promise.resolve();
   };
 
-  workerReadWildcard.postMessage(null);
+  worker.postMessage(null);
 
   await promise;
-  workerReadWildcard.terminate();
+  worker.terminate();
+});
+
+Deno.test("Worker limit children permissions", async function () {
+  const promise = deferred();
+  const worker = new Worker(
+    new URL("./workers/read_check_worker.js", import.meta.url).href,
+    {
+      type: "module",
+      //TODO(Soremwar)
+      //deno-lint-ignore ban-ts-comment
+      //@ts-ignore
+      deno: {
+        namespace: true,
+        permissions: {
+          read: false,
+        },
+      },
+    },
+  );
+
+  worker.onmessage = ({ data: hasPermission }) => {
+    assert(!hasPermission);
+    promise.resolve();
+  };
+
+  worker.postMessage(null);
+
+  await promise;
+  worker.terminate();
+});
+
+Deno.test("Worker limit children permissions granularly", async function () {
+  const promise = deferred();
+  const worker = new Worker(
+    new URL("./workers/read_check_granular_worker.js", import.meta.url).href,
+    {
+      type: "module",
+      //TODO(Soremwar)
+      //deno-lint-ignore ban-ts-comment
+      //@ts-ignore
+      deno: {
+        namespace: true,
+        permissions: {
+          read: [
+            new URL("workers/read_check_worker.js", import.meta.url).pathname,
+          ],
+        },
+      },
+    },
+  );
+
+  const routes = [
+    { permission: false, route: "read_check_granular_worker.js" },
+    { permission: true, route: "read_check_worker.js" },
+  ];
+
+  worker.onmessage = ({ data: hasPermission }) => {
+    assertEquals(hasPermission, routes[0].permission);
+    routes.shift();
+    promise.resolve();
+  };
+
+  routes.forEach(({ route }) => worker.postMessage(route));
+
+  await promise;
+  worker.terminate();
 });
