@@ -160,17 +160,6 @@ where
   }
 }
 
-fn local_server(
-  addr: &SocketAddr,
-) -> hyper::server::Builder<hyper::server::conn::AddrIncoming, LocalExecutor> {
-  hyper::server::Builder::new(
-    hyper::server::conn::AddrIncoming::bind(addr).unwrap_or_else(|e| {
-      panic!("error binding to {}: {}", addr, e);
-    }),
-    hyper::server::conn::Http::new().with_executor(LocalExecutor),
-  )
-}
-
 async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
@@ -289,16 +278,23 @@ async fn server(
     ))
   });
 
-  let server_handler = local_server(&host)
-    .serve(make_svc)
-    .with_graceful_shutdown(async {
-      shutdown_server_rx.await.ok();
-    })
-    .unwrap_or_else(|err| {
-      eprintln!("Cannot start inspector server: {}.", err);
+  // Create the server manually so it can use the Local Executor
+  let server_handler = hyper::server::Builder::new(
+    hyper::server::conn::AddrIncoming::bind(&host).unwrap_or_else(|e| {
+      eprintln!("Cannot start inspector server: {}.", e);
       process::exit(1);
-    })
-    .fuse();
+    }),
+    hyper::server::conn::Http::new().with_executor(LocalExecutor),
+  )
+  .serve(make_svc)
+  .with_graceful_shutdown(async {
+    shutdown_server_rx.await.ok();
+  })
+  .unwrap_or_else(|err| {
+    eprintln!("Cannot start inspector server: {}.", err);
+    process::exit(1);
+  })
+  .fuse();
 
   pin_mut!(register_inspector_handler);
   pin_mut!(deregister_inspector_handler);
