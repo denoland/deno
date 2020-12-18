@@ -24,9 +24,7 @@ export function mkdtemp(
   maybeCallback?: mkdtempCallback,
 ): void {
   const callback: mkdtempCallback | undefined =
-    typeof (optionsOrCallback) == "function"
-      ? optionsOrCallback
-      : maybeCallback;
+    typeof optionsOrCallback == "function" ? optionsOrCallback : maybeCallback;
   if (!callback) throw new ERR_INVALID_CALLBACK(callback);
 
   const encoding: string | undefined = parseEncoding(optionsOrCallback);
@@ -58,7 +56,7 @@ function parseEncoding(
   optionsOrCallback?: { encoding: string } | string | mkdtempCallback,
 ): string | undefined {
   let encoding: string | undefined;
-  if (typeof (optionsOrCallback) == "function") encoding = undefined;
+  if (typeof optionsOrCallback == "function") encoding = undefined;
   else if (optionsOrCallback instanceof Object) {
     encoding = optionsOrCallback?.encoding;
   } else encoding = optionsOrCallback;
