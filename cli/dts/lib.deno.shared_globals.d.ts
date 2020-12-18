@@ -658,25 +658,6 @@ interface WorkerEventMap extends AbstractWorkerEventMap {
   "messageerror": MessageEvent;
 }
 
-/**
- * "inherit" will take the permissions of the thread the worker is created in
- */
-type WorkerPermissionBooleanOption = "inherit" | boolean;
-
-/**
- * "inherit" will take the permissions of the thread the worker is created in
- * You can provide a list of routes relative to the file the worker is created in
- * to limit the access of the worker
- */
-type WorkerPermissionListOption = "inherit" | boolean | Array<string>;
-
-/**
- * "inherit" will take the permissions of the thread the worker is created in
- * You can provide a list of routes relative to the file the worker is created in
- * to limit the access of the worker
- */
-type WorkerPermissionPathOption = "inherit" | boolean | Array<string | URL>;
-
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
@@ -694,6 +675,10 @@ declare class Worker extends EventTarget {
        * Configure deno.permissions options to change the level of access the worker will
        * have. By default it will inherit the permissions of it's parent thread. The permissions
        * of a worker can't be extended beyond its parent's permissions reach.
+       * - "inherit" will take the permissions of the thread the worker is created in
+       * - You can disable/enable permissions all together by passing a boolean
+       * - You can provide a list of routes relative to the file the worker
+       *   is created in to limit the access of the worker (read/write permissions only)
        *
        * Example:
        *
@@ -739,13 +724,13 @@ declare class Worker extends EventTarget {
       deno?: {
         namespace?: boolean;
         permissions?: {
-          env?: WorkerPermissionBooleanOption;
-          hrtime?: WorkerPermissionBooleanOption;
-          net?: WorkerPermissionListOption;
-          plugin?: WorkerPermissionBooleanOption;
-          read?: WorkerPermissionPathOption;
-          run?: WorkerPermissionBooleanOption;
-          write?: WorkerPermissionPathOption;
+          env?: "inherit" | boolean;
+          hrtime?: "inherit" | boolean;
+          net?: "inherit" | boolean | string[];
+          plugin?: "inherit" | boolean;
+          read?: "inherit" | boolean | Array<string | URL>;
+          run?: "inherit" | boolean;
+          write?: "inherit" | boolean | Array<string | URL>;
         };
       };
     },
