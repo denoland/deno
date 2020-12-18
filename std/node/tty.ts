@@ -1,6 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { ERR_INVALID_ARG_TYPE, ERR_OUT_OF_RANGE } from "./_errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
+  NodeError,
+} from "./_errors.ts";
 import nodeProcess, { Env } from "./process.ts";
 import { notImplemented } from "./_utils.ts";
 import { ReadableOptions } from "./_stream/readable.ts";
@@ -250,7 +254,42 @@ export function ReadStream(fd: number, options: ReadableOptions) {
   notImplemented();
 }
 
+ReadStream.prototype.setRawMode = function (flag: boolean) {
+  flag = !!flag;
+  const err = this._handle.setRawMode(flag);
+  if (err) {
+    this.emit("error", new NodeError(err, "setRawMode"));
+    return this;
+  }
+  this.isRaw = flag;
+  return this;
+};
+
 export function WriteStream(fd: number) {
   // TODO(jopemachine): to be implemented
+  // Seems to need to implement Readline first
   notImplemented();
 }
+
+WriteStream.prototype.isTTY = true;
+
+WriteStream.prototype.getColorDepth = getColorDepth;
+
+WriteStream.prototype.hasColors = hasColors;
+
+WriteStream.prototype._refreshSize = function () {
+  const oldCols = this.columns;
+  const oldRows = this.rows;
+  const winSize = new Array(2);
+  const err = this._handle.getWindowSize(winSize);
+  if (err) {
+    this.emit("error", new NodeError(err, "getWindowSize"));
+    return;
+  }
+  const [newCols, newRows] = winSize;
+  if (oldCols !== newCols || oldRows !== newRows) {
+    this.columns = newCols;
+    this.rows = newRows;
+    this.emit("resize");
+  }
+};
