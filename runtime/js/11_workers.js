@@ -85,7 +85,7 @@
       );
     } else if (Array.isArray(value)) {
       value = value.map((x) => {
-        return x instanceof URL ? x.pathname : x;
+        return x instanceof URL ? x.href : x;
       });
     }
 

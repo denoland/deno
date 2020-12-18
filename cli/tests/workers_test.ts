@@ -482,7 +482,8 @@ Deno.test("Nested worker limit children permissions granularly", async function 
 
   /** This worker has read permissions but doesn't grant them to its children */
   const worker = new Worker(
-    new URL("./workers/parent_read_check_granular_worker.js", import.meta.url).pathname,
+    new URL("./workers/parent_read_check_granular_worker.js", import.meta.url)
+      .href,
     {
       type: "module",
       deno: {
