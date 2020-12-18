@@ -216,17 +216,14 @@ impl MainWorker {
     tokio::select! {
       maybe_result = receiver.next() => {
         debug!("received module evaluate {:#?}", maybe_result);
-        // If `None` is returned it means that runtime was destroyed before
-        // evaluation was complete. This can happen in Web Worker when `self.close()`
-        // is called at top level.
-        let result = maybe_result.unwrap_or(Ok(()));
+        let result = maybe_result.expect("Module evaluation result not provided.");
         return result;
       }
 
       event_loop_result = self.run_event_loop() => {
         event_loop_result?;
         let maybe_result = receiver.next().await;
-        let result = maybe_result.unwrap_or(Ok(()));
+        let result = maybe_result.expect("Module evaluation result not provided.");
         return result;
       }
     }
