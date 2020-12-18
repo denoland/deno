@@ -668,7 +668,14 @@ type WorkerPermissionBooleanOption = "inherit" | boolean;
  * You can provide a list of routes relative to the file the worker is created in
  * to limit the access of the worker
  */
-type WorkerPermissionListOption = "inherit" | boolean | Array<string | URL>;
+type WorkerPermissionListOption = "inherit" | boolean | Array<string>;
+
+/**
+ * "inherit" will take the permissions of the thread the worker is created in
+ * You can provide a list of routes relative to the file the worker is created in
+ * to limit the access of the worker
+ */
+type WorkerPermissionPathOption = "inherit" | boolean | Array<string | URL>;
 
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
@@ -736,9 +743,9 @@ declare class Worker extends EventTarget {
           hrtime?: WorkerPermissionBooleanOption;
           net?: WorkerPermissionListOption;
           plugin?: WorkerPermissionBooleanOption;
-          read?: WorkerPermissionListOption;
+          read?: WorkerPermissionPathOption;
           run?: WorkerPermissionBooleanOption;
-          write?: WorkerPermissionListOption;
+          write?: WorkerPermissionPathOption;
         };
       };
     },
