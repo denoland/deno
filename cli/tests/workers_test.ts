@@ -541,8 +541,8 @@ Deno.test("Nested worker limit children permissions granularly", async function 
 });
 
 // This test relies on env permissions not being granted on main thread
-Deno.test("Worker initialization throws on worker permissions greater than parent thread permissions", async function () {
-  let error_thrown = false;
+Deno.test("Worker initialization throws on worker permissions greater than parent thread permissions", function () {
+  let errorThrown = false;
   try {
     const worker = new Worker(
       new URL("./workers/deno_worker.ts", import.meta.url).href,
@@ -558,10 +558,10 @@ Deno.test("Worker initialization throws on worker permissions greater than paren
     );
     worker.terminate();
   } catch (error) {
-    error_thrown = true;
+    errorThrown = true;
     if (!(error instanceof Deno.errors.PermissionDenied)) {
       fail(`Unexpected error: ${error}`);
     }
   }
-  assert(error_thrown);
+  assert(errorThrown);
 });
