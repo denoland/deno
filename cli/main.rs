@@ -1019,7 +1019,7 @@ async fn test_command(
     create_main_worker(&program_state, main_module.clone(), permissions);
 
   if let Some(ref coverage_dir) = flags.coverage_dir {
-      env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
   }
 
   let mut maybe_coverage_collector =
