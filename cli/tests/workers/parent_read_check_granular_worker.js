@@ -35,7 +35,6 @@ onmessage = async ({ data }) => {
 
   messages[data.index] = state === "granted";
 
-  console.log("%cmessage out", "color: blue");
   worker.postMessage({
     index: data.index,
     route: data.route,

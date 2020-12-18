@@ -522,7 +522,6 @@ Deno.test("Nested worker limit children permissions granularly", async function 
       data.parentHasPermission,
       routes[data.index].parentHasPermission,
     );
-    console.log(data);
     if (checked === routes.length) {
       promise.resolve();
     }
