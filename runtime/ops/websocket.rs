@@ -240,7 +240,6 @@ pub async fn op_ws_send(
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
-  eprintln!("sent!");
   Ok(json!({}))
 }
 
