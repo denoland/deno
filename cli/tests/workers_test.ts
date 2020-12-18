@@ -443,13 +443,18 @@ Deno.test("Worker limit children permissions granularly", async function () {
     { permission: true, route: "read_check_worker.js" },
   ];
 
-  worker.onmessage = ({ data: hasPermission }) => {
-    assertEquals(hasPermission, routes[0].permission);
+  worker.onmessage = ({ data }) => {
+    assertEquals(data.hasPermission, routes[data.index].permission);
     routes.shift();
     promise.resolve();
   };
 
-  routes.forEach(({ route }) => worker.postMessage(route));
+  routes.forEach(({ route }, index) =>
+    worker.postMessage({
+      index,
+      route,
+    })
+  );
 
   await promise;
   worker.terminate();
@@ -457,6 +462,8 @@ Deno.test("Worker limit children permissions granularly", async function () {
 
 Deno.test("Nested worker limit children permissions", async function () {
   const promise = deferred();
+
+  /** This worker has read permissions but doesn't grant them to its children */
   const worker = new Worker(
     new URL("./workers/parent_read_check_worker.js", import.meta.url).href,
     {
@@ -477,6 +484,68 @@ Deno.test("Nested worker limit children permissions", async function () {
   };
 
   worker.postMessage(null);
+
+  await promise;
+  worker.terminate();
+});
+
+Deno.test("Nested worker limit children permissions granularly", async function () {
+  const promise = deferred();
+
+  /** This worker has read permissions but doesn't grant them to its children */
+  const worker = new Worker(
+    new URL("./workers/parent_read_check_granular_worker.js", import.meta.url)
+      .href,
+    {
+      type: "module",
+      //TODO(Soremwar)
+      //deno-lint-ignore ban-ts-comment
+      //@ts-ignore
+      deno: {
+        namespace: true,
+        permissions: {
+          read: [
+            new URL("workers/read_check_granular_worker.js", import.meta.url)
+              .pathname,
+          ],
+        },
+      },
+    },
+  );
+
+  //Routes are relative to the spawned worker location
+  const routes = [
+    {
+      childHasPermission: false,
+      parentHasPermission: true,
+      route: "read_check_granular_worker.js",
+    },
+    {
+      childHasPermission: false,
+      parentHasPermission: false,
+      route: "read_check_worker.js",
+    },
+  ];
+
+  worker.onmessage = ({ data }) => {
+    assertEquals(
+      data.childHasPermission,
+      routes[data.index].childHasPermission,
+    );
+    assertEquals(
+      data.parentHasPermission,
+      routes[data.index].parentHasPermission,
+    );
+    promise.resolve();
+  };
+
+  // Index needed cause requests will be handled asynchronously
+  routes.forEach(({ route }, index) =>
+    worker.postMessage({
+      index,
+      route,
+    })
+  );
 
   await promise;
   worker.terminate();

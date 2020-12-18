@@ -13,7 +13,7 @@ onmessage = async () => {
       deno: {
         namespace: true,
         permissions: {
-          read: false
+          read: false,
         },
       },
     },
@@ -26,6 +26,5 @@ onmessage = async () => {
     });
     close();
   };
-
   worker.postMessage(null);
 };
