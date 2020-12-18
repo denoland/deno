@@ -224,9 +224,6 @@ impl MainWorker {
       }
 
       event_loop_result = self.run_event_loop() => {
-        // A zero delay is long enough to yield the thread in order to prevent the loop from
-        // running hot for messages that are taking longer to resolve like for example an
-        // evaluation of top level await.
         event_loop_result?;
         let maybe_result = receiver.next().await;
         let result = maybe_result.unwrap_or(Ok(()));
