@@ -213,61 +213,52 @@ async fn server(
     let json_version_response = json_version_response.clone();
     future::ok::<_, Infallible>(hyper::service::service_fn(
       move |req: http::Request<hyper::Body>| {
+        let (parts, body) = req.into_parts();
+        let req = http::Request::from_parts(parts, ());
         future::ready({
           match (req.method(), req.uri().path()) {
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
-              match req.headers().get("Sec-Websocket-Key").cloned() {
-                Some(key)
-                  if req.headers().get("Connection")
-                    == Some(&http::header::HeaderValue::from_static(
-                      "Upgrade",
-                    ))
-                    && req.headers().get("Upgrade")
-                      == Some(&http::header::HeaderValue::from_static(
-                        "WebSocket",
-                      )) =>
-                {
-                  if let Some(new_websocket_tx) = path
-                    .strip_prefix("/ws/")
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                    .and_then(|uuid| {
-                      inspector_map
-                        .borrow()
-                        .get(&uuid)
-                        .map(|info| info.new_websocket_tx.clone())
-                    })
-                  {
-                    tokio::task::spawn_local(async move {
-                      let upgraded =
-                        req.into_body().on_upgrade().await.unwrap();
-                      let websocket =
-                        tokio_tungstenite::WebSocketStream::from_raw_socket(
-                          upgraded,
-                          tungstenite::protocol::Role::Server,
-                          None,
-                        )
-                        .await;
-                      let (proxy, pump) = create_websocket_proxy(websocket);
-
-                      let _ = new_websocket_tx.unbounded_send(proxy);
-                      pump.await;
+              if let Some(new_websocket_tx) = path
+                .strip_prefix("/ws/")
+                .and_then(|s| Uuid::parse_str(s).ok())
+                .and_then(|uuid| {
+                  inspector_map
+                    .borrow()
+                    .get(&uuid)
+                    .map(|info| info.new_websocket_tx.clone())
+                })
+              {
+                let resp =
+                  tungstenite::handshake::server::create_response(&req)
+                    .map(|resp| resp.map(|_| hyper::Body::empty()))
+                    .or_else(|e| match e {
+                      tungstenite::error::Error::HttpFormat(http_error) => {
+                        Err(http_error)
+                      }
+                      _ => http::Response::builder()
+                        .status(http::StatusCode::BAD_REQUEST)
+                        .body("Not a valid Webscoket Request".into()),
                     });
+                tokio::task::spawn_local(async move {
+                  let upgraded = body.on_upgrade().await.unwrap();
+                  let websocket =
+                    tokio_tungstenite::WebSocketStream::from_raw_socket(
+                      upgraded,
+                      tungstenite::protocol::Role::Server,
+                      None,
+                    )
+                    .await;
+                  let (proxy, pump) = create_websocket_proxy(websocket);
 
-                    http::Response::builder()
-                      .status(http::StatusCode::SWITCHING_PROTOCOLS)
-                      .header("Connection", "Upgrade")
-                      .header("Upgrade", "WebSocket")
-                      .header("Sec-Websocket-Accept", key)
-                      .body(hyper::Body::empty())
-                  } else {
-                    http::Response::builder()
-                      .status(http::StatusCode::NOT_FOUND)
-                      .body("No Valid inspector".into())
-                  }
-                }
-                _ => http::Response::builder()
-                  .status(http::StatusCode::BAD_REQUEST)
-                  .body("Not a valid Webscoket Request".into()),
+                  let _ = new_websocket_tx.unbounded_send(proxy);
+                  pump.await;
+                });
+
+                resp
+              } else {
+                http::Response::builder()
+                  .status(http::StatusCode::NOT_FOUND)
+                  .body("No Valid inspector".into())
               }
             }
             (&http::Method::GET, "/json") => {
