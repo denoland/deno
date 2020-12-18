@@ -83,6 +83,10 @@
       throw new Error(
         `Expected 'array' or 'boolean' for ${permission} permission, ${typeof value} received`,
       );
+    } else if (Array.isArray(value)) {
+      value = value.map((x) => {
+        return x instanceof URL ? x.pathname : x;
+      });
     }
 
     return value === "inherit" ? undefined : value;
