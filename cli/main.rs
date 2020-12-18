@@ -1021,21 +1021,28 @@ async fn test_command(
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
+      let coverage_dir = PathBuf::from(coverage_dir);
+
       // If the actual coverage flag is set:
       // - We clear the coverage directory (this is the entry point).
       // - We set the environment variable so that subprocesses will inherit it.
       if flags.coverage {
-        fs::remove_dir_all(coverage_dir)?;
-        fs::create_dir_all(coverage_dir)?;
+        if coverage_dir.is_dir() {
+          fs::remove_dir_all(&coverage_dir)?;
+          fs::create_dir_all(&coverage_dir)?;
+        } else {
+          fs::create_dir_all(&coverage_dir)?;
+        }
 
-        env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+        env::set_var(
+          "DENO_UNSTABLE_COVERAGE_DIR",
+          coverage_dir.to_str().unwrap(),
+        );
       }
 
       let session = worker.create_inspector_session();
-      let mut coverage_collector = tools::coverage::CoverageCollector::new(
-        PathBuf::from(coverage_dir),
-        session,
-      );
+      let mut coverage_collector =
+        tools::coverage::CoverageCollector::new(coverage_dir, session);
       coverage_collector.start_collecting().await?;
 
       Some(coverage_collector)
