@@ -417,7 +417,7 @@ Deno.test("Worker limit children permissions granularly", async function () {
         namespace: true,
         permissions: {
           read: [
-            new URL("workers/read_check_worker.js", import.meta.url),
+            new URL("./workers/read_check_worker.js", import.meta.url),
           ],
         },
       },
@@ -490,7 +490,7 @@ Deno.test("Nested worker limit children permissions granularly", async function 
         namespace: true,
         permissions: {
           read: [
-            new URL("workers/read_check_granular_worker.js", import.meta.url),
+            new URL("./workers/read_check_granular_worker.js", import.meta.url),
           ],
         },
       },
@@ -522,6 +522,7 @@ Deno.test("Nested worker limit children permissions granularly", async function 
       data.parentHasPermission,
       routes[data.index].parentHasPermission,
     );
+    console.log(data);
     if (checked === routes.length) {
       promise.resolve();
     }
@@ -541,9 +542,8 @@ Deno.test("Nested worker limit children permissions granularly", async function 
 
 // This test relies on env permissions not being granted on main thread
 Deno.test("Worker initialization throws on worker permissions greater than parent thread permissions", async function () {
+  let error_thrown = false;
   try {
-    const promise = deferred();
-
     const worker = new Worker(
       new URL("./workers/deno_worker.ts", import.meta.url).href,
       {
@@ -556,14 +556,12 @@ Deno.test("Worker initialization throws on worker permissions greater than paren
         },
       },
     );
-    worker.postMessage(null);
-
-    await promise;
-    fail("Should throw on permissions denied");
     worker.terminate();
   } catch (error) {
+    error_thrown = true;
     if (!(error instanceof Deno.errors.PermissionDenied)) {
       fail(`Unexpected error: ${error}`);
     }
   }
+  assert(error_thrown);
 });

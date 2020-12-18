@@ -11,6 +11,21 @@ const worker = new Worker(
   },
 );
 
+let received = 0;
+const messages = [];
+
+worker.onmessage = ({ data: childResponse }) => {
+  received++;
+  postMessage({
+    childHasPermission: childResponse.hasPermission,
+    index: childResponse.index,
+    parentHasPermission: messages[childResponse.index],
+  });
+  if (received === messages.length) {
+    worker.terminate();
+  }
+};
+
 onmessage = async ({ data }) => {
   const path = new URL(data.route, import.meta.url);
   const { state } = await Deno.permissions.query({
@@ -18,16 +33,11 @@ onmessage = async ({ data }) => {
     path: path.pathname,
   });
 
-  worker.onmessage = ({ data: childResponse }) => {
-    postMessage({
-      childHasPermission: childResponse.hasPermission,
-      index: data.index,
-      parentHasPermission: state === "granted",
-    });
-  };
+  messages[data.index] = state === "granted";
 
+  console.log("%cmessage out", "color: blue");
   worker.postMessage({
-    index: 0, // Ignore index in this test
+    index: data.index,
     route: data.route,
   });
 };
