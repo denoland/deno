@@ -317,27 +317,27 @@ impl WebWorker {
     let id = self.js_runtime.load_module(module_specifier, None).await?;
 
     let mut receiver = self.js_runtime.mod_evaluate_inner(id);
-    loop {
-      tokio::select! {
-        maybe_result = receiver.next() => {
-          debug!("received module evaluate {:#?}", maybe_result);
-          // If `None` is returned it means that runtime was destroyed before
-          // evaluation was complete. This can happen in Web Worker when `self.close()`
-          // is called at top level.
-          let result = maybe_result.unwrap_or(Ok(()));
-          return result;
-        }
+    tokio::select! {
+      maybe_result = receiver.next() => {
+        debug!("received module evaluate {:#?}", maybe_result);
+        // If `None` is returned it means that runtime was destroyed before
+        // evaluation was complete. This can happen in Web Worker when `self.close()`
+        // is called at top level.
+        let result = maybe_result.unwrap_or(Ok(()));
+        return result;
+      }
 
-        event_loop_result = self.run_event_loop() => {
-          // A zero delay is long enough to yield the thread in order to prevent the loop from
-          // running hot for messages that are taking longer to resolve like for example an
-          // evaluation of top level await.
-          if self.has_been_terminated() {
-            return Ok(());
-          }
-          event_loop_result?;
-          tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+      event_loop_result = self.run_event_loop() => {
+        // A zero delay is long enough to yield the thread in order to prevent the loop from
+        // running hot for messages that are taking longer to resolve like for example an
+        // evaluation of top level await.
+        if self.has_been_terminated() {
+          return Ok(());
         }
+        event_loop_result?;
+        let maybe_result = receiver.next().await;
+        let result = maybe_result.unwrap_or(Ok(()));
+        return result;
       }
     }
   }
