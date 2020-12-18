@@ -10,6 +10,7 @@ use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -211,7 +212,26 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id).await
+    let mut receiver = self.js_runtime.mod_evaluate_inner(id);
+    loop {
+      tokio::select! {
+        maybe_result = receiver.next() => {
+          debug!("received module evaluate {:#?}", maybe_result);
+          // If `None` is returned it means that runtime was destroyed before
+          // evaluation was complete. This can happen in Web Worker when `self.close()`
+          // is called at top level.
+          let result = maybe_result.unwrap_or(Ok(()));
+          return result;
+        }
+
+        _event_loop_result = self.run_event_loop() => {
+          // A zero delay is long enough to yield the thread in order to prevent the loop from
+          // running hot for messages that are taking longer to resolve like for example an
+          // evaluation of top level await.
+          tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+        }
+      }
+    }
   }
 
   fn wait_for_inspector_session(&mut self) {

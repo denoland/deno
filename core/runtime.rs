@@ -830,7 +830,7 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  fn mod_evaluate_inner(
+  pub fn mod_evaluate_inner(
     &mut self,
     id: ModuleId,
   ) -> mpsc::Receiver<Result<(), AnyError>> {

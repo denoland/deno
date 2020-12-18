@@ -369,8 +369,10 @@ Deno.test({
     worker.onmessage = (e): void => {
       console.log("received from worker", e.data);
       worker.postMessage("from main");
+      promise.resolve();
     };
 
     await promise;
+    worker.terminate();
   },
 });
