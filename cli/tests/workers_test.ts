@@ -437,6 +437,7 @@ Deno.test("Worker limit children permissions granularly", async function () {
     },
   );
 
+  //Routes are relative to the spawned worker location
   const routes = [
     { permission: false, route: "read_check_granular_worker.js" },
     { permission: true, route: "read_check_worker.js" },
@@ -453,3 +454,33 @@ Deno.test("Worker limit children permissions granularly", async function () {
   await promise;
   worker.terminate();
 });
+
+Deno.test("Nested worker limit children permissions", async function () {
+  const promise = deferred();
+  const worker = new Worker(
+    new URL("./workers/parent_read_check_worker.js", import.meta.url).href,
+    {
+      type: "module",
+      //TODO(Soremwar)
+      //deno-lint-ignore ban-ts-comment
+      //@ts-ignore
+      deno: {
+        namespace: true,
+      },
+    },
+  );
+
+  worker.onmessage = ({ data }) => {
+    assert(data.parentHasPermission);
+    assert(!data.childHasPermission);
+    promise.resolve();
+  };
+
+  worker.postMessage(null);
+
+  await promise;
+  worker.terminate();
+});
+
+//TODO(Soremwar)
+//Add tests for attempting to increase original permissions
