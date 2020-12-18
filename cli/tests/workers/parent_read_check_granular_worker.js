@@ -15,7 +15,7 @@ onmessage = async ({ data }) => {
   const path = new URL(data.route, import.meta.url);
   const { state } = await Deno.permissions.query({
     name: "read",
-    path,
+    path: path.pathname,
   });
 
   worker.onmessage = ({ data: childResponse }) => {

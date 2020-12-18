@@ -85,7 +85,7 @@
       );
     } else if (Array.isArray(value)) {
       value = value.map((x) => {
-        return x instanceof URL ? x.href : x;
+        return x instanceof URL ? x.pathname : x;
       });
     }
 
@@ -131,7 +131,7 @@
       const workerDenoAttributes = {
         namespace: !!(deno?.namespace ?? false),
         permissions: (deno?.permissions ?? "inherit") === "inherit"
-          ? {}
+          ? null
           : deno?.permissions,
       };
 
@@ -150,7 +150,9 @@
         hasSourceCode,
         sourceCode,
         workerDenoAttributes.namespace,
-        parsePermissions(workerDenoAttributes.permissions),
+        workerDenoAttributes.permissions === null
+          ? null
+          : parsePermissions(workerDenoAttributes.permissions),
         options?.name,
       );
       this.#id = id;

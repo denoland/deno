@@ -434,7 +434,7 @@ where
 struct CreateWorkerArgs {
   has_source_code: bool,
   name: Option<String>,
-  permissions: PermissionsArg,
+  permissions: Option<PermissionsArg>,
   source_code: String,
   specifier: String,
   use_deno_namespace: bool,
@@ -462,8 +462,13 @@ fn op_create_worker(
   //TODO(Soremwar)
   //Add unstable check for permissions
   let parent_permissions = state.borrow::<Permissions>().clone();
-  let worker_permissions =
-    create_worker_permissions(&parent_permissions, args.permissions)?;
+  let worker_permissions = if let Some(permissions) = args.permissions {
+    super::check_unstable(state, "Worker.deno.permissions");
+    create_worker_permissions(&parent_permissions, permissions)?
+  } else {
+    parent_permissions.clone()
+  };
+
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
