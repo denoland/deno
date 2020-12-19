@@ -32,6 +32,13 @@ use tokio::net::udp;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use trust_dns_proto::rr::record_type::RecordType;
+use trust_dns_resolver::config::NameServerConfig;
+use trust_dns_resolver::config::Protocol as TrustProtocol;
+use trust_dns_resolver::config::ResolverConfig;
+use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::system_conf::read_system_conf;
+use trust_dns_resolver::AsyncResolver;
 
 #[cfg(unix)]
 use super::net_unix;
@@ -47,8 +54,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_listen", op_listen);
   super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
   super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
-  super::reg_json_sync(rt, "op_resolve_addr_sync", op_resolve_addr_sync);
-  super::reg_json_async(rt, "op_resolve_addr_async", op_resolve_addr_async);
+  super::reg_json_async(rt, "op_resolve_addr", op_resolve_addr);
 }
 
 #[derive(Deserialize)]
@@ -539,39 +545,140 @@ fn op_listen(
   }
 }
 
-fn op_resolve_addr_sync(
-  state: &mut OpState,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let IpListenArgs { hostname, port } = serde_json::from_value(args)?;
-
-  {
-    let permissions = state.borrow::<Permissions>();
-    permissions.check_net(&hostname, port)?;
-  }
-
-  let addrs: Vec<String> = resolve_addr_sync(&hostname, port)?
-    .map(|a| a.to_string())
-    .collect();
-  Ok(json!(addrs))
-}
-
-async fn op_resolve_addr_async(
+async fn op_resolve_addr(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let IpListenArgs { hostname, port } = serde_json::from_value(args)?;
+  fn default_port() -> u16 {
+    53
+  }
+
+  #[derive(Deserialize)]
+  struct ResolveAddrArgs {
+    query: String,
+    options: Option<ResolveAddrOption>,
+  }
+
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct ResolveAddrOption {
+    #[serde(default)]
+    record_type: SupportedRecordType,
+    name_server: Option<NameServer>,
+  }
+
+  // TODO(magurotuna): There are many unsupported record types because `trust_dns_proto::rr::record_data::RData` doesn't implement `Display` trait.
+  // See https://github.com/bluejekyll/trust-dns/issues/897
+  #[derive(Deserialize, Clone, Copy)]
+  enum SupportedRecordType {
+    A,
+    AAAA,
+    ANAME,
+    CNAME,
+    PTR,
+  }
+
+  impl Default for SupportedRecordType {
+    fn default() -> Self {
+      Self::A
+    }
+  }
+
+  impl Into<RecordType> for SupportedRecordType {
+    fn into(self) -> RecordType {
+      use SupportedRecordType::*;
+      match self {
+        A => RecordType::A,
+        AAAA => RecordType::AAAA,
+        ANAME => RecordType::ANAME,
+        CNAME => RecordType::CNAME,
+        PTR => RecordType::PTR,
+      }
+    }
+  }
+
+  #[derive(Deserialize, Clone, Copy)]
+  enum Protocol {
+    UDP,
+    TCP,
+  }
+
+  impl Default for Protocol {
+    fn default() -> Self {
+      Self::UDP
+    }
+  }
+
+  impl Into<TrustProtocol> for Protocol {
+    fn into(self) -> TrustProtocol {
+      use Protocol::*;
+      match self {
+        UDP => TrustProtocol::Udp,
+        TCP => TrustProtocol::Tcp,
+      }
+    }
+  }
+
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct NameServer {
+    ip_addr: String,
+    #[serde(default = "default_port")]
+    port: u16,
+    protocol: Protocol,
+  }
+
+  let ResolveAddrArgs { query, options } = serde_json::from_value(args)?;
 
   {
     let s = state.borrow();
-    s.borrow::<Permissions>().check_net(&hostname, port)?;
+    // TODO(magurotuna): what permission to check?
+    s.borrow::<Permissions>().check_net("TODO", 0)?;
   }
 
-  let addrs: Vec<String> = resolve_addr(&hostname, port)
+  let (resolver, record_type) = if let Some(options) = options {
+    let conf = if let Some(name_server) = options.name_server {
+      let mut conf = ResolverConfig::new();
+      conf.add_name_server(NameServerConfig {
+        socket_addr: resolve_addr(&name_server.ip_addr, name_server.port)
+          .await?
+          .next()
+          .ok_or_else(|| generic_error("Invalid IP address or port"))?,
+        protocol: name_server.protocol.into(),
+        tls_dns_name: None,
+      });
+      conf
+    } else {
+      let (conf, _) = read_system_conf()?;
+      conf
+    };
+    (
+      AsyncResolver::tokio(conf, ResolverOpts::default()).await?,
+      options.record_type,
+    )
+  } else {
+    (
+      AsyncResolver::tokio_from_system_conf().await?,
+      SupportedRecordType::A,
+    )
+  };
+
+  let results: Vec<String> = resolver
+    .lookup(query, record_type.into(), Default::default())
     .await?
-    .map(|a| a.to_string())
+    .iter()
+    .filter_map(|r| {
+      use SupportedRecordType::*;
+      match record_type {
+        A => r.as_a().map(ToString::to_string),
+        AAAA => r.as_aaaa().map(ToString::to_string),
+        ANAME => r.as_aname().map(ToString::to_string),
+        CNAME => r.as_cname().map(ToString::to_string),
+        PTR => r.as_ptr().map(ToString::to_string),
+      }
+    })
     .collect();
-  Ok(json!(addrs))
+
+  Ok(json!(results))
 }
