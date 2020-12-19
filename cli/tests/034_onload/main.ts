@@ -1,6 +1,9 @@
 import { assert } from "../../../std/testing/asserts.ts";
 import "./imported.ts";
 
+assert(window.hasOwnProperty("onload"));
+assert(window.onload === null);
+
 const eventHandler = (e: Event): void => {
   assert(!e.cancelable);
   console.log(`got ${e.type} event in event handler (main)`);

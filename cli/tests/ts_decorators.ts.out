@@ -1,2 +1,2 @@
-Compile [WILDCARD]
-SomeClass { someField: "asdf" }
+Check [WILDCARD]
+{ someField: "asdf" }

@@ -1,11 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { assertEquals } from "../../testing/asserts.ts";
 import { exists, existsSync } from "./_fs_exists.ts";
 
-const { test } = Deno;
-
-test("existsFile", async function () {
+Deno.test("existsFile", async function () {
   const availableFile = await new Promise((resolve) => {
     const tmpFilePath = Deno.makeTempFileSync();
     exists(tmpFilePath, (exists: boolean) => {
@@ -20,7 +17,7 @@ test("existsFile", async function () {
   assertEquals(notAvailableFile, false);
 });
 
-test("existsSyncFile", function () {
+Deno.test("existsSyncFile", function () {
   const tmpFilePath = Deno.makeTempFileSync();
   assertEquals(existsSync(tmpFilePath), true);
   Deno.removeSync(tmpFilePath);

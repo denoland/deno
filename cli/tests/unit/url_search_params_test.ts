@@ -1,13 +1,87 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
+
+unitTest(function urlSearchParamsWithMultipleSpaces(): void {
+  const init = { str: "this string has spaces in it" };
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=this+string+has+spaces+in+it");
+});
+
+unitTest(function urlSearchParamsWithExclamation(): void {
+  const init = [
+    ["str", "hello, world!"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=hello%2C+world%21");
+});
+
+unitTest(function urlSearchParamsWithQuotes(): void {
+  const init = [
+    ["str", "'hello world'"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=%27hello+world%27");
+});
+
+unitTest(function urlSearchParamsWithBraket(): void {
+  const init = [
+    ["str", "(hello world)"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=%28hello+world%29");
+});
+
+unitTest(function urlSearchParamsWithTilde(): void {
+  const init = [
+    ["str", "hello~world"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=hello%7Eworld");
+});
 
 unitTest(function urlSearchParamsInitString(): void {
   const init = "c=4&a=2&b=3&%C3%A1=1";
   const searchParams = new URLSearchParams(init);
   assert(
     init === searchParams.toString(),
-    "The init query string does not match"
+    "The init query string does not match",
   );
+});
+
+unitTest(function urlSearchParamsInitStringWithPlusCharacter(): void {
+  let params = new URLSearchParams("q=a+b");
+  assertEquals(params.toString(), "q=a+b");
+  assertEquals(params.get("q"), "a b");
+
+  params = new URLSearchParams("q=a+b+c");
+  assertEquals(params.toString(), "q=a+b+c");
+  assertEquals(params.get("q"), "a b c");
+});
+
+unitTest(function urlSearchParamsInitStringWithMalformedParams(): void {
+  // These test cases are copied from Web Platform Tests
+  // https://github.com/web-platform-tests/wpt/blob/54c6d64/url/urlsearchparams-constructor.any.js#L60-L80
+  let params = new URLSearchParams("id=0&value=%");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("id"), 'Search params object has name "id"');
+  assert(params.has("value"), 'Search params object has name "value"');
+  assertEquals(params.get("id"), "0");
+  assertEquals(params.get("value"), "%");
+
+  params = new URLSearchParams("b=%2sf%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%2sf*");
+
+  params = new URLSearchParams("b=%2%2af%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%2*f*");
+
+  params = new URLSearchParams("b=%%2a");
+  assert(params != null, "constructor returned non-null value.");
+  assert(params.has("b"), 'Search params object has name "b"');
+  assertEquals(params.get("b"), "%*");
 });
 
 unitTest(function urlSearchParamsInitIterable(): void {
@@ -28,7 +102,7 @@ unitTest(function urlSearchParamsInitRecord(): void {
 unitTest(function urlSearchParamsInit(): void {
   const params1 = new URLSearchParams("a=b");
   assertEquals(params1.toString(), "a=b");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const params2 = new URLSearchParams(params1 as any);
   assertEquals(params2.toString(), "a=b");
 });
@@ -134,6 +208,12 @@ unitTest(function urlSearchParamsMissingPair(): void {
   assertEquals(searchParams.toString(), "c=4&a=54");
 });
 
+unitTest(function urlSearchParamsForShortEncodedChar(): void {
+  const init = { linefeed: "\n", tab: "\t" };
+  const searchParams = new URLSearchParams(init);
+  assertEquals(searchParams.toString(), "linefeed=%0A&tab=%09");
+});
+
 // If pair does not contain exactly two items, then throw a TypeError.
 // ref https://url.spec.whatwg.org/#interface-urlsearchparams
 unitTest(function urlSearchParamsShouldThrowTypeError(): void {
@@ -177,8 +257,8 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
       const searchParams = new URLSearchParams();
       let hasThrown = 0;
       try {
-        // @ts-expect-error
-        searchParams[method]();
+        // deno-lint-ignore no-explicit-any
+        (searchParams as any)[method]();
         hasThrown = 1;
       } catch (err) {
         if (err instanceof TypeError) {
@@ -194,8 +274,8 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
     const searchParams = new URLSearchParams();
     let hasThrown = 0;
     try {
-      // @ts-expect-error
-      searchParams[method]("foo");
+      // deno-lint-ignore no-explicit-any
+      (searchParams as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
       if (err instanceof TypeError) {
@@ -235,13 +315,15 @@ unitTest(function urlSearchParamsCustomSymbolIterator(): void {
 unitTest(
   function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
     const params = {};
-    // @ts-expect-error
-    params[Symbol.iterator] = function* (): IterableIterator<[number, number]> {
+    // deno-lint-ignore no-explicit-any
+    (params as any)[Symbol.iterator] = function* (): IterableIterator<
+      [number, number]
+    > {
       yield [1, 2];
     };
     const params1 = new URLSearchParams((params as unknown) as string[][]);
     assertEquals(params1.get("1"), "2");
-  }
+  },
 );
 
 // If a class extends URLSearchParams, override one method should not change another's behavior.
@@ -259,7 +341,7 @@ unitTest(
     new CustomSearchParams(new CustomSearchParams({ foo: "bar" }));
     new CustomSearchParams().set("foo", "bar");
     assertEquals(overridedAppendCalled, 0);
-  }
+  },
 );
 
 unitTest(function urlSearchParamsOverridingEntriesNotChangeForEach(): void {

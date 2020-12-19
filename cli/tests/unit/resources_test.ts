@@ -1,14 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assert } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function resourcesCloseBadArgs(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.close((null as unknown) as number);
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.InvalidData);
+  }, TypeError);
 });
 
 unitTest(function resourcesStdio(): void {
@@ -29,10 +25,10 @@ unitTest({ perms: { net: true } }, async function resourcesNet(): Promise<
   const res = Deno.resources();
   assertEquals(
     Object.values(res).filter((r): boolean => r === "tcpListener").length,
-    1
+    1,
   );
   const tcpStreams = Object.values(res).filter(
-    (r): boolean => r === "tcpStream"
+    (r): boolean => r === "tcpStream",
   );
   assert(tcpStreams.length >= 2);
 
@@ -52,7 +48,7 @@ unitTest({ perms: { read: true } }, async function resourcesFile(): Promise<
   // check that exactly one new resource (file) was added
   assertEquals(
     Object.keys(resourcesAfter).length,
-    Object.keys(resourcesBefore).length + 1
+    Object.keys(resourcesBefore).length + 1,
   );
   const newRid = +Object.keys(resourcesAfter).find((rid): boolean => {
     return !resourcesBefore.hasOwnProperty(rid);

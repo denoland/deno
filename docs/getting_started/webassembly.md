@@ -1,9 +1,10 @@
-## WASM support
+## WebAssembly support
 
-Deno can execute [wasm](https://webassembly.org/) binaries.
+Deno can execute [WebAssembly](https://webassembly.org/) binaries.
 
-<!-- prettier-ignore-start -->
-```js
+<!-- dprint-ignore -->
+
+```ts
 const wasmCode = new Uint8Array([
   0, 97, 115, 109, 1, 0, 0, 0, 1, 133, 128, 128, 128, 0, 1, 96, 0, 1, 127,
   3, 130, 128, 128, 128, 0, 1, 0, 4, 132, 128, 128, 128, 0, 1, 112, 0, 0,
@@ -14,6 +15,6 @@ const wasmCode = new Uint8Array([
 ]);
 const wasmModule = new WebAssembly.Module(wasmCode);
 const wasmInstance = new WebAssembly.Instance(wasmModule);
-console.log(wasmInstance.exports.main().toString());
+const main = wasmInstance.exports.main as CallableFunction
+console.log(main().toString());
 ```
-<!-- prettier-ignore-end -->

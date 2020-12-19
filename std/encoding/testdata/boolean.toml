@@ -1,3 +1,4 @@
 [boolean] # i hate comments
 bool1 = true
 bool2 = false
+bool3 = true # I love comments

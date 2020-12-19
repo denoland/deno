@@ -1,25 +1,32 @@
 # Tools
 
-Documentation for various tooling in support of Deno development
+Documentation for various tooling in support of Deno development.
 
-## format.py
+## format.js
 
-This script will format the code (currently using prettier, yapf and rustfmt).
-It is a prerequisite to run this before code check in.
+This script will format the code (currently using dprint, rustfmt). It is a
+prerequisite to run this before code check in.
 
 To run formatting:
 
-```bash
-./tools/format.py
+```sh
+deno run --allow-read --allow-write --allow-run --unstable ./tools/format.js
 ```
 
-## lint.py
+## lint.js
 
-This script will lint the code base (currently using eslint, pylint and clippy).
-It is a prerequisite to run this before code check in.
+This script will lint the code base (currently using dlint, clippy). It is a
+prerequisite to run this before code check in.
 
 To run linting:
 
-```bash
-./tools/lint.py
+```sh
+deno run --allow-read --allow-write --allow-run --unstable ./tools/lint.js
+```
+
+Tip: You can also use cargo to run the current or pending build of the deno
+executable
+
+```sh
+cargo run -- run --allow-read --allow-write --allow-run --unstable ./tools/<script>
 ```

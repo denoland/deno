@@ -1,29 +1,68 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#[macro_use]
-extern crate lazy_static;
-#[cfg(unix)]
-extern crate nix;
-#[cfg(unix)]
-extern crate pty;
-extern crate tempfile;
-
-use futures::prelude::*;
-use std::io::BufRead;
+use deno_core::futures;
+use deno_core::futures::prelude::*;
+use deno_core::url;
+use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
+use test_util as util;
+
+macro_rules! itest(
+  ($name:ident {$( $key:ident: $value:expr,)*})  => {
+    #[test]
+    fn $name() {
+      (util::CheckOutputIntegrationTest {
+        $(
+          $key: $value,
+         )*
+        .. Default::default()
+      }).run()
+    }
+  }
+);
 
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let std_path = util::root_path().join("std");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
-    .current_dir(std_path) // TODO(ry) change this to root_path
+    .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
     // .arg("-Ldebug")
+    .arg("std/")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn std_lint() {
+  let status = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
+    .arg(format!(
+      "--ignore={}",
+      util::root_path().join("std/node/tests").to_string_lossy()
+    ))
+    .arg(util::root_path().join("std"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn unit_test_lint() {
+  let status = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
+    .arg(util::root_path().join("cli/tests/unit"))
     .spawn()
     .unwrap()
     .wait()
@@ -33,7 +72,7 @@ fn std_tests() {
 
 #[test]
 fn x_deno_warning() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
@@ -50,7 +89,66 @@ fn x_deno_warning() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   assert_eq!("testing x-deno-warning header", stdout_str);
   assert!(util::strip_ansi_codes(stderr_str).contains("Warning foobar"));
-  drop(g);
+}
+
+#[test]
+fn eval_p() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("-p")
+    .arg("1+2")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap().trim());
+  assert_eq!("3", stdout_str);
+}
+
+#[test]
+fn run_from_stdin() {
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("-")
+    .stdout(std::process::Stdio::piped())
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  deno
+    .stdin
+    .as_mut()
+    .unwrap()
+    .write_all(b"console.log(\"Hello World\");")
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let deno_out = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("Hello World", deno_out);
+
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("-")
+    .stdout(std::process::Stdio::piped())
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  deno
+    .stdin
+    .as_mut()
+    .unwrap()
+    .write_all(b"console.log(\"Bye cached code\");")
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let deno_out = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("Bye cached code", deno_out);
 }
 
 #[test]
@@ -83,15 +181,14 @@ fn no_color() {
   assert_eq!("noColor false", util::strip_ansi_codes(stdout_str));
 }
 
-// TODO re-enable. This hangs on macOS
-// https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
 #[test]
-#[ignore]
 pub fn test_raw_tty() {
-  use pty::fork::*;
   use std::io::{Read, Write};
+  use util::pty::fork::*;
 
+  let deno_exe = util::deno_exe_path();
+  let root_path = util::root_path();
   let fork = Fork::from_ptmx().unwrap();
 
   if let Ok(mut master) = fork.is_parent() {
@@ -107,10 +204,10 @@ pub fn test_raw_tty() {
     master.write_all(b"c").unwrap();
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
+    fork.wait().unwrap();
   } else {
     use nix::sys::termios;
     use std::os::unix::io::AsRawFd;
-    use std::process::*;
 
     // Turn off echo such that parent is reading works properly.
     let stdin_fd = std::io::stdin().as_raw_fd();
@@ -118,36 +215,120 @@ pub fn test_raw_tty() {
     t.local_flags.remove(termios::LocalFlags::ECHO);
     termios::tcsetattr(stdin_fd, termios::SetArg::TCSANOW, &t).unwrap();
 
-    let deno_dir = TempDir::new().expect("tempdir fail");
-    let mut child = Command::new(util::deno_exe_path())
-      .env("DENO_DIR", deno_dir.path())
-      .current_dir(util::root_path())
+    std::env::set_current_dir(root_path).unwrap();
+    let err = exec::Command::new(deno_exe)
       .arg("run")
+      .arg("--unstable")
+      .arg("--quiet")
+      .arg("--no-check")
       .arg("cli/tests/raw_mode.ts")
-      .stdin(Stdio::inherit())
-      .stdout(Stdio::inherit())
-      .stderr(Stdio::null())
-      .spawn()
-      .expect("Failed to spawn script");
-    child.wait().unwrap();
+      .exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[cfg(unix)]
+#[test]
+pub fn test_raw_tty_cbreak() {
+  use std::io::{Read, Write};
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let root_path = util::root_path();
+  let fork = Fork::from_ptmx().unwrap();
+
+  if let Ok(mut master) = fork.is_parent() {
+    let mut obytes: [u8; 100] = [0; 100];
+    let mut nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
+    master.write_all(&[3]).unwrap(); // send SIGINT
+    master.flush().unwrap();
+    nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
+    fork.wait().unwrap();
+  } else {
+    // Keep echo enabled such that 'C^' would be printed in non-raw mode.
+    std::env::set_current_dir(root_path).unwrap();
+    let err = exec::Command::new(deno_exe)
+      .arg("run")
+      .arg("--unstable")
+      .arg("--quiet")
+      .arg("--no-check")
+      .arg("cli/tests/raw_mode_cbreak.ts")
+      .exec();
+    println!("err {}", err);
+    unreachable!()
   }
 }
 
 #[test]
 fn test_pattern_match() {
-  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
-  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", "[BAR]"));
-}
+  // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
 
-#[test]
-fn benchmark_test() {
-  util::run_python_script("tools/benchmark_test.py")
+  let wildcard = "[BAR]";
+  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+  let multiline_pattern = "[BAR]
+foo:
+[BAR]baz[BAR]";
+
+  fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+    // If there is leading text add a newline so it's on it's own line
+    let head = match leading_text {
+      Some(v) => format!("{}\n", v),
+      None => "".to_string(),
+    };
+    format!(
+      "{}foo:
+quuz {} corge
+grault",
+      head, input
+    )
+  }
+
+  // Validate multi-line string builder
+  assert_eq!(
+    "QUUX=qux
+foo:
+quuz BAZ corge
+grault",
+    multi_line_builder("BAZ", Some("QUUX=qux"))
+  );
+
+  // Correct input & leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Correct input & no leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", None),
+    wildcard
+  ));
+
+  // Incorrect input & leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Incorrect input & no leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", None),
+    wildcard
+  ));
 }
 
 #[test]
 fn deno_dir_test() {
   use std::fs::remove_dir_all;
-  let g = util::http_server();
+  let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   remove_dir_all(deno_dir.path()).unwrap();
 
@@ -180,13 +361,11 @@ fn deno_dir_test() {
   assert!(deno_dir.path().join("gen").is_dir());
 
   remove_dir_all(deno_dir.path()).unwrap();
-  drop(deno_dir);
-  drop(g);
 }
 
 #[test]
 fn cache_test() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
     url::Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts")
@@ -203,7 +382,88 @@ fn cache_test() {
   assert_eq!(out, "");
   // TODO(ry) Is there some way to check that the file was actually cached in
   // DENO_DIR?
-  drop(g);
+}
+
+#[test]
+fn cache_invalidation_test() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
+}
+
+#[test]
+fn cache_invalidation_test_no_check() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
 }
 
 #[test]
@@ -211,11 +471,24 @@ fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
-    util::root_path().join("cli/tests/badly_formatted.js");
+    util::root_path().join("cli/tests/badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   let badly_formatted_str = badly_formatted.to_str().unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
+  // First, check formatting by ignoring the badly formatted file.
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(format!("--ignore={}", badly_formatted_str))
+    .arg("--check")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+  assert!(status.success());
+  // Check without ignore.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
@@ -226,6 +499,7 @@ fn fmt_test() {
     .wait()
     .expect("Failed to wait for child process");
   assert!(!status.success());
+  // Format the source file.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
@@ -238,6 +512,70 @@ fn fmt_test() {
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
+}
+
+// Helper function to skip watcher output that contains "Restarting"
+// phrase.
+fn skip_restarting_line(
+  mut stderr_lines: impl Iterator<Item = String>,
+) -> String {
+  loop {
+    let msg = stderr_lines.next().unwrap();
+    if !msg.contains("Restarting") {
+      return msg;
+    }
+  }
+}
+
+#[test]
+#[ignore]
+fn fmt_watch_test() {
+  let t = TempDir::new().expect("tempdir fail");
+  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::root_path().join("cli/tests/badly_formatted.mjs");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(&badly_formatted)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("Failed to spawn script");
+  let stderr = child.stderr.as_mut().unwrap();
+  let stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
+
+  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  assert_eq!(expected, actual);
+
+  // Change content of the file again to be badly formatted
+  std::fs::copy(&badly_formatted_original, &badly_formatted)
+    .expect("Failed to copy file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Check if file has been automatically formatted by watcher
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  assert_eq!(expected, actual);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
+  child.kill().unwrap();
+  drop(t);
 }
 
 #[test]
@@ -263,14 +601,12 @@ fn fmt_stdin_error() {
 }
 
 // Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
 #[test]
+#[ignore]
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
+  let exe_path = temp_dir.path().join("deno");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
@@ -287,14 +623,35 @@ fn upgrade_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
 #[test]
+#[ignore]
+fn upgrade_with_space_in_path() {
+  let temp_dir = tempfile::Builder::new()
+    .prefix("directory with spaces")
+    .tempdir()
+    .unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--force")
+    .env("TMP", temp_dir.path())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+// Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
+#[test]
+#[ignore]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
+  let exe_path = temp_dir.path().join("deno");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
@@ -315,6 +672,72 @@ fn upgrade_with_version_in_tmpdir() {
   assert!(upgraded_deno_version.contains("0.42.0"));
   let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
+}
+
+// Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
+#[test]
+#[ignore]
+fn upgrade_with_canary_in_tmpdir() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--canary")
+    .arg("--version")
+    .arg("e6685f0f01b8a11a5eaff020f5babcfde76b3038")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  let upgraded_deno_version = String::from_utf8(
+    Command::new(&exe_path).arg("-V").output().unwrap().stdout,
+  )
+  .unwrap();
+  assert!(upgraded_deno_version.contains("e6685f0"));
+  let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  // TODO(ry) assert!(mtime1 < mtime2);
+}
+
+// Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
+#[test]
+#[ignore]
+fn upgrade_with_out_in_tmpdir() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let new_exe_path = temp_dir.path().join("foo");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--version")
+    .arg("1.0.2")
+    .arg("--output")
+    .arg(&new_exe_path.to_str().unwrap())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  assert!(new_exe_path.exists());
+  let mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  assert_eq!(mtime1, mtime2); // Original exe_path was not changed.
+
+  let v = String::from_utf8(
+    Command::new(&new_exe_path)
+      .arg("-V")
+      .output()
+      .unwrap()
+      .stdout,
+  )
+  .unwrap();
+  assert!(v.contains("1.0.2"));
 }
 
 #[test]
@@ -355,7 +778,7 @@ fn installer_test_local_module_run() {
 
 #[test]
 fn installer_test_remote_module_run() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
@@ -388,12 +811,11 @@ fn installer_test_remote_module_run() {
     .unwrap()
     .trim()
     .ends_with("hello, foo"));
-  drop(g)
 }
 
 #[test]
 fn js_unit_tests() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
@@ -403,11 +825,9 @@ fn js_unit_tests() {
     .arg("cli/tests/unit/unit_test_runner.ts")
     .arg("--master")
     .arg("--verbose")
-    .env("NO_COLOR", "1")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
-  drop(g);
   assert_eq!(Some(0), status.code());
   assert!(status.success());
 }
@@ -425,7 +845,7 @@ fn ts_dependency_recompilation() {
     function print(str: string): void {
         console.log(str);
     }
-    
+
     print(foo);",
   )
   .unwrap();
@@ -450,7 +870,7 @@ fn ts_dependency_recompilation() {
   let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
 
   assert!(stdout_output.ends_with("foo"));
-  assert!(stderr_output.starts_with("Compile"));
+  assert!(stderr_output.starts_with("Check"));
 
   // Overwrite contents of b.ts and run again
   std::fs::write(
@@ -478,6 +898,37 @@ fn ts_dependency_recompilation() {
 }
 
 #[test]
+fn ts_reload() {
+  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
+  assert!(hello_ts.is_file());
+  let mut initial = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg("--reload")
+    .arg(hello_ts.clone())
+    .spawn()
+    .expect("failed to spawn script");
+  let status_initial =
+    initial.wait().expect("failed to wait for child process");
+  assert!(status_initial.success());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg("--reload")
+    .arg("-L")
+    .arg("debug")
+    .arg(hello_ts)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the the bundle program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .contains("host.writeFile(\"deno://002_hello.js\")"));
+}
+
+#[test]
 fn bundle_exports() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
@@ -487,6 +938,49 @@ fn bundle_exports() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
+    .arg(mod1)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./mod1.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_exports_no_check() {
+  // First we have to generate a bundle of some module that has exports.
+  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+  assert!(mod1.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod1.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--no-check")
     .arg(mod1)
     .arg(&bundle)
     .spawn()
@@ -657,11 +1151,12 @@ fn bundle_js() {
 
 #[test]
 fn bundle_dynamic_import() {
+  let _g = util::http_server();
   let dynamic_import =
-    util::root_path().join("cli/tests/subdir/subdir2/dynamic_import.ts");
+    util::root_path().join("cli/tests/bundle_dynamic_import.ts");
   assert!(dynamic_import.is_file());
   let t = TempDir::new().expect("tempdir fail");
-  let bundle = t.path().join("dynamic_import.bundle.js");
+  let bundle = t.path().join("bundle_dynamic_import.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
@@ -676,6 +1171,8 @@ fn bundle_dynamic_import() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
+    .arg("--allow-net")
+    .arg("--quiet")
     .arg(&bundle)
     .output()
     .expect("failed to spawn script");
@@ -697,6 +1194,52 @@ fn bundle_import_map() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
+    .arg("--import-map")
+    .arg(import_map_path)
+    .arg("--unstable")
+    .arg(import)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  // Now we try to use that bundle from another module.
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    "
+      import { printHello3 } from \"./import_map.bundle.js\";
+      printHello3(); ",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(&test)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the test.ts program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .ends_with("Hello"));
+  assert_eq!(output.stderr, b"");
+}
+
+#[test]
+fn bundle_import_map_no_check() {
+  let import = util::root_path().join("cli/tests/bundle_im.ts");
+  let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
+  assert!(import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("import_map.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg("--no-check")
     .arg("--importmap")
     .arg(import_map_path)
     .arg("--unstable")
@@ -733,6 +1276,473 @@ fn bundle_import_map() {
 }
 
 #[test]
+#[ignore]
+fn bundle_js_watch() {
+  use std::path::PathBuf;
+  // Test strategy extends this of test bundle_js by adding watcher
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "console.log('Hello world');")
+    .expect("error writing file");
+  assert!(file_to_watch.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod6.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(&file_to_watch)
+    .arg(&bundle)
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  wait_for_process_finished("Bundle", &mut stderr_lines);
+
+  std::fs::write(&file_to_watch, "console.log('Hello world2');")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  wait_for_process_finished("Bundle", &mut stderr_lines);
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  let file = PathBuf::from(&bundle);
+  assert!(file.is_file());
+  wait_for_process_finished("Bundle", &mut stderr_lines);
+
+  // the watcher process is still alive
+  assert!(deno.try_wait().unwrap().is_none());
+
+  deno.kill().unwrap();
+  drop(t);
+}
+
+/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
+#[test]
+#[ignore]
+fn bundle_watch_not_exit() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+  let target_file = t.path().join("target.js");
+
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("bundle")
+    .arg(&file_to_watch)
+    .arg(&target_file)
+    .arg("--watch")
+    .arg("--unstable")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stderr = deno.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(stderr_lines.next().unwrap().contains("Bundle failed!"));
+  // the target file hasn't been created yet
+  assert!(!target_file.is_file());
+
+  // Make sure the watcher actually restarts and works fine with the proper syntax
+  std::fs::write(&file_to_watch, "console.log(42);")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines
+    .next()
+    .unwrap()
+    .contains("File change detected!"));
+  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
+  assert!(stderr_lines.next().unwrap().contains("target.js"));
+  wait_for_process_finished("Bundle", &mut stderr_lines);
+  // bundled file is created
+  assert!(target_file.is_file());
+
+  // the watcher process is still alive
+  assert!(deno.try_wait().unwrap().is_none());
+
+  drop(t);
+}
+
+#[test]
+fn info_with_compiled_source() {
+  let _g = util::http_server();
+  let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
+  let t = TempDir::new().expect("tempdir fail");
+
+  let mut deno = util::deno_cmd()
+    .env("DENO_DIR", t.path())
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(&module_path)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+
+  let output = util::deno_cmd()
+    .env("DENO_DIR", t.path())
+    .env("NO_COLOR", "1")
+    .current_dir(util::root_path())
+    .arg("info")
+    .arg(&module_path)
+    .output()
+    .expect("failed to spawn script");
+
+  let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
+  eprintln!("{}", str_output);
+  // check the output of the test.ts program.
+  assert!(str_output.contains("compiled: "));
+  assert_eq!(output.stderr, b"");
+}
+
+/// Helper function to skip watcher output that doesn't contain
+/// "{job_name} finished" phrase.
+fn wait_for_process_finished(
+  job_name: &str,
+  stderr_lines: &mut impl Iterator<Item = String>,
+) {
+  let phrase = format!("{} finished", job_name);
+  loop {
+    let msg = stderr_lines.next().unwrap();
+    if msg.contains(&phrase) {
+      break;
+    }
+  }
+}
+
+#[test]
+#[ignore]
+fn run_watch() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "console.log('Hello world');")
+    .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Change content of the file
+  std::fs::write(&file_to_watch, "console.log('Hello world2');")
+    .expect("error writing file");
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("Hello world2"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Add dependency
+  let another_file = t.path().join("another_file.js");
+  std::fs::write(&another_file, "export const foo = 0;")
+    .expect("error writing file");
+  std::fs::write(
+    &file_to_watch,
+    "import { foo } from './another_file.js'; console.log(foo);",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains('0'));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Confirm that restarting occurs when a new file is updated
+  std::fs::write(&another_file, "export const foo = 42;")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Then restore the file
+  std::fs::write(
+    &file_to_watch,
+    "import { foo } from './another_file.js'; console.log(foo);",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+/// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
+#[test]
+#[ignore]
+fn run_watch_not_exit() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(&file_to_watch, "syntax error ^^")
+    .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert!(stderr_lines.next().unwrap().contains("Process failed!"));
+
+  // Make sure the watcher actually restarts and works fine with the proper syntax
+  std::fs::write(&file_to_watch, "console.log(42);")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("42"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
+  drop(t);
+}
+
+#[cfg(unix)]
+#[test]
+fn repl_test_pty_multiline() {
+  use std::io::Read;
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b"(\n1 + 2\n)\n").unwrap();
+    master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
+    master.write_all(b"`\nfoo\n`\n").unwrap();
+    master.write_all(b"`\n\\`\n`\n").unwrap();
+    master.write_all(b"'{'\n").unwrap();
+    master.write_all(b"'('\n").unwrap();
+    master.write_all(b"'['\n").unwrap();
+    master.write_all(b"/{/'\n").unwrap();
+    master.write_all(b"/(/'\n").unwrap();
+    master.write_all(b"/[/'\n").unwrap();
+    master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains('3'));
+    assert!(output.contains("{ foo: \"foo\" }"));
+    assert!(output.contains("\"\\nfoo\\n\""));
+    assert!(output.contains("\"\\n`\\n\""));
+    assert!(output.contains("\"{\""));
+    assert!(output.contains("\"(\""));
+    assert!(output.contains("\"[\""));
+    assert!(output.contains("/{/"));
+    assert!(output.contains("/(/"));
+    assert!(output.contains("/{/"));
+    assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
+
+    fork.wait().unwrap();
+  } else {
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[cfg(unix)]
+#[test]
+fn repl_test_pty_unpaired_braces() {
+  use std::io::Read;
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b")\n").unwrap();
+    master.write_all(b"]\n").unwrap();
+    master.write_all(b"}\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unexpected token ')'"));
+    assert!(output.contains("Unexpected token ']'"));
+    assert!(output.contains("Unexpected token '}'"));
+
+    fork.wait().unwrap();
+  } else {
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[cfg(unix)]
+#[test]
+fn repl_test_pty_bad_input() {
+  use std::io::Read;
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b"'\\u{1f3b5}'[0]\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unterminated string literal"));
+
+    fork.wait().unwrap();
+  } else {
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[test]
+#[ignore]
+fn run_watch_with_importmap_and_relative_paths() {
+  fn create_relative_tmp_file(
+    directory: &TempDir,
+    filename: &'static str,
+    filecontent: &'static str,
+  ) -> std::path::PathBuf {
+    let absolute_path = directory.path().join(filename);
+    std::fs::write(&absolute_path, filecontent).expect("error writing file");
+    let relative_path = absolute_path
+      .strip_prefix(util::root_path())
+      .expect("unable to create relative temporary file")
+      .to_owned();
+    assert!(relative_path.is_relative());
+    relative_path
+  }
+  let temp_directory =
+    TempDir::new_in(util::root_path()).expect("tempdir fail");
+  let file_to_watch = create_relative_tmp_file(
+    &temp_directory,
+    "file_to_watch.js",
+    "console.log('Hello world');",
+  );
+  let import_map_path = create_relative_tmp_file(
+    &temp_directory,
+    "import_map.json",
+    "{\"imports\": {}}",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--watch")
+    .arg("--importmap")
+    .arg(&import_map_path)
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert!(stderr_lines.next().unwrap().contains("Process finished"));
+  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+
+  child.kill().unwrap();
+
+  drop(file_to_watch);
+  drop(import_map_path);
+  temp_directory.close().unwrap();
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -741,7 +1751,84 @@ fn repl_test_console_log() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("hello\nundefined\nworld\n"));
+  assert!(out.ends_with("hello\nundefined\n\"world\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_object_literal() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{}", "{ foo: 'bar' }"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("{}\n{ foo: \"bar\" }\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_block_expression() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["{};", "{\"\"}"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("undefined\n\"\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_await_resolve() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await Promise.resolve('done')"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("\"done\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_await_timeout() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await new Promise((r) => setTimeout(r, 0, 'done'))"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("\"done\"\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_let_redeclaration() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["let foo = 0;", "foo", "let foo = 1;", "foo"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.ends_with("undefined\n0\nundefined\n1\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_cwd() {
+  let (_out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["Deno.cwd()"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
   assert!(err.is_empty());
 }
 
@@ -760,7 +1847,7 @@ fn repl_test_eof() {
 
 #[test]
 fn repl_test_strict() {
-  let (_, err) = util::run_and_collect_output(
+  let (out, err) = util::run_and_collect_output(
     true,
     "repl",
     Some(vec![
@@ -771,12 +1858,11 @@ fn repl_test_strict() {
     None,
     false,
   );
-  assert!(err.contains(
+  assert!(out.contains(
     "Uncaught TypeError: Cannot add property c, object is not extensible"
   ));
+  assert!(err.is_empty());
 }
-
-const REPL_MSG: &str = "exit using ctrl+d or close()\n";
 
 #[test]
 fn repl_test_close_command() {
@@ -806,6 +1892,7 @@ fn repl_test_function() {
 }
 
 #[test]
+#[ignore]
 fn repl_test_multiline() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -819,6 +1906,18 @@ fn repl_test_multiline() {
 }
 
 #[test]
+fn repl_test_import() {
+  let (out, _) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["import('./subdir/auto_print_hello.ts')"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.contains("hello!\n"));
+}
+
+#[test]
 fn repl_test_eval_unterminated() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -827,8 +1926,23 @@ fn repl_test_eval_unterminated() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("Unexpected end of input"));
+  assert!(out.contains("Unexpected end of input"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_unpaired_braces() {
+  for right_brace in &[")", "]", "}"] {
+    let (out, err) = util::run_and_collect_output(
+      true,
+      "repl",
+      Some(vec![right_brace]),
+      None,
+      false,
+    );
+    assert!(out.contains("Unexpected token"));
+    assert!(err.is_empty());
+  }
 }
 
 #[test]
@@ -840,8 +1954,8 @@ fn repl_test_reference_error() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("not_a_variable is not defined"));
+  assert!(out.contains("not_a_variable is not defined"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -853,8 +1967,8 @@ fn repl_test_syntax_error() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("Unexpected identifier"));
+  assert!(out.contains("Unexpected identifier"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -866,8 +1980,8 @@ fn repl_test_type_error() {
     None,
     false,
   );
-  assert!(out.ends_with(REPL_MSG));
-  assert!(err.contains("console is not a function"));
+  assert!(out.contains("console is not a function"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -940,8 +2054,8 @@ fn repl_test_save_last_thrown() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("1\n"));
-  assert_eq!(err, "Thrown: 1\n");
+  assert!(out.ends_with("Uncaught 1\n1\n"));
+  assert!(err.is_empty());
 }
 
 #[test]
@@ -968,46 +2082,33 @@ fn repl_test_assign_underscore_error() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(
-    out.ends_with("Last thrown error is no longer saved to _error.\n1\n1\n")
-  );
-  assert_eq!(err, "Thrown: 2\n");
+  println!("{}", out);
+  assert!(out.ends_with(
+    "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"
+  ));
+  assert!(err.is_empty());
 }
 
 #[test]
-fn util_test() {
-  util::run_python_script("tools/util_test.py")
+fn deno_test_no_color() {
+  let (out, _) = util::run_and_collect_output(
+    false,
+    "test deno_test_no_color.ts",
+    None,
+    Some(vec![("NO_COLOR".to_owned(), "true".to_owned())]),
+    false,
+  );
+  // ANSI escape codes should be stripped.
+  assert!(out.contains("test success ... ok"));
+  assert!(out.contains("test fail ... FAILED"));
+  assert!(out.contains("test ignored ... ignored"));
+  assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
-macro_rules! itest(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
-
-// Unfortunately #[ignore] doesn't work with itest!
-macro_rules! itest_ignore(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[ignore]
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
+itest!(stdout_write_all {
+  args: "run --quiet stdout_write_all.ts",
+  output: "stdout_write_all.out",
+});
 
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
@@ -1070,13 +2171,22 @@ itest!(_017_import_redirect {
   output: "017_import_redirect.ts.out",
 });
 
+itest!(_017_import_redirect_nocheck {
+  args: "run --quiet --reload --no-check 017_import_redirect.ts",
+  output: "017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_info {
+  args: "info --quiet --reload 017_import_redirect.ts",
+  output: "017_import_redirect_info.out",
+});
+
 itest!(_018_async_catch {
   args: "run --quiet --reload 018_async_catch.ts",
   output: "018_async_catch.ts.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_019_media_types {
+itest!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
@@ -1093,22 +2203,15 @@ itest!(_021_mjs_modules {
   output: "021_mjs_modules.ts.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_022_info_flag_script {
+itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
 });
 
-itest!(_023_no_ext_with_headers {
-  args: "run --reload 023_no_ext_with_headers",
-  output: "023_no_ext_with_headers.out",
-});
-
-// FIXME(bartlomieju): this test should use remote file
-itest_ignore!(_024_import_no_ext_with_headers {
-  args: "run --reload 024_import_no_ext_with_headers.ts",
-  output: "024_import_no_ext_with_headers.ts.out",
+itest!(_023_no_ext {
+  args: "run --reload 023_no_ext",
+  output: "023_no_ext.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -1128,21 +2231,72 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
-itest!(deno_test_fail_fast {
-  args: "test --failfast test_runner_test.ts",
-  exit_code: 1,
-  output: "deno_test_fail_fast.out",
-});
-
 itest!(deno_test {
   args: "test test_runner_test.ts",
   exit_code: 1,
   output: "deno_test.out",
 });
 
+itest!(deno_test_fail_fast {
+  args: "test --fail-fast test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test_fail_fast.out",
+});
+
+itest!(deno_test_only {
+  args: "test deno_test_only.ts",
+  exit_code: 1,
+  output: "deno_test_only.ts.out",
+});
+
+itest!(deno_test_no_check {
+  args: "test --no-check test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test.out",
+});
+
+itest!(deno_test_unresolved_promise {
+  args: "test test_unresolved_promise.js",
+  exit_code: 1,
+  output: "deno_test_unresolved_promise.out",
+});
+
+#[test]
+fn timeout_clear() {
+  // https://github.com/denoland/deno/issues/7599
+
+  use std::time::Duration;
+  use std::time::Instant;
+
+  let source_code = r#"
+const handle = setTimeout(() => {
+  console.log("timeout finish");
+}, 10000);
+clearTimeout(handle);
+console.log("finish");
+"#;
+
+  let mut p = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("run")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
+  let start = Instant::now();
+  let status = p.wait().unwrap();
+  let end = Instant::now();
+  assert!(status.success());
+  // check that program did not run for 10 seconds
+  // for timeout to clear
+  assert!(end - start < Duration::new(10, 0));
+}
+
 #[test]
 fn workers() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let status = util::deno_cmd()
     .current_dir(util::tests_path())
     .arg("test")
@@ -1156,7 +2310,6 @@ fn workers() {
     .wait()
     .unwrap();
   assert!(status.success());
-  drop(g);
 }
 
 #[test]
@@ -1197,17 +2350,15 @@ itest!(_030_eval_ts {
   output: "030_eval_ts.out",
 });
 
-itest!(_033_import_map {
-  args:
-    "run --quiet --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
-  output: "033_import_map.out",
+itest!(_031_info_ts_error {
+  args: "info 031_info_ts_error.ts",
+  output: "031_info_ts_error.out",
 });
 
-itest!(import_map_no_unstable {
+itest!(_033_import_map {
   args:
-    "run --quiet --reload --importmap=importmaps/import_map.json importmaps/test.ts",
-  output: "import_map_no_unstable.out",
-  exit_code: 70,
+    "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+  output: "033_import_map.out",
 });
 
 itest!(_034_onload {
@@ -1215,10 +2366,9 @@ itest!(_034_onload {
   output: "034_onload.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_035_cached_only_flag {
+itest!(_035_cached_only_flag {
   args:
-    "--reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -1226,7 +2376,7 @@ itest_ignore!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "cache --quiet --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
+    "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
@@ -1253,6 +2403,11 @@ itest!(_041_info_flag {
   output: "041_info_flag.out",
 });
 
+itest!(info_json {
+  args: "info --json --unstable",
+  output: "info_json.out",
+});
+
 itest!(_042_dyn_import_evalcontext {
   args: "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
   output: "042_dyn_import_evalcontext.ts.out",
@@ -1264,8 +2419,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-itest_ignore!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+itest!(_045_proxy {
+  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -1280,24 +2435,21 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_048_media_types_jsx {
+itest!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_049_info_flag_script_jsx {
+itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_052_no_remote_flag {
+itest!(_052_no_remote_flag {
   args:
-    "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
@@ -1309,16 +2461,16 @@ itest!(_054_info_local_imports {
   exit_code: 0,
 });
 
+itest!(_055_info_file_json {
+  args: "info --quiet --json --unstable 005_more_imports.ts",
+  output: "055_info_file_json.out",
+  exit_code: 0,
+});
+
 itest!(_056_make_temp_file_write_perm {
   args:
     "run --quiet --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
   output: "056_make_temp_file_write_perm.out",
-});
-
-// TODO(lucacasonato): remove --unstable when permissions goes stable
-itest!(_057_revoke_permissions {
-  args: "test -A --unstable 057_revoke_permissions.ts",
-  output: "057_revoke_permissions.out",
 });
 
 itest!(_058_tasks_microtasks_close {
@@ -1332,10 +2484,96 @@ itest!(_059_fs_relative_path_perm {
   exit_code: 1,
 });
 
+itest!(_060_deno_doc_displays_all_overloads_in_details_view {
+  args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+  output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+});
+
+#[cfg(unix)]
+#[test]
+fn _061_permissions_request() {
+  let args = "run --unstable 061_permissions_request.ts";
+  let output = "061_permissions_request.ts.out";
+  let input = b"g\nd\n";
+
+  util::test_pty(args, output, input);
+}
+
+#[cfg(unix)]
+#[test]
+fn _062_permissions_request_global() {
+  let args = "run --unstable 062_permissions_request_global.ts";
+  let output = "062_permissions_request_global.ts.out";
+  let input = b"g\n";
+
+  util::test_pty(args, output, input);
+}
+
+itest!(_063_permissions_revoke {
+  args: "run --unstable --allow-read=foo,bar 063_permissions_revoke.ts",
+  output: "063_permissions_revoke.ts.out",
+});
+
+itest!(_064_permissions_revoke_global {
+  args: "run --unstable --allow-read=foo,bar 064_permissions_revoke_global.ts",
+  output: "064_permissions_revoke_global.ts.out",
+});
+
+itest!(_065_import_map_info {
+  args:
+    "info --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+  output: "065_import_map_info.out",
+});
+
+#[cfg(unix)]
+#[test]
+fn _066_prompt() {
+  let args = "run --unstable 066_prompt.ts";
+  let output = "066_prompt.ts.out";
+  // These are answers to prompt, confirm, and alert calls.
+  let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
+
+  util::test_pty(args, output, input);
+}
+
+itest!(_067_test_no_run_type_error {
+  args: "test --unstable --no-run test_type_error",
+  output: "067_test_no_run_type_error.out",
+  exit_code: 1,
+});
+
+itest!(_073_worker_error {
+  args: "run -A 073_worker_error.ts",
+  output: "073_worker_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(_074_worker_nested_error {
+  args: "run -A 074_worker_nested_error.ts",
+  output: "074_worker_nested_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(_075_import_local_query_hash {
+  args: "run 075_import_local_query_hash.ts",
+  output: "075_import_local_query_hash.ts.out",
+});
+
+itest!(_076_info_json_deps_order {
+  args: "info --unstable --json 076_info_json_deps_order.ts",
+  output: "076_info_json_deps_order.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
   exit_code: 0,
+});
+
+itest!(lock_write_requires_lock {
+  args: "run --lock-write some_file.ts",
+  output: "lock_write_requires_lock.out",
+  exit_code: 1,
 });
 
 itest!(lock_write_fetch {
@@ -1351,10 +2589,16 @@ itest!(lock_check_ok {
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(lock_check_ok2 {
-  args: "run 019_media_types.ts --lock=lock_check_ok2.json",
+itest!(lock_check_ok2 {
+  args: "run --lock=lock_check_ok2.json 019_media_types.ts",
   output: "019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(lock_dynamic_imports {
+  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
+  output: "lock_dynamic_imports.out",
+  exit_code: 10,
   http_server: true,
 });
 
@@ -1365,10 +2609,16 @@ itest!(lock_check_err {
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(lock_check_err2 {
+itest!(lock_check_err2 {
   args: "run --lock=lock_check_err2.json 019_media_types.ts",
   output: "lock_check_err2.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_check_err_with_bundle {
+  args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/cli/tests/subdir/mod1.ts",
+  output: "lock_check_err_with_bundle.out",
   exit_code: 10,
   http_server: true,
 });
@@ -1382,6 +2632,30 @@ itest!(async_error {
 itest!(bundle {
   args: "bundle subdir/mod1.ts",
   output: "bundle.test.out",
+});
+
+itest!(fmt_check_tests_dir {
+  args: "fmt --check ./",
+  output: "fmt/expected_fmt_check_tests_dir.out",
+  exit_code: 1,
+});
+
+itest!(fmt_quiet_check_fmt_dir {
+  args: "fmt --check --quiet fmt/",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(fmt_check_formatted_files {
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  output: "fmt/expected_fmt_check_formatted_files.out",
+  exit_code: 0,
+});
+
+itest!(fmt_check_ignore {
+  args: "fmt --check --ignore=fmt/formatted1.js fmt/",
+  output: "fmt/expected_fmt_check_ignore.out",
+  exit_code: 0,
 });
 
 itest!(fmt_stdin {
@@ -1402,15 +2676,15 @@ itest!(fmt_stdin_check_not_formatted {
   output_str: Some("Not formatted stdin\n"),
 });
 
-itest!(circular1 {
-  args: "run --reload circular1.js",
-  output: "circular1.js.out",
-});
-
 itest!(config {
   args: "run --reload --config config.tsconfig.json config.ts",
   exit_code: 1,
   output: "config.ts.out",
+});
+
+itest!(emtpy_typescript {
+  args: "run --reload subdir/empty.ts",
+  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
 });
 
 itest!(error_001 {
@@ -1469,6 +2743,12 @@ itest!(error_008_checkjs {
   args: "run --reload error_008_checkjs.js",
   exit_code: 1,
   output: "error_008_checkjs.js.out",
+});
+
+itest!(error_009_op_crates_error {
+  args: "run error_009_op_crates_error.js",
+  output: "error_009_op_crates_error.js.out",
+  exit_code: 1,
 });
 
 itest!(error_011_bad_module_specifier {
@@ -1563,6 +2843,12 @@ itest!(error_025_tab_indent {
   exit_code: 1,
 });
 
+itest!(error_no_check {
+  args: "run --reload --no-check error_no_check.ts",
+  output: "error_no_check.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   exit_code: 1,
@@ -1595,6 +2881,19 @@ itest!(error_local_static_import_from_remote_js {
   output: "error_local_static_import_from_remote.js.out",
 });
 
+itest!(error_worker_permissions_local {
+  args: "run --reload error_worker_permissions_local.ts",
+  output: "error_worker_permissions_local.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_worker_permissions_remote {
+  args: "run --reload error_worker_permissions_remote.ts",
+  http_server: true,
+  output: "error_worker_permissions_remote.ts.out",
+  exit_code: 1,
+});
+
 itest!(exit_error42 {
   exit_code: 42,
   args: "run --quiet --reload exit_error42.ts",
@@ -1602,8 +2901,9 @@ itest!(exit_error42 {
 });
 
 itest!(https_import {
-  args: "run --quiet --reload https_import.ts",
+  args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
   output: "https_import.ts.out",
+  http_server: true,
 });
 
 itest!(if_main {
@@ -1614,6 +2914,27 @@ itest!(if_main {
 itest!(import_meta {
   args: "run --quiet --reload import_meta.ts",
   output: "import_meta.ts.out",
+});
+
+itest!(main_module {
+  args: "run --quiet --allow-read --reload main_module.ts",
+  output: "main_module.ts.out",
+});
+
+itest!(no_check {
+  args: "run --quiet --reload --no-check 006_url_imports.ts",
+  output: "006_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(no_check_decorators {
+  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  output: "no_check_decorators.ts.out",
+});
+
+itest!(runtime_decorators {
+  args: "run --quiet --reload --no-check runtime_decorators.ts",
+  output: "runtime_decorators.ts.out",
 });
 
 itest!(lib_ref {
@@ -1635,6 +2956,12 @@ itest!(seed_random {
 itest!(type_definitions {
   args: "run --reload type_definitions.ts",
   output: "type_definitions.ts.out",
+});
+
+itest!(type_definitions_for_export {
+  args: "run --reload type_definitions_for_export.ts",
+  output: "type_definitions_for_export.ts.out",
+  exit_code: 1,
 });
 
 itest!(type_directives_01 {
@@ -1660,6 +2987,12 @@ itest!(type_directives_redirect {
   http_server: true,
 });
 
+itest!(type_headers_deno_types {
+  args: "run --reload type_headers_deno_types.ts",
+  output: "type_headers_deno_types.ts.out",
+  http_server: true,
+});
+
 itest!(ts_type_imports {
   args: "run --reload ts_type_imports.ts",
   output: "ts_type_imports.ts.out",
@@ -1669,6 +3002,16 @@ itest!(ts_type_imports {
 itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
+});
+
+itest!(ts_decorators_bundle {
+  args: "bundle ts_decorators_bundle.ts",
+  output: "ts_decorators_bundle.out",
+});
+
+itest!(ts_type_only_import {
+  args: "run --reload ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
 });
 
 itest!(swc_syntax_error {
@@ -1694,17 +3037,23 @@ itest!(unbuffered_stdout {
 
 // Cannot write the expression to evaluate as "console.log(typeof gc)"
 // because itest! splits args on whitespace.
-itest!(eval_v8_flags {
+itest!(v8_flags_eval {
   args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
   output: "v8_flags.js.out",
 });
 
-itest!(run_v8_flags {
+itest!(v8_flags_run {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
 });
 
-itest!(run_v8_help {
+itest!(v8_flags_unrecognized {
+  args: "repl --v8-flags=--foo,bar,--trace-gc,-baz",
+  output: "v8_flags_unrecognized.out",
+  exit_code: 1,
+});
+
+itest!(v8_help {
   args: "repl --v8-flags=--help",
   output: "v8_help.out",
 });
@@ -1723,6 +3072,44 @@ itest!(wasm {
 itest!(wasm_async {
   args: "run wasm_async.js",
   output: "wasm_async.out",
+});
+
+itest!(wasm_streaming {
+  args: "run wasm_streaming.js",
+  output: "wasm_streaming.out",
+});
+
+itest!(wasm_unreachable {
+  args: "run wasm_unreachable.js",
+  output: "wasm_unreachable.out",
+  exit_code: 1,
+});
+
+itest!(weakref {
+  args: "run --quiet --reload weakref.ts",
+  output: "weakref.ts.out",
+});
+
+itest!(top_level_await_order {
+  args: "run --allow-read top_level_await_order.js",
+  output: "top_level_await_order.out",
+});
+
+itest!(top_level_await_loop {
+  args: "run --allow-read top_level_await_loop.js",
+  output: "top_level_await_loop.out",
+});
+
+itest!(top_level_await_circular {
+  args: "run --allow-read top_level_await_circular.js",
+  output: "top_level_await_circular.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_unresolved {
+  args: "run top_level_await_unresolved.js",
+  output: "top_level_await_unresolved.out",
+  exit_code: 1,
 });
 
 itest!(top_level_await {
@@ -1766,9 +3153,32 @@ itest!(unstable_enabled_js {
   output: "unstable_enabled_js.out",
 });
 
+itest!(unstable_disabled_ts2551 {
+  args: "run --reload unstable_ts2551.ts",
+  exit_code: 1,
+  output: "unstable_disabled_ts2551.out",
+});
+
+itest!(unstable_worker {
+  args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
+  output: "unstable_worker.ts.out",
+});
+
 itest!(_053_import_compression {
   args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
+  http_server: true,
+});
+
+itest!(cache_extensionless {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext",
+  output: "cache_extensionless.out",
+  http_server: true,
+});
+
+itest!(cache_random_extension {
+  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
+  output: "cache_random_extension.out",
   http_server: true,
 });
 
@@ -1791,9 +3201,9 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest_ignore!(cafile_info {
+itest!(cafile_info {
   args:
-    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });
@@ -1812,9 +3222,29 @@ itest!(disallow_http_from_https_ts {
   exit_code: 1,
 });
 
+itest!(dynamic_import_conditional {
+  args: "run --quiet --reload dynamic_import_conditional.js",
+  output: "dynamic_import_conditional.js.out",
+});
+
 itest!(tsx_imports {
   args: "run --reload tsx_imports.ts",
   output: "tsx_imports.ts.out",
+});
+
+itest!(fix_dynamic_import_errors {
+  args: "run --reload fix_dynamic_import_errors.js",
+  output: "fix_dynamic_import_errors.js.out",
+});
+
+itest!(fix_emittable_skipped {
+  args: "run --reload fix_emittable_skipped.js",
+  output: "fix_emittable_skipped.ts.out",
+});
+
+itest!(fix_exotic_specifiers {
+  args: "run --quiet --reload fix_exotic_specifiers.ts",
+  output: "fix_exotic_specifiers.ts.out",
 });
 
 itest!(fix_js_import_js {
@@ -1827,9 +3257,40 @@ itest!(fix_js_imports {
   output: "fix_js_imports.ts.out",
 });
 
+itest!(fix_tsc_file_exists {
+  args: "run --quiet --reload tsc/test.js",
+  output: "fix_tsc_file_exists.out",
+});
+
 itest!(es_private_fields {
   args: "run --quiet --reload es_private_fields.js",
   output: "es_private_fields.js.out",
+});
+
+itest!(cjs_imports {
+  args: "run --quiet --reload cjs_imports.ts",
+  output: "cjs_imports.ts.out",
+});
+
+itest!(ts_import_from_js {
+  args: "run --quiet --reload ts_import_from_js.js",
+  output: "ts_import_from_js.js.out",
+  http_server: true,
+});
+
+itest!(jsx_import_from_ts {
+  args: "run --quiet --reload jsx_import_from_ts.ts",
+  output: "jsx_import_from_ts.ts.out",
+});
+
+itest!(single_compile_with_reload {
+  args: "run --reload --allow-read single_compile_with_reload.ts",
+  output: "single_compile_with_reload.ts.out",
+});
+
+itest!(performance_stats {
+  args: "cache --reload --log-level debug 002_hello.ts",
+  output: "performance_stats.out",
 });
 
 itest!(proto_exploit {
@@ -1837,10 +3298,143 @@ itest!(proto_exploit {
   output: "proto_exploit.js.out",
 });
 
+itest!(redirect_cache {
+  http_server: true,
+  args: "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
+  output: "redirect_cache.out",
+});
+
+itest!(deno_test_coverage {
+  args: "test --coverage --unstable test_coverage.ts",
+  output: "test_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_lint {
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_quiet {
+  args: "lint --unstable --quiet lint/file1.js",
+  output: "lint/expected_quiet.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_json {
+  args:
+    "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+  output: "lint/expected_json.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_ignore {
+  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
+  output: "lint/expected_ignore.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_glob {
+  args: "lint --unstable --ignore=lint/malformed.js lint/",
+  output: "lint/expected_glob.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_from_stdin {
+  args: "lint --unstable -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_from_stdin_json {
+  args: "lint --unstable --json -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin_json.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_rules {
+  args: "lint --unstable --rules",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
+});
+
+// Make sure that the rules are printed if quiet option is enabled.
+itest!(deno_lint_rules_quiet {
+  args: "lint --unstable --rules -q",
+  output: "lint/expected_rules.out",
+  exit_code: 0,
+});
+
+itest!(deno_doc_builtin {
+  args: "doc",
+  output: "deno_doc_builtin.out",
+});
+
+itest!(deno_doc {
+  args: "doc deno_doc.ts",
+  output: "deno_doc.out",
+});
+
+itest!(deno_doc_import_map {
+  args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
+  output: "doc/use_import_map.out",
+});
+
+itest!(import_file_with_colon {
+  args: "run --quiet --reload import_file_with_colon.ts",
+  output: "import_file_with_colon.ts.out",
+  http_server: true,
+});
+
+itest!(info_recursive_modules {
+  args: "info --quiet info_recursive_imports_test.ts",
+  output: "info_recursive_imports_test.out",
+  exit_code: 0,
+});
+
+itest!(info_type_import {
+  args: "info info_type_import.ts",
+  output: "info_type_import.out",
+});
+
+itest!(ignore_require {
+  args: "cache --reload --no-check ignore_require.js",
+  output_str: Some(""),
+  exit_code: 0,
+});
+
+itest!(local_sources_not_cached_in_memory {
+  args: "run --allow-read --allow-write no_mem_cache.js",
+  output: "no_mem_cache.js.out",
+});
+
+#[test]
+fn cafile_env_fetch() {
+  use deno_core::url::Url;
+  let _g = util::http_server();
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let module_url =
+    Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
+      .unwrap();
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .env("DENO_CERT", cafile)
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+}
+
 #[test]
 fn cafile_fetch() {
-  use url::Url;
-  let g = util::http_server();
+  use deno_core::url::Url;
+  let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
     Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
@@ -1858,12 +3452,11 @@ fn cafile_fetch() {
   assert!(output.status.success());
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
-  drop(g);
 }
 
 #[test]
 fn cafile_install_remote_module() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
@@ -1899,15 +3492,11 @@ fn cafile_install_remote_module() {
     .expect("failed to spawn script");
   let stdout = std::str::from_utf8(&output.stdout).unwrap().trim();
   assert!(stdout.ends_with("foo"));
-
-  drop(deno_dir);
-  drop(temp_dir);
-  drop(g)
 }
 
 #[test]
 fn cafile_bundle_remote_exports() {
-  let g = util::http_server();
+  let _g = util::http_server();
 
   // First we have to generate a bundle of some remote module that has exports.
   let mod1 = "https://localhost:5545/cli/tests/subdir/mod1.ts";
@@ -1949,8 +3538,6 @@ fn cafile_bundle_remote_exports() {
     .trim()
     .ends_with("Hello"));
   assert_eq!(output.stderr, b"");
-
-  drop(g)
 }
 
 #[test]
@@ -2302,7 +3889,8 @@ fn test_permissions_net_listen_allow_localhost_4555_fail() {
 
 #[test]
 fn test_permissions_net_listen_allow_localhost() {
-  // Port 4600 is chosen to not colide with those used by tools/http_server.py
+  // Port 4600 is chosen to not colide with those used by
+  // target/debug/test_server
   let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
@@ -2460,10 +4048,12 @@ async fn inspector_pause() {
   async fn ws_read_msg(
     socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
   ) -> String {
-    use futures::stream::StreamExt;
+    use deno_core::futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
-      assert!(!msg.contains("error"));
+      // FIXME(bartlomieju): fails because there's a file loaded
+      // called 150_errors.js
+      // assert!(!msg.contains("error"));
       if !msg.contains("Debugger.scriptParsed") {
         return msg;
       }
@@ -2494,6 +4084,13 @@ async fn inspector_pause() {
 
 #[tokio::test]
 async fn inspector_port_collision() {
+  // Skip this test on WSL, which allows multiple processes to listen on the
+  // same port, rather than making `bind()` fail with `EADDRINUSE`.
+  if cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
+  {
+    return;
+  }
+
   let script = util::tests_path().join("inspector1.js");
   let inspect_flag = inspect_flag_with_unique_port("--inspect");
 
@@ -2506,10 +4103,10 @@ async fn inspector_port_collision() {
     .unwrap();
 
   let stderr_1 = child1.stderr.as_mut().unwrap();
-  let mut stderr_lines_1 = std::io::BufReader::new(stderr_1)
+  let mut stderr_1_lines = std::io::BufReader::new(stderr_1)
     .lines()
     .map(|r| r.unwrap());
-  let _ = extract_ws_url_from_stderr(&mut stderr_lines_1);
+  let _ = extract_ws_url_from_stderr(&mut stderr_1_lines);
 
   let mut child2 = util::deno_cmd()
     .arg("run")
@@ -2519,15 +4116,13 @@ async fn inspector_port_collision() {
     .spawn()
     .unwrap();
 
-  use std::io::Read;
-  let mut stderr_str_2 = String::new();
-  child2
-    .stderr
-    .as_mut()
-    .unwrap()
-    .read_to_string(&mut stderr_str_2)
-    .unwrap();
-  assert!(stderr_str_2.contains("Cannot start inspector server"));
+  let stderr_2 = child2.stderr.as_mut().unwrap();
+  let stderr_2_error_message = std::io::BufReader::new(stderr_2)
+    .lines()
+    .map(|r| r.unwrap())
+    .inspect(|line| assert!(!line.contains("Debugger listening")))
+    .find(|line| line.contains("Cannot start inspector server"));
+  assert!(stderr_2_error_message.is_some());
 
   child1.kill().unwrap();
   child1.wait().unwrap();
@@ -2596,7 +4191,7 @@ async fn inspector_does_not_hang() {
   for i in 0..128u32 {
     let request_id = i + 10;
     // Expect the number {i} on stdout.
-    let s = format!("{}", i);
+    let s = i.to_string();
     assert_eq!(stdout_lines.next().unwrap(), s);
     // Expect hitting the `debugger` statement.
     let s = r#"{"method":"Debugger.paused","#;
@@ -2722,8 +4317,29 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     }
   }
 
-  std::mem::drop(stdin);
+  drop(stdin);
   child.wait().unwrap();
+}
+
+#[test]
+fn websocket() {
+  let _g = util::http_server();
+
+  let script = util::tests_path().join("websocket_test.ts");
+  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
 }
 
 #[test]
@@ -2746,357 +4362,424 @@ fn exec_path() {
   assert_eq!(expected, actual);
 }
 
-mod util {
-  use os_pipe::pipe;
-  use regex::Regex;
-  use std::io::Read;
-  use std::io::Write;
-  use std::path::PathBuf;
-  use std::process::Child;
-  use std::process::Command;
-  use std::process::Output;
-  use std::process::Stdio;
-  use std::sync::Mutex;
-  use std::sync::MutexGuard;
-  use tempfile::TempDir;
+#[cfg(not(windows))]
+#[test]
+fn set_raw_should_not_panic_on_no_tty() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("--unstable")
+    .arg("Deno.setRaw(Deno.stdin.rid, true)")
+    // stdin set to piped so it certainly does not refer to TTY
+    .stdin(std::process::Stdio::piped())
+    // stderr is piped so we can capture output.
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+  assert!(stderr.contains("BadResource"));
+}
 
-  pub const PERMISSION_VARIANTS: [&str; 5] =
-    ["read", "write", "env", "net", "run"];
-  pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
+#[cfg(windows)]
+// Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
+#[allow(clippy::enum_variant_names)]
+enum WinProcConstraints {
+  NoStdIn,
+  NoStdOut,
+  NoStdErr,
+}
 
-  lazy_static! {
-    static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
+#[cfg(windows)]
+fn run_deno_script_constrained(
+  script_path: std::path::PathBuf,
+  constraints: WinProcConstraints,
+) -> Result<(), i64> {
+  let file_path = "cli/tests/DenoWinRunner.ps1";
+  let constraints = match constraints {
+    WinProcConstraints::NoStdIn => "1",
+    WinProcConstraints::NoStdOut => "2",
+    WinProcConstraints::NoStdErr => "4",
+  };
+  let deno_exe_path = util::deno_exe_path()
+    .into_os_string()
+    .into_string()
+    .unwrap();
 
-    // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
-    // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
-    static ref STRIP_ANSI_RE: Regex = Regex::new(
-            r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
-    ).unwrap();
+  let deno_script_path = script_path.into_os_string().into_string().unwrap();
 
-    static ref GUARD: Mutex<()> = Mutex::new(());
-  }
+  let args = vec![&deno_exe_path[..], &deno_script_path[..], constraints];
+  util::run_powershell_script_file(file_path, args)
+}
 
-  pub fn root_path() -> PathBuf {
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
-  }
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdin() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdIn,
+  );
+  output.unwrap();
+}
 
-  pub fn tests_path() -> PathBuf {
-    root_path().join("cli").join("tests")
-  }
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdout() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdOut,
+  );
+  output.unwrap();
+}
 
-  pub fn target_dir() -> PathBuf {
-    let current_exe = std::env::current_exe().unwrap();
-    let target_dir = current_exe.parent().unwrap().parent().unwrap();
-    println!("target_dir {}", target_dir.display());
-    target_dir.into()
-  }
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stderr() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdErr,
+  );
+  output.unwrap();
+}
 
-  pub fn deno_exe_path() -> PathBuf {
-    // Something like /Users/rld/src/deno/target/debug/deps/deno
-    let mut p = target_dir().join("deno");
-    if cfg!(windows) {
-      p.set_extension("exe");
-    }
-    p
-  }
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_home_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("HOME")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
 
-  pub struct HttpServerGuard<'a> {
-    #[allow(dead_code)]
-    g: MutexGuard<'a, ()>,
-    child: Child,
-  }
+#[test]
+fn should_not_panic_on_undefined_deno_dir_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
 
-  impl<'a> Drop for HttpServerGuard<'a> {
-    fn drop(&mut self) {
-      match self.child.try_wait() {
-        Ok(None) => {
-          self.child.kill().expect("failed to kill http_server.py");
-        }
-        Ok(Some(status)) => {
-          panic!("http_server.py exited unexpectedly {}", status)
-        }
-        Err(e) => panic!("http_server.py err {}", e),
-      }
-    }
-  }
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .env_remove("HOME")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
 
-  /// Starts tools/http_server.py when the returned guard is dropped, the server
-  /// will be killed.
-  pub fn http_server<'a>() -> HttpServerGuard<'a> {
-    // TODO(bartlomieju) Allow tests to use the http server in parallel.
-    let g = GUARD.lock().unwrap();
+#[test]
+fn rust_log() {
+  // Without RUST_LOG the stderr is empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
 
-    println!("tools/http_server.py starting...");
-    let mut child = Command::new("python")
-      .current_dir(root_path())
-      .args(&["-u", "tools/http_server.py"])
-      .stdout(Stdio::piped())
-      .spawn()
-      .expect("failed to execute child");
+  // With RUST_LOG the stderr is not empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .env("RUST_LOG", "debug")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(!output.stderr.is_empty());
+}
 
-    let stdout = child.stdout.as_mut().unwrap();
-    use std::io::{BufRead, BufReader};
-    let lines = BufReader::new(stdout).lines();
-    // Wait for "ready" on stdout. See tools/http_server.py
-    for maybe_line in lines {
-      if let Ok(line) = maybe_line {
-        if line.starts_with("ready") {
-          break;
-        }
-      } else {
-        panic!(maybe_line.unwrap_err());
-      }
-    }
+#[test]
+fn lint_ignore_unexplicit_files() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("lint")
+    .arg("--unstable")
+    .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
+}
 
-    HttpServerGuard { child, g }
-  }
+#[test]
+fn fmt_ignore_unexplicit_files() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg("--check")
+    .arg("--ignore=./")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stderr, b"Checked 0 file\n");
+}
 
-  /// Helper function to strip ansi codes.
-  pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
-    STRIP_ANSI_RE.replace_all(s, "")
-  }
+#[test]
+fn compile() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./std/examples/welcome.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, "Welcome to Deno 🦕\n".as_bytes());
+}
 
-  pub fn run_and_collect_output(
-    expect_success: bool,
-    args: &str,
-    input: Option<Vec<&str>>,
-    envs: Option<Vec<(String, String)>>,
-    need_http_server: bool,
-  ) -> (String, String) {
-    let mut deno_process_builder = deno_cmd();
-    deno_process_builder
-      .args(args.split_whitespace())
-      .current_dir(&tests_path())
-      .stdin(Stdio::piped())
-      .stdout(Stdio::piped())
-      .stderr(Stdio::piped());
-    if let Some(envs) = envs {
-      deno_process_builder.envs(envs);
-    }
-    let http_guard = if need_http_server {
-      Some(http_server())
-    } else {
-      None
-    };
-    let mut deno = deno_process_builder
-      .spawn()
-      .expect("failed to spawn script");
-    if let Some(lines) = input {
-      let stdin = deno.stdin.as_mut().expect("failed to get stdin");
-      stdin
-        .write_all(lines.join("\n").as_bytes())
-        .expect("failed to write to stdin");
-    }
-    let Output {
-      stdout,
-      stderr,
-      status,
-    } = deno.wait_with_output().expect("failed to wait on child");
-    drop(http_guard);
-    let stdout = String::from_utf8(stdout).unwrap();
-    let stderr = String::from_utf8(stderr).unwrap();
-    if expect_success != status.success() {
-      eprintln!("stdout: <<<{}>>>", stdout);
-      eprintln!("stderr: <<<{}>>>", stderr);
-      panic!("Unexpected exit code: {:?}", status.code());
-    }
-    (stdout, stderr)
-  }
+#[test]
+fn standalone_args() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .arg("foo")
+    .arg("--bar")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"foo\n--bar\n--unstable\n");
+}
 
-  pub fn deno_cmd() -> Command {
-    let e = deno_exe_path();
-    assert!(e.exists());
-    let mut c = Command::new(e);
-    c.env("DENO_DIR", DENO_DIR.path());
-    c
-  }
+#[test]
+fn standalone_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("error.exe")
+  } else {
+    dir.path().join("error")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_error.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.stdout, b"");
+  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:2:11)\n    at foo (file://$deno$/bundle.js:5:5)\n    at file://$deno$/bundle.js:7:1\n";
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_eq!(stderr, expected_stderr);
+}
 
-  pub fn run_python_script(script: &str) {
-    let output = Command::new("python")
-      .env("DENO_DIR", DENO_DIR.path())
-      .current_dir(root_path())
-      .arg(script)
-      .arg(format!("--build-dir={}", target_dir().display()))
-      .arg(format!("--executable={}", deno_exe_path().display()))
-      .output()
-      .expect("failed to spawn script");
-    if !output.status.success() {
-      let stdout = String::from_utf8(output.stdout).unwrap();
-      let stderr = String::from_utf8(output.stderr).unwrap();
-      panic!(
-        "{} executed with failing error code\n{}{}",
-        script, stdout, stderr
-      );
-    }
-  }
+#[test]
+fn standalone_no_module_load() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("hello.exe")
+  } else {
+    dir.path().join("hello")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_import.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.stdout, b"start\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("Self-contained binaries don't support module loading"));
+}
 
-  #[derive(Debug, Default)]
-  pub struct CheckOutputIntegrationTest {
-    pub args: &'static str,
-    pub output: &'static str,
-    pub input: Option<&'static str>,
-    pub output_str: Option<&'static str>,
-    pub exit_code: i32,
-    pub http_server: bool,
-  }
+#[test]
+fn compile_with_directory_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  std::fs::create_dir(&exe).expect("cannot create directory");
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: {:?} is a directory.\n", &exe);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(&expected_stderr));
+}
 
-  impl CheckOutputIntegrationTest {
-    pub fn run(&self) {
-      let args = self.args.split_whitespace();
-      let root = root_path();
-      let deno_exe = deno_exe_path();
-      println!("root path {}", root.display());
-      println!("deno_exe path {}", deno_exe.display());
+#[test]
+fn compile_with_conflict_file_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  std::fs::write(&exe, b"SHOULD NOT BE OVERWRITTEN")
+    .expect("cannot create file");
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: cannot overwrite {:?}.\n", &exe);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(&expected_stderr));
+  assert!(std::fs::read(&exe)
+    .expect("cannot read file")
+    .eq(b"SHOULD NOT BE OVERWRITTEN"));
+}
 
-      let http_server_guard = if self.http_server {
-        Some(http_server())
-      } else {
-        None
-      };
+#[test]
+fn compile_and_overwrite_file() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(&exe.exists());
 
-      let (mut reader, writer) = pipe().unwrap();
-      let tests_dir = root.join("cli").join("tests");
-      let mut command = deno_cmd();
-      command.args(args);
-      command.current_dir(&tests_dir);
-      command.stdin(Stdio::piped());
-      let writer_clone = writer.try_clone().unwrap();
-      command.stderr(writer_clone);
-      command.stdout(writer);
-
-      let mut process = command.spawn().expect("failed to execute process");
-
-      if let Some(input) = self.input {
-        let mut p_stdin = process.stdin.take().unwrap();
-        write!(p_stdin, "{}", input).unwrap();
-      }
-
-      // Very important when using pipes: This parent process is still
-      // holding its copies of the write ends, and we have to close them
-      // before we read, otherwise the read end will never report EOF. The
-      // Command object owns the writers now, and dropping it closes them.
-      drop(command);
-
-      let mut actual = String::new();
-      reader.read_to_string(&mut actual).unwrap();
-
-      let status = process.wait().expect("failed to finish process");
-      let exit_code = status.code().unwrap();
-
-      drop(http_server_guard);
-
-      actual = strip_ansi_codes(&actual).to_string();
-
-      if self.exit_code != exit_code {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        panic!(
-          "bad exit code, expected: {:?}, actual: {:?}",
-          self.exit_code, exit_code
-        );
-      }
-
-      let expected = if let Some(s) = self.output_str {
-        s.to_owned()
-      } else {
-        let output_path = tests_dir.join(self.output);
-        println!("output path {}", output_path.display());
-        std::fs::read_to_string(output_path).expect("cannot read output")
-      };
-
-      if !wildcard_match(&expected, &actual) {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        println!("EXPECTED\n{}\nEXPECTED", expected);
-        panic!("pattern match failed");
-      }
-    }
-  }
-
-  fn wildcard_match(pattern: &str, s: &str) -> bool {
-    pattern_match(pattern, s, "[WILDCARD]")
-  }
-
-  pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
-    // Normalize line endings
-    let s = s.replace("\r\n", "\n");
-    let pattern = pattern.replace("\r\n", "\n");
-
-    if pattern == wildcard {
-      return true;
-    }
-
-    let parts = pattern.split(wildcard).collect::<Vec<&str>>();
-    if parts.len() == 1 {
-      return pattern == s;
-    }
-
-    if !s.starts_with(parts[0]) {
-      return false;
-    }
-
-    let mut t = s.split_at(parts[0].len());
-
-    for (i, part) in parts.iter().enumerate() {
-      if i == 0 {
-        continue;
-      }
-      dbg!(part, i);
-      if i == parts.len() - 1 && (*part == "" || *part == "\n") {
-        dbg!("exit 1 true", i);
-        return true;
-      }
-      if let Some(found) = t.1.find(*part) {
-        dbg!("found ", found);
-        t = t.1.split_at(found + part.len());
-      } else {
-        dbg!("exit false ", i);
-        return false;
-      }
-    }
-
-    dbg!("end ", t.1.len());
-    t.1.is_empty()
-  }
-
-  #[test]
-  fn test_wildcard_match() {
-    let fixtures = vec![
-      ("foobarbaz", "foobarbaz", true),
-      ("[WILDCARD]", "foobarbaz", true),
-      ("foobar", "foobarbaz", false),
-      ("foo[WILDCARD]baz", "foobarbaz", true),
-      ("foo[WILDCARD]baz", "foobazbar", false),
-      ("foo[WILDCARD]baz[WILDCARD]qux", "foobarbazqatqux", true),
-      ("foo[WILDCARD]", "foobar", true),
-      ("foo[WILDCARD]baz[WILDCARD]", "foobarbazqat", true),
-      // check with different line endings
-      ("foo[WILDCARD]\nbaz[WILDCARD]\n", "foobar\nbazqat\n", true),
-      (
-        "foo[WILDCARD]\nbaz[WILDCARD]\n",
-        "foobar\r\nbazqat\r\n",
-        true,
-      ),
-      (
-        "foo[WILDCARD]\r\nbaz[WILDCARD]\n",
-        "foobar\nbazqat\r\n",
-        true,
-      ),
-      (
-        "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
-        "foobar\nbazqat\n",
-        true,
-      ),
-      (
-        "foo[WILDCARD]\r\nbaz[WILDCARD]\r\n",
-        "foobar\r\nbazqat\r\n",
-        true,
-      ),
-    ];
-
-    // Iterate through the fixture lists, testing each one
-    for (pattern, string, expected) in fixtures {
-      let actual = wildcard_match(pattern, string);
-      dbg!(pattern, string, expected);
-      assert_eq!(actual, expected);
-    }
-  }
+  let recompile_output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("./cli/tests/028_args.ts")
+    .arg("--output")
+    .arg(&exe)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(recompile_output.status.success());
 }

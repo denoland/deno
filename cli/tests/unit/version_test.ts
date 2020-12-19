@@ -1,4 +1,4 @@
-import { unitTest, assert } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
 unitTest(function version(): void {
   const pattern = /^\d+\.\d+\.\d+/;

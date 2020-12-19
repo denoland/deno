@@ -1,8 +1,22 @@
-const { test } = Deno;
-import { assert } from "../testing/asserts.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "../testing/asserts.ts";
+import { stripColor } from "../fmt/colors.ts";
 import * as util from "./util.ts";
 
-test({
+Deno.test({
+  name: "[util] inspect",
+  fn() {
+    assertEquals(stripColor(util.inspect({ foo: 123 })), "{ foo: 123 }");
+  },
+});
+
+Deno.test({
   name: "[util] isBoolean",
   fn() {
     assert(util.isBoolean(true));
@@ -14,7 +28,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isNull",
   fn() {
     let n;
@@ -25,7 +39,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isNullOrUndefined",
   fn() {
     let n;
@@ -36,7 +50,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isNumber",
   fn() {
     assert(util.isNumber(666));
@@ -46,7 +60,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isString",
   fn() {
     assert(util.isString("deno"));
@@ -55,7 +69,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isSymbol",
   fn() {
     assert(util.isSymbol(Symbol()));
@@ -64,7 +78,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isUndefined",
   fn() {
     let t;
@@ -74,7 +88,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isObject",
   fn() {
     const dio = { stand: "Za Warudo" };
@@ -84,7 +98,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isError",
   fn() {
     const java = new Error();
@@ -96,7 +110,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isFunction",
   fn() {
     const f = function (): void {};
@@ -106,7 +120,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isRegExp",
   fn() {
     assert(util.isRegExp(new RegExp(/f/)));
@@ -116,7 +130,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isArray",
   fn() {
     assert(util.isArray([]));
@@ -125,7 +139,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isPrimitive",
   fn() {
     const stringType = "hasti";
@@ -149,7 +163,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] TextDecoder",
   fn() {
     assert(util.TextDecoder === TextDecoder);
@@ -158,11 +172,76 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] TextEncoder",
   fn() {
     assert(util.TextEncoder === TextEncoder);
     const te: util.TextEncoder = new util.TextEncoder();
     assert(te instanceof TextEncoder);
   },
+});
+
+Deno.test({
+  name: "[util] isDate",
+  fn() {
+    // Test verifies the method is exposed. See _util/_util_types_test for details
+    assert(util.types.isDate(new Date()));
+  },
+});
+
+Deno.test({
+  name: "[util] getSystemErrorName()",
+  fn() {
+    type FnTestInvalidArg = (code?: unknown) => void;
+
+    assertThrows(
+      () => (util.getSystemErrorName as FnTestInvalidArg)(),
+      TypeError,
+    );
+    assertThrows(
+      () => (util.getSystemErrorName as FnTestInvalidArg)(1),
+      RangeError,
+    );
+
+    assertStrictEquals(util.getSystemErrorName(-424242), undefined);
+
+    switch (Deno.build.os) {
+      case "windows":
+        assertStrictEquals(util.getSystemErrorName(-4091), "EADDRINUSE");
+        break;
+
+      case "darwin":
+        assertStrictEquals(util.getSystemErrorName(-48), "EADDRINUSE");
+        break;
+
+      case "linux":
+        assertStrictEquals(util.getSystemErrorName(-98), "EADDRINUSE");
+        break;
+    }
+  },
+});
+
+Deno.test("[util] deprecate", () => {
+  const warn = console.warn.bind(null);
+
+  let output;
+  console.warn = function (str: string) {
+    output = str;
+    warn(output);
+  };
+
+  const message = "x is deprecated";
+
+  const expected = 12;
+  let result;
+  const x = util.deprecate(() => {
+    result = expected;
+  }, message);
+
+  x();
+
+  assertEquals(expected, result);
+  assertEquals(output, message);
+
+  console.warn = warn;
 });

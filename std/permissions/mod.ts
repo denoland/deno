@@ -4,7 +4,8 @@ const { PermissionDenied } = Deno.errors;
 
 function getPermissionString(descriptors: Deno.PermissionDescriptor[]): string {
   return descriptors.length
-    ? `  ${descriptors
+    ? `  ${
+      descriptors
         .map((pd) => {
           switch (pd.name) {
             case "read":
@@ -20,7 +21,8 @@ function getPermissionString(descriptors: Deno.PermissionDescriptor[]): string {
               return `--allow-${pd.name}`;
           }
         })
-        .join("\n  ")}`
+        .join("\n  ")
+    }`
     : "";
 }
 
@@ -52,7 +54,7 @@ export async function grant(
  * If one of the permissions requires a prompt, the function will attempt to
  * prompt for it.  The function resolves with all of the granted permissions. */
 export async function grant(
-  descriptors: Deno.PermissionDescriptor[]
+  descriptors: Deno.PermissionDescriptor[],
 ): Promise<void | Deno.PermissionDescriptor[]>;
 export async function grant(
   descriptor: Deno.PermissionDescriptor[] | Deno.PermissionDescriptor,
@@ -94,7 +96,7 @@ export async function grantOrThrow(
  * the denied permissions.  If all permissions are granted, the function will
  * resolve. */
 export async function grantOrThrow(
-  descriptors: Deno.PermissionDescriptor[]
+  descriptors: Deno.PermissionDescriptor[],
 ): Promise<void>;
 export async function grantOrThrow(
   descriptor: Deno.PermissionDescriptor[] | Deno.PermissionDescriptor,
@@ -112,9 +114,11 @@ export async function grantOrThrow(
   }
   if (denied.length) {
     throw new PermissionDenied(
-      `The following permissions have not been granted:\n${getPermissionString(
-        denied
-      )}`
+      `The following permissions have not been granted:\n${
+        getPermissionString(
+          denied,
+        )
+      }`,
     );
   }
 }

@@ -1,25 +1,32 @@
-const { test } = Deno;
-import { bench, runBenchmarks, BenchmarkRunError } from "./bench.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  assertEquals,
+  bench,
+  BenchmarkRunError,
+  BenchmarkRunProgress,
+  clearBenchmarks,
+  ProgressState,
+  runBenchmarks,
+} from "./bench.ts";
+import {
   assert,
+  assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "./asserts.ts";
 
-test({
+Deno.test({
   name: "benching",
 
   fn: async function (): Promise<void> {
-    bench(function forIncrementX1e9(b): void {
+    bench(function forIncrementX1e3(b): void {
       b.start();
-      for (let i = 0; i < 1e9; i++);
+      for (let i = 0; i < 1e3; i++);
       b.stop();
     });
 
-    bench(function forDecrementX1e9(b): void {
+    bench(function forDecrementX1e3(b): void {
       b.start();
-      for (let i = 1e9; i > 0; i--);
+      for (let i = 1e3; i > 0; i--);
       b.stop();
     });
 
@@ -40,8 +47,8 @@ test({
           async (denoland: string): Promise<void> => {
             const r = await fetch(denoland);
             await r.text();
-          }
-        )
+          },
+        ),
       );
       b.stop();
     });
@@ -63,39 +70,52 @@ test({
 
     const benchResult = await runBenchmarks({ skip: /throw/ });
 
-    assertEquals(benchResult.measured, 5);
     assertEquals(benchResult.filtered, 1);
     assertEquals(benchResult.results.length, 5);
 
+    const resultWithSingleRunsFiltered = benchResult.results.filter(
+      ({ name }) => name === "forDecrementX1e3",
+    );
+    assertEquals(resultWithSingleRunsFiltered.length, 1);
+
+    const resultWithSingleRuns = resultWithSingleRunsFiltered[0];
+    assert(!!resultWithSingleRuns.runsCount);
+    assert(!!resultWithSingleRuns.measuredRunsAvgMs);
+    assert(!!resultWithSingleRuns.measuredRunsMs);
+    assertEquals(resultWithSingleRuns.runsCount, 1);
+    assertEquals(resultWithSingleRuns.measuredRunsMs.length, 1);
+
     const resultWithMultipleRunsFiltered = benchResult.results.filter(
-      (r) => r.name === "runs100ForIncrementX1e6"
+      ({ name }) => name === "runs100ForIncrementX1e6",
     );
     assertEquals(resultWithMultipleRunsFiltered.length, 1);
 
     const resultWithMultipleRuns = resultWithMultipleRunsFiltered[0];
     assert(!!resultWithMultipleRuns.runsCount);
-    assert(!!resultWithMultipleRuns.runsAvgMs);
-    assert(!!resultWithMultipleRuns.runsMs);
+    assert(!!resultWithMultipleRuns.measuredRunsAvgMs);
+    assert(!!resultWithMultipleRuns.measuredRunsMs);
     assertEquals(resultWithMultipleRuns.runsCount, 100);
-    assertEquals(resultWithMultipleRuns.runsMs!.length, 100);
+    assertEquals(resultWithMultipleRuns.measuredRunsMs.length, 100);
+
+    clearBenchmarks();
   },
 });
 
-test({
-  name: "benchWithoutName",
+Deno.test({
+  name: "Bench without name should throw",
   fn() {
     assertThrows(
       (): void => {
         bench(() => {});
       },
       Error,
-      "The benchmark function must not be anonymous"
+      "The benchmark function must not be anonymous",
     );
   },
 });
 
-test({
-  name: "benchWithoutStop",
+Deno.test({
+  name: "Bench without stop should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
@@ -106,13 +126,13 @@ test({
         await runBenchmarks({ only: /benchWithoutStop/, silent: true });
       },
       BenchmarkRunError,
-      "The benchmark timer's stop method must be called"
+      "The benchmark timer's stop method must be called",
     );
   },
 });
 
-test({
-  name: "benchWithoutStart",
+Deno.test({
+  name: "Bench without start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
@@ -123,13 +143,13 @@ test({
         await runBenchmarks({ only: /benchWithoutStart/, silent: true });
       },
       BenchmarkRunError,
-      "The benchmark timer's start method must be called"
+      "The benchmark timer's start method must be called",
     );
   },
 });
 
-test({
-  name: "benchStopBeforeStart",
+Deno.test({
+  name: "Bench with stop before start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
@@ -141,7 +161,219 @@ test({
         await runBenchmarks({ only: /benchStopBeforeStart/, silent: true });
       },
       BenchmarkRunError,
-      "The benchmark timer's start method must be called before its stop method"
+      "The benchmark timer's start method must be called before its stop method",
     );
   },
 });
+
+Deno.test({
+  name: "clearBenchmarks should clear all candidates",
+  fn: async function (): Promise<void> {
+    dummyBench("test");
+
+    clearBenchmarks();
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 0);
+  },
+});
+
+Deno.test({
+  name: "clearBenchmarks with only as option",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench("test");
+    dummyBench("onlyclear");
+
+    clearBenchmarks({ only: /only/ });
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 1);
+    assertEquals(benchingResults.results[0].name, "test");
+  },
+});
+
+Deno.test({
+  name: "clearBenchmarks with skip as option",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench("test");
+    dummyBench("skipclear");
+
+    clearBenchmarks({ skip: /skip/ });
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 1);
+    assertEquals(benchingResults.results[0].name, "skipclear");
+  },
+});
+
+Deno.test({
+  name: "clearBenchmarks with only and skip as option",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench("test");
+    dummyBench("clearonly");
+    dummyBench("clearskip");
+    dummyBench("clearonly");
+
+    clearBenchmarks({ only: /clear/, skip: /skip/ });
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 2);
+    assert(!!benchingResults.results.find(({ name }) => name === "test"));
+    assert(!!benchingResults.results.find(({ name }) => name === "clearskip"));
+  },
+});
+
+Deno.test({
+  name: "progressCallback of runBenchmarks",
+  fn: async function (): Promise<void> {
+    clearBenchmarks();
+    dummyBench("skip");
+    dummyBench("single");
+    dummyBench("multiple", 2);
+
+    const progressCallbacks: BenchmarkRunProgress[] = [];
+
+    const benchingResults = await runBenchmarks(
+      { skip: /skip/, silent: true },
+      (progress) => {
+        progressCallbacks.push(progress);
+      },
+    );
+
+    let pc = 0;
+    // Assert initial progress before running
+    let progress = progressCallbacks[pc++];
+    assert(progress.queued);
+    assertEquals(progress.state, ProgressState.BenchmarkingStart);
+    assertEquals(progress.filtered, 1);
+    assertEquals(progress.queued.length, 2);
+    assertEquals(progress.running, undefined);
+    assertEquals(progress.results, []);
+
+    // Assert start of bench "single"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchStart);
+    assertEquals(progress.filtered, 1);
+    assert(progress.queued);
+    assertEquals(progress.queued.length, 1);
+    assert(!!progress.queued.find(({ name }) => name == "multiple"));
+    assertEquals(progress.running, {
+      name: "single",
+      runsCount: 1,
+      measuredRunsMs: [],
+    });
+    assertEquals(progress.results, []);
+
+    // Assert running result of bench "single"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
+    assertEquals(progress.queued.length, 1);
+    assertEquals(progress.running!.measuredRunsMs.length, 1);
+    assertEquals(progress.results.length, 0);
+
+    // Assert result of bench "single"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchResult);
+    assert(progress.queued);
+    assertEquals(progress.queued.length, 1);
+    assertEquals(progress.running, undefined);
+    assertEquals(progress.results.length, 1);
+    assert(!!progress.results.find(({ name }) => name == "single"));
+
+    // Assert start of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchStart);
+    assert(progress.queued);
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running, {
+      name: "multiple",
+      runsCount: 2,
+      measuredRunsMs: [],
+    });
+    assertEquals(progress.results.length, 1);
+
+    // Assert first result of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running!.measuredRunsMs.length, 1);
+    assertEquals(progress.results.length, 1);
+
+    // Assert second result of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running!.measuredRunsMs.length, 2);
+    assertEquals(progress.results.length, 1);
+
+    // Assert finish of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchResult);
+    assert(progress.queued);
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running, undefined);
+    assertEquals(progress.results.length, 2);
+    assert(!!progress.results.find(({ name }) => name == "single"));
+    const resultOfMultiple = progress.results.filter(
+      ({ name }) => name == "multiple",
+    );
+    assertEquals(resultOfMultiple.length, 1);
+    assert(!!resultOfMultiple[0].measuredRunsMs);
+    assert(!isNaN(resultOfMultiple[0].measuredRunsAvgMs));
+    assertEquals(resultOfMultiple[0].measuredRunsMs.length, 2);
+
+    // The last progress should equal the final result from promise except the state property
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchmarkingEnd);
+    delete progress.state;
+    assertEquals(progress, benchingResults);
+  },
+});
+
+Deno.test({
+  name: "async progressCallback",
+  fn: async function (): Promise<void> {
+    clearBenchmarks();
+    dummyBench("single");
+
+    const asyncCallbacks = [];
+
+    await runBenchmarks({ silent: true }, (progress) => {
+      return new Promise((resolve) => {
+        queueMicrotask(() => {
+          asyncCallbacks.push(progress);
+          resolve();
+        });
+      });
+    });
+
+    assertEquals(asyncCallbacks.length, 5);
+  },
+});
+
+function dummyBench(name: string, runs = 1): void {
+  bench({
+    name,
+    runs,
+    func(b) {
+      b.start();
+      b.stop();
+    },
+  });
+}

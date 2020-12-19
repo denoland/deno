@@ -1,0 +1,5 @@
+Download http://localhost:4548/cli/tests/subdir/redirects/a.ts
+Download http://localhost:4546/cli/tests/subdir/redirects/a.ts
+Download http://localhost:4545/cli/tests/subdir/redirects/a.ts
+Download http://localhost:4545/cli/tests/subdir/redirects/b.ts
+Check http://localhost:4548/cli/tests/subdir/redirects/a.ts

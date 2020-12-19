@@ -1,1 +1,1 @@
-Cannot resolve module "http://127.0.0.1:4545/cli/tests/019_media_types.ts"
+error: A remote specifier was requested: "http://127.0.0.1:4545/cli/tests/019_media_types.ts", but --no-remote is specified.

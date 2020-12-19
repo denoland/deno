@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringIncludes,
+  unitTest,
 } from "./test_util.ts";
 
-unitTest({ ignore: true }, function formDataHasCorrectNameProp(): void {
+unitTest(function formDataHasCorrectNameProp(): void {
   assertEquals(FormData.name, "FormData");
 });
 
@@ -41,10 +41,10 @@ unitTest(function formDataParamsGetSuccess(): void {
   formData.append("a", "true");
   formData.append("b", "false");
   formData.append("a", "null");
-  // @ts-expect-error
-  formData.append("d", undefined);
-  // @ts-expect-error
-  formData.append("e", null);
+  // deno-lint-ignore no-explicit-any
+  formData.append("d", undefined as any);
+  // deno-lint-ignore no-explicit-any
+  formData.append("e", null as any);
   assertEquals(formData.get("a"), "true");
   assertEquals(formData.get("b"), "false");
   assertEquals(formData.get("c"), null);
@@ -70,11 +70,11 @@ unitTest(function formDataParamsSetSuccess(): void {
   assertEquals(formData.getAll("b"), ["false"]);
   formData.set("a", "false");
   assertEquals(formData.getAll("a"), ["false"]);
-  // @ts-expect-error
-  formData.set("d", undefined);
+  // deno-lint-ignore no-explicit-any
+  formData.set("d", undefined as any);
   assertEquals(formData.get("d"), "undefined");
-  // @ts-expect-error
-  formData.set("e", null);
+  // deno-lint-ignore no-explicit-any
+  formData.set("e", null as any);
   assertEquals(formData.get("e"), "null");
 });
 
@@ -143,8 +143,8 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // @ts-expect-error
-      formData[method]();
+      // deno-lint-ignore no-explicit-any
+      (formData as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -155,9 +155,9 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringIncludes(
       errMsg,
-      `${method} requires at least 1 argument, but only 0 present`
+      `${method} requires at least 1 argument, but only 0 present`,
     );
   });
 
@@ -167,8 +167,8 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // @ts-expect-error
-      formData[method]();
+      // deno-lint-ignore no-explicit-any
+      (formData as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -179,16 +179,16 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringIncludes(
       errMsg,
-      `${method} requires at least 2 arguments, but only 0 present`
+      `${method} requires at least 2 arguments, but only 0 present`,
     );
 
     hasThrown = 0;
     errMsg = "";
     try {
-      // @ts-expect-error
-      formData[method]("foo");
+      // deno-lint-ignore no-explicit-any
+      (formData as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -199,9 +199,9 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringIncludes(
       errMsg,
-      `${method} requires at least 2 arguments, but only 1 present`
+      `${method} requires at least 2 arguments, but only 1 present`,
     );
   });
 });

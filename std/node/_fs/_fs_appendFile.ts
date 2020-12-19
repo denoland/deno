@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  WriteFileOptions,
-  isFileOptions,
   CallbackWithError,
   getOpenOptions,
+  isFileOptions,
+  WriteFileOptions,
 } from "./_fs_common.ts";
-import { notImplemented } from "../_utils.ts";
+import { Encodings, notImplemented } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
 
 /**
@@ -14,14 +14,14 @@ import { fromFileUrl } from "../path.ts";
  */
 export function appendFile(
   pathOrRid: string | number | URL,
-  data: string,
-  optionsOrCallback: string | WriteFileOptions | CallbackWithError,
-  callback?: CallbackWithError
+  data: string | Uint8Array,
+  optionsOrCallback: Encodings | WriteFileOptions | CallbackWithError,
+  callback?: CallbackWithError,
 ): void {
   pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
   const callbackFn: CallbackWithError | undefined =
     optionsOrCallback instanceof Function ? optionsOrCallback : callback;
-  const options: string | WriteFileOptions | undefined =
+  const options: Encodings | WriteFileOptions | undefined =
     optionsOrCallback instanceof Function ? undefined : optionsOrCallback;
   if (!callbackFn) {
     throw new Error("No callback function supplied");
@@ -29,7 +29,9 @@ export function appendFile(
 
   validateEncoding(options);
   let rid = -1;
-  const buffer: Uint8Array = new TextEncoder().encode(data);
+  const buffer: Uint8Array = data instanceof Uint8Array
+    ? data
+    : new TextEncoder().encode(data);
   new Promise((resolve, reject) => {
     if (typeof pathOrRid === "number") {
       rid = pathOrRid;
@@ -78,8 +80,8 @@ function closeRidIfNecessary(isPathString: boolean, rid: number): void {
  */
 export function appendFileSync(
   pathOrRid: string | number | URL,
-  data: string,
-  options?: string | WriteFileOptions
+  data: string | Uint8Array,
+  options?: Encodings | WriteFileOptions,
 ): void {
   let rid = -1;
 
@@ -106,7 +108,9 @@ export function appendFileSync(
       rid = file.rid;
     }
 
-    const buffer: Uint8Array = new TextEncoder().encode(data);
+    const buffer: Uint8Array = data instanceof Uint8Array
+      ? data
+      : new TextEncoder().encode(data);
 
     Deno.writeSync(rid, buffer);
   } finally {
@@ -115,7 +119,7 @@ export function appendFileSync(
 }
 
 function validateEncoding(
-  encodingOption: string | WriteFileOptions | undefined
+  encodingOption: Encodings | WriteFileOptions | undefined,
 ): void {
   if (!encodingOption) return;
 

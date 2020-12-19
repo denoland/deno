@@ -1,1 +1,1 @@
-error: Uncaught TypeError: network access to "http://localhost:4545/cli/tests/subdir/mod4.js", run again with the --allow-net flag
+error: Uncaught (in promise) TypeError: network access to "http://localhost:4545/cli/tests/subdir/mod4.js", run again with the --allow-net flag

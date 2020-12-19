@@ -1,9 +1,5 @@
 [WILDCARD]
-error: Uncaught TypeError: Cannot resolve extension for "[WILDCARD]config.json" with mediaType "Json".
-    at getExtension ($deno$/compiler.ts:[WILDCARD])
-    at new SourceFile ($deno$/compiler.ts:[WILDCARD])
-    at Function.addToCache ($deno$/compiler.ts:[WILDCARD])
-    at buildSourceFileCache ($deno$/compiler.ts:[WILDCARD])
-    at compile ($deno$/compiler.ts:[WILDCARD])
-    at tsCompilerOnMessage ($deno$/compiler.ts:[WILDCARD])
+error: An unsupported media type was attempted to be imported as a module.
+  Specifier: [WILDCARD]cli/tests/subdir/config.json
+  MediaType: Json
 [WILDCARD]

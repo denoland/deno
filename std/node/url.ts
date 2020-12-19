@@ -20,14 +20,13 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import {
+  CHAR_BACKWARD_SLASH,
+  CHAR_FORWARD_SLASH,
   CHAR_LOWERCASE_A,
   CHAR_LOWERCASE_Z,
-  CHAR_FORWARD_SLASH,
-  CHAR_BACKWARD_SLASH,
 } from "../path/_constants.ts";
 import * as path from "./path.ts";
-
-const isWindows = Deno.build.os === "windows";
+import { isWindows } from "../_util/os.ts";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
@@ -36,14 +35,23 @@ const newlineRegEx = /\n/g;
 const carriageReturnRegEx = /\r/g;
 const tabRegEx = /\t/g;
 
+const _url = URL;
+export { _url as URL };
+
+/**
+ * Get fully resolved platform-specific file path from the given URL string/ object
+ * @param path The file URL string or URL object to convert to a path
+ */
 export function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);
-  else if (!(path instanceof URL))
+  else if (!(path instanceof URL)) {
     throw new Deno.errors.InvalidData(
-      "invalid argument path , must be a string or URL"
+      "invalid argument path , must be a string or URL",
     );
-  if (path.protocol !== "file:")
+  }
+  if (path.protocol !== "file:") {
     throw new Deno.errors.InvalidData("invalid url scheme");
+  }
   return isWindows ? getPathFromURLWin(path) : getPathFromURLPosix(path);
 }
 
@@ -59,7 +67,7 @@ function getPathFromURLWin(url: URL): string {
       ) {
         // 5c 5C \
         throw new Deno.errors.InvalidData(
-          "must not include encoded \\ or / characters"
+          "must not include encoded \\ or / characters",
         );
       }
     }
@@ -95,7 +103,7 @@ function getPathFromURLPosix(url: URL): string {
       const third = pathname.codePointAt(n + 2) || 0x20;
       if (pathname[n + 1] === "2" && third === 102) {
         throw new Deno.errors.InvalidData(
-          "must not include encoded / characters"
+          "must not include encoded / characters",
         );
       }
     }
@@ -103,6 +111,7 @@ function getPathFromURLPosix(url: URL): string {
   return decodeURIComponent(pathname);
 }
 
+/** Get fully resolved platform-specific File URL from the given file path */
 export function pathToFileURL(filepath: string): URL {
   let resolved = path.resolve(filepath);
   // path.resolve strips trailing slashes so we must add them back
@@ -111,17 +120,26 @@ export function pathToFileURL(filepath: string): URL {
     (filePathLast === CHAR_FORWARD_SLASH ||
       (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
     resolved[resolved.length - 1] !== path.sep
-  )
+  ) {
     resolved += "/";
+  }
   const outURL = new URL("file://");
   if (resolved.includes("%")) resolved = resolved.replace(percentRegEx, "%25");
   // In posix, "/" is a valid character in paths
-  if (!isWindows && resolved.includes("\\"))
+  if (!isWindows && resolved.includes("\\")) {
     resolved = resolved.replace(backslashRegEx, "%5C");
+  }
   if (resolved.includes("\n")) resolved = resolved.replace(newlineRegEx, "%0A");
-  if (resolved.includes("\r"))
+  if (resolved.includes("\r")) {
     resolved = resolved.replace(carriageReturnRegEx, "%0D");
+  }
   if (resolved.includes("\t")) resolved = resolved.replace(tabRegEx, "%09");
   outURL.pathname = resolved;
   return outURL;
 }
+
+export default {
+  fileURLToPath,
+  pathToFileURL,
+  URL,
+};

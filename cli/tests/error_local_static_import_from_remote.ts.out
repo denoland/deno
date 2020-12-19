@@ -1,3 +1,4 @@
 [WILDCARD]
-error: Remote modules are not allowed to statically import local modules. Use dynamic import instead.
-Imported from "[WILDCARD]error_local_static_import_from_remote.ts:1"
+error: Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.
+  Importing: file:///some/dir/file.ts
+    at http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts:1:0

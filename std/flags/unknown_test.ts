@@ -45,7 +45,7 @@ Deno.test(
       honk: true,
       _: [],
     });
-  }
+  },
 );
 
 Deno.test("stringAndAliasIsNotUnkown", function (): void {

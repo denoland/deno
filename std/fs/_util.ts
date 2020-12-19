@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
 
 /**
@@ -9,7 +10,7 @@ import * as path from "../path/mod.ts";
 export function isSubdir(
   src: string,
   dest: string,
-  sep: string = path.sep
+  sep: string = path.sep,
 ): boolean {
   if (src === dest) {
     return false;

@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertThrowsAsync,
+  unitTest,
 } from "./test_util.ts";
 
 unitTest(function filesStdioFileDescriptors(): void {
@@ -21,7 +21,6 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
   const bytesWritten = await Deno.copy(file, Deno.stdout);
   const fileSize = Deno.statSync(filename).size;
   assertEquals(bytesWritten, fileSize);
-  console.log("bytes written", bytesWritten);
   file.close();
 });
 
@@ -54,7 +53,7 @@ unitTest(
     assertEquals(totalSize, 12);
     assertEquals(iterations, 2);
     file.close();
-  }
+  },
 );
 
 unitTest({ perms: { read: true } }, function filesIterSync(): void {
@@ -86,7 +85,7 @@ unitTest(
     assertEquals(totalSize, 12);
     assertEquals(iterations, 2);
     file.close();
-  }
+  },
 );
 
 unitTest(async function readerIter(): Promise<void> {
@@ -175,7 +174,7 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
-  }
+  },
 );
 
 unitTest(
@@ -194,7 +193,59 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
-  }
+  },
+);
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  function openSyncUrl(): void {
+    const tempDir = Deno.makeTempDirSync();
+    const fileUrl = new URL(
+      `file://${
+        Deno.build.os === "windows" ? "/" : ""
+      }${tempDir}/test_open.txt`,
+    );
+    const file = Deno.openSync(fileUrl, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(fileUrl);
+    if (Deno.build.os !== "windows") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  async function openUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(
+      `file://${
+        Deno.build.os === "windows" ? "/" : ""
+      }${tempDir}/test_open.txt`,
+    );
+    const file = await Deno.open(fileUrl, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(fileUrl);
+    if (Deno.build.os !== "windows") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+
+    Deno.removeSync(tempDir, { recursive: true });
+  },
 );
 
 unitTest(
@@ -203,76 +254,54 @@ unitTest(
     const filename = "tests/hello.txt";
     const openOptions: Deno.OpenOptions[] = [{ write: true }, { append: true }];
     for (const options of openOptions) {
-      let err;
-      try {
+      await assertThrowsAsync(async () => {
         await Deno.open(filename, options);
-      } catch (e) {
-        err = e;
-      }
-      assert(!!err);
-      assert(err instanceof Deno.errors.PermissionDenied);
-      assertEquals(err.name, "PermissionDenied");
+      }, Deno.errors.PermissionDenied);
     }
-  }
+  },
 );
 
 unitTest(async function openOptions(): Promise<void> {
   const filename = "cli/tests/fixture.json";
-  let err;
-  try {
-    await Deno.open(filename, { write: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStrContains(
-    err.message,
-    "OpenOptions requires at least one option to be true"
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { write: false });
+    },
+    Error,
+    "OpenOptions requires at least one option to be true",
   );
 
-  try {
-    await Deno.open(filename, { truncate: true, write: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStrContains(err.message, "'truncate' option requires 'write' option");
-
-  try {
-    await Deno.open(filename, { create: true, write: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStrContains(
-    err.message,
-    "'create' or 'createNew' options require 'write' or 'append' option"
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { truncate: true, write: false });
+    },
+    Error,
+    "'truncate' option requires 'write' option",
   );
 
-  try {
-    await Deno.open(filename, { createNew: true, append: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStrContains(
-    err.message,
-    "'create' or 'createNew' options require 'write' or 'append' option"
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { create: true, write: false });
+    },
+    Error,
+    "'create' or 'createNew' options require 'write' or 'append' option",
+  );
+
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { createNew: true, append: false });
+    },
+    Error,
+    "'create' or 'createNew' options require 'write' or 'append' option",
   );
 });
 
 unitTest({ perms: { read: false } }, async function readPermFailure(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.open("package.json", { read: true });
-    await Deno.open("cli/tests/fixture.json", { read: true });
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -288,19 +317,15 @@ unitTest(
     const file = await Deno.open(filename, w);
 
     // writing null should throw an error
-    let err;
-    try {
-      // @ts-expect-error
-      await file.write(null);
-    } catch (e) {
-      err = e;
-    }
-    // TODO: Check error kind when dispatch_minimal pipes errors properly
-    assert(!!err);
-
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        // deno-lint-ignore no-explicit-any
+        await file.write(null as any);
+      },
+    ); // TODO: Check error kind when dispatch_minimal pipes errors properly
     file.close();
     await Deno.remove(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -320,35 +345,25 @@ unitTest(
     assert(bytesRead === 0);
 
     // reading file into null buffer should throw an error
-    let err;
-    try {
-      // @ts-expect-error
-      await file.read(null);
-    } catch (e) {
-      err = e;
-    }
+    await assertThrowsAsync(async () => {
+      // deno-lint-ignore no-explicit-any
+      await file.read(null as any);
+    }, TypeError);
     // TODO: Check error kind when dispatch_minimal pipes errors properly
-    assert(!!err);
 
     file.close();
     await Deno.remove(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
   { perms: { write: false, read: false } },
   async function readWritePermFailure(): Promise<void> {
     const filename = "tests/hello.txt";
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.open(filename, { read: true });
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
+    }, Deno.errors.PermissionDenied);
+  },
 );
 
 unitTest(
@@ -369,7 +384,72 @@ unitTest(
 
     // TODO: test different modes
     await Deno.remove(tempDir, { recursive: true });
-  }
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createFileWithUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
+    );
+    const f = await Deno.create(fileUrl);
+    let fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    await Deno.remove(tempDir, { recursive: true });
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createSyncFile(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const filename = tempDir + "/test.txt";
+    const f = Deno.createSync(filename);
+    let fileInfo = Deno.statSync(filename);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(filename);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    // TODO: test different modes
+    await Deno.remove(tempDir, { recursive: true });
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createSyncFileWithUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
+    );
+    const f = Deno.createSync(fileUrl);
+    let fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    await Deno.remove(tempDir, { recursive: true });
+  },
 );
 
 unitTest(
@@ -412,7 +492,7 @@ unitTest(
     const fileSize = Deno.statSync(filename).size;
     assertEquals(fileSize, 0);
     await Deno.remove(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -448,7 +528,7 @@ unitTest(
     file.close();
 
     await Deno.remove(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest({ perms: { read: true } }, async function seekStart(): Promise<void> {
@@ -552,15 +632,13 @@ unitTest({ perms: { read: true } }, function seekSyncEnd(): void {
 unitTest({ perms: { read: true } }, async function seekMode(): Promise<void> {
   const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
-  let err;
-  try {
-    await file.seek(1, -1);
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assert(err instanceof TypeError);
-  assertStrContains(err.message, "Invalid seek mode");
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await file.seek(1, -1);
+    },
+    TypeError,
+    "Invalid seek mode",
+  );
 
   // We should still be able to read the file
   // since it is still open.

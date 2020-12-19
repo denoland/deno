@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assert } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function eventInitializedWithType(): void {
   const type = "click";
@@ -68,7 +68,7 @@ unitTest(function eventPreventDefaultSuccess(): void {
 });
 
 unitTest(function eventInitializedWithNonStringType(): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const type: any = undefined;
   const event = new Event(type);
 
@@ -91,4 +91,42 @@ unitTest(function eventIsTrusted(): void {
   assertEquals(typeof desc2!.get, "function");
 
   assertEquals(desc1!.get, desc2!.get);
+});
+
+unitTest(function eventInspectOutput(): void {
+  // deno-lint-ignore no-explicit-any
+  const cases: Array<[any, (event: any) => string]> = [
+    [
+      new Event("test"),
+      (event: Event) =>
+        `Event {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  target: null,\n  timeStamp: ${event.timeStamp},\n  type: "test"\n}`,
+    ],
+    [
+      new ErrorEvent("error"),
+      (event: Event) =>
+        `ErrorEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  target: null,\n  timeStamp: ${event.timeStamp},\n  type: "error",\n  message: "",\n  filename: "",\n  lineno: 0,\n  colno: 0,\n  error: null\n}`,
+    ],
+    [
+      new CloseEvent("close"),
+      (event: Event) =>
+        `CloseEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  target: null,\n  timeStamp: ${event.timeStamp},\n  type: "close",\n  wasClean: false,\n  code: 0,\n  reason: ""\n}`,
+    ],
+    [
+      new CustomEvent("custom"),
+      (event: Event) =>
+        `CustomEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  target: null,\n  timeStamp: ${event.timeStamp},\n  type: "custom",\n  detail: undefined\n}`,
+    ],
+    [
+      new ProgressEvent("progress"),
+      (event: Event) =>
+        `ProgressEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  target: null,\n  timeStamp: ${event.timeStamp},\n  type: "progress",\n  lengthComputable: false,\n  loaded: 0,\n  total: 0\n}`,
+    ],
+  ];
+
+  for (const [event, outputProvider] of cases) {
+    assertEquals(
+      event[Symbol.for("Deno.customInspect")](),
+      outputProvider(event),
+    );
+  }
 });

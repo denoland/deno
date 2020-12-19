@@ -1,1 +1,2 @@
-[WILDCARD]error: Cannot resolve module "[WILDCARD]/non-existent" from "[WILDCARD]/error_006_import_ext_failure.ts"
+[WILDCARD]error: Cannot resolve module "[WILDCARD]/non-existent" from "[WILDCARD]/error_006_import_ext_failure.ts".
+    at file:///[WILDCARD]cli/tests/error_006_import_ext_failure.ts:1:0

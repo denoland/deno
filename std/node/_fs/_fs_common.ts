@@ -1,20 +1,32 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-import { notImplemented } from "../_utils.ts";
+import {
+  BinaryEncodings,
+  Encodings,
+  notImplemented,
+  TextEncodings,
+} from "../_utils.ts";
 
 export type CallbackWithError = (err?: Error | null) => void;
 
 export interface FileOptions {
-  encoding?: string;
+  encoding?: Encodings;
   flag?: string;
 }
+
+export type TextOptionsArgument =
+  | TextEncodings
+  | ({ encoding: TextEncodings } & FileOptions);
+export type BinaryOptionsArgument =
+  | BinaryEncodings
+  | ({ encoding: BinaryEncodings } & FileOptions);
+export type FileOptionsArgument = Encodings | FileOptions;
 
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
 }
 
 export function isFileOptions(
-  fileOptions: string | WriteFileOptions | undefined
+  fileOptions: string | WriteFileOptions | undefined,
 ): fileOptions is FileOptions {
   if (!fileOptions) return false;
 
@@ -26,33 +38,43 @@ export function isFileOptions(
 }
 
 export function getEncoding(
-  optOrCallback?: FileOptions | WriteFileOptions | Function | string
-): string | null {
+  optOrCallback?:
+    | FileOptions
+    | WriteFileOptions
+    // deno-lint-ignore no-explicit-any
+    | ((...args: any[]) => any)
+    | Encodings
+    | null,
+): Encodings | null {
   if (!optOrCallback || typeof optOrCallback === "function") {
     return null;
   }
 
-  const encoding =
-    typeof optOrCallback === "string" ? optOrCallback : optOrCallback.encoding;
+  const encoding = typeof optOrCallback === "string"
+    ? optOrCallback
+    : optOrCallback.encoding;
   if (!encoding) return null;
-  if (encoding === "utf8" || encoding === "utf-8") {
+  return encoding;
+}
+
+export function checkEncoding(encoding: Encodings | null): Encodings | null {
+  if (!encoding) return null;
+
+  encoding = encoding.toLowerCase() as Encodings;
+  if (["utf8", "hex", "base64"].includes(encoding)) return encoding;
+
+  if (encoding === "utf-8") {
     return "utf8";
   }
-  if (encoding === "buffer") {
-    return "buffer";
+  if (encoding === "binary") {
+    return "binary";
+    // before this was buffer, however buffer is not used in Node
+    // node -e "require('fs').readFile('../world.txt', 'buffer', console.log)"
   }
 
-  const notImplementedEncodings = [
-    "utf16le",
-    "latin1",
-    "base64",
-    "hex",
-    "ascii",
-    "binary",
-    "ucs2",
-  ];
+  const notImplementedEncodings = ["utf16le", "latin1", "ascii", "ucs2"];
 
-  if (notImplementedEncodings.includes(encoding)) {
+  if (notImplementedEncodings.includes(encoding as string)) {
     notImplemented(`"${encoding}" encoding`);
   }
 
@@ -119,14 +141,17 @@ export function getOpenOptions(flag: string | undefined): Deno.OpenOptions {
     case "as": {
       // 'as': Open file for appending in synchronous mode. The file is created if it does not exist.
       openOptions = { create: true, append: true };
+      break;
     }
     case "as+": {
       // 'as+': Open file for reading and appending in synchronous mode. The file is created if it does not exist.
       openOptions = { create: true, read: true, append: true };
+      break;
     }
     case "rs+": {
       // 'rs+': Open file for reading and writing in synchronous mode. Instructs the operating system to bypass the local file system cache.
       openOptions = { create: true, read: true, write: true };
+      break;
     }
     default: {
       throw new Error(`Unrecognized file system flag: ${flag}`);

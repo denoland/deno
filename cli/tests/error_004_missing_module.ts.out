@@ -1,1 +1,2 @@
-[WILDCARD]error: Cannot resolve module "[WILDCARD]/bad-module.ts" from "[WILDCARD]/error_004_missing_module.ts"
+[WILDCARD]error: Cannot resolve module "file:///[WILDCARD]cli/tests/bad-module.ts" from "file:///[WILDCARD]cli/tests/error_004_missing_module.ts".
+    at file:///[WILDCARD]cli/tests/error_004_missing_module.ts:2:0

@@ -43,5 +43,5 @@ For testing purposes we need following files:
 - `RootCA.crt`
 - `RootCA.key`
 - `RootCA.pem`
-- `locahost.crt`
-- `locahost.key`
+- `localhost.crt`
+- `localhost.key`

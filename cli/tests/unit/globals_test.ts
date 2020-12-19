@@ -1,8 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
 unitTest(function globalThisExists(): void {
   assert(globalThis != null);
+});
+
+unitTest(function noInternalGlobals(): void {
+  // globalThis.__bootstrap should not be there.
+  for (const key of Object.keys(globalThis)) {
+    assert(!key.startsWith("_"));
+  }
 });
 
 unitTest(function windowExists(): void {
@@ -29,6 +36,18 @@ unitTest(function globalThisEqualsSelf(): void {
   assert(globalThis === self);
 });
 
+unitTest(function globalThisInstanceofWindow(): void {
+  assert(globalThis instanceof Window);
+});
+
+unitTest(function globalThisConstructorLength(): void {
+  assert(globalThis.constructor.length === 0);
+});
+
+unitTest(function globalThisInstanceofEventTarget(): void {
+  assert(globalThis instanceof EventTarget);
+});
+
 unitTest(function DenoNamespaceExists(): void {
   assert(Deno != null);
 });
@@ -45,47 +64,66 @@ unitTest(function webAssemblyExists(): void {
   assert(typeof WebAssembly.compile === "function");
 });
 
+declare global {
+  // deno-lint-ignore no-namespace
+  namespace Deno {
+    // deno-lint-ignore no-explicit-any
+    var core: any;
+  }
+}
+
 unitTest(function DenoNamespaceImmutable(): void {
   const denoCopy = window.Deno;
   try {
-    // @ts-expect-error
-    Deno = 1;
-  } catch {}
+    // deno-lint-ignore no-explicit-any
+    (Deno as any) = 1;
+  } catch {
+    // pass
+  }
   assert(denoCopy === Deno);
   try {
-    // @ts-expect-error
-    window.Deno = 1;
-  } catch {}
+    // deno-lint-ignore no-explicit-any
+    (window as any).Deno = 1;
+  } catch {
+    // pass
+  }
   assert(denoCopy === Deno);
   try {
-    delete window.Deno;
-  } catch {}
+    // deno-lint-ignore no-explicit-any
+    delete (window as any).Deno;
+  } catch {
+    // pass
+  }
   assert(denoCopy === Deno);
 
   const { readFile } = Deno;
   try {
-    // @ts-expect-error
-    Deno.readFile = 1;
-  } catch {}
+    // deno-lint-ignore no-explicit-any
+    (Deno as any).readFile = 1;
+  } catch {
+    // pass
+  }
   assert(readFile === Deno.readFile);
   try {
-    delete window.Deno.readFile;
-  } catch {}
+    // deno-lint-ignore no-explicit-any
+    delete (window as any).Deno.readFile;
+  } catch {
+    // pass
+  }
   assert(readFile === Deno.readFile);
 
-  // @ts-expect-error
   const { print } = Deno.core;
   try {
-    // @ts-expect-error
     Deno.core.print = 1;
-  } catch {}
-  // @ts-expect-error
+  } catch {
+    // pass
+  }
   assert(print === Deno.core.print);
   try {
-    // @ts-expect-error
     delete Deno.core.print;
-  } catch {}
-  // @ts-expect-error
+  } catch {
+    // pass
+  }
   assert(print === Deno.core.print);
 });
 
@@ -93,13 +131,13 @@ unitTest(async function windowQueueMicrotask(): Promise<void> {
   let resolve1: () => void | undefined;
   let resolve2: () => void | undefined;
   let microtaskDone = false;
-  const p1 = new Promise((res): void => {
+  const p1 = new Promise<void>((res): void => {
     resolve1 = (): void => {
       microtaskDone = true;
       res();
     };
   });
-  const p2 = new Promise((res): void => {
+  const p2 = new Promise<void>((res): void => {
     resolve2 = (): void => {
       assert(microtaskDone);
       res();

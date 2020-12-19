@@ -1,14 +1,11 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { parse } from "../flags/mod.ts";
 import { readStringDelim } from "../io/bufio.ts";
-const { args, exit, stdin } = Deno;
-type Reader = Deno.Reader;
 
-/* eslint-disable-next-line max-len */
 // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncFunction.
 const AsyncFunction = Object.getPrototypeOf(async function (): Promise<void> {})
   .constructor;
 
-/* eslint-disable max-len */
 const HELP_MSG = `xeval
 
 Run a script for each new-line or otherwise delimited chunk of standard input.
@@ -29,7 +26,6 @@ OPTIONS:
   -I, --replvar <replvar>   Set variable name to be used in eval, defaults to $
 ARGS:
   <code>`;
-/* eslint-enable max-len */
 
 export type XevalFunc = (v: string) => void;
 
@@ -40,9 +36,9 @@ export interface XevalOptions {
 const DEFAULT_DELIMITER = "\n";
 
 export async function xeval(
-  reader: Reader,
+  reader: Deno.Reader,
   xevalFunc: XevalFunc,
-  { delimiter = DEFAULT_DELIMITER }: XevalOptions = {}
+  { delimiter = DEFAULT_DELIMITER }: XevalOptions = {},
 ): Promise<void> {
   for await (const chunk of readStringDelim(reader, delimiter)) {
     // Ignore empty chunks.
@@ -53,7 +49,7 @@ export async function xeval(
 }
 
 async function main(): Promise<void> {
-  const parsedArgs = parse(args, {
+  const parsedArgs = parse(Deno.args, {
     boolean: ["help"],
     string: ["delim", "replvar"],
     alias: {
@@ -69,7 +65,7 @@ async function main(): Promise<void> {
   if (parsedArgs._.length != 1) {
     console.error(HELP_MSG);
     console.log(parsedArgs._);
-    exit(1);
+    Deno.exit(1);
   }
   if (parsedArgs.help) {
     return console.log(HELP_MSG);
@@ -82,12 +78,12 @@ async function main(): Promise<void> {
   // new AsyncFunction()'s error message for this particular case isn't great.
   if (!replVar.match(/^[_$A-z][_$A-z0-9]*$/)) {
     console.error(`Bad replvar identifier: "${replVar}"`);
-    exit(1);
+    Deno.exit(1);
   }
 
   const xEvalFunc = new AsyncFunction(replVar, code);
 
-  await xeval(stdin, xEvalFunc, { delimiter });
+  await xeval(Deno.stdin, xEvalFunc, { delimiter });
 }
 
 if (import.meta.main) {

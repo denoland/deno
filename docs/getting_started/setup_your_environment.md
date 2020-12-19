@@ -1,4 +1,4 @@
-## Setup your environment
+## Set up your environment
 
 To productively get going with Deno you should set up your environment. This
 means setting up shell autocomplete, environmental variables and your editor or
@@ -29,12 +29,53 @@ The supported shells are:
 - powershell
 - elvish
 
-Example:
+Example (bash):
 
 ```shell
 deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
 source /usr/local/etc/bash_completion.d/deno.bash
 ```
+
+Example (zsh without framework):
+
+```shell
+mkdir ~/.zsh # create a folder to save your completions. it can be anywhere
+deno completions zsh > ~/.zsh/_deno
+```
+
+then add this to your `.zshrc`
+
+```shell
+fpath=(~/.zsh $fpath)
+autoload -Uz compinit
+compinit -u
+```
+
+and restart your terminal. note that if completions are still not loading, you
+may need to run `rm ~/.zcompdump/` to remove previously generated completions
+and then `compinit` to generate them again.
+
+Example (zsh + oh-my-zsh) [recommended for zsh users] :
+
+```shell
+mkdir ~/.oh-my-zsh/custom/plugins/deno
+deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
+```
+
+After this add deno plugin under plugins tag in `~/.zshrc` file. for tools like
+`antigen` path will be `~/.antigen/bundles/robbyrussell/oh-my-zsh/plugins` and
+command will be `antigen bundle deno` and so on.
+
+Example (Powershell):
+
+```shell
+deno completions powershell > $profile
+.$profile
+```
+
+This will be create a Powershell profile at
+`$HOME\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1` by default,
+and it will be run whenever you launch the PowerShell.
 
 ### Editors and IDEs
 
@@ -65,9 +106,13 @@ on YouTrack.
 
 Vim works fairly well for Deno/TypeScript if you install
 [CoC](https://github.com/neoclide/coc.nvim) (intellisense engine and language
-server protocol). After CoC itself is installed, from inside Vim, simply run
-`:CocInstall coc-deno`. From now on, things like `gd` (go to definition) and
-`gr` (goto/find references) should work.
+server protocol).
+
+After CoC is installed, from inside Vim, run`:CocInstall coc-tsserver` and
+`:CocInstall coc-deno`. To get autocompletion working for Deno type definitions
+run `:CocCommand deno.types`. Optionally restart the CoC server `:CocRestart`.
+From now on, things like `gd` (go to definition) and `gr` (goto/find references)
+should work.
 
 #### Emacs
 
@@ -99,6 +144,115 @@ project (`npm init -y` as necessary), then add the following block to your
 }
 ```
 
+#### LSP clients
+
+Deno has builtin support for the
+[Language server protocol](https://langserver.org) as of version 1.6.0 or later.
+
+If your editor supports the LSP, you can use Deno as a language server for
+TypeScript and JavaScript.
+
+The editor can start the server with `deno lsp`.
+
+##### Example for Kakoune
+
+After installing the [`kak-lsp`](https://github.com/kak-lsp/kak-lsp) LSP client
+you can add the Deno language server by adding the following to your
+`kak-lsp.toml`
+
+```toml
+[language.deno]
+filetypes = ["typescript", "javascript"]
+roots = [".git"]
+command = "deno"
+args = ["lsp"]
+```
+
+##### Example for Vim/Neovim
+
+After installing the [`vim-lsp`](https://github.com/prabirshrestha/vim-lsp) LSP
+client you can add the Deno language server by adding the following to your
+`vimrc`/`init.vim`:
+
+```vim
+if executable("deno")
+  augroup LspTypeScript
+    autocmd!
+    autocmd User lsp_setup call lsp#register_server({
+    \ "name": "deno lsp",
+    \ "cmd": {server_info -> ["deno", "lsp"]},
+    \ "root_uri": {server_info->lsp#utils#path_to_uri(lsp#utils#find_nearest_parent_file_directory(lsp#utils#get_buffer_path(), "tsconfig.json"))},
+    \ "whitelist": ["typescript", "typescript.tsx"],
+    \ })
+  augroup END
+endif
+```
+
+##### Example for Sublime Text
+
+- Install the [Sublime LSP package](https://packagecontrol.io/packages/LSP)
+- Install the
+  [TypeScript package](https://packagecontrol.io/packages/TypeScript) to get
+  syntax highlighting
+- Add the following `.sublime-project` file to your project folder
+
+```json
+{
+  "settings": {
+    "LSP": {
+      "deno": {
+        "command": [
+          "deno",
+          "lsp"
+        ],
+        "initializationOptions": {
+          // "config": "", // Sets the path for the config file in your project
+          "enable": true,
+          // "importMap": "", // Sets the path for the import-map in your project
+          "lint": true,
+          "unstable": false
+        },
+        "enabled": true,
+        "languages": [
+          {
+            "languageId": "javascript",
+            "scopes": ["source.js"],
+            "syntaxes": [
+              "Packages/Babel/JavaScript (Babel).sublime-syntax",
+              "Packages/JavaScript/JavaScript.sublime-syntax"
+            ]
+          },
+          {
+            "languageId": "javascriptreact",
+            "scopes": ["source.jsx"],
+            "syntaxes": [
+              "Packages/Babel/JavaScript (Babel).sublime-syntax",
+              "Packages/JavaScript/JavaScript.sublime-syntax"
+            ]
+          },
+          {
+            "languageId": "typescript",
+            "scopes": ["source.ts"],
+            "syntaxes": [
+              "Packages/TypeScript-TmLanguage/TypeScript.tmLanguage",
+              "Packages/TypeScript Syntax/TypeScript.tmLanguage"
+            ]
+          },
+          {
+            "languageId": "typescriptreact",
+            "scopes": ["source.tsx"],
+            "syntaxes": [
+              "Packages/TypeScript-TmLanguage/TypeScriptReact.tmLanguage",
+              "Packages/TypeScript Syntax/TypeScriptReact.tmLanguage"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
 If you don't see your favorite IDE on this list, maybe you can develop an
-extension. Our [community Discord group](https://discord.gg/TGMHGv6) can give
-you some pointers on where to get started.
+extension. Our [community Discord group](https://discord.gg/deno) can give you
+some pointers on where to get started.

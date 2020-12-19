@@ -1,30 +1,10 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // To run this test manually:
 //   cd test_plugin
 //   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
 
-use std::path::PathBuf;
 use std::process::Command;
-
-fn target_dir() -> PathBuf {
-  let current_exe = std::env::current_exe().unwrap();
-  let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  println!("target_dir {}", target_dir.display());
-  target_dir.into()
-}
-
-fn deno_exe_path() -> PathBuf {
-  // Something like /Users/rld/src/deno/target/debug/deps/deno
-  let mut p = target_dir().join("deno");
-  if cfg!(windows) {
-    p.set_extension("exe");
-  }
-  p
-}
-
-fn deno_cmd() -> Command {
-  assert!(deno_exe_path().exists());
-  Command::new(deno_exe_path())
-}
+use test_util::deno_cmd;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";
@@ -57,7 +37,7 @@ fn basic() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
-  let expected = "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\n";
+  let expected = "Hello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nzero_copy[2]: cba\nPlugin Sync Response: test\nHello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nPlugin Async Response: test\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

@@ -12,7 +12,7 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
       Deno.test("", () => {});
     },
     TypeError,
-    "The test name can't be empty"
+    "The test name can't be empty",
   );
   assertThrows(
     () => {
@@ -22,6 +22,6 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
       });
     },
     TypeError,
-    "The test name can't be empty"
+    "The test name can't be empty",
   );
 });

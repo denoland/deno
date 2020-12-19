@@ -1,5 +1,0 @@
-cli/compilers/wasm_wrap.js
-cli/tests/error_syntax.js
-std/deno.d.ts
-std/**/testdata/
-std/**/node_modules/

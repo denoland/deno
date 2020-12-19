@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "../_utils.ts";
 
 export default class Dirent {
@@ -10,7 +11,7 @@ export default class Dirent {
 
   isCharacterDevice(): boolean {
     notImplemented(
-      "Deno does not yet support identification of character devices"
+      "Deno does not yet support identification of character devices",
     );
     return false;
   }
@@ -21,7 +22,7 @@ export default class Dirent {
 
   isFIFO(): boolean {
     notImplemented(
-      "Deno does not yet support identification of FIFO named pipes"
+      "Deno does not yet support identification of FIFO named pipes",
     );
     return false;
   }

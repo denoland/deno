@@ -1,14 +1,13 @@
 # flags
 
-Command line arguments parser for Deno based on minimist
+Command line arguments parser for Deno based on minimist.
 
 # Example
 
 ```ts
-const { args } = Deno;
-import { parse } from "https://deno.land/std/flags/mod.ts";
+import { parse } from "https://deno.land/std@$STD_VERSION/flags/mod.ts";
 
-console.dir(parse(args));
+console.dir(parse(Deno.args));
 ```
 
 ```
@@ -43,25 +42,24 @@ Any arguments after `'--'` will not be parsed and will end up in `parsedArgs._`.
 options can be:
 
 - `options.string` - a string or array of strings argument names to always treat
-  as strings
+  as strings.
 - `options.boolean` - a boolean, string or array of strings to always treat as
   booleans. if `true` will treat all double hyphenated arguments without equal
-  signs as boolean (e.g. affects `--foo`, not `-f` or `--foo=bar`)
+  signs as boolean (e.g. affects `--foo`, not `-f` or `--foo=bar`).
 - `options.alias` - an object mapping string names to strings or arrays of
-  string argument names to use as aliases
-- `options.default` - an object mapping string argument names to default values
+  string argument names to use as aliases.
+- `options.default` - an object mapping string argument names to default values.
 - `options.stopEarly` - when true, populate `parsedArgs._` with everything after
-  the first non-option
+  the first non-option.
 - `options['--']` - when true, populate `parsedArgs._` with everything before
   the `--` and `parsedArgs['--']` with everything after the `--`. Here's an
   example:
   ```ts
   // $ deno run example.ts -- a arg1
-  const { args } = Deno;
-  import { parse } from "https://deno.land/std/flags/mod.ts";
-  console.dir(parse(args, { "--": false }));
+  import { parse } from "https://deno.land/std@$STD_VERSION/flags/mod.ts";
+  console.dir(parse(Deno.args, { "--": false }));
   // output: { _: [ "a", "arg1" ] }
-  console.dir(parse(args, { "--": true }));
+  console.dir(parse(Deno.args, { "--": true }));
   // output: { _: [], --: [ "a", "arg1" ] }
   ```
 - `options.unknown` - a function which is invoked with a command line parameter

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals } from "./test_util.ts";
+import { assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function customEventInitializedWithDetail(): void {
   const type = "touchstart";

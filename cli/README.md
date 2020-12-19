@@ -5,4 +5,4 @@
 
 This provides the actual deno executable and the user-facing APIs.
 
-The deno crate uses the deno_core and deno_typescript to provide the executable.
+The deno crate uses the deno_core to provide the executable.

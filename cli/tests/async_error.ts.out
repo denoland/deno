@@ -1,7 +1,7 @@
 [WILDCARD]hello
 before error
 world
-error: Uncaught Error: error
+error: Uncaught (in promise) Error: error
   throw Error("error");
         ^
     at foo ([WILDCARD]tests/async_error.ts:5:9)

@@ -54,8 +54,8 @@ executable bit on macOS and Linux.
 To test your installation, run `deno --version`. If this prints the Deno version
 to the console the installation was successful.
 
-Use `deno help` to see help text documenting Deno's flags and usage. Use
-`deno help <subcommand>` for subcommand-specific flags.
+Use `deno help` to see help text documenting Deno's flags and usage. Get a
+detailed guide on the CLI [here](./command_line_interface.md).
 
 ### Updating
 

@@ -1,14 +1,13 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { args, readFileSync, writeFileSync, exit } = Deno;
-
-const name = args[0];
-const test: { [key: string]: Function } = {
+const name = Deno.args[0];
+// deno-lint-ignore no-explicit-any
+const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
   read(files: string[]): void {
-    files.forEach((file) => readFileSync(file));
+    files.forEach((file) => Deno.readFileSync(file));
   },
   write(files: string[]): void {
     files.forEach((file) =>
-      writeFileSync(file, new Uint8Array(0), { append: true })
+      Deno.writeFileSync(file, new Uint8Array(0), { append: true })
     );
   },
   netFetch(hosts: string[]): void {
@@ -16,7 +15,11 @@ const test: { [key: string]: Function } = {
   },
   netListen(endpoints: string[]): void {
     endpoints.forEach((endpoint) => {
-      const [hostname, port] = endpoint.split(":");
+      const index = endpoint.lastIndexOf(":");
+      const [hostname, port] = [
+        endpoint.substr(0, index),
+        endpoint.substr(index + 1),
+      ];
       const listener = Deno.listen({
         transport: "tcp",
         hostname,
@@ -27,7 +30,11 @@ const test: { [key: string]: Function } = {
   },
   async netConnect(endpoints: string[]): Promise<void> {
     for (const endpoint of endpoints) {
-      const [hostname, port] = endpoint.split(":");
+      const index = endpoint.lastIndexOf(":");
+      const [hostname, port] = [
+        endpoint.substr(0, index),
+        endpoint.substr(index + 1),
+      ];
       const listener = await Deno.connect({
         transport: "tcp",
         hostname,
@@ -40,7 +47,7 @@ const test: { [key: string]: Function } = {
 
 if (!test[name]) {
   console.log("Unknown test:", name);
-  exit(1);
+  Deno.exit(1);
 }
 
-test[name](args.slice(1));
+test[name](Deno.args.slice(1));

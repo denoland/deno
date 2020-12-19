@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Based on https://github.com/golang/go/blob/891682/src/bufio/bufio.go
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -6,14 +7,14 @@
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 type WriterSync = Deno.WriterSync;
-import { charCode, copyBytes } from "./util.ts";
-import { assert } from "../testing/asserts.ts";
+import { copy } from "../bytes/mod.ts";
+import { assert } from "../_util/assert.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
 const MIN_BUF_SIZE = 16;
 const MAX_CONSECUTIVE_EMPTY_READS = 100;
-const CR = charCode("\r");
-const LF = charCode("\n");
+const CR = "\r".charCodeAt(0);
+const LF = "\n".charCodeAt(0);
 
 export class BufferFullError extends Error {
   name = "BufferFullError";
@@ -95,7 +96,7 @@ export class BufReader implements Reader {
     }
 
     throw new Error(
-      `No progress after ${MAX_CONSECUTIVE_EMPTY_READS} read() calls`
+      `No progress after ${MAX_CONSECUTIVE_EMPTY_READS} read() calls`,
     );
   }
 
@@ -149,7 +150,7 @@ export class BufReader implements Reader {
     }
 
     // copy as much as we can
-    const copied = copyBytes(this.buf.subarray(this.r, this.w), p, 0);
+    const copied = copy(this.buf.subarray(this.r, this.w), p, 0);
     this.r += copied;
     // this.lastByte = this.buf[this.r - 1];
     // this.lastCharSize = -1;
@@ -252,7 +253,7 @@ export class BufReader implements Reader {
       let { partial } = err;
       assert(
         partial instanceof Uint8Array,
-        "bufio: caught error from `readSlice()` without `partial` property"
+        "bufio: caught error from `readSlice()` without `partial` property",
       );
 
       // Don't throw if `readSlice()` failed with `BufferFullError`, instead we
@@ -426,17 +427,6 @@ abstract class AbstractBufBase {
   buffered(): number {
     return this.usedBufferBytes;
   }
-
-  checkBytesWritten(numBytesWritten: number): void {
-    if (numBytesWritten < this.usedBufferBytes) {
-      if (numBytesWritten > 0) {
-        this.buf.copyWithin(0, numBytesWritten, this.usedBufferBytes);
-        this.usedBufferBytes -= numBytesWritten;
-      }
-      this.err = new Error("Short write");
-      throw this.err;
-    }
-  }
 }
 
 /** BufWriter implements buffering for an deno.Writer object.
@@ -474,18 +464,17 @@ export class BufWriter extends AbstractBufBase implements Writer {
     if (this.err !== null) throw this.err;
     if (this.usedBufferBytes === 0) return;
 
-    let numBytesWritten = 0;
     try {
-      numBytesWritten = await this.writer.write(
-        this.buf.subarray(0, this.usedBufferBytes)
+      await Deno.writeAll(
+        this.writer,
+        this.buf.subarray(0, this.usedBufferBytes),
       );
     } catch (e) {
       this.err = e;
       throw e;
     }
 
-    this.checkBytesWritten(numBytesWritten);
-
+    this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;
   }
 
@@ -513,7 +502,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
           throw e;
         }
       } else {
-        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+        numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
         this.usedBufferBytes += numBytesWritten;
         await this.flush();
       }
@@ -521,7 +510,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
       data = data.subarray(numBytesWritten);
     }
 
-    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+    numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
     this.usedBufferBytes += numBytesWritten;
     totalBytesWritten += numBytesWritten;
     return totalBytesWritten;
@@ -539,7 +528,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
   /** return new BufWriterSync unless writer is BufWriterSync */
   static create(
     writer: WriterSync,
-    size: number = DEFAULT_BUF_SIZE
+    size: number = DEFAULT_BUF_SIZE,
   ): BufWriterSync {
     return writer instanceof BufWriterSync
       ? writer
@@ -568,18 +557,17 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
     if (this.err !== null) throw this.err;
     if (this.usedBufferBytes === 0) return;
 
-    let numBytesWritten = 0;
     try {
-      numBytesWritten = this.writer.writeSync(
-        this.buf.subarray(0, this.usedBufferBytes)
+      Deno.writeAllSync(
+        this.writer,
+        this.buf.subarray(0, this.usedBufferBytes),
       );
     } catch (e) {
       this.err = e;
       throw e;
     }
 
-    this.checkBytesWritten(numBytesWritten);
-
+    this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;
   }
 
@@ -607,7 +595,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
           throw e;
         }
       } else {
-        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+        numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
         this.usedBufferBytes += numBytesWritten;
         this.flush();
       }
@@ -615,7 +603,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
       data = data.subarray(numBytesWritten);
     }
 
-    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+    numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
     this.usedBufferBytes += numBytesWritten;
     totalBytesWritten += numBytesWritten;
     return totalBytesWritten;
@@ -646,7 +634,7 @@ function createLPS(pat: Uint8Array): Uint8Array {
 /** Read delimited bytes from a Reader. */
 export async function* readDelim(
   reader: Reader,
-  delim: Uint8Array
+  delim: Uint8Array,
 ): AsyncIterableIterator<Uint8Array> {
   // Avoid unicode problems
   const delimLen = delim.length;
@@ -705,7 +693,7 @@ export async function* readDelim(
 /** Read delimited strings from a Reader. */
 export async function* readStringDelim(
   reader: Reader,
-  delim: string
+  delim: string,
 ): AsyncIterableIterator<string> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -715,9 +703,16 @@ export async function* readStringDelim(
 }
 
 /** Read strings line-by-line from a Reader. */
-// eslint-disable-next-line require-await
 export async function* readLines(
-  reader: Reader
+  reader: Reader,
 ): AsyncIterableIterator<string> {
-  yield* readStringDelim(reader, "\n");
+  for await (let chunk of readStringDelim(reader, "\n")) {
+    // Finding a CR at the end of the line is evidence of a
+    // "\r\n" at the end of the line. The "\r" part should be
+    // removed too.
+    if (chunk.endsWith("\r")) {
+      chunk = chunk.slice(0, -1);
+    }
+    yield chunk;
+  }
 }

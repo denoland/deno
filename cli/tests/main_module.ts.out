@@ -1,0 +1,2 @@
+main_module2 [WILDCARD]tests/main_module.ts
+main_module [WILDCARD]tests/main_module.ts

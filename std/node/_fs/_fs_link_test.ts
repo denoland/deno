@@ -1,17 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
-import { fail, assertEquals } from "../../testing/asserts.ts";
+import { assertEquals, fail } from "../../testing/asserts.ts";
 import { link, linkSync } from "./_fs_link.ts";
-import { assert } from "https://deno.land/std@v0.50.0/testing/asserts.ts";
-const isWindows = Deno.build.os === "windows";
+import { assert } from "../../testing/asserts.ts";
 
-test({
-  ignore: isWindows,
+Deno.test({
   name: "ASYNC: hard linking files works as expected",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const linkedFile: string = tempFile + ".link";
-    await new Promise((res, rej) => {
+    await new Promise<void>((res, rej) => {
       link(tempFile, linkedFile, (err) => {
         if (err) rej(err);
         else res();
@@ -30,12 +27,11 @@ test({
   },
 });
 
-test({
-  ignore: isWindows,
+Deno.test({
   name: "ASYNC: hard linking files passes error to callback",
   async fn() {
     let failed = false;
-    await new Promise((res, rej) => {
+    await new Promise<void>((res, rej) => {
       link("no-such-file", "no-such-file", (err) => {
         if (err) rej(err);
         else res();
@@ -52,8 +48,7 @@ test({
   },
 });
 
-test({
-  ignore: isWindows,
+Deno.test({
   name: "SYNC: hard linking files works as expected",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();

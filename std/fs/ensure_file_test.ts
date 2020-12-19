@@ -3,7 +3,8 @@ import { assertThrows, assertThrowsAsync } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("ensureFileIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_file_1");
@@ -16,7 +17,7 @@ Deno.test("ensureFileIfItNotExist", async function (): Promise<void> {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
       });
-    }
+    },
   );
 
   await Deno.remove(testDir, { recursive: true });
@@ -50,7 +51,7 @@ Deno.test("ensureFileIfItExist", async function (): Promise<void> {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
       });
-    }
+    },
   );
 
   await Deno.remove(testDir, { recursive: true });
@@ -83,7 +84,7 @@ Deno.test("ensureFileIfItExistAsDir", async function (): Promise<void> {
       await ensureFile(testDir);
     },
     Error,
-    `Ensure path exists, expected 'file', got 'dir'`
+    `Ensure path exists, expected 'file', got 'dir'`,
   );
 
   await Deno.remove(testDir, { recursive: true });
@@ -99,7 +100,7 @@ Deno.test("ensureFileSyncIfItExistAsDir", function (): void {
       ensureFileSync(testDir);
     },
     Error,
-    `Ensure path exists, expected 'file', got 'dir'`
+    `Ensure path exists, expected 'file', got 'dir'`,
   );
 
   Deno.removeSync(testDir, { recursive: true });

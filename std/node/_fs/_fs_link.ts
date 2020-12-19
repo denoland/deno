@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-import { CallbackWithError } from "./_fs_common.ts";
+import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
 /**
@@ -10,10 +9,11 @@ import { fromFileUrl } from "../path.ts";
 export function link(
   existingPath: string | URL,
   newPath: string | URL,
-  callback: CallbackWithError
+  callback: CallbackWithError,
 ): void {
-  existingPath =
-    existingPath instanceof URL ? fromFileUrl(existingPath) : existingPath;
+  existingPath = existingPath instanceof URL
+    ? fromFileUrl(existingPath)
+    : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
   Deno.link(existingPath, newPath)
@@ -27,10 +27,11 @@ export function link(
  */
 export function linkSync(
   existingPath: string | URL,
-  newPath: string | URL
+  newPath: string | URL,
 ): void {
-  existingPath =
-    existingPath instanceof URL ? fromFileUrl(existingPath) : existingPath;
+  existingPath = existingPath instanceof URL
+    ? fromFileUrl(existingPath)
+    : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
   Deno.linkSync(existingPath, newPath);

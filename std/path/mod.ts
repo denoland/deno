@@ -1,10 +1,10 @@
 // Copyright the Browserify authors. MIT License.
 // Ported mostly from https://github.com/browserify/path-browserify/
+/** This module is browser compatible. */
 
+import { isWindows } from "../_util/os.ts";
 import * as _win32 from "./win32.ts";
 import * as _posix from "./posix.ts";
-
-const isWindows = Deno.build.os == "windows";
 
 const path = isWindows ? _win32 : _posix;
 
@@ -24,10 +24,11 @@ export const {
   relative,
   resolve,
   sep,
+  toFileUrl,
   toNamespacedPath,
 } = path;
 
 export * from "./common.ts";
 export { SEP, SEP_PATTERN } from "./separator.ts";
-export * from "./interface.ts";
+export * from "./_interface.ts";
 export * from "./glob.ts";

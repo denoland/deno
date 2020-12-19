@@ -4,18 +4,20 @@
 // https://github.com/golang/go/blob/master/LICENSE
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assert } from "../testing/asserts.ts";
+import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import {
-  readMatrix,
-  parse,
   ERR_BARE_QUOTE,
-  ERR_QUOTE,
-  ERR_INVALID_DELIM,
   ERR_FIELD_COUNT,
+  ERR_INVALID_DELIM,
+  ERR_QUOTE,
+  parse,
+  ParseError,
+  readMatrix,
 } from "./csv.ts";
 import { StringReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
 
+// Test cases for `readMatrix()`
 const testCases = [
   {
     Name: "Simple",
@@ -59,7 +61,7 @@ zzz,yyy,xxx`,
     Name: "Semicolon",
     Input: "a;b;c\n",
     Output: [["a", "b", "c"]],
-    Comma: ";",
+    Separator: ";",
   },
   {
     Name: "MultiLine",
@@ -133,8 +135,7 @@ field"`,
   {
     Name: "BadDoubleQuotes",
     Input: `a""b,c`,
-    Error: ERR_BARE_QUOTE,
-    // Error: &ParseError{StartLine: 1, Line: 1, Column: 1, Err: ErrBareQuote},
+    Error: new ParseError(1, 1, 1, ERR_BARE_QUOTE),
   },
   {
     Name: "TrimQuote",
@@ -145,33 +146,31 @@ field"`,
   {
     Name: "BadBareQuote",
     Input: `a "word","b"`,
-    Error: ERR_BARE_QUOTE,
-    // &ParseError{StartLine: 1, Line: 1, Column: 2, Err: ErrBareQuote}
+    Error: new ParseError(1, 1, 2, ERR_BARE_QUOTE),
   },
   {
     Name: "BadTrailingQuote",
     Input: `"a word",b"`,
-    Error: ERR_BARE_QUOTE,
+    Error: new ParseError(1, 1, 10, ERR_BARE_QUOTE),
   },
   {
     Name: "ExtraneousQuote",
     Input: `"a "word","b"`,
-    Error: ERR_QUOTE,
+    Error: new ParseError(1, 1, 3, ERR_QUOTE),
   },
   {
     Name: "BadFieldCount",
     Input: "a,b,c\nd,e",
-    Error: ERR_FIELD_COUNT,
+    Error: new ParseError(2, 2, null, ERR_FIELD_COUNT),
     UseFieldsPerRecord: true,
     FieldsPerRecord: 0,
   },
   {
     Name: "BadFieldCount1",
     Input: `a,b,c`,
-    // Error: &ParseError{StartLine: 1, Line: 1, Err: ErrFieldCount},
     UseFieldsPerRecord: true,
     FieldsPerRecord: 2,
-    Error: ERR_FIELD_COUNT,
+    Error: new ParseError(1, 1, null, ERR_FIELD_COUNT),
   },
   {
     Name: "FieldCount",
@@ -265,14 +264,12 @@ x,,,
   {
     Name: "StartLine1", // Issue 19019
     Input: 'a,"b\nc"d,e',
-    Error: ERR_QUOTE,
-    // Error: &ParseError{StartLine: 1, Line: 2, Column: 1, Err: ErrQuote},
+    Error: new ParseError(1, 2, 1, ERR_QUOTE),
   },
   {
     Name: "StartLine2",
-    Input: 'a,b\n"d\n\n,e',
-    Error: ERR_QUOTE,
-    // Error: &ParseError{StartLine: 2, Line: 5, Column: 0, Err: ErrQuote},
+    Input: 'a,b\n\"d\n\n,e',
+    Error: new ParseError(2, 5, 0, ERR_QUOTE),
   },
   {
     Name: "CRLFInQuotedField", // Issue 21201
@@ -297,8 +294,7 @@ x,,,
   {
     Name: "QuotedTrailingCRCR",
     Input: '"field"\r\r',
-    Error: ERR_QUOTE,
-    // Error: &ParseError{StartLine: 1, Line: 1, Column: 6, Err: ErrQuote},
+    Error: new ParseError(1, 1, 6, ERR_QUOTE),
   },
   {
     Name: "FieldCR",
@@ -339,14 +335,14 @@ x,,,
     Input: "a£b,c£ \td,e\n€ comment\n",
     Output: [["a", "b,c", "d,e"]],
     TrimLeadingSpace: true,
-    Comma: "£",
+    Separator: "£",
     Comment: "€",
   },
   {
     Name: "NonASCIICommaAndCommentWithQuotes",
     Input: 'a€"  b,"€ c\nλ comment\n',
     Output: [["a", "  b,", " c"]],
-    Comma: "€",
+    Separator: "€",
     Comment: "λ",
   },
   {
@@ -355,7 +351,7 @@ x,,,
     Name: "NonASCIICommaConfusion",
     Input: '"abθcd"λefθgh',
     Output: [["abθcd", "efθgh"]],
-    Comma: "λ",
+    Separator: "λ",
     Comment: "€",
   },
   {
@@ -381,17 +377,15 @@ x,,,
    */
   {
     Name: "HugeLines",
-    Input:
-      "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
+    Input: "#ignore\n".repeat(10000) + "@".repeat(5000) + "," +
+      "*".repeat(5000),
     Output: [["@".repeat(5000), "*".repeat(5000)]],
     Comment: "#",
-    ignore: true, // TODO(#4521)
   },
   {
     Name: "QuoteWithTrailingCRLF",
     Input: '"foo"bar"\r\n',
-    Error: ERR_QUOTE,
-    // Error: &ParseError{StartLine: 1, Line: 1, Column: 4, Err: ErrQuote},
+    Error: new ParseError(1, 1, 4, ERR_QUOTE),
   },
   {
     Name: "LazyQuoteWithTrailingCRLF",
@@ -412,8 +406,7 @@ x,,,
   {
     Name: "OddQuotes",
     Input: `"""""""`,
-    Error: ERR_QUOTE,
-    // Error:" &ParseError{StartLine: 1, Line: 1, Column: 7, Err: ErrQuote}",
+    Error: new ParseError(1, 1, 7, ERR_QUOTE),
   },
   {
     Name: "LazyOddQuotes",
@@ -423,48 +416,47 @@ x,,,
   },
   {
     Name: "BadComma1",
-    Comma: "\n",
-    Error: ERR_INVALID_DELIM,
+    Separator: "\n",
+    Error: new Error(ERR_INVALID_DELIM),
   },
   {
     Name: "BadComma2",
-    Comma: "\r",
-    Error: ERR_INVALID_DELIM,
+    Separator: "\r",
+    Error: new Error(ERR_INVALID_DELIM),
   },
   {
     Name: "BadComma3",
-    Comma: '"',
-    Error: ERR_INVALID_DELIM,
+    Separator: '"',
+    Error: new Error(ERR_INVALID_DELIM),
   },
   {
     Name: "BadComment1",
     Comment: "\n",
-    Error: ERR_INVALID_DELIM,
+    Error: new Error(ERR_INVALID_DELIM),
   },
   {
     Name: "BadComment2",
     Comment: "\r",
-    Error: ERR_INVALID_DELIM,
+    Error: new Error(ERR_INVALID_DELIM),
   },
   {
     Name: "BadCommaComment",
-    Comma: "X",
+    Separator: "X",
     Comment: "X",
-    Error: ERR_INVALID_DELIM,
+    Error: new Error(ERR_INVALID_DELIM),
   },
 ];
 for (const t of testCases) {
   Deno.test({
-    ignore: !!t.ignore,
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
-      let comma = ",";
-      let comment;
-      let fieldsPerRec;
+      let separator = ",";
+      let comment: string | undefined;
+      let fieldsPerRec: number | undefined;
       let trim = false;
       let lazyquote = false;
-      if (t.Comma) {
-        comma = t.Comma;
+      if (t.Separator) {
+        separator = t.Separator;
       }
       if (t.Comment) {
         comment = t.Comment;
@@ -480,33 +472,30 @@ for (const t of testCases) {
       }
       let actual;
       if (t.Error) {
-        let err;
-        try {
-          actual = await readMatrix(
+        const err = await assertThrowsAsync(async () => {
+          await readMatrix(
             new BufReader(new StringReader(t.Input ?? "")),
             {
-              comma: comma,
+              separator,
               comment: comment,
               trimLeadingSpace: trim,
               fieldsPerRecord: fieldsPerRec,
               lazyQuotes: lazyquote,
-            }
+            },
           );
-        } catch (e) {
-          err = e;
-        }
-        assert(err);
-        assertEquals(err.message, t.Error);
+        });
+
+        assertEquals(err, t.Error);
       } else {
         actual = await readMatrix(
           new BufReader(new StringReader(t.Input ?? "")),
           {
-            comma: comma,
+            separator,
             comment: comment,
             trimLeadingSpace: trim,
             fieldsPerRecord: fieldsPerRec,
             lazyQuotes: lazyquote,
-          }
+          },
         );
         const expected = t.Output;
         assertEquals(actual, expected);
@@ -519,19 +508,19 @@ const parseTestCases = [
   {
     name: "simple",
     in: "a,b,c",
-    header: false,
+    skipFirstRow: false,
     result: [["a", "b", "c"]],
   },
   {
     name: "simple Bufreader",
     in: new BufReader(new StringReader("a,b,c")),
-    header: false,
+    skipFirstRow: false,
     result: [["a", "b", "c"]],
   },
   {
     name: "multiline",
     in: "a,b,c\ne,f,g\n",
-    header: false,
+    skipFirstRow: false,
     result: [
       ["a", "b", "c"],
       ["e", "f", "g"],
@@ -540,13 +529,13 @@ const parseTestCases = [
   {
     name: "header mapping boolean",
     in: "a,b,c\ne,f,g\n",
-    header: true,
+    skipFirstRow: true,
     result: [{ a: "e", b: "f", c: "g" }],
   },
   {
     name: "header mapping array",
     in: "a,b,c\ne,f,g\n",
-    header: ["this", "is", "sparta"],
+    columns: ["this", "is", "sparta"],
     result: [
       { this: "a", is: "b", sparta: "c" },
       { this: "e", is: "f", sparta: "g" },
@@ -555,7 +544,7 @@ const parseTestCases = [
   {
     name: "header mapping object",
     in: "a,b,c\ne,f,g\n",
-    header: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
+    columns: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
     result: [
       { this: "a", is: "b", sparta: "c" },
       { this: "e", is: "f", sparta: "g" },
@@ -564,7 +553,7 @@ const parseTestCases = [
   {
     name: "header mapping parse entry",
     in: "a,b,c\ne,f,g\n",
-    header: [
+    columns: [
       {
         name: "this",
         parse: (e: string): string => {
@@ -595,7 +584,7 @@ const parseTestCases = [
     parse: (e: string[]): unknown => {
       return { super: e[0], street: e[1], fighter: e[2] };
     },
-    header: false,
+    skipFirstRow: false,
     result: [
       { super: "a", street: "b", fighter: "c" },
       { super: "e", street: "f", fighter: "g" },
@@ -604,13 +593,27 @@ const parseTestCases = [
   {
     name: "header mapping object parseline",
     in: "a,b,c\ne,f,g\n",
-    header: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
+    columns: [{ name: "this" }, { name: "is" }, { name: "sparta" }],
     parse: (e: Record<string, unknown>): unknown => {
       return { super: e.this, street: e.is, fighter: e.sparta };
     },
     result: [
       { super: "a", street: "b", fighter: "c" },
       { super: "e", street: "f", fighter: "g" },
+    ],
+  },
+  {
+    name: "provides both opts.skipFirstRow and opts.columns",
+    in: "a,b,1\nc,d,2\ne,f,3",
+    skipFirstRow: true,
+    columns: [
+      { name: "foo" },
+      { name: "bar" },
+      { name: "baz", parse: (e: string) => Number(e) },
+    ],
+    result: [
+      { foo: "c", bar: "d", baz: 2 },
+      { foo: "e", bar: "f", baz: 3 },
     ],
   },
 ];
@@ -620,10 +623,31 @@ for (const testCase of parseTestCases) {
     name: `[CSV] Parse ${testCase.name}`,
     async fn(): Promise<void> {
       const r = await parse(testCase.in, {
-        header: testCase.header,
+        skipFirstRow: testCase.skipFirstRow,
+        columns: testCase.columns,
         parse: testCase.parse as (input: unknown) => unknown,
       });
       assertEquals(r, testCase.result);
     },
   });
 }
+
+Deno.test({
+  name: "[CSV] ParseError.message",
+  fn(): void {
+    assertEquals(
+      new ParseError(2, 2, null, ERR_FIELD_COUNT).message,
+      `record on line 2: ${ERR_FIELD_COUNT}`,
+    );
+
+    assertEquals(
+      new ParseError(1, 2, 1, ERR_QUOTE).message,
+      `record on line 1; parse error on line 2, column 1: ${ERR_QUOTE}`,
+    );
+
+    assertEquals(
+      new ParseError(1, 1, 7, ERR_QUOTE).message,
+      `parse error on line 1, column 7: ${ERR_QUOTE}`,
+    );
+  },
+});

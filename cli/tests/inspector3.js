@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 for (let i = 0; i < 128; i++) {
   console.log(i);
   debugger;

@@ -1,2 +1,3 @@
-[WILDCARD]Subresource integrity check failed --lock=lock_check_err2.json
-http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js
+[WILDCARD]The source code is invalid, as it does not match the expected hash in the lock file.
+  Specifier: http://localhost:4545/cli/tests/subdir/mt_text_ecmascript.j3.js
+  Lock file: lock_check_err2.json

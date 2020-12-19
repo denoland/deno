@@ -1,3 +1,4 @@
 [WILDCARD]
-Synopsis:
-[WILDCARD]d8[WILDCARD]
+Options:
+[WILDCARD]
+  --trace-gc [WILDCARD]

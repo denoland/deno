@@ -1,4 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/**
+ * Converts the byte array to a UUID string
+ * @param bytes Used to convert Byte to Hex
+ */
 export function bytesToUuid(bytes: number[] | Uint8Array): string {
   const bits: string[] = [...bytes].map((bit): string => {
     const s: string = bit.toString(16);
@@ -17,6 +21,10 @@ export function bytesToUuid(bytes: number[] | Uint8Array): string {
   ].join("");
 }
 
+/**
+ * Converts a string to a byte array by converting the hex value to a number
+ * @param uuid Value that gets converted
+ */
 export function uuidToBytes(uuid: string): number[] {
   const bytes: number[] = [];
 
@@ -28,6 +36,10 @@ export function uuidToBytes(uuid: string): number[] {
   return bytes;
 }
 
+/**
+ * Converts a string to a byte array using the char code
+ * @param str Value that gets converted
+ */
 export function stringToBytes(str: string): number[] {
   str = unescape(encodeURIComponent(str));
   const bytes = new Array(str.length);
@@ -37,6 +49,10 @@ export function stringToBytes(str: string): number[] {
   return bytes;
 }
 
+/**
+ * Creates a buffer for creating a SHA-1 hash
+ * @param content Buffer for SHA-1 hash
+ */
 export function createBuffer(content: number[]): ArrayBuffer {
   const arrayBuffer = new ArrayBuffer(content.length);
   const uint8Array = new Uint8Array(arrayBuffer);

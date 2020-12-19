@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function writableStreamDesiredSizeOnReleasedWriter() {
   const ws = new WritableStream();
@@ -79,7 +79,7 @@ unitTest(function getWriterOnErroredStream() {
     () => {
       writer.releaseLock();
       ws.getWriter();
-    }
+    },
   );
 });
 
@@ -97,7 +97,7 @@ unitTest(function closedAndReadyOnReleasedWriter() {
       assertEquals(
         closedRejection.name,
         "TypeError",
-        "closed promise should reject with a TypeError"
+        "closed promise should reject with a TypeError",
       );
       return writer.ready.then(
         (v) => {
@@ -107,10 +107,10 @@ unitTest(function closedAndReadyOnReleasedWriter() {
           assertEquals(
             readyRejection,
             closedRejection,
-            "ready promise should reject with the same error"
-          )
+            "ready promise should reject with the same error",
+          ),
       );
-    }
+    },
   );
 });
 
@@ -173,13 +173,13 @@ unitTest(function redundantReleaseLockIsNoOp() {
   assertEquals(
     undefined,
     writer1.releaseLock(),
-    "releaseLock() should return undefined"
+    "releaseLock() should return undefined",
   );
   const writer2 = ws.getWriter();
   assertEquals(
     undefined,
     writer1.releaseLock(),
-    "no-op releaseLock() should return undefined"
+    "no-op releaseLock() should return undefined",
   );
   // Calling releaseLock() on writer1 should not interfere with writer2. If it did, then the ready promise would be
   // rejected.
@@ -200,7 +200,7 @@ unitTest(function readyPromiseShouldFireBeforeReleaseLock() {
       assertEquals(
         events,
         ["ready", "closed"],
-        "ready promise should fire before closed promise"
+        "ready promise should fire before closed promise",
       );
       // Stop the writer promise hanging around after the test has finished.
       return Promise.all([writerPromise, ws.abort()]).then(undefined);
@@ -216,32 +216,32 @@ unitTest(function subclassingWritableStream() {
   }
   assert(
     Object.getPrototypeOf(Subclass.prototype) === WritableStream.prototype,
-    "Subclass.prototype's prototype should be WritableStream.prototype"
+    "Subclass.prototype's prototype should be WritableStream.prototype",
   );
   assert(
     Object.getPrototypeOf(Subclass) === WritableStream,
-    "Subclass's prototype should be WritableStream"
+    "Subclass's prototype should be WritableStream",
   );
   const sub = new Subclass();
   assert(
     sub instanceof WritableStream,
-    "Subclass object should be an instance of WritableStream"
+    "Subclass object should be an instance of WritableStream",
   );
   assert(
     sub instanceof Subclass,
-    "Subclass object should be an instance of Subclass"
+    "Subclass object should be an instance of Subclass",
   );
   const lockedGetter = Object.getOwnPropertyDescriptor(
     WritableStream.prototype,
-    "locked"
+    "locked",
   )!.get!;
   assert(
     lockedGetter.call(sub) === sub.locked,
-    "Subclass object should pass brand check"
+    "Subclass object should pass brand check",
   );
   assert(
     sub.extraFunction(),
-    "extraFunction() should be present on Subclass object"
+    "extraFunction() should be present on Subclass object",
   );
 });
 

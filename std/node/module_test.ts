@@ -1,12 +1,19 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "../testing/asserts.ts";
 
-const { test } = Deno;
-import { assertEquals, assert, assertStrContains } from "../testing/asserts.ts";
+import * as path from "../path/mod.ts";
 import { createRequire } from "./module.ts";
+
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, path.join("_fs", "testdata"));
 
 const require = createRequire(import.meta.url);
 
-test("requireSuccess", function () {
+Deno.test("requireSuccess", function () {
   // Relative to import.meta.url
   const result = require("./tests/cjs/cjs_a.js");
   assert("helloA" in result);
@@ -19,41 +26,46 @@ test("requireSuccess", function () {
   assertEquals(result.leftPad("pad", 4), " pad");
 });
 
-test("requireCycle", function () {
+Deno.test("requireCycle", function () {
   const resultA = require("./tests/cjs/cjs_cycle_a");
   const resultB = require("./tests/cjs/cjs_cycle_b");
   assert(resultA);
   assert(resultB);
 });
 
-test("requireBuiltin", function () {
+Deno.test("requireBuiltin", function () {
   const fs = require("fs");
   assert("readFileSync" in fs);
   const { readFileSync, isNull, extname } = require("./tests/cjs/cjs_builtin");
+
+  const testData = path.relative(
+    Deno.cwd(),
+    path.join(testdataDir, "hello.txt"),
+  );
   assertEquals(
-    readFileSync("./node/_fs/testdata/hello.txt", { encoding: "utf8" }),
-    "hello world"
+    readFileSync(testData, { encoding: "utf8" }),
+    "hello world",
   );
   assert(isNull(null));
   assertEquals(extname("index.html"), ".html");
 });
 
-test("requireIndexJS", function () {
+Deno.test("requireIndexJS", function () {
   const { isIndex } = require("./tests/cjs");
   assert(isIndex);
 });
 
-test("requireNodeOs", function () {
+Deno.test("requireNodeOs", function () {
   const os = require("os");
   assert(os.arch);
   assert(typeof os.arch() == "string");
 });
 
-test("requireStack", function () {
+Deno.test("requireStack", function () {
   const { hello } = require("./tests/cjs/cjs_throw");
   try {
     hello();
   } catch (e) {
-    assertStrContains(e.stack, "/tests/cjs/cjs_throw.js");
+    assertStringIncludes(e.stack, "/tests/cjs/cjs_throw.js");
   }
 });

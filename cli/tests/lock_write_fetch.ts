@@ -1,6 +1,8 @@
 try {
   Deno.removeSync("./lock_write_fetch.json");
-} catch {}
+} catch {
+  // pass
+}
 
 const fetchProc = Deno.run({
   stdout: "null",
@@ -11,6 +13,7 @@ const fetchProc = Deno.run({
     "--reload",
     "--lock=lock_write_fetch.json",
     "--lock-write",
+    "--cert=tls/RootCA.pem",
     "https_import.ts",
   ],
 });
@@ -25,6 +28,7 @@ const fetchCheckProc = Deno.run({
     Deno.execPath(),
     "cache",
     "--lock=lock_write_fetch.json",
+    "--cert=tls/RootCA.pem",
     "https_import.ts",
   ],
 });

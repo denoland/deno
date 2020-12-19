@@ -1,3 +1,3 @@
 [WILDCARD]
-DEBUG TS - compiler::host.getSourceFile file:[WILDCARD]cli/tests/subdir/type_reference.d.ts
+DEBUG TS - host.getSourceFile("file:///[WILDCARD]cli/tests/subdir/type_reference.d.ts", Latest)
 [WILDCARD]

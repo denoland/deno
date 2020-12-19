@@ -1,16 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
-import { fail, assert, assertThrows } from "../../testing/asserts.ts";
+import { assert, assertThrows, fail } from "../../testing/asserts.ts";
 import { close, closeSync } from "./_fs_close.ts";
 
-test({
+Deno.test({
   name: "ASYNC: File is closed",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const file: Deno.File = await Deno.open(tempFile);
 
     assert(Deno.resources()[file.rid]);
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       close(file.rid, (err) => {
         if (err !== null) reject();
         else resolve();
@@ -28,10 +27,10 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "ASYNC: Invalid fd",
   async fn() {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       close(-1, (err) => {
         if (err !== null) return resolve();
         reject();
@@ -40,14 +39,14 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "close callback should be asynchronous",
   async fn() {
     const tempFile: string = Deno.makeTempFileSync();
     const file: Deno.File = Deno.openSync(tempFile);
 
     let foo: string;
-    const promise = new Promise((resolve) => {
+    const promise = new Promise<void>((resolve) => {
       close(file.rid, () => {
         assert(foo === "bar");
         resolve();
@@ -60,7 +59,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "SYNC: File is closed",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
@@ -73,7 +72,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "SYNC: Invalid fd",
   fn() {
     assertThrows(() => closeSync(-1));

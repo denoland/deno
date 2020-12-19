@@ -21,7 +21,7 @@ const parsedArgs = parse(Deno.args);
 if (parsedArgs._.length === 0) {
   console.error(
     "Usage: gist.ts --allow-env --allow-net [-t|--title Example] some_file " +
-      "[next_file]"
+      "[next_file]",
   );
   Deno.exit(1);
 }
