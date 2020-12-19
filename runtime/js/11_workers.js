@@ -3,7 +3,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { Window } = window.__bootstrap.globalInterfaces;
-  const { log } = window.__bootstrap.util;
+  const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
   const build = window.__bootstrap.build.build;
 
@@ -86,15 +86,11 @@
       );
       //Casts URLs to absolute routes
     } else if (Array.isArray(value)) {
-      value = value.map((x) => {
-        if (x instanceof URL) {
-          x = x.pathname;
-          if (build.os === "windows") {
-            //Remove leading slash on windows absolute routes
-            x = x.slice(1);
-          }
+      value = value.map((route) => {
+        if (route instanceof URL) {
+          route = pathFromURL(route);
         }
-        return x;
+        return route;
       });
     }
 
