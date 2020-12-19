@@ -2,7 +2,7 @@
 
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
   tokio::runtime::Builder::new()
-    .basic_scheduler()
+    .threaded_scheduler()
     .enable_io()
     .enable_time()
     // This limits the number of threads for blocking operations (like for
