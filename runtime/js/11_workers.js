@@ -5,6 +5,7 @@
   const { Window } = window.__bootstrap.globalInterfaces;
   const { log } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
+  const build = window.__bootstrap.build.build;
 
   function createWorker(
     specifier,
@@ -83,9 +84,17 @@
       throw new Error(
         `Expected 'array' or 'boolean' for ${permission} permission, ${typeof value} received`,
       );
+    //Casts URLs to absolute routes
     } else if (Array.isArray(value)) {
       value = value.map((x) => {
-        return x instanceof URL ? x.pathname : x;
+        if(x instanceof URL){
+          x = x.pathname;
+          if(build.os === "windows"){
+            //Remove leading slash on windows absolute routes
+            x = x.slice(1);
+          }
+        }
+        return x;
       });
     }
 
