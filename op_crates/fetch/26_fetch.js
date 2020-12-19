@@ -1293,29 +1293,31 @@
           type: "bytes",
           async pull(controller) {
             try {
-              //TODO(Soremwar)
-              //Research max body size, this is only the max size that can be safely allocated
-              //in a uint8array
               const chunkLength = 16384;
               let position = 0;
               const result = new Uint8Array(chunkLength);
 
-              const { bytes } = await core.jsonOpAsync(
-                "op_fetch_read",
-                {
-                  rid,
-                  start: position,
-                  length: chunkLength,
-                },
-                result,
-              );
-              position += bytes;
-              if (bytes === 0) {
-                controller.close();
-                core.close(rid);
-              } else {
-                controller.enqueue(result.subarray(0, bytes));
+              while(true){
+                const { bytes } = await core.jsonOpAsync(
+                  "op_fetch_read",
+                  {
+                    rid,
+                    start: position,
+                    length: chunkLength,
+                  },
+                  result,
+                );
+                position += bytes;
+
+                if(bytes === 0){
+                  if(position === 0){
+                    controller.close();
+                    core.close(rid);
+                  }
+                  break;
+                }
               }
+              controller.enqueue(result);
             } catch (e) {
               controller.error(e);
               controller.close();
