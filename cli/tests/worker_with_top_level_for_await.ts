@@ -1,19 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { serve } from "../../std/http/server.ts";
+function delay(seconds: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, seconds);
+  });
+}
 
-// Both workers start a server
-const server = serve({ port: 8080 });
-
-// Both workers console.log any received message in an async function
 self.onmessage = (e: MessageEvent) => {
-  console.log("Breaking worker received message", e.data);
+  console.log("TLA worker received message", e.data);
 };
 
-// Both workers send the server object at startup
-self.postMessage(server);
+self.postMessage("hello");
 
-// This line is the only difference between the two workers
-for await (const _request of server) {
-  // pass
-}
+await delay(3000);
+
+throw new Error("unreachable");
