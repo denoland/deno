@@ -1,11 +1,9 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
-test("basename", function () {
+Deno.test("basename", function () {
   assertEquals(path.basename(".js", ".js"), "");
   assertEquals(path.basename(""), "");
   assertEquals(path.basename("/dir/basename.ext"), "basename.ext");
@@ -34,7 +32,7 @@ test("basename", function () {
   // On unix a backslash is just treated as any other character.
   assertEquals(
     path.posix.basename("\\dir\\basename.ext"),
-    "\\dir\\basename.ext"
+    "\\dir\\basename.ext",
   );
   assertEquals(path.posix.basename("\\basename.ext"), "\\basename.ext");
   assertEquals(path.posix.basename("basename.ext"), "basename.ext");
@@ -46,11 +44,11 @@ test("basename", function () {
   const controlCharFilename = "Icon" + String.fromCharCode(13);
   assertEquals(
     path.posix.basename("/a/b/" + controlCharFilename),
-    controlCharFilename
+    controlCharFilename,
   );
 });
 
-test("basenameWin32", function () {
+Deno.test("basenameWin32", function () {
   assertEquals(path.win32.basename("\\dir\\basename.ext"), "basename.ext");
   assertEquals(path.win32.basename("\\basename.ext"), "basename.ext");
   assertEquals(path.win32.basename("basename.ext"), "basename.ext");

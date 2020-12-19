@@ -7,14 +7,14 @@
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 import {
-  encodedLen,
-  encode,
-  encodeToString,
-  decodedLen,
   decode,
+  decodedLen,
   decodeString,
-  errLength,
+  encode,
+  encodedLen,
+  encodeToString,
   errInvalidByte,
+  errLength,
 } from "./hex.ts";
 
 function toByte(s: string): number {
@@ -34,15 +34,14 @@ const testCases = [
 
 const errCases = [
   // encoded(hex) / error
-  ["", "", undefined],
-  ["0", "", errLength()],
-  ["zd4aa", "", errInvalidByte(toByte("z"))],
-  ["d4aaz", "\xd4\xaa", errInvalidByte(toByte("z"))],
-  ["30313", "01", errLength()],
-  ["0g", "", errInvalidByte(new TextEncoder().encode("g")[0])],
-  ["00gg", "\x00", errInvalidByte(new TextEncoder().encode("g")[0])],
-  ["0\x01", "", errInvalidByte(new TextEncoder().encode("\x01")[0])],
-  ["ffeed", "\xff\xee", errLength()],
+  ["0", errLength()],
+  ["zd4aa", errInvalidByte(toByte("z"))],
+  ["d4aaz", errInvalidByte(toByte("z"))],
+  ["30313", errLength()],
+  ["0g", errInvalidByte(new TextEncoder().encode("g")[0])],
+  ["00gg", errInvalidByte(new TextEncoder().encode("g")[0])],
+  ["0\x01", errInvalidByte(new TextEncoder().encode("\x01")[0])],
+  ["ffeed", errLength()],
 ];
 
 Deno.test({
@@ -62,30 +61,15 @@ Deno.test({
     {
       const srcStr = "abc";
       const src = new TextEncoder().encode(srcStr);
-      const dest = new Uint8Array(encodedLen(src.length));
-      const int = encode(dest, src);
+      const dest = encode(src);
       assertEquals(src, new Uint8Array([97, 98, 99]));
-      assertEquals(int, 6);
-    }
-
-    {
-      const srcStr = "abc";
-      const src = new TextEncoder().encode(srcStr);
-      const dest = new Uint8Array(2); // out of index
-      assertThrows(
-        (): void => {
-          encode(dest, src);
-        },
-        Error,
-        "Out of index."
-      );
+      assertEquals(dest.length, 6);
     }
 
     for (const [enc, dec] of testCases) {
-      const dest = new Uint8Array(encodedLen(dec.length));
       const src = new Uint8Array(dec as number[]);
-      const n = encode(dest, src);
-      assertEquals(dest.length, n);
+      const dest = encode(src);
+      assertEquals(dest.length, src.length * 2);
       assertEquals(new TextDecoder().decode(dest), enc);
     }
   },
@@ -123,10 +107,8 @@ Deno.test({
     const cases = testCases.concat(extraTestcase);
 
     for (const [enc, dec] of cases) {
-      const dest = new Uint8Array(decodedLen(enc.length));
       const src = new TextEncoder().encode(enc as string);
-      const [, err] = decode(dest, src);
-      assertEquals(err, undefined);
+      const dest = decode(src);
       assertEquals(Array.from(dest), Array.from(dec as number[]));
     }
   },
@@ -146,14 +128,12 @@ Deno.test({
 Deno.test({
   name: "[encoding.hex] decode error",
   fn(): void {
-    for (const [input, output, expectedErr] of errCases) {
-      const out = new Uint8Array((input as string).length + 10);
-      const [n, err] = decode(out, new TextEncoder().encode(input as string));
-      assertEquals(
-        new TextDecoder("ascii").decode(out.slice(0, n)),
-        output as string
+    for (const [input, expectedErr] of errCases) {
+      assertThrows(
+        () => decode(new TextEncoder().encode(input as string)),
+        Error,
+        (expectedErr as Error).message,
       );
-      assertEquals(err, expectedErr);
     }
   },
 });
@@ -161,19 +141,14 @@ Deno.test({
 Deno.test({
   name: "[encoding.hex] decodeString error",
   fn(): void {
-    for (const [input, output, expectedErr] of errCases) {
-      if (expectedErr) {
-        assertThrows(
-          (): void => {
-            decodeString(input as string);
-          },
-          Error,
-          (expectedErr as Error).message
-        );
-      } else {
-        const out = decodeString(input as string);
-        assertEquals(new TextDecoder("ascii").decode(out), output as string);
-      }
+    for (const [input, expectedErr] of errCases) {
+      assertThrows(
+        (): void => {
+          decodeString(input as string);
+        },
+        Error,
+        (expectedErr as Error).message,
+      );
     }
   },
 });

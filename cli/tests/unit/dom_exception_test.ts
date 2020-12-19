@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assert } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function testDomError() {
   const de = new DOMException("foo", "bar");

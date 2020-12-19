@@ -1,0 +1,4 @@
+Check [WILDCARD]ts_type_only_import.ts
+warning: Compiled module not found "[WILDCARD]ts_type_only_import.d.ts"
+  From: [WILDCARD]ts_type_only_import.ts
+    If the source module contains only types, use `import type` and `export type` to import it instead.

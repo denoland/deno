@@ -1,5 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+  pathToAbsoluteFileUrl,
+  unitTest,
+} from "./test_util.ts";
 
 function assertDirectory(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
@@ -15,7 +22,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path);
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -24,18 +31,13 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
     assertDirectory(path, 0o737);
-  }
+  },
 );
 
 unitTest({ perms: { write: false } }, function mkdirSyncPerm(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.mkdirSync("/baddir");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -44,7 +46,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path);
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -53,29 +55,21 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });
     assertDirectory(path, 0o737);
-  }
+  },
 );
 
 unitTest({ perms: { write: true } }, function mkdirErrSyncIfExists(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.mkdirSync(".");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.AlreadyExists);
+  }, Deno.errors.AlreadyExists);
 });
 
 unitTest({ perms: { write: true } }, async function mkdirErrIfExists(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.mkdir(".");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.AlreadyExists);
+  }, Deno.errors.AlreadyExists);
 });
 
 unitTest(
@@ -84,7 +78,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/nested/directory";
     Deno.mkdirSync(path, { recursive: true });
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -93,7 +87,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/nested/directory";
     await Deno.mkdir(path, { recursive: true });
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -104,7 +98,7 @@ unitTest(
     Deno.mkdirSync(path, { mode: 0o737, recursive: true });
     assertDirectory(path, 0o737);
     assertDirectory(nested, 0o737);
-  }
+  },
 );
 
 unitTest(
@@ -115,7 +109,7 @@ unitTest(
     await Deno.mkdir(path, { mode: 0o737, recursive: true });
     assertDirectory(path, 0o737);
     assertDirectory(nested, 0o737);
-  }
+  },
 );
 
 unitTest(
@@ -133,7 +127,7 @@ unitTest(
       Deno.mkdirSync(pathLink, { recursive: true, mode: 0o731 });
       assertDirectory(path, 0o737);
     }
-  }
+  },
 );
 
 unitTest(
@@ -151,7 +145,7 @@ unitTest(
       await Deno.mkdir(pathLink, { recursive: true, mode: 0o731 });
       assertDirectory(path, 0o737);
     }
-  }
+  },
 );
 
 unitTest(
@@ -202,5 +196,35 @@ unitTest(
         Deno.mkdirSync(danglingLink, { recursive: true });
       }, Deno.errors.AlreadyExists);
     }
-  }
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function mkdirSyncRelativeUrlPath(): void {
+    const testDir = Deno.makeTempDirSync();
+    const nestedDir = testDir + "/nested";
+    // Add trailing slash so base path is treated as a directory. pathToAbsoluteFileUrl removes trailing slashes.
+    const path = new URL("../dir", pathToAbsoluteFileUrl(nestedDir) + "/");
+
+    Deno.mkdirSync(nestedDir);
+    Deno.mkdirSync(path);
+
+    assertDirectory(testDir + "/dir");
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function mkdirRelativeUrlPath(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const nestedDir = testDir + "/nested";
+    // Add trailing slash so base path is treated as a directory. pathToAbsoluteFileUrl removes trailing slashes.
+    const path = new URL("../dir", pathToAbsoluteFileUrl(nestedDir) + "/");
+
+    await Deno.mkdir(nestedDir);
+    await Deno.mkdir(path);
+
+    assertDirectory(testDir + "/dir");
+  },
 );

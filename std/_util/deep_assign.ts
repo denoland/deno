@@ -1,16 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert } from "../testing/asserts.ts";
+import { assert } from "./assert.ts";
 
+export function deepAssign<T, U>(target: T, source: U): T & U;
+export function deepAssign<T, U, V>(
+  target: T,
+  source1: U,
+  source2: V,
+): T & U & V;
+export function deepAssign<T, U, V, W>(
+  target: T,
+  source1: U,
+  source2: V,
+  source3: W,
+): T & U & V & W;
 export function deepAssign(
-  target: Record<string, unknown>,
-  ...sources: object[]
-): object | undefined {
+  // deno-lint-ignore no-explicit-any
+  target: Record<string, any>,
+  // deno-lint-ignore no-explicit-any
+  ...sources: any[]
+): // deno-lint-ignore ban-types
+object | undefined {
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];
     if (!source || typeof source !== `object`) {
       return;
     }
-    Object.entries(source).forEach(([key, value]: [string, unknown]): void => {
+    Object.entries(source).forEach(([key, value]): void => {
       if (value instanceof Date) {
         target[key] = new Date(value);
         return;

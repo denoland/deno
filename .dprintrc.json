@@ -1,0 +1,38 @@
+{
+  "$schema": "https://dprint.dev/schemas/v0.json",
+  "projectType": "openSource",
+  "incremental": true,
+  "lineWidth": 80,
+  "indentWidth": 2,
+  "typescript": {
+    "deno": true
+  },
+  "markdown": {
+    "textWrap": "always"
+  },
+  "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
+  "excludes": [
+    ".cargo_home",
+    ".git",
+    "cli/dts/lib.d.ts",
+    "cli/dts/lib.dom*",
+    "cli/dts/lib.es*",
+    "cli/dts/lib.scripthost.d.ts",
+    "cli/dts/lib.webworker*.d.ts",
+    "cli/dts/typescript.d.ts",
+    "cli/tests/encoding",
+    "cli/tsc/*typescript.js",
+    "gh-pages",
+    "std/**/testdata",
+    "std/**/vendor",
+    "std/node_modules",
+    "std/hash/_wasm",
+    "target",
+    "third_party"
+  ],
+  "plugins": [
+    "https://plugins.dprint.dev/typescript-0.33.0.wasm",
+    "https://plugins.dprint.dev/json-0.7.2.wasm",
+    "https://plugins.dprint.dev/markdown-0.4.2.wasm"
+  ]
+}

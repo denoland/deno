@@ -1,18 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
-import { readFileStrSync } from "../fs/read_file_str.ts";
 import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
 
-const testFilesDir = path.resolve("encoding", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
-function parseFile(filePath: string): object {
+function parseFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
-  const strFile = readFileStrSync(filePath);
-  return parse(strFile);
+  return parse(Deno.readTextFileSync(filePath));
 }
 
 Deno.test({
@@ -27,12 +26,17 @@ Deno.test({
         str4: 'this is a "quote"',
         str5: "The quick brown\nfox jumps over\nthe lazy dog.",
         str6: "The quick brown\nfox jumps over\nthe lazy dog.",
-        lines:
-          "The first newline is\ntrimmed in raw strings.\n   All other " +
+        lines: "The first newline is\ntrimmed in raw strings.\n   All other " +
           "whitespace\n   is preserved.",
+        withApostrophe: "What if it's not?",
+        withSemicolon: `const message = 'hello world';`,
+        withHexNumberLiteral:
+          "Prevent bug from stripping string here ->0xabcdef",
+        withUnicodeChar1: "あ",
+        withUnicodeChar2: "Deno🦕",
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "string.toml"));
+    const actual = parseFile(path.join(testdataDir, "string.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -41,7 +45,7 @@ Deno.test({
   name: "[TOML] CRLF",
   fn(): void {
     const expected = { boolean: { bool1: true, bool2: false } };
-    const actual = parseFile(path.join(testFilesDir, "CRLF.toml"));
+    const actual = parseFile(path.join(testdataDir, "CRLF.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -49,8 +53,8 @@ Deno.test({
 Deno.test({
   name: "[TOML] Boolean",
   fn(): void {
-    const expected = { boolean: { bool1: true, bool2: false } };
-    const actual = parseFile(path.join(testFilesDir, "boolean.toml"));
+    const expected = { boolean: { bool1: true, bool2: false, bool3: true } };
+    const actual = parseFile(path.join(testdataDir, "boolean.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -75,7 +79,7 @@ Deno.test({
         bin1: "0b11010110",
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "integer.toml"));
+    const actual = parseFile(path.join(testdataDir, "integer.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -101,7 +105,7 @@ Deno.test({
         sf6: NaN,
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "float.toml"));
+    const actual = parseFile(path.join(testdataDir, "float.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -118,7 +122,7 @@ Deno.test({
         hosts: ["alpha", "omega"],
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "arrays.toml"));
+    const actual = parseFile(path.join(testdataDir, "arrays.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -151,7 +155,7 @@ Deno.test({
         },
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "table.toml"));
+    const actual = parseFile(path.join(testdataDir, "table.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -166,7 +170,7 @@ Deno.test({
       NANI: "何?!",
       comment: "Comment inside # the comment",
     };
-    const actual = parseFile(path.join(testFilesDir, "simple.toml"));
+    const actual = parseFile(path.join(testdataDir, "simple.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -185,7 +189,7 @@ Deno.test({
         lt2: "00:32:00.999999",
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "datetime.toml"));
+    const actual = parseFile(path.join(testdataDir, "datetime.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -230,7 +234,7 @@ Deno.test({
         },
       },
     };
-    const actual = parseFile(path.join(testFilesDir, "inlineTable.toml"));
+    const actual = parseFile(path.join(testdataDir, "inlineTable.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -245,7 +249,7 @@ Deno.test({
       ],
       nib: [{ name: "node", path: "not_found" }],
     };
-    const actual = parseFile(path.join(testFilesDir, "arrayTable.toml"));
+    const actual = parseFile(path.join(testdataDir, "arrayTable.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -253,7 +257,6 @@ Deno.test({
 Deno.test({
   name: "[TOML] Cargo",
   fn(): void {
-    /* eslint-disable @typescript-eslint/camelcase */
     const expected = {
       workspace: { members: ["./", "core"] },
       bin: [{ name: "deno", path: "cli/main.rs" }],
@@ -290,8 +293,7 @@ Deno.test({
       },
       target: { "cfg(windows)": { dependencies: { winapi: "0.3.6" } } },
     };
-    /* eslint-enable @typescript-eslint/camelcase */
-    const actual = parseFile(path.join(testFilesDir, "cargo.toml"));
+    const actual = parseFile(path.join(testdataDir, "cargo.toml"));
     assertEquals(actual, expected);
   },
 });
@@ -350,6 +352,8 @@ Deno.test({
         [1, 2],
       ],
       hosts: ["alpha", "omega"],
+      bool: true,
+      bool2: false,
     };
     const expected = `deno    = "is"
 not     = "[node]"
@@ -384,6 +388,8 @@ sf5     = NaN
 sf6     = NaN
 data    = [["gamma","delta"],[1,2]]
 hosts   = ["alpha","omega"]
+bool    = true
+bool2   = false
 
 [foo]
 bar     = "deno"
@@ -407,6 +413,67 @@ stuff   = "in"
 the     = "array"
 `;
     const actual = stringify(src);
+    assertEquals(actual, expected);
+  },
+});
+
+Deno.test({
+  name: "[TOML] Comments",
+  fn: () => {
+    const expected = {
+      str0: "value",
+      str1: "# This is not a comment",
+      str2:
+        " # this is not a comment!\nA multiline string with a #\n# this is also not a comment",
+      str3:
+        '"# not a comment"\n\t# this is a real tab on purpose \n# not a comment',
+      point0: { x: 1, y: 2, str0: "#not a comment", z: 3 },
+      point1: { x: 7, y: 8, z: 9, str0: "#not a comment" },
+      deno: {
+        features: ["#secure by default", "supports typescript # not a comment"],
+        url: "https://deno.land/",
+        is_not_node: true,
+      },
+      toml: {
+        name: "Tom's Obvious, Minimal Language",
+        objectives: ["easy to read", "minimal config file", "#not a comment"],
+      },
+    };
+    const actual = parseFile(path.join(testdataDir, "comment.toml"));
+    assertEquals(actual, expected);
+  },
+});
+
+Deno.test({
+  name: "[TOML] Inline Array of Inline Table",
+  fn(): void {
+    const expected = {
+      inlineArray: {
+        string: [{ var: "a string" }],
+        my_points: [
+          { x: 1, y: 2, z: 3 },
+          { x: 7, y: 8, z: 9 },
+          { x: 2, y: 4, z: 8 },
+        ],
+        points: [
+          { x: 1, y: 2, z: 3 },
+          { x: 7, y: 8, z: 9 },
+          { x: 2, y: 4, z: 8 },
+        ],
+      },
+    };
+    const actual = parseFile(
+      path.join(testdataDir, "inlineArrayOfInlineTable.toml"),
+    );
+    assertEquals(actual, expected);
+  },
+});
+
+Deno.test({
+  name: "[TOML] Parse malformed local time as String (#8433)",
+  fn(): void {
+    const expected = { sign: "2020-01-01x" };
+    const actual = parse(`sign='2020-01-01x'`);
     assertEquals(actual, expected);
   },
 });

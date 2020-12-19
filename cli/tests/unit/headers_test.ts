@@ -1,14 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringIncludes,
+  unitTest,
 } from "./test_util.ts";
 const {
-  stringifyArgs,
+  inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
+
+unitTest(function headersHasCorrectNameProp(): void {
+  assertEquals(Headers.name, "Headers");
+});
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -18,12 +22,12 @@ unitTest(function newHeaderTest(): void {
   new Headers(undefined);
   new Headers({});
   try {
-    // @ts-expect-error
-    new Headers(null);
+    // deno-lint-ignore no-explicit-any
+    new Headers(null as any);
   } catch (e) {
     assertEquals(
       e.message,
-      "Failed to construct 'Headers'; The provided value was not valid"
+      "Failed to construct 'Headers'; The provided value was not valid",
     );
   }
 });
@@ -32,11 +36,11 @@ const headerDict: Record<string, string> = {
   name1: "value1",
   name2: "value2",
   name3: "value3",
-  // @ts-expect-error
-  name4: undefined,
+  // deno-lint-ignore no-explicit-any
+  name4: undefined as any,
   "Content-Type": "value4",
 };
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 const headerSeq: any[] = [];
 for (const name in headerDict) {
   headerSeq.push([name, headerDict[name]]);
@@ -87,7 +91,7 @@ unitTest(function headerHasSuccess(): void {
     assert(headers.has(name), "headers has name " + name);
     assert(
       !headers.has("nameNotInHeaders"),
-      "headers do not have header: nameNotInHeaders"
+      "headers do not have header: nameNotInHeaders",
     );
   }
 });
@@ -260,17 +264,17 @@ unitTest(function headerParamsShouldThrowTypeError(): void {
 });
 
 unitTest(function headerParamsArgumentsCheck(): void {
-  const methodRequireOneParam = ["delete", "get", "has", "forEach"];
+  const methodRequireOneParam = ["delete", "get", "has", "forEach"] as const;
 
-  const methodRequireTwoParams = ["append", "set"];
+  const methodRequireTwoParams = ["append", "set"] as const;
 
   methodRequireOneParam.forEach((method): void => {
     const headers = new Headers();
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // @ts-expect-error
-      headers[method]();
+      // deno-lint-ignore no-explicit-any
+      (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -281,9 +285,9 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringIncludes(
       errMsg,
-      `${method} requires at least 1 argument, but only 0 present`
+      `${method} requires at least 1 argument, but only 0 present`,
     );
   });
 
@@ -293,8 +297,8 @@ unitTest(function headerParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // @ts-expect-error
-      headers[method]();
+      // deno-lint-ignore no-explicit-any
+      (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -305,16 +309,16 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringIncludes(
       errMsg,
-      `${method} requires at least 2 arguments, but only 0 present`
+      `${method} requires at least 2 arguments, but only 0 present`,
     );
 
     hasThrown = 0;
     errMsg = "";
     try {
-      // @ts-expect-error
-      headers[method]("foo");
+      // deno-lint-ignore no-explicit-any
+      (headers as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -325,9 +329,9 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringIncludes(
       errMsg,
-      `${method} requires at least 2 arguments, but only 1 present`
+      `${method} requires at least 2 arguments, but only 1 present`,
     );
   });
 });
@@ -398,7 +402,7 @@ unitTest(function toStringShouldBeWebCompatibility(): void {
 });
 
 function stringify(...args: unknown[]): string {
-  return stringifyArgs(args).replace(/\n$/, "");
+  return inspectArgs(args).replace(/\n$/, "");
 }
 
 unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
@@ -407,7 +411,7 @@ unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
   const singleHeader = new Headers([["Content-Type", "application/json"]]);
   assertEquals(
     stringify(singleHeader),
-    "Headers { content-type: application/json }"
+    "Headers { content-type: application/json }",
   );
   const multiParamHeader = new Headers([
     ["Content-Type", "application/json"],
@@ -415,6 +419,6 @@ unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
   ]);
   assertEquals(
     stringify(multiParamHeader),
-    "Headers { content-type: application/json, content-length: 1337 }"
+    "Headers { content-type: application/json, content-length: 1337 }",
   );
 });

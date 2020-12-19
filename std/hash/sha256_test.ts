@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { Sha256, HmacSha256, Message } from "./sha256.ts";
+import { HmacSha256, Message, Sha256 } from "./sha256.ts";
 import { assertEquals } from "../testing/asserts.ts";
-import { join, resolve } from "../path/mod.ts";
+import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
 
-const { test } = Deno;
-
-const testdataDir = resolve("hash", "testdata");
+const moduleDir = dirname(fromFileUrl(import.meta.url));
+const testdataDir = resolve(moduleDir, "testdata");
 
 /** Handy function to convert an array/array buffer to a string of hex values. */
 function toHexString(value: number[] | ArrayBuffer): string {
@@ -18,7 +17,6 @@ function toHexString(value: number[] | ArrayBuffer): string {
   return hex;
 }
 
-// prettier-ignore
 // deno-fmt-ignore
 const fixtures: {
   sha256: Record<string, Record<string, Message>>;
@@ -157,35 +155,29 @@ const fixtures: {
   },
 };
 
-// prettier-ignore
 // deno-fmt-ignore
 fixtures.sha256.Uint8Array = {
   '182889f925ae4e5cc37118ded6ed87f7bdc7cab5ec5e78faef2e50048999473f': new Uint8Array([211, 212]),
   'd7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592': new Uint8Array([84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103])
 };
-// prettier-ignore
 // deno-fmt-ignore
 fixtures.sha256.Int8Array = {
   'd7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592': new Int8Array([84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103])
 };
-// prettier-ignore
 // deno-fmt-ignore
 fixtures.sha256.ArrayBuffer = {
   'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855': new ArrayBuffer(0),
   '6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d': new ArrayBuffer(1)
 };
-// prettier-ignore
 // deno-fmt-ignore
 fixtures.sha224.Uint8Array = {
   'e17541396a3ecd1cd5a2b968b84e597e8eae3b0ea3127963bf48dd3b': new Uint8Array([211, 212]),
-  '730e109bd7a8a32b1cb9d9a09aa2325d2430587ddbc0c38bad911525': new Uint8Array([84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103])    
+  '730e109bd7a8a32b1cb9d9a09aa2325d2430587ddbc0c38bad911525': new Uint8Array([84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103])
 };
-// prettier-ignore
 // deno-fmt-ignore
 fixtures.sha224.Int8Array = {
   '730e109bd7a8a32b1cb9d9a09aa2325d2430587ddbc0c38bad911525': new Int8Array([84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103])
 };
-// prettier-ignore
 // deno-fmt-ignore
 fixtures.sha224.ArrayBuffer = {
   'd14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f': new ArrayBuffer(0),
@@ -222,15 +214,14 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha256)) {
     let i = 1;
     for (const [expected, message] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `sha256.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new Sha256();
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -242,15 +233,14 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha224)) {
     let i = 1;
     for (const [expected, message] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `sha224.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new Sha256(true);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -262,15 +252,14 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha256Hmac)) {
     let i = 1;
     for (const [expected, [key, message]] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `hmacSha256.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new HmacSha256(key);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -282,15 +271,14 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha224Hmac)) {
     let i = 1;
     for (const [expected, [key, message]] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `hmacSha224.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new HmacSha256(key, true);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -298,12 +286,12 @@ for (const method of methods) {
   }
 }
 
-test("[hash/sha256] test Uint8Array from Reader", async () => {
+Deno.test("[hash/sha256] test Uint8Array from Reader", async () => {
   const data = await Deno.readFile(join(testdataDir, "hashtest"));
 
   const hash = new Sha256().update(data).hex();
   assertEquals(
     hash,
-    "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
   );
 });

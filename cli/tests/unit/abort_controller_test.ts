@@ -1,4 +1,4 @@
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function basicAbortController() {
   const controller = new AbortController();

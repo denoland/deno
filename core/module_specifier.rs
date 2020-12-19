@@ -1,3 +1,6 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use crate::normalize_path;
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
@@ -45,7 +48,9 @@ impl fmt::Display for ModuleResolutionError {
   }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(
+  Debug, Clone, Eq, Hash, PartialEq, serde::Serialize, Ord, PartialOrd,
+)]
 /// Resolved module specifier
 pub struct ModuleSpecifier(Url);
 
@@ -146,10 +151,11 @@ impl ModuleSpecifier {
   /// Converts a string representing a relative or absolute path into a
   /// ModuleSpecifier. A relative path is considered relative to the current
   /// working directory.
-  fn resolve_path(
+  pub fn resolve_path(
     path_str: &str,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let path = current_dir().unwrap().join(path_str);
+    let path = normalize_path(&path);
     Url::from_file_path(path.clone())
       .map(ModuleSpecifier)
       .map_err(|()| ModuleResolutionError::InvalidPath(path))
@@ -206,6 +212,7 @@ impl PartialEq<String> for ModuleSpecifier {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::path::Path;
 
   #[test]
   fn test_resolve_import() {
@@ -415,7 +422,12 @@ mod tests {
       );
       tests.extend(vec![
         (r"/deno/tests/006_url_imports.ts", expected_url.to_string()),
-        (r"\deno\tests\006_url_imports.ts", expected_url),
+        (r"\deno\tests\006_url_imports.ts", expected_url.to_string()),
+        (
+          r"\deno\..\deno\tests\006_url_imports.ts",
+          expected_url.to_string(),
+        ),
+        (r"\deno\.\tests\006_url_imports.ts", expected_url),
       ]);
 
       // Relative local path.
@@ -450,7 +462,12 @@ mod tests {
       let expected_url = format!("file://{}/tests/006_url_imports.ts", cwd_str);
       tests.extend(vec![
         ("tests/006_url_imports.ts", expected_url.to_string()),
-        ("./tests/006_url_imports.ts", expected_url),
+        ("./tests/006_url_imports.ts", expected_url.to_string()),
+        (
+          "tests/../tests/006_url_imports.ts",
+          expected_url.to_string(),
+        ),
+        ("tests/./006_url_imports.ts", expected_url),
       ]);
     }
 
@@ -509,6 +526,23 @@ mod tests {
     for (specifier, expected) in tests {
       let result = ModuleSpecifier::specifier_has_uri_scheme(specifier);
       assert_eq!(result, expected);
+    }
+  }
+
+  #[test]
+  fn test_normalize_path() {
+    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
+    assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
+    assert_eq!(
+      normalize_path(Path::new("a/./b/../c")),
+      PathBuf::from("a/c")
+    );
+
+    if cfg!(windows) {
+      assert_eq!(
+        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
+        PathBuf::from("C:\\a\\c")
+      );
     }
   }
 }

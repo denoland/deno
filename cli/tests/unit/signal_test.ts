@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  unitTest,
   assert,
   assertEquals,
   assertThrows,
-  createResolvable,
+  deferred,
+  unitTest,
 } from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
@@ -21,92 +21,92 @@ unitTest(
         Deno.signal(1);
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.alarm(); // for SIGALRM
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.child(); // for SIGCHLD
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.hungup(); // for SIGHUP
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.interrupt(); // for SIGINT
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.io(); // for SIGIO
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.pipe(); // for SIGPIPE
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.quit(); // for SIGQUIT
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.terminate(); // for SIGTERM
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.userDefined1(); // for SIGUSR1
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.userDefined2(); // for SIGURS2
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
     assertThrows(
       () => {
         Deno.signals.windowChange(); // for SIGWINCH
       },
       Error,
-      "not implemented"
+      "not implemented",
     );
-  }
+  },
 );
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true, net: true } },
   async function signalStreamTest(): Promise<void> {
-    const resolvable = createResolvable();
+    const resolvable = deferred();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
@@ -131,13 +131,13 @@ unitTest(
 
     clearInterval(t);
     await resolvable;
-  }
+  },
 );
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
   async function signalPromiseTest(): Promise<void> {
-    const resolvable = createResolvable();
+    const resolvable = deferred();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
@@ -151,7 +151,7 @@ unitTest(
 
     clearInterval(t);
     await resolvable;
-  }
+  },
 );
 
 unitTest(
@@ -191,5 +191,5 @@ unitTest(
     s = Deno.signals.windowChange(); // for SIGWINCH
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-  }
+  },
 );

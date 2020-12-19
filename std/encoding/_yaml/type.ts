@@ -3,7 +3,7 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { ArrayObject, Any } from "./utils.ts";
+import type { Any, ArrayObject } from "./utils.ts";
 
 export type KindType = "sequence" | "scalar" | "mapping";
 export type StyleVariant = "lowercase" | "uppercase" | "camelcase" | "decimal";
@@ -17,7 +17,7 @@ interface TypeOptions {
   resolve?: (data: Any) => boolean;
   construct?: (data: string) => Any;
   instanceOf?: Any;
-  predicate?: (data: object) => boolean;
+  predicate?: (data: Record<string, unknown>) => boolean;
   represent?: RepresentFn | ArrayObject<RepresentFn>;
   defaultStyle?: StyleVariant;
   styleAliases?: ArrayObject;
@@ -31,7 +31,7 @@ export class Type {
   public tag: string;
   public kind: KindType | null = null;
   public instanceOf: Any;
-  public predicate?: (data: object) => boolean;
+  public predicate?: (data: Record<string, unknown>) => boolean;
   public represent?: RepresentFn | ArrayObject<RepresentFn>;
   public defaultStyle?: StyleVariant;
   public styleAliases?: ArrayObject;

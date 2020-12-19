@@ -3,12 +3,12 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { Mark } from "./mark.ts";
+import type { Mark } from "./mark.ts";
 
 export class YAMLError extends Error {
   constructor(
     message = "(unknown reason)",
-    protected mark: Mark | string = ""
+    protected mark: Mark | string = "",
   ) {
     super(`${message} ${mark}`);
     this.name = this.constructor.name;

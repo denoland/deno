@@ -1,8 +1,8 @@
-const { test } = Deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
-import { stringify, parse } from "./querystring.ts";
+import { parse, stringify } from "./querystring.ts";
 
-test({
+Deno.test({
   name: "stringify",
   fn() {
     assertEquals(
@@ -12,12 +12,12 @@ test({
         c: true,
         d: ["foo", "bar"],
       }),
-      "a=hello&b=5&c=true&d=foo&d=bar"
+      "a=hello&b=5&c=true&d=foo&d=bar",
     );
   },
 });
 
-test({
+Deno.test({
   name: "parse",
   fn() {
     assertEquals(parse("a=hello&b=5&c=true&d=foo&d=bar"), {

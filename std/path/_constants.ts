@@ -1,7 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-
-const { build } = Deno;
+/** This module is browser compatible. */
 
 // Alphabet chars.
 export const CHAR_UPPERCASE_A = 65; /* A */
@@ -47,8 +46,3 @@ export const CHAR_EQUAL = 61; /* = */
 // Digits
 export const CHAR_0 = 48; /* 0 */
 export const CHAR_9 = 57; /* 9 */
-
-const isWindows = build.os == "windows";
-
-export const SEP = isWindows ? "\\" : "/";
-export const SEP_PATTERN = isWindows ? /[\\/]+/ : /\/+/;

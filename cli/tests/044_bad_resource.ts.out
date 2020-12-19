@@ -1,4 +1,2 @@
-[WILDCARD]error: Uncaught BadResource: Bad resource ID
-    at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
-    at Object.sendAsync ([WILDCARD]dispatch_json.ts:[WILDCARD])
-    at async main ([WILDCARD]tests/044_bad_resource.ts:[WILDCARD])
+[WILDCARD]error: Uncaught (in promise) BadResource: Bad resource ID
+[WILDCARD]

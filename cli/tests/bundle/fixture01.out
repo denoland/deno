@@ -1,0 +1,7 @@
+const mod = function() {
+    const a = "a";
+    return {
+        a
+    };
+}();
+console.log(mod);

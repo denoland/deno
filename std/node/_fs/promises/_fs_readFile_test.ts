@@ -1,34 +1,59 @@
-const { test } = Deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { readFile } from "./_fs_readFile.ts";
 import * as path from "../../../path/mod.ts";
-import { assertEquals, assert } from "../../../testing/asserts.ts";
+import { assert, assertEquals } from "../../../testing/asserts.ts";
 
-const testData = path.resolve(
-  path.join("node", "_fs", "testdata", "hello.txt")
-);
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testData = path.resolve(moduleDir, "..", "testdata", "hello.txt");
 
-test("readFileSuccess", async function () {
-  const data = await readFile(testData);
+Deno.test("readFileSuccess", async function () {
+  const data: Uint8Array = await readFile(testData);
 
   assert(data instanceof Uint8Array);
-  assertEquals(new TextDecoder().decode(data as Uint8Array), "hello world");
+  assertEquals(new TextDecoder().decode(data), "hello world");
 });
 
-test("readFileEncodeUtf8Success", async function () {
-  const data = await readFile(testData, { encoding: "utf8" });
+Deno.test("readFileBinarySuccess", async function () {
+  const data: Uint8Array = await readFile(testData, "binary");
+
+  assert(data instanceof Uint8Array);
+  assertEquals(new TextDecoder().decode(data), "hello world");
+});
+
+Deno.test("readFileBinaryObjectSuccess", async function () {
+  const data: Uint8Array = await readFile(testData, { encoding: "binary" });
+
+  assert(data instanceof Uint8Array);
+  assertEquals(new TextDecoder().decode(data), "hello world");
+});
+
+Deno.test("readFileStringObjectSuccess", async function () {
+  const data: string = await readFile(testData, { encoding: "utf8" });
 
   assertEquals(typeof data, "string");
-  assertEquals(data as string, "hello world");
+  assertEquals(data, "hello world");
 });
 
-test("readFileEncodingAsString", async function () {
-  const data = await readFile(testData, "utf8");
+Deno.test("readFileEncodeHexSuccess", async function () {
+  const data: string = await readFile(testData, { encoding: "hex" });
+  assertEquals(typeof data, "string");
+  assertEquals(data as string, "68656c6c6f20776f726c64");
+});
+
+Deno.test("readFileEncodeBase64Success", async function () {
+  const data: string = await readFile(testData, { encoding: "base64" });
+  assertEquals(typeof data, "string");
+  assertEquals(data as string, "aGVsbG8gd29ybGQ=");
+});
+
+Deno.test("readFileStringSuccess", async function () {
+  const data: string = await readFile(testData, "utf8");
 
   assertEquals(typeof data, "string");
-  assertEquals(data as string, "hello world");
+  assertEquals(data, "hello world");
 });
 
-test("readFileError", async function () {
+Deno.test("readFileError", async function () {
   try {
     await readFile("invalid-file", "utf8");
   } catch (e) {

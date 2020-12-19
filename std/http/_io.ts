@@ -1,8 +1,9 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { encoder } from "../encoding/utf8.ts";
-import { ServerRequest, Response } from "./server.ts";
+import { Response, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
 
 export function emptyReader(): Deno.Reader {
@@ -68,7 +69,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
     if (Number.isNaN(chunkSize) || chunkSize < 0) {
-      throw new Error("Invalid chunk size");
+      throw new Deno.errors.InvalidData("Invalid chunk size");
     }
     if (chunkSize > 0) {
       if (chunkSize > buf.byteLength) {
@@ -118,27 +119,37 @@ function isProhibidedForTrailer(key: string): boolean {
   return s.has(key.toLowerCase());
 }
 
-/**
- * Read trailer headers from reader and append values to headers.
- * "trailer" field will be deleted.
- * */
+/** Read trailer headers from reader and append values to headers. "trailer"
+ * field will be deleted. */
 export async function readTrailers(
   headers: Headers,
-  r: BufReader
+  r: BufReader,
 ): Promise<void> {
-  const headerKeys = parseTrailer(headers.get("trailer"));
-  if (!headerKeys) return;
+  const trailers = parseTrailer(headers.get("trailer"));
+  if (trailers == null) return;
+  const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
   const result = await tp.readMIMEHeader();
-  assert(result !== null, "trailer must be set");
+  if (result == null) {
+    throw new Deno.errors.InvalidData("Missing trailer header.");
+  }
+  const undeclared = [...result.keys()].filter(
+    (k) => !trailerNames.includes(k),
+  );
+  if (undeclared.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Undeclared trailers: ${Deno.inspect(undeclared)}.`,
+    );
+  }
   for (const [k, v] of result) {
-    if (!headerKeys.has(k)) {
-      throw new Error("Undeclared trailer field");
-    }
-    headerKeys.delete(k);
     headers.append(k, v);
   }
-  assert(Array.from(headerKeys).length === 0, "Missing trailers");
+  const missingTrailers = trailerNames.filter((k) => !result.has(k));
+  if (missingTrailers.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Missing trailers: ${Deno.inspect(missingTrailers)}.`,
+    );
+  }
   headers.delete("trailer");
 }
 
@@ -146,67 +157,71 @@ function parseTrailer(field: string | null): Headers | undefined {
   if (field == null) {
     return undefined;
   }
-  const keys = field.split(",").map((v) => v.trim().toLowerCase());
-  if (keys.length === 0) {
-    throw new Error("Empty trailer");
+  const trailerNames = field.split(",").map((v) => v.trim().toLowerCase());
+  if (trailerNames.length === 0) {
+    throw new Deno.errors.InvalidData("Empty trailer header.");
   }
-  for (const key of keys) {
-    if (isProhibidedForTrailer(key)) {
-      throw new Error(`Prohibited field for trailer`);
-    }
+  const prohibited = trailerNames.filter((k) => isProhibidedForTrailer(k));
+  if (prohibited.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`,
+    );
   }
-  return new Headers(keys.map((key) => [key, ""]));
+  return new Headers(trailerNames.map((key) => [key, ""]));
 }
 
 export async function writeChunkedBody(
-  w: Deno.Writer,
-  r: Deno.Reader
+  w: BufWriter,
+  r: Deno.Reader,
 ): Promise<void> {
-  const writer = BufWriter.create(w);
   for await (const chunk of Deno.iter(r)) {
     if (chunk.byteLength <= 0) continue;
     const start = encoder.encode(`${chunk.byteLength.toString(16)}\r\n`);
     const end = encoder.encode("\r\n");
-    await writer.write(start);
-    await writer.write(chunk);
-    await writer.write(end);
+    await w.write(start);
+    await w.write(chunk);
+    await w.write(end);
+    await w.flush();
   }
 
   const endChunk = encoder.encode("0\r\n\r\n");
-  await writer.write(endChunk);
+  await w.write(endChunk);
 }
 
-/** write trailer headers to writer. it mostly should be called after writeResponse */
+/** Write trailer headers to writer. It should mostly should be called after
+ * `writeResponse()`. */
 export async function writeTrailers(
   w: Deno.Writer,
   headers: Headers,
-  trailers: Headers
+  trailers: Headers,
 ): Promise<void> {
   const trailer = headers.get("trailer");
   if (trailer === null) {
-    throw new Error('response headers must have "trailer" header field');
+    throw new TypeError("Missing trailer header.");
   }
   const transferEncoding = headers.get("transfer-encoding");
   if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
-    throw new Error(
-      `trailer headers is only allowed for "transfer-encoding: chunked": got "${transferEncoding}"`
+    throw new TypeError(
+      `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: ${transferEncoding}".`,
     );
   }
   const writer = BufWriter.create(w);
-  const trailerHeaderFields = trailer
-    .split(",")
-    .map((s) => s.trim().toLowerCase());
-  for (const f of trailerHeaderFields) {
-    assert(
-      !isProhibidedForTrailer(f),
-      `"${f}" is prohibited for trailer header`
+  const trailerNames = trailer.split(",").map((s) => s.trim().toLowerCase());
+  const prohibitedTrailers = trailerNames.filter((k) =>
+    isProhibidedForTrailer(k)
+  );
+  if (prohibitedTrailers.length > 0) {
+    throw new TypeError(
+      `Prohibited trailer names: ${Deno.inspect(prohibitedTrailers)}.`,
     );
   }
+  const undeclared = [...trailers.keys()].filter(
+    (k) => !trailerNames.includes(k),
+  );
+  if (undeclared.length > 0) {
+    throw new TypeError(`Undeclared trailers: ${Deno.inspect(undeclared)}.`);
+  }
   for (const [key, value] of trailers) {
-    assert(
-      trailerHeaderFields.includes(key),
-      `Not trailer header field: ${key}`
-    );
     await writer.write(encoder.encode(`${key}: ${value}\r\n`));
   }
   await writer.write(encoder.encode("\r\n"));
@@ -215,7 +230,7 @@ export async function writeTrailers(
 
 export async function writeResponse(
   w: Deno.Writer,
-  r: Response
+  r: Response,
 ): Promise<void> {
   const protoMajor = 1;
   const protoMinor = 1;
@@ -319,7 +334,7 @@ export function parseHTTPVersion(vers: string): [number, number] {
 
 export async function readRequest(
   conn: Deno.Conn,
-  bufr: BufReader
+  bufr: BufReader,
 ): Promise<ServerRequest | null> {
   const tp = new TextProtoReader(bufr);
   const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
@@ -358,7 +373,7 @@ function fixLength(req: ServerRequest): void {
       // that contains a Transfer-Encoding header field.
       // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
       throw new Error(
-        "http: Transfer-Encoding and Content-Length cannot be send together"
+        "http: Transfer-Encoding and Content-Length cannot be send together",
       );
     }
   }

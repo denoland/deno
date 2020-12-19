@@ -1,13 +1,16 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-const { connect, run, test } = Deno;
+import { dirname, fromFileUrl } from "../path/mod.ts";
 
-let server: Deno.Process;
+const moduleDir = dirname(fromFileUrl(import.meta.url));
+
+let server: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 async function startServer(): Promise<void> {
-  server = run({
-    // TODO(lucacasonato): remove unstable when stabilized
-    cmd: [Deno.execPath(), "run", "--unstable", "-A", "http/racing_server.ts"],
+  server = Deno.run({
+    cmd: [Deno.execPath(), "run", "--quiet", "-A", "racing_server.ts"],
+    cwd: moduleDir,
     stdout: "piped",
   });
   // Once racing server is ready it will write to its stdout.
@@ -18,7 +21,7 @@ async function startServer(): Promise<void> {
 }
 function killServer(): void {
   server.close();
-  server.stdout?.close();
+  server.stdout.close();
 }
 
 const input = [
@@ -59,10 +62,10 @@ content-length: 6
 Step7
 `;
 
-test("serverPipelineRace", async function (): Promise<void> {
+Deno.test("serverPipelineRace", async function (): Promise<void> {
   await startServer();
 
-  const conn = await connect({ port: 4501 });
+  const conn = await Deno.connect({ port: 4501 });
   const r = new TextProtoReader(new BufReader(conn));
   const w = new BufWriter(conn);
   await w.write(new TextEncoder().encode(input));

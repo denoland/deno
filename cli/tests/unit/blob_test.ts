@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { concat } from "../../../std/bytes/mod.ts";
 import { decode } from "../../../std/encoding/utf8.ts";
 
@@ -46,11 +46,12 @@ unitTest(function blobShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
-    const options1: object = {
+    // deno-lint-ignore no-explicit-any
+    const options1: any = {
       ending: "utf8",
       hasOwnProperty: "hasOwnProperty",
     };
-    const options2: object = Object.create(null);
+    const options2 = Object.create(null);
     new Blob(["Hello World"], options1);
     new Blob(["Hello World"], options2);
   } catch {
@@ -60,14 +61,16 @@ unitTest(function blobShouldNotThrowError(): void {
   assertEquals(hasThrown, false);
 });
 
+/* TODO https://github.com/denoland/deno/issues/7540
 unitTest(function nativeEndLine(): void {
-  const options: object = {
+  const options = {
     ending: "native",
-  };
+  } as const;
   const blob = new Blob(["Hello\nWorld"], options);
 
   assertEquals(blob.size, Deno.build.os === "windows" ? 12 : 11);
 });
+*/
 
 unitTest(async function blobText(): Promise<void> {
   const blob = new Blob(["Hello World"]);
@@ -89,6 +92,12 @@ unitTest(async function blobStream(): Promise<void> {
   };
   await read();
   assertEquals(decode(bytes), "Hello World");
+});
+
+unitTest(async function blobArrayBuffer(): Promise<void> {
+  const uint = new Uint8Array([102, 111, 111]);
+  const blob = new Blob([uint]);
+  assertEquals(await blob.arrayBuffer(), uint.buffer);
 });
 
 unitTest(function blobConstructorNameIsBlob(): void {

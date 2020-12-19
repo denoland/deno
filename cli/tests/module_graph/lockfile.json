@@ -1,0 +1,8 @@
+{
+  "https://deno.land/x/lib/a.ts": "4437fee72a750d9540a9575ea6426761d0aa1beedfa308fb1bc38701d97011b8",
+  "https://deno.land/x/lib/b.js": "093cc4164ca7a9adb11597ad291e021634f0b2d8c048137f7e9fb0d709499028",
+  "https://deno.land/x/lib/c.d.ts": "a95647377477cc663559f5e857bf318c584622ed1295a8ccb0c091d06bee0456",
+  "https://deno.land/x/lib/c.js": "4ff934f4b3b06f320c3130326376d9f2435e2ecedd582940ca90938137d004e1",
+  "https://deno.land/x/lib/mod.d.ts": "e54b994fbf63cb7f01076ea54f2ed67b185f2a48e8ff71d74bd9c8180a338eb7",
+  "https://deno.land/x/lib/mod.js": "3f6fcb8ef83ed6c66e71774d5079d14d22a6948dc6e5358ac30e0ab55e1a6404"
+}

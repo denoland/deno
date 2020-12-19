@@ -1,170 +1,309 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::core_isolate::CoreIsolateState;
+
+use crate::error::bad_resource_id;
+use crate::error::type_error;
+use crate::error::AnyError;
+use crate::gotham_state::GothamState;
+use crate::resources::ResourceTable;
+use crate::runtime::GetErrorClassFn;
+use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
+use indexmap::IndexMap;
+use serde_json::json;
+use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::iter::once;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub type OpId = u32;
-
-pub type Buf = Box<[u8]>;
-
-pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Buf>>>;
+pub type OpAsyncFuture = Pin<Box<dyn Future<Output = Box<[u8]>>>>;
+pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static;
+pub type OpId = usize;
 
 pub enum Op {
-  Sync(Buf),
+  Sync(Box<[u8]>),
   Async(OpAsyncFuture),
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
   AsyncUnref(OpAsyncFuture),
+  NotFound,
 }
 
-/// Main type describing op
-pub type OpDispatcher =
-  dyn Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static;
-
-#[derive(Default)]
-pub struct OpRegistry {
-  dispatchers: Vec<Rc<OpDispatcher>>,
-  name_to_id: HashMap<String, OpId>,
+/// Maintains the resources and ops inside a JS runtime.
+pub struct OpState {
+  pub resource_table: ResourceTable,
+  pub op_table: OpTable,
+  pub get_error_class_fn: GetErrorClassFn,
+  gotham_state: GothamState,
 }
 
-impl OpRegistry {
-  pub fn new() -> Self {
-    let mut registry = Self::default();
-    let op_id = registry.register("ops", |state, _, _| {
-      let buf = state.op_registry.json_map();
-      Op::Sync(buf)
-    });
-    assert_eq!(op_id, 0);
-    registry
+impl Default for OpState {
+  // TODO(ry) Only deno_core should be able to construct an OpState. But I don't
+  // know how to make default private. Maybe rename to
+  //   pub(crate) fn new() -> OpState
+  fn default() -> OpState {
+    OpState {
+      resource_table: Default::default(),
+      op_table: OpTable::default(),
+      get_error_class_fn: &|_| "Error",
+      gotham_state: Default::default(),
+    }
   }
+}
 
-  pub fn register<F>(&mut self, name: &str, op: F) -> OpId
+impl Deref for OpState {
+  type Target = GothamState;
+
+  fn deref(&self) -> &Self::Target {
+    &self.gotham_state
+  }
+}
+
+impl DerefMut for OpState {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.gotham_state
+  }
+}
+
+/// Collection for storing registered ops. The special 'get_op_catalog'
+/// op with OpId `0` is automatically added when the OpTable is created.
+pub struct OpTable(IndexMap<String, Rc<OpFn>>);
+
+impl OpTable {
+  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
   {
-    let op_id = self.dispatchers.len() as u32;
-
-    let existing = self.name_to_id.insert(name.to_string(), op_id);
-    assert!(
-      existing.is_none(),
-      format!("Op already registered: {}", name)
-    );
-    self.dispatchers.push(Rc::new(op));
+    let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
+    assert!(prev.is_none());
     op_id
   }
 
-  fn json_map(&self) -> Buf {
-    let op_map_json = serde_json::to_string(&self.name_to_id).unwrap();
-    op_map_json.as_bytes().to_owned().into_boxed_slice()
+  pub fn route_op(
+    op_id: OpId,
+    state: Rc<RefCell<OpState>>,
+    bufs: BufVec,
+  ) -> Op {
+    if op_id == 0 {
+      let ops: HashMap<String, OpId> =
+        state.borrow().op_table.0.keys().cloned().zip(0..).collect();
+      let buf = serde_json::to_vec(&ops).map(Into::into).unwrap();
+      Op::Sync(buf)
+    } else {
+      let op_fn = state
+        .borrow()
+        .op_table
+        .0
+        .get_index(op_id)
+        .map(|(_, op_fn)| op_fn.clone());
+      match op_fn {
+        Some(f) => (f)(state, bufs),
+        None => Op::NotFound,
+      }
+    }
   }
+}
 
-  pub fn get(&self, op_id: OpId) -> Option<Rc<OpDispatcher>> {
-    self.dispatchers.get(op_id as usize).map(Rc::clone)
+impl Default for OpTable {
+  fn default() -> Self {
+    fn dummy(_state: Rc<RefCell<OpState>>, _bufs: BufVec) -> Op {
+      unreachable!()
+    }
+    Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
   }
 }
 
 #[test]
-fn test_op_registry() {
-  use crate::CoreIsolate;
-  use std::sync::atomic;
-  use std::sync::Arc;
-  let mut op_registry = OpRegistry::new();
+fn op_table() {
+  let state = Rc::new(RefCell::new(OpState::default()));
 
-  let c = Arc::new(atomic::AtomicUsize::new(0));
-  let c_ = c.clone();
-
-  let test_id = op_registry.register("test", move |_, _, _| {
-    c_.fetch_add(1, atomic::Ordering::SeqCst);
-    Op::Sync(Box::new([]))
-  });
-  assert!(test_id != 0);
-
-  let mut expected = HashMap::new();
-  expected.insert("ops".to_string(), 0);
-  expected.insert("test".to_string(), 1);
-  assert_eq!(op_registry.name_to_id, expected);
-
-  let isolate = CoreIsolate::new(crate::StartupData::None, false);
-
-  let dispatch = op_registry.get(test_id).unwrap();
-  let state_rc = CoreIsolate::state(&isolate);
-  let mut state = state_rc.borrow_mut();
-  let res = dispatch(&mut state, &[], None);
-  if let Op::Sync(buf) = res {
-    assert_eq!(buf.len(), 0);
-  } else {
-    unreachable!();
+  let foo_id;
+  let bar_id;
+  {
+    let op_table = &mut state.borrow_mut().op_table;
+    foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
+    assert_eq!(foo_id, 1);
+    bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
+    assert_eq!(bar_id, 2);
   }
-  assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
 
-  assert!(op_registry.get(100).is_none());
+  let foo_res = OpTable::route_op(foo_id, state.clone(), Default::default());
+  assert!(matches!(foo_res, Op::Sync(buf) if &*buf == b"oof!"));
+  let bar_res = OpTable::route_op(bar_id, state.clone(), Default::default());
+  assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
+
+  let catalog_res = OpTable::route_op(0, state, Default::default());
+  let mut catalog_entries = match catalog_res {
+    Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
+      .map(|map| map.into_iter().collect::<Vec<_>>())
+      .unwrap(),
+    _ => panic!("unexpected `Op` variant"),
+  };
+  catalog_entries.sort_by(|(_, id1), (_, id2)| id1.partial_cmp(id2).unwrap());
+  assert_eq!(
+    catalog_entries,
+    vec![
+      ("ops".to_owned(), 0),
+      ("foo".to_owned(), 1),
+      ("bar".to_owned(), 2)
+    ]
+  )
 }
 
-#[test]
-fn register_op_during_call() {
-  use crate::CoreIsolate;
-  use std::sync::atomic;
-  use std::sync::Arc;
-  use std::sync::Mutex;
-  let op_registry = Arc::new(Mutex::new(OpRegistry::new()));
+/// Creates an op that passes data synchronously using JSON.
+///
+/// The provided function `op_fn` has the following parameters:
+/// * `&mut OpState`: the op state, can be used to read/write resources in the runtime from an op.
+/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `&mut [ZeroCopyBuf]`: raw bytes passed along, usually not needed if the JSON value is used.
+///
+/// `op_fn` returns a JSON value, which is directly returned to JavaScript.
+///
+/// When registering an op like this...
+/// ```ignore
+/// let mut runtime = JsRuntime::new(...);
+/// runtime.register_op("hello", deno_core::json_op_sync(Self::hello_op));
+/// ```
+///
+/// ...it can be invoked from JS using the provided name, for example:
+/// ```js
+/// Deno.core.ops();
+/// let result = Deno.core.jsonOpSync("function_name", args);
+/// ```
+///
+/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// A more complete example is available in the examples directory.
+pub fn json_op_sync<F>(op_fn: F) -> Box<OpFn>
+where
+  F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
+    + 'static,
+{
+  Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
+    let result = serde_json::from_slice(&bufs[0])
+      .map_err(AnyError::from)
+      .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
+    let buf =
+      json_serialize_op_result(None, result, state.borrow().get_error_class_fn);
+    Op::Sync(buf)
+  })
+}
 
-  let c = Arc::new(atomic::AtomicUsize::new(0));
-  let c_ = c.clone();
-
-  let op_registry_ = op_registry.clone();
-
-  let test_id = {
-    let mut g = op_registry.lock().unwrap();
-    g.register("dynamic_register_op", move |_, _, _| {
-      let c__ = c_.clone();
-      let mut g = op_registry_.lock().unwrap();
-      g.register("test", move |_, _, _| {
-        c__.fetch_add(1, atomic::Ordering::SeqCst);
-        Op::Sync(Box::new([]))
+/// Creates an op that passes data asynchronously using JSON.
+///
+/// The provided function `op_fn` has the following parameters:
+/// * `Rc<RefCell<OpState>`: the op state, can be used to read/write resources in the runtime from an op.
+/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `BufVec`: raw bytes passed along, usually not needed if the JSON value is used.
+///
+/// `op_fn` returns a future, whose output is a JSON value. This value will be asynchronously
+/// returned to JavaScript.
+///
+/// When registering an op like this...
+/// ```ignore
+/// let mut runtime = JsRuntime::new(...);
+/// runtime.register_op("hello", deno_core::json_op_async(Self::hello_op));
+/// ```
+///
+/// ...it can be invoked from JS using the provided name, for example:
+/// ```js
+/// Deno.core.ops();
+/// let future = Deno.core.jsonOpAsync("function_name", args);
+/// ```
+///
+/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// A more complete example is available in the examples directory.
+pub fn json_op_async<F, R>(op_fn: F) -> Box<OpFn>
+where
+  F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
+  R: Future<Output = Result<Value, AnyError>> + 'static,
+{
+  let try_dispatch_op =
+    move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
+      let args: Value = serde_json::from_slice(&bufs[0])?;
+      let promise_id = args
+        .get("promiseId")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| type_error("missing or invalid `promiseId`"))?;
+      let bufs = bufs[1..].into();
+      use crate::futures::FutureExt;
+      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
+        json_serialize_op_result(
+          Some(promise_id),
+          result,
+          state.borrow().get_error_class_fn,
+        )
       });
-      Op::Sync(Box::new([]))
-    })
+      Ok(Op::Async(Box::pin(fut)))
+    };
+
+  Box::new(move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+    match try_dispatch_op(state.clone(), bufs) {
+      Ok(op) => op,
+      Err(err) => Op::Sync(json_serialize_op_result(
+        None,
+        Err(err),
+        state.borrow().get_error_class_fn,
+      )),
+    }
+  })
+}
+
+fn json_serialize_op_result(
+  promise_id: Option<u64>,
+  result: Result<serde_json::Value, AnyError>,
+  get_error_class_fn: crate::runtime::GetErrorClassFn,
+) -> Box<[u8]> {
+  let value = match result {
+    Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),
+    Err(err) => serde_json::json!({
+      "promiseId": promise_id ,
+      "err": {
+        "className": (get_error_class_fn)(&err),
+        "message": err.to_string(),
+      }
+    }),
   };
-  assert!(test_id != 0);
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
 
-  let isolate = CoreIsolate::new(crate::StartupData::None, false);
+/// Return map of resources with id as key
+/// and string representation as value.
+///
+/// This op must be wrapped in `json_op_sync`.
+pub fn op_resources(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let serialized_resources: HashMap<u32, String> = state
+    .resource_table
+    .names()
+    .map(|(rid, name)| (rid, name.to_string()))
+    .collect();
+  Ok(json!(serialized_resources))
+}
 
-  let dispatcher1 = {
-    let g = op_registry.lock().unwrap();
-    g.get(test_id).unwrap()
-  };
-  {
-    let state_rc = CoreIsolate::state(&isolate);
-    let mut state = state_rc.borrow_mut();
-    dispatcher1(&mut state, &[], None);
-  }
+/// Remove a resource from the resource table.
+///
+/// This op must be wrapped in `json_op_sync`.
+pub fn op_close(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let rid = args
+    .get("rid")
+    .and_then(Value::as_u64)
+    .ok_or_else(|| type_error("missing or invalid `rid`"))?;
 
-  let mut expected = HashMap::new();
-  expected.insert("ops".to_string(), 0);
-  expected.insert("dynamic_register_op".to_string(), 1);
-  expected.insert("test".to_string(), 2);
-  {
-    let g = op_registry.lock().unwrap();
-    assert_eq!(g.name_to_id, expected);
-  }
+  state
+    .resource_table
+    .close(rid as u32)
+    .ok_or_else(bad_resource_id)?;
 
-  let dispatcher2 = {
-    let g = op_registry.lock().unwrap();
-    g.get(2).unwrap()
-  };
-  let state_rc = CoreIsolate::state(&isolate);
-  let mut state = state_rc.borrow_mut();
-  let res = dispatcher2(&mut state, &[], None);
-  if let Op::Sync(buf) = res {
-    assert_eq!(buf.len(), 0);
-  } else {
-    unreachable!();
-  }
-  assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
-
-  let g = op_registry.lock().unwrap();
-  assert!(g.get(100).is_none());
+  Ok(json!({}))
 }

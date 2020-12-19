@@ -8,13 +8,12 @@ Contributions are welcome!
 
 ## How to use
 
-These modules are tagged in accordance with Deno releases. So, for example, the
-v0.3.0 tag is guaranteed to work with deno v0.3.0. You can link to v0.3.0 using
-the URL `https://deno.land/std@v0.3.0/`. Not specifying a tag will link to the
-master branch.
+These modules will eventually be tagged in accordance with Deno releases but as
+of today we do not yet consider them stable and so we version the standard
+modules differently from the Deno runtime to reflect this.
 
 It is strongly recommended that you link to tagged releases to avoid unintended
-updates.
+updates and breaking changes.
 
 Don't link to / import any module whose path:
 
@@ -22,7 +21,10 @@ Don't link to / import any module whose path:
 - Is that of a test module or test data: `test.ts`, `foo_test.ts`,
   `testdata/bar.txt`.
 
-No stability is guaranteed for these files.
+Don't import any symbol with an underscore prefix: `export function _baz() {}`.
+
+These elements are not considered part of the public API, thus no stability is
+guaranteed for them.
 
 ## Documentation
 
@@ -30,7 +32,7 @@ To browse documentation for modules:
 
 - Go to https://deno.land/std/.
 - Navigate to any module of interest.
-- Click the "DOCUMENTATION" link.
+- Click "View Documentation".
 
 ## Contributing
 
@@ -42,5 +44,4 @@ building Go. We generally welcome direct ports of Go's code.
 
 Please ensure the copyright headers cite the code's origin.
 
-Follow the
-[style guide](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md).
+Follow the [style guide](https://deno.land/manual/contributing/style_guide).

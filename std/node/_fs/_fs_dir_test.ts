@@ -1,13 +1,13 @@
-const { test } = Deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, fail } from "../../testing/asserts.ts";
 import Dir from "./_fs_dir.ts";
-import Dirent from "./_fs_dirent.ts";
+import type Dirent from "./_fs_dirent.ts";
 
-test({
+Deno.test({
   name: "Closing current directory with callback is successful",
   fn() {
     let calledBack = false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // deno-lint-ignore no-explicit-any
     new Dir(".").close((valOrErr: any) => {
       assert(!valOrErr);
       calledBack = true;
@@ -16,21 +16,21 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Closing current directory without callback returns void Promise",
   async fn() {
     await new Dir(".").close();
   },
 });
 
-test({
+Deno.test({
   name: "Closing current directory synchronously works",
   fn() {
     new Dir(".").closeSync();
   },
 });
 
-test({
+Deno.test({
   name: "Path is correctly returned",
   fn() {
     assertEquals(new Dir("std/node").path, "std/node");
@@ -40,7 +40,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "read returns null for empty directory",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -50,8 +50,8 @@ test({
 
       let calledBack = false;
       const fileFromCallback: Dirent | null = await new Dir(
-        testDir
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        testDir,
+        // deno-lint-ignore no-explicit-any
       ).read((err: any, res: Dirent) => {
         assert(res === null);
         assert(err === null);
@@ -67,7 +67,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async read returns one file at a time",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -81,13 +81,14 @@ test({
       const dir: Dir = new Dir(testDir);
       const firstRead: Dirent | null = await dir.read();
       const secondRead: Dirent | null = await dir.read(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // deno-lint-ignore no-explicit-any
         (err: any, secondResult: Dirent) => {
           assert(
-            secondResult.name === "bar.txt" || secondResult.name === "foo.txt"
+            secondResult.name === "bar.txt" ||
+              secondResult.name === "foo.txt",
           );
           secondCallback = true;
-        }
+        },
       );
       const thirdRead: Dirent | null = await dir.read();
       const fourthRead: Dirent | null = await dir.read();
@@ -108,7 +109,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Sync read returns one file at a time",
   fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -139,7 +140,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async iteration over existing directory",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();

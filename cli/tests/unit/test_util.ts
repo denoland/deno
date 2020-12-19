@@ -1,17 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals } from "../../../std/testing/asserts.ts";
+import * as colors from "../../../std/fmt/colors.ts";
+export { colors };
+import { resolve } from "../../../std/path/mod.ts";
 export {
   assert,
-  assertThrows,
   assertEquals,
   assertMatch,
   assertNotEquals,
-  assertStrictEq,
-  assertStrContains,
-  unreachable,
+  assertStrictEquals,
+  assertStringIncludes,
+  assertThrows,
+  assertThrowsAsync,
   fail,
+  unreachable,
 } from "../../../std/testing/asserts.ts";
+export { deferred } from "../../../std/async/deferred.ts";
 export { readLines } from "../../../std/io/bufio.ts";
 export { parse as parseArgs } from "../../../std/flags/mod.ts";
 
@@ -54,12 +59,12 @@ export async function getProcessPermissions(): Promise<Permissions> {
 
 export function permissionsMatch(
   processPerms: Permissions,
-  requiredPerms: Permissions
+  requiredPerms: Permissions,
 ): boolean {
   for (const permName in processPerms) {
     if (
       processPerms[permName as keyof Permissions] !==
-      requiredPerms[permName as keyof Permissions]
+        requiredPerms[permName as keyof Permissions]
     ) {
       return false;
     }
@@ -91,7 +96,9 @@ function registerPermCombination(perms: Permissions): void {
 export async function registerUnitTests(): Promise<void> {
   const processPerms = await getProcessPermissions();
 
-  for (const unitTestDefinition of REGISTERED_UNIT_TESTS) {
+  const onlyTests = REGISTERED_UNIT_TESTS.filter(({ only }) => only);
+  const unitTests = onlyTests.length > 0 ? onlyTests : REGISTERED_UNIT_TESTS;
+  for (const unitTestDefinition of unitTests) {
     if (!permissionsMatch(processPerms, unitTestDefinition.perms)) {
       continue;
     }
@@ -124,11 +131,13 @@ interface UnitTestPermissions {
 
 interface UnitTestOptions {
   ignore?: boolean;
+  only?: boolean;
   perms?: UnitTestPermissions;
 }
 
 interface UnitTestDefinition extends Deno.TestDefinition {
   ignore: boolean;
+  only: boolean;
   perms: Permissions;
 }
 
@@ -140,7 +149,7 @@ export function unitTest(fn: TestFunction): void;
 export function unitTest(options: UnitTestOptions, fn: TestFunction): void;
 export function unitTest(
   optionsOrFn: UnitTestOptions | TestFunction,
-  maybeFn?: TestFunction
+  maybeFn?: TestFunction,
 ): void {
   assert(optionsOrFn, "At least one argument is required");
 
@@ -158,7 +167,7 @@ export function unitTest(
     assert(maybeFn, "Missing test function definition");
     assert(
       typeof maybeFn === "function",
-      "Second argument should be test function definition"
+      "Second argument should be test function definition",
     );
     fn = maybeFn;
     name = fn.name;
@@ -172,34 +181,17 @@ export function unitTest(
     name,
     fn,
     ignore: !!options.ignore,
+    only: !!options.only,
     perms: normalizedPerms,
   };
 
   REGISTERED_UNIT_TESTS.push(unitTestDefinition);
 }
 
-export interface ResolvableMethods<T> {
-  resolve: (value?: T | PromiseLike<T>) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  reject: (reason?: any) => void;
-}
-
-export type Resolvable<T> = Promise<T> & ResolvableMethods<T>;
-
-export function createResolvable<T>(): Resolvable<T> {
-  let methods: ResolvableMethods<T>;
-  const promise = new Promise<T>((resolve, reject): void => {
-    methods = { resolve, reject };
-  });
-  // TypeScript doesn't know that the Promise callback occurs synchronously
-  // therefore use of not null assertion (`!`)
-  return Object.assign(promise, methods!) as Resolvable<T>;
-}
-
 const encoder = new TextEncoder();
 
 // Replace functions with null, errors with their stack strings, and JSONify.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// deno-lint-ignore no-explicit-any
 function serializeTestMessage(message: any): string {
   return JSON.stringify({
     start: message.start && {
@@ -216,7 +208,7 @@ function serializeTestMessage(message: any): string {
     },
     end: message.end && {
       ...message.end,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
       results: message.end.results.map((result: any) => ({
         ...result,
         error: result.error?.stack,
@@ -227,8 +219,8 @@ function serializeTestMessage(message: any): string {
 
 export async function reportToConn(
   conn: Deno.Conn,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  message: any
+  // deno-lint-ignore no-explicit-any
+  message: any,
 ): Promise<void> {
   const line = serializeTestMessage(message);
   const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
@@ -250,8 +242,8 @@ unitTest(function permissionsMatches(): void {
         plugin: false,
         hrtime: false,
       },
-      normalizeTestPermissions({ read: true })
-    )
+      normalizeTestPermissions({ read: true }),
+    ),
   );
 
   assert(
@@ -265,8 +257,8 @@ unitTest(function permissionsMatches(): void {
         plugin: false,
         hrtime: false,
       },
-      normalizeTestPermissions({})
-    )
+      normalizeTestPermissions({}),
+    ),
   );
 
   assertEquals(
@@ -280,9 +272,9 @@ unitTest(function permissionsMatches(): void {
         plugin: true,
         hrtime: true,
       },
-      normalizeTestPermissions({ read: true })
+      normalizeTestPermissions({ read: true }),
     ),
-    false
+    false,
   );
 
   assertEquals(
@@ -296,9 +288,9 @@ unitTest(function permissionsMatches(): void {
         plugin: false,
         hrtime: false,
       },
-      normalizeTestPermissions({ read: true })
+      normalizeTestPermissions({ read: true }),
     ),
-    false
+    false,
   );
 
   assert(
@@ -320,8 +312,8 @@ unitTest(function permissionsMatches(): void {
         run: true,
         plugin: true,
         hrtime: true,
-      }
-    )
+      },
+    ),
   );
 });
 
@@ -339,26 +331,32 @@ unitTest(
           file!.endsWith(".ts") &&
           !file!.endsWith("unit_tests.ts") &&
           !file!.endsWith("test_util.ts") &&
-          !file!.endsWith("unit_test_runner.ts")
+          !file!.endsWith("unit_test_runner.ts"),
       );
     const unitTestsFile: Uint8Array = Deno.readFileSync(
-      "./cli/tests/unit/unit_tests.ts"
+      "./cli/tests/unit/unit_tests.ts",
     );
     const importLines = new TextDecoder("utf-8")
       .decode(unitTestsFile)
       .split("\n")
       .filter((line) => line.startsWith("import"));
     const importedTestFiles = importLines.map(
-      (relativeFilePath) => relativeFilePath.match(/\/([^\/]+)";/)![1]
+      (relativeFilePath) => relativeFilePath.match(/\/([^\/]+)";/)![1],
     );
 
     directoryTestFiles.forEach((dirFile) => {
       if (!importedTestFiles.includes(dirFile!)) {
         throw new Error(
           "cil/tests/unit/unit_tests.ts is missing import of test file: cli/js/" +
-            dirFile
+            dirFile,
         );
       }
     });
-  }
+  },
 );
+
+export function pathToAbsoluteFileUrl(path: string): URL {
+  path = resolve(path);
+
+  return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
+}

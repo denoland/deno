@@ -1,10 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//! This mod provides functions to remap a deno_core::deno_core::JSError based on a source map
+
+//! This mod provides functions to remap a `JsError` based on a source map.
+
+use deno_core::error::JsError;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
+use std::sync::Arc;
 
-pub trait SourceMapGetter {
+pub trait SourceMapGetter: Sync + Send {
   /// Returns the raw source map file.
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>>;
   fn get_source_line(
@@ -18,34 +22,13 @@ pub trait SourceMapGetter {
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-// The bundle does not get built for 'cargo check', so we don't embed the
-// bundle source map.  The built in source map is the source map for the main
-// JavaScript bundle which is then used to create the snapshot.  Runtime stack
-// traces can contain positions within the bundle which we will map to the
-// original Deno TypeScript code.
-#[cfg(feature = "check-only")]
-fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
-  None
-}
-
-#[cfg(not(feature = "check-only"))]
-fn builtin_source_map(file_name: &str) -> Option<Vec<u8>> {
-  if file_name.ends_with("CLI_SNAPSHOT.js") {
-    Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())
-  } else if file_name.ends_with("COMPILER_SNAPSHOT.js") {
-    Some(crate::js::COMPILER_SNAPSHOT_MAP.to_vec())
-  } else {
-    None
-  }
-}
-
-/// Apply a source map to a deno_core::JSError, returning a JSError where file
-/// names and line/column numbers point to the location in the original source,
-/// rather than the transpiled source code.
+/// Apply a source map to a `deno_core::JsError`, returning a `JsError` where
+/// file names and line/column numbers point to the location in the original
+/// source, rather than the transpiled source code.
 pub fn apply_source_map<G: SourceMapGetter>(
-  js_error: &deno_core::JSError,
-  getter: &G,
-) -> deno_core::JSError {
+  js_error: &JsError,
+  getter: Arc<G>,
+) -> JsError {
   // Note that js_error.frames has already been source mapped in
   // prepareStackTrace().
   let mut mappings_map: CachedMaps = HashMap::new();
@@ -57,7 +40,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
       // start_column is 0-based, we need 1-based here.
       js_error.start_column.map(|n| n + 1),
       &mut mappings_map,
-      getter,
+      getter.clone(),
     );
   let start_column = start_column.map(|n| n - 1);
   // It is better to just move end_column to be the same distance away from
@@ -88,7 +71,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     _ => js_error.source_line.clone(),
   };
 
-  deno_core::JSError {
+  JsError {
     message: js_error.message.clone(),
     source_line,
     script_resource_name,
@@ -96,7 +79,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
     start_column,
     end_column,
     frames: js_error.frames.clone(),
-    formatted_frames: js_error.formatted_frames.clone(),
+    stack: None,
   }
 }
 
@@ -105,7 +88,7 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
   line_number: Option<i64>,
   column_number: Option<i64>,
   mappings_map: &mut CachedMaps,
-  getter: &G,
+  getter: Arc<G>,
 ) -> (Option<String>, Option<i64>, Option<i64>) {
   match (file_name, line_number, column_number) {
     (Some(file_name_v), Some(line_v), Some(column_v)) => {
@@ -122,7 +105,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
   line_number: i64,
   column_number: i64,
   mappings_map: &mut CachedMaps,
-  getter: &G,
+  getter: Arc<G>,
 ) -> (String, i64, i64) {
   let maybe_source_map = get_mappings(&file_name, mappings_map, getter);
   let default_pos = (file_name, line_number, column_number);
@@ -152,7 +135,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
 fn get_mappings<'a, G: SourceMapGetter>(
   file_name: &str,
   mappings_map: &'a mut CachedMaps,
-  getter: &G,
+  getter: Arc<G>,
 ) -> &'a Option<SourceMap> {
   mappings_map
     .entry(file_name.to_string())
@@ -163,10 +146,10 @@ fn get_mappings<'a, G: SourceMapGetter>(
 // the module meta data.
 fn parse_map_string<G: SourceMapGetter>(
   file_name: &str,
-  getter: &G,
+  getter: Arc<G>,
 ) -> Option<SourceMap> {
-  builtin_source_map(file_name)
-    .or_else(|| getter.get_source_map(file_name))
+  getter
+    .get_source_map(file_name)
     .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
 }
 
@@ -215,7 +198,7 @@ mod tests {
 
   #[test]
   fn apply_source_map_line() {
-    let e = deno_core::JSError {
+    let e = JsError {
       message: "TypeError: baz".to_string(),
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),
@@ -223,10 +206,10 @@ mod tests {
       start_column: Some(16),
       end_column: None,
       frames: vec![],
-      formatted_frames: vec![],
+      stack: None,
     };
-    let getter = MockSourceMapGetter {};
-    let actual = apply_source_map(&e, &getter);
+    let getter = Arc::new(MockSourceMapGetter {});
+    let actual = apply_source_map(&e, getter);
     assert_eq!(actual.source_line, Some("console.log('foo');".to_string()));
   }
 }

@@ -8,7 +8,8 @@ import {
 import * as path from "../path/mod.ts";
 import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
-const testdataDir = path.resolve("fs", "testdata");
+const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_1");
@@ -17,7 +18,7 @@ Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await ensureSymlink(testFile, path.join(testDir, "test1.txt"));
-    }
+    },
   );
 
   await assertThrowsAsync(
@@ -25,7 +26,7 @@ Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
       });
-    }
+    },
   );
 });
 

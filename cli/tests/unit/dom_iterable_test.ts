@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+/* TODO https://github.com/denoland/deno/issues/7540
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -8,7 +10,7 @@ function setup() {
     [dataSymbol] = new Map<string, number>();
 
     constructor(
-      data: Array<[string, number]> | IterableIterator<[string, number]>
+      data: Array<[string, number]> | IterableIterator<[string, number]>,
     ) {
       for (const [key, value] of data) {
         this[dataSymbol].set(key, value);
@@ -24,6 +26,7 @@ function setup() {
     DomIterable: Deno[Deno.internal].DomIterableMixin(Base, dataSymbol),
   };
 }
+
 
 unitTest(function testDomIterable(): void {
   const { DomIterable, Base } = setup();
@@ -53,7 +56,7 @@ unitTest(function testDomIterable(): void {
     this: typeof scope,
     value: number,
     key: string,
-    parent: typeof domIterable
+    parent: typeof domIterable,
   ): void {
     assertEquals(parent, domIterable);
     assert(key != null);
@@ -72,7 +75,7 @@ unitTest(function testDomIterableScope(): void {
 
   const domIterable = new DomIterable([["foo", 1]]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   function checkScope(thisArg: any, expected: any): void {
     function callback(this: typeof thisArg): void {
       assertEquals(this, expected);
@@ -85,3 +88,4 @@ unitTest(function testDomIterableScope(): void {
   checkScope(null, window);
   checkScope(undefined, window);
 });
+*/

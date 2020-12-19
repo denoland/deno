@@ -1,6 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { Buffer } = Deno;
-type Reader = Deno.Reader;
 import { assertEquals } from "../testing/asserts.ts";
 import {
   copyN,
@@ -9,11 +7,10 @@ import {
   readShort,
   sliceLongToBytes,
 } from "./ioutil.ts";
+import { StringReader } from "./readers.ts";
 import { BufReader } from "./bufio.ts";
-import { stringsReader, tempFile } from "./util.ts";
-import * as path from "../path/mod.ts";
 
-class BinaryReader implements Reader {
+class BinaryReader implements Deno.Reader {
   index = 0;
 
   constructor(private bytes: Uint8Array = new Uint8Array(0)) {}
@@ -39,7 +36,7 @@ Deno.test("testReadInt", async function (): Promise<void> {
 
 Deno.test("testReadLong", async function (): Promise<void> {
   const r = new BinaryReader(
-    new Uint8Array([0x00, 0x00, 0x00, 0x78, 0x12, 0x34, 0x56, 0x78])
+    new Uint8Array([0x00, 0x00, 0x00, 0x78, 0x12, 0x34, 0x56, 0x78]),
   );
   const long = await readLong(new BufReader(r));
   assertEquals(long, 0x7812345678);
@@ -47,7 +44,7 @@ Deno.test("testReadLong", async function (): Promise<void> {
 
 Deno.test("testReadLong2", async function (): Promise<void> {
   const r = new BinaryReader(
-    new Uint8Array([0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78])
+    new Uint8Array([0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]),
   );
   const long = await readLong(new BufReader(r));
   assertEquals(long, 0x12345678);
@@ -59,9 +56,9 @@ Deno.test("testSliceLongToBytes", function (): void {
   const expected = readLong(
     new BufReader(
       new BinaryReader(
-        new Uint8Array([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef])
-      )
-    )
+        new Uint8Array([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef]),
+      ),
+    ),
   );
   assertEquals(actual, expected);
 });
@@ -72,29 +69,39 @@ Deno.test("testSliceLongToBytes2", function (): void {
 });
 
 Deno.test("testCopyN1", async function (): Promise<void> {
-  const w = new Buffer();
-  const r = stringsReader("abcdefghij");
+  const w = new Deno.Buffer();
+  const r = new StringReader("abcdefghij");
   const n = await copyN(r, w, 3);
   assertEquals(n, 3);
   assertEquals(new TextDecoder().decode(w.bytes()), "abc");
 });
 
 Deno.test("testCopyN2", async function (): Promise<void> {
-  const w = new Buffer();
-  const r = stringsReader("abcdefghij");
+  const w = new Deno.Buffer();
+  const r = new StringReader("abcdefghij");
   const n = await copyN(r, w, 11);
   assertEquals(n, 10);
   assertEquals(new TextDecoder().decode(w.bytes()), "abcdefghij");
 });
 
 Deno.test("copyNWriteAllData", async function (): Promise<void> {
-  const { filepath, file } = await tempFile(path.resolve("io"));
+  const tmpDir = await Deno.makeTempDir();
+  const filepath = `${tmpDir}/data`;
+  const file = await Deno.open(filepath, { create: true, write: true });
+
   const size = 16 * 1024 + 1;
   const data = "a".repeat(32 * 1024);
-  const r = stringsReader(data);
+  const r = new StringReader(data);
   const n = await copyN(r, file, size); // Over max file possible buffer
   file.close();
   await Deno.remove(filepath);
 
   assertEquals(n, size);
+});
+
+Deno.test("testStringReaderEof", async function (): Promise<void> {
+  const r = new StringReader("abc");
+  assertEquals(await r.read(new Uint8Array()), 0);
+  assertEquals(await r.read(new Uint8Array(4)), 3);
+  assertEquals(await r.read(new Uint8Array(1)), null);
 });

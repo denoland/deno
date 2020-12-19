@@ -1,21 +1,25 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
+/** This module is browser compatible. */
 
-const { cwd } = Deno;
-import { FormatInputPathObject, ParsedPath } from "./interface.ts";
+import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";
 
 import {
-  assertPath,
-  normalizeString,
-  isPosixPathSeparator,
   _format,
+  assertPath,
+  isPosixPathSeparator,
+  normalizeString,
 } from "./_util.ts";
 
 export const sep = "/";
 export const delimiter = ":";
 
 // path.resolve([from ...], to)
+/**
+ * Resolves `pathSegments` into an absolute path.
+ * @param pathSegments an array of path segments
+ */
 export function resolve(...pathSegments: string[]): string {
   let resolvedPath = "";
   let resolvedAbsolute = false;
@@ -24,7 +28,12 @@ export function resolve(...pathSegments: string[]): string {
     let path: string;
 
     if (i >= 0) path = pathSegments[i];
-    else path = cwd();
+    else {
+      if (globalThis.Deno == null) {
+        throw new TypeError("Resolved a relative path without a CWD.");
+      }
+      path = Deno.cwd();
+    }
 
     assertPath(path);
 
@@ -45,7 +54,7 @@ export function resolve(...pathSegments: string[]): string {
     resolvedPath,
     !resolvedAbsolute,
     "/",
-    isPosixPathSeparator
+    isPosixPathSeparator,
   );
 
   if (resolvedAbsolute) {
@@ -55,6 +64,10 @@ export function resolve(...pathSegments: string[]): string {
   else return ".";
 }
 
+/**
+ * Normalize the `path`, resolving `'..'` and `'.'` segments.
+ * @param path to be normalized
+ */
 export function normalize(path: string): string {
   assertPath(path);
 
@@ -74,11 +87,19 @@ export function normalize(path: string): string {
   return path;
 }
 
+/**
+ * Verifies whether provided path is absolute
+ * @param path to be verified as absolute
+ */
 export function isAbsolute(path: string): boolean {
   assertPath(path);
   return path.length > 0 && path.charCodeAt(0) === CHAR_FORWARD_SLASH;
 }
 
+/**
+ * Join all given a sequence of `paths`,then normalizes the resulting path.
+ * @param paths to be joined and normalized
+ */
 export function join(...paths: string[]): string {
   if (paths.length === 0) return ".";
   let joined: string | undefined;
@@ -94,6 +115,11 @@ export function join(...paths: string[]): string {
   return normalize(joined);
 }
 
+/**
+ * Return the relative path from `from` to `to` based on current working directory.
+ * @param from path in current working directory
+ * @param to path in current working directory
+ */
 export function relative(from: string, to: string): string {
   assertPath(from);
   assertPath(to);
@@ -176,11 +202,19 @@ export function relative(from: string, to: string): string {
   }
 }
 
+/**
+ * Resolves path to a namespace path
+ * @param path to resolve to namespace
+ */
 export function toNamespacedPath(path: string): string {
   // Non-op on posix systems
   return path;
 }
 
+/**
+ * Return the directory name of a `path`.
+ * @param path to determine name for
+ */
 export function dirname(path: string): string {
   assertPath(path);
   if (path.length === 0) return ".";
@@ -204,6 +238,11 @@ export function dirname(path: string): string {
   return path.slice(0, end);
 }
 
+/**
+ * Return the last portion of a `path`. Trailing directory separators are ignored.
+ * @param path to process
+ * @param ext of path directory
+ */
 export function basename(path: string, ext = ""): string {
   if (ext !== undefined && typeof ext !== "string") {
     throw new TypeError('"ext" argument must be a string');
@@ -278,6 +317,10 @@ export function basename(path: string, ext = ""): string {
   }
 }
 
+/**
+ * Return the extension of the `path`.
+ * @param path with extension
+ */
 export function extname(path: string): string {
   assertPath(path);
   let startDot = -1;
@@ -328,16 +371,23 @@ export function extname(path: string): string {
   return path.slice(startDot, end);
 }
 
+/**
+ * Generate a path from `FormatInputPathObject` object.
+ * @param pathObject with path
+ */
 export function format(pathObject: FormatInputPathObject): string {
-  /* eslint-disable max-len */
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
-      `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`
+      `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`,
     );
   }
   return _format("/", pathObject);
 }
 
+/**
+ * Return a `ParsedPath` object of the `path`.
+ * @param path to process
+ */
 export function parse(path: string): ParsedPath {
   assertPath(path);
 
@@ -422,13 +472,33 @@ export function parse(path: string): ParsedPath {
   return ret;
 }
 
-/** Converts a file URL to a path string.
+/**
+ * Converts a file URL to a path string.
  *
  *      fromFileUrl("file:///home/foo"); // "/home/foo"
- *
- * Note that non-file URLs are treated as file URLs and irrelevant components
- * are ignored.
+ * @param url of a file URL
  */
 export function fromFileUrl(url: string | URL): string {
-  return new URL(url).pathname;
+  url = url instanceof URL ? url : new URL(url);
+  if (url.protocol != "file:") {
+    throw new TypeError("Must be a file URL.");
+  }
+  return decodeURIComponent(
+    url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+  );
+}
+
+/**
+ * Converts a path string to a file URL.
+ *
+ *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
+ * @param path to convert to file URL
+ */
+export function toFileUrl(path: string): URL {
+  if (!isAbsolute(path)) {
+    throw new TypeError("Must be an absolute path.");
+  }
+  const url = new URL("file:///");
+  url.pathname = path.replace(/%/g, "%25").replace(/\\/g, "%5C");
+  return url;
 }

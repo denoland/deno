@@ -1,0 +1,64 @@
+{
+  "diagnostics": [
+    {
+      "range": {
+        "start": {
+          "line": 1,
+          "col": 0,
+          "bytePos": 0
+        },
+        "end": {
+          "line": 1,
+          "col": 19,
+          "bytePos": 19
+        }
+      },
+      "filename": "[WILDCARD]file1.js",
+      "message": "Ignore directive requires lint rule name(s)",
+      "code": "ban-untagged-ignore",
+      "hint": [WILDCARD]
+    },
+    {
+      "range": {
+        "start": {
+          "line": 2,
+          "col": 14,
+          "bytePos": 34
+        },
+        "end": {
+          "line": 2,
+          "col": 16,
+          "bytePos": 36
+        }
+      },
+      "filename": "[WILDCARD]file1.js",
+      "message": "Empty block statement",
+      "code": "no-empty",
+      "hint": [WILDCARD]
+    },
+    {
+      "range": {
+        "start": {
+          "line": 3,
+          "col": 12,
+          "bytePos": 56
+        },
+        "end": {
+          "line": 3,
+          "col": 14,
+          "bytePos": 58
+        }
+      },
+      "filename": "[WILDCARD]file2.ts",
+      "message": "Empty block statement",
+      "code": "no-empty",
+      "hint": [WILDCARD]
+    }
+  ],
+  "errors": [
+    {
+      "file_path": "[WILDCARD]malformed.js",
+      "message": "Expected }, got <eof> at [WILDCARD]malformed.js:4:15"
+    }
+  ]
+}

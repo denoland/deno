@@ -8,15 +8,13 @@
 // shared library itself, which would cause segfaults when the plugin is
 // unloaded and all functions in the plugin library are unmapped from memory.
 
-pub use crate::Buf;
 pub use crate::Op;
 pub use crate::OpId;
 pub use crate::ZeroCopyBuf;
 
 pub type InitFn = fn(&mut dyn Interface);
 
-pub type DispatchOpFn =
-  fn(&mut dyn Interface, &[u8], Option<ZeroCopyBuf>) -> Op;
+pub type DispatchOpFn = fn(&mut dyn Interface, &mut [ZeroCopyBuf]) -> Op;
 
 pub trait Interface {
   fn register_op(&mut self, name: &str, dispatcher: DispatchOpFn) -> OpId;

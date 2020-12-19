@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.0.3"
+version = "1.6.1"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -14,65 +14,86 @@ default-run = "deno"
 name = "deno"
 path = "main.rs"
 
+[[bench]]
+name = "deno_bench"
+harness = false
+path = "./bench/main.rs"
+
 [build-dependencies]
-deno_core = { path = "../core", version = "0.46.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.46.0" }
+deno_core = { path = "../core", version = "0.73.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.16.0" }
+deno_web = { path = "../op_crates/web", version = "0.24.0" }
+regex = "1.3.9"
+serde = { version = "1.0.116", features = ["derive"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.11"
+winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.46.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.46.0" }
+deno_core = { path = "../core", version = "0.73.0" }
+deno_doc = "0.1.18"
+deno_lint = "0.2.13"
+deno_runtime = { path = "../runtime", version = "0.3.0" }
 
 atty = "0.2.14"
-base64 = "0.12.1"
-bytes = "0.5.4"
+base64 = "0.12.3"
 byteorder = "1.3.4"
-clap = "2.33.1"
-dirs = "2.0.2"
-dlopen = "0.1.8"
-dprint-plugin-typescript = "0.19.0"
-futures = { version = "0.3.5", features = ["compat", "io-compat"] }
-glob = "0.3.0"
+clap = "2.33.3"
+crossbeam-channel = "0.5.0"
+dissimilar = "1.0.2"
+dprint-plugin-typescript = "0.35.1"
+encoding_rs = "0.8.24"
+env_logger = "0.7.1"
+filetime = "0.2.12"
 http = "0.2.1"
-indexmap = "1.3.2"
+indexmap = "1.6.0"
+jsonc-parser = "0.14.0"
 lazy_static = "1.4.0"
-libc = "0.2.71"
-log = "0.4.8"
-notify = "5.0.0-pre.2"
-rand = "0.7.3"
-regex = "1.3.7"
-reqwest = { version = "0.10.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
-ring = "0.16.13"
-rustyline = "6.1.2"
-serde = { version = "1.0.110", features = ["derive"] }
-serde_derive = "1.0.110"
-serde_json = { version = "1.0.53", features = [ "preserve_order" ] }
-sys-info = "0.6.1"
-sourcemap = "5.0.0"
+libc = "0.2.77"
+log = "0.4.11"
+lsp-server = "0.5.0"
+lsp-types = { version = "0.84.0", features = ["proposed"] }
+notify = "5.0.0-pre.3"
+percent-encoding = "2.1.0"
+regex = "1.3.9"
+ring = "0.16.19"
+rustyline = { version = "7.1.0", default-features = false }
+rustyline-derive = "0.4.0"
+semver-parser = "0.9.0"
+serde = { version = "1.0.116", features = ["derive"] }
+shell-escape = "0.1.5"
+sourcemap = "6.0.1"
+swc_bundler = "0.17.6"
+swc_common = { version = "0.10.7", features = ["sourcemap"] }
+swc_ecmascript = { version = "0.15.0", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
-tokio = { version = "0.2.21", features = ["rt-core", "tcp", "udp", "uds", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
-tokio-rustls = "0.13.1"
-url = "2.1.1"
-utime = "0.3.0"
-webpki = "0.21.2"
-webpki-roots = "0.19.0"
-walkdir = "2.3.1"
-warp = "0.2.3"
-semver-parser = "0.9.0"
+tokio = { version = "0.2.22", features = ["full"] }
+tokio-rustls = "0.14.1"
 uuid = { version = "0.8.1", features = ["v4"] }
-swc_ecma_visit = "0.5.0"
+walkdir = "2.3.1"
 
 [target.'cfg(windows)'.dependencies]
-winapi = "0.3.8"
+winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 fwdansi = "1.1.0"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.17.0"
+nix = "0.19.0"
 
 [dev-dependencies]
+# Used in benchmark
+chrono = "0.4.15"
 os_pipe = "0.9.2"
-# Used for testing inspector. Keep in-sync with warp.
-tokio-tungstenite = { version = "0.10.1", features = ["connect"] }
+test_util = { path = "../test_util" }
+tokio-tungstenite = "0.11.0"
 
 [target.'cfg(unix)'.dev-dependencies]
-pty = "0.2.2"
+exec = "0.3.1" # Used in test_raw_tty
+
+[package.metadata.winres]
+# This section defines the metadata that appears in the deno.exe PE header.
+OriginalFilename = "deno.exe"
+LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
+ProductName = "Deno"
+FileDescription = "A secure runtime for JavaScript and TypeScript."

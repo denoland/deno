@@ -1,4 +1,8 @@
-use crate::fs as deno_fs;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use crate::fs_util;
+use crate::http_cache::url_to_filename;
+use deno_core::url::{Host, Url};
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -7,7 +11,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
-use url::Url;
 
 #[derive(Clone)]
 pub struct DiskCache {
@@ -43,14 +46,14 @@ impl DiskCache {
     })
   }
 
-  pub fn get_cache_filename(&self, url: &Url) -> PathBuf {
+  fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
     let mut out = PathBuf::new();
 
     let scheme = url.scheme();
     out.push(scheme);
 
     match scheme {
-      "http" | "https" => {
+      "wasm" => {
         let host = url.host_str().unwrap();
         let host_port = match url.port() {
           // Windows doesn't support ":" in filenames, so we represent port using a
@@ -64,6 +67,7 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
+      "http" | "https" => out = url_to_filename(url),
       "file" => {
         let path = url.to_file_path().unwrap();
         let mut path_components = path.components();
@@ -80,6 +84,14 @@ impl DiskCache {
                 let disk = (disk_byte as char).to_string();
                 out.push(disk);
               }
+              Prefix::UNC(server, share)
+              | Prefix::VerbatimUNC(server, share) => {
+                out.push("UNC");
+                let host = Host::parse(server.to_str().unwrap()).unwrap();
+                let host = host.to_string().replace(":", "_");
+                out.push(host);
+                out.push(share);
+              }
               _ => unreachable!(),
             }
           }
@@ -93,30 +105,25 @@ impl DiskCache {
 
         out = out.join(remaining_components);
       }
-      scheme => {
-        unimplemented!(
-          "Don't know how to create cache name for scheme: {}",
-          scheme
-        );
-      }
+      _ => return None,
     };
 
-    out
+    Some(out)
   }
 
   pub fn get_cache_filename_with_extension(
     &self,
     url: &Url,
     extension: &str,
-  ) -> PathBuf {
-    let base = self.get_cache_filename(url);
+  ) -> Option<PathBuf> {
+    let base = self.get_cache_filename(url)?;
 
     match base.extension() {
-      None => base.with_extension(extension),
+      None => Some(base.with_extension(extension)),
       Some(ext) => {
         let original_extension = OsStr::to_str(ext).unwrap();
         let final_extension = format!("{}.{}", original_extension, extension);
-        base.with_extension(final_extension)
+        Some(base.with_extension(final_extension))
       }
     }
   }
@@ -132,13 +139,8 @@ impl DiskCache {
       Some(ref parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
-    deno_fs::write_file(&path, data, 0o666)
+    fs_util::atomic_write_file(&path, data, crate::http_cache::CACHE_PERM)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
-  }
-
-  pub fn remove(&self, filename: &Path) -> std::io::Result<()> {
-    let path = self.location.join(filename);
-    fs::remove_file(path)
   }
 }
 
@@ -186,20 +188,36 @@ mod tests {
     let mut test_cases = vec![
       (
         "http://deno.land/std/http/file_server.ts",
-        "http/deno.land/std/http/file_server.ts",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       (
         "http://localhost:8000/std/http/file_server.ts",
-        "http/localhost_PORT8000/std/http/file_server.ts",
+        "http/localhost_PORT8000/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       (
         "https://deno.land/std/http/file_server.ts",
-        "https/deno.land/std/http/file_server.ts",
+        "https/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
+      ("wasm://wasm/d1c677ea", "wasm/wasm/d1c677ea"),
     ];
 
     if cfg!(target_os = "windows") {
       test_cases.push(("file:///D:/a/1/s/format.ts", "file/D/a/1/s/format.ts"));
+      // IPv4 localhost
+      test_cases.push((
+        "file://127.0.0.1/d$/a/1/s/format.ts",
+        "file/UNC/127.0.0.1/d$/a/1/s/format.ts",
+      ));
+      // IPv6 localhost
+      test_cases.push((
+        "file://[0:0:0:0:0:0:0:1]/d$/a/1/s/format.ts",
+        "file/UNC/[__1]/d$/a/1/s/format.ts",
+      ));
+      // shared folder
+      test_cases.push((
+        "file://comp/t-share/a/1/s/format.ts",
+        "file/UNC/comp/t-share/a/1/s/format.ts",
+      ));
     } else {
       test_cases.push((
         "file:///std/http/file_server.ts",
@@ -210,7 +228,7 @@ mod tests {
     for test_case in &test_cases {
       let cache_filename =
         cache.get_cache_filename(&Url::parse(test_case.0).unwrap());
-      assert_eq!(cache_filename, PathBuf::from(test_case.1));
+      assert_eq!(cache_filename, Some(PathBuf::from(test_case.1)));
     }
   }
 
@@ -227,12 +245,12 @@ mod tests {
       (
         "http://deno.land/std/http/file_server.ts",
         "js",
-        "http/deno.land/std/http/file_server.ts.js",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js",
       ),
       (
         "http://deno.land/std/http/file_server.ts",
         "js.map",
-        "http/deno.land/std/http/file_server.ts.js.map",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js.map",
       ),
     ];
 
@@ -256,7 +274,7 @@ mod tests {
           &Url::parse(test_case.0).unwrap(),
           test_case.1
         ),
-        PathBuf::from(test_case.2)
+        Some(PathBuf::from(test_case.2))
       )
     }
   }

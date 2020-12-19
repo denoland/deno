@@ -1,5 +1,6 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import Dirent from "./_fs_dirent.ts";
-import { assert } from "../../testing/asserts.ts";
+import { assert } from "../../_util/assert.ts";
 
 export default class Dir {
   private dirPath: string | Uint8Array;
@@ -17,7 +18,8 @@ export default class Dir {
     return this.dirPath;
   }
 
-  read(callback?: Function): Promise<Dirent | null> {
+  // deno-lint-ignore no-explicit-any
+  read(callback?: (...args: any[]) => void): Promise<Dirent | null> {
     return new Promise((resolve, reject) => {
       if (!this.asyncIterator) {
         this.asyncIterator = Deno.readDir(this.path)[Symbol.asyncIterator]();
@@ -55,7 +57,8 @@ export default class Dir {
    * directories, and therefore does not need to close directories when
    * finished reading.
    */
-  close(callback?: Function): Promise<void> {
+  // deno-lint-ignore no-explicit-any
+  close(callback?: (...args: any[]) => void): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         if (callback) {

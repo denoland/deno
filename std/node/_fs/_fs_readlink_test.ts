@@ -1,6 +1,6 @@
-const { test } = Deno;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { readlink, readlinkSync } from "./_fs_readlink.ts";
-import { assertEquals, assert } from "../../testing/asserts.ts";
+import { assert, assertEquals } from "../../testing/asserts.ts";
 import * as path from "../path.ts";
 
 const testDir = Deno.makeTempDirSync();
@@ -13,7 +13,7 @@ if (Deno.build.os === "windows") {
   Deno.symlinkSync(oldname, newname);
 }
 
-test({
+Deno.test({
   name: "readlinkSuccess",
   async fn() {
     const data = await new Promise((res, rej) => {
@@ -30,7 +30,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "readlinkEncodeBufferSuccess",
   async fn() {
     const data = await new Promise((res, rej) => {
@@ -47,7 +47,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "readlinkSyncSuccess",
   fn() {
     const data = readlinkSync(newname);
@@ -56,7 +56,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "readlinkEncodeBufferSuccess",
   fn() {
     const data = readlinkSync(newname, { encoding: "buffer" });

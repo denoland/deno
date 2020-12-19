@@ -1,0 +1,3 @@
+// @ts-check
+import { printHello } from "./mod2.ts";
+printHello();

@@ -18,5 +18,5 @@ console.log(
       ],
     },
     test: "foobar",
-  })
+  }),
 );

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
 unitTest(async function metrics(): Promise<void> {
   const m1 = Deno.metrics();
@@ -39,7 +39,7 @@ unitTest(
     const metrics = Deno.metrics();
     assert(metrics.opsDispatched === metrics.opsCompleted);
     assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
-  }
+  },
 );
 
 unitTest(
@@ -54,5 +54,5 @@ unitTest(
     assert(metrics.opsDispatched === metrics.opsCompleted);
     assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
     assert(metrics.opsDispatchedAsync === metrics.opsCompletedAsync);
-  }
+  },
 );

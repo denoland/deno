@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -19,14 +19,14 @@ unitTest(
     Deno.writeFileSync(newName, new TextEncoder().encode(newData2));
     assertEquals(
       newData2,
-      new TextDecoder().decode(Deno.readFileSync(oldName))
+      new TextDecoder().decode(Deno.readFileSync(oldName)),
     );
     // Writing to oldname also affects newname.
     const newData3 = "ModifiedAgain";
     Deno.writeFileSync(oldName, new TextEncoder().encode(newData3));
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
     // Remove oldname. File still accessible through newname.
     Deno.removeSync(oldName);
@@ -35,9 +35,9 @@ unitTest(
     assert(!newNameStat.isSymlink); // Not a symlink.
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
-  }
+  },
 );
 
 unitTest(
@@ -50,15 +50,10 @@ unitTest(
     // newname is already created.
     Deno.writeFileSync(newName, new TextEncoder().encode("newName"));
 
-    let err;
-    try {
+    assertThrows(() => {
       Deno.linkSync(oldName, newName);
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.AlreadyExists);
-  }
+    }, Deno.errors.AlreadyExists);
+  },
 );
 
 unitTest(
@@ -68,43 +63,28 @@ unitTest(
     const oldName = testDir + "/oldname";
     const newName = testDir + "/newname";
 
-    let err;
-    try {
+    assertThrows(() => {
       Deno.linkSync(oldName, newName);
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.NotFound);
-  }
+    }, Deno.errors.NotFound);
+  },
 );
 
 unitTest(
   { perms: { read: false, write: true } },
   function linkSyncReadPerm(): void {
-    let err;
-    try {
+    assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
+    }, Deno.errors.PermissionDenied);
+  },
 );
 
 unitTest(
   { perms: { read: true, write: false } },
   function linkSyncWritePerm(): void {
-    let err;
-    try {
+    assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
+    }, Deno.errors.PermissionDenied);
+  },
 );
 
 unitTest(
@@ -125,14 +105,14 @@ unitTest(
     Deno.writeFileSync(newName, new TextEncoder().encode(newData2));
     assertEquals(
       newData2,
-      new TextDecoder().decode(Deno.readFileSync(oldName))
+      new TextDecoder().decode(Deno.readFileSync(oldName)),
     );
     // Writing to oldname also affects newname.
     const newData3 = "ModifiedAgain";
     Deno.writeFileSync(oldName, new TextEncoder().encode(newData3));
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
     // Remove oldname. File still accessible through newname.
     Deno.removeSync(oldName);
@@ -141,7 +121,7 @@ unitTest(
     assert(!newNameStat.isSymlink); // Not a symlink.
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
-  }
+  },
 );

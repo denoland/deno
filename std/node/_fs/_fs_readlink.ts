@@ -6,11 +6,9 @@ import {
 } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
 
-const { readLink: denoReadlink, readLinkSync: denoReadlinkSync } = Deno;
-
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,
-  linkString: MaybeEmpty<string | Uint8Array>
+  linkString: MaybeEmpty<string | Uint8Array>,
 ) => void;
 
 interface ReadlinkOptions {
@@ -19,7 +17,7 @@ interface ReadlinkOptions {
 
 function maybeEncode(
   data: string,
-  encoding: string | null
+  encoding: string | null,
 ): string | Uint8Array {
   if (encoding === "buffer") {
     return new TextEncoder().encode(data);
@@ -28,7 +26,7 @@ function maybeEncode(
 }
 
 function getEncoding(
-  optOrCallback?: ReadlinkOptions | ReadlinkCallback
+  optOrCallback?: ReadlinkOptions | ReadlinkCallback,
 ): string | null {
   if (!optOrCallback || typeof optOrCallback === "function") {
     return null;
@@ -52,7 +50,7 @@ function getEncoding(
 export function readlink(
   path: string | URL,
   optOrCallback: ReadlinkCallback | ReadlinkOptions,
-  callback?: ReadlinkCallback
+  callback?: ReadlinkCallback,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
@@ -66,18 +64,18 @@ export function readlink(
   const encoding = getEncoding(optOrCallback);
 
   intoCallbackAPIWithIntercept<string, Uint8Array | string>(
-    denoReadlink,
+    Deno.readLink,
     (data: string): string | Uint8Array => maybeEncode(data, encoding),
     cb,
-    path
+    path,
   );
 }
 
 export function readlinkSync(
   path: string | URL,
-  opt?: ReadlinkOptions
+  opt?: ReadlinkOptions,
 ): string | Uint8Array {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
-  return maybeEncode(denoReadlinkSync(path), getEncoding(opt));
+  return maybeEncode(Deno.readLinkSync(path), getEncoding(opt));
 }

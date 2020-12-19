@@ -2,23 +2,24 @@
 import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
-import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { delay } from "../../async/delay.ts";
+import { dirname, fromFileUrl, resolve } from "../../path/mod.ts";
 
-const { test } = Deno;
+const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)));
 
-async function startServer(): Promise<Deno.Process> {
+async function startServer(): Promise<
+  Deno.Process<Deno.RunOptions & { stdout: "piped" }>
+> {
   const server = Deno.run({
-    // TODO(lucacasonato): remove unstable once possible
     cmd: [
       Deno.execPath(),
       "run",
+      "--quiet",
       "--allow-net",
       "--allow-read",
-      "--unstable",
       "server.ts",
     ],
-    cwd: "examples/chat",
+    cwd: moduleDir,
     stdout: "piped",
   });
   try {
@@ -27,14 +28,14 @@ async function startServer(): Promise<Deno.Process> {
     const s = await r.readLine();
     assert(s !== null && s.includes("chat server starting"));
   } catch (err) {
-    server.stdout!.close();
+    server.stdout.close();
     server.close();
   }
 
   return server;
 }
 
-test({
+Deno.test({
   name: "[examples/chat] GET / should serve html",
   async fn() {
     const server = await startServer();
@@ -46,28 +47,35 @@ test({
       assert(html.includes("ws chat example"), "body is ok");
     } finally {
       server.close();
-      server.stdout!.close();
+      server.stdout.close();
     }
     await delay(10);
   },
 });
 
-test({
+Deno.test({
   name: "[examples/chat] GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();
-    let ws: WebSocket | undefined;
+    let ws: WebSocket;
     try {
-      ws = await connectWebSocket("http://127.0.0.1:8080/ws");
-      const it = ws[Symbol.asyncIterator]();
-
-      assertEquals((await it.next()).value, "Connected: [1]");
-      ws.send("Hello");
-      assertEquals((await it.next()).value, "[1]: Hello");
+      ws = new WebSocket("ws://127.0.0.1:8080/ws");
+      await new Promise<void>((resolve) => {
+        ws.onmessage = ((message) => {
+          assertEquals(message.data, "Connected: [1]");
+          ws.onmessage = ((message) => {
+            assertEquals(message.data, "[1]: Hello");
+            ws.close();
+            resolve();
+          });
+          ws.send("Hello");
+        });
+      });
+    } catch (err) {
+      console.log(err);
     } finally {
       server.close();
-      server.stdout!.close();
-      ws!.conn.close();
+      server.stdout.close();
     }
   },
 });

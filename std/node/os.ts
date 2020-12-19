@@ -19,9 +19,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { notImplemented } from "./_utils.ts";
-import { validateIntegerRange } from "./util.ts";
+import { validateIntegerRange } from "./_utils.ts";
 import { EOL as fsEOL } from "../fs/eol.ts";
-import { process } from "./process.ts";
+import process from "./process.ts";
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno/issues/3802";
 
@@ -123,9 +123,9 @@ export function endianness(): "BE" | "LE" {
   return new Int16Array(buffer)[0] === 256 ? "LE" : "BE";
 }
 
-/** Not yet implemented */
+/** Return free memory amount */
 export function freemem(): number {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.systemMemoryInfo().free;
 }
 
 /** Not yet implemented */
@@ -136,12 +136,12 @@ export function getPriority(pid = 0): number {
 
 /** Returns the string path of the current user's home directory. */
 export function homedir(): string | null {
-  return Deno.dir("home");
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Returns the host name of the operating system as a string. */
 export function hostname(): string {
-  return Deno.hostname();
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Returns an array containing the 1, 5, and 15 minute load averages */
@@ -182,17 +182,26 @@ export function setPriority(pid: number, priority?: number): void {
 
 /** Returns the operating system's default directory for temporary files as a string. */
 export function tmpdir(): string | null {
-  return Deno.dir("tmp");
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Not yet implemented */
+/** Return total physical memory amount */
 export function totalmem(): number {
-  notImplemented(SEE_GITHUB_ISSUE);
+  return Deno.systemMemoryInfo().total;
 }
 
-/** Not yet implemented */
+/** Returns operating system type (i.e. 'Windows_NT', 'Linux', 'Darwin') */
 export function type(): string {
-  notImplemented(SEE_GITHUB_ISSUE);
+  switch (Deno.build.os) {
+    case "windows":
+      return "Windows_NT";
+    case "linux":
+      return "Linux";
+    case "darwin":
+      return "Darwin";
+    default:
+      throw Error("unreachable");
+  }
 }
 
 /** Not yet implemented */
@@ -202,8 +211,7 @@ export function uptime(): number {
 
 /** Not yet implemented */
 export function userInfo(
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
-  options: UserInfoOptions = { encoding: "utf-8" }
+  options: UserInfoOptions = { encoding: "utf-8" },
 ): UserInfo {
   notImplemented(SEE_GITHUB_ISSUE);
 }
@@ -223,3 +231,25 @@ export const constants = {
 };
 
 export const EOL = Deno.build.os == "windows" ? fsEOL.CRLF : fsEOL.LF;
+
+export default {
+  arch,
+  cpus,
+  endianness,
+  freemem,
+  getPriority,
+  homedir,
+  hostname,
+  loadavg,
+  networkInterfaces,
+  platform,
+  release,
+  setPriority,
+  tmpdir,
+  totalmem,
+  type,
+  uptime,
+  userInfo,
+  constants,
+  EOL,
+};

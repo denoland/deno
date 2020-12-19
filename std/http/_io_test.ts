@@ -1,29 +1,31 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  AssertionError,
-  assertThrowsAsync,
-  assertEquals,
   assert,
+  assertEquals,
   assertNotEquals,
+  assertThrowsAsync,
 } from "../testing/asserts.ts";
 import {
   bodyReader,
   chunkedBodyReader,
-  writeTrailers,
-  readTrailers,
   parseHTTPVersion,
   readRequest,
+  readTrailers,
   writeResponse,
+  writeTrailers,
 } from "./_io.ts";
-import { encode, decode } from "../encoding/utf8.ts";
+import { decode, encode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
-import { ServerRequest, Response } from "./server.ts";
+import { Response, ServerRequest } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./_mock_conn.ts";
-const { Buffer, test, readAll } = Deno;
 
-test("bodyReader", async () => {
+Deno.test("bodyReader", async () => {
   const text = "Hello, Deno";
-  const r = bodyReader(text.length, new BufReader(new Buffer(encode(text))));
+  const r = bodyReader(
+    text.length,
+    new BufReader(new Deno.Buffer(encode(text))),
+  );
   assertEquals(decode(await Deno.readAll(r)), text);
 });
 function chunkify(n: number, char: string): string {
@@ -32,7 +34,7 @@ function chunkify(n: number, char: string): string {
     .join("");
   return `${n.toString(16)}\r\n${v}\r\n`;
 }
-test("chunkedBodyReader", async () => {
+Deno.test("chunkedBodyReader", async () => {
   const body = [
     chunkify(3, "a"),
     chunkify(5, "b"),
@@ -41,11 +43,11 @@ test("chunkedBodyReader", async () => {
     chunkify(0, ""),
   ].join("");
   const h = new Headers();
-  const r = chunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
+  const r = chunkedBodyReader(h, new BufReader(new Deno.Buffer(encode(body))));
   let result: number | null;
   // Use small buffer as some chunks exceed buffer size
   const buf = new Uint8Array(5);
-  const dest = new Buffer();
+  const dest = new Deno.Buffer();
   while ((result = await r.read(buf)) !== null) {
     const len = Math.min(buf.byteLength, result);
     await dest.write(buf.subarray(0, len));
@@ -54,7 +56,7 @@ test("chunkedBodyReader", async () => {
   assertEquals(new TextDecoder().decode(dest.bytes()), exp);
 });
 
-test("chunkedBodyReader with trailers", async () => {
+Deno.test("chunkedBodyReader with trailers", async () => {
   const body = [
     chunkify(3, "a"),
     chunkify(5, "b"),
@@ -68,7 +70,7 @@ test("chunkedBodyReader with trailers", async () => {
   const h = new Headers({
     trailer: "deno,node",
   });
-  const r = chunkedBodyReader(h, new BufReader(new Buffer(encode(body))));
+  const r = chunkedBodyReader(h, new BufReader(new Deno.Buffer(encode(body))));
   assertEquals(h.has("trailer"), true);
   assertEquals(h.has("deno"), false);
   assertEquals(h.has("node"), false);
@@ -80,80 +82,89 @@ test("chunkedBodyReader with trailers", async () => {
   assertEquals(h.get("node"), "js");
 });
 
-test("readTrailers", async () => {
+Deno.test("readTrailers", async () => {
   const h = new Headers({
     trailer: "Deno, Node",
   });
   const trailer = ["deno: land", "node: js", "", ""].join("\r\n");
-  await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
+  await readTrailers(h, new BufReader(new Deno.Buffer(encode(trailer))));
   assertEquals(h.has("trailer"), false);
   assertEquals(h.get("deno"), "land");
   assertEquals(h.get("node"), "js");
 });
 
-test("readTrailer should throw if undeclared headers found in trailer", async () => {
-  const patterns = [
-    ["deno,node", "deno: land\r\nnode: js\r\ngo: lang\r\n\r\n"],
-    ["deno", "node: js\r\n\r\n"],
-    ["deno", "node:js\r\ngo: lang\r\n\r\n"],
-  ];
-  for (const [header, trailer] of patterns) {
-    const h = new Headers({
-      trailer: header,
-    });
-    await assertThrowsAsync(
-      async () => {
-        await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
-      },
-      Error,
-      "Undeclared trailer field"
-    );
-  }
-});
+Deno.test(
+  "readTrailer should throw if undeclared headers found in trailer",
+  async () => {
+    const patterns = [
+      ["deno,node", "deno: land\r\nnode: js\r\ngo: lang\r\n\r\n"],
+      ["deno", "node: js\r\n\r\n"],
+      ["deno", "node:js\r\ngo: lang\r\n\r\n"],
+    ];
+    for (const [header, trailer] of patterns) {
+      const h = new Headers({
+        trailer: header,
+      });
+      await assertThrowsAsync(
+        async () => {
+          await readTrailers(
+            h,
+            new BufReader(new Deno.Buffer(encode(trailer))),
+          );
+        },
+        Deno.errors.InvalidData,
+        `Undeclared trailers: [ "`,
+      );
+    }
+  },
+);
 
-test("readTrailer should throw if trailer contains prohibited fields", async () => {
-  for (const f of ["Content-Length", "Trailer", "Transfer-Encoding"]) {
-    const h = new Headers({
-      trailer: f,
-    });
-    await assertThrowsAsync(
-      async () => {
-        await readTrailers(h, new BufReader(new Buffer()));
-      },
-      Error,
-      "Prohibited field for trailer"
-    );
-  }
-});
+Deno.test(
+  "readTrailer should throw if trailer contains prohibited fields",
+  async () => {
+    for (const f of ["Content-Length", "Trailer", "Transfer-Encoding"]) {
+      const h = new Headers({
+        trailer: f,
+      });
+      await assertThrowsAsync(
+        async () => {
+          await readTrailers(h, new BufReader(new Deno.Buffer()));
+        },
+        Deno.errors.InvalidData,
+        `Prohibited trailer names: [ "`,
+      );
+    }
+  },
+);
 
-test("writeTrailer", async () => {
-  const w = new Buffer();
+Deno.test("writeTrailer", async () => {
+  const w = new Deno.Buffer();
   await writeTrailers(
     w,
     new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
-    new Headers({ deno: "land", node: "js" })
+    new Headers({ deno: "land", node: "js" }),
   );
   assertEquals(
     new TextDecoder().decode(w.bytes()),
-    "deno: land\r\nnode: js\r\n\r\n"
+    "deno: land\r\nnode: js\r\n\r\n",
   );
 });
 
-test("writeTrailer should throw", async () => {
-  const w = new Buffer();
+Deno.test("writeTrailer should throw", async () => {
+  const w = new Deno.Buffer();
   await assertThrowsAsync(
     () => {
       return writeTrailers(w, new Headers(), new Headers());
     },
-    Error,
-    'must have "trailer"'
+    TypeError,
+    "Missing trailer header.",
   );
   await assertThrowsAsync(
     () => {
       return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
     },
-    Error,
-    "only allowed"
+    TypeError,
+    `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: null".`,
   );
   for (const f of ["content-length", "trailer", "transfer-encoding"]) {
     await assertThrowsAsync(
@@ -161,11 +172,11 @@ test("writeTrailer should throw", async () => {
         return writeTrailers(
           w,
           new Headers({ "transfer-encoding": "chunked", trailer: f }),
-          new Headers({ [f]: "1" })
+          new Headers({ [f]: "1" }),
         );
       },
-      AssertionError,
-      "prohibited"
+      TypeError,
+      `Prohibited trailer names: [ "`,
     );
   }
   await assertThrowsAsync(
@@ -173,16 +184,16 @@ test("writeTrailer should throw", async () => {
       return writeTrailers(
         w,
         new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
-        new Headers({ node: "js" })
+        new Headers({ node: "js" }),
       );
     },
-    AssertionError,
-    "Not trailer"
+    TypeError,
+    `Undeclared trailers: [ "node" ].`,
   );
 });
 
 // Ported from https://github.com/golang/go/blob/f5c43b9/src/net/http/request_test.go#L535-L565
-test("parseHttpVersion", (): void => {
+Deno.test("parseHttpVersion", (): void => {
   const testCases = [
     { in: "HTTP/0.9", want: [0, 9] },
     { in: "HTTP/1.0", want: [1, 0] },
@@ -213,7 +224,7 @@ test("parseHttpVersion", (): void => {
   }
 });
 
-test("writeUint8ArrayResponse", async function (): Promise<void> {
+Deno.test("writeUint8ArrayResponse", async function (): Promise<void> {
   const shortText = "Hello";
 
   const body = new TextEncoder().encode(shortText);
@@ -249,7 +260,7 @@ test("writeUint8ArrayResponse", async function (): Promise<void> {
   assertEquals(eof, null);
 });
 
-test("writeStringResponse", async function (): Promise<void> {
+Deno.test("writeStringResponse", async function (): Promise<void> {
   const body = "Hello";
 
   const res: Response = { body };
@@ -284,7 +295,7 @@ test("writeStringResponse", async function (): Promise<void> {
   assertEquals(eof, null);
 });
 
-test("writeStringReaderResponse", async function (): Promise<void> {
+Deno.test("writeStringReaderResponse", async function (): Promise<void> {
   const shortText = "Hello";
 
   const body = new StringReader(shortText);
@@ -327,8 +338,8 @@ test("writeStringReaderResponse", async function (): Promise<void> {
   assertEquals(r.more, false);
 });
 
-test("writeResponse with trailer", async () => {
-  const w = new Buffer();
+Deno.test("writeResponse with trailer", async () => {
+  const w = new Deno.Buffer();
   const body = new StringReader("Hello");
   await writeResponse(w, {
     status: 200,
@@ -357,18 +368,18 @@ test("writeResponse with trailer", async () => {
   assertEquals(ret, exp);
 });
 
-test("writeResponseShouldNotModifyOriginHeaders", async () => {
+Deno.test("writeResponseShouldNotModifyOriginHeaders", async () => {
   const headers = new Headers();
   const buf = new Deno.Buffer();
 
   await writeResponse(buf, { body: "foo", headers });
-  assert(decode(await readAll(buf)).includes("content-length: 3"));
+  assert(decode(await Deno.readAll(buf)).includes("content-length: 3"));
 
   await writeResponse(buf, { body: "hello", headers });
-  assert(decode(await readAll(buf)).includes("content-length: 5"));
+  assert(decode(await Deno.readAll(buf)).includes("content-length: 5"));
 });
 
-test("readRequestError", async function (): Promise<void> {
+Deno.test("readRequestError", async function (): Promise<void> {
   const input = `GET / HTTP/1.1
 malformedHeader
 `;
@@ -386,7 +397,7 @@ malformedHeader
 // Ported from Go
 // https://github.com/golang/go/blob/go1.12.5/src/net/http/request_test.go#L377-L443
 // TODO(zekth) fix tests
-test("testReadRequestError", async function (): Promise<void> {
+Deno.test("testReadRequestError", async function (): Promise<void> {
   const testCases = [
     {
       in: "GET / HTTP/1.1\r\nheader: foo\r\n\r\n",
@@ -409,20 +420,17 @@ test("testReadRequestError", async function (): Promise<void> {
     // deduplicated if same or reject otherwise
     // See Issue 16490.
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
         "Gopher hey\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
         "Gopher\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
+      in: "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
         "Content-Length:6\r\n\r\nGopher\r\n",
       headers: [{ key: "Content-Length", value: "6" }],
     },
@@ -441,8 +449,7 @@ test("testReadRequestError", async function (): Promise<void> {
       headers: [{ key: "Content-Length", value: "0" }],
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
+      in: "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
         "chunked\r\n\r\n",
       headers: [],
       err: "http: Transfer-Encoding and Content-Length cannot be send together",
