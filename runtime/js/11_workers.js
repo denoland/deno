@@ -84,12 +84,12 @@
       throw new Error(
         `Expected 'array' or 'boolean' for ${permission} permission, ${typeof value} received`,
       );
-    //Casts URLs to absolute routes
+      //Casts URLs to absolute routes
     } else if (Array.isArray(value)) {
       value = value.map((x) => {
-        if(x instanceof URL){
+        if (x instanceof URL) {
           x = x.pathname;
-          if(build.os === "windows"){
+          if (build.os === "windows") {
             //Remove leading slash on windows absolute routes
             x = x.slice(1);
           }
