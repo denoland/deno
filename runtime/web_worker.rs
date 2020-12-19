@@ -395,6 +395,8 @@ impl WebWorker {
       let msg = String::from_utf8(msg.to_vec()).unwrap();
       let script = format!("workerMessageRecvCallback({})", msg);
 
+      // TODO(bartlomieju): set proper script name like "deno:runtime/web_worker.js"
+      // so it's dimmed in stack trace instead of using "__anonymous__"
       if let Err(e) = self.execute(&script) {
         // If execution was terminated during message callback then
         // just ignore it
