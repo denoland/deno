@@ -1,3 +1,5 @@
+import { fromFileUrl } from "../../../std/path/mod.ts";
+
 const worker = new Worker(
   new URL("./read_check_granular_worker.js", import.meta.url).href,
   {
@@ -27,10 +29,9 @@ worker.onmessage = ({ data: childResponse }) => {
 };
 
 onmessage = async ({ data }) => {
-  const path = new URL(data.route, import.meta.url);
   const { state } = await Deno.permissions.query({
     name: "read",
-    path: path.pathname,
+    path: fromFileUrl(new URL(data.route, import.meta.url)),
   });
 
   messages[data.index] = state === "granted";

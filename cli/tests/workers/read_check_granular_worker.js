@@ -1,8 +1,9 @@
+import { fromFileUrl } from "../../../std/path/mod.ts";
+
 onmessage = async ({ data }) => {
-  const path = new URL(data.route, import.meta.url);
   const { state } = await Deno.permissions.query({
     name: "read",
-    path: path.pathname,
+    path: fromFileUrl(new URL(data.route, import.meta.url)),
   });
 
   postMessage({
