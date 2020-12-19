@@ -953,16 +953,6 @@ declare namespace Deno {
     options?: ResolveAddrOptions
   ): Promise<string[]>;
 
-  export interface ConnectTlsOptions {
-    /** The port to connect to. */
-    port: number;
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
-    hostname?: string;
-    /** Server certificate file. */
-    certFile?: string;
-  }
-
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
