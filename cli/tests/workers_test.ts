@@ -359,11 +359,11 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Worker with top-level-for-await",
+  name: "Worker with top-level-await",
   fn: async function (): Promise<void> {
     const promise = deferred();
     const worker = new Worker(
-      new URL("./worker_with_top_level_for_await.ts", import.meta.url).href,
+      new URL("./worker_with_top_level_await.ts", import.meta.url).href,
       { deno: true, type: "module" },
     );
     worker.onmessage = (e): void => {
