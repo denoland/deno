@@ -901,28 +901,14 @@ declare namespace Deno {
    */
   export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
-  /** The type of the resource record. */
+  /** The type of the resource record.
+   * Only the listed types are supported currently. */
   export type RecordType =
     | "A"
     | "AAAA"
     | "ANAME"
-    | "ANY"
-    | "AXFR"
-    | "CAA"
     | "CNAME"
-    | "IXFR"
-    | "MX"
-    | "NAPTR"
-    | "NS"
-    | "NULL"
-    | "OPENPGPKEY"
-    | "OPT"
-    | "PTR"
-    | "SOA"
-    | "SRV"
-    | "SSHFP"
-    | "TLSA"
-    | "TXT";
+    | "PTR";
 
   export interface ResolveAddrOptions {
     /** The resouce record type to query. 
