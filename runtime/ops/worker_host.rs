@@ -126,7 +126,6 @@ fn merge_net_permissions(
   target: &UnaryPermission<String>,
   incoming: Option<UnaryPermission<String>>,
 ) -> Result<UnaryPermission<String>, AnyError> {
-  // Default: use main thread permissions
   if incoming.is_none() {
     return Ok(target.clone());
   };
@@ -206,13 +205,12 @@ fn check_write_permissions(
     .all(|x| current_permissions.check_write(&x).is_ok())
 }
 
-fn merge_unary_permissions(
+fn merge_read_write_permissions(
   permission_type: WorkerPermissionType,
   target: &UnaryPermission<PathBuf>,
   incoming: Option<UnaryPermission<PathBuf>>,
   current_permissions: &Permissions,
 ) -> Result<UnaryPermission<PathBuf>, AnyError> {
-  // Default: use main thread permissions
   if incoming.is_none() {
     return Ok(target.clone());
   };
@@ -296,7 +294,7 @@ fn create_worker_permissions(
       &main_thread_permissions.plugin,
       permission_args.plugin,
     )?,
-    read: merge_unary_permissions(
+    read: merge_read_write_permissions(
       WorkerPermissionType::READ,
       &main_thread_permissions.read,
       permission_args.read,
@@ -306,7 +304,7 @@ fn create_worker_permissions(
       &main_thread_permissions.run,
       permission_args.run,
     )?,
-    write: merge_unary_permissions(
+    write: merge_read_write_permissions(
       WorkerPermissionType::WRITE,
       &main_thread_permissions.write,
       permission_args.write,
