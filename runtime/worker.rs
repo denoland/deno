@@ -212,7 +212,7 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    let mut receiver = self.js_runtime.mod_evaluate_inner(id);
+    let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       maybe_result = receiver.next() => {
         debug!("received module evaluate {:#?}", maybe_result);

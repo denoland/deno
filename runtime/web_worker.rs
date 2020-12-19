@@ -316,7 +316,7 @@ impl WebWorker {
   ) -> Result<(), AnyError> {
     let id = self.js_runtime.load_module(module_specifier, None).await?;
 
-    let mut receiver = self.js_runtime.mod_evaluate_inner(id);
+    let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       maybe_result = receiver.next() => {
         debug!("received worker module evaluate {:#?}", maybe_result);
