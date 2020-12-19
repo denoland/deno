@@ -1296,12 +1296,20 @@
               //TODO(Soremwar)
               //Research max body size, this is only the max size that can be safely allocated
               //in a uint8array
-              const result = new Uint8Array(2147483646);
+              const chunkLength = 16384;
+              let position = 0;
+              const result = new Uint8Array(chunkLength);
+
               const { bytes } = await core.jsonOpAsync(
                 "op_fetch_read",
-                { rid },
+                {
+                  rid,
+                  start: position,
+                  length: chunkLength,
+                },
                 result,
               );
+              position += bytes;
               if (bytes === 0) {
                 controller.close();
                 core.close(rid);

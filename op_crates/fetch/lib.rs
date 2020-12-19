@@ -198,11 +198,15 @@ pub async fn op_fetch_read(
   #[derive(Deserialize)]
   #[serde(rename_all = "camelCase")]
   struct Args {
+    length: u32,
     rid: u32,
+    start: u64,
   }
 
   let args: Args = serde_json::from_value(args)?;
   let rid = args.rid;
+  let start = args.start as usize;
+  let length = args.length as usize;
 
   let resource = state
     .borrow()
@@ -212,11 +216,17 @@ pub async fn op_fetch_read(
   let mut response = RcRef::map(&resource, |r| &r.response).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_chunk = response.chunk().or_cancel(cancel).await??;
+  //TODO(Soremwar)
+  //Reqwest must have an efficient way to access bytes of the chunk
+  //This will do for now
   if let Some(chunk) = maybe_chunk {
-    //TODO(Soremwar)
-    //Zero copy buffer should have the length of the response, no need to slice
     let bytes = chunk.len();
-    (&mut zero_copy[0])[0..bytes].copy_from_slice(&chunk);
+    if (start + length) > bytes {
+      (&mut zero_copy[0])[0..bytes - start]
+        .copy_from_slice(&chunk[start..bytes]);
+    } else {
+      (&mut zero_copy[0]).copy_from_slice(&chunk[start..start + length]);
+    }
     Ok(json!({ "bytes": bytes as u64 }))
   } else {
     Ok(json!({"bytes": 0}))
