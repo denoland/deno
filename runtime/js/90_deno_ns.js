@@ -115,7 +115,6 @@
     shutdown: __bootstrap.net.shutdown,
     ShutdownMode: __bootstrap.net.ShutdownMode,
     resolveAddr: __bootstrap.net.resolveAddr,
-    resolveAddrSync: __bootstrap.net.resolveAddrSync,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,

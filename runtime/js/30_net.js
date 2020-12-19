@@ -44,12 +44,8 @@
     return core.jsonOpAsync("op_datagram_send", args, zeroCopy);
   }
 
-  function resolveAddrSync(hostname, port) {
-    return core.jsonOpSync("op_resolve_addr_sync", { hostname, port });
-  }
-
-  async function resolveAddr(hostname, port) {
-    return await core.jsonOpAsync("op_resolve_addr_async", { hostname, port });
+  function resolveAddr(query, options) {
+    return core.jsonOpAsync("op_resolve_addr", { query, options });
   }
 
   class Conn {
@@ -232,6 +228,5 @@
     ShutdownMode,
     Datagram,
     resolveAddr,
-    resolveAddrSync,
   };
 })(this);

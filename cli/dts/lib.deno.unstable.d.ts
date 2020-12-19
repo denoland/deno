@@ -901,38 +901,71 @@ declare namespace Deno {
    */
   export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
+  /** The type of the resource record. */
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "ANY"
+    | "AXFR"
+    | "CAA"
+    | "CNAME"
+    | "IXFR"
+    | "MX"
+    | "NAPTR"
+    | "NS"
+    | "NULL"
+    | "OPENPGPKEY"
+    | "OPT"
+    | "PTR"
+    | "SOA"
+    | "SRV"
+    | "SSHFP"
+    | "TLSA"
+    | "TXT";
+
+  export interface ResolveAddrOptions {
+    /** The resouce record type to query. 
+    * If not specified, defaults to "A". */
+    recordType?: RecordType;
+    /** The name server to use for lookups. 
+    * If not specified, defaults to the system configuration e.g. `/etc/resolve.conf` on Unix. */
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
+      * If not specified, defaults to 53. */
+      port?: number;
+      /** The protocol the name server is communicated with.
+      * If not specified, defaults to "UDP". */
+      protocol?: "UDP" | "TCP";
+    };
+  }
+
   /** ** UNSTABLE**: new API, yet to be vetted.
    *
-   * Performs DNS resolution against the given hostname and port, returning
-   * resolved IP addresses.
-   * Fails if the hostname is in invalid format or the port is outside the
-   * range of 16-bit unsigned integer.
+   * Performs DNS resolution against the given query, returning resolved
+   * IP addresses.
+   * Fails in the cases including:
+   * - the query is in invalid format
+   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
+   * - timeout
    *
    * ```ts
-   * const addrs = await Deno.resolveAddr("example.com", 80);
+   * const addrs1 = await Deno.resolveAddr("example.com");
+   *
+   * const addrs2 = await Deno.resolveAddr("example.com", {
+   *   recordType: "AAAA",
+   *   nameServer: { ipAddr: "8.8.8.8", protocol: "TCP" },
+   * });
    * ```
    *
    * Requires `allow-net` permission.
    */
   export function resolveAddr(
-    hostname: string,
-    port: number,
+    query: string,
+    options?: ResolveAddrOptions
   ): Promise<string[]>;
-
-  /** ** UNSTABLE**: new API, yet to be vetted.
-   *
-   * Synchronously performs DNS resolution against the given hostname and port,
-   * returning resolved IP addresses.
-   * Fails if the hostname is in invalid format or the port is outside the
-   * range of 16-bit unsigned integer.
-   *
-   * ```ts
-   * const addrs = Deno.resolveAddrSync("example.com", 80);
-   * ```
-   *
-   * Requires `allow-net` permission.
-   */
-  export function resolveAddrSync(hostname: string, port: number): string[];
 
   export interface ConnectTlsOptions {
     /** The port to connect to. */
