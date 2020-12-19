@@ -277,6 +277,7 @@ Deno.test({
         type: "module",
         deno: {
           namespace: true,
+          permissions: "inherit",
         },
       },
     );
@@ -366,6 +367,7 @@ Deno.test("Worker inherits permissions", async function () {
       type: "module",
       deno: {
         namespace: true,
+        permissions: "inherit",
       },
     },
   );
@@ -461,6 +463,7 @@ Deno.test("Nested worker limit children permissions", async function () {
       type: "module",
       deno: {
         namespace: true,
+        permissions: "inherit",
       },
     },
   );

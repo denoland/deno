@@ -723,7 +723,7 @@ declare class Worker extends EventTarget {
        */
       deno?: {
         namespace?: boolean;
-        permissions?: {
+        permissions?: "inherit" | {
           env?: "inherit" | boolean;
           hrtime?: "inherit" | boolean;
           net?: "inherit" | boolean | string[];
