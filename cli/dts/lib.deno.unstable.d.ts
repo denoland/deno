@@ -950,7 +950,7 @@ declare namespace Deno {
    */
   export function resolveAddr(
     query: string,
-    options?: ResolveAddrOptions
+    options?: ResolveAddrOptions,
   ): Promise<string[]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
