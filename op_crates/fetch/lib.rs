@@ -271,14 +271,14 @@ fn create_http_client(
   ca_data: Option<&str>,
 ) -> Result<Client, AnyError> {
   let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
-  if let Some(ca_file) = ca_file {
+  if let Some(ca_data) = ca_data {
+    let ca_data_vec = ca_data.as_bytes().to_vec();
+    let cert = reqwest::Certificate::from_pem(&ca_data_vec)?;
+    builder = builder.add_root_certificate(cert);
+  } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
-    builder = builder.add_root_certificate(cert);
-  } else if let Some(ca_data) = ca_data {
-    let ca_data_vec = ca_data.as_bytes().to_vec();
-    let cert = reqwest::Certificate::from_pem(&ca_data_vec)?;
     builder = builder.add_root_certificate(cert);
   }
   builder
