@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.6.1 / 2020.12.14
+
+- feat(lsp): support import maps (#8683)
+- fix: show canary string in long version (#8675)
+- fix: zsh completions (#8718)
+- fix(compile): error when the output path already exists (#8681)
+- fix(lsp): only resolve sources with supported schemas (#8696)
+- fix(op_crates/fetch): support non-ascii response headers value (#8600)
+- fix(repl): recover from invalid input (#8759)
+- refactor: deno_runtime crate (#8640)
+- upgrade: swc_ecmascript to 0.15.0 (#8688)
+
+Changes in std version 0.81.0:
+
+- fix(std/datetime): partsToDate (#8553)
+- fix(std/wasi): disallow multiple starts (#8712)
+
 ### 1.6.0 / 2020.12.08
 
 - BREAKING: Make "isolatedModules" setting non-configurable (#8482)

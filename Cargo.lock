@@ -450,23 +450,21 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "atty",
  "base64 0.12.3",
  "byteorder",
- "bytes 0.5.6",
  "chrono",
  "clap",
  "crossbeam-channel 0.5.0",
  "deno_core",
- "deno_crypto",
  "deno_doc",
  "deno_fetch",
  "deno_lint",
+ "deno_runtime",
  "deno_web",
  "dissimilar",
- "dlopen",
  "dprint-plugin-typescript",
  "encoding_rs",
  "env_logger",
@@ -496,7 +494,6 @@ dependencies = [
  "swc_bundler",
  "swc_common",
  "swc_ecmascript",
- "sys-info",
  "tempfile",
  "termcolor",
  "test_util",
@@ -505,16 +502,13 @@ dependencies = [
  "tokio-tungstenite",
  "uuid",
  "walkdir",
- "warp",
- "webpki",
- "webpki-roots",
  "winapi 0.3.9",
  "winres",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.70.0"
+version = "0.73.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -533,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.4.0"
+version = "0.7.0"
 dependencies = [
  "deno_core",
  "rand 0.7.3",
@@ -557,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.13.0"
+version = "0.16.0"
 dependencies = [
  "deno_core",
  "reqwest",
@@ -583,8 +577,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_runtime"
+version = "0.3.0"
+dependencies = [
+ "atty",
+ "deno_core",
+ "deno_crypto",
+ "deno_fetch",
+ "deno_web",
+ "dlopen",
+ "encoding_rs",
+ "env_logger",
+ "filetime",
+ "fwdansi",
+ "http",
+ "indexmap",
+ "lazy_static",
+ "libc",
+ "log",
+ "nix",
+ "notify",
+ "percent-encoding",
+ "regex",
+ "ring",
+ "rustyline",
+ "rustyline-derive",
+ "serde",
+ "shell-escape",
+ "sys-info",
+ "termcolor",
+ "test_util",
+ "tokio 0.2.22",
+ "tokio-rustls",
+ "tokio-tungstenite",
+ "uuid",
+ "warp",
+ "webpki",
+ "webpki-roots",
+ "winapi 0.3.9",
+ "winres",
+]
+
+[[package]]
 name = "deno_web"
-version = "0.21.0"
+version = "0.24.0"
 dependencies = [
  "deno_core",
  "futures",

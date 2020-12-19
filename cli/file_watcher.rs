@@ -240,16 +240,17 @@ fn new_watcher(
 ) -> Result<RecommendedWatcher, AnyError> {
   let event_detected = Arc::clone(&debounce.event_detected);
 
-  let mut watcher: RecommendedWatcher = Watcher::new_immediate(
-    move |res: Result<NotifyEvent, NotifyError>| {
+  let mut watcher: RecommendedWatcher =
+    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
       if let Ok(event) = res {
-        if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_))
-        {
+        if matches!(
+          event.kind,
+          EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        ) {
           event_detected.store(true, Ordering::Relaxed);
         }
       }
-    },
-  )?;
+    })?;
 
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 

@@ -87,7 +87,7 @@ impl Metadata {
   pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
     let metadata_filename = Self::filename(cache_filename);
     let json = serde_json::to_string_pretty(self)?;
-    fs_util::write_file(&metadata_filename, json, CACHE_PERM)?;
+    fs_util::atomic_write_file(&metadata_filename, json, CACHE_PERM)?;
     Ok(())
   }
 
@@ -161,7 +161,7 @@ impl HttpCache {
       .expect("Cache filename should have a parent dir");
     self.ensure_dir_exists(parent_filename)?;
     // Cache content
-    fs_util::write_file(&cache_filename, content, CACHE_PERM)?;
+    fs_util::atomic_write_file(&cache_filename, content, CACHE_PERM)?;
 
     let metadata = Metadata {
       url: url.to_string(),

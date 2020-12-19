@@ -487,6 +487,16 @@ delete Object.prototype.__proto__;
         compilationSettings = options;
         return respond(id, true);
       }
+      case "getAsset": {
+        const sourceFile = host.getSourceFile(
+          request.specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        return core.jsonOpSync(
+          "op_set_asset",
+          { text: sourceFile && sourceFile.text },
+        );
+      }
       case "getSemanticDiagnostics": {
         const diagnostics = languageService.getSemanticDiagnostics(
           request.specifier,

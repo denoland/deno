@@ -1,16 +1,17 @@
 use crate::colors;
 use crate::flags::Flags;
-use crate::permissions::Permissions;
 use crate::tokio_util;
 use crate::version;
-use crate::worker::MainWorker;
-use crate::worker::WorkerOptions;
+use deno_core::error::bail;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::permissions::Permissions;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::worker::WorkerOptions;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env::current_exe;
@@ -134,6 +135,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     runtime_version: version::deno(),
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
+    get_error_class_fn: Some(&crate::errors::get_error_class_name),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
@@ -169,6 +171,24 @@ pub async fn create_standalone_binary(
     } else {
       output
     };
+
+  if output.exists() {
+    // If the output is a directory, throw error
+    if output.is_dir() {
+      bail!("Could not compile: {:?} is a directory.", &output);
+    }
+
+    // Make sure we don't overwrite any file not created by Deno compiler.
+    // Check for magic trailer in last 16 bytes
+    let mut output_file = File::open(&output)?;
+    output_file.seek(SeekFrom::End(-16))?;
+    let mut trailer = [0; 16];
+    output_file.read_exact(&mut trailer)?;
+    let (magic_trailer, _) = trailer.split_at(8);
+    if magic_trailer != MAGIC_TRAILER {
+      bail!("Could not compile: cannot overwrite {:?}.", &output);
+    }
+  }
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
   {

@@ -7,8 +7,8 @@ use crate::http_util::fetch_once;
 use crate::http_util::get_user_agent;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
-use crate::permissions::Permissions;
 use crate::text_encoding;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -17,7 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
-use deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;

@@ -408,10 +408,10 @@ impl ServerState {
     .on_sync::<lsp_types::request::HoverRequest>(handlers::handle_hover)?
     .on_sync::<lsp_types::request::Completion>(handlers::handle_completion)?
     .on_sync::<lsp_types::request::References>(handlers::handle_references)?
-    .on::<lsp_types::request::Formatting>(handlers::handle_formatting)
-    .on::<lsp_extensions::VirtualTextDocument>(
+    .on_sync::<lsp_extensions::VirtualTextDocument>(
       handlers::handle_virtual_text_document,
-    )
+    )?
+    .on::<lsp_types::request::Formatting>(handlers::handle_formatting)
     .finish();
 
     Ok(())

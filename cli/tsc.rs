@@ -26,7 +26,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 /// Provide static assets that are not preloaded in the compiler snapshot.
-fn get_asset(asset: &str) -> Option<&'static str> {
+pub fn get_asset(asset: &str) -> Option<&'static str> {
   macro_rules! inc {
     ($e:expr) => {
       Some(include_str!(concat!("dts/", $e)))

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.4.0"
+version = "0.7.0"
 edition = "2018"
 description = "Collection of WebCrypto APIs"
 authors = ["the Deno authors"]
@@ -14,6 +14,6 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.70.0", path = "../../core" }
+deno_core = { version = "0.73.0", path = "../../core" }
 rand = "0.7.3"
 
