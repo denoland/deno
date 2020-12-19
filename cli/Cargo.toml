@@ -66,7 +66,7 @@ shell-escape = "0.1.5"
 sourcemap = "6.0.1"
 swc_bundler = "0.17.6"
 swc_common = { version = "0.10.7", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.15.0", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
+swc_ecmascript = { version = "0.15.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
