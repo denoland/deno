@@ -1267,9 +1267,7 @@ declare namespace Deno {
      */
     caFile?: string;
 
-    /** A certificate authority to use when validating TLS certificates.
-     *
-     * Pem format certificate data
+    /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;
   }
