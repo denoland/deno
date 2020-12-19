@@ -1293,14 +1293,20 @@
           type: "bytes",
           async pull(controller) {
             try {
-              const result = await core.jsonOpAsync("op_fetch_read", { rid });
-              if (!result || !result.chunk) {
+              //TODO(Soremwar)
+              //Research max body size, this is only the max size that can be safely allocated
+              //in a uint8array
+              const result = new Uint8Array(2147483646);
+              const { bytes } = await core.jsonOpAsync(
+                "op_fetch_read",
+                { rid },
+                result,
+              );
+              if (bytes === 0) {
                 controller.close();
                 core.close(rid);
               } else {
-                // TODO(ry) This is terribly inefficient. Make this zero-copy.
-                const chunk = new Uint8Array(result.chunk);
-                controller.enqueue(chunk);
+                controller.enqueue(result.subarray(0, bytes));
               }
             } catch (e) {
               controller.error(e);

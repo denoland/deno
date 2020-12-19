@@ -193,7 +193,7 @@ where
 pub async fn op_fetch_read(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _data: BufVec,
+  mut zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   #[derive(Deserialize)]
   #[serde(rename_all = "camelCase")]
@@ -213,10 +213,13 @@ pub async fn op_fetch_read(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_chunk = response.chunk().or_cancel(cancel).await??;
   if let Some(chunk) = maybe_chunk {
-    // TODO(ry) This is terribly inefficient. Make this zero-copy.
-    Ok(json!({ "chunk": &*chunk }))
+    //TODO(Soremwar)
+    //Zero copy buffer should have the length of the response, no need to slice
+    let bytes = chunk.len();
+    (&mut zero_copy[0])[0..bytes].copy_from_slice(&chunk);
+    Ok(json!({ "bytes": bytes as u64 }))
   } else {
-    Ok(json!({ "chunk": null }))
+    Ok(json!({"bytes": 0}))
   }
 }
 
