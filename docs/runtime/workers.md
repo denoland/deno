@@ -82,14 +82,17 @@ hello world
 
 By default the `Deno` namespace is not available in worker scope.
 
-To add the `Deno` namespace pass `deno: true` option when creating new worker:
+To enable the `Deno` namespace pass `deno.namespace = true` option when creating
+new worker:
 
 **main.js**
 
 ```ts
 const worker = new Worker(new URL("worker.js", import.meta.url).href, {
   type: "module",
-  deno: true,
+  deno: {
+    namespace: true,
+  },
 });
 worker.postMessage({ filename: "./log.txt" });
 ```

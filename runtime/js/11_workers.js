@@ -133,12 +133,25 @@
         type = "classic",
       } = options;
 
-      const workerDenoAttributes = {
-        namespace: !!(deno?.namespace ?? false),
-        permissions: (deno?.permissions ?? "inherit") === "inherit"
-          ? null
-          : deno?.permissions,
-      };
+      // TODO
+      // `deno: true` is kept for backwards compatibility with the previous worker
+      // options implementation. Remove for 2.0
+      let workerDenoAttributes;
+      if (deno === true) {
+        workerDenoAttributes = {
+          // Change this to enable the Deno namespace by default
+          namespace: deno,
+          permissions: null,
+        };
+      } else {
+        workerDenoAttributes = {
+          // Change this to enable the Deno namespace by default
+          namespace: !!(deno?.namespace ?? false),
+          permissions: (deno?.permissions ?? "inherit") === "inherit"
+            ? null
+            : deno?.permissions,
+        };
+      }
 
       if (type !== "module") {
         throw new Error(

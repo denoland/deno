@@ -721,7 +721,10 @@ declare class Worker extends EventTarget {
        * hello world2
        *
        */
-      deno?: {
+      // TODO
+      // `deno: true` is kept for backwards compatibility with the previous worker
+      // options implementation. Remove for 2.0
+      deno?: true | {
         namespace?: boolean;
         permissions?: "inherit" | {
           env?: "inherit" | boolean;
