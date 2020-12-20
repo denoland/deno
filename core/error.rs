@@ -200,8 +200,6 @@ impl JsError {
           .ok();
       let stack = stack.map(|s| s.to_rust_string_lossy(scope));
 
-      // FIXME(bartlmieju): the rest of this function is CLI only
-
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
       let frames_v8: Option<v8::Local<v8::Array>> =
@@ -383,7 +381,6 @@ pub(crate) fn attach_handle_to_error(
   err: AnyError,
   handle: v8::Local<v8::Value>,
 ) -> AnyError {
-  // TODO(bartomieju): this is a special case...
   ErrWithV8Handle::new(scope, err, handle).into()
 }
 

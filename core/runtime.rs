@@ -258,7 +258,7 @@ impl JsRuntime {
     let js_error_create_fn = options
       .js_error_create_fn
       .unwrap_or_else(|| Rc::new(JsError::create));
-    let mut op_state = OpState::default();
+    let mut op_state = OpState::new();
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
       op_state.get_error_class_fn = get_error_class_fn;
