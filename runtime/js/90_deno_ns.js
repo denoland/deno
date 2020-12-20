@@ -114,7 +114,7 @@
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     shutdown: __bootstrap.net.shutdown,
     ShutdownMode: __bootstrap.net.ShutdownMode,
-    resolveAddr: __bootstrap.net.resolveAddr,
+    resolveDns: __bootstrap.net.resolveDns,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,

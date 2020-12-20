@@ -910,7 +910,7 @@ declare namespace Deno {
     | "CNAME"
     | "PTR";
 
-  export interface ResolveAddrOptions {
+  export interface ResolveDnsOptions {
     /** The resouce record type to query. 
     * If not specified, defaults to "A". */
     recordType?: RecordType;
@@ -930,17 +930,16 @@ declare namespace Deno {
 
   /** ** UNSTABLE**: new API, yet to be vetted.
    *
-   * Performs DNS resolution against the given query, returning resolved
-   * IP addresses.
+   * Performs DNS resolution against the given query, returning resolved records.
    * Fails in the cases including:
    * - the query is in invalid format
    * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
    * - timeout
    *
    * ```ts
-   * const addrs1 = await Deno.resolveAddr("example.com");
+   * const addrs1 = await Deno.resolveDns("example.com");
    *
-   * const addrs2 = await Deno.resolveAddr("example.com", {
+   * const addrs2 = await Deno.resolveDns("example.com", {
    *   recordType: "AAAA",
    *   nameServer: { ipAddr: "8.8.8.8", protocol: "TCP" },
    * });
@@ -948,9 +947,9 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function resolveAddr(
+  export function resolveDns(
     query: string,
-    options?: ResolveAddrOptions,
+    options?: ResolveDnsOptions,
   ): Promise<string[]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.

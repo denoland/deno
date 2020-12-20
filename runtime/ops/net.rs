@@ -54,7 +54,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_listen", op_listen);
   super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
   super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
-  super::reg_json_async(rt, "op_resolve_addr", op_resolve_addr);
+  super::reg_json_async(rt, "op_dns_resolve", op_dns_resolve);
 }
 
 #[derive(Deserialize)]
@@ -545,7 +545,7 @@ fn op_listen(
   }
 }
 
-async fn op_resolve_addr(
+async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: Value,
   _zero_copy: BufVec,

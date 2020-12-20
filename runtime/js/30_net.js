@@ -44,8 +44,8 @@
     return core.jsonOpAsync("op_datagram_send", args, zeroCopy);
   }
 
-  function resolveAddr(query, options) {
-    return core.jsonOpAsync("op_resolve_addr", { query, options });
+  function resolveDns(query, options) {
+    return core.jsonOpAsync("op_dns_resolve", { query, options });
   }
 
   class Conn {
@@ -227,6 +227,6 @@
     shutdown,
     ShutdownMode,
     Datagram,
-    resolveAddr,
+    resolveDns,
   };
 })(this);
