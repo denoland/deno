@@ -69,3 +69,15 @@ Deno.test("requireStack", function () {
     assertStringIncludes(e.stack, "/tests/cjs/cjs_throw.js");
   }
 });
+
+Deno.test("requireFileInSymlinkDir", async () => {
+  // I don't think symlinks would hold up too well through Git, so create it at runtime
+  await Deno.symlink(
+    path.resolve(moduleDir, "./tests/cjs/subdir/dir"),
+    path.resolve(moduleDir, "./tests/cjs/dir"),
+    { type: "dir" },
+  );
+  const { C } = require("./tests/cjs/dir");
+  assertEquals(C, "C");
+  await Deno.remove(path.resolve(moduleDir, "./tests/cjs/dir"));
+});
