@@ -22,7 +22,10 @@ pub struct CliModuleLoader {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub lib: TypeLib,
-  pub permissions: Option<Permissions>,
+  /// The initial set of permissions used to resolve the imports in the worker.
+  /// They are decoupled from the worker permissions since read access errors
+  /// must be raised based on the parent thread permissions
+  pub initial_permissions: Option<Permissions>,
   pub program_state: Arc<ProgramState>,
 }
 
@@ -39,7 +42,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map,
       lib,
-      permissions: None,
+      initial_permissions: None,
       program_state,
     })
   }
@@ -57,7 +60,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: None,
       lib,
-      permissions: Some(permissions),
+      initial_permissions: Some(permissions),
       program_state,
     })
   }
@@ -125,7 +128,7 @@ impl ModuleLoader for CliModuleLoader {
 
     // The permissions that should be applied to any dynamically imported module
     let dynamic_permissions =
-      if let Some(permissions) = self.permissions.as_ref().take() {
+      if let Some(permissions) = self.initial_permissions.as_ref().take() {
         permissions.clone()
       } else {
         //Thread assigned permissions
