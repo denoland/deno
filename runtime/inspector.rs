@@ -158,7 +158,7 @@ where
 fn handle_ws_request(
   req: http::Request<hyper::Body>,
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
-) -> Result<http::Response<hyper::Body>, http::Error> {
+) -> http::Result<http::Response<hyper::Body>> {
   let (parts, body) = req.into_parts();
   let req = http::Request::from_parts(parts, ());
 
@@ -180,7 +180,7 @@ fn handle_ws_request(
         tungstenite::error::Error::HttpFormat(http_error) => Err(http_error),
         _ => http::Response::builder()
           .status(http::StatusCode::BAD_REQUEST)
-          .body("Not a valid Webscoket Request".into()),
+          .body("Not a valid Websocket Request".into()),
       });
     tokio::task::spawn_local(async move {
       let upgraded = body.on_upgrade().await.unwrap();
@@ -206,7 +206,7 @@ fn handle_ws_request(
 
 fn handle_json_request(
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
-) -> Result<http::Response<hyper::Body>, http::Error> {
+) -> http::Result<http::Response<hyper::Body>> {
   let data = inspector_map
     .borrow()
     .values()
@@ -220,7 +220,7 @@ fn handle_json_request(
 
 fn handle_json_version_request(
   version_response: Value,
-) -> Result<http::Response<hyper::Body>, http::Error> {
+) -> http::Result<http::Response<hyper::Body>> {
   http::Response::builder()
     .status(http::StatusCode::OK)
     .header(http::header::CONTENT_TYPE, "application/json")
@@ -282,8 +282,8 @@ async fn server(
               handle_json_version_request(json_version_response.clone())
             }
             _ => http::Response::builder()
-              .status(http::StatusCode::BAD_REQUEST)
-              .body("No valid Request".into()),
+              .status(http::StatusCode::NOT_FOUND)
+              .body("Not Found".into()),
           }
         })
       },
