@@ -726,6 +726,14 @@ declare class Worker extends EventTarget {
         permissions?: "inherit" | {
           env?: "inherit" | boolean;
           hrtime?: "inherit" | boolean;
+          /**
+           * The format of the net access list must be `hostname[:port]`
+           * in order to be resolved
+           * 
+           * ```
+           * net: ["https://deno.land", "localhost:8080"],
+           * ```
+           * */
           net?: "inherit" | boolean | string[];
           plugin?: "inherit" | boolean;
           read?: "inherit" | boolean | Array<string | URL>;
