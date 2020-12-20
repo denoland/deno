@@ -16,15 +16,15 @@ specifier for some nearby script.
 
 ```ts
 // Good
-new Worker(new URL("worker.js", import.meta.url).href, { type: "module" });
+new Worker(new URL("./worker.js", import.meta.url).href, { type: "module" });
 
 // Bad
-new Worker(new URL("worker.js", import.meta.url).href);
-new Worker(new URL("worker.js", import.meta.url).href, { type: "classic" });
+new Worker(new URL("./worker.js", import.meta.url).href);
+new Worker(new URL("./worker.js", import.meta.url).href, { type: "classic" });
 new Worker("./worker.js", { type: "module" });
 ```
 
-### Permissions
+### Instantiation permissions
 
 Creating a new `Worker` instance is similar to a dynamic import; therefore Deno
 requires appropriate permission for this action.
@@ -34,7 +34,7 @@ For workers using local modules; `--allow-read` permission is required:
 **main.ts**
 
 ```ts
-new Worker(new URL("worker.ts", import.meta.url).href, { type: "module" });
+new Worker(new URL("./worker.ts", import.meta.url).href, { type: "module" });
 ```
 
 **worker.ts**
@@ -88,7 +88,7 @@ new worker:
 **main.js**
 
 ```ts
-const worker = new Worker(new URL("worker.js", import.meta.url).href, {
+const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
   type: "module",
   deno: {
     namespace: true,
@@ -119,7 +119,109 @@ $ deno run --allow-read --unstable main.js
 hello world
 ```
 
-When the `Deno` namespace is available in worker scope, the worker inherits its
-parent process' permissions (the ones specified using `--allow-*` flags).
+### Specifying worker permissions
 
-We intend to make permissions configurable for workers.
+> This is an unstable Deno feature. Learn more about
+> [unstable features](./stability.md).
+
+The permissions available for the worker are analogous to the CLI permission
+flags, meaning every permission enabled there can be disabled at the level of
+the Worker API. You can find a more detailed description of each of the
+permission options [here](../getting_started/permissions.md).
+
+By default a worker will inherit permissions from the thread it was created in,
+however in order to allow users to limit the access of this workers we provide
+the `deno.permissions` option in the worker API.
+
+- For permissions that support granular access you can pass in a list of the
+  desired resources the worker will have access to, and for those who only have
+  the on/off option you can pass true/false respectively.
+
+  ```ts
+  const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+    type: "module",
+    deno: {
+      namespace: true,
+      permissions: [
+        net: [
+          "https://deno.land/",
+        ],
+        read: [
+          new URL("./file_1.txt", import.meta.url),
+          new URL("./file_2.txt", import.meta.url),
+        ],
+        write: false,
+      ],
+    },
+  });
+  ```
+
+- Both `deno.permissions` and its children support the option `"inherit"`, which
+  implies it will borrow its parent permissions.
+
+  ```ts
+  // This worker will inherit its parent permissions
+  const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+    type: "module",
+    deno: {
+      namespace: true,
+      permissions: "inherit",
+    },
+  });
+  ```
+
+  ```ts
+  // This worker will inherit only the net permissions of its parent
+  const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+    type: "module",
+    deno: {
+      namespace: true,
+      permissions: {
+        env: false,
+        hrtime: false,
+        net: "inherit",
+        plugin: false,
+        read: false,
+        run: false,
+        write: false,
+      },
+    },
+  });
+  ```
+
+- Not specifying the `deno.permissions` option or one of its children will cause
+  the worker to inherit by default.
+
+  ```ts
+  // This worker will inherit its parent permissions
+  const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+    type: "module",
+  });
+  ```
+
+  ```ts
+  // This worker will inherit all the permissions of its parent BUT net
+  const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+    type: "module",
+    deno: {
+      namespace: true,
+      permissions: {
+        net: false,
+      },
+    },
+  });
+  ```
+
+- You can disable the permissions of the worker all together by passing false to
+  the `deno.permissions` option.
+
+  ```ts
+  // This worker will not have any permissions enabled
+  const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+    type: "module",
+    deno: {
+      namespace: true,
+      permissions: false,
+    },
+  });
+  ```
