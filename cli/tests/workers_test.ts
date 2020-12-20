@@ -572,7 +572,7 @@ Deno.test("Worker with disabled permissions", async function () {
   const promise = deferred();
 
   const worker = new Worker(
-    new URL("./workers/no_access_worker.js", import.meta.url).href,
+    new URL("./workers/no_permissions_worker.js", import.meta.url).href,
     {
       type: "module",
       deno: {
