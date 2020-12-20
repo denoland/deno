@@ -726,7 +726,8 @@ declare class Worker extends EventTarget {
       // options implementation. Remove for 2.0
       deno?: true | {
         namespace?: boolean;
-        permissions?: "inherit" | {
+        /** Set to false to disable all the permissions in the worker */
+        permissions?: "inherit" | false | {
           env?: "inherit" | boolean;
           hrtime?: "inherit" | boolean;
           /**

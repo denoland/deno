@@ -151,6 +151,20 @@
             ? null
             : deno?.permissions,
         };
+
+        // If the permission option is set to false, all permissions
+        // must be removed from the worker
+        if (workerDenoAttributes.permissions === false) {
+          workerDenoAttributes.permissions = {
+            env: false,
+            hrtime: false,
+            net: false,
+            plugin: false,
+            read: false,
+            run: false,
+            write: false,
+          };
+        }
       }
 
       if (type !== "module") {

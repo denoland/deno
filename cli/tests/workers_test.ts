@@ -567,3 +567,27 @@ Deno.test("Worker initialization throws on worker permissions greater than paren
   }
   assert(errorThrown);
 });
+
+Deno.test("Worker with disabled permissions", async function () {
+  const promise = deferred();
+
+  const worker = new Worker(
+    new URL("./workers/no_access_worker.js", import.meta.url).href,
+    {
+      type: "module",
+      deno: {
+        namespace: true,
+        permissions: false,
+      },
+    },
+  );
+
+  worker.onmessage = ({ data: sandboxed }) => {
+    assert(sandboxed);
+    promise.resolve();
+  };
+
+  worker.postMessage(null);
+  await promise;
+  worker.terminate();
+});
