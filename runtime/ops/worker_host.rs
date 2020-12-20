@@ -1,20 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::{
-  resolve_fs_allowlist, PermissionState, Permissions, UnaryPermission,
-};
-use crate::web_worker::{
-  run_web_worker, WebWorker, WebWorkerHandle, WorkerEvent,
-};
-
-use deno_core::error::{custom_error, generic_error, AnyError, JsError};
+use crate::permissions::resolve_fs_allowlist;
+use crate::permissions::PermissionState;
+use crate::permissions::Permissions;
+use crate::permissions::UnaryPermission;
+use crate::web_worker::run_web_worker;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use deno_core::error::custom_error;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
-use deno_core::serde::de::{self, SeqAccess};
-use deno_core::serde::{Deserialize, Deserializer};
-use deno_core::serde_json::{self, json, Value};
-use deno_core::{BufVec, ModuleSpecifier, OpState, ZeroCopyBuf};
+use deno_core::serde::de;
+use deno_core::serde::de::SeqAccess;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::BufVec;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::From;
 use std::fmt;
 use std::path::PathBuf;
