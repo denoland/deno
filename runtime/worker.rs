@@ -10,7 +10,6 @@ use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
-use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -212,21 +211,7 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    let mut receiver = self.js_runtime.mod_evaluate(id);
-    tokio::select! {
-      maybe_result = receiver.next() => {
-        debug!("received module evaluate {:#?}", maybe_result);
-        let result = maybe_result.expect("Module evaluation result not provided.");
-        return result;
-      }
-
-      event_loop_result = self.run_event_loop() => {
-        event_loop_result?;
-        let maybe_result = receiver.next().await;
-        let result = maybe_result.expect("Module evaluation result not provided.");
-        return result;
-      }
-    }
+    self.js_runtime.mod_evaluate(id).await
   }
 
   fn wait_for_inspector_session(&mut self) {
