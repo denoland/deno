@@ -58,17 +58,12 @@ impl InspectorServer {
     let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
 
     let thread_handle = thread::spawn(move || {
-      crate::tokio_util::run_basic(async {
-        let local = tokio::task::LocalSet::new();
-        local
-          .run_until(server(
-            host,
-            register_inspector_rx,
-            shutdown_server_rx,
-            name,
-          ))
-          .await
-      })
+      let mut rt = crate::tokio_util::create_basic_runtime();
+      let local = tokio::task::LocalSet::new();
+      local.block_on(
+        &mut rt,
+        server(host, register_inspector_rx, shutdown_server_rx, name),
+      )
     });
 
     Self {
@@ -160,6 +155,78 @@ where
   }
 }
 
+fn handle_ws_request(
+  req: http::Request<hyper::Body>,
+  inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+) -> Result<http::Response<hyper::Body>, http::Error> {
+  let (parts, body) = req.into_parts();
+  let req = http::Request::from_parts(parts, ());
+
+  if let Some(new_websocket_tx) = req
+    .uri()
+    .path()
+    .strip_prefix("/ws/")
+    .and_then(|s| Uuid::parse_str(s).ok())
+    .and_then(|uuid| {
+      inspector_map
+        .borrow()
+        .get(&uuid)
+        .map(|info| info.new_websocket_tx.clone())
+    })
+  {
+    let resp = tungstenite::handshake::server::create_response(&req)
+      .map(|resp| resp.map(|_| hyper::Body::empty()))
+      .or_else(|e| match e {
+        tungstenite::error::Error::HttpFormat(http_error) => Err(http_error),
+        _ => http::Response::builder()
+          .status(http::StatusCode::BAD_REQUEST)
+          .body("Not a valid Webscoket Request".into()),
+      });
+    tokio::task::spawn_local(async move {
+      let upgraded = body.on_upgrade().await.unwrap();
+      let websocket = tokio_tungstenite::WebSocketStream::from_raw_socket(
+        upgraded,
+        tungstenite::protocol::Role::Server,
+        None,
+      )
+      .await;
+      let (proxy, pump) = create_websocket_proxy(websocket);
+
+      let _ = new_websocket_tx.unbounded_send(proxy);
+      pump.await;
+    });
+
+    resp
+  } else {
+    http::Response::builder()
+      .status(http::StatusCode::NOT_FOUND)
+      .body("No Valid inspector".into())
+  }
+}
+
+fn handle_json_request(
+  inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+) -> Result<http::Response<hyper::Body>, http::Error> {
+  let data = inspector_map
+    .borrow()
+    .values()
+    .map(|info| info.get_json_metadata())
+    .collect::<Vec<_>>();
+  http::Response::builder()
+    .status(http::StatusCode::OK)
+    .header(http::header::CONTENT_TYPE, "application/json")
+    .body(serde_json::to_string(&data).unwrap().into())
+}
+
+fn handle_json_version_request(
+  version_response: Value,
+) -> Result<http::Response<hyper::Body>, http::Error> {
+  http::Response::builder()
+    .status(http::StatusCode::OK)
+    .header(http::header::CONTENT_TYPE, "application/json")
+    .body(serde_json::to_string(&version_response).unwrap().into())
+}
+
 async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
@@ -200,75 +267,20 @@ async fn server(
   let make_svc = hyper::service::make_service_fn(|_| {
     let inspector_map = Rc::clone(&inspector_map_);
     let json_version_response = json_version_response.clone();
+
     future::ok::<_, Infallible>(hyper::service::service_fn(
       move |req: http::Request<hyper::Body>| {
-        let (parts, body) = req.into_parts();
-        let req = http::Request::from_parts(parts, ());
         future::ready({
           match (req.method(), req.uri().path()) {
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
-              if let Some(new_websocket_tx) = path
-                .strip_prefix("/ws/")
-                .and_then(|s| Uuid::parse_str(s).ok())
-                .and_then(|uuid| {
-                  inspector_map
-                    .borrow()
-                    .get(&uuid)
-                    .map(|info| info.new_websocket_tx.clone())
-                })
-              {
-                let resp =
-                  tungstenite::handshake::server::create_response(&req)
-                    .map(|resp| resp.map(|_| hyper::Body::empty()))
-                    .or_else(|e| match e {
-                      tungstenite::error::Error::HttpFormat(http_error) => {
-                        Err(http_error)
-                      }
-                      _ => http::Response::builder()
-                        .status(http::StatusCode::BAD_REQUEST)
-                        .body("Not a valid Webscoket Request".into()),
-                    });
-                tokio::task::spawn_local(async move {
-                  let upgraded = body.on_upgrade().await.unwrap();
-                  let websocket =
-                    tokio_tungstenite::WebSocketStream::from_raw_socket(
-                      upgraded,
-                      tungstenite::protocol::Role::Server,
-                      None,
-                    )
-                    .await;
-                  let (proxy, pump) = create_websocket_proxy(websocket);
-
-                  let _ = new_websocket_tx.unbounded_send(proxy);
-                  pump.await;
-                });
-
-                resp
-              } else {
-                http::Response::builder()
-                  .status(http::StatusCode::NOT_FOUND)
-                  .body("No Valid inspector".into())
-              }
+              handle_ws_request(req, inspector_map.clone())
             }
             (&http::Method::GET, "/json") => {
-              let data = inspector_map
-                .borrow()
-                .values()
-                .map(|info| info.get_json_metadata())
-                .collect::<Vec<_>>();
-              http::Response::builder()
-                .status(http::StatusCode::OK)
-                .header(http::header::CONTENT_TYPE, "application/json")
-                .body(serde_json::to_string(&data).unwrap().into())
+              handle_json_request(inspector_map.clone())
             }
-            (&http::Method::GET, "/json/version") => http::Response::builder()
-              .status(http::StatusCode::OK)
-              .header(http::header::CONTENT_TYPE, "application/json")
-              .body(
-                serde_json::to_string(&json_version_response)
-                  .unwrap()
-                  .into(),
-              ),
+            (&http::Method::GET, "/json/version") => {
+              handle_json_version_request(json_version_response.clone())
+            }
             _ => http::Response::builder()
               .status(http::StatusCode::BAD_REQUEST)
               .body("No valid Request".into()),
