@@ -883,7 +883,6 @@ mod tests {
   }
 
   struct LspTestHarness {
-    fixtures_path: PathBuf,
     requests: Vec<(&'static str, LspResponse)>,
     service: Spawn<LspService>,
   }
@@ -892,19 +891,15 @@ mod tests {
     pub fn new(requests: Vec<(&'static str, LspResponse)>) -> Self {
       let (service, _) = LspService::new(LanguageServer::new);
       let service = Spawn::new(service);
-      let fixtures_path = test_util::root_path().join("cli/tests/lsp");
-      assert!(fixtures_path.is_dir());
-      Self {
-        fixtures_path,
-        requests,
-        service,
-      }
+      Self { requests, service }
     }
 
     async fn run(&mut self) {
       for (req_path_str, expected) in self.requests.iter() {
         assert_eq!(self.service.poll_ready(), Poll::Ready(Ok(())));
-        let req_path = self.fixtures_path.join(req_path_str);
+        let fixtures_path = test_util::root_path().join("cli/tests/lsp");
+        assert!(fixtures_path.is_dir());
+        let req_path = fixtures_path.join(req_path_str);
         let req_str = fs::read_to_string(req_path).unwrap();
         let req: jsonrpc::Incoming = serde_json::from_str(&req_str).unwrap();
         let response: Result<Option<jsonrpc::Outgoing>, ExitedError> =
