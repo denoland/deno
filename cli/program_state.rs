@@ -45,6 +45,7 @@ pub struct ProgramState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   pub dir: deno_dir::DenoDir,
+  pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub modules:
     Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
@@ -105,8 +106,14 @@ impl ProgramState {
       None => None,
     };
 
+    let coverage_dir = flags
+      .coverage_dir
+      .clone()
+      .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
+
     let program_state = ProgramState {
       dir,
+      coverage_dir,
       flags,
       file_fetcher,
       modules: Default::default(),

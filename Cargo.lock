@@ -111,6 +111,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d3a45e77e34375a7923b1e8febb049bb011f064714a8e17a1a616fef01da13d"
+dependencies = [
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.48",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -119,6 +130,18 @@ dependencies = [
  "hermit-abi",
  "libc",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "auto_impl"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42cbf586c80ada5e5ccdecae80d3ef0854f224e2dd74435f8d87e6831b8d0a38"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.48",
 ]
 
 [[package]]
@@ -366,18 +389,8 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b153fe7cbef478c567df0f972e02e6d736db11affe43dfc9c56a9374d1adfb87"
 dependencies = [
- "crossbeam-utils 0.7.2",
+ "crossbeam-utils",
  "maybe-uninit",
-]
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dca26ee1f8d361640700bde38b2c37d8c22b3ce2d360e1fc1c74ea4b0aa7d775"
-dependencies = [
- "cfg-if 1.0.0",
- "crossbeam-utils 0.8.1",
 ]
 
 [[package]]
@@ -388,17 +401,6 @@ checksum = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
 dependencies = [
  "autocfg 1.0.1",
  "cfg-if 0.1.10",
- "lazy_static",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02d96d1e189ef58269ebe5b97953da3274d83a93af647c2ddd6f9dab28cedb8d"
-dependencies = [
- "autocfg 1.0.1",
- "cfg-if 1.0.0",
  "lazy_static",
 ]
 
@@ -457,7 +459,6 @@ dependencies = [
  "byteorder",
  "chrono",
  "clap",
- "crossbeam-channel 0.5.0",
  "deno_core",
  "deno_doc",
  "deno_fetch",
@@ -477,8 +478,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "lsp-server",
- "lsp-types",
+ "lspower",
  "nix",
  "notify",
  "os_pipe",
@@ -500,6 +500,7 @@ dependencies = [
  "tokio 0.2.22",
  "tokio-rustls",
  "tokio-tungstenite",
+ "tower-test",
  "uuid",
  "walkdir",
  "winapi 0.3.9",
@@ -591,6 +592,7 @@ dependencies = [
  "filetime",
  "fwdansi",
  "http",
+ "hyper",
  "indexmap",
  "lazy_static",
  "libc",
@@ -611,7 +613,6 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "uuid",
- "warp",
  "webpki",
  "webpki-roots",
  "winapi 0.3.9",
@@ -1101,6 +1102,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "heck"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20564e78d53d2bb135c343b3f47714a56af2061f1c928fdb541dc7b9fdd94205"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1137,6 +1147,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd179ae861f0c2e53da70d892f5f3029f9594be0c41dc5269cd371691b1dc2f9"
 
 [[package]]
+name = "httpdate"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "494b4d60369511e7dea41cf646832512a94e542f68bb9c49e54518e0f468eb47"
+
+[[package]]
 name = "humantime"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1147,9 +1163,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.13.7"
+version = "0.13.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e68a8dd9716185d9e64ea473ea6ef63529252e3e27623295a0378a19665d5eb"
+checksum = "f6ad767baac13b44d4529fcf58ba2cd0995e36e7b435bc5b039de6f47e880dbf"
 dependencies = [
  "bytes 0.5.6",
  "futures-channel",
@@ -1159,10 +1175,10 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
- "pin-project 0.4.23",
+ "pin-project 1.0.2",
  "socket2",
- "time",
  "tokio 0.2.22",
  "tower-service",
  "tracing",
@@ -1377,22 +1393,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "lsp-server"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69b18dfe0e4a380b872aa79d8e0ee6c3d7a9682466e84b83ad807c88b3545f79"
-dependencies = [
- "crossbeam-channel 0.5.0",
- "log",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "lsp-types"
-version = "0.84.0"
+version = "0.85.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b95be71fe205e44de754185bcf86447b65813ce1ceb298f8d3793ade5fff08d"
+checksum = "857650f3e83fb62f89d15410414e0ed7d0735445020da398d37f65d20a5423b9"
 dependencies = [
  "base64 0.12.3",
  "bitflags",
@@ -1400,6 +1404,40 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "url",
+]
+
+[[package]]
+name = "lspower"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64106b17ca8f6f73cc21a3d1f39684ff65293a291aa96026aee85eaae02339a5"
+dependencies = [
+ "async-trait",
+ "auto_impl",
+ "bytes 0.5.6",
+ "dashmap",
+ "futures",
+ "log",
+ "lsp-types",
+ "lspower-macros",
+ "nom",
+ "serde",
+ "serde_json",
+ "tokio 0.2.22",
+ "tokio-util",
+ "tower-service",
+]
+
+[[package]]
+name = "lspower-macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10b77a3b4fcd1a014a7a7a1043a5c3646068abfc75b46a9f2c4ab813d53f7c3c"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.48",
 ]
 
 [[package]]
@@ -1601,7 +1639,7 @@ checksum = "77d03607cf88b4b160ba0e9ed425fff3cee3b55ac813f0c685b3a3772da37d0e"
 dependencies = [
  "anymap",
  "bitflags",
- "crossbeam-channel 0.4.4",
+ "crossbeam-channel",
  "filetime",
  "fsevent",
  "fsevent-sys",
@@ -1875,6 +1913,30 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "proc-macro-error"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
+dependencies = [
+ "proc-macro-error-attr",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.48",
+ "version_check",
+]
+
+[[package]]
+name = "proc-macro-error-attr"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
+dependencies = [
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "version_check",
+]
 
 [[package]]
 name = "proc-macro-hack"
@@ -3037,6 +3099,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-test"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed0049c119b6d505c4447f5c64873636c7af6c75ab0d45fd9f618d82acb8016d"
+dependencies = [
+ "bytes 0.5.6",
+ "futures-core",
+ "tokio 0.2.22",
+]
+
+[[package]]
 name = "tokio-tungstenite"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3073,10 +3146,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "tower-layer"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a35d656f2638b288b33495d1053ea74c40dc05ec0b92084dd71ca5566c4ed1dc"
+
+[[package]]
 name = "tower-service"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e987b6bf443f4b5b3b6f38704195592cca41c5bb7aedd3c3693c7081f8289860"
+
+[[package]]
+name = "tower-test"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ba4bbc2c1e4a8543c30d4c13a4c8314ed72d6e07581910f665aa13fde0153c8"
+dependencies = [
+ "futures-util",
+ "pin-project 0.4.23",
+ "tokio 0.2.22",
+ "tokio-test",
+ "tower-layer",
+ "tower-service",
+]
 
 [[package]]
 name = "tracing"
