@@ -874,7 +874,6 @@ mod tests {
   use lspower::LspService;
   use std::fs;
   use std::task::Poll;
-  use test_util;
   use tower_test::mock::Spawn;
 
   enum LspResponse {
