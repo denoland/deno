@@ -10,6 +10,7 @@ use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
@@ -108,7 +109,7 @@ pub struct Flags {
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
-  pub coverage: bool,
+  pub coverage_dir: Option<String>,
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
@@ -614,11 +615,23 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
-  let coverage = matches.is_present("coverage");
 
-  if coverage {
-    flags.coverage = true;
-  }
+  flags.coverage_dir = if matches.is_present("coverage") {
+    if let Some(coverage_dir) = matches.value_of("coverage") {
+      Some(coverage_dir.to_string())
+    } else {
+      Some(
+        TempDir::new()
+          .unwrap()
+          .into_path()
+          .to_str()
+          .unwrap()
+          .to_string(),
+      )
+    }
+  } else {
+    None
+  };
 
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
@@ -1282,7 +1295,10 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("coverage")
         .long("coverage")
-        .takes_value(false)
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true)
         .requires("unstable")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
@@ -3050,7 +3066,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec_safe(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3063,7 +3079,7 @@ mod tests {
           include: Some(svec!["dir1/", "dir2/"]),
         },
         unstable: true,
-        coverage: true,
+        coverage_dir: Some("cov".to_string()),
         allow_net: true,
         argv: svec!["arg1", "arg2"],
         ..Flags::default()
