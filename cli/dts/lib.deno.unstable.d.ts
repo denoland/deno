@@ -1085,13 +1085,12 @@ declare namespace Deno {
 
   export interface NetPermissionDescriptor {
     name: "net";
-    /** Optional url associated with this descriptor.
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
      *
-     * If specified: must be a valid url. Expected format: <scheme>://<host_or_ip>[:port][/path]
-     * If the scheme is unknown, callers should specify some scheme, such as x:// na:// unknown://
-     *
-     * See: https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml */
-    url?: string;
+     *      "github.com"
+     *      "deno.land:8080"
+     */
+    host?: string;
   }
 
   export interface EnvPermissionDescriptor {
