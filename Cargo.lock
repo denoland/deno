@@ -592,6 +592,7 @@ dependencies = [
  "filetime",
  "fwdansi",
  "http",
+ "hyper",
  "indexmap",
  "lazy_static",
  "libc",
@@ -612,7 +613,6 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "uuid",
- "warp",
  "webpki",
  "webpki-roots",
  "winapi 0.3.9",
@@ -1147,6 +1147,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd179ae861f0c2e53da70d892f5f3029f9594be0c41dc5269cd371691b1dc2f9"
 
 [[package]]
+name = "httpdate"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "494b4d60369511e7dea41cf646832512a94e542f68bb9c49e54518e0f468eb47"
+
+[[package]]
 name = "humantime"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1157,9 +1163,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.13.7"
+version = "0.13.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e68a8dd9716185d9e64ea473ea6ef63529252e3e27623295a0378a19665d5eb"
+checksum = "f6ad767baac13b44d4529fcf58ba2cd0995e36e7b435bc5b039de6f47e880dbf"
 dependencies = [
  "bytes 0.5.6",
  "futures-channel",
@@ -1169,10 +1175,10 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
- "pin-project 0.4.23",
+ "pin-project 1.0.2",
  "socket2",
- "time",
  "tokio 0.2.22",
  "tower-service",
  "tracing",
