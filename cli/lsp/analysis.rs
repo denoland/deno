@@ -11,12 +11,11 @@ use crate::tools::lint::create_linter;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
-use lsp_types::Position;
-use lsp_types::Range;
+use lspower::lsp_types;
+use lspower::lsp_types::Position;
+use lspower::lsp_types::Range;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::RwLock;
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
@@ -114,13 +113,11 @@ pub enum ResolvedImport {
 pub fn resolve_import(
   specifier: &str,
   referrer: &ModuleSpecifier,
-  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
+  maybe_import_map: &Option<ImportMap>,
 ) -> ResolvedImport {
   let maybe_mapped = if let Some(import_map) = maybe_import_map {
-    if let Ok(maybe_specifier) = import_map
-      .read()
-      .unwrap()
-      .resolve(specifier, referrer.as_str())
+    if let Ok(maybe_specifier) =
+      import_map.resolve(specifier, referrer.as_str())
     {
       maybe_specifier
     } else {
@@ -162,7 +159,7 @@ pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: &MediaType,
-  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
+  maybe_import_map: &Option<ImportMap>,
 ) -> Option<(HashMap<String, Dependency>, Option<ResolvedImport>)> {
   let specifier_str = specifier.to_string();
   let source_map = Rc::new(swc_common::SourceMap::default());
@@ -179,12 +176,12 @@ pub fn analyze_dependencies(
           TypeScriptReference::Path(import) => {
             let dep = dependencies.entry(import.clone()).or_default();
             let resolved_import =
-              resolve_import(&import, specifier, maybe_import_map.clone());
+              resolve_import(&import, specifier, maybe_import_map);
             dep.maybe_code = Some(resolved_import);
           }
           TypeScriptReference::Types(import) => {
             let resolved_import =
-              resolve_import(&import, specifier, maybe_import_map.clone());
+              resolve_import(&import, specifier, maybe_import_map);
             if media_type == &MediaType::JavaScript
               || media_type == &MediaType::JSX
             {
@@ -204,17 +201,13 @@ pub fn analyze_dependencies(
       desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
     }) {
       let resolved_import =
-        resolve_import(&desc.specifier, specifier, maybe_import_map.clone());
+        resolve_import(&desc.specifier, specifier, maybe_import_map);
 
       // Check for `@deno-types` pragmas that effect the import
       let maybe_resolved_type_import =
         if let Some(comment) = desc.leading_comments.last() {
           if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
-            Some(resolve_import(
-              deno_types,
-              specifier,
-              maybe_import_map.clone(),
-            ))
+            Some(resolve_import(deno_types, specifier, maybe_import_map))
           } else {
             None
           }
@@ -291,7 +284,7 @@ mod tests {
     import * as React from "https://cdn.skypack.dev/react";
     "#;
     let actual =
-      analyze_dependencies(&specifier, source, &MediaType::TypeScript, None);
+      analyze_dependencies(&specifier, source, &MediaType::TypeScript, &None);
     assert!(actual.is_some());
     let (actual, maybe_type) = actual.unwrap();
     assert!(maybe_type.is_none());

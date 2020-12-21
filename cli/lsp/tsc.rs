@@ -1,18 +1,21 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::ResolvedImport;
-use super::state::ServerStateSnapshot;
+use super::language_server::StateSnapshot;
 use super::text;
 use super::utils;
 
 use crate::js;
 use crate::media_type::MediaType;
+use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::tsc_config::TsConfig;
 
+use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::Future;
 use deno_core::json_op_sync;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -23,31 +26,89 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
+use lspower::lsp_types;
 use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::thread;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
+
+type Request = (
+  RequestMethod,
+  StateSnapshot,
+  oneshot::Sender<Result<Value, AnyError>>,
+);
+
+#[derive(Clone, Debug)]
+pub struct TsServer(mpsc::UnboundedSender<Request>);
+
+impl TsServer {
+  pub fn new() -> Self {
+    let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let _join_handle = thread::spawn(move || {
+      // TODO(@kitsonk) we need to allow displaying diagnostics here, but the
+      // current compiler snapshot sends them to stdio which would totally break
+      // the language server...
+      let mut ts_runtime = start(false).expect("could not start tsc");
+
+      let mut runtime = create_basic_runtime();
+      runtime.block_on(async {
+        while let Some((req, state_snapshot, tx)) = rx.recv().await {
+          let value = request(&mut ts_runtime, state_snapshot, req);
+          if tx.send(value).is_err() {
+            warn!("Unable to send result to client.");
+          }
+        }
+      })
+    });
+
+    Self(tx)
+  }
+
+  pub async fn request(
+    &self,
+    snapshot: StateSnapshot,
+    req: RequestMethod,
+  ) -> Result<Value, AnyError> {
+    let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
+    if self.0.send((req, snapshot, tx)).is_err() {
+      return Err(anyhow!("failed to send request to tsc thread"));
+    }
+    rx.await?
+  }
+}
 
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
-pub fn get_asset(
+pub async fn get_asset(
   specifier: &ModuleSpecifier,
-  runtime: &mut JsRuntime,
-  server_state: &ServerStateSnapshot,
+  ts_server: &TsServer,
+  state_snapshot: &StateSnapshot,
 ) -> Result<Option<String>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(asset_text) = tsc::get_asset(&specifier_str) {
     Ok(Some(asset_text.to_string()))
   } else {
-    let mut assets = server_state.assets.write().unwrap();
-    if let Some(asset) = assets.get(specifier) {
-      Ok(asset.clone())
-    } else {
-      let asset = request_asset(specifier, runtime, server_state)?;
-      assets.insert(specifier.clone(), asset.clone());
-      Ok(asset)
+    {
+      let assets = state_snapshot.assets.read().unwrap();
+      if let Some(asset) = assets.get(specifier) {
+        return Ok(asset.clone());
+      }
     }
+    let asset: Option<String> = serde_json::from_value(
+      ts_server
+        .request(
+          state_snapshot.clone(),
+          RequestMethod::GetAsset(specifier.clone()),
+        )
+        .await?,
+    )?;
+    let mut assets = state_snapshot.assets.write().unwrap();
+    assets.insert(specifier.clone(), asset.clone());
+    Ok(asset)
   }
 }
 
@@ -235,7 +296,7 @@ pub enum ScriptElementKind {
 
 impl From<ScriptElementKind> for lsp_types::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
-    use lsp_types::CompletionItemKind;
+    use lspower::lsp_types::CompletionItemKind;
 
     match kind {
       ScriptElementKind::PrimitiveType | ScriptElementKind::Keyword => {
@@ -395,21 +456,21 @@ pub struct DefinitionInfoAndBoundSpan {
 }
 
 impl DefinitionInfoAndBoundSpan {
-  pub fn to_definition<F>(
+  pub async fn to_definition<F, Fut>(
     &self,
     line_index: &[u32],
-    mut index_provider: F,
+    index_provider: F,
   ) -> Option<lsp_types::GotoDefinitionResponse>
   where
-    F: FnMut(ModuleSpecifier) -> Vec<u32>,
+    F: Fn(ModuleSpecifier) -> Fut,
+    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
   {
     if let Some(definitions) = &self.definitions {
-      let location_links = definitions
-        .iter()
-        .map(|di| {
-          let target_specifier =
-            ModuleSpecifier::resolve_url(&di.file_name).unwrap();
-          let target_line_index = index_provider(target_specifier);
+      let mut location_links = Vec::<lsp_types::LocationLink>::new();
+      for di in definitions {
+        let target_specifier =
+          ModuleSpecifier::resolve_url(&di.file_name).unwrap();
+        if let Ok(target_line_index) = index_provider(target_specifier).await {
           let target_uri = utils::normalize_file_name(&di.file_name).unwrap();
           let (target_range, target_selection_range) =
             if let Some(context_span) = &di.context_span {
@@ -423,15 +484,14 @@ impl DefinitionInfoAndBoundSpan {
                 di.text_span.to_range(&target_line_index),
               )
             };
-          lsp_types::LocationLink {
+          location_links.push(lsp_types::LocationLink {
             origin_selection_range: Some(self.text_span.to_range(line_index)),
             target_uri,
             target_range,
             target_selection_range,
-          }
-        })
-        .collect();
-
+          });
+        }
+      }
       Some(lsp_types::GotoDefinitionResponse::Link(location_links))
     } else {
       None
@@ -599,17 +659,17 @@ struct State<'a> {
   asset: Option<String>,
   last_id: usize,
   response: Option<Response>,
-  server_state: ServerStateSnapshot,
+  state_snapshot: StateSnapshot,
   snapshots: HashMap<(Cow<'a, str>, Cow<'a, str>), String>,
 }
 
 impl<'a> State<'a> {
-  fn new(server_state: ServerStateSnapshot) -> Self {
+  fn new(state_snapshot: StateSnapshot) -> Self {
     Self {
       asset: None,
       last_id: 1,
       response: None,
-      server_state,
+      state_snapshot,
       snapshots: Default::default(),
     }
   }
@@ -626,9 +686,11 @@ fn cache_snapshot(
     .contains_key(&(specifier.clone().into(), version.clone().into()))
   {
     let s = ModuleSpecifier::resolve_url(&specifier)?;
-    let file_cache = state.server_state.file_cache.read().unwrap();
-    let file_id = file_cache.lookup(&s).unwrap();
-    let content = file_cache.get_contents(file_id)?;
+    let content = {
+      let file_cache = state.state_snapshot.file_cache.read().unwrap();
+      let file_id = file_cache.lookup(&s).unwrap();
+      file_cache.get_contents(file_id)?
+    };
     state
       .snapshots
       .insert((specifier.into(), version.into()), content);
@@ -713,7 +775,7 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
 fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if state.server_state.doc_data.contains_key(&specifier) {
+  if state.state_snapshot.doc_data.contains_key(&specifier) {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     let content = state
       .snapshots
@@ -721,7 +783,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap();
     Ok(json!(content.chars().count()))
   } else {
-    let mut sources = state.server_state.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.write().unwrap();
     Ok(json!(sources.get_length(&specifier).unwrap()))
   }
 }
@@ -738,7 +800,7 @@ struct GetTextArgs {
 fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: GetTextArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  let content = if state.server_state.doc_data.contains_key(&specifier) {
+  let content = if state.state_snapshot.doc_data.contains_key(&specifier) {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     state
       .snapshots
@@ -746,7 +808,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap()
       .clone()
   } else {
-    let mut sources = state.server_state.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.write().unwrap();
     sources.get_text(&specifier).unwrap()
   };
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -756,13 +818,13 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
-  let mut sources = if let Ok(sources) = state.server_state.sources.write() {
+  let mut sources = if let Ok(sources) = state.state_snapshot.sources.write() {
     sources
   } else {
     return Err(custom_error("Deadlock", "deadlock locking sources"));
   };
 
-  if let Some(doc_data) = state.server_state.doc_data.get(&referrer) {
+  if let Some(doc_data) = state.state_snapshot.doc_data.get(&referrer) {
     if let Some(dependencies) = &doc_data.dependencies {
       for specifier in &v.specifiers {
         if specifier.starts_with("asset:///") {
@@ -782,7 +844,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           if let ResolvedImport::Resolved(resolved_specifier) = resolved_import
           {
             if state
-              .server_state
+              .state_snapshot
               .doc_data
               .contains_key(&resolved_specifier)
               || sources.contains(&resolved_specifier)
@@ -837,7 +899,7 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 
 fn script_names(state: &mut State, _args: Value) -> Result<Value, AnyError> {
   let script_names: Vec<&ModuleSpecifier> =
-    state.server_state.doc_data.keys().collect();
+    state.state_snapshot.doc_data.keys().collect();
   Ok(json!(script_names))
 }
 
@@ -850,13 +912,13 @@ struct ScriptVersionArgs {
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  let maybe_doc_data = state.server_state.doc_data.get(&specifier);
+  let maybe_doc_data = state.state_snapshot.doc_data.get(&specifier);
   if let Some(doc_data) = maybe_doc_data {
     if let Some(version) = doc_data.version {
       return Ok(json!(version.to_string()));
     }
   } else {
-    let mut sources = state.server_state.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.write().unwrap();
     if let Some(version) = sources.get_script_version(&specifier) {
       return Ok(json!(version));
     }
@@ -889,7 +951,7 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(ServerStateSnapshot::default()));
+    op_state.put(State::new(StateSnapshot::default()));
   }
 
   runtime.register_op("op_dispose", op(dispose));
@@ -1071,14 +1133,14 @@ impl RequestMethod {
 /// Send a request into a runtime and return the JSON value of the response.
 pub fn request(
   runtime: &mut JsRuntime,
-  server_state: &ServerStateSnapshot,
+  state_snapshot: StateSnapshot,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
   let id = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
-    state.server_state = server_state.clone();
+    state.state_snapshot = state_snapshot;
     state.last_id += 1;
     state.last_id
   };
@@ -1101,40 +1163,16 @@ pub fn request(
   }
 }
 
-fn request_asset(
-  specifier: &ModuleSpecifier,
-  runtime: &mut JsRuntime,
-  server_state: &ServerStateSnapshot,
-) -> Result<Option<String>, AnyError> {
-  let id = {
-    let op_state = runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    let state = op_state.borrow_mut::<State>();
-    state.server_state = server_state.clone();
-    state.last_id += 1;
-    state.last_id
-  };
-  let request_params = RequestMethod::GetAsset(specifier.clone()).to_value(id);
-  let request_src = format!("globalThis.serverRequest({});", request_params);
-  runtime.execute("[native_code]", &request_src)?;
-
-  let op_state = runtime.op_state();
-  let mut op_state = op_state.borrow_mut();
-  let state = op_state.borrow_mut::<State>();
-
-  Ok(state.asset.clone())
-}
-
 #[cfg(test)]
 mod tests {
   use super::super::memory_cache::MemoryCache;
-  use super::super::state::DocumentData;
   use super::*;
+  use crate::lsp::language_server::DocumentData;
   use std::collections::HashMap;
   use std::sync::Arc;
   use std::sync::RwLock;
 
-  fn mock_server_state(sources: Vec<(&str, &str, i32)>) -> ServerStateSnapshot {
+  fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
     let mut doc_data = HashMap::new();
     let mut file_cache = MemoryCache::default();
     for (specifier, content, version) in sources {
@@ -1147,10 +1185,8 @@ mod tests {
       file_cache.set_contents(specifier, Some(content.as_bytes().to_vec()));
     }
     let file_cache = Arc::new(RwLock::new(file_cache));
-    ServerStateSnapshot {
+    StateSnapshot {
       assets: Default::default(),
-      config: Default::default(),
-      diagnostics: Default::default(),
       doc_data,
       file_cache,
       sources: Default::default(),
@@ -1161,20 +1197,20 @@ mod tests {
     debug: bool,
     config: Value,
     sources: Vec<(&str, &str, i32)>,
-  ) -> (JsRuntime, ServerStateSnapshot) {
-    let server_state = mock_server_state(sources.clone());
+  ) -> (JsRuntime, StateSnapshot) {
+    let state_snapshot = mock_state_snapshot(sources.clone());
     let mut runtime = start(debug).expect("could not start server");
     let ts_config = TsConfig::new(config);
     assert_eq!(
       request(
         &mut runtime,
-        &server_state,
+        state_snapshot.clone(),
         RequestMethod::Configure(ts_config)
       )
       .expect("failed request"),
       json!(true)
     );
-    (runtime, server_state)
+    (runtime, state_snapshot)
   }
 
   #[test]
@@ -1207,7 +1243,7 @@ mod tests {
 
   #[test]
   fn test_project_reconfigure() {
-    let (mut runtime, server_state) = setup(
+    let (mut runtime, state_snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1224,7 +1260,7 @@ mod tests {
     }));
     let result = request(
       &mut runtime,
-      &server_state,
+      state_snapshot,
       RequestMethod::Configure(ts_config),
     );
     assert!(result.is_ok());
@@ -1234,7 +1270,7 @@ mod tests {
 
   #[test]
   fn test_get_semantic_diagnostics() {
-    let (mut runtime, server_state) = setup(
+    let (mut runtime, state_snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1247,7 +1283,7 @@ mod tests {
       .expect("could not resolve url");
     let result = request(
       &mut runtime,
-      &server_state,
+      state_snapshot,
       RequestMethod::GetSemanticDiagnostics(specifier),
     );
     assert!(result.is_ok());
@@ -1276,7 +1312,7 @@ mod tests {
 
   #[test]
   fn test_module_resolution() {
-    let (mut runtime, server_state) = setup(
+    let (mut runtime, state_snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1300,7 +1336,7 @@ mod tests {
       .expect("could not resolve url");
     let result = request(
       &mut runtime,
-      &server_state,
+      state_snapshot,
       RequestMethod::GetSemanticDiagnostics(specifier),
     );
     assert!(result.is_ok());
@@ -1310,7 +1346,7 @@ mod tests {
 
   #[test]
   fn test_bad_module_specifiers() {
-    let (mut runtime, server_state) = setup(
+    let (mut runtime, state_snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1330,7 +1366,7 @@ mod tests {
       .expect("could not resolve url");
     let result = request(
       &mut runtime,
-      &server_state,
+      state_snapshot,
       RequestMethod::GetSyntacticDiagnostics(specifier),
     );
     assert!(result.is_ok());
@@ -1340,7 +1376,7 @@ mod tests {
 
   #[test]
   fn test_remote_modules() {
-    let (mut runtime, server_state) = setup(
+    let (mut runtime, state_snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1364,7 +1400,7 @@ mod tests {
       .expect("could not resolve url");
     let result = request(
       &mut runtime,
-      &server_state,
+      state_snapshot,
       RequestMethod::GetSyntacticDiagnostics(specifier),
     );
     assert!(result.is_ok());
@@ -1374,7 +1410,7 @@ mod tests {
 
   #[test]
   fn test_partial_modules() {
-    let (mut runtime, server_state) = setup(
+    let (mut runtime, state_snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1401,7 +1437,7 @@ mod tests {
       .expect("could not resolve url");
     let result = request(
       &mut runtime,
-      &server_state,
+      state_snapshot,
       RequestMethod::GetSyntacticDiagnostics(specifier),
     );
     assert!(result.is_ok());
@@ -1428,7 +1464,7 @@ mod tests {
 
   #[test]
   fn test_request_asset() {
-    let (mut runtime, server_state) = setup(
+    let (mut runtime, state_snapshot) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1440,9 +1476,14 @@ mod tests {
     );
     let specifier = ModuleSpecifier::resolve_url("asset:///lib.esnext.d.ts")
       .expect("could not resolve url");
-    let result = request_asset(&specifier, &mut runtime, &server_state);
+    let result = request(
+      &mut runtime,
+      state_snapshot,
+      RequestMethod::GetAsset(specifier),
+    );
     assert!(result.is_ok());
-    let response = result.unwrap();
+    let response: Option<String> =
+      serde_json::from_value(result.unwrap()).unwrap();
     assert!(response.is_some());
   }
 }

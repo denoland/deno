@@ -18,8 +18,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::RwLock;
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, Default)]
@@ -34,7 +32,7 @@ struct Metadata {
 #[derive(Debug, Clone, Default)]
 pub struct Sources {
   http_cache: HttpCache,
-  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
+  maybe_import_map: Option<ImportMap>,
   metadata: HashMap<ModuleSpecifier, Metadata>,
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
   remotes: HashMap<ModuleSpecifier, PathBuf>,
@@ -102,7 +100,7 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             maybe_types = mt;
             Some(dependencies)
@@ -132,7 +130,7 @@ impl Sources {
               Some(analysis::resolve_import(
                 types,
                 &specifier,
-                self.maybe_import_map.clone(),
+                &self.maybe_import_map,
               ))
             } else {
               None
@@ -142,7 +140,7 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             if maybe_types.is_none() {
               maybe_types = mt;
