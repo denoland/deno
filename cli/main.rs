@@ -116,7 +116,7 @@ fn create_web_worker_callback(
     });
 
     let attach_inspector = program_state.maybe_inspector_server.is_some()
-      || program_state.flags.coverage;
+      || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
     let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
@@ -192,7 +192,7 @@ pub fn create_main_worker(
 
   let attach_inspector = program_state.maybe_inspector_server.is_some()
     || program_state.flags.repl
-    || program_state.flags.coverage;
+    || program_state.coverage_dir.is_some();
   let maybe_inspector_server = program_state.maybe_inspector_server.clone();
   let should_break_on_first_statement =
     program_state.flags.inspect_brk.is_some();
@@ -1018,16 +1018,23 @@ async fn test_command(
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
 
-  let mut maybe_coverage_collector = if flags.coverage {
-    let session = worker.create_inspector_session();
-    let mut coverage_collector =
-      tools::coverage::CoverageCollector::new(session);
-    coverage_collector.start_collecting().await?;
+  if let Some(ref coverage_dir) = flags.coverage_dir {
+    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+  }
 
-    Some(coverage_collector)
-  } else {
-    None
-  };
+  let mut maybe_coverage_collector =
+    if let Some(ref coverage_dir) = program_state.coverage_dir {
+      let session = worker.create_inspector_session();
+
+      let coverage_dir = PathBuf::from(coverage_dir);
+      let mut coverage_collector =
+        tools::coverage::CoverageCollector::new(coverage_dir, session);
+      coverage_collector.start_collecting().await?;
+
+      Some(coverage_collector)
+    } else {
+      None
+    };
 
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
@@ -1037,19 +1044,19 @@ async fn test_command(
   worker.run_event_loop().await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    let coverages = coverage_collector.collect().await?;
     coverage_collector.stop_collecting().await?;
 
-    let filtered_coverages = tools::coverage::filter_script_coverages(
-      coverages,
-      main_module.as_url().clone(),
-      test_modules,
-    );
-
-    let mut coverage_reporter =
-      tools::coverage::PrettyCoverageReporter::new(quiet);
-    for coverage in filtered_coverages {
-      coverage_reporter.visit_coverage(&coverage);
+    // TODO(caspervonb) extract reporting into it's own subcommand.
+    // For now, we'll only report for the command that passed --coverage as a flag.
+    if flags.coverage_dir.is_some() {
+      let mut exclude = test_modules.clone();
+      let main_module_url = main_module.as_url().to_owned();
+      exclude.push(main_module_url);
+      tools::coverage::report_coverages(
+        &coverage_collector.dir,
+        quiet,
+        exclude,
+      )?;
     }
   }
 
