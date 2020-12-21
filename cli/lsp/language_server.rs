@@ -920,7 +920,7 @@ mod tests {
               Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
                 resp,
                 jsonrpc::Response::ok(
-                  jsonrpc::Id::Number(id.clone()),
+                  jsonrpc::Id::Number(*id),
                   value.clone()
                 )
               ),
