@@ -55,12 +55,10 @@ impl TsServer {
 
       let mut runtime = create_basic_runtime();
       runtime.block_on(async {
-        loop {
-          if let Some((req, state_snapshot, tx)) = rx.recv().await {
-            let value = request(&mut ts_runtime, state_snapshot, req);
-            tx.send(value).unwrap();
-          } else {
-            break;
+        while let Some((req, state_snapshot, tx)) = rx.recv().await {
+          let value = request(&mut ts_runtime, state_snapshot, req);
+          if let Err(_) = tx.send(value) {
+            warn!("Unable to send result to client.");
           }
         }
       })
