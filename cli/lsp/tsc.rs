@@ -57,7 +57,7 @@ impl TsServer {
       runtime.block_on(async {
         while let Some((req, state_snapshot, tx)) = rx.recv().await {
           let value = request(&mut ts_runtime, state_snapshot, req);
-          if let Err(_) = tx.send(value) {
+          if tx.send(value).is_err() {
             warn!("Unable to send result to client.");
           }
         }
