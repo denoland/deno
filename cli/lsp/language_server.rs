@@ -919,10 +919,7 @@ mod tests {
             LspResponse::Request(id, value) => match result {
               Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
                 resp,
-                jsonrpc::Response::ok(
-                  jsonrpc::Id::Number(*id),
-                  value.clone()
-                )
+                jsonrpc::Response::ok(jsonrpc::Id::Number(*id), value.clone())
               ),
               _ => panic!("unexpected result: {:?}", result),
             },
