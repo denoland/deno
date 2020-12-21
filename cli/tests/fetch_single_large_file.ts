@@ -24,11 +24,11 @@ async function testFetch(): Promise<void> {
         .then((response) => {
           assertEquals(response.status, 200);
           res(response.text());
-        });      
+        });
     }),
     Deno.readTextFile(filePath),
   ]);
-  assertEquals(remoteContent, localContent);  
+  assertEquals(remoteContent, localContent);
 }
 
 runServer();

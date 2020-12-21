@@ -100,12 +100,22 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "fetch_multiple_files",
-    &["run", "--allow-net", "--allow-read", "cli/tests/fetch_multiple_files.ts"],
+    &[
+      "run",
+      "--allow-net",
+      "--allow-read",
+      "cli/tests/fetch_multiple_files.ts",
+    ],
     None,
   ),
   (
     "fetch_single_file",
-    &["run", "--allow-net", "--allow-read", "cli/tests/fetch_single_file.ts"],
+    &[
+      "run",
+      "--allow-net",
+      "--allow-read",
+      "cli/tests/fetch_single_file.ts",
+    ],
     None,
   ),
 ];

@@ -21,24 +21,26 @@ async function testFetch(): Promise<void> {
   const files = Array.from(await Deno.readDirSync(filePath));
   const requests = [];
   for (let i = 0; i < files.length * 10; i++) {
-    requests.push(new Promise((res, rej) => {
-      Promise.all([
-        new Promise<string>((res, rej) => {
-          fetch(`http://${addr}/${files[i % files.length].name}`)
-          .then((response) => {
-            assertEquals(response.status, 200);
-            res(response.text());
-          });          
-        }),
-        Deno.readTextFile(path.join(filePath, files[i % files.length].name)),
-      ])
-      .then(([remoteContent, localContent]) => {
-        assertEquals(remoteContent, localContent);
-        res();
-      });      
-    }));
-  } 
-  await Promise.all(requests);  
+    requests.push(
+      new Promise((res, rej) => {
+        Promise.all([
+          new Promise<string>((res, rej) => {
+            fetch(`http://${addr}/${files[i % files.length].name}`)
+              .then((response) => {
+                assertEquals(response.status, 200);
+                res(response.text());
+              });
+          }),
+          Deno.readTextFile(path.join(filePath, files[i % files.length].name)),
+        ])
+          .then(([remoteContent, localContent]) => {
+            assertEquals(remoteContent, localContent);
+            res();
+          });
+      }),
+    );
+  }
+  await Promise.all(requests);
 }
 
 runServer();
