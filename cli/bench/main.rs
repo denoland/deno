@@ -98,6 +98,16 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &["bundle", "--no-check", "std/examples/chat/server_test.ts"],
     None,
   ),
+  (
+    "fetch_multiple_files",
+    &["run", "--allow-net", "--allow-read", "cli/tests/fetch_multiple_files.ts"],
+    None,
+  ),
+  (
+    "fetch_single_file",
+    &["run", "--allow-net", "--allow-read", "cli/tests/fetch_single_file.ts"],
+    None,
+  ),
 ];
 
 const RESULT_KEYS: &[&str] =

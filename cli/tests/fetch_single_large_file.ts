@@ -19,10 +19,12 @@ async function runServer(): Promise<void> {
 
 async function testFetch(): Promise<void> {
   const [remoteContent, localContent] = await Promise.all([
-    new Promise<string>(async (res, rej) => {
-      const response = await fetch(`http://${addr}/`);
-      assertEquals(response.status, 200);
-      res(response.text());
+    new Promise<string>((res, rej) => {
+      fetch(`http://${addr}/`)
+        .then((response) => {
+          assertEquals(response.status, 200);
+          res(response.text());
+        });      
     }),
     Deno.readTextFile(filePath),
   ]);
