@@ -556,9 +556,7 @@ impl swc_bundler::Hook for BundleHook {
         value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
           span,
           value: value.into(),
-          kind: ast::StrKind::Normal {
-            contains_quote: false,
-          },
+          kind: ast::StrKind::Synthesized,
           has_escape: false,
         }))),
       },
