@@ -56,9 +56,12 @@ impl TsServer {
       let mut runtime = create_basic_runtime();
       runtime.block_on(async {
         loop {
-          let (req, state_snapshot, tx) = rx.recv().await.unwrap();
-          let value = request(&mut ts_runtime, state_snapshot, req);
-          tx.send(value).unwrap();
+          if let Some((req, state_snapshot, tx)) = rx.recv().await {
+            let value = request(&mut ts_runtime, state_snapshot, req);
+            tx.send(value).unwrap();
+          } else {
+            break;
+          }
         }
       })
     });

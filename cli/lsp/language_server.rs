@@ -375,12 +375,10 @@ impl lspower::LanguageServer for LanguageServer {
         serde_json::to_value(watch_registration_options).unwrap(),
       ),
     };
-    // TODO(lucacasonato): handle error correctly
-    self
-      .client
-      .register_capability(vec![registration])
-      .await
-      .unwrap();
+    if let Err(err) = self.client.register_capability(vec![registration]).await
+    {
+      warn!("Client errored on capabilities.\n{}", err);
+    }
 
     info!("Server ready.");
   }
@@ -866,4 +864,127 @@ impl DocumentData {
 #[serde(rename_all = "camelCase")]
 pub struct VirtualTextDocumentParams {
   pub text_document: TextDocumentIdentifier,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use lspower::jsonrpc;
+  use lspower::ExitedError;
+  use lspower::LspService;
+  use std::fs;
+  use std::task::Poll;
+  use test_util;
+  use tower_test::mock::Spawn;
+
+  enum LspResponse {
+    None,
+    RequestAny,
+    Request(u64, Value),
+  }
+
+  struct LspTestHarness {
+    fixtures_path: PathBuf,
+    requests: Vec<(&'static str, LspResponse)>,
+    service: Spawn<LspService>,
+  }
+
+  impl LspTestHarness {
+    pub fn new(requests: Vec<(&'static str, LspResponse)>) -> Self {
+      let (service, _) = LspService::new(LanguageServer::new);
+      let service = Spawn::new(service);
+      let fixtures_path = test_util::root_path().join("cli/tests/lsp");
+      assert!(fixtures_path.is_dir());
+      Self {
+        fixtures_path,
+        requests,
+        service,
+      }
+    }
+
+    async fn run(&mut self) {
+      for (req_path_str, expected) in self.requests.iter() {
+        assert_eq!(self.service.poll_ready(), Poll::Ready(Ok(())));
+        let req_path = self.fixtures_path.join(req_path_str);
+        let req_str = fs::read_to_string(req_path).unwrap();
+        let req: jsonrpc::Incoming = serde_json::from_str(&req_str).unwrap();
+        let response: Result<Option<jsonrpc::Outgoing>, ExitedError> =
+          self.service.call(req).await;
+        match response {
+          Ok(result) => match expected {
+            LspResponse::None => assert_eq!(result, None),
+            LspResponse::RequestAny => match result {
+              Some(jsonrpc::Outgoing::Response(_)) => (),
+              _ => panic!("unexpected result: {:?}", result),
+            },
+            LspResponse::Request(id, value) => match result {
+              Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
+                resp,
+                jsonrpc::Response::ok(
+                  jsonrpc::Id::Number(id.clone()),
+                  value.clone()
+                )
+              ),
+              _ => panic!("unexpected result: {:?}", result),
+            },
+          },
+          Err(err) => panic!("Error result: {}", err),
+        }
+      }
+    }
+  }
+
+  #[tokio::test]
+  async fn test_startup_shutdown() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_hover() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification.json", LspResponse::None),
+      (
+        "hover_request.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "const Deno.args: string[]"
+              },
+              "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]"
+            ],
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 17
+              },
+              "end": {
+                "line": 0,
+                "character": 21
+              }
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
 }
