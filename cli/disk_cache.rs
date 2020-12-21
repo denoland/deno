@@ -139,7 +139,7 @@ impl DiskCache {
       Some(ref parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
-    fs_util::write_file(&path, data, crate::http_cache::CACHE_PERM)
+    fs_util::atomic_write_file(&path, data, crate::http_cache::CACHE_PERM)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
   }
 }

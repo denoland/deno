@@ -2,7 +2,6 @@
 
 use super::io::std_file_resource;
 use super::io::StreamResource;
-use super::io::StreamResourceHolder;
 use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
@@ -11,6 +10,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::RcRef;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -88,47 +88,46 @@ fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource_holder =
-      state.resource_table.get_mut::<StreamResourceHolder>(rid);
-    if resource_holder.is_none() {
-      return Err(bad_resource_id());
-    }
+    let resource = state
+      .resource_table
+      .get::<StreamResource>(rid)
+      .ok_or_else(bad_resource_id)?;
+
     if cbreak {
       return Err(not_supported());
     }
-    let resource_holder = resource_holder.unwrap();
 
-    // For now, only stdin.
-    let handle = match &mut resource_holder.resource {
-      StreamResource::FsFile(ref mut option_file_metadata) => {
-        if let Some((tokio_file, metadata)) = option_file_metadata.take() {
-          match tokio_file.try_into_std() {
-            Ok(std_file) => {
-              let raw_handle = std_file.as_raw_handle();
-              // Turn the std_file handle back into a tokio file, put it back
-              // in the resource table.
-              let tokio_file = tokio::fs::File::from_std(std_file);
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
-              // return the result.
-              raw_handle
-            }
-            Err(tokio_file) => {
-              // This function will return an error containing the file if
-              // some operation is in-flight.
-              resource_holder.resource =
-                StreamResource::FsFile(Some((tokio_file, metadata)));
-              return Err(resource_unavailable());
-            }
-          }
-        } else {
-          return Err(resource_unavailable());
+    if resource.fs_file.is_none() {
+      return Err(bad_resource_id());
+    }
+
+    let fs_file_resource =
+      RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
+
+    let handle_result = if let Some(mut fs_file) = fs_file_resource {
+      let tokio_file = fs_file.0.take().unwrap();
+      match tokio_file.try_into_std() {
+        Ok(std_file) => {
+          let raw_handle = std_file.as_raw_handle();
+          // Turn the std_file handle back into a tokio file, put it back
+          // in the resource table.
+          let tokio_file = tokio::fs::File::from_std(std_file);
+          fs_file.0 = Some(tokio_file);
+          // return the result.
+          Ok(raw_handle)
+        }
+        Err(tokio_file) => {
+          // This function will return an error containing the file if
+          // some operation is in-flight.
+          fs_file.0 = Some(tokio_file);
+          Err(resource_unavailable())
         }
       }
-      _ => {
-        return Err(bad_resource_id());
-      }
+    } else {
+      Err(resource_unavailable())
     };
+
+    let handle = handle_result?;
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
       return Err(Error::last_os_error().into());
@@ -156,24 +155,31 @@ fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let resource_holder =
-      state.resource_table.get_mut::<StreamResourceHolder>(rid);
-    if resource_holder.is_none() {
-      return Err(bad_resource_id());
+    let resource = state
+      .resource_table
+      .get::<StreamResource>(rid)
+      .ok_or_else(bad_resource_id)?;
+
+    if resource.fs_file.is_none() {
+      return Err(not_supported());
     }
 
-    if is_raw {
-      let (raw_fd, maybe_tty_mode) =
-        match &mut resource_holder.unwrap().resource {
-          StreamResource::FsFile(Some((f, ref mut metadata))) => {
-            (f.as_raw_fd(), &mut metadata.tty.mode)
-          }
-          StreamResource::FsFile(None) => return Err(resource_unavailable()),
-          _ => {
-            return Err(not_supported());
-          }
-        };
+    let maybe_fs_file_resource =
+      RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap()).try_borrow_mut();
 
+    if maybe_fs_file_resource.is_none() {
+      return Err(resource_unavailable());
+    }
+
+    let mut fs_file_resource = maybe_fs_file_resource.unwrap();
+    if fs_file_resource.0.is_none() {
+      return Err(resource_unavailable());
+    }
+
+    let raw_fd = fs_file_resource.0.as_ref().unwrap().as_raw_fd();
+    let maybe_tty_mode = &mut fs_file_resource.1.as_mut().unwrap().tty.mode;
+
+    if is_raw {
       if maybe_tty_mode.is_none() {
         // Save original mode.
         let original_mode = termios::tcgetattr(raw_fd)?;
@@ -199,28 +205,14 @@ fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-      Ok(json!({}))
     } else {
       // Try restore saved mode.
-      let (raw_fd, maybe_tty_mode) =
-        match &mut resource_holder.unwrap().resource {
-          StreamResource::FsFile(Some((f, ref mut metadata))) => {
-            (f.as_raw_fd(), &mut metadata.tty.mode)
-          }
-          StreamResource::FsFile(None) => {
-            return Err(resource_unavailable());
-          }
-          _ => {
-            return Err(bad_resource_id());
-          }
-        };
-
       if let Some(mode) = maybe_tty_mode.take() {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
       }
-
-      Ok(json!({}))
     }
+
+    Ok(json!({}))
   }
 }
 
@@ -255,7 +247,6 @@ fn op_isatty(
         Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
       }
     }
-    Err(StreamResource::FsFile(_)) => unreachable!(),
     _ => Ok(false),
   })?;
   Ok(json!(isatty))

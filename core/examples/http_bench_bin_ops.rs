@@ -170,7 +170,7 @@ fn op_listen(
   let std_listener = std::net::TcpListener::bind(&addr)?;
   std_listener.set_nonblocking(true)?;
   let listener = TcpListener::try_from(std_listener)?;
-  let rid = state.resource_table_2.add(listener);
+  let rid = state.resource_table.add(listener);
   Ok(rid)
 }
 
@@ -181,7 +181,7 @@ fn op_close(
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
   state
-    .resource_table_2
+    .resource_table
     .close(rid)
     .map(|_| 0)
     .ok_or_else(bad_resource_id)
@@ -196,11 +196,11 @@ async fn op_accept(
 
   let listener = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TcpListener>(rid)
     .ok_or_else(bad_resource_id)?;
   let stream = listener.accept().await?;
-  let rid = state.borrow_mut().resource_table_2.add(stream);
+  let rid = state.borrow_mut().resource_table.add(stream);
   Ok(rid)
 }
 
@@ -214,7 +214,7 @@ async fn op_read(
 
   let stream = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
   stream.read(&mut bufs[0]).await
@@ -230,7 +230,7 @@ async fn op_write(
 
   let stream = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
   stream.write(&bufs[0]).await

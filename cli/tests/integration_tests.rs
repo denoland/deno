@@ -2105,6 +2105,11 @@ fn deno_test_no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
+itest!(stdout_write_all {
+  args: "run --quiet stdout_write_all.ts",
+  output: "stdout_write_all.out",
+});
+
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
   output: "001_hello.js.out",
