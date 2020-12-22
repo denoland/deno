@@ -109,11 +109,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "fetch_single_file",
-    &[
-      "run",
-      "--allow-net",
-      "cli/tests/fetch_single_large_file.ts",
-    ],
+    &["run", "--allow-net", "cli/tests/fetch_single_large_file.ts"],
     None,
   ),
 ];
