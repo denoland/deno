@@ -57,6 +57,7 @@ async function serve(rid) {
 
 async function main() {
   Deno.core.ops();
+  Deno.core.registerErrorClass('Error', Error);
 
   const listenerRid = listen();
   Deno.core.print(`http_bench_json_ops listening on http://127.0.0.1:4544/\n`);
