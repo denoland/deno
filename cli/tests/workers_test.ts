@@ -376,3 +376,22 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "Worker with top-level-await 2",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const worker = new Worker(
+      new URL("./worker_with_top_level_await2.ts", import.meta.url).href,
+      { deno: true, type: "module" },
+    );
+    worker.onmessage = (e): void => {
+      console.log("received from worker", e.data);
+      worker.postMessage("from main");
+      promise.resolve();
+    };
+
+    await promise;
+    worker.terminate();
+  },
+});
