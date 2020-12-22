@@ -26,7 +26,7 @@ async function runServer(): Promise<void> {
 
 async function testFetch(): Promise<void> {
   const requests = [];
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 10; i++) {
     requests.push(
       new Promise<void>((res, rej) => {
         fetch(`http://${addr}`)
