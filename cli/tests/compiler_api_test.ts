@@ -141,11 +141,10 @@ Deno.test({
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
     assertEquals(stats.length, 3);
-    assertEquals(
-      Object.keys(files).sort(),
-      ["file:///foo.ts.js", "file:///foo.ts.js.map"],
-    );
-    assert(files["file:///foo.ts.js"].startsWith("export var Foo;"));
+    const keys = Object.keys(files).sort();
+    assert(keys[0].endsWith("/foo.ts.js"));
+    assert(keys[1].endsWith("/foo.ts.js.map"));
+    assert(files[keys[0]].startsWith("export var Foo;"));
   },
 });
 
@@ -166,11 +165,10 @@ Deno.test({
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
     assertEquals(stats.length, 3);
-    assertEquals(
-      Object.keys(files).sort(),
-      ["file:///foo.ts.js", "file:///foo.ts.js.map"],
-    );
-    assert(!files["file:///foo.ts.js"].includes("This is JSDoc"));
+    const keys = Object.keys(files).sort();
+    assert(keys[0].endsWith("/foo.ts.js"));
+    assert(keys[1].endsWith("/foo.ts.js.map"));
+    assert(!files[keys[0]].includes("This is JSDoc"));
   },
 });
 
@@ -245,10 +243,9 @@ Deno.test({
       },
     );
     assertEquals(diagnostics.length, 1);
-    assertEquals(
-      Object.keys(files).sort(),
-      ["file:///foo.ts.js", "file:///foo.ts.js.map"],
-    );
+    const keys = Object.keys(files).sort();
+    assert(keys[0].endsWith("/foo.ts.js"));
+    assert(keys[1].endsWith("/foo.ts.js.map"));
   },
 });
 
