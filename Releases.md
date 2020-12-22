@@ -6,6 +6,27 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.6.2 / 2020.12.22
+
+- feat(lsp): support the unstable setting (#8851)
+- feat(unstable): record raw coverage into a directory (#8642)
+- feat(unstable): support in memory certificate data for Deno.createHttpClient
+  (#8739)
+- fix: atomically write files to $DENO_DIR (#8822)
+- fix: implement ReadableStream fetch body handling (#8855)
+- fix: make DNS resolution async (#8743)
+- fix: make dynamic import errors catchable (#8750)
+- fix: respect enable flag for requests in lsp (#8850)
+- refactor: rename runtime/rt to runtime/js (#8806)
+- refactor: rewrite lsp to be async (#8727)
+- refactor: rewrite ops to use ResourceTable2 (#8512)
+- refactor: optimise static assets in lsp (#8771)
+- upgrade TypeScript to 4.1.3 (#8785)
+
+Changes in std version 0.82.0:
+
+- feat(std/node): Added os.type (#8591)
+
 ### 1.6.1 / 2020.12.14
 
 - feat(lsp): support import maps (#8683)
