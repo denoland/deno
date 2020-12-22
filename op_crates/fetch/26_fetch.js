@@ -1248,7 +1248,7 @@
           } else {
             // TODO(lucacasonato): do this in a streaming fashion once we support it
             const buf = new Buffer();
-            for await (const chunk of init.bodb) {
+            for await (const chunk of init.body) {
               buf.write(chunk);
             }
             body = buf.bytes();
