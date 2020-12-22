@@ -202,7 +202,7 @@ async fn run_ws_server(addr: &SocketAddr) {
 async fn get_tls_config(
   cert: &str,
   key: &str,
-) -> Result<ServerConfig, Box<dyn std::error::Error>> {
+) -> Result<Arc<ServerConfig>, std::io::Error> {
   let mut cert_path = root_path();
   let mut key_path = root_path();
   cert_path.push(cert);
@@ -237,16 +237,15 @@ async fn get_tls_config(
   match key {
     Some(key) => {
       let mut config = tokio_rustls::rustls::ServerConfig::new(tokio_rustls::rustls::NoClientAuth::new());
-      config.key_log = Arc::new(tokio_rustls::rustls::KeyLogFile::new());
-      config.set_single_cert(cert, key)?;
-      config.set_protocols(&[b"http/1.1".to_vec()]);
+      config.set_single_cert(cert, key).map_err(|e| {
+        eprintln!("Error setting cert: {:?}", e);
+      });
+      config.set_protocols(&[b"h2".to_vec(), b"http/1.1".to_vec()]);
 
-      return Ok(config);
+      return Ok(Arc::new(config));
     }
     None => {
-      return Err(Box::new(tokio_rustls::rustls::TLSError::General(
-        "Cannot load the key certificate".into(),
-      )));
+      return Err(std::io::Error::new(std::io::ErrorKind::Other, "Cannot find key"));
     }
   }
 }
@@ -255,9 +254,8 @@ async fn run_wss_server(addr: &SocketAddr) {
   let cert_file = "std/http/testdata/tls/localhost.crt";
   let key_file = "std/http/testdata/tls/localhost.key";
 
-  let config = get_tls_config(cert_file, key_file)
+  let tls_config = get_tls_config(cert_file, key_file)
     .await.unwrap();
-  let tls_config = Arc::new(config);
   let mut listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
     let tls_acceptor = tokio_rustls::TlsAcceptor::from(tls_config.clone());
@@ -550,7 +548,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
   };
 }
 
-/// Taken from example in https://github.com/ctz/hyper-rustls/blob/master/examples/server.rs
+/// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs
 struct HyperAcceptor<'a> {
   acceptor: Pin<
     Box<
@@ -636,10 +634,9 @@ pub async fn run_all_servers() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
   let cert_file = "std/http/testdata/tls/localhost.crt";
   let key_file = "std/http/testdata/tls/localhost.key";
-  let config = get_tls_config(cert_file, key_file)
+  let tls_config = get_tls_config(cert_file, key_file)
     .await
     .expect("Cannot get TLS config");
-  let tls_config = Arc::new(config);
   let mut tcp = TcpListener::bind(&main_server_https_addr)
     .await
     .expect("Cannot bind TCP");
@@ -648,12 +645,19 @@ pub async fn run_all_servers() {
   // Prepare a long-running future stream to accept and serve cients.
   let incoming_tls_stream = tcp
     .incoming()
-    .and_then(move |stream| {
-      tls_acceptor.accept(stream)
-    })
     .map_err(|e| {
-      eprintln!("Error TLS: {:?}", e);
+      eprintln!("Error Incoming: {:?}", e);
       std::io::Error::new(std::io::ErrorKind::Other, e)
+    })
+    .and_then(move |s| {
+      use futures::TryFutureExt;
+      tls_acceptor.accept(s).map_err(|e| {
+          println!("[!] Voluntary server halt due to client-connection error...");
+          // Errors could be handled here, instead of server aborting.
+          // Ok(None)
+          eprintln!("TLS Error {:?}", e);
+          std::io::Error::new(std::io::ErrorKind::Other, e)
+      })
     })
     .boxed();
 
