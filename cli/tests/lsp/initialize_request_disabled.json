@@ -10,7 +10,7 @@
     },
     "rootUri": null,
     "initializationOptions": {
-      "enable": true,
+      "enable": false,
       "lint": true,
       "importMap": null,
       "unstable": false

@@ -84,6 +84,11 @@ impl LanguageServer {
     }
   }
 
+  fn enabled(&self) -> bool {
+    let config = self.config.read().unwrap();
+    config.settings.enable
+  }
+
   pub async fn update_import_map(&self) -> Result<(), AnyError> {
     let (maybe_import_map, maybe_root_uri) = {
       let config = self.config.read().unwrap();
@@ -217,7 +222,7 @@ impl LanguageServer {
         } else {
           vec![]
         };
-        if settings.enable {
+        if self.enabled() {
           diagnostics.extend(
             diagnostics_collection
               .diagnostics_for(file_id, DiagnosticSource::TypeScript)
@@ -570,6 +575,9 @@ impl lspower::LanguageServer for LanguageServer {
   }
 
   async fn hover(&self, params: HoverParams) -> LSPResult<Option<Hover>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -598,6 +606,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: DocumentHighlightParams,
   ) -> LSPResult<Option<Vec<DocumentHighlight>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -635,6 +646,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: ReferenceParams,
   ) -> LSPResult<Option<Vec<Location>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
@@ -673,6 +687,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: GotoDefinitionParams,
   ) -> LSPResult<Option<GotoDefinitionResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -706,6 +723,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: CompletionParams,
   ) -> LSPResult<Option<CompletionResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
@@ -970,6 +990,22 @@ mod tests {
           }),
         ),
       ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_hover_disabled() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_disabled.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification.json", LspResponse::None),
+      ("hover_request.json", LspResponse::Request(2, json!(null))),
       (
         "shutdown_request.json",
         LspResponse::Request(3, json!(null)),
