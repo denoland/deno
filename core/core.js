@@ -38,6 +38,12 @@ SharedQueue Binary Layout
   let opsCache = {};
   const errorMap = {};
 
+  // NOTE(bartlomieju): we need to have this function and call it
+  // in multiple other functions in this file because of snapshotting
+  // this file. I have tried to remove this function in favor of calling
+  // `init()` from Rust when JsRuntime is created, but it doesn't work
+  // due to V8 serialization error (`core.shared` cannot be serialized
+  // for snapshot, even though it's marked as external reference).
   function maybeInit() {
     if (!initialized) {
       init();

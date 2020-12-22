@@ -81,7 +81,6 @@ pub struct JsRuntime {
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
-  needs_init: bool,
   allocations: IsolateAllocations,
 }
 
@@ -286,13 +285,16 @@ impl JsRuntime {
       waker: AtomicWaker::new(),
     })));
 
-    Self {
+    let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
-      needs_init: true,
       allocations: IsolateAllocations::default(),
-    }
+    };
+
+    js_runtime.js_init();
+
+    js_runtime
   }
 
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
@@ -323,16 +325,13 @@ impl JsRuntime {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn shared_init(&mut self) {
-    if self.needs_init {
-      self.needs_init = false;
-      self
-        .execute("deno:core/core.js", include_str!("core.js"))
-        .unwrap();
-      self
-        .execute("deno:core/error.js", include_str!("error.js"))
-        .unwrap();
-    }
+  fn js_init(&mut self) {
+    self
+      .execute("deno:core/core.js", include_str!("core.js"))
+      .unwrap();
+    self
+      .execute("deno:core/error.js", include_str!("error.js"))
+      .unwrap();
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -356,8 +355,6 @@ impl JsRuntime {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), AnyError> {
-    self.shared_init();
-
     let context = self.global_context();
 
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
@@ -482,8 +479,6 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    self.shared_init();
-
     let state_rc = Self::state(self.v8_isolate());
     {
       let state = state_rc.borrow();
@@ -747,8 +742,6 @@ impl JsRuntime {
     load_id: ModuleLoadId,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    self.shared_init();
-
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
     let context1 = self.global_context();
@@ -834,8 +827,6 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> mpsc::Receiver<Result<(), AnyError>> {
-    self.shared_init();
-
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
@@ -1283,7 +1274,6 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
-    self.shared_init();
     let loader = {
       let state_rc = Self::state(self.v8_isolate());
       let state = state_rc.borrow();
