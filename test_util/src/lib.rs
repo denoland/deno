@@ -576,6 +576,8 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
   }
 }
 
+unsafe impl std::marker::Send for HyperAcceptor<'_> { }
+
 #[tokio::main]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
@@ -653,7 +655,7 @@ pub async fn run_all_servers() {
       eprintln!("Error TLS: {:?}", e);
       std::io::Error::new(std::io::ErrorKind::Other, e)
     })
-    .boxed_local();
+    .boxed();
 
   let main_server_https_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(main_server))
@@ -676,7 +678,8 @@ pub async fn run_all_servers() {
       main_server_https_fut,
     )
   }
-  .boxed_local();
+  .boxed();
+  
 
   let mut did_print_ready = false;
   futures::future::poll_fn(move |cx| {
