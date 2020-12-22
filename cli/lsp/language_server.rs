@@ -377,25 +377,35 @@ impl lspower::LanguageServer for LanguageServer {
         .await;
     }
 
-    // we are going to watch all the JSON files in the workspace, and the
-    // notification handler will pick up any of the changes of those files we
-    // are interested in.
-    let watch_registration_options = DidChangeWatchedFilesRegistrationOptions {
-      watchers: vec![FileSystemWatcher {
-        glob_pattern: "**/*.json".to_string(),
-        kind: Some(WatchKind::Change),
-      }],
-    };
-    let registration = Registration {
-      id: "workspace/didChangeWatchedFiles".to_string(),
-      method: "workspace/didChangeWatchedFiles".to_string(),
-      register_options: Some(
-        serde_json::to_value(watch_registration_options).unwrap(),
-      ),
-    };
-    if let Err(err) = self.client.register_capability(vec![registration]).await
+    if self
+      .config
+      .read()
+      .unwrap()
+      .client_capabilities
+      .workspace_did_change_watched_files
     {
-      warn!("Client errored on capabilities.\n{}", err);
+      // we are going to watch all the JSON files in the workspace, and the
+      // notification handler will pick up any of the changes of those files we
+      // are interested in.
+      let watch_registration_options =
+        DidChangeWatchedFilesRegistrationOptions {
+          watchers: vec![FileSystemWatcher {
+            glob_pattern: "**/*.json".to_string(),
+            kind: Some(WatchKind::Change),
+          }],
+        };
+      let registration = Registration {
+        id: "workspace/didChangeWatchedFiles".to_string(),
+        method: "workspace/didChangeWatchedFiles".to_string(),
+        register_options: Some(
+          serde_json::to_value(watch_registration_options).unwrap(),
+        ),
+      };
+      if let Err(err) =
+        self.client.register_capability(vec![registration]).await
+      {
+        warn!("Client errored on capabilities.\n{}", err);
+      }
     }
 
     info!("Server ready.");
@@ -494,6 +504,17 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     _params: DidChangeConfigurationParams,
   ) {
+    if !self
+      .config
+      .read()
+      .unwrap()
+      .client_capabilities
+      .workspace_configuration
+    {
+      // Client does not support workspace configuration
+      return;
+    }
+
     let res = self
       .client
       .configuration(vec![ConfigurationItem {
@@ -810,9 +831,9 @@ impl LanguageServer {
       let file_cache = self.file_cache.read().unwrap();
       Some(format!(
         r#"# Deno Language Server Status
-  
+
   - Documents in memory: {}
-  
+
   "#,
         file_cache.len()
       ))
