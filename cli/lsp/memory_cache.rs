@@ -4,7 +4,6 @@ use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::fmt;
-use std::mem;
 
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FileId(pub u32);
@@ -110,10 +109,6 @@ impl MemoryCache {
       file_id,
       change_kind,
     })
-  }
-
-  pub fn take_changes(&mut self) -> Vec<ChangedFile> {
-    mem::take(&mut self.changes)
   }
 }
 
