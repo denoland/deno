@@ -12,8 +12,9 @@
     "initializationOptions": {
       "enable": true,
       "lint": true,
-      "importMap": null,
-      "unstable": false
+      "unstable": true,
+      "config": null,
+      "importMap": null
     },
     "capabilities": {
       "textDocument": {

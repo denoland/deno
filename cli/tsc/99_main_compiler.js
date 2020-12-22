@@ -492,10 +492,7 @@ delete Object.prototype.__proto__;
           request.specifier,
           ts.ScriptTarget.ESNext,
         );
-        return core.jsonOpSync(
-          "op_set_asset",
-          { text: sourceFile && sourceFile.text },
-        );
+        return respond(id, sourceFile && sourceFile.text);
       }
       case "getSemanticDiagnostics": {
         const diagnostics = languageService.getSemanticDiagnostics(
