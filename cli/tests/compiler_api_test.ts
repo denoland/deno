@@ -95,20 +95,18 @@ Deno.test({
   name: "Deno.emit() - import maps",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
-      "/a.ts",
+      "file:///a.ts",
       {
         importMap: {
           imports: {
             "b": "./b.ts",
           },
         },
-        importMapPath: Deno.build.os == "windows"
-          ? "C:\\import-map.json"
-          : "/import-map.json",
+        importMapPath: "file:///import-map.json",
         sources: {
-          "/a.ts": `import * as b from "b"
+          "file:///a.ts": `import * as b from "b"
             console.log(b);`,
-          "/b.ts": `export const b = "b";`,
+          "file:///b.ts": `export const b = "b";`,
         },
       },
     );

@@ -15,7 +15,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
 use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -76,10 +75,11 @@ async fn op_emit(
       )?))
     };
   let maybe_import_map = if let Some(import_map_str) = args.import_map_path {
-    let import_map_url =
-      Url::from_file_path(&import_map_str).map_err(|_| {
+    let import_map_specifier =
+      ModuleSpecifier::resolve_url_or_path(&import_map_str).map_err(|_| {
         anyhow!("Bad file path (\"{}\") for import map.", import_map_str)
       })?;
+    let import_map_url = import_map_specifier.as_url();
     let import_map = if let Some(value) = args.import_map {
       ImportMap::from_json(&import_map_url.to_string(), &value.to_string())?
     } else {
