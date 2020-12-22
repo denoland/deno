@@ -1,8 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { serve } from "../../std/http/server.ts";
-
-const server = serve({ port: 8080 });
+function delay(seconds: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, seconds);
+  });
+}
 
 self.onmessage = (e: MessageEvent) => {
   console.log("TLA worker received message", e.data);
@@ -10,6 +14,6 @@ self.onmessage = (e: MessageEvent) => {
 
 self.postMessage("hello");
 
-for await (const _r of server) {
-  // pass
-}
+await delay(3000);
+
+throw new Error("unreachable");
