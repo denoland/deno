@@ -87,6 +87,7 @@ impl MainWorker {
     } else {
       None
     };
+
     let should_break_on_first_statement =
       inspector.is_some() && options.should_break_on_first_statement;
 

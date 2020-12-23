@@ -62,7 +62,7 @@ fn main() {
   // Main snapshot
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let js_files = get_js_files("rt");
+  let js_files = get_js_files("js");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 }
 

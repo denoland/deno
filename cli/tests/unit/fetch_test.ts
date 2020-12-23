@@ -959,7 +959,7 @@ unitTest(function fetchResponseEmptyConstructor(): void {
 
 unitTest(
   { perms: { net: true, read: true } },
-  async function fetchCustomHttpClientSuccess(): Promise<
+  async function fetchCustomHttpClientFileCertificateSuccess(): Promise<
     void
   > {
     const client = Deno.createHttpClient(
@@ -972,5 +972,84 @@ unitTest(
     const json = await response.json();
     assertEquals(json.name, "deno");
     client.close();
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchCustomHttpClientParamCertificateSuccess(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient(
+      {
+        caData: `-----BEGIN CERTIFICATE-----
+MIIDIzCCAgugAwIBAgIJAMKPPW4tsOymMA0GCSqGSIb3DQEBCwUAMCcxCzAJBgNV
+BAYTAlVTMRgwFgYDVQQDDA9FeGFtcGxlLVJvb3QtQ0EwIBcNMTkxMDIxMTYyODIy
+WhgPMjExODA5MjcxNjI4MjJaMCcxCzAJBgNVBAYTAlVTMRgwFgYDVQQDDA9FeGFt
+cGxlLVJvb3QtQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDMH/IO
+2qtHfyBKwANNPB4K0q5JVSg8XxZdRpTTlz0CwU0oRO3uHrI52raCCfVeiQutyZop
+eFZTDWeXGudGAFA2B5m3orWt0s+touPi8MzjsG2TQ+WSI66QgbXTNDitDDBtTVcV
+5G3Ic+3SppQAYiHSekLISnYWgXLl+k5CnEfTowg6cjqjVr0KjL03cTN3H7b+6+0S
+ws4rYbW1j4ExR7K6BFNH6572yq5qR20E6GqlY+EcOZpw4CbCk9lS8/CWuXze/vMs
+OfDcc6K+B625d27wyEGZHedBomT2vAD7sBjvO8hn/DP1Qb46a8uCHR6NSfnJ7bXO
+G1igaIbgY1zXirNdAgMBAAGjUDBOMB0GA1UdDgQWBBTzut+pwwDfqmMYcI9KNWRD
+hxcIpTAfBgNVHSMEGDAWgBTzut+pwwDfqmMYcI9KNWRDhxcIpTAMBgNVHRMEBTAD
+AQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB9AqSbZ+hEglAgSHxAMCqRFdhVu7MvaQM0
+P090mhGlOCt3yB7kdGfsIrUW6nQcTz7PPQFRaJMrFHPvFvPootkBUpTYR4hTkdce
+H6RCRu2Jxl4Y9bY/uezd9YhGCYfUtfjA6/TH9FcuZfttmOOlxOt01XfNvVMIR6RM
+z/AYhd+DeOXjr35F/VHeVpnk+55L0PYJsm1CdEbOs5Hy1ecR7ACuDkXnbM4fpz9I
+kyIWJwk2zJReKcJMgi1aIinDM9ao/dca1G99PHOw8dnr4oyoTiv8ao6PWiSRHHMi
+MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
+-----END CERTIFICATE-----
+`,
+      },
+    );
+    const response = await fetch(
+      "https://localhost:5545/cli/tests/fixture.json",
+      { client },
+    );
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    client.close();
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyReadableStream(): Promise<void> {
+    const addr = "127.0.0.1:4502";
+    const buf = bufferServer(addr);
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    await writer.write(new TextEncoder().encode("hello "));
+    await writer.write(new TextEncoder().encode("world"));
+    await writer.close();
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body: stream.readable,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n`,
+      `content-length: 11\r\n\r\n`,
+      "hello world",
+    ].join("");
+    assertEquals(actual, expected);
   },
 );

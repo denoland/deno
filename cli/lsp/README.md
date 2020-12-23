@@ -6,18 +6,11 @@ which is specifically tailored to provide a _Deno_ view of code. It is
 integrated into the command line and can be started via the `lsp` sub-command.
 
 > :warning: The Language Server is highly experimental and far from feature
-> complete.
-
-This document gives an overview of the structure of the language server.
-
-## Acknowledgement
-
-The structure of the language server was heavily influenced and adapted from
-[`rust-analyzer`](https://rust-analyzer.github.io/).
+> complete. This document gives an overview of the structure of the language
+> server.
 
 ## Structure
 
-When the language server is started, a `ServerState` instance is created which
-holds all the state of the language server, as well as provides the
-infrastructure for receiving and sending notifications and requests from a
-language server client.
+When the language server is started, a `LanguageServer` instance is created
+which holds all of the state of the language server. It also defines all of the
+methods that the client calls via the Language Server RPC protocol.

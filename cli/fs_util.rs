@@ -2,11 +2,27 @@
 
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
+use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::{Error, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+pub fn atomic_write_file<T: AsRef<[u8]>>(
+  filename: &Path,
+  data: T,
+  mode: u32,
+) -> std::io::Result<()> {
+  let rand: String = (0..4)
+    .map(|_| format!("{:02x}", rand::random::<u8>()))
+    .collect();
+  let extension = format!("{}.tmp", rand);
+  let tmp_file = filename.with_extension(extension);
+  write_file(&tmp_file, data, mode)?;
+  std::fs::rename(tmp_file, filename)?;
+  Ok(())
+}
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
