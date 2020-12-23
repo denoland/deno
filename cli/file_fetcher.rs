@@ -530,31 +530,27 @@ impl FileFetcher {
     permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
       Ok(file)
-    } else {
-      if scheme == "file" {
-        fetch_local(specifier)
-      } else if scheme == "data" {
-        let result = self.fetch_data_url(specifier);
-        if let Ok(file) = &result {
-          self.cache.insert(specifier.clone(), file.clone());
-        }
-        result
-      } else if !self.allow_remote {
-        Err(custom_error(
-          "NoRemote",
-          format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
-        ))
-      } else {
-        let result = self.fetch_remote(specifier, permissions, 10).await;
-        // only cache remote resources, as they are the only things that would
-        // be "expensive" to fetch multiple times during an invocation, and it
-        // also allows local file sources to be changed, enabling things like
-        // dynamic import and workers to be updated while Deno is running.
-        if let Ok(file) = &result {
-          self.cache.insert(specifier.clone(), file.clone());
-        }
-        result
+    } else if scheme == "file" {
+      // we do not in memory cache files, as this would prevent files on the
+      // disk changing effecting things like workers and dynamic imports.
+      fetch_local(specifier)
+    } else if scheme == "data" {
+      let result = self.fetch_data_url(specifier);
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
       }
+      result
+    } else if !self.allow_remote {
+      Err(custom_error(
+        "NoRemote",
+        format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
+      ))
+    } else {
+      let result = self.fetch_remote(specifier, permissions, 10).await;
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
+      }
+      result
     }
   }
 
