@@ -18,8 +18,7 @@ Deno.test({
         const newFileMode: number | null = Deno.lstatSync(tempFile).mode;
         assert(newFileMode && originalFileMode);
         assert(newFileMode === 33279 && newFileMode > originalFileMode);
-      })
-      .catch(() => {
+      }, () => {
         fail();
       })
       .finally(() => {

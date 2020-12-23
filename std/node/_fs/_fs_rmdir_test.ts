@@ -14,8 +14,7 @@ Deno.test({
         resolve();
       });
     })
-      .then(() => assertEquals(existsSync(dir), false))
-      .catch(() => fail())
+      .then(() => assertEquals(existsSync(dir), false), () => fail())
       .finally(() => {
         if (existsSync(dir)) Deno.removeSync(dir);
       });
@@ -58,8 +57,7 @@ Deno.test({
         resolve();
       });
     })
-      .then(() => assertEquals(existsSync(dir), false))
-      .catch(() => fail())
+      .then(() => assertEquals(existsSync(dir), false), () => fail())
       .finally(() => {
         if (existsSync(dir)) Deno.removeSync(dir, { recursive: true });
         const rAfter = Deno.resources();

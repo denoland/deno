@@ -68,8 +68,7 @@ Deno.test({
         resolve(stat);
       });
     })
-      .then((stat) => assertStats(stat, Deno.statSync(file)))
-      .catch(() => fail())
+      .then((stat) => assertStats(stat, Deno.statSync(file)), () => fail())
       .finally(() => Deno.removeSync(file));
   },
 });
@@ -92,8 +91,10 @@ Deno.test({
         resolve(stat);
       });
     })
-      .then((stat) => assertStatsBigInt(stat, Deno.statSync(file)))
-      .catch(() => fail())
+      .then(
+        (stat) => assertStatsBigInt(stat, Deno.statSync(file)),
+        () => fail(),
+      )
       .finally(() => Deno.removeSync(file));
   },
 });

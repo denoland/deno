@@ -72,9 +72,10 @@ export function open(
       }
       return;
     }
-    Deno.open(path, convertFlagAndModeToOptions(flags, mode))
-      .then((file) => callback(undefined, file.rid))
-      .catch((err) => callback(err, err));
+    Deno.open(path, convertFlagAndModeToOptions(flags, mode)).then(
+      (file) => callback(undefined, file.rid),
+      (err) => callback(err, err),
+    );
   }
 }
 

@@ -14,9 +14,7 @@ export function chown(
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
-  Deno.chown(path, uid, gid)
-    .then(() => callback())
-    .catch(callback);
+  Deno.chown(path, uid, gid).then(() => callback(), callback);
 }
 
 /**

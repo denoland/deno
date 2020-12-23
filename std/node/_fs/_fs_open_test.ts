@@ -25,8 +25,7 @@ Deno.test({
       .then((fd) => {
         fd1 = fd;
         assert(Deno.resources()[fd], `${fd}`);
-      })
-      .catch(() => fail())
+      }, () => fail())
       .finally(() => closeSync(fd1));
   },
 });

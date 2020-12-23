@@ -41,9 +41,10 @@ export function intoCallbackAPI<T>(
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): void {
-  func(...args)
-    .then((value) => cb && cb(null, value))
-    .catch((err) => cb && cb(err, null));
+  func(...args).then(
+    (value) => cb && cb(null, value),
+    (err) => cb && cb(err, null),
+  );
 }
 
 export function intoCallbackAPIWithIntercept<T1, T2>(
@@ -54,9 +55,10 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): void {
-  func(...args)
-    .then((value) => cb && cb(null, interceptor(value)))
-    .catch((err) => cb && cb(err, null));
+  func(...args).then(
+    (value) => cb && cb(null, interceptor(value)),
+    (err) => cb && cb(err, null),
+  );
 }
 
 export function spliceOne(list: string[], index: number): void {

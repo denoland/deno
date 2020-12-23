@@ -24,8 +24,7 @@ Deno.test({
         const newGroupId: number | null = Deno.lstatSync(tempFile).gid;
         assertEquals(newUserId, originalUserId);
         assertEquals(newGroupId, originalGroupId);
-      })
-      .catch(() => {
+      }, () => {
         fail();
       })
       .finally(() => {

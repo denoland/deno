@@ -12,8 +12,7 @@ Deno.test({
         resolve();
       });
     })
-      .then(() => assertEquals(existsSync(file), false))
-      .catch(() => fail())
+      .then(() => assertEquals(existsSync(file), false), () => fail())
       .finally(() => {
         if (existsSync(file)) Deno.removeSync(file);
       });

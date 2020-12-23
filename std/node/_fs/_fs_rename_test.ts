@@ -17,8 +17,7 @@ Deno.test({
       .then(() => {
         assertEquals(existsSync(newPath), true);
         assertEquals(existsSync(file), false);
-      })
-      .catch(() => fail())
+      }, () => fail())
       .finally(() => {
         if (existsSync(file)) Deno.removeSync(file);
         if (existsSync(newPath)) Deno.removeSync(newPath);

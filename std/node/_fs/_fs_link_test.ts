@@ -16,8 +16,7 @@ Deno.test({
     })
       .then(() => {
         assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
-      })
-      .catch(() => {
+      }, () => {
         fail("Expected to succeed");
       })
       .finally(() => {
@@ -39,8 +38,7 @@ Deno.test({
     })
       .then(() => {
         fail("Expected to succeed");
-      })
-      .catch((err) => {
+      }, (err) => {
         assert(err);
         failed = true;
       });

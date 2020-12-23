@@ -35,7 +35,7 @@ export function appendFile(
   new Promise((resolve, reject) => {
     if (typeof pathOrRid === "number") {
       rid = pathOrRid;
-      Deno.write(rid, buffer).then(resolve).catch(reject);
+      Deno.write(rid, buffer).then(resolve, reject);
     } else {
       const mode: number | undefined = isFileOptions(options)
         ? options.mode
@@ -53,15 +53,13 @@ export function appendFile(
           rid = openedFileRid;
           return Deno.write(openedFileRid, buffer);
         })
-        .then(resolve)
-        .catch(reject);
+        .then(resolve, reject);
     }
   })
     .then(() => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn();
-    })
-    .catch((err) => {
+    }, (err) => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn(err);
     });

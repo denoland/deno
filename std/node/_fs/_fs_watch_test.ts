@@ -12,21 +12,15 @@ Deno.test({
   async fn() {
     const file = Deno.makeTempFileSync();
     const result: Array<[string, string]> = [];
-    await new Promise((resolve) => {
-      const watcher = watch(
-        file,
-        (eventType, filename) => result.push([eventType, filename]),
-      );
-      wait(100)
-        .then(() => Deno.writeTextFileSync(file, "something"))
-        .then(() => wait(100))
-        .then(() => watcher.close())
-        .then(() => wait(100))
-        .then(resolve);
-    })
-      .then(() => {
-        assertEquals(result.length >= 1, true);
-      })
-      .catch(() => fail());
+    const watcher = watch(
+      file,
+      (eventType, filename) => result.push([eventType, filename]),
+    );
+    wait(100);
+    Deno.writeTextFileSync(file, "something");
+    await wait(100);
+    watcher.close();
+    await wait(100);
+    assertEquals(result.length >= 1, true);
   },
 });

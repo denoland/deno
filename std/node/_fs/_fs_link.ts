@@ -16,9 +16,7 @@ export function link(
     : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
-  Deno.link(existingPath, newPath)
-    .then(() => callback())
-    .catch(callback);
+  Deno.link(existingPath, newPath).then(() => callback(), callback);
 }
 
 /**

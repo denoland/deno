@@ -32,8 +32,7 @@ export default class Dir {
           if (callback) {
             callback(null, value ? value : null);
           }
-        })
-        .catch((err) => {
+        }, (err) => {
           if (callback) {
             callback(err, null);
           }

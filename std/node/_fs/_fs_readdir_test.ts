@@ -12,8 +12,7 @@ Deno.test({
         resolve(files);
       });
     })
-      .then((files) => assertEquals(files, []))
-      .catch(() => fail())
+      .then((files) => assertEquals(files, []), () => fail())
       .finally(() => Deno.removeSync(dir));
   },
 });
@@ -40,10 +39,14 @@ Deno.test({
         resolve(files);
       });
     })
-      .then((files) =>
-        assertEqualsArrayAnyOrder(files, ["file1.txt", "some_dir", "file2.txt"])
+      .then(
+        (files) =>
+          assertEqualsArrayAnyOrder(
+            files,
+            ["file1.txt", "some_dir", "file2.txt"],
+          ),
+        () => fail(),
       )
-      .catch(() => fail())
       .finally(() => Deno.removeSync(dir, { recursive: true }));
   },
 });

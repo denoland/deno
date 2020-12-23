@@ -78,8 +78,7 @@ Deno.test({
       .then(async () => {
         const data = await Deno.readFile(tempFile);
         assertEquals(decoder.decode(data), "hello world");
-      })
-      .catch(() => {
+      }, () => {
         fail("No error expected");
       })
       .finally(async () => {
@@ -103,8 +102,7 @@ Deno.test({
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
         assertEquals(decoder.decode(data), "hello world");
-      })
-      .catch((err) => {
+      }, (err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {
@@ -128,8 +126,7 @@ Deno.test({
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile(fromFileUrl(fileURL));
         assertEquals(decoder.decode(data), "hello world");
-      })
-      .catch((err) => {
+      }, (err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {
@@ -152,8 +149,7 @@ Deno.test({
     })
       .then(() => {
         fail("Expected error to be thrown");
-      })
-      .catch(() => {
+      }, () => {
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
       })
       .finally(async () => {
@@ -235,8 +231,7 @@ Deno.test({
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
         assertEquals(data, testData);
-      })
-      .catch((err) => {
+      }, (err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {

@@ -17,8 +17,7 @@ Deno.test({
     })
       .then(() => {
         assert(!Deno.resources()[file.rid]);
-      })
-      .catch(() => {
+      }, () => {
         fail("No error expected");
       })
       .finally(async () => {
