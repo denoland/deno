@@ -21,7 +21,7 @@ regex = "1.3.9"
 tempfile = "3.1.0"
 hyper = "0.13"
 tokio-tungstenite = "0.11"
-tokio-rustls = "0.12"
+tokio-rustls = "0.14"
 
 [target.'cfg(unix)'.dependencies]
 pty = "0.2.2"

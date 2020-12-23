@@ -26,6 +26,7 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::{collections::HashMap, net::SocketAddr};
+use std::result::Result;
 use std::{
   env,
   pin::Pin,
@@ -34,7 +35,7 @@ use std::{
 };
 use tempfile::TempDir;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::{TlsAcceptor, rustls::ServerConfig};
 use tokio_tungstenite::accept_async;
 
 const PORT: u16 = 4545;
@@ -239,8 +240,7 @@ async fn get_tls_config(
       let mut config = tokio_rustls::rustls::ServerConfig::new(tokio_rustls::rustls::NoClientAuth::new());
       config.set_single_cert(cert, key).map_err(|e| {
         eprintln!("Error setting cert: {:?}", e);
-      });
-      config.set_protocols(&[b"h2".to_vec(), b"http/1.1".to_vec()]);
+      }).unwrap();
 
       return Ok(Arc::new(config));
     }
@@ -255,12 +255,14 @@ async fn run_wss_server(addr: &SocketAddr) {
   let key_file = "std/http/testdata/tls/localhost.key";
 
   let tls_config = get_tls_config(cert_file, key_file)
-    .await.unwrap();
+    .await
+    .unwrap();
+  let tls_acceptor = TlsAcceptor::from(tls_config);
   let mut listener = TcpListener::bind(addr).await.unwrap();
+  
   while let Ok((stream, _addr)) = listener.accept().await {
-    let tls_acceptor = tokio_rustls::TlsAcceptor::from(tls_config.clone());
-
-    match tls_acceptor.accept(stream).await {
+    let acceptor = tls_acceptor.clone();
+    match acceptor.accept(stream).await {
       Ok(tls_stream) => {
         let ws_stream_fut = accept_async(tls_stream);
         let ws_stream = ws_stream_fut.await;
@@ -269,14 +271,14 @@ async fn run_wss_server(addr: &SocketAddr) {
           rx.forward(tx)
             .map(|result| {
               if let Err(e) = result {
-                println!("websocket server error: {:?}", e);
+                println!("Websocket server error: {:?}", e);
               }
             })
             .await;
         }
       }
       Err(e) => {
-        eprintln!("WebSocket error: {:?}", e);
+        eprintln!("TLS accept error: {:?}", e);
       }
     }
   }
@@ -286,34 +288,32 @@ async fn absolute_redirect(
   req: Request<Body>,
 ) -> hyper::Result<Response<Body>> {
   let path = req.uri().path();
+
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
     println!("URL: {:?}", url);
     let redirect = redirect_resp(format!("{}", url));
     return Ok(redirect);
-  } else if path.starts_with("/a/b/c") {
-    let mut url = format!("/a/b/c");
+  } 
+  
+  if path.starts_with("/a/b/c") {
     if let Some(x_loc) = req.headers().get("x-location") {
       let loc = x_loc.to_str().unwrap();
-      url = format!("{}/{}", url, loc);
+      return Ok(redirect_resp(format!("{}", loc)));
     }
-
-    let redirect = redirect_resp(url);
-    return Ok(redirect);
-  } else {
-    let mut file_path = root_path();
-    file_path.push(&req.uri().path()[1..]);
-    println!("FILE PATH: {:?}", file_path);
-    if file_path.is_dir() || !file_path.exists() {
-      let mut not_found_resp = Response::new(Body::empty());
-      *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
-      return Ok(not_found_resp);
-    }
-
-    let file = tokio::fs::read(file_path).await.unwrap();
-    let file_resp = custom_headers(req.uri().path(), file);
-    return Ok(file_resp);
   }
+  
+  let mut file_path = root_path();
+  file_path.push(&req.uri().path()[1..]);
+  if file_path.is_dir() || !file_path.exists() {
+    let mut not_found_resp = Response::new(Body::empty());
+    *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
+    return Ok(not_found_resp);
+  }
+
+  let file = tokio::fs::read(file_path).await.unwrap();
+  let file_resp = custom_headers(req.uri().path(), file);
+  return Ok(file_resp);
 }
 
 async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
@@ -541,9 +541,12 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
     _ => {
       let mut file_path = root_path();
       file_path.push(&req.uri().path()[1..]);
-      let file = tokio::fs::read(file_path).await.unwrap();
-      let file_resp = custom_headers(&req.uri().path()[1..], file);
-      return Ok(file_resp);
+      if let Ok(file) = tokio::fs::read(file_path).await {
+        let file_resp = custom_headers(&req.uri().path()[1..], file);
+        return Ok(file_resp);
+      }
+
+      return Ok(Response::new(Body::empty()));
     }
   };
 }
@@ -686,13 +689,16 @@ pub async fn run_all_servers() {
   
 
   let mut did_print_ready = false;
-  futures::future::poll_fn(move |cx| {
+  // TODO: Fix this to handle Err problem
+  match futures::future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
     if !replace(&mut did_print_ready, true) {
       println!("ready");
     }
     poll_result
-  }).await;
+  }).await {
+    _ => { }
+  }
 }
 
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
