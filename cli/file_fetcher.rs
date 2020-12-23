@@ -174,7 +174,7 @@ fn get_source_from_data_url(
   };
   let (media_type, maybe_charset) =
     map_content_type(specifier, Some(media_type_part.to_string()));
-  let is_base64 = media_type_part.rsplit(";").any(|p| p == "base64");
+  let is_base64 = media_type_part.rsplit(';').any(|p| p == "base64");
   let bytes = if is_base64 {
     base64::decode(data_part)?
   } else {
