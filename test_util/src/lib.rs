@@ -9,33 +9,34 @@ use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
 use futures::TryStreamExt;
+use hyper::header::HeaderValue;
+use hyper::service::make_service_fn;
+use hyper::service::service_fn;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::Server;
 use hyper::StatusCode;
-use hyper::header::HeaderValue;
-use hyper::service::make_service_fn;
-use hyper::service::service_fn;
 use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
+use std::collections::HashMap;
+use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
+use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::process::Child;
 use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 use std::result::Result;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
-use std::{collections::HashMap, net::SocketAddr};
-use std::env;
-use std::pin::Pin;
-use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tempfile::TempDir;
@@ -225,14 +226,10 @@ async fn get_tls_config(
   let mut key_reader = std::io::BufReader::new(key_file);
   let key = {
     let pkcs8_key =
-      rustls::internal::pemfile::pkcs8_private_keys(
-        &mut key_reader,
-      )
+      rustls::internal::pemfile::pkcs8_private_keys(&mut key_reader)
+        .expect("Cannot load key file");
+    let rsa_key = rustls::internal::pemfile::rsa_private_keys(&mut key_reader)
       .expect("Cannot load key file");
-    let rsa_key = rustls::internal::pemfile::rsa_private_keys(
-      &mut key_reader,
-    )
-    .expect("Cannot load key file");
     if !pkcs8_key.is_empty() {
       Some(pkcs8_key[0].clone())
     } else if !rsa_key.is_empty() {
@@ -244,9 +241,7 @@ async fn get_tls_config(
 
   match key {
     Some(key) => {
-      let mut config = rustls::ServerConfig::new(
-        rustls::NoClientAuth::new(),
-      );
+      let mut config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
       config
         .set_single_cert(cert, key)
         .map_err(|e| {
