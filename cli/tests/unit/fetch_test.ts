@@ -1013,3 +1013,43 @@ MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
     client.close();
   },
 );
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyReadableStream(): Promise<void> {
+    const addr = "127.0.0.1:4502";
+    const buf = bufferServer(addr);
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    await writer.write(new TextEncoder().encode("hello "));
+    await writer.write(new TextEncoder().encode("world"));
+    await writer.close();
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body: stream.readable,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n`,
+      `content-length: 11\r\n\r\n`,
+      "hello world",
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
