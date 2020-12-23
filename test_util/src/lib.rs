@@ -590,7 +590,9 @@ async fn wrap_redirect_server() {
     make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(redirect)) });
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
-  redirect_server.await.unwrap();
+  if let Err(e) = redirect_server.await {
+    eprintln!("Redirect error: {:?}", e);
+  }
 }
 
 async fn wrap_double_redirect_server() {
@@ -601,7 +603,9 @@ async fn wrap_double_redirect_server() {
     SocketAddr::from(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
   let double_redirects_server =
     Server::bind(&double_redirects_addr).serve(double_redirects_svc);
-  double_redirects_server.await.unwrap();
+  if let Err(e) = double_redirects_server.await {
+    eprintln!("Double redirect error: {:?}", e);
+  }
 }
 
 async fn wrap_inf_redirect_server() {
@@ -612,7 +616,9 @@ async fn wrap_inf_redirect_server() {
     SocketAddr::from(([127, 0, 0, 1], INF_REDIRECTS_PORT));
   let inf_redirects_server =
     Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
-  inf_redirects_server.await.unwrap();
+  if let Err(e) = inf_redirects_server.await {
+    eprintln!("Inf redirect error: {:?}", e);
+  }
 }
 
 async fn wrap_another_redirect_server() {
@@ -623,7 +629,9 @@ async fn wrap_another_redirect_server() {
     SocketAddr::from(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
   let another_redirect_server =
     Server::bind(&another_redirect_addr).serve(another_redirect_svc);
-  another_redirect_server.await.unwrap();
+  if let Err(e) = another_redirect_server.await {
+    eprintln!("Another redirect error: {:?}", e);
+  }
 }
 
 async fn wrap_abs_redirect_server() {
@@ -634,7 +642,9 @@ async fn wrap_abs_redirect_server() {
     SocketAddr::from(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
   let abs_redirect_server =
     Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
-  abs_redirect_server.await.unwrap();
+  if let Err(e) = abs_redirect_server.await {
+    eprintln!("Absolute redirect error: {:?}", e);
+  }
 }
 
 async fn wrap_main_server() {
@@ -643,7 +653,9 @@ async fn wrap_main_server() {
   });
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
-  main_server.await.unwrap();
+  if let Err(e) = main_server.await {
+    eprintln!("HTTP server error: {:?}", e);
+  }
 }
 
 async fn wrap_main_https_server() {
@@ -656,35 +668,42 @@ async fn wrap_main_https_server() {
   let mut tcp = TcpListener::bind(&main_server_https_addr)
     .await
     .expect("Cannot bind TCP");
-  let tls_acceptor = tokio_rustls::TlsAcceptor::from(tls_config);
-
-  // Prepare a long-running future stream to accept and serve cients.
-  let incoming_tls_stream = tcp
-    .incoming()
-    .map_err(|e| {
-      eprintln!("Error Incoming: {:?}", e);
-      std::io::Error::new(std::io::ErrorKind::Other, e)
-    })
-    .and_then(move |s| {
-      use futures::TryFutureExt;
-      tls_acceptor.accept(s).map_err(|e| {
-        println!("[!] Voluntary server halt due to client-connection error...");
-        // Errors could be handled here, instead of server aborting.
-        // Ok(None)
-        eprintln!("TLS Error {:?}", e);
+  loop {
+    let tls_acceptor = tokio_rustls::TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = tcp
+      .incoming()
+      .map_err(|e| {
+        eprintln!("Error Incoming: {:?}", e);
         std::io::Error::new(std::io::ErrorKind::Other, e)
       })
-    })
-    .boxed();
+      .and_then(move |s| {
+        use futures::TryFutureExt;
+        tls_acceptor.accept(s).map_err(|e| {
+          println!(
+            "[!] Voluntary server halt due to client-connection error..."
+          );
+          // Errors could be handled here, instead of server aborting.
+          // Ok(None)
+          eprintln!("TLS Error {:?}", e);
+          e
+        })
+      })
+      .boxed();
 
-  let main_server_https_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(main_server))
-  });
-  let main_server_https = Server::builder(HyperAcceptor {
-    acceptor: incoming_tls_stream,
-  })
-  .serve(main_server_https_svc);
-  main_server_https.await.unwrap();
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, hyper::Error>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if let Err(_) = main_server_https.await {
+      continue;
+    }
+  }
 }
 
 #[tokio::main]
