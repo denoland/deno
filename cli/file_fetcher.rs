@@ -27,7 +27,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub const SUPPORTED_SCHEMES: [&str; 3] = ["http", "https", "file"];
+pub const SUPPORTED_SCHEMES: [&str; 4] = ["data", "file", "http", "https"];
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -143,6 +143,45 @@ pub fn get_source_from_bytes(
   };
 
   Ok(source)
+}
+
+fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<(String, MediaType, String), AnyError> {
+  let url = specifier.as_url();
+  if url.scheme() != "data" {
+    return Err(custom_error(
+      "BadScheme",
+      format!("Unexpected scheme of \"{}\"", url.scheme()),
+    ));
+  }
+  if url.query().is_some() {
+    return Err(custom_error(
+      "BadUrl",
+      "The data URL includes a query string which is not supported.",
+    ));
+  }
+  let path = url.path();
+  let mut parts = path.splitn(2, ',');
+  let media_type_part = parts.next().unwrap();
+  let data_part = if let Some(data) = parts.next() {
+    data
+  } else {
+    return Err(custom_error(
+      "BadUrl",
+      "The data URL is badly formed, missing a comma.",
+    ));
+  };
+  let (media_type, maybe_charset) =
+    map_content_type(specifier, Some(media_type_part.to_string()));
+  let is_base64 = media_type_part.rsplit(";").any(|p| p == "base64");
+  let bytes = if is_base64 {
+    base64::decode(data_part)?
+  } else {
+    percent_encoding::percent_decode_str(data_part).collect()
+  };
+  let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+  Ok((source, media_type, media_type_part.to_string()))
 }
 
 /// Return a validated scheme for a given module specifier.
@@ -354,6 +393,47 @@ impl FileFetcher {
     Ok(Some(file))
   }
 
+  /// Convert a data URL into a file, resulting in an error if the URL is
+  /// invalid.
+  fn fetch_data_url(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<File, AnyError> {
+    debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
+    match self.fetch_cached(specifier, 0) {
+      Ok(Some(file)) => return Ok(file),
+      Ok(None) => {}
+      Err(err) => return Err(err),
+    }
+
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "Specifier not found in cache: \"{}\", --cached-only is specified.",
+          specifier
+        ),
+      ));
+    }
+
+    let (source, media_type, content_type) =
+      get_source_from_data_url(specifier)?;
+    let local = self.http_cache.get_cache_filename(specifier.as_url());
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), content_type);
+    self
+      .http_cache
+      .set(specifier.as_url(), headers, source.as_bytes())?;
+
+    Ok(File {
+      local,
+      maybe_types: None,
+      media_type,
+      source,
+      specifier: specifier.clone(),
+    })
+  }
+
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -451,9 +531,14 @@ impl FileFetcher {
     if let Some(file) = self.cache.get(specifier) {
       Ok(file)
     } else {
-      let is_local = scheme == "file";
-      if is_local {
+      if scheme == "file" {
         fetch_local(specifier)
+      } else if scheme == "data" {
+        let result = self.fetch_data_url(specifier);
+        if let Ok(file) = &result {
+          self.cache.insert(specifier.clone(), file.clone());
+        }
+        result
       } else if !self.allow_remote {
         Err(custom_error(
           "NoRemote",
@@ -582,12 +667,43 @@ mod tests {
   }
 
   #[test]
+  fn test_get_source_from_data_url() {
+    let fixtures = vec![
+      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
+      ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
+      ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
+      ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
+    ];
+
+    for (
+      url_str,
+      expected_ok,
+      expected_media_type,
+      expected_media_type_str,
+      expected,
+    ) in fixtures
+    {
+      let specifier = ModuleSpecifier::resolve_url(url_str).unwrap();
+      let actual = get_source_from_data_url(&specifier);
+      assert_eq!(actual.is_ok(), expected_ok);
+      if expected_ok {
+        let (actual, actual_media_type, actual_media_type_str) =
+          actual.unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(actual_media_type, expected_media_type);
+        assert_eq!(actual_media_type_str, expected_media_type_str);
+      }
+    }
+  }
+
+  #[test]
   fn test_get_validated_scheme() {
     let fixtures = vec![
       ("https://deno.land/x/mod.ts", true, "https"),
       ("http://deno.land/x/mod.ts", true, "http"),
       ("file:///a/b/c.ts", true, "file"),
       ("file:///C:/a/b/c.ts", true, "file"),
+      ("data:,some%20text", true, "data"),
       ("ftp://a/b/c.ts", false, ""),
       ("mailto:dino@deno.land", false, ""),
     ];
@@ -825,6 +941,25 @@ mod tests {
     let expected = temp_dir.path().join("deps");
     let actual = file_fetcher.get_http_cache_location();
     assert_eq!(actual, expected);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_data_url() {
+    let (file_fetcher, _) = setup(CacheSetting::Use, None);
+    let specifier = ModuleSpecifier::resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+
+    let result = file_fetcher
+      .fetch(&specifier, &Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    assert_eq!(
+      file.source,
+      "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+    );
+    assert_eq!(file.media_type, MediaType::TypeScript);
+    assert_eq!(file.maybe_types, None);
+    assert_eq!(file.specifier, specifier);
   }
 
   #[tokio::test]
