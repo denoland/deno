@@ -502,48 +502,54 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn did_change_configuration(
     &self,
-    _params: DidChangeConfigurationParams,
+    params: DidChangeConfigurationParams,
   ) {
-    if !self
+    let config = if self
       .config
       .read()
       .unwrap()
       .client_capabilities
       .workspace_configuration
     {
-      // Client does not support workspace configuration
-      return;
-    }
+      self
+        .client
+        .configuration(vec![ConfigurationItem {
+          scope_uri: None,
+          section: Some("deno".to_string()),
+        }])
+        .await
+        .map(|vec| vec.get(0).cloned())
+        .unwrap_or_else(|err| {
+          error!("failed to fetch the extension settings {:?}", err);
+          None
+        })
+    } else {
+      params
+        .settings
+        .as_object()
+        .map(|settings| settings.get("deno"))
+        .flatten()
+        .cloned()
+    };
 
-    let res = self
-      .client
-      .configuration(vec![ConfigurationItem {
-        scope_uri: None,
-        section: Some("deno".to_string()),
-      }])
-      .await
-      .map(|vec| vec.get(0).cloned());
-
-    match res {
-      Err(err) => error!("failed to fetch the extension settings {:?}", err),
-      Ok(Some(config)) => {
-        if let Err(err) = self.config.write().unwrap().update(config) {
-          error!("failed to update settings: {}", err);
-        }
-        if let Err(err) = self.update_import_map().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
-        }
-        if let Err(err) = self.update_tsconfig().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
-        }
+    if let Some(config) = config {
+      if let Err(err) = self.config.write().unwrap().update(config) {
+        error!("failed to update settings: {}", err);
       }
-      _ => error!("received empty extension settings from the client"),
+      if let Err(err) = self.update_import_map().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.update_tsconfig().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+    } else {
+      error!("received empty extension settings from the client");
     }
   }
 
