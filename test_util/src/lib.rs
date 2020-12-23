@@ -700,7 +700,7 @@ async fn wrap_main_https_server() {
     .serve(main_server_https_svc);
 
     //continue to prevent TLS error stopping the server
-    if let Err(_) = main_server_https.await {
+    if main_server_https.await.is_err() {
       continue;
     }
   }
