@@ -23,10 +23,10 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
+use std::result::Result;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::{collections::HashMap, net::SocketAddr};
-use std::result::Result;
 use std::{
   env,
   pin::Pin,
@@ -35,7 +35,7 @@ use std::{
 };
 use tempfile::TempDir;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_rustls::{TlsAcceptor, rustls::ServerConfig};
+use tokio_rustls::{rustls::ServerConfig, TlsAcceptor};
 use tokio_tungstenite::accept_async;
 
 const PORT: u16 = 4545;
@@ -237,15 +237,23 @@ async fn get_tls_config(
 
   match key {
     Some(key) => {
-      let mut config = tokio_rustls::rustls::ServerConfig::new(tokio_rustls::rustls::NoClientAuth::new());
-      config.set_single_cert(cert, key).map_err(|e| {
-        eprintln!("Error setting cert: {:?}", e);
-      }).unwrap();
+      let mut config = tokio_rustls::rustls::ServerConfig::new(
+        tokio_rustls::rustls::NoClientAuth::new(),
+      );
+      config
+        .set_single_cert(cert, key)
+        .map_err(|e| {
+          eprintln!("Error setting cert: {:?}", e);
+        })
+        .unwrap();
 
       return Ok(Arc::new(config));
     }
     None => {
-      return Err(std::io::Error::new(std::io::ErrorKind::Other, "Cannot find key"));
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Cannot find key",
+      ));
     }
   }
 }
@@ -254,12 +262,10 @@ async fn run_wss_server(addr: &SocketAddr) {
   let cert_file = "std/http/testdata/tls/localhost.crt";
   let key_file = "std/http/testdata/tls/localhost.key";
 
-  let tls_config = get_tls_config(cert_file, key_file)
-    .await
-    .unwrap();
+  let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let mut listener = TcpListener::bind(addr).await.unwrap();
-  
+
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
     match acceptor.accept(stream).await {
@@ -292,17 +298,17 @@ async fn absolute_redirect(
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
     println!("URL: {:?}", url);
-    let redirect = redirect_resp(format!("{}", url));
+    let redirect = redirect_resp(url.to_string());
     return Ok(redirect);
-  } 
-  
+  }
+
   if path.starts_with("/a/b/c") {
     if let Some(x_loc) = req.headers().get("x-location") {
       let loc = x_loc.to_str().unwrap();
-      return Ok(redirect_resp(format!("{}", loc)));
+      return Ok(redirect_resp(loc.to_string()));
     }
   }
-  
+
   let mut file_path = root_path();
   file_path.push(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
@@ -577,63 +583,70 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
   }
 }
 
-unsafe impl std::marker::Send for HyperAcceptor<'_> { }
+unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
-#[tokio::main]
-pub async fn run_all_servers() {
-  if let Some(port) = env::args().nth(1) {
-    return hyper_hello(port.parse::<u16>().unwrap()).await;
-  }
-
+async fn wrap_redirect_server() {
   let redirect_svc =
     make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(redirect)) });
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
-  let redirect_server_fut = Server::bind(&redirect_addr).serve(redirect_svc);
+  let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
+  redirect_server.await.unwrap();
+}
 
+async fn wrap_double_redirect_server() {
   let double_redirects_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(double_redirects))
   });
   let double_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
-  let double_redirects_server_fut =
+  let double_redirects_server =
     Server::bind(&double_redirects_addr).serve(double_redirects_svc);
+  double_redirects_server.await.unwrap();
+}
 
+async fn wrap_inf_redirect_server() {
   let inf_redirects_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(inf_redirects))
   });
   let inf_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], INF_REDIRECTS_PORT));
-  let inf_redirects_server_fut =
+  let inf_redirects_server =
     Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
+  inf_redirects_server.await.unwrap();
+}
 
+async fn wrap_another_redirect_server() {
   let another_redirect_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(another_redirect))
   });
   let another_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
-  let another_redirect_server_fut =
+  let another_redirect_server =
     Server::bind(&another_redirect_addr).serve(another_redirect_svc);
+  another_redirect_server.await.unwrap();
+}
 
-  let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
-  let ws_server_fut = run_ws_server(&ws_addr);
-  let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
-  let wss_server_fut = run_wss_server(&wss_addr);
-
+async fn wrap_abs_redirect_server() {
   let abs_redirect_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(absolute_redirect))
   });
   let abs_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
-  let abs_redirect_server_fut =
+  let abs_redirect_server =
     Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
+  abs_redirect_server.await.unwrap();
+}
 
+async fn wrap_main_server() {
   let main_server_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(main_server))
   });
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
-  let main_server_fut = Server::bind(&main_server_addr).serve(main_server_svc);
+  let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
+  main_server.await.unwrap();
+}
 
-  // From run_https_server
+async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
   let cert_file = "std/http/testdata/tls/localhost.crt";
   let key_file = "std/http/testdata/tls/localhost.key";
@@ -655,11 +668,11 @@ pub async fn run_all_servers() {
     .and_then(move |s| {
       use futures::TryFutureExt;
       tls_acceptor.accept(s).map_err(|e| {
-          println!("[!] Voluntary server halt due to client-connection error...");
-          // Errors could be handled here, instead of server aborting.
-          // Ok(None)
-          eprintln!("TLS Error {:?}", e);
-          std::io::Error::new(std::io::ErrorKind::Other, e)
+        println!("[!] Voluntary server halt due to client-connection error...");
+        // Errors could be handled here, instead of server aborting.
+        // Ok(None)
+        eprintln!("TLS Error {:?}", e);
+        std::io::Error::new(std::io::ErrorKind::Other, e)
       })
     })
     .boxed();
@@ -667,10 +680,32 @@ pub async fn run_all_servers() {
   let main_server_https_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(main_server))
   });
-  let main_server_https_fut = Server::builder(HyperAcceptor {
+  let main_server_https = Server::builder(HyperAcceptor {
     acceptor: incoming_tls_stream,
   })
   .serve(main_server_https_svc);
+  main_server_https.await.unwrap();
+}
+
+#[tokio::main]
+pub async fn run_all_servers() {
+  if let Some(port) = env::args().nth(1) {
+    return hyper_hello(port.parse::<u16>().unwrap()).await;
+  }
+
+  let redirect_server_fut = wrap_redirect_server();
+  let double_redirects_server_fut = wrap_double_redirect_server();
+  let inf_redirects_server_fut = wrap_inf_redirect_server();
+  let another_redirect_server_fut = wrap_another_redirect_server();
+  let abs_redirect_server_fut = wrap_abs_redirect_server();
+
+  let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
+  let ws_server_fut = run_ws_server(&ws_addr);
+  let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
+  let wss_server_fut = run_wss_server(&wss_addr);
+
+  let main_server_fut = wrap_main_server();
+  let main_server_https_fut = wrap_main_https_server();
 
   let mut server_fut = async {
     futures::join!(
@@ -686,19 +721,16 @@ pub async fn run_all_servers() {
     )
   }
   .boxed();
-  
 
   let mut did_print_ready = false;
-  // TODO: Fix this to handle Err problem
-  match futures::future::poll_fn(move |cx| {
+  futures::future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
     if !replace(&mut did_print_ready, true) {
       println!("ready");
     }
     poll_result
-  }).await {
-    _ => { }
-  }
+  })
+  .await;
 }
 
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
