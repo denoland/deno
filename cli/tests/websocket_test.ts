@@ -159,7 +159,9 @@ Deno.test("websocket error", async () => {
   ws.onopen = () => fail();
   ws.onerror = (err): void => {
     assert(err instanceof ErrorEvent);
-    assertEquals(err.message, "InvalidData: received corrupt message");
+
+    // Error message got changed because we don't use warp in test_util
+    assertEquals(err.message, "UnexpectedEof: tls handshake eof");
     promise1.resolve();
   };
   await promise1;
