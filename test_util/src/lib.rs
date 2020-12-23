@@ -5,12 +5,18 @@
 #[macro_use]
 extern crate lazy_static;
 
-use futures::{FutureExt, Stream, StreamExt, TryStreamExt};
-use hyper::{
-  header::HeaderValue,
-  service::{make_service_fn, service_fn},
-  Body, Request, Response, Server, StatusCode,
-};
+use futures::FutureExt;
+use futures::Stream;
+use futures::StreamExt;
+use futures::TryStreamExt;
+use hyper::Body;
+use hyper::Request;
+use hyper::Response;
+use hyper::Server;
+use hyper::StatusCode;
+use hyper::header::HeaderValue;
+use hyper::service::make_service_fn;
+use hyper::service::service_fn;
 use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
@@ -27,15 +33,16 @@ use std::result::Result;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::{collections::HashMap, net::SocketAddr};
-use std::{
-  env,
-  pin::Pin,
-  sync::Arc,
-  task::{Context, Poll},
-};
+use std::env;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 use tempfile::TempDir;
-use tokio::net::{TcpListener, TcpStream};
-use tokio_rustls::{rustls::ServerConfig, TlsAcceptor};
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
+use tokio_rustls::rustls;
+use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
 const PORT: u16 = 4545;
@@ -203,7 +210,7 @@ async fn run_ws_server(addr: &SocketAddr) {
 async fn get_tls_config(
   cert: &str,
   key: &str,
-) -> Result<Arc<ServerConfig>, std::io::Error> {
+) -> Result<Arc<rustls::ServerConfig>, std::io::Error> {
   let mut cert_path = root_path();
   let mut key_path = root_path();
   cert_path.push(cert);
@@ -213,16 +220,16 @@ async fn get_tls_config(
   let key_file = std::fs::File::open(key_path)?;
 
   let mut cert_reader = std::io::BufReader::new(cert_file);
-  let cert = tokio_rustls::rustls::internal::pemfile::certs(&mut cert_reader)
+  let cert = rustls::internal::pemfile::certs(&mut cert_reader)
     .expect("Cannot load certificate");
   let mut key_reader = std::io::BufReader::new(key_file);
   let key = {
     let pkcs8_key =
-      tokio_rustls::rustls::internal::pemfile::pkcs8_private_keys(
+      rustls::internal::pemfile::pkcs8_private_keys(
         &mut key_reader,
       )
       .expect("Cannot load key file");
-    let rsa_key = tokio_rustls::rustls::internal::pemfile::rsa_private_keys(
+    let rsa_key = rustls::internal::pemfile::rsa_private_keys(
       &mut key_reader,
     )
     .expect("Cannot load key file");
@@ -237,8 +244,8 @@ async fn get_tls_config(
 
   match key {
     Some(key) => {
-      let mut config = tokio_rustls::rustls::ServerConfig::new(
-        tokio_rustls::rustls::NoClientAuth::new(),
+      let mut config = rustls::ServerConfig::new(
+        rustls::NoClientAuth::new(),
       );
       config
         .set_single_cert(cert, key)
@@ -669,7 +676,7 @@ async fn wrap_main_https_server() {
     .await
     .expect("Cannot bind TCP");
   loop {
-    let tls_acceptor = tokio_rustls::TlsAcceptor::from(tls_config.clone());
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = tcp
       .incoming()
@@ -680,11 +687,6 @@ async fn wrap_main_https_server() {
       .and_then(move |s| {
         use futures::TryFutureExt;
         tls_acceptor.accept(s).map_err(|e| {
-          println!(
-            "[!] Voluntary server halt due to client-connection error..."
-          );
-          // Errors could be handled here, instead of server aborting.
-          // Ok(None)
           eprintln!("TLS Error {:?}", e);
           e
         })
