@@ -67,7 +67,7 @@ swc_common = { version = "0.10.7", features = ["sourcemap"] }
 swc_ecmascript = { version = "0.16.0", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
-tokio = { version = "0.3.5", features = ["full"] }
+tokio = { version = "1.0", features = ["full"] }
 tokio-rustls = "0.21.1"
 tokio-compat-02 = "0.1.2"
 uuid = { version = "0.8.1", features = ["v4"] }

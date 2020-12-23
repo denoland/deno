@@ -278,6 +278,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0dcbc35f504eb6fc275a6d20e4ebcda18cf50d40ba6fabff8c711fa16cb3b16"
 
 [[package]]
+name = "bytes"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad1f8e949d755f9d79112b5bb46938e0ef9d3804a0b16dfab13aafcaa5f0fa72"
+
+[[package]]
 name = "cargo_gn"
 version = "0.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -503,7 +509,7 @@ dependencies = [
  "tempfile",
  "termcolor",
  "test_util",
- "tokio 0.3.5",
+ "tokio 1.0.0",
  "tokio-compat-02",
  "tokio-rustls 0.21.1",
  "tokio-tungstenite 0.12.0",
@@ -529,7 +535,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "tokio 0.3.5",
+ "tokio 1.0.0",
  "url",
 ]
 
@@ -617,7 +623,7 @@ dependencies = [
  "sys-info",
  "termcolor",
  "test_util",
- "tokio 0.3.5",
+ "tokio 1.0.0",
  "tokio-rustls 0.21.1",
  "tokio-tungstenite 0.12.0",
  "uuid",
@@ -3076,12 +3082,26 @@ dependencies = [
  "libc",
  "memchr",
  "mio 0.7.6",
+ "pin-project-lite 0.2.0",
+]
+
+[[package]]
+name = "tokio"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f4bfdcbd00fa893ac0549b38aa27080636a0104b0d0c38475a99439405e1df8"
+dependencies = [
+ "autocfg 1.0.1",
+ "bytes 1.0.0",
+ "libc",
+ "memchr",
+ "mio 0.7.6",
  "num_cpus",
+ "once_cell",
  "parking_lot",
  "pin-project-lite 0.2.0",
  "signal-hook-registry",
- "slab",
- "tokio-macros 0.3.1",
+ "tokio-macros 1.0.0",
  "winapi 0.3.9",
 ]
 
@@ -3111,9 +3131,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "0.3.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21d30fdbb5dc2d8f91049691aa1a9d4d4ae422a21c334ce8936e5886d30c5c45"
+checksum = "42517d2975ca3114b22a16192634e8241dc5cc1f130be194645970cc1c371494"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
