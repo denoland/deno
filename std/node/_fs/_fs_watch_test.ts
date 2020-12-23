@@ -16,7 +16,7 @@ Deno.test({
       file,
       (eventType, filename) => result.push([eventType, filename]),
     );
-    wait(100);
+    await wait(100);
     Deno.writeTextFileSync(file, "something");
     await wait(100);
     watcher.close();
