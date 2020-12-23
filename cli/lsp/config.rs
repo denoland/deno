@@ -21,7 +21,10 @@ pub struct WorkspaceSettings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
+
+  #[serde(default)]
   pub lint: bool,
+  #[serde(default)]
   pub unstable: bool,
 }
 
