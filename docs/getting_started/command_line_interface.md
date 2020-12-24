@@ -94,6 +94,12 @@ watcher. When Deno starts up with this flag it watches the entrypoint, and all
 local files the entrypoint statically imports. Whenever one of these files is
 changed on disk, the program will automatically be restarted.
 
+Both `--watch` and `--unstable` are Deno runtime flags and should be passed before user-space arguments:
+
+```
+deno run --watch --unstable main.ts
+```
+
 ### Integrity flags
 
 Affect commands which can download resources to the cache: `deno cache`,
