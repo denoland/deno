@@ -2,6 +2,7 @@
 
 use super::analysis::get_lint_references;
 use super::analysis::references_to_diagnostics;
+use super::analysis::ResolvedDependency;
 use super::language_server::StateSnapshot;
 use super::memory_cache::FileId;
 use super::tsc;
@@ -9,6 +10,7 @@ use super::tsc;
 use crate::diagnostics;
 use crate::media_type::MediaType;
 
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -19,6 +21,7 @@ use std::mem;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum DiagnosticSource {
+  Deno,
   Lint,
   TypeScript,
 }
@@ -260,4 +263,77 @@ pub async fn generate_ts_diagnostics(
   }
 
   Ok(diagnostics)
+}
+
+pub async fn generate_dependency_diagnostics(
+  state_snapshot: StateSnapshot,
+  diagnostic_collection: DiagnosticCollection,
+) -> Result<DiagnosticVec, AnyError> {
+  tokio::task::spawn_blocking(move || {
+    let mut diagnostics = Vec::new();
+
+    let file_cache = state_snapshot.file_cache.read().unwrap();
+    let mut sources = if let Ok(sources) = state_snapshot.sources.write() {
+      sources
+    } else {
+      return Err(custom_error("Deadlock", "deadlock locking sources"));
+    };
+    for (specifier, doc_data) in state_snapshot.doc_data.iter() {
+      let file_id = file_cache.lookup(specifier).unwrap();
+      let version = doc_data.version;
+      let current_version = diagnostic_collection.get_version(&file_id);
+      if version != current_version {
+        let mut diagnostic_list = Vec::new();
+        if let Some(dependencies) = &doc_data.dependencies {
+          for (_, dependency) in dependencies.iter() {
+            if let (Some(code), Some(range)) = (
+              &dependency.maybe_code,
+              &dependency.maybe_code_specifier_range,
+            ) {
+              match code.clone() {
+                ResolvedDependency::Err(message) => {
+                  diagnostic_list.push(lsp_types::Diagnostic {
+                    range: *range,
+                    severity: Some(lsp_types::DiagnosticSeverity::Error),
+                    code: None,
+                    code_description: None,
+                    source: Some("deno".to_string()),
+                    message,
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                  })
+                }
+                ResolvedDependency::Resolved(specifier) => {
+                  if !(state_snapshot.doc_data.contains_key(&specifier) || sources.contains(&specifier)) {
+                    let is_local = specifier.as_url().scheme() == "file";
+                    diagnostic_list.push(lsp_types::Diagnostic {
+                      range: *range,
+                      severity: Some(lsp_types::DiagnosticSeverity::Error),
+                      code: None,
+                      code_description: None,
+                      source: Some("deno".to_string()),
+                      message: if is_local {
+                        format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)
+                      } else {
+                        format!("Unable to load the module: \"{}\".\n  If the module exists, running `deno cache {}` should resolve this error.", specifier, specifier)
+                      },
+                      related_information: None,
+                      tags: None,
+                      data: None,
+                    })
+                  }
+                },
+              }
+            }
+          }
+        }
+        diagnostics.push((file_id, version, diagnostic_list))
+      }
+    }
+
+    Ok(diagnostics)
+  })
+  .await
+  .unwrap()
 }
