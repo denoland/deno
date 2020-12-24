@@ -23,6 +23,7 @@ pub use pty;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
+use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
@@ -192,26 +193,28 @@ async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn run_ws_server(addr: &SocketAddr) {
   let mut listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
-    let ws_stream_fut = accept_async(stream);
+    tokio::spawn(async move {
+      let ws_stream_fut = accept_async(stream);
 
-    let ws_stream = ws_stream_fut.await;
-    if let Ok(ws_stream) = ws_stream {
-      let (tx, rx) = ws_stream.split();
-      rx.forward(tx)
-        .map(|result| {
-          if let Err(e) = result {
-            println!("websocket server error: {:?}", e);
-          }
-        })
-        .await;
-    }
+      let ws_stream = ws_stream_fut.await;
+      if let Ok(ws_stream) = ws_stream {
+        let (tx, rx) = ws_stream.split();
+        rx.forward(tx)
+          .map(|result| {
+            if let Err(e) = result {
+              println!("websocket server error: {:?}", e);
+            }
+          })
+          .await;
+      }
+    });
   }
 }
 
 async fn get_tls_config(
   cert: &str,
   key: &str,
-) -> Result<Arc<rustls::ServerConfig>, std::io::Error> {
+) -> io::Result<Arc<rustls::ServerConfig>> {
   let mut cert_path = root_path();
   let mut key_path = root_path();
   cert_path.push(cert);
@@ -220,10 +223,10 @@ async fn get_tls_config(
   let cert_file = std::fs::File::open(cert_path)?;
   let key_file = std::fs::File::open(key_path)?;
 
-  let mut cert_reader = std::io::BufReader::new(cert_file);
+  let mut cert_reader = io::BufReader::new(cert_file);
   let cert = rustls::internal::pemfile::certs(&mut cert_reader)
     .expect("Cannot load certificate");
-  let mut key_reader = std::io::BufReader::new(key_file);
+  let mut key_reader = io::BufReader::new(key_file);
   let key = {
     let pkcs8_key =
       rustls::internal::pemfile::pkcs8_private_keys(&mut key_reader)
@@ -252,10 +255,7 @@ async fn get_tls_config(
       return Ok(Arc::new(config));
     }
     None => {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "Cannot find key",
-      ));
+      return Err(io::Error::new(io::ErrorKind::Other, "Cannot find key"));
     }
   }
 }
@@ -270,25 +270,27 @@ async fn run_wss_server(addr: &SocketAddr) {
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
-    match acceptor.accept(stream).await {
-      Ok(tls_stream) => {
-        let ws_stream_fut = accept_async(tls_stream);
-        let ws_stream = ws_stream_fut.await;
-        if let Ok(ws_stream) = ws_stream {
-          let (tx, rx) = ws_stream.split();
-          rx.forward(tx)
-            .map(|result| {
-              if let Err(e) = result {
-                println!("Websocket server error: {:?}", e);
-              }
-            })
-            .await;
+    tokio::spawn(async move {
+      match acceptor.accept(stream).await {
+        Ok(tls_stream) => {
+          let ws_stream_fut = accept_async(tls_stream);
+          let ws_stream = ws_stream_fut.await;
+          if let Ok(ws_stream) = ws_stream {
+            let (tx, rx) = ws_stream.split();
+            rx.forward(tx)
+              .map(|result| {
+                if let Err(e) = result {
+                  println!("Websocket server error: {:?}", e);
+                }
+              })
+              .await;
+          }
+        }
+        Err(e) => {
+          eprintln!("TLS accept error: {:?}", e);
         }
       }
-      Err(e) => {
-        eprintln!("TLS accept error: {:?}", e);
-      }
-    }
+    });
   }
 }
 
@@ -563,19 +565,15 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
 struct HyperAcceptor<'a> {
   acceptor: Pin<
     Box<
-      dyn Stream<
-          Item = Result<
-            tokio_rustls::server::TlsStream<TcpStream>,
-            std::io::Error,
-          >,
-        > + 'a,
+      dyn Stream<Item = io::Result<tokio_rustls::server::TlsStream<TcpStream>>>
+        + 'a,
     >,
   >,
 }
 
 impl hyper::server::accept::Accept for HyperAcceptor<'_> {
   type Conn = tokio_rustls::server::TlsStream<TcpStream>;
-  type Error = std::io::Error;
+  type Error = io::Error;
 
   fn poll_accept(
     mut self: Pin<&mut Self>,
@@ -677,7 +675,7 @@ async fn wrap_main_https_server() {
       .incoming()
       .map_err(|e| {
         eprintln!("Error Incoming: {:?}", e);
-        std::io::Error::new(std::io::ErrorKind::Other, e)
+        io::Error::new(io::ErrorKind::Other, e)
       })
       .and_then(move |s| {
         use futures::TryFutureExt;
