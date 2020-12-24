@@ -178,9 +178,35 @@ impl LanguageServer {
       Ok::<(), AnyError>(())
     };
 
-    let (lint_res, ts_res) = tokio::join!(lint, ts);
+    let deps = async {
+      if enabled {
+        let diagnostics_collection = self.diagnostics.read().unwrap().clone();
+        let diagnostics = diagnostics::generate_dependency_diagnostics(
+          self.snapshot(),
+          diagnostics_collection,
+        )
+        .await?;
+        {
+          let mut diagnostics_collection = self.diagnostics.write().unwrap();
+          for (file_id, version, diagnostics) in diagnostics {
+            diagnostics_collection.set(
+              file_id,
+              DiagnosticSource::Deno,
+              version,
+              diagnostics,
+            );
+          }
+        }
+        self.publish_diagnostics().await?
+      };
+
+      Ok::<(), AnyError>(())
+    };
+
+    let (lint_res, ts_res, deps_res) = tokio::join!(lint, ts, deps);
     lint_res?;
     ts_res?;
+    deps_res?;
 
     Ok(())
   }
@@ -211,6 +237,11 @@ impl LanguageServer {
           diagnostics.extend(
             diagnostics_collection
               .diagnostics_for(file_id, DiagnosticSource::TypeScript)
+              .cloned(),
+          );
+          diagnostics.extend(
+            diagnostics_collection
+              .diagnostics_for(file_id, DiagnosticSource::Deno)
               .cloned(),
           );
         }

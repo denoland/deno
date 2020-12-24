@@ -23,7 +23,7 @@ use std::time::SystemTime;
 #[derive(Debug, Clone, Default)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
-  maybe_types: Option<analysis::ResolvedImport>,
+  maybe_types: Option<analysis::ResolvedDependency>,
   media_type: MediaType,
   source: String,
   version: String,
@@ -255,7 +255,7 @@ impl Sources {
     let dependencies = &metadata.dependencies?;
     let dependency = dependencies.get(specifier)?;
     if let Some(type_dependency) = &dependency.maybe_type {
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         type_dependency
       {
         self.resolution_result(resolved_specifier)
@@ -264,7 +264,7 @@ impl Sources {
       }
     } else {
       let code_dependency = &dependency.maybe_code.clone()?;
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         code_dependency
       {
         self.resolution_result(resolved_specifier)
