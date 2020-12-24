@@ -293,7 +293,7 @@ pub async fn generate_dependency_diagnostics(
               match code.clone() {
                 ResolvedDependency::Err(message) => {
                   diagnostic_list.push(lsp_types::Diagnostic {
-                    range: range.clone(),
+                    range: *range,
                     severity: Some(lsp_types::DiagnosticSeverity::Error),
                     code: None,
                     code_description: None,
@@ -308,7 +308,7 @@ pub async fn generate_dependency_diagnostics(
                   if !(state_snapshot.doc_data.contains_key(&specifier) || sources.contains(&specifier)) {
                     let is_local = specifier.as_url().scheme() == "file";
                     diagnostic_list.push(lsp_types::Diagnostic {
-                      range: range.clone(),
+                      range: *range,
                       severity: Some(lsp_types::DiagnosticSeverity::Error),
                       code: None,
                       code_description: None,
