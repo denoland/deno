@@ -324,7 +324,7 @@ mod tests {
           },
           end: Position {
             line: 8,
-            character: 56,
+            character: 58,
           }
         }),
       })
@@ -345,7 +345,7 @@ mod tests {
           },
           end: Position {
             line: 5,
-            character: 48,
+            character: 50,
           }
         }),
       })
