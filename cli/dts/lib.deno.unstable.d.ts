@@ -319,7 +319,7 @@ declare namespace Deno {
      * [tslib](https://www.npmjs.com/package/tslib). */
     importHelpers?: boolean;
     /** This flag controls how `import` works, there are 3 different options:
-     * 
+     *
      * - `remove`: The default behavior of dropping import statements which only
      *   reference types.
      * - `preserve`: Preserves all `import` statements whose values or types are
@@ -328,7 +328,7 @@ declare namespace Deno {
      *   but will error when a value import is only used as a type. This might
      *   be useful if you want to ensure no values are being accidentally
      *   imported, but still make side-effect imports explicit.
-     * 
+     *
      * This flag works because you can use `import type` to explicitly create an
      * `import` statement which should never be emitted into JavaScript. */
     importsNotUsedAsValues?: "remove" | "preserve" | "error";
@@ -1261,12 +1261,6 @@ declare namespace Deno {
    * The options used when creating a [HttpClient].
    */
   interface CreateHttpClientOptions {
-    /** A certificate authority to use when validating TLS certificates.
-     *
-     * Requires `allow-read` permission.
-     */
-    caFile?: string;
-
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;
