@@ -3,7 +3,7 @@
 #![deny(warnings)]
 
 use deno_core::error::bad_resource_id;
-use deno_core::error::generic_error;
+use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -190,7 +190,10 @@ where
     }));
   }
 
-  Err(generic_error("Cannot fetch the URL"))
+  return Err(custom_error(
+    "Http",
+    format!("error trying to connect ({})", url),
+  ));
 }
 
 pub async fn op_fetch_read(
