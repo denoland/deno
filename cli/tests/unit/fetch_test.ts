@@ -46,6 +46,19 @@ unitTest(
   },
 );
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchConnectionError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://<invalid>/");
+      },
+      TypeError,
+      "is not a valid Uri",
+    );
+  },
+);
+
 unitTest({ perms: { net: true } }, async function fetchJsonSuccess(): Promise<
   void
 > {

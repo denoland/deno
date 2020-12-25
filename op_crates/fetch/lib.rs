@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::BufVec;
@@ -126,7 +125,13 @@ where
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url)?;
+
+  let url_ = match Url::parse(&url) {
+    Ok(url) => url,
+    Err(_) => {
+      return Err(type_error(format!("'{}' is invalid Uri", url)));
+    }
+  };
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
