@@ -54,7 +54,7 @@ unitTest(
         await fetch("http://<invalid>/");
       },
       TypeError,
-      "is not a valid Uri",
+      "is invalid Uri",
     );
   },
 );

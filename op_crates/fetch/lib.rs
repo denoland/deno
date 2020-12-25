@@ -125,7 +125,6 @@ where
     None => Method::GET,
   };
 
-
   let url_ = match Url::parse(&url) {
     Ok(url) => url,
     Err(_) => {
