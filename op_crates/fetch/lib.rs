@@ -3,6 +3,7 @@
 #![deny(warnings)]
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -155,39 +156,41 @@ where
   }
   //debug!("Before fetch {}", url);
 
-  let res = request.send().await?;
+  if let Ok(res) = request.send().await {
+    //debug!("Fetch response {}", url);
+    let status = res.status();
+    let mut res_headers = Vec::new();
+    for (key, val) in res.headers().iter() {
+      let key_string = key.to_string();
 
-  //debug!("Fetch response {}", url);
-  let status = res.status();
-  let mut res_headers = Vec::new();
-  for (key, val) in res.headers().iter() {
-    let key_string = key.to_string();
-
-    if val.as_bytes().is_ascii() {
-      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
-    } else {
-      res_headers.push((
-        key_string,
-        val
-          .as_bytes()
-          .iter()
-          .map(|&c| c as char)
-          .collect::<String>(),
-      ));
+      if val.as_bytes().is_ascii() {
+        res_headers.push((key_string, val.to_str().unwrap().to_owned()))
+      } else {
+        res_headers.push((
+          key_string,
+          val
+            .as_bytes()
+            .iter()
+            .map(|&c| c as char)
+            .collect::<String>(),
+        ));
+      }
     }
+
+    let rid = state.borrow_mut().resource_table.add(HttpBodyResource {
+      response: AsyncRefCell::new(res),
+      cancel: Default::default(),
+    });
+
+    return Ok(json!({
+      "bodyRid": rid,
+      "status": status.as_u16(),
+      "statusText": status.canonical_reason().unwrap_or(""),
+      "headers": res_headers
+    }));
   }
 
-  let rid = state.borrow_mut().resource_table.add(HttpBodyResource {
-    response: AsyncRefCell::new(res),
-    cancel: Default::default(),
-  });
-
-  Ok(json!({
-    "bodyRid": rid,
-    "status": status.as_u16(),
-    "statusText": status.canonical_reason().unwrap_or(""),
-    "headers": res_headers
-  }))
+  Err(generic_error("Cannot fetch the URL"))
 }
 
 pub async fn op_fetch_read(
