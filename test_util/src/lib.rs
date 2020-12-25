@@ -15,7 +15,7 @@ use hyper::service::service_fn;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use hyper::Server;
+use hyper::server::Server;
 use hyper::StatusCode;
 use os_pipe::pipe;
 #[cfg(unix)]
@@ -134,9 +134,9 @@ async fn hyper_hello(port: u16) {
   println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let hello_svc = make_service_fn(|_| async move {
-    Ok::<_, hyper::error::Error>(service_fn(
+    Ok::<_, hyper::Error>(service_fn(
       move |_: Request<Body>| async move {
-        Ok::<_, hyper::error::Error>(Response::new(Body::from("Hello World!")))
+        Ok::<_, hyper::Error>(Response::new(Body::from("Hello World!")))
       },
     ))
   });
@@ -665,26 +665,20 @@ async fn wrap_main_https_server() {
   let tls_config = get_tls_config(cert_file, key_file)
     .await
     .expect("Cannot get TLS config");
-  let mut tcp = TcpListener::bind(&main_server_https_addr)
-    .await
-    .expect("Cannot bind TCP");
   loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
-    let incoming_tls_stream = tcp
-      .incoming()
-      .map_err(|e| {
-        eprintln!("Error Incoming: {:?}", e);
-        io::Error::new(io::ErrorKind::Other, e)
-      })
-      .and_then(move |s| {
-        use futures::TryFutureExt;
-        tls_acceptor.accept(s).map_err(|e| {
-          eprintln!("TLS Error {:?}", e);
-          e
-        })
-      })
-      .boxed();
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+          let stream = tls_acceptor.accept(socket);
+          yield stream.await;
+      }
+    }
+    .boxed();
 
     let main_server_https_svc = make_service_fn(|_| async {
       Ok::<_, hyper::Error>(service_fn(main_server))
