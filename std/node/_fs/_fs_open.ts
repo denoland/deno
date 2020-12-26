@@ -64,12 +64,13 @@ export function open(
     callback(err, 0);
   } else {
     if (flags === "as" || flags === "as+") {
+      let err, res;
       try {
-        const res = openSync(path, flags, mode);
-        callback(undefined, res);
+        res = openSync(path, flags, mode);
       } catch (error) {
-        callback(error, error);
+        err = error;
       }
+      callback(err, res as number);
       return;
     }
     Deno.open(path, convertFlagAndModeToOptions(flags, mode)).then(

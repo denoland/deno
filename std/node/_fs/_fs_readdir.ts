@@ -58,11 +58,11 @@ export function readdir(
     }
   }
 
+  let err;
   try {
     asyncIterableToCallback(Deno.readDir(path), (val, done) => {
       if (typeof path !== "string") return;
       if (done) {
-        callback(undefined, result);
         return;
       }
       if (options?.withFileTypes) {
@@ -70,8 +70,9 @@ export function readdir(
       } else result.push(decode(val.name));
     });
   } catch (error) {
-    callback(error, result);
+    err = error;
   }
+  callback(err, result);
 }
 
 function decode(str: string, encoding?: string): string {
