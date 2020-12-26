@@ -228,8 +228,7 @@ unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
     async () => {
       await fetch("");
     },
-    TypeError,
-    "is invalid Uri",
+    URIError,
   );
 });
 
