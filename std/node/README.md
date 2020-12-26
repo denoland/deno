@@ -97,7 +97,7 @@ will also catch _that_ error, and the callback will be called twice. The correct
 way to do it is like this:
 
 ```ts
-promise.then(() => callback(null, value), callback);
+promise.then((value) => callback(null, value), callback);
 ```
 
 The second parameter of `then` can also be used to catch errors, but only errors
