@@ -27,8 +27,33 @@ unitTest(
       async (): Promise<void> => {
         await fetch("http://localhost:4000");
       },
-      Deno.errors.Http,
+      TypeError,
       "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchDnsError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://nil/");
+      },
+      TypeError,
+      "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInvalidUriError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://<invalid>/");
+      },
+      URIError,
     );
   },
 );
@@ -199,9 +224,12 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
 unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
   void
 > {
-  await assertThrowsAsync(async () => {
-    await fetch("");
-  }, URIError);
+  await assertThrowsAsync(
+    async () => {
+      await fetch("");
+    },
+    URIError,
+  );
 });
 
 unitTest(
@@ -1011,5 +1039,45 @@ MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
     const json = await response.json();
     assertEquals(json.name, "deno");
     client.close();
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyReadableStream(): Promise<void> {
+    const addr = "127.0.0.1:4502";
+    const buf = bufferServer(addr);
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    await writer.write(new TextEncoder().encode("hello "));
+    await writer.write(new TextEncoder().encode("world"));
+    await writer.close();
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body: stream.readable,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n`,
+      `content-length: 11\r\n\r\n`,
+      "hello world",
+    ].join("");
+    assertEquals(actual, expected);
   },
 );

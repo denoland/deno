@@ -18,6 +18,9 @@ gclient_config.py_entries
 # compiled wasm files
 std/wasi/testdata/snapshot_preview1/
 
+# generated v8 coverage files
+cli/tests/.test_coverage/
+
 # MacOS generated files
 .DS_Store
 .DS_Store?

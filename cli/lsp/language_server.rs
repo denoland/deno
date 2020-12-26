@@ -84,49 +84,39 @@ impl LanguageServer {
     }
   }
 
-  pub async fn update_import_map(&self) -> Result<(), AnyError> {
-    let (maybe_import_map, maybe_root_uri) = {
-      let config = self.config.read().unwrap();
-      (config.settings.import_map.clone(), config.root_uri.clone())
-    };
-    if let Some(import_map_str) = &maybe_import_map {
-      info!("update import map");
-      let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
+  fn enabled(&self) -> bool {
+    let config = self.config.read().unwrap();
+    config.settings.enable
+  }
+
+  pub async fn get_line_index(
+    &self,
+    specifier: ModuleSpecifier,
+  ) -> Result<Vec<u32>, AnyError> {
+    let line_index = if specifier.as_url().scheme() == "asset" {
+      let state_snapshot = self.snapshot();
+      if let Some(source) =
+        tsc::get_asset(&specifier, &self.ts_server, &state_snapshot).await?
       {
-        Ok(url)
-      } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
-        let import_map_path = root_path.join(import_map_str);
-        Url::from_file_path(import_map_path).map_err(|_| {
-          anyhow!("Bad file path for import map: {:?}", import_map_str)
-        })
+        text::index_lines(&source)
       } else {
-        Err(anyhow!(
-          "The path to the import map (\"{}\") is not resolvable.",
-          import_map_str
-        ))
-      }?;
-      let import_map_path = import_map_url
-        .to_file_path()
-        .map_err(|_| anyhow!("Bad file path."))?;
-      let import_map_json =
-        fs::read_to_string(import_map_path).await.map_err(|err| {
-          anyhow!(
-            "Failed to load the import map at: {}. [{}]",
-            import_map_url,
-            err
-          )
-        })?;
-      let import_map =
-        ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
-      *self.maybe_import_map_uri.write().unwrap() = Some(import_map_url);
-      *self.maybe_import_map.write().unwrap() = Some(import_map);
+        return Err(anyhow!("asset source missing: {}", specifier));
+      }
     } else {
-      *self.maybe_import_map.write().unwrap() = None;
-    }
-    Ok(())
+      let file_cache = self.file_cache.read().unwrap();
+      if let Some(file_id) = file_cache.lookup(&specifier) {
+        let file_text = file_cache.get_contents(file_id)?;
+        text::index_lines(&file_text)
+      } else {
+        let mut sources = self.sources.write().unwrap();
+        if let Some(line_index) = sources.get_line_index(&specifier) {
+          line_index
+        } else {
+          return Err(anyhow!("source for specifier not found: {}", specifier));
+        }
+      }
+    };
+    Ok(line_index)
   }
 
   async fn prepare_diagnostics(&self) -> Result<(), AnyError> {
@@ -188,9 +178,35 @@ impl LanguageServer {
       Ok::<(), AnyError>(())
     };
 
-    let (lint_res, ts_res) = tokio::join!(lint, ts);
+    let deps = async {
+      if enabled {
+        let diagnostics_collection = self.diagnostics.read().unwrap().clone();
+        let diagnostics = diagnostics::generate_dependency_diagnostics(
+          self.snapshot(),
+          diagnostics_collection,
+        )
+        .await?;
+        {
+          let mut diagnostics_collection = self.diagnostics.write().unwrap();
+          for (file_id, version, diagnostics) in diagnostics {
+            diagnostics_collection.set(
+              file_id,
+              DiagnosticSource::Deno,
+              version,
+              diagnostics,
+            );
+          }
+        }
+        self.publish_diagnostics().await?
+      };
+
+      Ok::<(), AnyError>(())
+    };
+
+    let (lint_res, ts_res, deps_res) = tokio::join!(lint, ts, deps);
     lint_res?;
     ts_res?;
+    deps_res?;
 
     Ok(())
   }
@@ -217,10 +233,15 @@ impl LanguageServer {
         } else {
           vec![]
         };
-        if settings.enable {
+        if self.enabled() {
           diagnostics.extend(
             diagnostics_collection
               .diagnostics_for(file_id, DiagnosticSource::TypeScript)
+              .cloned(),
+          );
+          diagnostics.extend(
+            diagnostics_collection
+              .diagnostics_for(file_id, DiagnosticSource::Deno)
               .cloned(),
           );
         }
@@ -255,34 +276,76 @@ impl LanguageServer {
     }
   }
 
-  pub async fn get_line_index(
-    &self,
-    specifier: ModuleSpecifier,
-  ) -> Result<Vec<u32>, AnyError> {
-    let line_index = if specifier.as_url().scheme() == "asset" {
-      let state_snapshot = self.snapshot();
-      if let Some(source) =
-        tsc::get_asset(&specifier, &self.ts_server, &state_snapshot).await?
-      {
-        text::index_lines(&source)
-      } else {
-        return Err(anyhow!("asset source missing: {}", specifier));
-      }
-    } else {
-      let file_cache = self.file_cache.read().unwrap();
-      if let Some(file_id) = file_cache.lookup(&specifier) {
-        let file_text = file_cache.get_contents(file_id)?;
-        text::index_lines(&file_text)
-      } else {
-        let mut sources = self.sources.write().unwrap();
-        if let Some(line_index) = sources.get_line_index(&specifier) {
-          line_index
-        } else {
-          return Err(anyhow!("source for specifier not found: {}", specifier));
-        }
-      }
+  pub async fn update_import_map(&self) -> Result<(), AnyError> {
+    let (maybe_import_map, maybe_root_uri) = {
+      let config = self.config.read().unwrap();
+      (config.settings.import_map.clone(), config.root_uri.clone())
     };
-    Ok(line_index)
+    if let Some(import_map_str) = &maybe_import_map {
+      info!("update import map");
+      let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
+      {
+        Ok(url)
+      } else if let Some(root_uri) = &maybe_root_uri {
+        let root_path = root_uri
+          .to_file_path()
+          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+        let import_map_path = root_path.join(import_map_str);
+        Url::from_file_path(import_map_path).map_err(|_| {
+          anyhow!("Bad file path for import map: {:?}", import_map_str)
+        })
+      } else {
+        Err(anyhow!(
+          "The path to the import map (\"{}\") is not resolvable.",
+          import_map_str
+        ))
+      }?;
+      let import_map_path = import_map_url
+        .to_file_path()
+        .map_err(|_| anyhow!("Bad file path."))?;
+      let import_map_json =
+        fs::read_to_string(import_map_path).await.map_err(|err| {
+          anyhow!(
+            "Failed to load the import map at: {}. [{}]",
+            import_map_url,
+            err
+          )
+        })?;
+      let import_map =
+        ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
+      *self.maybe_import_map_uri.write().unwrap() = Some(import_map_url);
+      *self.maybe_import_map.write().unwrap() = Some(import_map);
+    } else {
+      *self.maybe_import_map.write().unwrap() = None;
+    }
+    Ok(())
+  }
+
+  async fn update_tsconfig(&self) -> Result<(), AnyError> {
+    let mut tsconfig = TsConfig::new(json!({
+      "allowJs": true,
+      "experimentalDecorators": true,
+      "isolatedModules": true,
+      "lib": ["deno.ns", "deno.window"],
+      "module": "esnext",
+      "noEmit": true,
+      "strict": true,
+      "target": "esnext",
+    }));
+    {
+      let config = self.config.read().unwrap();
+      if config.settings.unstable {
+        let unstable_libs = json!({
+          "lib": ["deno.ns", "deno.window", "deno.unstable"]
+        });
+        tsconfig.merge(&unstable_libs);
+      }
+    }
+    self
+      .ts_server
+      .request(self.snapshot(), tsc::RequestMethod::Configure(tsconfig))
+      .await?;
+    Ok(())
   }
 }
 
@@ -326,23 +389,9 @@ impl lspower::LanguageServer for LanguageServer {
       config.update_capabilities(&params.capabilities);
     }
 
-    // TODO(@kitsonk) need to make this configurable, respect unstable
-    let ts_config = TsConfig::new(json!({
-      "allowJs": true,
-      "experimentalDecorators": true,
-      "isolatedModules": true,
-      "lib": ["deno.ns", "deno.window"],
-      "module": "esnext",
-      "noEmit": true,
-      "strict": true,
-      "target": "esnext",
-    }));
-    // TODO(lucacasonato): handle error correctly
-    self
-      .ts_server
-      .request(self.snapshot(), tsc::RequestMethod::Configure(ts_config))
-      .await
-      .unwrap();
+    if let Err(err) = self.update_tsconfig().await {
+      warn!("Updating tsconfig has errored: {}", err);
+    }
 
     Ok(InitializeResult {
       capabilities,
@@ -497,6 +546,12 @@ impl lspower::LanguageServer for LanguageServer {
             .show_message(MessageType::Warning, err.to_string())
             .await;
         }
+        if let Err(err) = self.update_tsconfig().await {
+          self
+            .client
+            .show_message(MessageType::Warning, err.to_string())
+            .await;
+        }
       }
       _ => error!("received empty extension settings from the client"),
     }
@@ -570,6 +625,9 @@ impl lspower::LanguageServer for LanguageServer {
   }
 
   async fn hover(&self, params: HoverParams) -> LSPResult<Option<Hover>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -598,6 +656,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: DocumentHighlightParams,
   ) -> LSPResult<Option<Vec<DocumentHighlight>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -635,6 +696,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: ReferenceParams,
   ) -> LSPResult<Option<Vec<Location>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
@@ -673,6 +737,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: GotoDefinitionParams,
   ) -> LSPResult<Option<GotoDefinitionResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -706,6 +773,9 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: CompletionParams,
   ) -> LSPResult<Option<CompletionResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
@@ -965,6 +1035,101 @@ mod tests {
               "end": {
                 "line": 0,
                 "character": 21
+              }
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_hover_disabled() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_disabled.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification.json", LspResponse::None),
+      ("hover_request.json", LspResponse::Request(2, json!(null))),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_hover_unstable_disabled() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_unstable.json", LspResponse::None),
+      (
+        "hover_request.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "any"
+              }
+            ],
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 17
+              },
+              "end": {
+                "line": 0,
+                "character": 28
+              }
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_hover_unstable_enabled() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_unstable.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_unstable.json", LspResponse::None),
+      (
+        "hover_request.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "const Deno.permissions: Deno.Permissions"
+              },
+              "**UNSTABLE**: Under consideration to move to `navigator.permissions` to\nmatch web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`."
+            ],
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 17
+              },
+              "end": {
+                "line": 0,
+                "character": 28
               }
             }
           }),

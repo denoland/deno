@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::analysis::ResolvedImport;
+use super::analysis::ResolvedDependency;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::utils;
@@ -839,9 +839,10 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
             } else if let Some(resolved_import) = &dependency.maybe_code {
               resolved_import.clone()
             } else {
-              ResolvedImport::Err("missing dependency".to_string())
+              ResolvedDependency::Err("missing dependency".to_string())
             };
-          if let ResolvedImport::Resolved(resolved_specifier) = resolved_import
+          if let ResolvedDependency::Resolved(resolved_specifier) =
+            resolved_import
           {
             if state
               .state_snapshot
