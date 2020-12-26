@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "../../testing/asserts.ts";
 import randomBytes, { MAX_RANDOM_VALUES, MAX_SIZE } from "./randomBytes.ts";
 
 Deno.test("randomBytes sync works correctly", function () {
@@ -65,4 +70,31 @@ Deno.test("randomBytes async works correctly", function () {
       assert(!err);
     })
   );
+});
+
+Deno.test("[std/node/crypto] randomBytes callback isn't called twice if error is thrown", async () => {
+  const p = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "eval",
+      "--no-check",
+      `
+      import randomBytes from "${
+        new URL("./randomBytes.ts", import.meta.url).href
+      }";
+
+      randomBytes(0, (err) => {
+        // If the bug is present and the callback is called again with an error,
+        // don't throw another error, so if the subprocess fails we know it had the correct behaviour.
+        if (!err) throw new Error("success");
+      });`,
+    ],
+    stderr: "piped",
+  });
+  const status = await p.status();
+  const stderr = new TextDecoder().decode(await Deno.readAll(p.stderr));
+  p.close();
+  p.stderr.close();
+  assert(!status.success);
+  assertStringIncludes(stderr, "Error: success");
 });

@@ -3,7 +3,11 @@ import {
   pbkdf2,
   pbkdf2Sync,
 } from "./pbkdf2.ts";
-import { assert, assertEquals } from "../../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "../../testing/asserts.ts";
 
 type Pbkdf2Fixture = {
   key: string | Float64Array | Int32Array | Uint8Array;
@@ -411,4 +415,29 @@ Deno.test("pbkdf2Sync hashes data correctly", () => {
       );
     }
   });
+});
+
+Deno.test("[std/node/crypto] pbkdf2 callback isn't called twice if error is thrown", async () => {
+  const p = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "eval",
+      "--no-check",
+      `
+      import { pbkdf2 } from "${new URL("./pbkdf2.ts", import.meta.url).href}";
+
+      pbkdf2("password", "salt", 1, 32, "sha1", (err) => {
+        // If the bug is present and the callback is called again with an error,
+        // don't throw another error, so if the subprocess fails we know it had the correct behaviour.
+        if (!err) throw new Error("success");
+      });`,
+    ],
+    stderr: "piped",
+  });
+  const status = await p.status();
+  const stderr = new TextDecoder().decode(await Deno.readAll(p.stderr));
+  p.close();
+  p.stderr.close();
+  assert(!status.success);
+  assertStringIncludes(stderr, "Error: success");
 });
