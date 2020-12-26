@@ -164,17 +164,19 @@ export function pbkdf2(
   digest: Algorithms = "sha1",
   callback: ((err?: Error, derivedKey?: Buffer) => void),
 ): void {
-  let err, res;
-  try {
-    res = pbkdf2Sync(
-      password,
-      salt,
-      iterations,
-      keylen,
-      digest,
-    );
-  } catch (e) {
-    err = e;
-  }
-  callback(err, res);
+  setTimeout(() => {
+    let err, res;
+    try {
+      res = pbkdf2Sync(
+        password,
+        salt,
+        iterations,
+        keylen,
+        digest,
+      );
+    } catch (e) {
+      err = e;
+    }
+    callback(err, res);
+  }, 0);
 }
