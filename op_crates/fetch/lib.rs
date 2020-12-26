@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::BufVec;
@@ -126,7 +125,7 @@ where
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url)?;
+  let url_ = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
@@ -155,7 +154,10 @@ where
   }
   //debug!("Before fetch {}", url);
 
-  let res = request.send().await?;
+  let res = match request.send().await {
+    Ok(res) => res,
+    Err(e) => return Err(type_error(e.to_string())),
+  };
 
   //debug!("Fetch response {}", url);
   let status = res.status();
