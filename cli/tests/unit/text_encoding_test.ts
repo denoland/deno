@@ -54,8 +54,10 @@ unitTest(function atobThrows3(): void {
   let threw = false;
   try {
     atob("foobar!!");
-  } catch (DOMException) {
-    threw = true;
+  } catch (e) {
+    if (e instanceof DOMException && e.toString().startsWith("DOMException:")) {
+      threw = true;
+    }
   }
   assert(threw);
 });
