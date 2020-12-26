@@ -35,7 +35,7 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
-  async function fetchConnectionError(): Promise<void> {
+  async function fetchDnsError(): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
         await fetch("http://nil/");
@@ -48,7 +48,7 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
-  async function fetchConnectionError(): Promise<void> {
+  async function fetchInvalidUriError(): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
         await fetch("http://<invalid>/");
@@ -225,9 +225,13 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
 unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
   void
 > {
-  await assertThrowsAsync(async () => {
-    await fetch("");
-  }, URIError);
+  await assertThrowsAsync(
+    async () => {
+      await fetch("");
+    },
+    TypeError,
+    "is invalid Uri",
+  );
 });
 
 unitTest(
