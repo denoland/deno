@@ -3322,6 +3322,12 @@ itest!(deno_test_run_test_coverage {
   exit_code: 0,
 });
 
+itest!(deno_test_run_run_coverage {
+  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts",
+  output: "test_run_run_coverage.out",
+  exit_code: 0,
+});
+
 itest!(deno_lint {
   args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
