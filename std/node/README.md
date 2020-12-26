@@ -95,7 +95,7 @@ This has a subtle bug - if the callback throws an error, the catch statement wil
 and the callback will be called twice. The correct way to do it is like this:
 
 ```ts
-promise.then(() => callback(null, value), callback);
+promise.then((value) => callback(null, value), callback);
 ```
 
 The second parameter of `then` can also be used to catch errors, but only errors from the existing promise,
