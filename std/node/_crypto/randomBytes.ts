@@ -39,22 +39,23 @@ export default function randomBytes(
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
   if (typeof cb === "function") {
-    setTimeout(() => {
-      let err = null, bytes;
-      try {
-        bytes = generateRandomBytes(size);
-      } catch (e) {
-        //NodeJS nonsense
-        //If the size is out of range it will throw sync, otherwise throw async
-        if (
-          e instanceof RangeError &&
-          e.message.includes('The value of "size" is out of range')
-        ) {
-          throw e;
-        } else {
-          err = e;
-        }
+    // deno-lint-ignore no-explicit-any
+    let err: any = null, bytes: Buffer;
+    try {
+      bytes = generateRandomBytes(size);
+    } catch (e) {
+      //NodeJS nonsense
+      //If the size is out of range it will throw sync, otherwise throw async
+      if (
+        e instanceof RangeError &&
+        e.message.includes('The value of "size" is out of range')
+      ) {
+        throw e;
+      } else {
+        err = e;
       }
+    }
+    setTimeout(() => {
       cb(err, bytes);
     }, 0);
   } else {
