@@ -85,23 +85,26 @@ const leftPad = require("left-pad");
 
 ## Contributing
 
-When converting from promise-based to callback-based APIs, the most obvious way is like this:
+When converting from promise-based to callback-based APIs, the most obvious way
+is like this:
 
 ```ts
 promise.then((value) => callback(null, value)).catch(callback);
 ```
 
-This has a subtle bug - if the callback throws an error, the catch statement will also catch _that_ error,
-and the callback will be called twice. The correct way to do it is like this:
+This has a subtle bug - if the callback throws an error, the catch statement
+will also catch _that_ error, and the callback will be called twice. The correct
+way to do it is like this:
 
 ```ts
 promise.then(() => callback(null, value), callback);
 ```
 
-The second parameter of `then` can also be used to catch errors, but only errors from the existing promise,
-not the new one created by the callback.
+The second parameter of `then` can also be used to catch errors, but only errors
+from the existing promise, not the new one created by the callback.
 
-If the Deno equivalent is actually synchronous, there's a similar problem with try/catch statements:
+If the Deno equivalent is actually synchronous, there's a similar problem with
+try/catch statements:
 
 ```ts
 try {
@@ -112,7 +115,8 @@ try {
 }
 ```
 
-Since the callback is called within the `try` block, any errors from it will be caught and call the callback again.
+Since the callback is called within the `try` block, any errors from it will be
+caught and call the callback again.
 
 The correct way to do it is like this:
 
