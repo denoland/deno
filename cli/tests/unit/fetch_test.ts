@@ -53,8 +53,7 @@ unitTest(
       async (): Promise<void> => {
         await fetch("http://<invalid>/");
       },
-      TypeError,
-      "is invalid Uri",
+      URIError,
     );
   },
 );

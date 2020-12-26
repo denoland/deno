@@ -125,12 +125,7 @@ where
     None => Method::GET,
   };
 
-  let url_ = match Url::parse(&url) {
-    Ok(url) => url,
-    Err(_) => {
-      return Err(type_error(format!("'{}' is invalid Uri", url)));
-    }
-  };
+  let url_ = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
