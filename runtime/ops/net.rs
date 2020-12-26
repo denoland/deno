@@ -202,7 +202,10 @@ async fn op_datagram_send(
         s.borrow::<Permissions>()
           .check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr(&args.hostname, args.port).await?;
+      let addr = resolve_addr(&args.hostname, args.port)
+        .await?
+        .next()
+        .ok_or_else(|| generic_error("No resolved address found"))?;
 
       let resource = state
         .borrow_mut()
@@ -267,7 +270,10 @@ async fn op_connect(
           .borrow::<Permissions>()
           .check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr(&args.hostname, args.port).await?;
+      let addr = resolve_addr(&args.hostname, args.port)
+        .await?
+        .next()
+        .ok_or_else(|| generic_error("No resolved address found"))?;
       let tcp_stream = TcpStream::connect(&addr).await?;
       let local_addr = tcp_stream.local_addr()?;
       let remote_addr = tcp_stream.peer_addr()?;
@@ -469,7 +475,9 @@ fn op_listen(
         }
         permissions.check_net(&args.hostname, args.port)?;
       }
-      let addr = resolve_addr_sync(&args.hostname, args.port)?;
+      let addr = resolve_addr_sync(&args.hostname, args.port)?
+        .next()
+        .ok_or_else(|| generic_error("No resolved address found"))?;
       let (rid, local_addr) = if transport == "tcp" {
         listen_tcp(state, addr)?
       } else {
