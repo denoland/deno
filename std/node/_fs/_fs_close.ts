@@ -2,7 +2,7 @@
 import type { CallbackWithError } from "./_fs_common.ts";
 
 export function close(fd: number, callback: CallbackWithError): void {
-  queueMicrotask(() => {
+  setTimeout(() => {
     let error = null;
     try {
       Deno.close(fd);
@@ -10,7 +10,7 @@ export function close(fd: number, callback: CallbackWithError): void {
       error = err;
     }
     callback(error);
-  });
+  }, 0);
 }
 
 export function closeSync(fd: number): void {
