@@ -3,6 +3,7 @@ import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
+  assertThrowsAsync,
 } from "../../testing/asserts.ts";
 import randomBytes, { MAX_RANDOM_VALUES, MAX_SIZE } from "./randomBytes.ts";
 
@@ -64,10 +65,16 @@ Deno.test("randomBytes async works correctly", function () {
       assert(!err);
     })
   );
-  assertThrows(() =>
-    randomBytes(-1, function (err) {
-      //Shouldn't throw async
-      assert(!err);
+  assertThrowsAsync(() =>
+    new Promise((resolve, reject) => {
+      randomBytes(-1, function (err, res) {
+        //Shouldn't throw async
+        if (err) {
+          reject(err);
+        } else {
+          resolve(res);
+        }
+      });
     })
   );
 });
