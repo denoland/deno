@@ -217,7 +217,7 @@ Deno.test("[std/node/fs] Dir.read callback isn't called twice if error is thrown
       `
       import Dir from "${new URL("./_fs_dir.ts", import.meta.url).href}";
 
-      const dir = new Dir("${tempDir}");
+      const dir = new Dir(${JSON.stringify(tempDir)});
       dir.read((err) => {
         // If the bug is present and the callback is called again with an error,
         // don't throw another error, so if the subprocess fails we know it had the correct behaviour.
