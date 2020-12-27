@@ -800,6 +800,59 @@ mod tests {
       ("192.168.0.1", 0, false),
     ];
 
+    for (host, port, is_ok) in domain_tests {
+      assert_eq!(is_ok, perms.check_net(host, port).is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_all() {
+    let tests = vec![
+      (
+        Permissions::from_options(&PermissionsOptions {
+          allow_net: false,
+          net_allowlist: svec![],
+          ..Default::default()
+        }),
+        false,
+      ),
+      (
+        Permissions::from_options(&PermissionsOptions {
+          allow_net: true,
+          net_allowlist: svec![],
+          ..Default::default()
+        }),
+        true,
+      ),
+      (
+        Permissions::from_options(&PermissionsOptions {
+          allow_net: false,
+          net_allowlist: svec!["deno.land"],
+          ..Default::default()
+        }),
+        false,
+      ),
+    ];
+
+    for (perms, is_ok) in tests {
+      assert_eq!(is_ok, perms.check_net_all().is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_url() {
+    let perms = Permissions::from_options(&PermissionsOptions {
+      net_allowlist: svec![
+        "localhost",
+        "deno.land",
+        "github.com:3000",
+        "127.0.0.1",
+        "172.16.0.2:8000",
+        "www.github.com:443"
+      ],
+      ..Default::default()
+    });
+
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
       ("http://localhost", true),
@@ -839,13 +892,9 @@ mod tests {
       ("https://www.github.com:443/robots.txt", true),
     ];
 
-    for (url_str, is_ok) in url_tests.iter() {
+    for (url_str, is_ok) in url_tests {
       let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(*is_ok, perms.check_net_url(&u).is_ok());
-    }
-
-    for (host, port, is_ok) in domain_tests.iter() {
-      assert_eq!(*is_ok, perms.check_net(host, *port).is_ok());
+      assert_eq!(is_ok, perms.check_net_url(&u).is_ok());
     }
   }
 
