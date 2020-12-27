@@ -33,6 +33,7 @@ use tokio::net::udp;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use trust_dns_proto::rr::record_data::RData;
 use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfig;
 use trust_dns_resolver::config::Protocol as TrustProtocol;
@@ -546,6 +547,42 @@ fn op_listen(
   }
 }
 
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(untagged)]
+enum DnsReturnRecord {
+  A(String),
+  AAAA(String),
+  ANAME(String),
+  CNAME(String),
+  MX {
+    preference: u16,
+    exchange: String,
+  },
+  PTR(String),
+  SRV {
+    priority: u16,
+    weight: u16,
+    port: u16,
+    target: String,
+  },
+  TXT(Vec<String>),
+}
+
+// TODO(magurotuna): `RecordType` defined in trust_dns_proto doesn't implement Deserialize
+// trait right now, but it's coming in the next version.
+// See https://github.com/bluejekyll/trust-dns/pull/1319
+#[derive(Deserialize, Clone, Copy)]
+enum SupportedRecordType {
+  A,
+  AAAA,
+  ANAME,
+  CNAME,
+  MX,
+  PTR,
+  SRV,
+  TXT,
+}
+
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: Value,
@@ -567,21 +604,6 @@ async fn op_dns_resolve(
   #[serde(rename_all = "camelCase")]
   struct ResolveDnsOption {
     name_server: Option<NameServer>,
-  }
-
-  // TODO(magurotuna): `RecordType` defined in trust_dns_proto doesn't implement Deserialize
-  // trait right now, but it's expected soon.
-  // See https://github.com/bluejekyll/trust-dns/pull/1319
-  #[derive(Deserialize, Clone, Copy)]
-  enum SupportedRecordType {
-    A,
-    AAAA,
-    ANAME,
-    CNAME,
-    MX,
-    PTR,
-    SRV,
-    TXT,
   }
 
   impl Into<RecordType> for SupportedRecordType {
@@ -632,27 +654,6 @@ async fn op_dns_resolve(
     protocol: Protocol,
   }
 
-  #[derive(Serialize)]
-  #[serde(untagged)]
-  enum ReturnRecord {
-    A(String),
-    AAAA(String),
-    ANAME(String),
-    CNAME(String),
-    MX {
-      preference: u16,
-      exchange: String,
-    },
-    PTR(String),
-    SRV {
-      priority: u16,
-      weight: u16,
-      port: u16,
-      target: String,
-    },
-    TXT(Vec<String>),
-  }
-
   let ResolveAddrArgs {
     query,
     record_type,
@@ -686,45 +687,149 @@ async fn op_dns_resolve(
     AsyncResolver::tokio_from_system_conf().await?
   };
 
-  let results: Vec<ReturnRecord> = resolver
+  let results: Vec<DnsReturnRecord> = resolver
     .lookup(query, record_type.into(), Default::default())
     .await?
     .iter()
-    .filter_map(|r| {
-      use SupportedRecordType::*;
-      match record_type {
-        A => r.as_a().map(ToString::to_string).map(ReturnRecord::A),
-        AAAA => r.as_aaaa().map(ToString::to_string).map(ReturnRecord::AAAA),
-        ANAME => r
-          .as_aname()
-          .map(ToString::to_string)
-          .map(ReturnRecord::ANAME),
-        CNAME => r
-          .as_cname()
-          .map(ToString::to_string)
-          .map(ReturnRecord::CNAME),
-        MX => r.as_mx().map(|mx| ReturnRecord::MX {
-          preference: mx.preference(),
-          exchange: mx.exchange().to_string(),
-        }),
-        PTR => r.as_ptr().map(ToString::to_string).map(ReturnRecord::PTR),
-        SRV => r.as_srv().map(|srv| ReturnRecord::SRV {
-          priority: srv.priority(),
-          weight: srv.weight(),
-          port: srv.port(),
-          target: srv.target().to_string(),
-        }),
-        TXT => r.as_txt().map(|txt| {
-          // TODO(magurotuna): parses bytes as UTF-8, is it alright?
-          let texts: Vec<String> = txt
-            .iter()
-            .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
-            .collect();
-          ReturnRecord::TXT(texts)
-        }),
-      }
-    })
+    .filter_map(rdata_to_return_record(record_type))
     .collect();
 
   Ok(json!(results))
+}
+
+fn rdata_to_return_record(
+  ty: SupportedRecordType,
+) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
+  use SupportedRecordType::*;
+  move |r: &RData| -> Option<DnsReturnRecord> {
+    match ty {
+      A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
+      AAAA => r
+        .as_aaaa()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::AAAA),
+      ANAME => r
+        .as_aname()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::ANAME),
+      CNAME => r
+        .as_cname()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::CNAME),
+      MX => r.as_mx().map(|mx| DnsReturnRecord::MX {
+        preference: mx.preference(),
+        exchange: mx.exchange().to_string(),
+      }),
+      PTR => r
+        .as_ptr()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::PTR),
+      SRV => r.as_srv().map(|srv| DnsReturnRecord::SRV {
+        priority: srv.priority(),
+        weight: srv.weight(),
+        port: srv.port(),
+        target: srv.target().to_string(),
+      }),
+      TXT => r.as_txt().map(|txt| {
+        // TODO(magurotuna): parses bytes as UTF-8, is it alright?
+        let texts: Vec<String> = txt
+          .iter()
+          .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+          .collect();
+        DnsReturnRecord::TXT(texts)
+      }),
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use trust_dns_proto::rr::rdata::mx::MX;
+  use trust_dns_proto::rr::rdata::srv::SRV;
+  use trust_dns_proto::rr::rdata::txt::TXT;
+  use trust_dns_proto::rr::record_data::RData;
+  use trust_dns_proto::rr::Name;
+
+  #[test]
+  fn rdata_to_return_record_a() {
+    let func = rdata_to_return_record(SupportedRecordType::A);
+    let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::A("127.0.0.1".to_string()))
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_aaaa() {
+    let func = rdata_to_return_record(SupportedRecordType::AAAA);
+    let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::AAAA("::1".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_aname() {
+    let func = rdata_to_return_record(SupportedRecordType::ANAME);
+    let rdata = RData::ANAME(Name::new());
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::ANAME("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_cname() {
+    let func = rdata_to_return_record(SupportedRecordType::CNAME);
+    let rdata = RData::CNAME(Name::new());
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::CNAME("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_mx() {
+    let func = rdata_to_return_record(SupportedRecordType::MX);
+    let rdata = RData::MX(MX::new(10, Name::new()));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::MX {
+        preference: 10,
+        exchange: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_ptr() {
+    let func = rdata_to_return_record(SupportedRecordType::PTR);
+    let rdata = RData::PTR(Name::new());
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::PTR("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_srv() {
+    let func = rdata_to_return_record(SupportedRecordType::SRV);
+    let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::SRV {
+        priority: 1,
+        weight: 2,
+        port: 3,
+        target: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_txt() {
+    let func = rdata_to_return_record(SupportedRecordType::TXT);
+    let rdata =
+      RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::TXT(vec![
+        "foo".to_string(),
+        "bar".to_string()
+      ]))
+    );
+  }
 }
