@@ -6,6 +6,7 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
+use deno_runtime::permissions::PermissionsOptions;
 use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -191,6 +192,23 @@ impl Flags {
     }
 
     args
+  }
+}
+
+impl From<Flags> for PermissionsOptions {
+  fn from(flags: Flags) -> Self {
+    Self {
+      allow_env: flags.allow_env,
+      allow_hrtime: flags.allow_hrtime,
+      allow_net: flags.allow_net,
+      allow_plugin: flags.allow_plugin,
+      allow_read: flags.allow_read,
+      allow_run: flags.allow_run,
+      allow_write: flags.allow_write,
+      net_allowlist: flags.net_allowlist,
+      read_allowlist: flags.read_allowlist,
+      write_allowlist: flags.write_allowlist,
+    }
   }
 }
 
