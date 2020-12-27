@@ -23,6 +23,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::Shutdown;
@@ -555,34 +556,32 @@ async fn op_dns_resolve(
   }
 
   #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
   struct ResolveAddrArgs {
     query: String,
-    options: Option<ResolveAddrOption>,
+    record_type: SupportedRecordType,
+    options: Option<ResolveDnsOption>,
   }
 
   #[derive(Deserialize)]
   #[serde(rename_all = "camelCase")]
-  struct ResolveAddrOption {
-    #[serde(default)]
-    record_type: SupportedRecordType,
+  struct ResolveDnsOption {
     name_server: Option<NameServer>,
   }
 
-  // TODO(magurotuna): There are many unsupported record types because `trust_dns_proto::rr::record_data::RData` doesn't implement `Display` trait.
-  // See https://github.com/bluejekyll/trust-dns/issues/897
+  // TODO(magurotuna): `RecordType` defined in trust_dns_proto doesn't implement Deserialize
+  // trait right now, but it's expected soon.
+  // See https://github.com/bluejekyll/trust-dns/pull/1319
   #[derive(Deserialize, Clone, Copy)]
   enum SupportedRecordType {
     A,
     AAAA,
     ANAME,
     CNAME,
+    MX,
     PTR,
-  }
-
-  impl Default for SupportedRecordType {
-    fn default() -> Self {
-      Self::A
-    }
+    SRV,
+    TXT,
   }
 
   impl Into<RecordType> for SupportedRecordType {
@@ -593,7 +592,10 @@ async fn op_dns_resolve(
         AAAA => RecordType::AAAA,
         ANAME => RecordType::ANAME,
         CNAME => RecordType::CNAME,
+        MX => RecordType::MX,
         PTR => RecordType::PTR,
+        SRV => RecordType::SRV,
+        TXT => RecordType::TXT,
       }
     }
   }
@@ -626,10 +628,36 @@ async fn op_dns_resolve(
     ip_addr: String,
     #[serde(default = "default_port")]
     port: u16,
+    #[serde(default)]
     protocol: Protocol,
   }
 
-  let ResolveAddrArgs { query, options } = serde_json::from_value(args)?;
+  #[derive(Serialize)]
+  #[serde(untagged)]
+  enum ReturnRecord {
+    A(String),
+    AAAA(String),
+    ANAME(String),
+    CNAME(String),
+    MX {
+      preference: u16,
+      exchange: String,
+    },
+    PTR(String),
+    SRV {
+      priority: u16,
+      weight: u16,
+      port: u16,
+      target: String,
+    },
+    TXT(Vec<String>),
+  }
+
+  let ResolveAddrArgs {
+    query,
+    record_type,
+    options,
+  } = serde_json::from_value(args)?;
 
   {
     let s = state.borrow();
@@ -637,10 +665,10 @@ async fn op_dns_resolve(
     s.borrow::<Permissions>().check_net("TODO", 0)?;
   }
 
-  let (resolver, record_type) = if let Some(options) = options {
+  let resolver = if let Some(options) = options {
     let conf = if let Some(name_server) = options.name_server {
-      let mut conf = ResolverConfig::new();
-      conf.add_name_server(NameServerConfig {
+      let mut c = ResolverConfig::new();
+      c.add_name_server(NameServerConfig {
         socket_addr: resolve_addr(&name_server.ip_addr, name_server.port)
           .await?
           .next()
@@ -648,34 +676,52 @@ async fn op_dns_resolve(
         protocol: name_server.protocol.into(),
         tls_dns_name: None,
       });
-      conf
+      c
     } else {
-      let (conf, _) = read_system_conf()?;
-      conf
+      let (c, _) = read_system_conf()?;
+      c
     };
-    (
-      AsyncResolver::tokio(conf, ResolverOpts::default()).await?,
-      options.record_type,
-    )
+    AsyncResolver::tokio(conf, ResolverOpts::default()).await?
   } else {
-    (
-      AsyncResolver::tokio_from_system_conf().await?,
-      SupportedRecordType::A,
-    )
+    AsyncResolver::tokio_from_system_conf().await?
   };
 
-  let results: Vec<String> = resolver
+  let results: Vec<ReturnRecord> = resolver
     .lookup(query, record_type.into(), Default::default())
     .await?
     .iter()
     .filter_map(|r| {
       use SupportedRecordType::*;
       match record_type {
-        A => r.as_a().map(ToString::to_string),
-        AAAA => r.as_aaaa().map(ToString::to_string),
-        ANAME => r.as_aname().map(ToString::to_string),
-        CNAME => r.as_cname().map(ToString::to_string),
-        PTR => r.as_ptr().map(ToString::to_string),
+        A => r.as_a().map(ToString::to_string).map(ReturnRecord::A),
+        AAAA => r.as_aaaa().map(ToString::to_string).map(ReturnRecord::AAAA),
+        ANAME => r
+          .as_aname()
+          .map(ToString::to_string)
+          .map(ReturnRecord::ANAME),
+        CNAME => r
+          .as_cname()
+          .map(ToString::to_string)
+          .map(ReturnRecord::CNAME),
+        MX => r.as_mx().map(|mx| ReturnRecord::MX {
+          preference: mx.preference(),
+          exchange: mx.exchange().to_string(),
+        }),
+        PTR => r.as_ptr().map(ToString::to_string).map(ReturnRecord::PTR),
+        SRV => r.as_srv().map(|srv| ReturnRecord::SRV {
+          priority: srv.priority(),
+          weight: srv.weight(),
+          port: srv.port(),
+          target: srv.target().to_string(),
+        }),
+        TXT => r.as_txt().map(|txt| {
+          // TODO(magurotuna): parses bytes as UTF-8, is it alright?
+          let texts: Vec<String> = txt
+            .iter()
+            .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+            .collect();
+          ReturnRecord::TXT(texts)
+        }),
       }
     })
     .collect();
