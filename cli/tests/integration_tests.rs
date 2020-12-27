@@ -2262,6 +2262,145 @@ itest!(deno_test_unresolved_promise {
 });
 
 #[test]
+fn deno_test_watch() {
+  let t = TempDir::new().expect("tempdir fail");
+  let foo_file = t.path().join("foo.js");
+  let bar_file = t.path().join("bar.js");
+  let foo_test = t.path().join("foo_test.js");
+  let bar_test = t.path().join("bar_test.js");
+  std::fs::write(
+    &foo_file,
+    "export default function foo() { console.log('foo'); }",
+  )
+  .expect("error writing file");
+  std::fs::write(
+    &bar_file,
+    "export default function bar() { console.log('bar'); }",
+  )
+  .expect("error writing file");
+  std::fs::write(
+    &foo_test,
+    "import foo from './foo.js'; Deno.test('foo', foo);",
+  )
+  .expect("error writing file");
+  std::fs::write(
+    &bar_test,
+    "import bar from './bar.js'; Deno.test('bar', bar);",
+  )
+  .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("test")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg("--no-check")
+    .arg(&t.path())
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert!(stdout_lines.next().unwrap().contains("running 2 tests"));
+  assert!(stdout_lines.next().unwrap().contains("bar"));
+  assert!(stdout_lines.next().unwrap().contains("ok"));
+  assert!(stdout_lines.next().unwrap().contains("foo"));
+  assert!(stdout_lines.next().unwrap().contains("ok"));
+  stdout_lines.next();
+  stdout_lines.next();
+  stdout_lines.next();
+  wait_for_process_finished("Test", &mut stderr_lines);
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Change content of the file
+  std::fs::write(
+    &foo_file,
+    "export default function foo() { console.log('foobar'); }",
+  )
+  .expect("error writing file");
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("running 1 tests"));
+  assert!(stdout_lines.next().unwrap().contains("foobar"));
+  assert!(stdout_lines.next().unwrap().contains("ok"));
+  stdout_lines.next();
+  stdout_lines.next();
+  stdout_lines.next();
+  wait_for_process_finished("Test", &mut stderr_lines);
+
+  // Add test
+  let another_test = t.path().join("new_test.js");
+  std::fs::write(
+    &another_test,
+    "Deno.test('another one', () => console.log('new stuff!'))",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("running 1 tests"));
+  assert!(stdout_lines.next().unwrap().contains("new stuff!"));
+  assert!(stdout_lines.next().unwrap().contains("ok"));
+  stdout_lines.next();
+  stdout_lines.next();
+  stdout_lines.next();
+  wait_for_process_finished("Test", &mut stderr_lines);
+
+  // Confirm that restarting occurs when a new file is updated
+  std::fs::write(&another_test, "Deno.test('another one', () => console.log('new stuff!')); Deno.test('another another one', () => console.log('newer stuff!'))")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("running 2 tests"));
+  assert!(stdout_lines.next().unwrap().contains("new stuff!"));
+  assert!(stdout_lines.next().unwrap().contains("ok"));
+  assert!(stdout_lines.next().unwrap().contains("newer stuff!"));
+  assert!(stdout_lines.next().unwrap().contains("ok"));
+  stdout_lines.next();
+  stdout_lines.next();
+  stdout_lines.next();
+  wait_for_process_finished("Test", &mut stderr_lines);
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  std::fs::write(&another_test, "syntax error ^^").expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  wait_for_process_finished("Test", &mut stderr_lines);
+
+  // Then restore the file
+  std::fs::write(
+    &another_test,
+    "Deno.test('another one', () => console.log('new stuff!'))",
+  )
+  .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("running 1 tests"));
+  assert!(stdout_lines
+    .next()
+    .unwrap()
+    .contains("test another one ... new stuff!"));
+  wait_for_process_finished("Test", &mut stderr_lines);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+#[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
 

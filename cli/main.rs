@@ -45,7 +45,7 @@ mod version;
 
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
-use crate::file_watcher::ModuleResolutionResult;
+use crate::file_watcher::ResolutionResult;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::fmt_errors::PrettyJsError;
@@ -584,7 +584,7 @@ async fn bundle_command(
 ) -> Result<(), AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let module_resolver = || {
+  let resolver = |_| {
     let flags = flags.clone();
     let source_file1 = source_file.clone();
     let source_file2 = source_file.clone();
@@ -622,13 +622,13 @@ async fn bundle_command(
       Ok((paths_to_watch, module_graph))
     }
     .map(move |result| match result {
-      Ok((paths_to_watch, module_graph)) => ModuleResolutionResult::Success {
+      Ok((paths_to_watch, module_graph)) => ResolutionResult::Restart {
         paths_to_watch,
-        module_info: module_graph,
+        result: Ok(module_graph),
       },
-      Err(e) => ModuleResolutionResult::Fail {
-        source_path: PathBuf::from(source_file2),
-        error: e,
+      Err(e) => ResolutionResult::Restart {
+        paths_to_watch: vec![PathBuf::from(source_file2)],
+        result: Err(e),
       },
     })
     .boxed_local()
@@ -662,17 +662,14 @@ async fn bundle_command(
   };
 
   if flags.watch {
-    file_watcher::watch_func_with_module_resolution(
-      module_resolver,
-      operation,
-      "Bundle",
-    )
-    .await?;
+    file_watcher::watch_func(resolver, operation, "Bundle").await?;
   } else {
-    let module_graph = match module_resolver().await {
-      ModuleResolutionResult::Fail { error, .. } => return Err(error),
-      ModuleResolutionResult::Success { module_info, .. } => module_info,
-    };
+    let module_graph =
+      if let ResolutionResult::Restart { result, .. } = resolver(None).await {
+        result?
+      } else {
+        unreachable!();
+      };
     operation(module_graph).await?;
   }
 
@@ -861,7 +858,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 }
 
 async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
-  let module_resolver = || {
+  let resolver = |_| {
     let script1 = script.clone();
     let script2 = script.clone();
     let flags = flags.clone();
@@ -895,13 +892,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       Ok((paths_to_watch, main_module))
     }
     .map(move |result| match result {
-      Ok((paths_to_watch, module_info)) => ModuleResolutionResult::Success {
+      Ok((paths_to_watch, module_info)) => ResolutionResult::Restart {
         paths_to_watch,
-        module_info,
+        result: Ok(module_info),
       },
-      Err(e) => ModuleResolutionResult::Fail {
-        source_path: PathBuf::from(script2),
-        error: e,
+      Err(e) => ResolutionResult::Restart {
+        paths_to_watch: vec![PathBuf::from(script2)],
+        result: Err(e),
       },
     })
     .boxed_local()
@@ -925,12 +922,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     .boxed_local()
   };
 
-  file_watcher::watch_func_with_module_resolution(
-    module_resolver,
-    operation,
-    "Process",
-  )
-  .await
+  file_watcher::watch_func(resolver, operation, "Process").await
 }
 
 async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
@@ -969,35 +961,166 @@ async fn test_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules =
-    tools::test_runner::prepare_test_modules_urls(include, &cwd)?;
+  let paths_to_watch: Vec<_> =
+    include.iter().map(|path| PathBuf::from(path)).collect();
 
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(());
-  }
   let main_module = ModuleSpecifier::resolve_path("$deno$test.ts")?;
-  // Create a dummy source file.
-  let source_file = File {
-    local: main_module.as_url().to_file_path().unwrap(),
-    maybe_types: None,
-    media_type: MediaType::TypeScript,
-    source: tools::test_runner::render_test_file(
-      test_modules.clone(),
-      fail_fast,
-      quiet,
-      filter,
-    ),
-    specifier: main_module.clone(),
+
+  let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
+    &program_state,
+    Permissions::allow_all(),
+  )?));
+
+  let resolver = |changed: Option<Vec<PathBuf>>| {
+    let test_modules_result = tools::test_runner::prepare_test_modules_urls(
+      include.clone(),
+      &cwd.clone(),
+    );
+    let paths_to_watch = paths_to_watch.clone();
+
+    let handler = handler.clone();
+    let program_state = program_state.clone();
+    let files_changed = changed.is_some();
+    async move {
+      let test_modules = test_modules_result?;
+
+      let mut paths_to_watch = Vec::new();
+      let mut modules_to_reload = if files_changed {
+        Vec::new()
+      } else {
+        test_modules
+          .iter()
+          .filter_map(|url| ModuleSpecifier::resolve_url(url.as_str()).ok())
+          .collect()
+      };
+
+      for module in test_modules {
+        let mut builder = module_graph::GraphBuilder::new(
+          handler.clone(),
+          program_state.maybe_import_map.clone(),
+          program_state.lockfile.clone(),
+        );
+        let module_specifier = ModuleSpecifier::resolve_url(module.as_str())?;
+        builder.add(&module_specifier, false).await?;
+        let modules = builder.get_graph().get_modules();
+        paths_to_watch.extend(
+          modules
+            .iter()
+            .filter_map(|specifier| specifier.as_url().to_file_path().ok()),
+        );
+
+        if let Some(changed) = &changed {
+          for path in changed.iter().filter_map(|path| {
+            ModuleSpecifier::resolve_url_or_path(&path.to_string_lossy()).ok()
+          }) {
+            if modules.contains(&path) {
+              modules_to_reload.push(module_specifier);
+              break;
+            }
+          }
+        }
+      }
+
+      Ok(modules_to_reload)
+    }
+    .map(move |result| {
+      if files_changed
+        && matches!(result, Ok(ref modules) if modules.is_empty())
+      {
+        ResolutionResult::Ignore
+      } else {
+        ResolutionResult::Restart {
+          paths_to_watch,
+          result,
+        }
+      }
+    })
+    .boxed_local()
   };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  program_state.file_fetcher.insert_cached(source_file);
+
+  let operation = |test_modules: Vec<ModuleSpecifier>| {
+    let source_file = File {
+      local: main_module.as_url().to_file_path().unwrap(),
+      maybe_types: None,
+      media_type: MediaType::TypeScript,
+      source: tools::test_runner::render_test_file(
+        test_modules
+          .iter()
+          .map(|module| module.as_url().clone())
+          .collect(),
+        fail_fast,
+        quiet,
+        filter.clone(),
+      ),
+      specifier: main_module.clone(),
+    };
+    // Save our fake file into file fetcher cache
+    // to allow module access by TS compiler
+    program_state.file_fetcher.insert_cached(source_file);
+
+    let mut worker = create_main_worker(
+      &program_state,
+      main_module.clone(),
+      permissions.clone(),
+    );
+
+    let main_module = main_module.clone();
+    let program_state = program_state.clone();
+    let flags = flags.clone();
+    async move {
+      if let Some(ref coverage_dir) = flags.coverage_dir {
+        env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+      }
+
+      let mut maybe_coverage_collector =
+        if let Some(ref coverage_dir) = program_state.coverage_dir {
+          let session = worker.create_inspector_session();
+
+          let coverage_dir = PathBuf::from(coverage_dir);
+          let mut coverage_collector =
+            tools::coverage::CoverageCollector::new(coverage_dir, session);
+          coverage_collector.start_collecting().await?;
+
+          Some(coverage_collector)
+        } else {
+          None
+        };
+
+      worker.execute_module(&main_module).await?;
+      worker.execute("window.dispatchEvent(new Event('load'))")?;
+      worker.run_event_loop().await?;
+      worker.execute("window.dispatchEvent(new Event('unload'))")?;
+      worker.run_event_loop().await?;
+
+      if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+        coverage_collector.stop_collecting().await?;
+      }
+
+      Ok(())
+    }
+    .boxed_local()
+  };
+
+  let test_modules =
+    tools::test_runner::prepare_test_modules_urls(include.clone(), &cwd)?;
 
   if no_run {
+    let source_file = File {
+      local: main_module.as_url().to_file_path().unwrap(),
+      maybe_types: None,
+      media_type: MediaType::TypeScript,
+      source: tools::test_runner::render_test_file(
+        test_modules,
+        fail_fast,
+        quiet,
+        filter.clone(),
+      ),
+      specifier: main_module.clone(),
+    };
+    // Save our fake file into file fetcher cache
+    // to allow module access by TS compiler
+    program_state.file_fetcher.insert_cached(source_file);
+
     let lib = if flags.unstable {
       module_graph::TypeLib::UnstableDenoWindow
     } else {
@@ -1015,49 +1138,41 @@ async fn test_command(
     return Ok(());
   }
 
-  let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions);
+  if flags.watch {
+    file_watcher::watch_func(resolver, operation, "Test").await?;
+  } else {
+    let test_modules =
+      tools::test_runner::prepare_test_modules_urls(include.clone(), &cwd)?;
 
-  if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+    if test_modules.is_empty() {
+      println!("No matching test modules found");
+      if !allow_none {
+        std::process::exit(1);
+      }
+      return Ok(());
+    }
+
+    operation(
+      test_modules
+        .iter()
+        .cloned()
+        .filter_map(|url| ModuleSpecifier::resolve_url(url.as_str()).ok())
+        .collect(),
+    )
+    .await?;
   }
 
-  let mut maybe_coverage_collector =
-    if let Some(ref coverage_dir) = program_state.coverage_dir {
-      let session = worker.create_inspector_session();
-
-      let coverage_dir = PathBuf::from(coverage_dir);
-      let mut coverage_collector =
-        tools::coverage::CoverageCollector::new(coverage_dir, session);
-      coverage_collector.start_collecting().await?;
-
-      Some(coverage_collector)
-    } else {
-      None
-    };
-
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  worker.run_event_loop().await?;
-
-  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
-
-    // TODO(caspervonb) extract reporting into it's own subcommand.
-    // For now, we'll only report for the command that passed --coverage as a flag.
-    if flags.coverage_dir.is_some() {
-      let mut exclude = test_modules.clone();
-      let main_module_url = main_module.as_url().to_owned();
-      exclude.push(main_module_url);
-      tools::coverage::report_coverages(
-        &coverage_collector.dir,
-        quiet,
-        exclude,
-      )?;
-    }
+  // TODO(caspervonb) extract reporting into it's own subcommand.
+  // For now, we'll only report for the command that passed --coverage as a flag.
+  if let Some(coverage_dir) = flags.coverage_dir {
+    let mut exclude = test_modules.clone();
+    let main_module_url = main_module.as_url().to_owned();
+    exclude.push(main_module_url);
+    tools::coverage::report_coverages(
+      &PathBuf::from(coverage_dir),
+      quiet,
+      exclude,
+    )?;
   }
 
   Ok(())

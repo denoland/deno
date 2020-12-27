@@ -10,6 +10,7 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
+use crate::file_watcher::ResolutionResult;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::text_encoding;
 use deno_core::error::generic_error;
@@ -36,9 +37,30 @@ pub async fn format(
   check: bool,
   watch: bool,
 ) -> Result<(), AnyError> {
-  let target_file_resolver = || {
-    // collect the files that are to be formatted
-    collect_files(&args, &ignore, is_supported_ext)
+  let resolver = |changed: Option<Vec<PathBuf>>| {
+    let files_changed = changed.is_some();
+    let result = collect_files(&args, &ignore, is_supported_ext).map(|files| {
+      if let Some(paths) = changed {
+        files
+          .into_iter()
+          .filter(|path| paths.contains(path))
+          .collect::<Vec<_>>()
+      } else {
+        files
+      }
+    });
+    let paths_to_watch = args.clone();
+    async move {
+      if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
+        ResolutionResult::Ignore
+      } else {
+        ResolutionResult::Restart {
+          paths_to_watch,
+          result,
+        }
+      }
+    }
+    .boxed_local()
   };
 
   let operation = |paths: Vec<PathBuf>| {
@@ -55,9 +77,15 @@ pub async fn format(
   };
 
   if watch {
-    file_watcher::watch_func(target_file_resolver, operation, "Fmt").await?;
+    file_watcher::watch_func(resolver, operation, "Fmt").await?;
   } else {
-    operation(target_file_resolver()?).await?;
+    let files =
+      if let ResolutionResult::Restart { result, .. } = resolver(None).await {
+        result?
+      } else {
+        unreachable!()
+      };
+    operation(files).await?;
   }
 
   Ok(())

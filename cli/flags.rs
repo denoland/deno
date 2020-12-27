@@ -633,6 +633,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  flags.watch = matches.is_present("watch");
+
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
       .values_of("script_arg")
@@ -1310,6 +1312,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .multiple(true),
     )
+    .arg(watch_arg().conflicts_with("no-run"))
     .arg(script_arg().last(true))
     .about("Run tests")
     .long_about(
