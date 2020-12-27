@@ -660,10 +660,22 @@ async fn op_dns_resolve(
     options,
   } = serde_json::from_value(args)?;
 
+  // Check for permission. If name server option is provided, use them for checking.
+  // Otherwise, checks if `allow-net` is present without any specific allowlist.
   {
+    let perm_args = options
+      .as_ref()
+      .and_then(|opt| opt.name_server.as_ref())
+      .map(|ns| (&ns.ip_addr, ns.port));
+
     let s = state.borrow();
-    // TODO(magurotuna): what permission to check?
-    s.borrow::<Permissions>().check_net("TODO", 0)?;
+    let perm = s.borrow::<Permissions>();
+
+    if let Some((ip_addr, port)) = perm_args {
+      perm.check_net(ip_addr, port)?;
+    } else {
+      perm.check_net_all()?;
+    }
   }
 
   let resolver = if let Some(options) = options {

@@ -541,6 +541,10 @@ impl Permissions {
     )
   }
 
+  pub fn check_net_all(&self) -> Result<(), AnyError> {
+    self.net.global_state.check("network access", "--allow-net")
+  }
+
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
     let host = url.host_str().ok_or_else(|| uri_error("missing host"))?;
     self
