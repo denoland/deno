@@ -908,13 +908,13 @@ declare namespace Deno {
     | "AAAA"
     | "ANAME"
     | "CNAME"
-    | "PTR";
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
 
   export interface ResolveDnsOptions {
-    /** The resouce record type to query. 
-    * If not specified, defaults to "A". */
-    recordType?: RecordType;
-    /** The name server to use for lookups. 
+    /** The name server to be used for lookups. 
     * If not specified, defaults to the system configuration e.g. `/etc/resolve.conf` on Unix. */
     nameServer?: {
       /** The IP address of the name server */
@@ -928,6 +928,28 @@ declare namespace Deno {
     };
   }
 
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  export function resolveDns(query: string, recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR", options?: ResolveDnsOptions): Promise<string[]>;
+
+  export function resolveDns(query: string, recordType: "MX", options?: ResolveDnsOptions): Promise<MXRecord[]>;
+
+  export function resolveDns(query: string, recordType: "SRV", options?: ResolveDnsOptions): Promise<SRVRecord[]>;
+
+  export function resolveDns(query: string, recordType: "TXT", options?: ResolveDnsOptions): Promise<string[][]>;
+
   /** ** UNSTABLE**: new API, yet to be vetted.
    *
    * Performs DNS resolution against the given query, returning resolved records.
@@ -937,10 +959,9 @@ declare namespace Deno {
    * - timeout
    *
    * ```ts
-   * const addrs1 = await Deno.resolveDns("example.com");
+   * const a = await Deno.resolveDns("example.com", "A");
    *
-   * const addrs2 = await Deno.resolveDns("example.com", {
-   *   recordType: "AAAA",
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
    *   nameServer: { ipAddr: "8.8.8.8", protocol: "TCP" },
    * });
    * ```
@@ -949,8 +970,9 @@ declare namespace Deno {
    */
   export function resolveDns(
     query: string,
+    recordType: RecordType,
     options?: ResolveDnsOptions,
-  ): Promise<string[]>;
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *

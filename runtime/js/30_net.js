@@ -44,8 +44,8 @@
     return core.jsonOpAsync("op_datagram_send", args, zeroCopy);
   }
 
-  function resolveDns(query, options) {
-    return core.jsonOpAsync("op_dns_resolve", { query, options });
+  function resolveDns(query, recordType, options) {
+    return core.jsonOpAsync("op_dns_resolve", { query, recordType, options });
   }
 
   class Conn {
