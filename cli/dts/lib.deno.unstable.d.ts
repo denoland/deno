@@ -942,13 +942,29 @@ declare namespace Deno {
     target: string;
   }
 
-  export function resolveDns(query: string, recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR", options?: ResolveDnsOptions): Promise<string[]>;
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
 
-  export function resolveDns(query: string, recordType: "MX", options?: ResolveDnsOptions): Promise<MXRecord[]>;
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
 
-  export function resolveDns(query: string, recordType: "SRV", options?: ResolveDnsOptions): Promise<SRVRecord[]>;
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
 
-  export function resolveDns(query: string, recordType: "TXT", options?: ResolveDnsOptions): Promise<string[][]>;
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
 
   /** ** UNSTABLE**: new API, yet to be vetted.
    *
