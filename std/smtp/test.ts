@@ -16,7 +16,7 @@ import type { Auth, AuthMessage, ServerInfo, SMTPClient } from "./mod.ts";
 import { cramMD5Auth, createSMTPClient, plainAuth, sendMail } from "./mod.ts";
 import { SMTPClientImpl } from "./_client.ts";
 import { StringReader } from "../io/readers.ts";
-import { BufReader, BufWriter } from "../io/bufio.ts";
+import { BufReader, BufWriter, readLines } from "../io/bufio.ts";
 import { TextProtoConn } from "../textproto/conn.ts";
 
 async function assertFailsAsync(
@@ -913,5 +913,99 @@ QUIT
 Deno.test({
   ignore: true,
   name: "[smtp] tls client",
-  fn: async () => {},
+  fn: async () => {
+    const port = 4507;
+    const listener = Deno.listen({ port });
+    const { addr } = listener;
+    assert(addr.transport === "tcp");
+    try {
+      const done = deferred();
+      (async () => {
+        try {
+          await sendMail({
+            addr: addr,
+            from: "joe1@example.com",
+            to: ["joe2@example.com"],
+            msg: "Subject: test\n\nhowdy!",
+          });
+          done.resolve();
+        } catch (err) {
+          done.reject(err);
+        }
+      })();
+      const conn = await listener.accept();
+      try {
+        await serverHandle(conn);
+        await done;
+      } finally {
+        conn.close();
+      }
+    } finally {
+      listener.close();
+    }
+  },
 });
+
+// smtp server, finely tailored to deal with our own client only!
+async function serverHandle(conn: Deno.Conn): Promise<void> {
+  const send = createSmtpSender(conn);
+  await send("220 127.0.0.1 ESMTP service ready");
+  for await (const line of readLines(conn)) {
+    switch (line) {
+      case "EHLO localhost":
+        await send("250-127.0.0.1 ESMTP offers a warm hug of welcome");
+        await send("250-STARTTLS");
+        await send("250 Ok");
+        break;
+      case "STARTTLS":
+        await send("220 Go ahead");
+        // TODO Add `certFile` to `SendMailOptions`
+        conn = await Deno.startTls(conn);
+        try {
+          await serverHandleTls(conn);
+        } finally {
+          conn.close();
+        }
+        break;
+      default:
+        throw new Error(`unrecognized command: ${line}`);
+    }
+  }
+}
+
+async function serverHandleTls(conn: Deno.Conn): Promise<void> {
+  const send = createSmtpSender(conn);
+  for await (const line of readLines(conn)) {
+    switch (line) {
+      case "EHLO localhost":
+        await send("250 Ok");
+        break;
+      case "MAIL FROM:<joe1@example.com>":
+        await send("250 Ok");
+        break;
+      case "RCPT TO:<joe2@example.com>":
+        await send("250 Ok");
+        break;
+      case "DATA":
+        await send("354 send the mail data, end with .");
+        await send("250 Ok");
+        break;
+      case "Subject: test":
+      case "":
+      case "howdy!":
+      case ".":
+      case "QUIT":
+        await send("221 127.0.0.1 Service closing transmission channel");
+        break;
+      default:
+        throw new Error(`unrecognized command during TLS: ${line}`);
+    }
+  }
+}
+
+function createSmtpSender(conn: Deno.Conn): (msg: string) => Promise<void> {
+  async function send(f: string): Promise<void> {
+    conn.write(encode(f + "\r\n"));
+  }
+  return send;
+}
