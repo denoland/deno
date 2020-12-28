@@ -1,9 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
+use lspower::jsonrpc::Error as LSPError;
+use lspower::jsonrpc::Result as LSPResult;
+use lspower::lsp_types;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
@@ -23,12 +26,14 @@ pub struct WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
+  pub root_uri: Option<Url>,
   pub settings: WorkspaceSettings,
 }
 
 impl Config {
-  pub fn update(&mut self, value: Value) -> Result<(), AnyError> {
-    let settings: WorkspaceSettings = serde_json::from_value(value)?;
+  pub fn update(&mut self, value: Value) -> LSPResult<()> {
+    let settings: WorkspaceSettings = serde_json::from_value(value)
+      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
     self.settings = settings;
     Ok(())
   }

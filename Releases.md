@@ -6,6 +6,44 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.6.2 / 2020.12.22
+
+- feat(lsp): support the unstable setting (#8851)
+- feat(unstable): record raw coverage into a directory (#8642)
+- feat(unstable): support in memory certificate data for Deno.createHttpClient
+  (#8739)
+- fix: atomically write files to $DENO_DIR (#8822)
+- fix: implement ReadableStream fetch body handling (#8855)
+- fix: make DNS resolution async (#8743)
+- fix: make dynamic import errors catchable (#8750)
+- fix: respect enable flag for requests in lsp (#8850)
+- refactor: rename runtime/rt to runtime/js (#8806)
+- refactor: rewrite lsp to be async (#8727)
+- refactor: rewrite ops to use ResourceTable2 (#8512)
+- refactor: optimise static assets in lsp (#8771)
+- upgrade TypeScript to 4.1.3 (#8785)
+
+Changes in std version 0.82.0:
+
+- feat(std/node): Added os.type (#8591)
+
+### 1.6.1 / 2020.12.14
+
+- feat(lsp): support import maps (#8683)
+- fix: show canary string in long version (#8675)
+- fix: zsh completions (#8718)
+- fix(compile): error when the output path already exists (#8681)
+- fix(lsp): only resolve sources with supported schemas (#8696)
+- fix(op_crates/fetch): support non-ascii response headers value (#8600)
+- fix(repl): recover from invalid input (#8759)
+- refactor: deno_runtime crate (#8640)
+- upgrade: swc_ecmascript to 0.15.0 (#8688)
+
+Changes in std version 0.81.0:
+
+- fix(std/datetime): partsToDate (#8553)
+- fix(std/wasi): disallow multiple starts (#8712)
+
 ### 1.6.0 / 2020.12.08
 
 - BREAKING: Make "isolatedModules" setting non-configurable (#8482)
@@ -408,7 +446,7 @@ Changes in std version 0.69.0:
 - fix: Don't expose globalThis.__bootstrap (#7344)
 - fix: Handle bad redirects more gracefully (#7342)
 - fix: Handling of + character in URLSearchParams (#7314)
-- fix: Regex for TS refereces and deno-types (#7333)
+- fix: Regex for TS references and deno-types (#7333)
 - fix: Set maximum size of thread pool to 31 (#7290)
 - fix: Support missing features in --no-check (#7289)
 - fix: Use millisecond precision for Deno.futime and Deno.utime (#7299)
@@ -629,7 +667,7 @@ Changes in std version 0.61.0:
 - fix(std/http): Properly return port 80 in \_parseAddrFromStr (#6635)
 - fix(std/mime): Boundary random hex values (#6646)
 - fix(std/node): Add encoding argument to Buffer.byteLength (#6639)
-- fix(std/tesing/asserts): AssertEquals/NotEquals should use milliseconds in
+- fix(std/testing/asserts): AssertEquals/NotEquals should use milliseconds in
   Date (#6644)
 - fix(std/wasi): Return errno::success from fd_tell (#6636)
 
@@ -1128,7 +1166,7 @@ Read more about this release at https://deno.land/v1
 ### v0.41.0 / 2020.04.16
 
 - BREAKING: Improve readdir() and FileInfo interfaces (#4763)
-- BREAKING: Remove depracated APIs for mkdir and mkdirSync (#4615)
+- BREAKING: Remove deprecated APIs for mkdir and mkdirSync (#4615)
 - BREAKING: Make fetch API more web compatible (#4687)
 - BREAKING: Remove std/testing/format.ts (#4749)
 - BREAKING: Migrate std/types to deno.land/x/types/ (#4713, #4771)
@@ -1282,7 +1320,7 @@ Read more about this release at https://deno.land/v1
 - feat: Add Deno.umask (#4290)
 - feat: Add global --quiet flag (#4135)
 - feat: Improvements to std/flags. (#4279)
-- feat: Make internel error frames dimmer (#4201)
+- feat: Make internal error frames dimmer (#4201)
 - feat: Support async function and EventListenerObject as listeners (#4240)
 - feat: add actual error class to fail message (#4305)
 - feat: seek should return cursor position (#4211)
@@ -1310,7 +1348,7 @@ Read more about this release at https://deno.land/v1
 - refactor: Rename Option -> Options (#4226)
 - refactor: cleanup compiler runtimes (#4230)
 - refactor: preliminary cleanup of Deno.runTests() (#4237)
-- refactor: reduce unnecesarry output in cli/js tests (#4182)
+- refactor: reduce unnecessary output in cli/js tests (#4182)
 - refactor: reorganize cli/js (#4317, #4316, #4310, #4250, #4302, #4283, #4264)
 - refactor: rewrite testPerm into unitTest (#4231)
 - refactor: uncomment tests broken tests, use skip (#4311)
@@ -1605,7 +1643,7 @@ Read more about this release at https://deno.land/v1
 - feat: Add ResourceTable in core (#3150)
 - feat: Re-enable standard stream support for fetch bodies (#3192)
 - feat: Add CustomInspect for Headers (#3130)
-- fix: Cherry-pick depot_tools 6a1d778 to fix macOS Cataliona issues (#3175)
+- fix: Cherry-pick depot_tools 6a1d778 to fix macOS Catalina issues (#3175)
 - fix: Remove runtime panics in op dispatch (#3176, #3202, #3131)
 - fix: BufReader.readString to actually return Deno.EOF at end (#3191)
 - perf: faster TextDecoder (#3180, #3204)
@@ -1986,7 +2024,7 @@ In deno:
 In deno_std
 
 - Clean up HTTP async iterator code (denoland/deno_std#411)
-- fix: add exnext lib to tsconfig.json (denoland/deno_std#416)
+- fix: add esnext lib to tsconfig.json (denoland/deno_std#416)
 - feat(fs): add copy/copySync (denoland/deno_std#278)
 - feat: add Tar and Untar classes (denoland/deno_std#388)
 - ws: make acceptable() more robust (denoland/deno_std#404)

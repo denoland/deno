@@ -128,6 +128,9 @@ delete Object.prototype.__proto__;
     // TS2691: An import path cannot end with a '.ts' extension. Consider
     // importing 'bad-module' instead.
     2691,
+    // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
+    // option to 'node', or to add aliases to the 'paths' option?
+    2792,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -486,6 +489,13 @@ delete Object.prototype.__proto__;
         }
         compilationSettings = options;
         return respond(id, true);
+      }
+      case "getAsset": {
+        const sourceFile = host.getSourceFile(
+          request.specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        return respond(id, sourceFile && sourceFile.text);
       }
       case "getSemanticDiagnostics": {
         const diagnostics = languageService.getSemanticDiagnostics(

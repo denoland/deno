@@ -2,7 +2,6 @@
 
 use crate::import_map::ImportMap;
 use crate::module_graph::TypeLib;
-use crate::permissions::Permissions;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -11,6 +10,7 @@ use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::permissions::Permissions;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -94,26 +94,14 @@ impl ModuleLoader for CliModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.to_owned();
-    let module_url_specified = module_specifier.to_string();
+    let module_specifier = module_specifier.clone();
     let program_state = self.program_state.clone();
 
     // NOTE: this block is async only because of `deno_core`
     // interface requirements; module was already loaded
     // when constructing module graph during call to `prepare_load`.
-    let fut = async move {
-      let compiled_module = program_state
-        .fetch_compiled_module(module_specifier, maybe_referrer)?;
-      Ok(deno_core::ModuleSource {
-        // Real module name, might be different from initial specifier
-        // due to redirections.
-        code: compiled_module.code,
-        module_url_specified,
-        module_url_found: compiled_module.name,
-      })
-    };
-
-    fut.boxed_local()
+    async move { program_state.load(module_specifier, maybe_referrer) }
+      .boxed_local()
   }
 
   fn prepare_load(

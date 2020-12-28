@@ -1143,7 +1143,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.dir("home"));
+     *   console.log("'env' permission is granted.");
      * } else {
      *   console.log("'env' permission is denied.");
      * }
@@ -1266,6 +1266,10 @@ declare namespace Deno {
      * Requires `allow-read` permission.
      */
     caFile?: string;
+
+    /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
+     */
+    caData?: string;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

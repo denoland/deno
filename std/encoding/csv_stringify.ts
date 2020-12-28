@@ -17,7 +17,7 @@ function getEscapedString(value: unknown, sep: string): string {
   if (typeof value === "object") str = JSON.stringify(value);
   else str = String(value);
 
-  // Is regex.test more performant here? If so, how to dynamically create?
+  // Is regex.test more performance here? If so, how to dynamically create?
   // https://stackoverflow.com/questions/3561493/
   if (str.includes(sep) || str.includes(NEWLINE) || str.includes(QUOTE)) {
     return `${QUOTE}${str.replaceAll(QUOTE, `${QUOTE}${QUOTE}`)}${QUOTE}`;

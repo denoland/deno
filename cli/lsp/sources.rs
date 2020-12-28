@@ -5,8 +5,10 @@ use super::text;
 
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
+use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
+use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::text_encoding;
 
@@ -21,7 +23,7 @@ use std::time::SystemTime;
 #[derive(Debug, Clone, Default)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
-  maybe_types: Option<analysis::ResolvedImport>,
+  maybe_types: Option<analysis::ResolvedDependency>,
   media_type: MediaType,
   source: String,
   version: String,
@@ -30,6 +32,7 @@ struct Metadata {
 #[derive(Debug, Clone, Default)]
 pub struct Sources {
   http_cache: HttpCache,
+  maybe_import_map: Option<ImportMap>,
   metadata: HashMap<ModuleSpecifier, Metadata>,
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
   remotes: HashMap<ModuleSpecifier, PathBuf>,
@@ -97,7 +100,7 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             maybe_types = mt;
             Some(dependencies)
@@ -124,7 +127,11 @@ impl Sources {
         if let Ok(source) = get_source_from_bytes(bytes, maybe_charset) {
           let mut maybe_types =
             if let Some(types) = headers.get("x-typescript-types") {
-              Some(analysis::resolve_import(types, &specifier, None))
+              Some(analysis::resolve_import(
+                types,
+                &specifier,
+                &self.maybe_import_map,
+              ))
             } else {
               None
             };
@@ -133,7 +140,7 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             if maybe_types.is_none() {
               maybe_types = mt;
@@ -248,7 +255,7 @@ impl Sources {
     let dependencies = &metadata.dependencies?;
     let dependency = dependencies.get(specifier)?;
     if let Some(type_dependency) = &dependency.maybe_type {
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         type_dependency
       {
         self.resolution_result(resolved_specifier)
@@ -257,7 +264,7 @@ impl Sources {
       }
     } else {
       let code_dependency = &dependency.maybe_code.clone()?;
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         code_dependency
       {
         self.resolution_result(resolved_specifier)
@@ -271,7 +278,12 @@ impl Sources {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
-    if specifier.as_url().scheme() == "file" {
+    let scheme = specifier.as_url().scheme();
+    if !SUPPORTED_SCHEMES.contains(&scheme) {
+      return None;
+    }
+
+    if scheme == "file" {
       if let Ok(path) = specifier.as_url().to_file_path() {
         if path.is_file() {
           return Some(specifier.clone());
@@ -368,5 +380,14 @@ mod tests {
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual, 28);
+  }
+
+  #[test]
+  fn test_sources_resolve_specifier_non_supported_schema() {
+    let (mut sources, _) = setup();
+    let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
+      .expect("could not create specifier");
+    let actual = sources.resolve_specifier(&specifier);
+    assert!(actual.is_none());
   }
 }

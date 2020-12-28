@@ -2,7 +2,7 @@
 
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
 
-<img align="right" src=https://deno.land/logo.svg height="150px">
+<img align="right" src=docs/images/deno3.png height="150px">
 
 Deno is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
 **TypeScript** that uses V8 and is built in Rust.
@@ -83,7 +83,7 @@ More in-depth info can be found in the runtime
 
 We appreciate your help!
 
-To contribute, please read the our
+To contribute, please read our
 [guidelines](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md).
 
 [Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=master&event=push
