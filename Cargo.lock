@@ -2386,9 +2386,9 @@ dependencies = [
 
 [[package]]
 name = "swc_bundler"
-version = "0.18.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12204e383ad36798a7f9ae6be836f43087dc7b1b0d9ed59fa6b5ea69ad2ebabf"
+checksum = "c74f70f2803b7ea5cbe9ad4ec7e1679f8d661fd713b9d0d39f76dae41383bd56"
 dependencies = [
  "anyhow",
  "crc",
