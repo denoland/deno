@@ -1,0 +1,15 @@
+<!-- Not using an extension to avoid triggering dprint. -->
+
+# Hello Markdown
+
+```js
+console.log("Hello World");
+```
+
+```ts
+function hello(name: string) {
+  console.log(name);
+}
+
+hello("alice");
+```
