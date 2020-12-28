@@ -414,6 +414,7 @@ dependencies = [
  "deno_runtime",
  "deno_web",
  "dissimilar",
+ "dprint-plugin-markdown",
  "dprint-plugin-typescript",
  "encoding_rs",
  "env_logger",
@@ -628,6 +629,15 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82289fa5343ce6ca1c3731574a12260f003ab953c16edf3b4561f3dbadcd32ec"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "dprint-core"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7fc292281fc3ec69dfbd36c3c5c73886469a6630e1747ff452b46f5deed208d"
@@ -638,12 +648,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "dprint-plugin-markdown"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2d00c846eeffb9c741373b67c7b8aecc1b191829856f61b63bfc94da7f2065c"
+dependencies = [
+ "dprint-core 0.31.1",
+ "lazy_static",
+ "pulldown-cmark",
+ "regex",
+ "serde",
+]
+
+[[package]]
 name = "dprint-plugin-typescript"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f3317ee009e4c09da0500289f6c36c172a4eec14617de13d63f369da135428d"
 dependencies = [
- "dprint-core",
+ "dprint-core 0.34.0",
  "dprint-swc-ecma-ast-view",
  "fnv",
  "serde",
@@ -1883,6 +1906,17 @@ checksum = "f50f3d255966981eb4e4c5df3e983e6f7d163221f547406d83b6a460ff5c5ee8"
 dependencies = [
  "errno 0.1.8",
  "libc",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffade02495f22453cd593159ea2f59827aae7f53fa8323f756799b670881dcf8"
+dependencies = [
+ "bitflags",
+ "memchr",
+ "unicase",
 ]
 
 [[package]]

@@ -10,7 +10,7 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
-use crate::fs_util::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, get_extension, is_supported_ext_md};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -38,9 +38,8 @@ pub async fn format(
 ) -> Result<(), AnyError> {
   let target_file_resolver = || {
     // collect the files that are to be formatted
-    collect_files(&args, &ignore, is_supported_ext)
+    collect_files(&args, &ignore, is_supported_ext_md)
   };
-
   let operation = |paths: Vec<PathBuf>| {
     let config = get_config();
     async move {
@@ -63,6 +62,29 @@ pub async fn format(
   Ok(())
 }
 
+/// Formats markdown (using https://github.com/dprint/dprint-plugin-markdown) and its code blocks
+/// (ts/tsx, js/jsx).
+fn format_markdown(file_text: &str) -> Result<String, String> {
+  use dprint_plugin_markdown::*;
+  let config = get_config();
+  let md_config = configuration::ConfigurationBuilder::new().build();
+  format_text(
+    &file_text,
+    &md_config,
+    Box::new(move |tag, text, _| {
+      if matches!(tag, "ts" | "tsx" | "js" | "jsx") {
+        dprint::format_text(
+          &PathBuf::from("_rand.".to_owned() + tag),
+          &text,
+          &config,
+        )
+      } else {
+        Ok(text.to_string())
+      }
+    }),
+  )
+}
+
 async fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
@@ -79,7 +101,16 @@ async fn check_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
-      let r = dprint::format_text(&file_path, &file_text, &config);
+      let r: Result<String, String>;
+      let ext = match get_extension(&file_path) {
+        Some(ext) => ext,
+        None => String::new(),
+      };
+      if ext == "md" {
+        r = format_markdown(&file_text)
+      } else {
+        r = dprint::format_text(&file_path, &file_text, &config);
+      }
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_text {
@@ -133,7 +164,16 @@ async fn format_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
-      let r = dprint::format_text(&file_path, &file_contents.text, &config);
+      let r: Result<String, String>;
+      let ext = match get_extension(&file_path) {
+        Some(ext) => ext,
+        None => String::new(),
+      };
+      if ext == "md" {
+        r = format_markdown(&file_contents.text)
+      } else {
+        r = dprint::format_text(&file_path, &file_contents.text, &config);
+      }
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
