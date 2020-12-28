@@ -472,6 +472,12 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
       assert(err instanceof (test.err as typeof Deno.errors.UnexpectedEof));
     } else {
       assert(req instanceof ServerRequest);
+      if (test.version) {
+        // return value order of parseHTTPVersion() function have to match with [req.protoMajor, req.protoMinor];
+        let version = parseHTTPVersion(test.in.split(" ", 3)[2]);
+        assertEquals(req.protoMajor, version[0]);
+        assertEquals(req.protoMinor, version[1]);
+      }
       assert(test.headers);
       assertEquals(err, undefined);
       assertNotEquals(req, null);
