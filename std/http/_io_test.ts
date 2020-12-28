@@ -474,7 +474,7 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
       assert(req instanceof ServerRequest);
       if (test.version) {
         // return value order of parseHTTPVersion() function have to match with [req.protoMajor, req.protoMinor];
-        let version = parseHTTPVersion(test.in.split(" ", 3)[2]);
+        const version = parseHTTPVersion(test.in.split(" ", 3)[2]);
         assertEquals(req.protoMajor, version[0]);
         assertEquals(req.protoMinor, version[1]);
       }
