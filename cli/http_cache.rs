@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /// This module is meant to eventually implement HTTP cache
 /// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).

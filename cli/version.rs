@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 pub const DENO: &str = env!("CARGO_PKG_VERSION");
 pub const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");

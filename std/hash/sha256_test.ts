@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { HmacSha256, Message, Sha256 } from "./sha256.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";

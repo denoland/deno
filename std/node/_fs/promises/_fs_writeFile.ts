@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import type { Encodings, WriteFileOptions } from "../_fs_common.ts";
 
 import { writeFile as writeFileCallback } from "../_fs_writeFile.ts";

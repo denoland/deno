@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 export { promisify } from "./_util/_util_promisify.ts";
 export { callbackify } from "./_util/_util_callbackify.ts";
 import { codes, errorMap } from "./_errors.ts";

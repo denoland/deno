@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // Think of Resources as File Descriptors. They are integers that are allocated by
 // the privileged side of Deno to refer to various rust objects that need to be

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /** A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
  * on npm.
  *
