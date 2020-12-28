@@ -218,17 +218,22 @@ async fn format_source_files(
 }
 
 /// Format stdin and write result to stdout.
-/// Treats input as TypeScript.
+/// Treats input as TypeScript or as Markdown when stdin_markdown is true.
 /// Compatible with `--check` flag.
-pub fn format_stdin(check: bool) -> Result<(), AnyError> {
+pub fn format_stdin(check: bool, stdin_markdown: bool) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
   let config = get_config();
-
-  // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
-  match dprint::format_text(&PathBuf::from("_stdin.ts"), &source, &config) {
+  let r: Result<String, String>;
+  if stdin_markdown {
+    r = format_markdown(&source);
+  } else {
+    // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
+    r = dprint::format_text(&PathBuf::from("_stdin.ts"), &source, &config);
+  }
+  match r {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {

@@ -44,6 +44,7 @@ pub enum DenoSubcommand {
     check: bool,
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
+    stdin_markdown: bool,
   },
   Info {
     json: bool,
@@ -401,6 +402,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   flags.subcommand = DenoSubcommand::Fmt {
     check: matches.is_present("check"),
+    stdin_markdown: matches.is_present("stdin-markdown"),
     files,
     ignore,
   }
@@ -779,6 +781,12 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::with_name("check")
         .long("check")
         .help("Check if the source files are formatted")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("stdin-markdown")
+        .long("stdin-markdown")
+        .help("Consider standard input (stdin) as markdown")
         .takes_value(false),
     )
     .arg(
@@ -1925,6 +1933,7 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
+          stdin_markdown: false,
         },
         ..Flags::default()
       }
@@ -1938,6 +1947,7 @@ mod tests {
           ignore: vec![],
           check: true,
           files: vec![],
+          stdin_markdown: false,
         },
         ..Flags::default()
       }
@@ -1951,6 +1961,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
+          stdin_markdown: false,
         },
         ..Flags::default()
       }
@@ -1964,6 +1975,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
+          stdin_markdown: false,
         },
         watch: true,
         unstable: true,
@@ -1987,6 +1999,7 @@ mod tests {
           ignore: vec![PathBuf::from("bar.js")],
           check: true,
           files: vec![PathBuf::from("foo.ts")],
+          stdin_markdown: false,
         },
         watch: true,
         unstable: true,

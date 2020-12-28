@@ -2680,6 +2680,12 @@ itest!(fmt_stdin {
   output_str: Some("const a = 1;\n"),
 });
 
+itest!(fmt_stdin_markdown {
+  args: "fmt --stdin-markdown -",
+  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n"),
+  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"),
+});
+
 itest!(fmt_stdin_check_formatted {
   args: "fmt --check -",
   input: Some("const a = 1;\n"),
