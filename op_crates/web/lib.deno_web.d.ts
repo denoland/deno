@@ -148,6 +148,23 @@ interface EventListenerOptions {
   capture?: boolean;
 }
 
+interface ProgressEventInit extends EventInit {
+  lengthComputable?: boolean;
+  loaded?: number;
+  total?: number;
+}
+
+/** Events measuring progress of an underlying process, like an HTTP request
+ * (for an XMLHttpRequest, or the loading of the underlying resource of an
+ * <img>, <audio>, <video>, <style> or <link>). */
+declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+  constructor(type: string, eventInitDict?: ProgressEventInit);
+  readonly lengthComputable: boolean;
+  readonly loaded: number;
+  readonly target: T | null;
+  readonly total: number;
+}
+
 /** Decodes a string of data which has been encoded using base-64 encoding.
  *
  *     console.log(atob("aGVsbG8gd29ybGQ=")); // outputs 'hello world'

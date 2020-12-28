@@ -19,11 +19,11 @@ indexmap = "1.6.0"
 lazy_static = "1.4.0"
 libc = "0.2.77"
 log = "0.4.11"
-rusty_v8 = "0.14.0"
+rusty_v8 = "0.15.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
 smallvec = "1.4.2"
-url = { version = "2.1.1", features = ["serde"] }
+url = { version = "2.2", features = ["serde"] }
 pin-project = "1.0.2"
 
 [[example]]
