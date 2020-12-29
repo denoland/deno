@@ -28,7 +28,8 @@ pub type DependencyMap = HashMap<String, Dependency>;
 pub type FetchFuture = Pin<
   Box<
     (dyn Future<Output = Result<CachedModule, (ModuleSpecifier, AnyError)>>
-       + 'static),
+       + 'static
+       + Send),
   >,
 >;
 
@@ -129,7 +130,7 @@ impl Dependency {
   }
 }
 
-pub trait SpecifierHandler {
+pub trait SpecifierHandler: Sync + Send {
   /// Instructs the handler to fetch a specifier or retrieve its value from the
   /// cache.
   fn fetch(
@@ -361,7 +362,7 @@ impl SpecifierHandler for FetchHandler {
         specifier: source_file.specifier,
       })
     }
-    .boxed_local()
+    .boxed()
   }
 
   fn get_tsbuildinfo(

@@ -20,10 +20,10 @@ use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use serde::Deserialize;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 /// Provide static assets that are not preloaded in the compiler snapshot.
 pub fn get_asset(asset: &str) -> Option<&'static str> {
@@ -115,7 +115,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph: Rc<RefCell<Graph>>,
+  pub graph: Arc<RwLock<Graph>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
@@ -138,7 +138,7 @@ pub struct Response {
 struct State {
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Rc<RefCell<Graph>>,
+  graph: Arc<RwLock<Graph>>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   root_map: HashMap<String, ModuleSpecifier>,
@@ -146,7 +146,7 @@ struct State {
 
 impl State {
   pub fn new(
-    graph: Rc<RefCell<Graph>>,
+    graph: Arc<RwLock<Graph>>,
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
@@ -260,7 +260,7 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let graph = state.graph.borrow();
+    let graph = state.graph.read().unwrap();
     let specifier =
       if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
         remapped_specifier.clone()
@@ -310,7 +310,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let graph = state.graph.borrow();
+      let graph = state.graph.read().unwrap();
       match graph.resolve(specifier, &referrer, true) {
         Ok(resolved_specifier) => {
           let media_type = if let Some(media_type) =
@@ -446,9 +446,9 @@ mod tests {
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
   use crate::tsc_config::TsConfig;
-  use std::cell::RefCell;
   use std::env;
   use std::path::PathBuf;
+  use std::sync::RwLock;
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,
@@ -461,7 +461,7 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/tsc2");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+    let handler = Arc::new(RwLock::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
@@ -470,7 +470,7 @@ mod tests {
       .add(&specifier, false)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(builder.get_graph()));
+    let graph = Arc::new(RwLock::new(builder.get_graph()));
     State::new(graph, hash_data, maybe_tsbuildinfo, HashMap::new())
   }
 
@@ -480,13 +480,13 @@ mod tests {
     let hash_data = vec![b"something".to_vec()];
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/tsc2");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+    let handler = Arc::new(RwLock::new(MockSpecifierHandler {
       fixtures,
       ..Default::default()
     }));
     let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder.add(&specifier, false).await?;
-    let graph = Rc::new(RefCell::new(builder.get_graph()));
+    let graph = Arc::new(RwLock::new(builder.get_graph()));
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,

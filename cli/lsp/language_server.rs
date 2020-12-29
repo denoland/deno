@@ -10,7 +10,6 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
 use lspower::jsonrpc::Error as LSPError;
-use lspower::jsonrpc::ErrorCode as LSPErrorCode;
 use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp_types::*;
 use lspower::Client;
@@ -33,6 +32,7 @@ use super::diagnostics;
 use super::diagnostics::DiagnosticCollection;
 use super::diagnostics::DiagnosticSource;
 use super::memory_cache::MemoryCache;
+use super::sources;
 use super::sources::Sources;
 use super::text;
 use super::text::apply_content_changes;
@@ -887,6 +887,16 @@ impl lspower::LanguageServer for LanguageServer {
     params: Option<Value>,
   ) -> LSPResult<Option<Value>> {
     match method {
+      "deno/cache" => match params.map(serde_json::from_value) {
+        Some(Ok(params)) => Ok(Some(
+          serde_json::to_value(self.cache(params).await?).map_err(|err| {
+            error!("Failed to serialize cache response: {:#?}", err);
+            LSPError::internal_error()
+          })?,
+        )),
+        Some(Err(err)) => Err(LSPError::invalid_params(err.to_string())),
+        None => Err(LSPError::invalid_params("Missing parameters")),
+      },
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -909,7 +919,31 @@ impl lspower::LanguageServer for LanguageServer {
   }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheParams {
+  pub text_document: TextDocumentIdentifier,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VirtualTextDocumentParams {
+  pub text_document: TextDocumentIdentifier,
+}
+
 impl LanguageServer {
+  async fn cache(&self, params: CacheParams) -> LSPResult<bool> {
+    let specifier = utils::normalize_url(params.text_document.uri);
+    let maybe_import_map = self.maybe_import_map.read().unwrap().clone();
+    sources::cache(specifier, maybe_import_map)
+      .await
+      .map_err(|err| {
+        error!("{}", err);
+        LSPError::internal_error()
+      })?;
+    Ok(true)
+  }
+
   async fn virtual_text_document(
     &self,
     params: VirtualTextDocumentParams,
@@ -933,7 +967,7 @@ impl LanguageServer {
           if let Some(text) =
             tsc::get_asset(&specifier, &self.ts_server, &state_snapshot)
               .await
-              .map_err(|_| LSPError::new(LSPErrorCode::InternalError))?
+              .map_err(|_| LSPError::internal_error())?
           {
             Some(text)
           } else {
@@ -1007,12 +1041,6 @@ impl DocumentData {
     };
     self.version = Some(version)
   }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VirtualTextDocumentParams {
-  pub text_document: TextDocumentIdentifier,
 }
 
 #[cfg(test)]
