@@ -36,16 +36,14 @@ declare global {
     // deno-lint-ignore no-explicit-any
     jsonOpSync<T>(name: string, params: T): any;
     ops(): void;
-    print(msg: string): void;
+    print(msg: string, code?: number): void;
     registerErrorClass(name: string, Ctor: typeof Error): void;
   }
 
   type LanguageServerRequest =
     | ConfigureRequest
     | GetAsset
-    | GetSyntacticDiagnosticsRequest
-    | GetSemanticDiagnosticsRequest
-    | GetSuggestionDiagnosticsRequest
+    | GetDiagnosticsRequest
     | GetQuickInfoRequest
     | GetDocumentHighlightsRequest
     | GetReferencesRequest
@@ -68,18 +66,8 @@ declare global {
     specifier: string;
   }
 
-  interface GetSyntacticDiagnosticsRequest extends BaseLanguageServerRequest {
-    method: "getSyntacticDiagnostics";
-    specifier: string;
-  }
-
-  interface GetSemanticDiagnosticsRequest extends BaseLanguageServerRequest {
-    method: "getSemanticDiagnostics";
-    specifier: string;
-  }
-
-  interface GetSuggestionDiagnosticsRequest extends BaseLanguageServerRequest {
-    method: "getSuggestionDiagnostics";
+  interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
+    method: "getDiagnostics";
     specifier: string;
   }
 
