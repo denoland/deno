@@ -29,8 +29,6 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
-use std::fs::File;
-use std::io::Read;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -266,9 +264,7 @@ where
 
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
-  let client =
-    create_http_client(args.ca_data.as_deref())
-      .unwrap();
+  let client = create_http_client(args.ca_data.as_deref()).unwrap();
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(json!(rid))
@@ -276,9 +272,7 @@ where
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-fn create_http_client(
-  ca_data: Option<&str>,
-) -> Result<Client, AnyError> {
+fn create_http_client(ca_data: Option<&str>) -> Result<Client, AnyError> {
   let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
   if let Some(ca_data) = ca_data {
     let ca_data_vec = ca_data.as_bytes().to_vec();
