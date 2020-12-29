@@ -407,6 +407,11 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
       in: "GET / HTTP/1.1\r\nheader:foo\r\n",
       err: Deno.errors.UnexpectedEof,
     },
+    {
+      in: "POST / HTTP/1.0\r\n\r\n",
+      headers: [],
+      version: true
+    },
     { in: "", eof: true },
     {
       in: "HEAD / HTTP/1.1\r\nContent-Length:4\r\n\r\n",
