@@ -9,8 +9,8 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
-use lspower::jsonrpc::Error as LSPError;
-use lspower::jsonrpc::Result as LSPResult;
+use lspower::jsonrpc::Error as LspError;
+use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp_types::*;
 use lspower::Client;
 use std::collections::HashMap;
@@ -361,7 +361,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn initialize(
     &self,
     params: InitializeParams,
-  ) -> LSPResult<InitializeResult> {
+  ) -> LspResult<InitializeResult> {
     info!("Starting Deno language server...");
 
     let capabilities = capabilities::server_capabilities(&params.capabilities);
@@ -439,7 +439,7 @@ impl lspower::LanguageServer for LanguageServer {
     info!("Server ready.");
   }
 
-  async fn shutdown(&self) -> LSPResult<()> {
+  async fn shutdown(&self) -> LspResult<()> {
     Ok(())
   }
 
@@ -586,7 +586,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
-  ) -> LSPResult<Option<Vec<TextEdit>>> {
+  ) -> LspResult<Option<Vec<TextEdit>>> {
     let specifier = utils::normalize_url(params.text_document.uri.clone());
     let file_text = {
       let file_cache = self.file_cache.read().unwrap();
@@ -631,7 +631,7 @@ impl lspower::LanguageServer for LanguageServer {
     }
   }
 
-  async fn hover(&self, params: HoverParams) -> LSPResult<Option<Hover>> {
+  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -662,7 +662,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
-  ) -> LSPResult<Option<Vec<DocumentHighlight>>> {
+  ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -702,7 +702,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn references(
     &self,
     params: ReferenceParams,
-  ) -> LSPResult<Option<Vec<Location>>> {
+  ) -> LspResult<Option<Vec<Location>>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -743,7 +743,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
-  ) -> LSPResult<Option<GotoDefinitionResponse>> {
+  ) -> LspResult<Option<GotoDefinitionResponse>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -779,7 +779,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn completion(
     &self,
     params: CompletionParams,
-  ) -> LSPResult<Option<CompletionResponse>> {
+  ) -> LspResult<Option<CompletionResponse>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -885,17 +885,17 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     method: &str,
     params: Option<Value>,
-  ) -> LSPResult<Option<Value>> {
+  ) -> LspResult<Option<Value>> {
     match method {
       "deno/cache" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.cache(params).await?).map_err(|err| {
             error!("Failed to serialize cache response: {:#?}", err);
-            LSPError::internal_error()
+            LspError::internal_error()
           })?,
         )),
-        Some(Err(err)) => Err(LSPError::invalid_params(err.to_string())),
-        None => Err(LSPError::invalid_params("Missing parameters")),
+        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+        None => Err(LspError::invalid_params("Missing parameters")),
       },
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
@@ -905,15 +905,15 @@ impl lspower::LanguageServer for LanguageServer {
                 "Failed to serialize virtual_text_document response: {:#?}",
                 err
               );
-              LSPError::internal_error()
+              LspError::internal_error()
             })?,
         )),
-        Some(Err(err)) => Err(LSPError::invalid_params(err.to_string())),
-        None => Err(LSPError::invalid_params("Missing parameters")),
+        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+        None => Err(LspError::invalid_params("Missing parameters")),
       },
       _ => {
         error!("Got a {} request, but no handler is defined", method);
-        Err(LSPError::method_not_found())
+        Err(LspError::method_not_found())
       }
     }
   }
@@ -932,22 +932,33 @@ pub struct VirtualTextDocumentParams {
 }
 
 impl LanguageServer {
-  async fn cache(&self, params: CacheParams) -> LSPResult<bool> {
+  async fn cache(&self, params: CacheParams) -> LspResult<bool> {
     let specifier = utils::normalize_url(params.text_document.uri);
     let maybe_import_map = self.maybe_import_map.read().unwrap().clone();
-    sources::cache(specifier, maybe_import_map)
+    sources::cache(specifier.clone(), maybe_import_map)
       .await
       .map_err(|err| {
         error!("{}", err);
-        LSPError::internal_error()
+        LspError::internal_error()
       })?;
+    {
+      let file_cache = self.file_cache.read().unwrap();
+      if let Some(file_id) = file_cache.lookup(&specifier) {
+        let mut diagnostics_collection = self.diagnostics.write().unwrap();
+        diagnostics_collection.invalidate(&file_id);
+      }
+    }
+    self.prepare_diagnostics().await.map_err(|err| {
+      error!("{}", err);
+      LspError::internal_error()
+    })?;
     Ok(true)
   }
 
   async fn virtual_text_document(
     &self,
     params: VirtualTextDocumentParams,
-  ) -> LSPResult<Option<String>> {
+  ) -> LspResult<Option<String>> {
     let specifier = utils::normalize_url(params.text_document.uri);
     let url = specifier.as_url();
     let contents = if url.as_str() == "deno:/status.md" {
@@ -967,7 +978,7 @@ impl LanguageServer {
           if let Some(text) =
             tsc::get_asset(&specifier, &self.ts_server, &state_snapshot)
               .await
-              .map_err(|_| LSPError::internal_error())?
+              .map_err(|_| LspError::internal_error())?
           {
             Some(text)
           } else {

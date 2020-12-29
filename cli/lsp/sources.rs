@@ -31,7 +31,7 @@ pub async fn cache(
   specifier: ModuleSpecifier,
   maybe_import_map: Option<ImportMap>,
 ) -> Result<(), AnyError> {
-  let program_state = Arc::new(ProgramState::new(Default::default())?);
+  let program_state = Arc::new(ProgramState::new(Default::default(), false)?);
   let handler = Arc::new(RwLock::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),

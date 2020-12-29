@@ -592,6 +592,7 @@ pub mod tests {
       CacheSetting::Use,
       true,
       None,
+      true,
     )
     .expect("could not setup");
     let disk_cache = deno_dir.gen_cache;

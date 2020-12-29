@@ -276,6 +276,7 @@ pub struct FileFetcher {
   cache_setting: CacheSetting,
   http_cache: HttpCache,
   http_client: reqwest::Client,
+  use_color: bool,
 }
 
 impl FileFetcher {
@@ -284,6 +285,7 @@ impl FileFetcher {
     cache_setting: CacheSetting,
     allow_remote: bool,
     maybe_ca_file: Option<&str>,
+    use_color: bool,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       allow_remote,
@@ -291,6 +293,7 @@ impl FileFetcher {
       cache_setting,
       http_cache,
       http_client: create_http_client(get_user_agent(), maybe_ca_file)?,
+      use_color,
     })
   }
 
@@ -398,7 +401,15 @@ impl FileFetcher {
       .boxed();
     }
 
-    info!("{} {}", colors::green("Download"), specifier);
+    info!(
+      "{} {}",
+      if self.use_color {
+        colors::green("Download").to_string()
+      } else {
+        "Download".to_string()
+      },
+      specifier
+    );
 
     let file_fetcher = self.clone();
     let cached_etag = match self.http_cache.get(specifier.as_url()) {
@@ -517,9 +528,14 @@ mod tests {
       Rc::new(TempDir::new().expect("failed to create temp directory"))
     });
     let location = temp_dir.path().join("deps");
-    let file_fetcher =
-      FileFetcher::new(HttpCache::new(&location), cache_setting, true, None)
-        .expect("setup failed");
+    let file_fetcher = FileFetcher::new(
+      HttpCache::new(&location),
+      cache_setting,
+      true,
+      None,
+      true,
+    )
+    .expect("setup failed");
     (file_fetcher, temp_dir)
   }
 
@@ -901,6 +917,7 @@ mod tests {
       CacheSetting::ReloadAll,
       true,
       None,
+      true,
     )
     .expect("setup failed");
     let result = file_fetcher
@@ -927,6 +944,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
@@ -954,6 +972,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      true,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1109,6 +1128,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
@@ -1140,6 +1160,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      true,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1247,6 +1268,7 @@ mod tests {
       CacheSetting::Use,
       false,
       None,
+      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
@@ -1275,6 +1297,7 @@ mod tests {
       CacheSetting::Only,
       true,
       None,
+      true,
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1282,6 +1305,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
