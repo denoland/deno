@@ -377,7 +377,7 @@ Deno.test({
     worker.addEventListener("error", () => console.log("error"));
     worker.addEventListener("message", handleWorkerMessage);
 
-    console.log("post from parent");
+    console.log("\npost from parent");
     worker.postMessage(undefined);
     await promise;
   },

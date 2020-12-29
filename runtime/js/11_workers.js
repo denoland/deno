@@ -88,7 +88,7 @@
           cancelable: false,
           data,
         });
-        return;
+        throw new Error(`Received data could not be parsed: '${msgData}'.`);
       }
 
       const msgEvent = new MessageEvent("message", {
