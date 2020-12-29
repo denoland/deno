@@ -50,7 +50,8 @@ declare global {
     | GetDocumentHighlightsRequest
     | GetReferencesRequest
     | GetDefinitionRequest
-    | GetCompletionsRequest;
+    | GetCompletionsRequest
+    | FindRenameLocationsRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -113,5 +114,14 @@ declare global {
     specifier: string;
     position: number;
     preferences: ts.UserPreferences;
+  }
+
+  interface FindRenameLocationsRequest extends BaseLanguageServerRequest {
+    method: "findRenameLocations";
+    specifier: string;
+    position: number;
+    findInStrings: boolean;
+    findInComments: boolean;
+    providePrefixAndSuffixTextForRename: boolean;
   }
 }

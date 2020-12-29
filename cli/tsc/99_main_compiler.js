@@ -562,6 +562,18 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "findRenameLocations": {
+        return respond(
+          id,
+          languageService.findRenameLocations(
+            request.specifier,
+            request.position,
+            request.findInStrings,
+            request.findInComments,
+            request.providePrefixAndSuffixTextForRename,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never

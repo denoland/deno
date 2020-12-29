@@ -22,6 +22,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
@@ -408,6 +409,85 @@ impl QuickInfo {
       contents: lsp_types::HoverContents::Array(contents),
       range: Some(self.text_span.to_range(line_index)),
     }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameLocation {
+  // inherit from DocumentSpan
+  text_span: TextSpan,
+  file_name: String,
+  original_text_span: Option<TextSpan>,
+  original_file_name: Option<String>,
+  context_span: Option<TextSpan>,
+  original_context_span: Option<TextSpan>,
+  // RenameLocation props
+  prefix_text: Option<String>,
+  suffix_text: Option<String>,
+}
+
+pub struct RenameLocations {
+  pub locations: Vec<RenameLocation>,
+}
+
+impl RenameLocations {
+  pub async fn into_workspace_edit<F, Fut>(
+    self,
+    snapshot: StateSnapshot,
+    index_provider: F,
+    new_name: &str,
+  ) -> Result<lsp_types::WorkspaceEdit, AnyError>
+  where
+    F: Fn(ModuleSpecifier) -> Fut,
+    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
+  {
+    let mut text_document_edit_map: HashMap<Url, lsp_types::TextDocumentEdit> =
+      HashMap::new();
+    for location in self.locations.iter() {
+      let uri = utils::normalize_file_name(&location.file_name)?;
+      let specifier = ModuleSpecifier::resolve_url(&location.file_name)?;
+
+      // ensure TextDocumentEdit for `location.file_name`.
+      if text_document_edit_map.get(&uri).is_none() {
+        text_document_edit_map.insert(
+          uri.clone(),
+          lsp_types::TextDocumentEdit {
+            text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
+              uri: uri.clone(),
+              version: snapshot
+                .doc_data
+                .get(&specifier)
+                .map_or_else(|| None, |data| data.version),
+            },
+            edits: Vec::<
+              lsp_types::OneOf<
+                lsp_types::TextEdit,
+                lsp_types::AnnotatedTextEdit,
+              >,
+            >::new(),
+          },
+        );
+      }
+
+      // push TextEdit for ensured `TextDocumentEdit.edits`.
+      let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
+      document_edit
+        .edits
+        .push(lsp_types::OneOf::Left(lsp_types::TextEdit {
+          range: location
+            .text_span
+            .to_range(&index_provider(specifier.clone()).await?),
+          new_text: new_name.to_string(),
+        }));
+    }
+
+    Ok(lsp_types::WorkspaceEdit {
+      changes: None,
+      document_changes: Some(lsp_types::DocumentChanges::Edits(
+        text_document_edit_map.values().cloned().collect(),
+      )),
+    })
   }
 }
 
@@ -1059,6 +1139,8 @@ pub enum RequestMethod {
   GetDefinition((ModuleSpecifier, u32)),
   /// Get completion information at a given position (IntelliSense).
   GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  /// Get rename locations at a given position.
+  FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
 }
 
 impl RequestMethod {
@@ -1125,6 +1207,23 @@ impl RequestMethod {
           "specifier": specifier,
           "position": position,
           "preferences": preferences,
+        })
+      }
+      RequestMethod::FindRenameLocations((
+        specifier,
+        position,
+        find_in_strings,
+        find_in_comments,
+        provide_prefix_and_suffix_text_for_rename,
+      )) => {
+        json!({
+          "id": id,
+          "method": "findRenameLocations",
+          "specifier": specifier,
+          "position": position,
+          "findInStrings": find_in_strings,
+          "findInComments": find_in_comments,
+          "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
         })
       }
     }

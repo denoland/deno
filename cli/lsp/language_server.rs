@@ -802,6 +802,78 @@ impl lspower::LanguageServer for LanguageServer {
     }
   }
 
+  async fn rename(
+    &self,
+    params: RenameParams,
+  ) -> LSPResult<Option<WorkspaceEdit>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+
+    let snapshot = self.snapshot();
+    let specifier =
+      utils::normalize_url(params.text_document_position.text_document.uri);
+
+    let line_index =
+      self
+        .get_line_index(specifier.clone())
+        .await
+        .map_err(|err| {
+          error!("Failed to get line_index {:#?}", err);
+          LSPError::internal_error()
+        })?;
+
+    let req = tsc::RequestMethod::FindRenameLocations((
+      specifier,
+      text::to_char_pos(&line_index, params.text_document_position.position),
+      true,
+      true,
+      false,
+    ));
+
+    let res = self
+      .ts_server
+      .request(snapshot.clone(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {:#?}", err);
+        LSPError::invalid_request()
+      })?;
+
+    let maybe_locations = serde_json::from_value::<
+      Option<Vec<tsc::RenameLocation>>,
+    >(res)
+    .map_err(|err| {
+      error!(
+        "Failed to deserialize tsserver response to Vec<RenameLocation> {:#?}",
+        err
+      );
+      LSPError::internal_error()
+    })?;
+
+    match maybe_locations {
+      Some(locations) => {
+        let rename_locations = tsc::RenameLocations { locations };
+        let workpace_edits = rename_locations
+          .into_workspace_edit(
+            snapshot,
+            |s| self.get_line_index(s),
+            &params.new_name,
+          )
+          .await
+          .map_err(|err| {
+            error!(
+              "Failed to convert tsc::RenameLocations to WorkspaceEdit {:#?}",
+              err
+            );
+            LSPError::internal_error()
+          })?;
+        Ok(Some(workpace_edits))
+      }
+      None => Ok(None),
+    }
+  }
+
   async fn request_else(
     &self,
     method: &str,
@@ -1132,6 +1204,59 @@ mod tests {
                 "character": 28
               }
             }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+  #[tokio::test]
+  async fn test_rename() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("rename_did_open_notification.json", LspResponse::None),
+      (
+        "rename_request.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "documentChanges": [{
+              "textDocument": {
+                "uri": "file:///a/file.ts",
+                "version": 1,
+              },
+              "edits": [{
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 12
+                  }
+                },
+                "newText": "variable_modified"
+              }, {
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 20
+                  }
+                },
+                "newText": "variable_modified"
+              }]
+            }]
           }),
         ),
       ),
