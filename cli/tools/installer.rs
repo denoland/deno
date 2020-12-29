@@ -632,8 +632,8 @@ mod tests {
 
     install(
       Flags {
-        allow_net: true,
-        allow_read: true,
+        allow_net: Some(vec![]),
+        allow_read: Some(vec![]),
         no_check: true,
         log_level: Some(Level::Error),
         ..Flags::default()

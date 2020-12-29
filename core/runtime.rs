@@ -604,18 +604,13 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, AnyError> {
-  // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
-  // also be implemented on `struct Isolate`.
-  let is_terminating_exception =
-    scope.thread_safe_handle().is_execution_terminating();
+  let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
 
   if is_terminating_exception {
     // TerminateExecution was called. Cancel exception termination so that the
     // exception can be created..
-    // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
-    // also be implemented on `struct Isolate`.
-    scope.thread_safe_handle().cancel_terminate_execution();
+    scope.cancel_terminate_execution();
 
     // Maybe make a new exception object.
     if exception.is_null_or_undefined() {
@@ -638,9 +633,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
   if is_terminating_exception {
     // Re-enable exception termination.
-    // TODO(piscisaureus): in rusty_v8, `terminate_execution()` should also
-    // be implemented on `struct Isolate`.
-    scope.thread_safe_handle().terminate_execution();
+    scope.terminate_execution();
   }
 
   Err(js_error)
@@ -1785,12 +1778,7 @@ pub mod tests {
 
     // Cancel the execution-terminating exception in order to allow script
     // execution again.
-    // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
-    // also be implemented on `struct Isolate`.
-    let ok = isolate
-      .v8_isolate()
-      .thread_safe_handle()
-      .cancel_terminate_execution();
+    let ok = isolate.v8_isolate().cancel_terminate_execution();
     assert!(ok);
 
     // Verify that the isolate usable again.

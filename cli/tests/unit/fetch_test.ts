@@ -27,8 +27,33 @@ unitTest(
       async (): Promise<void> => {
         await fetch("http://localhost:4000");
       },
-      Deno.errors.Http,
+      TypeError,
       "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchDnsError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://nil/");
+      },
+      TypeError,
+      "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInvalidUriError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://<invalid>/");
+      },
+      URIError,
     );
   },
 );
@@ -199,9 +224,12 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
 unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
   void
 > {
-  await assertThrowsAsync(async () => {
-    await fetch("");
-  }, URIError);
+  await assertThrowsAsync(
+    async () => {
+      await fetch("");
+    },
+    URIError,
+  );
 });
 
 unitTest(
