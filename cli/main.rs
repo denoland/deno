@@ -948,11 +948,31 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
+
+  let mut maybe_coverage_collector =
+    if let Some(ref coverage_dir) = program_state.coverage_dir {
+      let session = worker.create_inspector_session();
+
+      let coverage_dir = PathBuf::from(coverage_dir);
+      let mut coverage_collector =
+        tools::coverage::CoverageCollector::new(coverage_dir, session);
+      coverage_collector.start_collecting().await?;
+
+      Some(coverage_collector)
+    } else {
+      None
+    };
+
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
+
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    coverage_collector.stop_collecting().await?;
+  }
+
   Ok(())
 }
 
