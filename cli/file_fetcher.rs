@@ -283,14 +283,14 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    maybe_ca_file: Option<&str>,
+    maybe_ca_data: Option<&str>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       allow_remote,
       cache: FileCache::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(get_user_agent(), maybe_ca_file)?,
+      http_client: create_http_client(get_user_agent(), maybe_ca_data)?,
     })
   }
 

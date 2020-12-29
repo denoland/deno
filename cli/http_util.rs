@@ -25,7 +25,7 @@ pub fn get_user_agent() -> String {
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
   user_agent: String,
-  ca_file: Option<&str>,
+  ca_data: Option<&str>,
 ) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -34,10 +34,9 @@ pub fn create_http_client(
     .default_headers(headers)
     .use_rustls_tls();
 
-  if let Some(ca_file) = ca_file {
-    let mut buf = Vec::new();
-    File::open(ca_file)?.read_to_end(&mut buf)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
+  if let Some(ca_data) = ca_data {
+    let ca_data_vec = ca_data.as_bytes().to_vec();
+    let cert = reqwest::Certificate::from_pem(&ca_data_vec)?;
     builder = builder.add_root_certificate(cert);
   }
 
@@ -160,8 +159,8 @@ pub async fn fetch_once(
 mod tests {
   use super::*;
 
-  fn create_test_client(ca_file: Option<&str>) -> Client {
-    create_http_client("test_client".to_string(), ca_file).unwrap()
+  fn create_test_client(ca_data: Option<&str>) -> Client {
+    create_http_client("test_client".to_string(), ca_data).unwrap()
   }
 
   #[tokio::test]
