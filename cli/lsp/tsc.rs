@@ -94,7 +94,7 @@ pub async fn get_asset(
     Ok(Some(asset_text.to_string()))
   } else {
     {
-      let assets = state_snapshot.assets.read().unwrap();
+      let assets = state_snapshot.assets.lock().unwrap();
       if let Some(asset) = assets.get(specifier) {
         return Ok(asset.clone());
       }
@@ -107,7 +107,7 @@ pub async fn get_asset(
         )
         .await?,
     )?;
-    let mut assets = state_snapshot.assets.write().unwrap();
+    let mut assets = state_snapshot.assets.lock().unwrap();
     assets.insert(specifier.clone(), asset.clone());
     Ok(asset)
   }
@@ -767,7 +767,7 @@ fn cache_snapshot(
   {
     let s = ModuleSpecifier::resolve_url(&specifier)?;
     let content = {
-      let file_cache = state.state_snapshot.file_cache.read().unwrap();
+      let file_cache = state.state_snapshot.file_cache.lock().unwrap();
       let file_id = file_cache.lookup(&s).unwrap();
       file_cache.get_contents(file_id)?
     };
@@ -863,7 +863,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap();
     Ok(json!(content.chars().count()))
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     Ok(json!(sources.get_length(&specifier).unwrap()))
   }
 }
@@ -888,7 +888,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap()
       .clone()
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     sources.get_text(&specifier).unwrap()
   };
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -898,7 +898,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
-  let mut sources = if let Ok(sources) = state.state_snapshot.sources.write() {
+  let mut sources = if let Ok(sources) = state.state_snapshot.sources.lock() {
     sources
   } else {
     return Err(custom_error("Deadlock", "deadlock locking sources"));
@@ -999,7 +999,7 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
       return Ok(json!(version.to_string()));
     }
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     if let Some(version) = sources.get_script_version(&specifier) {
       return Ok(json!(version));
     }
@@ -1256,7 +1256,7 @@ mod tests {
   use crate::lsp::language_server::DocumentData;
   use std::collections::HashMap;
   use std::sync::Arc;
-  use std::sync::RwLock;
+  use std::sync::Mutex;
 
   fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
     let mut doc_data = HashMap::new();
@@ -1270,7 +1270,7 @@ mod tests {
       );
       file_cache.set_contents(specifier, Some(content.as_bytes().to_vec()));
     }
-    let file_cache = Arc::new(RwLock::new(file_cache));
+    let file_cache = Arc::new(Mutex::new(file_cache));
     StateSnapshot {
       assets: Default::default(),
       doc_data,
