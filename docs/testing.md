@@ -222,7 +222,7 @@ stdout. In the future there will be support for `lcov` output too.
 
 ```
 $ git clone git@github.com:denosaurs/deno_brotli.git && cd deno_brotli
-$ deno test --coverage --unstable
+$ deno test --coverage
 Debugger listening on ws://127.0.0.1:9229/ws/5a593019-d185-478b-a928-ebc33e5834be
 Check file:///home/deno/deno_brotli/$deno$test.ts
 running 2 tests

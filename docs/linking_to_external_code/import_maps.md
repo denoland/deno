@@ -37,7 +37,7 @@ console.log(red("hello world"));
 Then:
 
 ```shell
-$ deno run --import-map=import_map.json --unstable color.ts
+$ deno run --import-map=import_map.json color.ts
 ```
 
 To use starting directory for absolute imports:

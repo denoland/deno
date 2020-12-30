@@ -94,11 +94,8 @@ watcher. When Deno starts up with this flag it watches the entrypoint, and all
 local files the entrypoint statically imports. Whenever one of these files is
 changed on disk, the program will automatically be restarted.
 
-**Note: file watcher is a new feature and still unstable thus it requires
-`--unstable` flag**
-
 ```
-deno run --watch --unstable main.ts
+deno run --watch main.ts
 ```
 
 ### Integrity flags
@@ -122,7 +119,7 @@ resolution, compilation configuration etc.
 
 ```
 --config <FILE>               Load tsconfig.json configuration file
---import-map <FILE>           UNSTABLE: Load import map file
+--import-map <FILE>           Load import map file
 --no-remote                   Do not resolve remote modules
 --reload=<CACHE_BLOCKLIST>    Reload source code cache (recompile TypeScript)
 --unstable                    Enable unstable APIs
