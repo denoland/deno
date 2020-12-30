@@ -56,7 +56,6 @@ pub struct ProgramState {
 impl ProgramState {
   pub fn new(
     flags: flags::Flags,
-    use_color: bool,
   ) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
@@ -79,7 +78,6 @@ impl ProgramState {
       cache_usage,
       !flags.no_remote,
       ca_file.as_deref(),
-      use_color,
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {

@@ -276,7 +276,6 @@ pub struct FileFetcher {
   cache_setting: CacheSetting,
   http_cache: HttpCache,
   http_client: reqwest::Client,
-  use_color: bool,
 }
 
 impl FileFetcher {
@@ -285,7 +284,6 @@ impl FileFetcher {
     cache_setting: CacheSetting,
     allow_remote: bool,
     maybe_ca_file: Option<&str>,
-    use_color: bool,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       allow_remote,
@@ -293,7 +291,6 @@ impl FileFetcher {
       cache_setting,
       http_cache,
       http_client: create_http_client(get_user_agent(), maybe_ca_file)?,
-      use_color,
     })
   }
 
@@ -401,15 +398,7 @@ impl FileFetcher {
       .boxed();
     }
 
-    info!(
-      "{} {}",
-      if self.use_color {
-        colors::green("Download").to_string()
-      } else {
-        "Download".to_string()
-      },
-      specifier
-    );
+    info!("{} {}", colors::green("Download").to_string(), specifier);
 
     let file_fetcher = self.clone();
     let cached_etag = match self.http_cache.get(specifier.as_url()) {
