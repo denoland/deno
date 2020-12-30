@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.6.2"
+version = "1.6.3"
 dependencies = [
  "atty",
  "base64 0.12.3",
