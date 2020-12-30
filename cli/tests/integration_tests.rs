@@ -922,7 +922,7 @@ fn ts_reload() {
     .output()
     .expect("failed to spawn script");
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
+  assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
     .trim()
     .contains("host.writeFile(\"deno://002_hello.js\")"));
@@ -3319,6 +3319,12 @@ itest!(deno_test_coverage_explicit {
 itest!(deno_test_run_test_coverage {
   args: "test --allow-all --coverage --unstable test_run_test_coverage.ts",
   output: "test_run_test_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_run_run_coverage {
+  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts",
+  output: "test_run_run_coverage.out",
   exit_code: 0,
 });
 

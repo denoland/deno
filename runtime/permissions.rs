@@ -78,31 +78,38 @@ pub struct Permissions {
   pub hrtime: PermissionState,
 }
 
-fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
-  allowlist
-    .iter()
-    .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
-    .collect()
+fn resolve_fs_allowlist(allow: &Option<Vec<PathBuf>>) -> HashSet<PathBuf> {
+  if let Some(v) = allow {
+    v.iter()
+      .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
+      .collect()
+  } else {
+    HashSet::new()
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct PermissionsOptions {
   pub allow_env: bool,
   pub allow_hrtime: bool,
-  pub allow_net: bool,
+  pub allow_net: Option<Vec<String>>,
   pub allow_plugin: bool,
-  pub allow_read: bool,
+  pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: bool,
-  pub allow_write: bool,
-  pub net_allowlist: Vec<String>,
-  pub read_allowlist: Vec<PathBuf>,
-  pub write_allowlist: Vec<PathBuf>,
+  pub allow_write: Option<Vec<PathBuf>>,
 }
 
 impl Permissions {
   pub fn from_options(opts: &PermissionsOptions) -> Self {
-    fn state_from_flag_bool(flag: bool) -> PermissionState {
+    fn global_state_from_flag_bool(flag: bool) -> PermissionState {
       if flag {
+        PermissionState::Granted
+      } else {
+        PermissionState::Prompt
+      }
+    }
+    fn global_state_from_option<T>(flag: &Option<Vec<T>>) -> PermissionState {
+      if matches!(flag, Some(v) if v.is_empty()) {
         PermissionState::Granted
       } else {
         PermissionState::Prompt
@@ -110,24 +117,28 @@ impl Permissions {
     }
     Self {
       read: UnaryPermission::<PathBuf> {
-        global_state: state_from_flag_bool(opts.allow_read),
-        granted_list: resolve_fs_allowlist(&opts.read_allowlist),
+        global_state: global_state_from_option(&opts.allow_read),
+        granted_list: resolve_fs_allowlist(&opts.allow_read),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        global_state: state_from_flag_bool(opts.allow_write),
-        granted_list: resolve_fs_allowlist(&opts.write_allowlist),
+        global_state: global_state_from_option(&opts.allow_write),
+        granted_list: resolve_fs_allowlist(&opts.allow_write),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        global_state: state_from_flag_bool(opts.allow_net),
-        granted_list: opts.net_allowlist.iter().cloned().collect(),
+        global_state: global_state_from_option(&opts.allow_net),
+        granted_list: opts
+          .allow_net
+          .as_ref()
+          .map(|v| v.iter().cloned().collect())
+          .unwrap_or_else(HashSet::new),
         ..Default::default()
       },
-      env: state_from_flag_bool(opts.allow_env),
-      run: state_from_flag_bool(opts.allow_run),
-      plugin: state_from_flag_bool(opts.allow_plugin),
-      hrtime: state_from_flag_bool(opts.allow_hrtime),
+      env: global_state_from_flag_bool(opts.allow_env),
+      run: global_state_from_flag_bool(opts.allow_run),
+      plugin: global_state_from_flag_bool(opts.allow_plugin),
+      hrtime: global_state_from_flag_bool(opts.allow_hrtime),
     }
   }
 
@@ -707,8 +718,8 @@ mod tests {
     ];
 
     let perms = Permissions::from_options(&PermissionsOptions {
-      read_allowlist: allowlist.clone(),
-      write_allowlist: allowlist,
+      allow_read: Some(allowlist.clone()),
+      allow_write: Some(allowlist),
       ..Default::default()
     });
 
@@ -762,14 +773,14 @@ mod tests {
   #[test]
   fn test_check_net() {
     let perms = Permissions::from_options(&PermissionsOptions {
-      net_allowlist: svec![
+      allow_net: Some(svec![
         "localhost",
         "deno.land",
         "github.com:3000",
         "127.0.0.1",
         "172.16.0.2:8000",
         "www.github.com:443"
-      ],
+      ]),
       ..Default::default()
     });
 
@@ -853,8 +864,8 @@ mod tests {
       vec![PathBuf::from("/a")]
     };
     let perms = Permissions::from_options(&PermissionsOptions {
-      read_allowlist,
-      net_allowlist: svec!["localhost"],
+      allow_read: Some(read_allowlist),
+      allow_net: Some(svec!["localhost"]),
       ..Default::default()
     });
 
@@ -967,12 +978,12 @@ mod tests {
     let perms2 = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       net: UnaryPermission {
@@ -1073,12 +1084,12 @@ mod tests {
     let mut perms = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       net: UnaryPermission {

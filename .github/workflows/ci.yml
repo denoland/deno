@@ -93,6 +93,12 @@ jobs:
           python-version: "2.7"
           architecture: x64
 
+      - name: Install Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+          check-latest: true
+
       - name: Remove unused versions of Python
         if: startsWith(matrix.os, 'windows')
         run: |-
