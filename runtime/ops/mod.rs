@@ -66,7 +66,6 @@ impl UnstableChecker {
   ///
   /// This is intentionally a non-recoverable check so that people cannot probe
   /// for unstable APIs from stable programs.
-  // NOTE(bartlomieju): keep in sync with `cli/program_state.rs`
   pub fn check_unstable(&self, api_name: &str) {
     if !self.unstable {
       eprintln!(

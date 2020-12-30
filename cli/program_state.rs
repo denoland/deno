@@ -28,14 +28,6 @@ use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn exit_unstable(api_name: &str) {
-  eprintln!(
-    "Unstable API '{}'. The --unstable flag must be provided.",
-    api_name
-  );
-  std::process::exit(70);
-}
-
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
@@ -87,9 +79,7 @@ impl ProgramState {
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => {
-          Some(ImportMap::load(file_path)?)
-        }
+        Some(file_path) => Some(ImportMap::load(file_path)?),
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);

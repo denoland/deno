@@ -52,7 +52,6 @@ use crate::fmt_errors::PrettyJsError;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
-use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
@@ -395,7 +394,7 @@ async fn language_server_command() -> Result<(), AnyError> {
 }
 
 async fn lint_command(
-  flags: Flags,
+  _flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
   ignore: Vec<PathBuf>,
