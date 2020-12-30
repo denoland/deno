@@ -3457,13 +3457,18 @@ fn cafile_fetch() {
   let module_url =
     Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
       .unwrap();
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let cadata = Some(
+    test_util::root_path()
+      .join("std/http/testdata/tls/RootCA.pem")
+      .to_str()
+      .unwrap(),
+  );
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("cache")
     .arg("--cert")
-    .arg(cafile)
+    .arg(cadata)
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
@@ -3513,19 +3518,24 @@ fn cafile_install_remote_module() {
 }
 
 #[test]
-fn cafile_bundle_remote_exports() {
+fn cadata_bundle_remote_exports() {
   let _g = util::http_server();
 
   // First we have to generate a bundle of some remote module that has exports.
   let mod1 = "https://localhost:5545/cli/tests/subdir/mod1.ts";
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let cadata = Some(
+    test_util::root_path()
+      .join("std/http/testdata/tls/RootCA.pem")
+      .to_str()
+      .unwrap(),
+  );
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
     .arg("--cert")
-    .arg(cafile)
+    .arg(cadata)
     .arg(mod1)
     .arg(&bundle)
     .spawn()
