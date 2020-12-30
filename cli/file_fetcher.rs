@@ -398,7 +398,7 @@ impl FileFetcher {
       .boxed();
     }
 
-    info!("{} {}", colors::green("Download").to_string(), specifier);
+    info!("{} {}", colors::green("Download"), specifier);
 
     let file_fetcher = self.clone();
     let cached_etag = match self.http_cache.get(specifier.as_url()) {
