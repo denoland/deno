@@ -2003,13 +2003,8 @@ mod tests {
 
   #[test]
   fn lint() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "lint",
-      "--unstable",
-      "script_1.ts",
-      "script_2.ts"
-    ]);
+    let r =
+      flags_from_vec_safe(svec!["deno", "lint", "script_1.ts", "script_2.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2022,7 +2017,6 @@ mod tests {
           json: false,
           ignore: vec![],
         },
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -2030,7 +2024,6 @@ mod tests {
     let r = flags_from_vec_safe(svec![
       "deno",
       "lint",
-      "--unstable",
       "--ignore=script_1.ts,script_2.ts"
     ]);
     assert_eq!(
@@ -2045,12 +2038,11 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
         },
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable", "--rules"]);
+    let r = flags_from_vec_safe(svec!["deno", "lint", "--rules"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2060,18 +2052,11 @@ mod tests {
           json: false,
           ignore: vec![],
         },
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "lint",
-      "--unstable",
-      "--json",
-      "script_1.ts"
-    ]);
+    let r = flags_from_vec_safe(svec!["deno", "lint", "--json", "script_1.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2081,7 +2066,6 @@ mod tests {
           json: true,
           ignore: vec![],
         },
-        unstable: true,
         ..Flags::default()
       }
     );

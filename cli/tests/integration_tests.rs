@@ -44,7 +44,6 @@ fn std_tests() {
 fn std_lint() {
   let status = util::deno_cmd()
     .arg("lint")
-    .arg("--unstable")
     .arg(format!(
       "--ignore={}",
       util::root_path().join("std/node/tests").to_string_lossy()
@@ -61,7 +60,6 @@ fn std_lint() {
 fn unit_test_lint() {
   let status = util::deno_cmd()
     .arg("lint")
-    .arg("--unstable")
     .arg(util::root_path().join("cli/tests/unit"))
     .spawn()
     .unwrap()
@@ -543,7 +541,6 @@ fn fmt_watch_test() {
     .arg("fmt")
     .arg(&badly_formatted)
     .arg("--watch")
-    .arg("--unstable")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1196,7 +1193,6 @@ fn bundle_import_map() {
     .arg("bundle")
     .arg("--import-map")
     .arg(import_map_path)
-    .arg("--unstable")
     .arg(import)
     .arg(&bundle)
     .spawn()
@@ -1242,7 +1238,6 @@ fn bundle_import_map_no_check() {
     .arg("--no-check")
     .arg("--importmap")
     .arg(import_map_path)
-    .arg("--unstable")
     .arg(import)
     .arg(&bundle)
     .spawn()
@@ -1293,7 +1288,6 @@ fn bundle_js_watch() {
     .arg(&file_to_watch)
     .arg(&bundle)
     .arg("--watch")
-    .arg("--unstable")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1360,7 +1354,6 @@ fn bundle_watch_not_exit() {
     .arg(&file_to_watch)
     .arg(&target_file)
     .arg("--watch")
-    .arg("--unstable")
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -1457,7 +1450,6 @@ fn run_watch() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
@@ -1549,7 +1541,6 @@ fn run_watch_not_exit() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
@@ -1714,7 +1705,6 @@ fn run_watch_with_importmap_and_relative_paths() {
   let mut child = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--watch")
     .arg("--importmap")
     .arg(&import_map_path)
@@ -2357,7 +2347,7 @@ itest!(_031_info_ts_error {
 
 itest!(_033_import_map {
   args:
-    "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+    "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
   output: "033_import_map.out",
 });
 
@@ -2376,7 +2366,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+    "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
@@ -2404,7 +2394,7 @@ itest!(_041_info_flag {
 });
 
 itest!(info_json {
-  args: "info --json --unstable",
+  args: "info --json",
   output: "info_json.out",
 });
 
@@ -2462,7 +2452,7 @@ itest!(_054_info_local_imports {
 });
 
 itest!(_055_info_file_json {
-  args: "info --quiet --json --unstable 005_more_imports.ts",
+  args: "info --quiet --json 005_more_imports.ts",
   output: "055_info_file_json.out",
   exit_code: 0,
 });
@@ -3305,19 +3295,19 @@ itest!(redirect_cache {
 });
 
 itest!(deno_test_coverage {
-  args: "test --coverage --unstable test_coverage.ts",
+  args: "test --coverage test_coverage.ts",
   output: "test_coverage.out",
   exit_code: 0,
 });
 
 itest!(deno_test_coverage_explicit {
-  args: "test --coverage=.test_coverage --unstable test_coverage.ts",
+  args: "test --coverage=.test_coverage test_coverage.ts",
   output: "test_coverage.out",
   exit_code: 0,
 });
 
 itest!(deno_test_run_test_coverage {
-  args: "test --allow-all --coverage --unstable test_run_test_coverage.ts",
+  args: "test --allow-all --coverage test_run_test_coverage.ts",
   output: "test_run_test_coverage.out",
   exit_code: 0,
 });
@@ -4353,7 +4343,6 @@ fn websocket() {
   let root_ca = util::tests_path().join("tls/RootCA.pem");
   let status = util::deno_cmd()
     .arg("test")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
