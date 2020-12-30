@@ -812,7 +812,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn rename(
     &self,
     params: RenameParams,
-  ) -> LSPResult<Option<WorkspaceEdit>> {
+  ) -> LspResult<Option<WorkspaceEdit>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -827,7 +827,7 @@ impl lspower::LanguageServer for LanguageServer {
         .await
         .map_err(|err| {
           error!("Failed to get line_index {:#?}", err);
-          LSPError::internal_error()
+          LspError::internal_error()
         })?;
 
     let req = tsc::RequestMethod::FindRenameLocations((
@@ -844,7 +844,7 @@ impl lspower::LanguageServer for LanguageServer {
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {:#?}", err);
-        LSPError::invalid_request()
+        LspError::invalid_request()
       })?;
 
     let maybe_locations = serde_json::from_value::<
@@ -855,7 +855,7 @@ impl lspower::LanguageServer for LanguageServer {
         "Failed to deserialize tsserver response to Vec<RenameLocation> {:#?}",
         err
       );
-      LSPError::internal_error()
+      LspError::internal_error()
     })?;
 
     match maybe_locations {
@@ -873,7 +873,7 @@ impl lspower::LanguageServer for LanguageServer {
               "Failed to convert tsc::RenameLocations to WorkspaceEdit {:#?}",
               err
             );
-            LSPError::internal_error()
+            LspError::internal_error()
           })?;
         Ok(Some(workpace_edits))
       }
