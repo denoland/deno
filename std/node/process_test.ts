@@ -17,7 +17,9 @@ Deno.test({
     // * should be the same as process, default, and globalThis.process
     // without the export aliases, and with properties that are not standalone
     const allKeys = new Set<string>(Object.keys(all));
-    // without { process } for deno b/c
+    //TODO
+    //Remove on 1.0
+    //Kept for backwars compatibility with std `import { process }`
     allKeys.delete("process");
     // without esm default
     allKeys.delete("default");
