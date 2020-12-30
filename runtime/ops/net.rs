@@ -200,7 +200,7 @@ async fn op_datagram_send(
       {
         let s = state.borrow();
         s.borrow::<Permissions>()
-          .check_net(&args.hostname, args.port)?;
+          .check_net(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -268,7 +268,7 @@ async fn op_connect(
         let state_ = state.borrow();
         state_
           .borrow::<Permissions>()
-          .check_net(&args.hostname, args.port)?;
+          .check_net(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -473,7 +473,7 @@ fn op_listen(
         if transport == "udp" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        permissions.check_net(&args.hostname, args.port)?;
+        permissions.check_net(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
