@@ -1111,11 +1111,13 @@ impl Graph {
     totals: &mut HashMap<ModuleSpecifier, usize>,
   ) -> ModuleInfo {
     let not_seen = seen.insert(specifier.clone());
-    let module = if let ModuleSlot::Module(module) = self.get_module(specifier)
-    {
-      module
-    } else {
-      unreachable!();
+    let module = match self.get_module(specifier) {
+      ModuleSlot::Module(module) => module,
+      ModuleSlot::Err(err) => {
+        error!("{}: {}", colors::red_bold("error"), err.to_string());
+        std::process::exit(1);
+      }
+      _ => unreachable!(),
     };
     let mut deps = Vec::new();
     let mut total_size = None;

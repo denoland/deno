@@ -3407,6 +3407,12 @@ itest!(import_file_with_colon {
   http_server: true,
 });
 
+itest!(info_missing_module {
+  args: "info error_009_missing_js_module.js",
+  output: "info_missing_module.out",
+  exit_code: 1,
+});
+
 itest!(info_recursive_modules {
   args: "info --quiet info_recursive_imports_test.ts",
   output: "info_recursive_imports_test.out",
