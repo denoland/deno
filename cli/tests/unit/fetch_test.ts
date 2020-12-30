@@ -251,6 +251,27 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function fetchMultipartFormBadContentType(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/multipart_form_bad_content_type",
+    );
+    assert(response.body !== null);
+
+    try {
+      const formData = await response.formData();
+      fail(
+        "Response.formData() didn't throw on a incorrect multipart content type",
+      );
+    } catch (e) {
+      assertEquals(e.message, "Invalid form data");
+      assert(e instanceof TypeError);
+    }
+    await response.body.cancel();
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
   async function fetchURLEncodedFormDataSuccess(): Promise<void> {
     const response = await fetch(
       "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
