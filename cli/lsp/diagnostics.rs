@@ -60,6 +60,10 @@ impl DiagnosticCollection {
     self.versions.get(file_id).cloned()
   }
 
+  pub fn invalidate(&mut self, file_id: &FileId) {
+    self.versions.remove(file_id);
+  }
+
   pub fn take_changes(&mut self) -> Option<HashSet<FileId>> {
     if self.changes.is_empty() {
       return None;
@@ -244,20 +248,10 @@ pub async fn generate_ts_diagnostics(
     let version = doc_data.version;
     let current_version = diagnostic_collection.get_version(&file_id);
     if version != current_version {
-      // TODO(@kitsonk): consider refactoring to get all diagnostics in one shot
-      // for a file.
-      let req = tsc::RequestMethod::GetSemanticDiagnostics(specifier.clone());
-      let mut ts_diagnostics = ts_json_to_diagnostics(
+      let req = tsc::RequestMethod::GetDiagnostics(specifier.clone());
+      let ts_diagnostics = ts_json_to_diagnostics(
         ts_server.request(state_snapshot.clone(), req).await?,
       )?;
-      let req = tsc::RequestMethod::GetSuggestionDiagnostics(specifier.clone());
-      ts_diagnostics.append(&mut ts_json_to_diagnostics(
-        ts_server.request(state_snapshot.clone(), req).await?,
-      )?);
-      let req = tsc::RequestMethod::GetSyntacticDiagnostics(specifier.clone());
-      ts_diagnostics.append(&mut ts_json_to_diagnostics(
-        ts_server.request(state_snapshot.clone(), req).await?,
-      )?);
       diagnostics.push((file_id, version, ts_diagnostics));
     }
   }

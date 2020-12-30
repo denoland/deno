@@ -70,14 +70,12 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::Level;
 use log::LevelFilter;
-use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -86,23 +84,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-
-impl From<Flags> for PermissionsOptions {
-  fn from(flags: Flags) -> Self {
-    Self {
-      allow_env: flags.allow_env,
-      allow_hrtime: flags.allow_hrtime,
-      allow_net: flags.allow_net,
-      allow_plugin: flags.allow_plugin,
-      allow_read: flags.allow_read,
-      allow_run: flags.allow_run,
-      allow_write: flags.allow_write,
-      net_allowlist: flags.net_allowlist,
-      read_allowlist: flags.read_allowlist,
-      write_allowlist: flags.write_allowlist,
-    }
-  }
-}
+use std::sync::Mutex;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -367,7 +349,7 @@ async fn info_command(
   let program_state = ProgramState::new(flags)?;
   if let Some(specifier) = maybe_specifier {
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
-    let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
+    let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
       &program_state,
       // info accesses dynamically imported modules just for their information
       // so we allow access to all of them.
@@ -515,7 +497,7 @@ async fn create_module_graph_and_maybe_check(
   program_state: Arc<ProgramState>,
   debug: bool,
 ) -> Result<module_graph::Graph, AnyError> {
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     // when bundling, dynamic imports are only access for their type safety,
     // therefore we will allow the graph to access any module.
@@ -868,7 +850,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     async move {
       let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
       let program_state = ProgramState::new(flags)?;
-      let handler = Rc::new(RefCell::new(FetchHandler::new(
+      let handler = Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         Permissions::allow_all(),
       )?));

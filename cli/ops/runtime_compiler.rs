@@ -11,8 +11,6 @@ use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc_config;
-use deno_runtime::permissions::Permissions;
-use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -23,10 +21,13 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_compile", op_compile);
@@ -58,11 +59,11 @@ async fn op_compile(
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
-  let handler: Rc<RefCell<dyn SpecifierHandler>> =
+  let handler: Arc<Mutex<dyn SpecifierHandler>> =
     if let Some(sources) = args.sources {
-      Rc::new(RefCell::new(MemoryHandler::new(sources)))
+      Arc::new(Mutex::new(MemoryHandler::new(sources)))
     } else {
-      Rc::new(RefCell::new(FetchHandler::new(
+      Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         runtime_permissions,
       )?))

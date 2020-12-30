@@ -922,7 +922,7 @@ fn ts_reload() {
     .output()
     .expect("failed to spawn script");
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
+  assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
     .trim()
     .contains("host.writeFile(\"deno://002_hello.js\")"));
@@ -3405,6 +3405,12 @@ itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
+});
+
+itest!(info_missing_module {
+  args: "info error_009_missing_js_module.js",
+  output: "info_missing_module.out",
+  exit_code: 1,
 });
 
 itest!(info_recursive_modules {
