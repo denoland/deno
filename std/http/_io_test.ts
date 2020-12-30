@@ -410,7 +410,7 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
     {
       in: "POST / HTTP/1.0\r\n\r\n",
       headers: [],
-      version: true
+      version: true,
     },
     { in: "", eof: true },
     {
