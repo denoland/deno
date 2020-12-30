@@ -257,15 +257,13 @@ unitTest(
     );
     assert(response.body !== null);
 
-    try {
-      const formData = await response.formData();
-      fail(
-        "Response.formData() didn't throw on a incorrect multipart content type",
-      );
-    } catch (e) {
-      assertEquals(e.message, "Invalid form data");
-      assert(e instanceof TypeError);
-    }
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await response.formData();
+      },
+      TypeError,
+      "Invalid form data",
+    );
     await response.body.cancel();
   },
 );
