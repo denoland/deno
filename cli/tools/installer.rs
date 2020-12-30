@@ -61,7 +61,7 @@ fn generate_executable_file(
 
   // write file for bash
   // create filepath without extensions
-  let mut file_path_without_ext = file_path.clone();
+  let mut file_path_without_ext = file_path;
   file_path_without_ext.set_extension("");
   let template = format!(
     r#"#!/bin/sh
@@ -294,7 +294,7 @@ pub fn install(
   println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
   if cfg!(windows) {
-    let mut file_path_without_ext = file_path.clone();
+    let mut file_path_without_ext = file_path;
     file_path_without_ext.set_extension("");
     println!("{} (shell)", file_path_without_ext.to_string_lossy());
   }
@@ -450,7 +450,7 @@ mod tests {
     assert!(file_path.exists());
 
     if cfg!(windows) {
-      let mut file_path_without_ext = file_path.clone();
+      let mut file_path_without_ext = file_path;
       file_path_without_ext.set_extension("");
       assert!(file_path_without_ext.exists());
     }
