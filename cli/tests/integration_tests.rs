@@ -2537,7 +2537,7 @@ fn _066_prompt() {
 }
 
 itest!(_067_test_no_run_type_error {
-  args: "test --unstable --no-run test_type_error",
+  args: "test --no-run test_type_error",
   output: "067_test_no_run_type_error.out",
   exit_code: 1,
 });
@@ -2560,7 +2560,7 @@ itest!(_075_import_local_query_hash {
 });
 
 itest!(_076_info_json_deps_order {
-  args: "info --unstable --json 076_info_json_deps_order.ts",
+  args: "info --json 076_info_json_deps_order.ts",
   output: "076_info_json_deps_order.out",
 });
 
@@ -3323,65 +3323,65 @@ itest!(deno_test_run_test_coverage {
 });
 
 itest!(deno_test_run_run_coverage {
-  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts",
+  args: "test --allow-all --coverage test_run_run_coverage.ts",
   output: "test_run_run_coverage.out",
   exit_code: 0,
 });
 
 itest!(deno_lint {
-  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args: "lint lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_quiet {
-  args: "lint --unstable --quiet lint/file1.js",
+  args: "lint --quiet lint/file1.js",
   output: "lint/expected_quiet.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_json {
   args:
-    "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+    "lint --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
   output: "lint/expected_json.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_ignore {
-  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
+  args: "lint --ignore=lint/file1.js,lint/malformed.js lint/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_glob {
-  args: "lint --unstable --ignore=lint/malformed.js lint/",
+  args: "lint --ignore=lint/malformed.js lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_from_stdin {
-  args: "lint --unstable -",
+  args: "lint -",
   input: Some("let a: any;"),
   output: "lint/expected_from_stdin.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_from_stdin_json {
-  args: "lint --unstable --json -",
+  args: "lint --json -",
   input: Some("let a: any;"),
   output: "lint/expected_from_stdin_json.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_rules {
-  args: "lint --unstable --rules",
+  args: "lint --rules",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
 
 // Make sure that the rules are printed if quiet option is enabled.
 itest!(deno_lint_rules_quiet {
-  args: "lint --unstable --rules -q",
+  args: "lint --rules -q",
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
@@ -3397,7 +3397,7 @@ itest!(deno_doc {
 });
 
 itest!(deno_doc_import_map {
-  args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
+  args: "doc --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
 });
 
@@ -4547,7 +4547,6 @@ fn lint_ignore_unexplicit_files() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("lint")
-    .arg("--unstable")
     .arg("--ignore=./")
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -4585,7 +4584,6 @@ fn compile() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./std/examples/welcome.ts")
@@ -4616,7 +4614,6 @@ fn standalone_args() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./cli/tests/028_args.ts")
@@ -4650,7 +4647,6 @@ fn standalone_error() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./cli/tests/standalone_error.ts")
@@ -4686,7 +4682,6 @@ fn standalone_no_module_load() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./cli/tests/standalone_import.ts")
@@ -4722,7 +4717,6 @@ fn compile_with_directory_exists_error() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
@@ -4751,7 +4745,6 @@ fn compile_with_conflict_file_exists_error() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
@@ -4781,7 +4774,6 @@ fn compile_and_overwrite_file() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
@@ -4796,7 +4788,6 @@ fn compile_and_overwrite_file() {
   let recompile_output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)

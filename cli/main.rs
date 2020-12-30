@@ -296,10 +296,6 @@ async fn compile_command(
   source_file: String,
   output: Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("compile");
-  }
-
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
@@ -343,9 +339,6 @@ async fn info_command(
   maybe_specifier: Option<String>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if json && !flags.unstable {
-    exit_unstable("--json");
-  }
   let program_state = ProgramState::new(flags)?;
   if let Some(specifier) = maybe_specifier {
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
@@ -408,10 +401,6 @@ async fn lint_command(
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("lint");
-  }
-
   if list_rules {
     tools::lint::print_rules_list(json);
     return Ok(());

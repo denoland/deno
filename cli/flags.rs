@@ -341,7 +341,7 @@ fn clap_root<'a, 'b>(version: &'b str) -> App<'a, 'b> {
     .arg(
       Arg::with_name("unstable")
         .long("unstable")
-        .help("Enable unstable features and APIs")
+        .help("Enable unstable APIs")
         .global(true),
     )
     .arg(
@@ -787,7 +787,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Ignore formatting particular source files. Use with --unstable"),
+        .help("Ignore formatting particular source files."),
     )
     .arg(
       Arg::with_name("files")
@@ -875,8 +875,8 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Compile the script into a self contained executable")
     .long_about(
       "Compiles the given script into a self contained executable.
-  deno compile --unstable https://deno.land/std/http/file_server.ts
-  deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
+  deno compile https://deno.land/std/http/file_server.ts
+  deno compile --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
 
 The executable name is inferred by default:
   - Attempt to take the file stem of the URL path. The above example would
@@ -1134,18 +1134,18 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Lint source files")
     .long_about(
       "Lint JavaScript/TypeScript source code.
-  deno lint --unstable
-  deno lint --unstable myfile1.ts myfile2.js
+  deno lint
+  deno lint myfile1.ts myfile2.js
 
 Print result as JSON:
-  deno lint --unstable --json
+  deno lint --json
 
 Read from stdin:
-  cat file.ts | deno lint --unstable -
-  cat file.ts | deno lint --unstable --json -
+  cat file.ts | deno lint -
+  cat file.ts | deno lint --json -
 
 List available rules:
-  deno lint --unstable --rules
+  deno lint --rules
 
 Ignore diagnostics on the next line by preceding it with an ignore comment and
 rule name:
@@ -1167,7 +1167,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
-        .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
@@ -1287,7 +1286,6 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("no-run")
         .help("Cache test modules, but don't run tests")
         .takes_value(false)
-        .requires("unstable"),
     )
     .arg(
       Arg::with_name("fail-fast")
@@ -1316,7 +1314,6 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .max_values(1)
         .require_equals(true)
         .takes_value(true)
-        .requires("unstable")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
         .help("Collect coverage information"),
@@ -1493,11 +1490,9 @@ fn import_map_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long("import-map")
     .alias("importmap")
     .value_name("FILE")
-    .requires("unstable")
-    .help("UNSTABLE: Load import map file")
+    .help("Load import map file")
     .long_help(
-      "UNSTABLE:
-Load import map file
+      "Load import map file
 Docs: https://deno.land/manual/linking_to_external_code/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
@@ -1526,7 +1521,6 @@ fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
-    .requires("unstable")
     .long("watch")
     .help("Watch for file changes and restart process automatically")
     .long_help(

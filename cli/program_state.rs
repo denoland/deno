@@ -88,9 +88,6 @@ impl ProgramState {
       match flags.import_map_path.as_ref() {
         None => None,
         Some(file_path) => {
-          if !flags.unstable {
-            exit_unstable("--import-map")
-          }
           Some(ImportMap::load(file_path)?)
         }
       };
