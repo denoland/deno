@@ -27,7 +27,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_compile", op_compile);
@@ -59,11 +59,11 @@ async fn op_compile(
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
-  let handler: Arc<RwLock<dyn SpecifierHandler>> =
+  let handler: Arc<Mutex<dyn SpecifierHandler>> =
     if let Some(sources) = args.sources {
-      Arc::new(RwLock::new(MemoryHandler::new(sources)))
+      Arc::new(Mutex::new(MemoryHandler::new(sources)))
     } else {
-      Arc::new(RwLock::new(FetchHandler::new(
+      Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         runtime_permissions,
       )?))

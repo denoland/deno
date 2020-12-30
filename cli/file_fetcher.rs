@@ -517,14 +517,9 @@ mod tests {
       Rc::new(TempDir::new().expect("failed to create temp directory"))
     });
     let location = temp_dir.path().join("deps");
-    let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
-      cache_setting,
-      true,
-      None,
-      true,
-    )
-    .expect("setup failed");
+    let file_fetcher =
+      FileFetcher::new(HttpCache::new(&location), cache_setting, true, None)
+        .expect("setup failed");
     (file_fetcher, temp_dir)
   }
 
@@ -906,7 +901,6 @@ mod tests {
       CacheSetting::ReloadAll,
       true,
       None,
-      true,
     )
     .expect("setup failed");
     let result = file_fetcher
@@ -933,7 +927,6 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
@@ -961,7 +954,6 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      true,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1117,7 +1109,6 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
@@ -1149,7 +1140,6 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      true,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1257,7 +1247,6 @@ mod tests {
       CacheSetting::Use,
       false,
       None,
-      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(
@@ -1286,7 +1275,6 @@ mod tests {
       CacheSetting::Only,
       true,
       None,
-      true,
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1294,7 +1282,6 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      true,
     )
     .expect("could not create file fetcher");
     let specifier = ModuleSpecifier::resolve_url(

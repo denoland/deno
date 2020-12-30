@@ -24,7 +24,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 pub async fn cache(
@@ -32,7 +32,7 @@ pub async fn cache(
   maybe_import_map: Option<ImportMap>,
 ) -> Result<(), AnyError> {
   let program_state = Arc::new(ProgramState::new(Default::default())?);
-  let handler = Arc::new(RwLock::new(FetchHandler::new(
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),
   )?));

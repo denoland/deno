@@ -27,7 +27,6 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::RwLock;
 
 pub fn exit_unstable(api_name: &str) {
   eprintln!(
@@ -54,9 +53,7 @@ pub struct ProgramState {
 }
 
 impl ProgramState {
-  pub fn new(
-    flags: flags::Flags,
-  ) -> Result<Arc<Self>, AnyError> {
+  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -145,7 +142,7 @@ impl ProgramState {
       runtime_permissions.check_specifier(&specifier)?;
     }
     let handler =
-      Arc::new(RwLock::new(FetchHandler::new(self, runtime_permissions)?));
+      Arc::new(Mutex::new(FetchHandler::new(self, runtime_permissions)?));
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;
@@ -277,13 +274,10 @@ impl ProgramState {
     argv: Vec<String>,
     maybe_flags: Option<flags::Flags>,
   ) -> Arc<ProgramState> {
-    ProgramState::new(
-      flags::Flags {
-        argv,
-        ..maybe_flags.unwrap_or_default()
-      },
-      true,
-    )
+    ProgramState::new(flags::Flags {
+      argv,
+      ..maybe_flags.unwrap_or_default()
+    })
     .unwrap()
   }
 }
