@@ -922,7 +922,7 @@ fn ts_reload() {
     .output()
     .expect("failed to spawn script");
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
+  assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
     .trim()
     .contains("host.writeFile(\"deno://002_hello.js\")"));
