@@ -208,6 +208,67 @@ Deno.test("context_start", function () {
     Error,
     "WebAssembly.Instance has already started",
   );
+<<<<<<< HEAD
+});
+
+Deno.test("context_initialize", function () {
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          _initialize() {},
+        },
+      });
+    },
+    TypeError,
+    "must provide a memory export",
+  );
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          _start() {},
+          memory: new WebAssembly.Memory({ initial: 1 }),
+        },
+      });
+    },
+    TypeError,
+    "export _start must not be a function",
+  );
+
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+        },
+      });
+    },
+    TypeError,
+    "export _initialize must be a function",
+  );
+  assertThrows(
+    () => {
+      const context = new Context({});
+      context.initialize({
+        exports: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+          _initialize() {},
+        },
+      });
+      context.initialize({
+        exports: {},
+      });
+    },
+    Error,
+    "WebAssembly.Instance has already started",
+  );
+=======
+>>>>>>> Commit to adapt the feature to #8622 and #8710
 });
 
 Deno.test("context_initialize", function () {
