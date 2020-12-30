@@ -14,7 +14,9 @@ use deno_lint::rules;
 use lspower::lsp_types;
 use lspower::lsp_types::Position;
 use lspower::lsp_types::Range;
+use lspower::lsp_types::TextEdit;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 /// Category of self-generated diagnostic messages (those not coming from)
@@ -44,6 +46,83 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
       line: (range.end.line - 1) as u32,
       character: range.end.col as u32,
     },
+  }
+}
+
+/// This function converts the path in the Auto-importing TextEdit that returns from LanguageService.
+pub fn fix_auto_import_text_edit<F>(
+  text_edit: TextEdit,
+  referrer: &ModuleSpecifier,
+  contains: F,
+  maybe_import_map: &Option<ImportMap>,
+) -> TextEdit
+where
+  F: Fn(&ModuleSpecifier) -> bool,
+{
+  let analyzed = analyze_dependencies(
+    &referrer,
+    &text_edit.new_text,
+    &MediaType::TypeScript,
+    maybe_import_map,
+  );
+  let deps = match analyzed {
+    Some((deps, _)) => deps,
+    None => {
+      return text_edit;
+    }
+  };
+
+  let maybe_dep = deps.into_iter().find_map(|(path_str, dep)| {
+    match (dep.maybe_code, dep.maybe_type) {
+      (Some(ResolvedDependency::Resolved(specifier)), _) => {
+        Some((path_str, specifier))
+      }
+      (_, Some(ResolvedDependency::Resolved(specifier))) => {
+        Some((path_str, specifier))
+      }
+      (_, _) => None,
+    }
+  });
+
+  let (import_path_str, import_specifier) = match maybe_dep {
+    Some((import_path_str, import_specifier)) => {
+      (import_path_str, import_specifier)
+    }
+    None => {
+      return text_edit;
+    }
+  };
+
+  let mut exts = Vec::<&str>::new();
+  exts.push("ts");
+  exts.push("js");
+  let maybe_ext = exts.iter().find(|ext| {
+    if let Ok(path) = import_specifier.as_url().to_file_path() {
+      if let Ok(specifier) = ModuleSpecifier::resolve_path(
+        &path.with_extension(ext).to_string_lossy().to_string(),
+      ) {
+        return contains(&specifier);
+      }
+    }
+    false
+  });
+
+  let ext = match maybe_ext {
+    Some(ext) => ext,
+    None => {
+      return text_edit;
+    }
+  };
+
+  lsp_types::TextEdit {
+    range: text_edit.range,
+    new_text: text_edit.new_text.replace(
+      &import_path_str,
+      &PathBuf::from(&import_path_str)
+        .with_extension(ext)
+        .to_string_lossy()
+        .to_string(),
+    ),
   }
 }
 

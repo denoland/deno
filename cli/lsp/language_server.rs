@@ -844,25 +844,137 @@ impl lspower::LanguageServer for LanguageServer {
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
     let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let position =
+      text::to_char_pos(&line_index, params.text_document_position.position);
     let req = tsc::RequestMethod::GetCompletions((
-      specifier,
-      text::to_char_pos(&line_index, params.text_document_position.position),
+      specifier.clone(),
+      position,
       tsc::UserPreferences {
         // TODO(lucacasonato): enable this. see https://github.com/denoland/deno/pull/8651
         include_completions_with_insert_text: Some(false),
+        include_completions_for_module_exports: Some(true),
         ..Default::default()
       },
     ));
     // TODO(lucacasonato): handle error correctly
     let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
+
     // TODO(lucacasonato): handle error correctly
     let maybe_completion_info: Option<tsc::CompletionInfo> =
       serde_json::from_value(res).unwrap();
 
     if let Some(completions) = maybe_completion_info {
-      Ok(Some(completions.into_completion_response(&line_index)))
+      Ok(Some(completions.into_completion_response(
+        specifier,
+        position,
+        &line_index,
+      )))
     } else {
       Ok(None)
+    }
+  }
+
+  async fn completion_resolve(
+    &self,
+    params: CompletionItem,
+  ) -> LspResult<CompletionItem> {
+    if !self.enabled() {
+      return Ok(params);
+    }
+
+    if params.data.is_none() {
+      return Ok(params);
+    }
+
+    let completion_item_data = serde_json::from_value::<CompletionItemData>(
+      params.data.clone().unwrap(),
+    )
+    .map_err(|err| {
+      error!("Failed to deserialize CompletionItemData {:#?}", err);
+      LspError::internal_error()
+    })?;
+
+    let snapshot = self.snapshot();
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(&completion_item_data.specifier)
+        .map_err(|err| {
+          error!("Failed to resolve specifier {:#?}", err);
+          LspError::internal_error()
+        })?;
+
+    let req = tsc::RequestMethod::GetCompletionEntryDetails((
+      specifier.clone(),
+      completion_item_data.position,
+      completion_item_data.entry_name,
+      tsc::FormatCodeSettings {
+        ..Default::default()
+      },
+      completion_item_data.source.clone(),
+      tsc::UserPreferences {
+        // Request the most detailed auto-importing information for later conversion.
+        import_module_specifier_ending: Some(
+          tsc::ImportModuleSpecifierEnding::Js,
+        ),
+        import_module_specifier_preference: Some(
+          tsc::ImportModuleSpecifierPreference::Relative,
+        ),
+        ..Default::default()
+      },
+    ));
+
+    let res = self
+      .ts_server
+      .request(snapshot.clone(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {:#?}", err);
+        LspError::internal_error()
+      })?;
+
+    let maybe_completion_entry_details =
+      serde_json::from_value::<Option<tsc::CompletionEntryDetails>>(res)
+        .map_err(|err| {
+          error!("Failed to deserialize CompletionEntryDetails {:#?}", err);
+          LspError::internal_error()
+        })?;
+
+    match maybe_completion_entry_details {
+      Some(completion_entry_details) => {
+        let line_index =
+          self
+            .get_line_index(specifier.clone())
+            .await
+            .map_err(|err| {
+              error!("Failed to get line_index {:#?}", err);
+              LspError::internal_error()
+            })?;
+
+        let mut completion_item = params.clone();
+        completion_item.detail = completion_entry_details.make_detail();
+        completion_item.documentation =
+          completion_entry_details.make_documentation();
+        completion_item.additional_text_edits = completion_entry_details
+          .make_additional_text_edits(specifier.clone(), &line_index)
+          .unwrap_or_else(|err| {
+            error!("Failed to create additional_text_edits {:#?}", err);
+            None
+          })
+          .map(|text_edits| {
+            text_edits
+              .iter()
+              .map(|text_edit| {
+                analysis::fix_auto_import_text_edit(
+                  text_edit.clone(),
+                  &specifier,
+                  |s| snapshot.sources.lock().unwrap().contains(s),
+                  &self.maybe_import_map.lock().unwrap(),
+                )
+              })
+              .collect()
+          });
+        Ok(completion_item)
+      }
+      None => Ok(params),
     }
   }
 
@@ -1111,6 +1223,14 @@ impl DocumentData {
   }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompletionItemData {
+  pub specifier: String,
+  pub position: u32,
+  pub entry_name: String,
+  pub source: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1318,6 +1438,7 @@ mod tests {
     ]);
     harness.run().await;
   }
+
   #[tokio::test]
   async fn test_rename() {
     let mut harness = LspTestHarness::new(vec![

@@ -541,6 +541,19 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getCompletionEntryDetails": {
+        return respond(
+          id,
+          languageService.getCompletionEntryDetails(
+            request.specifier,
+            request.position,
+            request.entryName,
+            request.formatOptions,
+            request.source,
+            request.preferences,
+          ),
+        );
+      }
       case "getDocumentHighlights": {
         return respond(
           id,

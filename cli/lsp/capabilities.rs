@@ -41,7 +41,7 @@ pub fn server_capabilities(
         "<".to_string(),
         "#".to_string(),
       ]),
-      resolve_provider: None,
+      resolve_provider: Some(true),
       work_done_progress_options: WorkDoneProgressOptions {
         work_done_progress: None,
       },

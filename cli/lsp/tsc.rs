@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::ResolvedDependency;
+use super::language_server::CompletionItemData;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::utils;
@@ -641,12 +642,16 @@ pub struct CompletionInfo {
 impl CompletionInfo {
   pub fn into_completion_response(
     self,
+    specifier: ModuleSpecifier,
+    position: u32,
     line_index: &[u32],
   ) -> lsp_types::CompletionResponse {
     let items = self
       .entries
       .into_iter()
-      .map(|entry| entry.into_completion_item(line_index))
+      .map(|entry| {
+        entry.into_completion_item(specifier.clone(), position, line_index)
+      })
       .collect();
     lsp_types::CompletionResponse::Array(items)
   }
@@ -669,15 +674,26 @@ pub struct CompletionEntry {
 impl CompletionEntry {
   pub fn into_completion_item(
     self,
+    specifier: ModuleSpecifier,
+    position: u32,
     line_index: &[u32],
   ) -> lsp_types::CompletionItem {
     let mut item = lsp_types::CompletionItem {
-      label: self.name,
+      label: self.name.clone(),
       kind: Some(self.kind.into()),
       sort_text: Some(self.sort_text.clone()),
       // TODO(lucacasonato): missing commit_characters
       ..Default::default()
     };
+
+    if let Ok(value) = serde_json::to_value(CompletionItemData {
+      specifier: specifier.to_string(),
+      position,
+      entry_name: self.name,
+      source: self.source.clone(),
+    }) {
+      item.data = Some(value);
+    }
 
     if let Some(true) = self.is_recommended {
       // Make sure isRecommended property always comes first
@@ -728,6 +744,132 @@ impl CompletionEntry {
     item
   }
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionEntryDetails {
+  name: String,
+  kind: ScriptElementKind,
+  kind_modifiers: String,
+  display_parts: Vec<SymbolDisplayPart>,
+  documentation: Option<Vec<SymbolDisplayPart>>,
+  tags: Option<Vec<JSDocTagInfo>>,
+  code_actions: Option<Vec<CodeAction>>,
+  source: Option<Vec<SymbolDisplayPart>>,
+}
+
+impl CompletionEntryDetails {
+  pub fn make_additional_text_edits(
+    &self,
+    specifier: ModuleSpecifier,
+    line_index: &[u32],
+  ) -> Result<Option<Vec<lsp_types::TextEdit>>, AnyError> {
+    match self.code_actions.clone() {
+      Some(code_actions) => {
+        let mut additional_text_edits = Vec::<lsp_types::TextEdit>::new();
+        for code_action in code_actions {
+          for file_changes in code_action.changes {
+            let file_changes_specifier =
+              ModuleSpecifier::resolve_url_or_path(&file_changes.file_name)?;
+            if specifier.eq(&file_changes_specifier) {
+              for text_change in file_changes.text_changes {
+                additional_text_edits
+                  .push(text_change.into_text_edit(line_index))
+              }
+            }
+          }
+        }
+        Ok(Some(additional_text_edits))
+      }
+      None => Ok(None),
+    }
+  }
+
+  pub fn make_detail(&self) -> Option<String> {
+    let mut details = Vec::<String>::new();
+
+    if let Some(source) = display_parts_to_string(self.source.clone()) {
+      details.push(format!("Auto import from `{}`", source));
+    }
+
+    if let Some(detail) =
+      display_parts_to_string(Some(self.display_parts.clone()))
+    {
+      details.push(detail);
+    }
+
+    if details.is_empty() {
+      None
+    } else {
+      Some(details.join("\n"))
+    }
+  }
+
+  pub fn make_documentation(&self) -> Option<lsp_types::Documentation> {
+    let tags_documentation = match &self.tags {
+      Some(tags) => {
+        if tags.is_empty() {
+          return None;
+        }
+        Some(
+          tags
+            .iter()
+            .map(get_tag_documentation)
+            .collect::<Vec<String>>()
+            .join("  \n\n"),
+        )
+      }
+      None => None,
+    };
+    display_parts_to_string(self.documentation.clone()).map(|documentation| {
+      lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
+        kind: lsp_types::MarkupKind::Markdown,
+        value: match tags_documentation {
+          Some(tags_documentation) => {
+            format!("{}\n\n{}", documentation, tags_documentation)
+          }
+          None => documentation,
+        },
+      })
+    })
+  }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CodeAction {
+  description: String,
+  changes: Vec<FileTextChanges>,
+  commands: Option<Vec<CodeActionCommand>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct FileTextChanges {
+  file_name: String,
+  text_changes: Vec<TextChange>,
+  is_new_file: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct TextChange {
+  span: TextSpan,
+  new_text: String,
+}
+
+impl TextChange {
+  pub fn into_text_edit(self, line_index: &[u32]) -> lsp_types::TextEdit {
+    lsp_types::TextEdit {
+      range: self.span.to_range(line_index),
+      new_text: self.new_text,
+    }
+  }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CodeActionCommand {}
 
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
@@ -1117,6 +1259,88 @@ pub struct UserPreferences {
   pub provide_refactor_not_applicable_reason: Option<bool>,
 }
 
+#[derive(Debug, Serialize)]
+#[allow(dead_code)]
+pub enum IndentStyle {
+  None = 0,
+  Block = 1,
+  Smart = 2,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum SemicolonPreference {
+  Ignore,
+  Insert,
+  Remove,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatCodeSettings {
+  // from EditorSettings
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub base_indent_size: Option<u32>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub indent_size: Option<u32>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub tab_size: Option<u32>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub new_line_character: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub convert_tabs_to_spaces: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub indent_style: Option<IndentStyle>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trim_trailing_whitespace: Option<bool>,
+
+  // from FormatCodeSettings
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_comma_delimiter: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_semicolon_in_for_statements: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_before_and_after_binary_operators: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_constructor: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_keywords_in_control_flow_statements: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_function_keyword_for_anonymous_functions: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_opening_and_before_closing_nonempty_parenthesis:
+    Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_opening_and_before_closing_nonempty_brackets:
+    Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_opening_and_before_closing_nonempty_braces:
+    Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_opening_and_before_closing_empty_braces: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_opening_and_before_closing_template_string_braces:
+    Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_opening_and_before_closing_jsx_expression_braces:
+    Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_after_type_assertion: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_before_function_parenthesis: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub place_open_brace_on_new_line_for_functions: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub place_open_brace_on_new_line_for_control_blocks: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub insert_space_before_type_annotation: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub indent_multi_line_object_literal_beginning_on_blank_line: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub semicolons: Option<SemicolonPreference>,
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
@@ -1137,6 +1361,17 @@ pub enum RequestMethod {
   GetCompletions((ModuleSpecifier, u32, UserPreferences)),
   /// Get rename locations at a given position.
   FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
+  /// Get completion entry details for a given completion entry data.
+  GetCompletionEntryDetails(
+    (
+      ModuleSpecifier,
+      u32,
+      String,
+      FormatCodeSettings,
+      Option<String>,
+      UserPreferences,
+    ),
+  ),
 }
 
 impl RequestMethod {
@@ -1210,6 +1445,25 @@ impl RequestMethod {
           "findInStrings": find_in_strings,
           "findInComments": find_in_comments,
           "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
+        })
+      }
+      RequestMethod::GetCompletionEntryDetails((
+        specifier,
+        position,
+        entry_name,
+        format_options,
+        source,
+        preferences,
+      )) => {
+        json!({
+          "id": id,
+          "method": "getCompletionEntryDetails",
+          "specifier": specifier,
+          "position": position,
+          "entryName": entry_name,
+          "formatOptions": format_options,
+          "source": source,
+          "preferences": preferences
         })
       }
     }

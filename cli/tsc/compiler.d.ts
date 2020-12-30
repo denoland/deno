@@ -49,6 +49,7 @@ declare global {
     | GetReferencesRequest
     | GetDefinitionRequest
     | GetCompletionsRequest
+    | GetCompletionEntryDetails
     | FindRenameLocationsRequest;
 
   interface BaseLanguageServerRequest {
@@ -101,6 +102,16 @@ declare global {
     method: "getCompletions";
     specifier: string;
     position: number;
+    preferences: ts.UserPreferences;
+  }
+
+  interface GetCompletionEntryDetails extends BaseLanguageServerRequest {
+    method: "getCompletionEntryDetails";
+    specifier: string;
+    position: number;
+    entryName: string;
+    formatOptions: ts.FormatCodeSettings;
+    source: string;
     preferences: ts.UserPreferences;
   }
 
