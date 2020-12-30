@@ -43,6 +43,9 @@
   }
 
   function decodeMessage(dataIntArray) {
+    if (dataIntArray.length == 0) {
+      return undefined;
+    }
     const dataJson = decoder.decode(dataIntArray);
     return JSON.parse(dataJson);
   }
