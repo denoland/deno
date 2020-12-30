@@ -23,10 +23,8 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -144,7 +142,7 @@ impl ProgramState {
       runtime_permissions.check_specifier(&specifier)?;
     }
     let handler =
-      Rc::new(RefCell::new(FetchHandler::new(self, runtime_permissions)?));
+      Arc::new(Mutex::new(FetchHandler::new(self, runtime_permissions)?));
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;

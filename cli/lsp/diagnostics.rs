@@ -60,6 +60,10 @@ impl DiagnosticCollection {
     self.versions.get(file_id).cloned()
   }
 
+  pub fn invalidate(&mut self, file_id: &FileId) {
+    self.versions.remove(file_id);
+  }
+
   pub fn take_changes(&mut self) -> Option<HashSet<FileId>> {
     if self.changes.is_empty() {
       return None;
