@@ -154,12 +154,19 @@ impl LanguageServer {
       if enabled {
         let diagnostics = {
           let diagnostic_collection = self.diagnostics.read().unwrap().clone();
-          diagnostics::generate_ts_diagnostics(
+          match diagnostics::generate_ts_diagnostics(
             &self.ts_server,
             &diagnostic_collection,
             self.snapshot(),
           )
-          .await?
+          .await
+          {
+            Ok(diagnostics) => diagnostics,
+            Err(err) => {
+              error!("Error processing TypeScript diagnostics:\n{}", err);
+              vec![]
+            }
+          }
         };
         {
           let mut diagnostics_collection = self.diagnostics.write().unwrap();

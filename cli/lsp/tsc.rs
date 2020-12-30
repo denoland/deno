@@ -1123,12 +1123,8 @@ pub enum RequestMethod {
   Configure(TsConfig),
   /// Retrieve the text of an assets that exists in memory in the isolate.
   GetAsset(ModuleSpecifier),
-  /// Return semantic diagnostics for given file.
-  GetSemanticDiagnostics(ModuleSpecifier),
-  /// Returns suggestion diagnostics for given file.
-  GetSuggestionDiagnostics(ModuleSpecifier),
-  /// Return syntactic diagnostics for a given file.
-  GetSyntacticDiagnostics(ModuleSpecifier),
+  /// Return diagnostics for given file.
+  GetDiagnostics(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Return document highlights at position.
@@ -1156,19 +1152,9 @@ impl RequestMethod {
         "method": "getAsset",
         "specifier": specifier,
       }),
-      RequestMethod::GetSemanticDiagnostics(specifier) => json!({
+      RequestMethod::GetDiagnostics(specifier) => json!({
         "id": id,
-        "method": "getSemanticDiagnostics",
-        "specifier": specifier,
-      }),
-      RequestMethod::GetSuggestionDiagnostics(specifier) => json!({
-        "id": id,
-        "method": "getSuggestionDiagnostics",
-        "specifier": specifier,
-      }),
-      RequestMethod::GetSyntacticDiagnostics(specifier) => json!({
-        "id": id,
-        "method": "getSyntacticDiagnostics",
+        "method": "getDiagnostics",
         "specifier": specifier,
       }),
       RequestMethod::GetQuickInfo((specifier, position)) => json!({
@@ -1369,7 +1355,7 @@ mod tests {
   }
 
   #[test]
-  fn test_get_semantic_diagnostics() {
+  fn test_get_diagnostics() {
     let (mut runtime, state_snapshot) = setup(
       false,
       json!({
@@ -1384,7 +1370,7 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSemanticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -1437,7 +1423,7 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSemanticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -1467,11 +1453,29 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
-    assert_eq!(response, json!([]));
+    assert_eq!(
+      response,
+      json!([{
+        "start": {
+          "line": 1,
+          "character": 8
+        },
+        "end": {
+          "line": 1,
+          "character": 30
+        },
+        "fileName": "file:///a.ts",
+        "messageText": "\'A\' is declared but its value is never read.",
+        "sourceLine": "        import { A } from \".\";",
+        "category": 2,
+        "code": 6133,
+        "reportsUnnecessary": true,
+      }])
+    );
   }
 
   #[test]
@@ -1501,7 +1505,7 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -1538,13 +1542,28 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(
       response,
       json!([{
+        "start": {
+          "line": 1,
+          "character": 8
+        },
+        "end": {
+          "line": 6,
+          "character": 55,
+        },
+        "fileName": "file:///a.ts",
+        "messageText": "All imports in import declaration are unused.",
+        "sourceLine": "        import {",
+        "category": 2,
+        "code": 6192,
+        "reportsUnnecessary": true
+      }, {
         "start": {
           "line": 8,
           "character": 29
@@ -1560,6 +1579,30 @@ mod tests {
         "code": 1109
       }])
     );
+  }
+
+  #[test]
+  fn test_no_debug_failure() {
+    let (mut runtime, state_snapshot) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      vec![("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
+    );
+    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
+      .expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      state_snapshot,
+      RequestMethod::GetDiagnostics(specifier),
+    );
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response, json!([]));
   }
 
   #[test]
