@@ -53,7 +53,7 @@ pub enum Snapshot {
   Boxed(Box<[u8]>),
 }
 
-type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
+pub type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
 
 pub type GetErrorClassFn =
   &'static dyn for<'e> Fn(&'e AnyError) -> &'static str;
@@ -107,7 +107,7 @@ pub(crate) struct JsRuntimeState {
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
-  pub(crate) js_error_create_fn: Box<JsErrorCreateFn>,
+  pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -168,7 +168,7 @@ pub struct RuntimeOptions {
   /// Allows a callback to be set whenever a V8 exception is made. This allows
   /// the caller to wrap the JsError into an error. By default this callback
   /// is set to `JsError::create()`.
-  pub js_error_create_fn: Option<Box<JsErrorCreateFn>>,
+  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
 
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
@@ -257,7 +257,7 @@ impl JsRuntime {
 
     let js_error_create_fn = options
       .js_error_create_fn
-      .unwrap_or_else(|| Box::new(JsError::create));
+      .unwrap_or_else(|| Rc::new(JsError::create));
     let mut op_state = OpState::default();
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
@@ -326,7 +326,12 @@ impl JsRuntime {
   fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
-      self.execute("core.js", include_str!("core.js")).unwrap();
+      self
+        .execute("deno:core/core.js", include_str!("core.js"))
+        .unwrap();
+      self
+        .execute("deno:core/error.js", include_str!("error.js"))
+        .unwrap();
     }
   }
 
@@ -599,18 +604,13 @@ pub(crate) fn exception_to_err_result<'s, T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, AnyError> {
-  // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
-  // also be implemented on `struct Isolate`.
-  let is_terminating_exception =
-    scope.thread_safe_handle().is_execution_terminating();
+  let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
 
   if is_terminating_exception {
     // TerminateExecution was called. Cancel exception termination so that the
     // exception can be created..
-    // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
-    // also be implemented on `struct Isolate`.
-    scope.thread_safe_handle().cancel_terminate_execution();
+    scope.cancel_terminate_execution();
 
     // Maybe make a new exception object.
     if exception.is_null_or_undefined() {
@@ -633,9 +633,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
   if is_terminating_exception {
     // Re-enable exception termination.
-    // TODO(piscisaureus): in rusty_v8, `terminate_execution()` should also
-    // be implemented on `struct Isolate`.
-    scope.thread_safe_handle().terminate_execution();
+    scope.terminate_execution();
   }
 
   Err(js_error)
@@ -1269,7 +1267,7 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Asynchronously load specified module and all of it's dependencies
+  /// Asynchronously load specified module and all of its dependencies
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
   /// manually after load is finished.
@@ -1780,12 +1778,7 @@ pub mod tests {
 
     // Cancel the execution-terminating exception in order to allow script
     // execution again.
-    // TODO(piscisaureus): in rusty_v8, `cancel_terminate_execution()` should
-    // also be implemented on `struct Isolate`.
-    let ok = isolate
-      .v8_isolate()
-      .thread_safe_handle()
-      .cancel_terminate_execution();
+    let ok = isolate.v8_isolate().cancel_terminate_execution();
     assert!(ok);
 
     // Verify that the isolate usable again.
@@ -2583,5 +2576,20 @@ main();
         _ => panic!(),
       };
     })
+  }
+
+  #[test]
+  fn test_core_js_stack_frame() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    // Call non-existent op so we get error from `core.js`
+    let error = runtime
+      .execute(
+        "core_js_stack_frame.js",
+        "Deno.core.dispatchByName('non_existent');",
+      )
+      .unwrap_err();
+    let error_string = error.to_string();
+    // Test that the script specifier is a URL: `deno:<repo-relative path>`.
+    assert!(error_string.contains("deno:core/core.js"));
   }
 }

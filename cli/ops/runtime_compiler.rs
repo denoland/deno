@@ -6,7 +6,7 @@ use crate::media_type::MediaType;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
-use crate::permissions::Permissions;
+use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
@@ -21,10 +21,13 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_compile", op_compile);
@@ -47,20 +50,20 @@ async fn op_compile(
 ) -> Result<Value, AnyError> {
   let args: CompileArgs = serde_json::from_value(args)?;
   if args.bundle {
-    super::check_unstable2(&state, "Deno.bundle");
+    deno_runtime::ops::check_unstable2(&state, "Deno.bundle");
   } else {
-    super::check_unstable2(&state, "Deno.compile");
+    deno_runtime::ops::check_unstable2(&state, "Deno.compile");
   }
-  let program_state = super::global_state2(&state);
+  let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
   let runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
-  let handler: Rc<RefCell<dyn SpecifierHandler>> =
+  let handler: Arc<Mutex<dyn SpecifierHandler>> =
     if let Some(sources) = args.sources {
-      Rc::new(RefCell::new(MemoryHandler::new(sources)))
+      Arc::new(Mutex::new(MemoryHandler::new(sources)))
     } else {
-      Rc::new(RefCell::new(FetchHandler::new(
+      Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         runtime_permissions,
       )?))
@@ -111,7 +114,7 @@ async fn op_transpile(
   args: Value,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.transpileOnly");
+  deno_runtime::ops::check_unstable2(&state, "Deno.transpileOnly");
   let args: TranspileArgs = serde_json::from_value(args)?;
 
   let mut compiler_options = tsc_config::TsConfig::new(json!({

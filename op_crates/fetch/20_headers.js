@@ -237,10 +237,10 @@
 
     set(name, value) {
       requiredArguments("Headers.set", arguments.length, 2);
-      const [newname, newvalue] = normalizeParams(name, value);
-      validateName(newname);
-      validateValue(newvalue);
-      dataSet(this[headersData], newname, newvalue);
+      const [newName, newValue] = normalizeParams(name, value);
+      validateName(newName);
+      validateValue(newValue);
+      dataSet(this[headersData], newName, newValue);
     }
 
     get [Symbol.toStringTag]() {

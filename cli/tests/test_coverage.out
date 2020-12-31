@@ -15,11 +15,11 @@ cover [WILDCARD]/cli/tests/subdir/mod1.ts ... 35.714% (5/14)
   11 | export function throwsError() {
   12 |     throw Error("exception from mod1");
   13 | }
-cover [WILDCARD]/cli/tests/subdir/subdir2/mod2.ts ... 62.500% (5/8)
-   5 | export function printHello2() {
-   6 |     printHello();
-   7 | }
 cover [WILDCARD]/cli/tests/subdir/print_hello.ts ... 25.000% (1/4)
    1 | export function printHello() {
    2 |     console.log("Hello");
    3 | }
+cover [WILDCARD]/cli/tests/subdir/subdir2/mod2.ts ... 62.500% (5/8)
+   5 | export function printHello2() {
+   6 |     printHello();
+   7 | }

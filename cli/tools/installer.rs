@@ -108,7 +108,7 @@ fn get_installer_root() -> Result<PathBuf, io::Error> {
   Ok(home_path)
 }
 
-fn infer_name_from_url(url: &Url) -> Option<String> {
+pub fn infer_name_from_url(url: &Url) -> Option<String> {
   let path = PathBuf::from(url.path());
   let mut stem = match path.file_stem() {
     Some(stem) => stem.to_string_lossy().to_string(),
@@ -227,8 +227,8 @@ pub fn install(
     executable_args.push("--cached_only".to_string());
   }
 
-  if let Some(v8_flags) = flags.v8_flags {
-    executable_args.push(format!("--v8-flags={}", v8_flags.join(",")));
+  if !flags.v8_flags.is_empty() {
+    executable_args.push(format!("--v8-flags={}", flags.v8_flags.join(",")));
   }
 
   if let Some(seed) = flags.seed {
@@ -632,8 +632,8 @@ mod tests {
 
     install(
       Flags {
-        allow_net: true,
-        allow_read: true,
+        allow_net: Some(vec![]),
+        allow_read: Some(vec![]),
         no_check: true,
         log_level: Some(Level::Error),
         ..Flags::default()

@@ -3,8 +3,8 @@
 //! This module provides feature to upgrade deno executable
 
 use crate::AnyError;
-use deno_fetch::reqwest;
-use deno_fetch::reqwest::Client;
+use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;
 use std::fs;
 use std::path::Path;

@@ -252,12 +252,11 @@ testWalk(
   async function symlink(): Promise<void> {
     assertReady(6);
     const files = await walkArray("a");
-    assertEquals(files.length, 2);
+    assertEquals(files.length, 3);
     assert(!files.includes("a/bb/z"));
 
     const arr = await walkArray("a", { followSymlinks: true });
-    assertEquals(arr.length, 3);
+    assertEquals(arr.length, 5);
     assert(arr.some((f): boolean => f.endsWith("/b/z")));
   },
-  true,
 );
