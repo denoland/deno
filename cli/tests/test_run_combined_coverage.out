@@ -13,7 +13,7 @@ ok (5853ms)
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out (13838ms)
 
 cover file:///home/caspervonb/deno/cli/tests/run_coverage.ts ... 100.000% (3/3)
-cover file:///home/caspervonb/deno/cli/tests/subdir/mod1.ts ... 35.714% (8/14)
+cover file:///home/caspervonb/deno/cli/tests/subdir/mod1.ts ... 57.143% (8/14)
    8 | export function printHello3() {
    9 |     printHello2();
   10 | }
