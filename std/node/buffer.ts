@@ -10,23 +10,14 @@ const notImplementedEncodings = [
   "utf16le",
 ];
 
-//TODO
-//Improve
 function decodeAscii(buffer: Uint8Array) {
-  let ret = "";
-
-  for (let i = 0; i < buffer.length; ++i) {
-    ret += String.fromCharCode(buffer[i] & 0x7F);
-  }
-  return ret;
+  return Array.from(buffer).map((byte) => String.fromCharCode(byte & 0x7F)).join("");
 }
 
 function encodeAscii(text: string) {
-  var chars = [];
-  for (let i = 0; i < text.length; ++i) {
-    chars.push(text.charCodeAt(i));
-  }
-  return new Uint8Array(chars);
+  return new Uint8Array(
+    Object.keys(text).map((i) => text.charCodeAt(Number(i))),
+  );
 }
 
 function checkEncoding(encoding = "utf8", strict = true): Encodings {
