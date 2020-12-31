@@ -1,6 +1,6 @@
 fn main() {
   #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
+  deno_runtime::colors::enable_ansi(); // For Windows 10
 
   let args_raw: Vec<String> = std::env::args().collect();
   let args: Vec<String> = args_raw[1..].to_vec();
