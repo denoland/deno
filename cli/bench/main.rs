@@ -180,6 +180,11 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
     Value::Number(Number::from(test_util::deno_exe_path().metadata()?.len())),
   );
 
+  sizes.insert(
+    "denort".to_string(),
+    Value::Number(Number::from(test_util::denort_exe_path().metadata()?.len())),
+  );
+
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
   for file in walkdir::WalkDir::new(target_dir) {

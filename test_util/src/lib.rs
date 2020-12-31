@@ -103,6 +103,15 @@ pub fn deno_exe_path() -> PathBuf {
   p
 }
 
+pub fn denort_exe_path() -> PathBuf {
+  // Something like /Users/rld/src/deno/target/debug/deps/deno
+  let mut p = target_dir().join("denort");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
+
 pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
   let mut exe = tool.to_string();
   exe.push_str(if cfg!(windows) { ".exe" } else { "" });
