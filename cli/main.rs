@@ -1220,9 +1220,7 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  if let Err(err) =
-    crate::rt::try_run_standalone_binary(args.clone())
-  {
+  if let Err(err) = crate::rt::try_run_standalone_binary(args.clone()) {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }
