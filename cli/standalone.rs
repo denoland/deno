@@ -14,7 +14,11 @@ pub async fn create_standalone_binary(
   output: PathBuf,
 ) -> Result<(), AnyError> {
   let cli_binary = std::env::current_exe()?;
-  let deno_rt_path = cli_binary.parent().unwrap().join("deno-rt");
+  let deno_rt_path = if cfg!(windows) {
+    cli_binary.parent().unwrap().join("deno-rt.exe")
+  } else {
+    cli_binary.parent().unwrap().join("deno-rt")
+  };
 
   let mut original_bin = tokio::fs::read(deno_rt_path).await?;
 
