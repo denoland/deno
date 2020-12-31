@@ -40,7 +40,8 @@ pub fn try_run_standalone_binary(args: Vec<String>) -> Result<(), AnyError> {
     current_exe.take(bundle_len).read_to_string(&mut bundle)?;
     // TODO: check amount of bytes read
 
-    if let Err(err) = tokio_util::run_basic(run(bundle, args)) {
+    let parsed_args: Vec<String> = args[1..].to_vec();
+    if let Err(err) = tokio_util::run_basic(run(bundle, parsed_args)) {
       eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
       std::process::exit(1);
     }
