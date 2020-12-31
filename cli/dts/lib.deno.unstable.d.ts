@@ -340,9 +340,6 @@ declare namespace Deno {
     /** Emit the source alongside the source maps within a single file; requires
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
-    /** Perform additional checks to ensure that transpile only would be safe.
-     * Defaults to `true`. */
-    isolatedModules?: boolean;
     /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
      * Defaults to `"react"`. */
     jsx?: "react" | "preserve" | "react-native";
@@ -539,7 +536,7 @@ declare namespace Deno {
     files: Record<string, string>;
     /** An optional array of any compiler options that were ignored by Deno. */
     ignoredOptions?: string[];
-    /** An array of internal statics related to the emit, for diagnostic
+    /** An array of internal statistics related to the emit, for diagnostic
      * purposes. */
     stats: Array<[string, number]>;
   }
@@ -551,7 +548,7 @@ declare namespace Deno {
    * `Deno.emit()` provides a way to provide Deno arbitrary JavaScript
    * or TypeScript and have it return JavaScript based on the options and
    * settings provided. The source code can either be provided or the modules
-   * can be fetched and resolved like other modules are resolved.
+   * can be fetched and resolved in line with the behavior of the command line.
    * 
    * Requires `allow-read` and/or `allow-net` if sources are not provided.
    * 

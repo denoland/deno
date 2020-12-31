@@ -9,9 +9,9 @@ use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
 
-use deno_core::error::anyhow;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -76,9 +76,9 @@ async fn op_emit(
     };
   let maybe_import_map = if let Some(import_map_str) = args.import_map_path {
     let import_map_specifier =
-      ModuleSpecifier::resolve_url_or_path(&import_map_str).map_err(|_| {
-        anyhow!("Bad file path (\"{}\") for import map.", import_map_str)
-      })?;
+      ModuleSpecifier::resolve_url_or_path(&import_map_str).context(
+        format!("Bad file path (\"{}\") for import map.", import_map_str),
+      )?;
     let import_map_url = import_map_specifier.as_url();
     let import_map = if let Some(value) = args.import_map {
       ImportMap::from_json(&import_map_url.to_string(), &value.to_string())?
