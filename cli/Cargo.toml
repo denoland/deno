@@ -16,7 +16,7 @@ path = "main.rs"
 
 [[bin]]
 name = "denort"
-path = "rt/main.rs"
+path = "denort.rs"
 
 [[bench]]
 name = "deno_bench"
