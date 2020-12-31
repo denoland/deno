@@ -75,7 +75,7 @@ fn hash_data_url(
     "Specifier must be a data: specifier."
   );
   let hash = crate::checksum::gen(&[specifier.as_url().path().as_bytes()]);
-  format!("data:{}{}", hash, media_type.as_ts_extension())
+  format!("data:///{}{}", hash, media_type.as_ts_extension())
 }
 
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
@@ -148,6 +148,7 @@ pub struct Response {
   pub stats: Stats,
 }
 
+#[derive(Debug)]
 struct State {
   data_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
@@ -164,9 +165,10 @@ impl State {
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
+    data_url_map: HashMap<String, ModuleSpecifier>,
   ) -> Self {
     State {
-      data_url_map: Default::default(),
+      data_url_map,
       hash_data,
       emitted_files: Default::default(),
       graph,
@@ -400,17 +402,24 @@ pub fn exec(
   // extensions and remap any that are unacceptable to tsc and add them to the
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
+  let mut data_url_map = HashMap::new();
   let root_names: Vec<String> = request
     .root_names
     .iter()
     .map(|(s, mt)| {
-      let ext_media_type = get_tsc_media_type(s);
-      if mt != &ext_media_type {
-        let new_specifier = format!("{}{}", s, mt.as_ts_extension());
-        root_map.insert(new_specifier.clone(), s.clone());
-        new_specifier
+      if s.as_url().scheme() == "data" {
+        let specifier_str = hash_data_url(s, mt);
+        data_url_map.insert(specifier_str.clone(), s.clone());
+        specifier_str
       } else {
-        s.as_str().to_owned()
+        let ext_media_type = get_tsc_media_type(s);
+        if mt != &ext_media_type {
+          let new_specifier = format!("{}{}", s, mt.as_ts_extension());
+          root_map.insert(new_specifier.clone(), s.clone());
+          new_specifier
+        } else {
+          s.as_str().to_owned()
+        }
       }
     })
     .collect();
@@ -423,6 +432,7 @@ pub fn exec(
       request.hash_data.clone(),
       request.maybe_tsbuildinfo.clone(),
       root_map,
+      data_url_map,
     ));
   }
 
@@ -501,7 +511,13 @@ mod tests {
       .await
       .expect("module not inserted");
     let graph = Arc::new(Mutex::new(builder.get_graph()));
-    State::new(graph, hash_data, maybe_tsbuildinfo, HashMap::new())
+    State::new(
+      graph,
+      hash_data,
+      maybe_tsbuildinfo,
+      HashMap::new(),
+      HashMap::new(),
+    )
   }
 
   async fn test_exec(
@@ -563,7 +579,7 @@ mod tests {
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
-    assert_eq!(hash_data_url(&specifier, &MediaType::JavaScript), "data:d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
+    assert_eq!(hash_data_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
   }
 
   #[test]
