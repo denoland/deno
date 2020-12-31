@@ -4,12 +4,30 @@ import * as base64 from "../encoding/base64.ts";
 import { Encodings, normalizeEncoding, notImplemented } from "./_utils.ts";
 
 const notImplementedEncodings = [
-  "ascii",
   "binary",
   "latin1",
   "ucs2",
   "utf16le",
 ];
+
+//TODO
+//Improve
+function decodeAscii(buffer: Uint8Array) {
+  let ret = "";
+
+  for (let i = 0; i < buffer.length; ++i) {
+    ret += String.fromCharCode(buffer[i] & 0x7F);
+  }
+  return ret;
+}
+
+function encodeAscii(text: string) {
+  var chars = [];
+  for (let i = 0; i < text.length; ++i) {
+    chars.push(text.charCodeAt(i));
+  }
+  return new Uint8Array(chars);
+}
 
 function checkEncoding(encoding = "utf8", strict = true): Encodings {
   if (typeof encoding !== "string" || (strict && encoding === "")) {
@@ -218,9 +236,16 @@ export class Buffer extends Uint8Array {
 
     if (typeof value == "string") {
       encoding = checkEncoding(encoding, false);
-      if (encoding === "hex") return new Buffer(hex.decodeString(value).buffer);
-      if (encoding === "base64") return new Buffer(base64.decode(value).buffer);
-      return new Buffer(new TextEncoder().encode(value).buffer);
+      switch (encoding) {
+        case "ascii":
+          return new Buffer(encodeAscii(value).buffer);
+        case "base64":
+          return new Buffer(base64.decode(value).buffer);
+        case "hex":
+          return new Buffer(hex.decodeString(value).buffer);
+        default:
+          return new Buffer(new TextEncoder().encode(value).buffer);
+      }
     }
 
     // workaround for https://github.com/microsoft/TypeScript/issues/38446
@@ -431,13 +456,26 @@ export class Buffer extends Uint8Array {
    * encoding. start and end may be passed to decode only a subset of buf.
    */
   toString(encoding = "utf8", start = 0, end = this.length): string {
+    if (start > this.length || end <= 0 || end <= start) {
+      return "";
+    }
+    //Prevent out of bounds
+    start = start < 0 ? 0 : start;
+    end = end > this.length ? this.length : end;
+
     encoding = checkEncoding(encoding);
 
     const b = this.subarray(start, end);
-    if (encoding === "hex") return hex.encodeToString(b);
-    if (encoding === "base64") return base64.encode(b.buffer);
-
-    return new TextDecoder(encoding).decode(b);
+    switch (encoding) {
+      case "ascii":
+        return decodeAscii(b);
+      case "base64":
+        return base64.encode(b.buffer);
+      case "hex":
+        return hex.encodeToString(b);
+      default:
+        return new TextDecoder(encoding).decode(b);
+    }
   }
 
   /**

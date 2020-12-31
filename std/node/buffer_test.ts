@@ -449,6 +449,51 @@ Deno.test({
   },
 });
 
+Deno.test("Buffer encodes ascii correctly", () => {
+  const text1 =
+    "Nam pulvinar, libero in molestie iaculis, urna elit aliquam neque, id molestie velit metus non sem";
+  assertEquals(
+    Buffer.from(text1, "ascii"),
+    new TextEncoder().encode(text1),
+  );
+
+  //Invalid characters get truncated by ascii conversion
+  const text2 =
+    "Le Lorem Ipsum ainsi obtenu ne contient aucune répétition, ni ne contient des mots farfelus, ou des touches d`humour.";
+  assertEquals(
+    Buffer.from(
+      text2,
+      "ascii",
+    ),
+    //deno-fmt-ignore
+    new Uint8Array([
+      76, 101, 32, 76, 111, 114, 101, 109, 32, 73, 112, 115, 117, 109, 32, 97,
+      105, 110, 115, 105, 32, 111, 98, 116, 101, 110, 117, 32, 110, 101, 32, 99,
+      111, 110, 116, 105, 101, 110, 116, 32, 97, 117, 99, 117, 110, 101, 32, 114,
+      233, 112, 233, 116, 105, 116, 105, 111, 110, 44, 32, 110, 105, 32, 110,
+      101, 32, 99, 111, 110, 116, 105, 101, 110, 116, 32, 100, 101, 115, 32, 109,
+      111, 116, 115, 32, 102, 97, 114, 102, 101, 108, 117, 115, 44, 32, 111, 117,
+      32, 100, 101, 115, 32, 116, 111, 117, 99, 104, 101, 115, 32, 100, 96, 104,
+      117, 109, 111, 117, 114, 46,
+    ]),
+  );
+});
+
+Deno.test("Buffer decodes ascii correctly", () => {
+  assertEquals(
+    Buffer.from("El veloz murciélago hindú comía feliz cardillo y kiwi")
+      .toString("ascii"),
+    "El veloz murciC)lago hindC: comC-a feliz cardillo y kiwi",
+  );
+
+  assertEquals(
+    Buffer.from(
+      "Contrairement à une opinion répandue, le Lorem Ipsum n’est pas simplement du texte aléatoire.",
+    ).toString("ascii"),
+    "Contrairement C  une opinion rC)pandue, le Lorem Ipsum nb\u0000\u0019est pas simplement du texte alC)atoire.",
+  );
+});
+
 Deno.test({
   name: "Buffer to string invalid encoding",
   fn() {
@@ -498,7 +543,12 @@ Deno.test({
   name: "Buffer to/from string not implemented encodings",
   fn() {
     const buffer: Buffer = Buffer.from("deno land");
-    const notImplemented = ["ascii", "binary"];
+    const notImplemented = [
+      "binary",
+      "latin1",
+      "ucs2",
+      "utf16le",
+    ];
 
     for (const encoding of notImplemented) {
       assertThrows(
