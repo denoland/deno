@@ -79,7 +79,13 @@ impl ProgramState {
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => Some(ImportMap::load(file_path)?),
+        Some(file_path) => {
+          eprintln!(
+            "{} Import map is unstable feature",
+            crate::colors::yellow("Warning")
+          );
+          Some(ImportMap::load(file_path)?)
+        }
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);

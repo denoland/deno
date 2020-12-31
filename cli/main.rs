@@ -988,6 +988,10 @@ async fn test_command(
   program_state.file_fetcher.insert_cached(source_file);
 
   if no_run {
+    eprintln!(
+      "{} deno test --no-run is unstable feature",
+      crate::colors::yellow("Warning")
+    );
     let lib = if flags.unstable {
       module_graph::TypeLib::UnstableDenoWindow
     } else {
