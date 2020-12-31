@@ -13,14 +13,8 @@ pub async fn create_standalone_binary(
   mut source_code: Vec<u8>,
   output: PathBuf,
 ) -> Result<(), AnyError> {
-  let cli_binary = std::env::current_exe()?;
-  let deno_rt_path = if cfg!(windows) {
-    cli_binary.parent().unwrap().join("deno-rt.exe")
-  } else {
-    cli_binary.parent().unwrap().join("deno-rt")
-  };
-
-  let mut original_bin = tokio::fs::read(deno_rt_path).await?;
+  let original_binary_path = std::env::current_exe()?;
+  let mut original_bin = tokio::fs::read(original_binary_path).await?;
 
   let mut trailer = MAGIC_TRAILER.to_vec();
   trailer.write_all(&original_bin.len().to_be_bytes())?;
