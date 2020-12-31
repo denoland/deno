@@ -3412,6 +3412,12 @@ itest!(deno_doc_import_map {
   output: "doc/use_import_map.out",
 });
 
+itest!(import_data_url_error_stack {
+  args: "run --quiet --reload import_data_url_error_stack.ts",
+  output: "import_data_url_error_stack.ts.out",
+  exit_code: 1,
+});
+
 itest!(import_data_url_import_relative {
   args: "run --quiet --reload import_data_url_import_relative.ts",
   output: "import_data_url_import_relative.ts.out",
