@@ -81,7 +81,7 @@ pub async fn generate_lint_diagnostics(
   tokio::task::spawn_blocking(move || {
     let mut diagnostic_list = Vec::new();
 
-    let file_cache = state_snapshot.file_cache.read().unwrap();
+    let file_cache = state_snapshot.file_cache.lock().unwrap();
     for (specifier, doc_data) in state_snapshot.doc_data.iter() {
       let file_id = file_cache.lookup(specifier).unwrap();
       let version = doc_data.version;
@@ -242,7 +242,7 @@ pub async fn generate_ts_diagnostics(
   for (specifier, doc_data) in state_snapshot_.doc_data.iter() {
     let file_id = {
       // TODO(lucacasonato): this is highly inefficient
-      let file_cache = state_snapshot_.file_cache.read().unwrap();
+      let file_cache = state_snapshot_.file_cache.lock().unwrap();
       file_cache.lookup(specifier).unwrap()
     };
     let version = doc_data.version;
@@ -266,8 +266,8 @@ pub async fn generate_dependency_diagnostics(
   tokio::task::spawn_blocking(move || {
     let mut diagnostics = Vec::new();
 
-    let file_cache = state_snapshot.file_cache.read().unwrap();
-    let mut sources = if let Ok(sources) = state_snapshot.sources.write() {
+    let file_cache = state_snapshot.file_cache.lock().unwrap();
+    let mut sources = if let Ok(sources) = state_snapshot.sources.lock() {
       sources
     } else {
       return Err(custom_error("Deadlock", "deadlock locking sources"));
