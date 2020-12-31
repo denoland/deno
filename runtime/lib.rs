@@ -21,7 +21,6 @@ pub mod metrics;
 pub mod ops;
 pub mod permissions;
 pub mod resolve_addr;
-pub mod standalone;
 pub mod tokio_util;
 pub mod web_worker;
 pub mod worker;

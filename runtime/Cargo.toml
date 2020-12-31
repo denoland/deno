@@ -9,10 +9,6 @@ edition = "2018"
 description = "Provides the deno runtime library"
 repository = "https://github.com/denoland/deno"
 
-[[bin]]
-name = "deno-rt"
-path = "main.rs"
-
 [lib]
 name = "deno_runtime"
 path = "lib.rs"

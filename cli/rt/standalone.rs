@@ -1,14 +1,16 @@
-use crate::colors;
-use crate::permissions::Permissions;
-use crate::tokio_util;
-use crate::worker::MainWorker;
-use crate::worker::WorkerOptions;
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::colors;
+use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::worker::WorkerOptions;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::fs::File;
@@ -89,7 +91,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
 }
 
 fn get_error_class_name(e: &AnyError) -> &'static str {
-  crate::errors::get_error_class_name(e).unwrap_or_else(|| {
+  deno_runtime::errors::get_error_class_name(e).unwrap_or_else(|| {
     panic!("Error '{}' contains boxed error of unknown type", e);
   })
 }

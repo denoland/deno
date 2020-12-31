@@ -33,6 +33,7 @@ mod module_graph;
 mod module_loader;
 mod ops;
 mod program_state;
+mod rt;
 mod source_maps;
 mod specifier_handler;
 mod standalone;
@@ -1220,7 +1221,7 @@ pub fn main() {
 
   let args: Vec<String> = env::args().collect();
   if let Err(err) =
-    deno_runtime::standalone::try_run_standalone_binary(args.clone())
+    crate::rt::try_run_standalone_binary(args.clone())
   {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
