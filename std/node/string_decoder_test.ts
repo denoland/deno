@@ -47,12 +47,12 @@ Deno.test({
     let decoder;
 
     decoder = new StringDecoder("base64");
-    assertEquals(decoder.write(Buffer.from("E1", "hex")), "4Q==");
-    assertEquals(decoder.end(), "4QAA");
+    assertEquals(decoder.write(Buffer.from("E1", "hex")), "");
+    assertEquals(decoder.end(), "4Q==");
 
     decoder = new StringDecoder("base64");
-    assertEquals(decoder.write(Buffer.from("E18B", "hex")), "4Ys=");
-    assertEquals(decoder.end(), "4YsA");
+    assertEquals(decoder.write(Buffer.from("E18B", "hex")), "");
+    assertEquals(decoder.end(), "4Ys=");
 
     decoder = new StringDecoder("base64");
     assertEquals(decoder.write(Buffer.from("\ufffd")), "77+9");
@@ -66,16 +66,16 @@ Deno.test({
     assertEquals(decoder.end(), "");
 
     decoder = new StringDecoder("base64");
-    assertEquals(decoder.write(Buffer.from("EFBFBDE2", "hex")), "77+94g==");
-    assertEquals(decoder.end(), "4gAA");
+    assertEquals(decoder.write(Buffer.from("EFBFBDE2", "hex")), "77+9");
+    assertEquals(decoder.end(), "4g==");
 
     decoder = new StringDecoder("base64");
-    assertEquals(decoder.write(Buffer.from("F1", "hex")), "8Q==");
+    assertEquals(decoder.write(Buffer.from("F1", "hex")), "");
     assertEquals(decoder.write(Buffer.from("41F2", "hex")), "8UHy");
     assertEquals(decoder.end(), "");
 
     decoder = new StringDecoder("base64");
-    assertEquals(decoder.text(Buffer.from([0x41]), 2), "QQ==");
+    assertEquals(decoder.text(Buffer.from([0x41]), 2), "");
   },
 });
 
