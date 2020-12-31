@@ -43,7 +43,7 @@ pub type ModuleLoadId = i32;
 // that happened; not only first and final target. It would simplify a lot
 // of things throughout the codebase otherwise we may end up requesting
 // intermediate redirects from file loader.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModuleSource {
   pub code: String,
   pub module_url_specified: String,
@@ -105,7 +105,7 @@ pub trait ModuleLoader {
 
 /// Placeholder structure used when creating
 /// a runtime that doesn't support module loading.
-pub(crate) struct NoopModuleLoader;
+pub struct NoopModuleLoader;
 
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(

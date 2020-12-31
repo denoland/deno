@@ -33,6 +33,8 @@ Deno.test({
         withSemicolon: `const message = 'hello world';`,
         withHexNumberLiteral:
           "Prevent bug from stripping string here ->0xabcdef",
+        withUnicodeChar1: "あ",
+        withUnicodeChar2: "Deno🦕",
       },
     };
     const actual = parseFile(path.join(testdataDir, "string.toml"));
@@ -464,6 +466,15 @@ Deno.test({
     const actual = parseFile(
       path.join(testdataDir, "inlineArrayOfInlineTable.toml"),
     );
+    assertEquals(actual, expected);
+  },
+});
+
+Deno.test({
+  name: "[TOML] Parse malformed local time as String (#8433)",
+  fn(): void {
+    const expected = { sign: "2020-01-01x" };
+    const actual = parse(`sign='2020-01-01x'`);
     assertEquals(actual, expected);
   },
 });

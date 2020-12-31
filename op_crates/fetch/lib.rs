@@ -5,15 +5,18 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::url;
 use deno_core::url::Url;
+use deno_core::AsyncRefCell;
 use deno_core::BufVec;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::JsRuntime;
 use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 
 use reqwest::header::HeaderName;
@@ -23,6 +26,7 @@ use reqwest::Client;
 use reqwest::Method;
 use reqwest::Response;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
 use std::fs::File;
@@ -121,7 +125,7 @@ where
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url)?;
+  let url_ = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
@@ -150,19 +154,35 @@ where
   }
   //debug!("Before fetch {}", url);
 
-  let res = request.send().await?;
+  let res = match request.send().await {
+    Ok(res) => res,
+    Err(e) => return Err(type_error(e.to_string())),
+  };
 
   //debug!("Fetch response {}", url);
   let status = res.status();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
+    let key_string = key.to_string();
+
+    if val.as_bytes().is_ascii() {
+      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
+    } else {
+      res_headers.push((
+        key_string,
+        val
+          .as_bytes()
+          .iter()
+          .map(|&c| c as char)
+          .collect::<String>(),
+      ));
+    }
   }
 
-  let rid = state
-    .borrow_mut()
-    .resource_table
-    .add("httpBody", Box::new(res));
+  let rid = state.borrow_mut().resource_table.add(HttpBodyResource {
+    response: AsyncRefCell::new(res),
+    cancel: Default::default(),
+  });
 
   Ok(json!({
     "bodyRid": rid,
@@ -186,30 +206,41 @@ pub async fn op_fetch_read(
   let args: Args = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  use futures::future::poll_fn;
-  use futures::ready;
-  use futures::FutureExt;
-  let f = poll_fn(move |cx| {
-    let mut state = state.borrow_mut();
-    let response = state
-      .resource_table
-      .get_mut::<Response>(rid as u32)
-      .ok_or_else(bad_resource_id)?;
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<HttpBodyResource>(rid as u32)
+    .ok_or_else(bad_resource_id)?;
+  let mut response = RcRef::map(&resource, |r| &r.response).borrow_mut().await;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let maybe_chunk = response.chunk().or_cancel(cancel).await??;
+  if let Some(chunk) = maybe_chunk {
+    // TODO(ry) This is terribly inefficient. Make this zero-copy.
+    Ok(json!({ "chunk": &*chunk }))
+  } else {
+    Ok(json!({ "chunk": null }))
+  }
+}
 
-    let mut chunk_fut = response.chunk().boxed_local();
-    let r = ready!(chunk_fut.poll_unpin(cx))?;
-    if let Some(chunk) = r {
-      // TODO(ry) This is terribly inefficient. Make this zero-copy.
-      Ok(json!({ "chunk": &*chunk })).into()
-    } else {
-      Ok(json!({ "chunk": null })).into()
-    }
-  });
-  f.await
+struct HttpBodyResource {
+  response: AsyncRefCell<Response>,
+  cancel: CancelHandle,
+}
+
+impl Resource for HttpBodyResource {
+  fn name(&self) -> Cow<str> {
+    "httpBody".into()
+  }
 }
 
 struct HttpClientResource {
   client: Client,
+}
+
+impl Resource for HttpClientResource {
+  fn name(&self) -> Cow<str> {
+    "httpClient".into()
+  }
 }
 
 impl HttpClientResource {
@@ -231,6 +262,7 @@ where
   #[serde(default)]
   struct CreateHttpClientOptions {
     ca_file: Option<String>,
+    ca_data: Option<String>,
   }
 
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
@@ -240,19 +272,26 @@ where
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
-  let client = create_http_client(args.ca_file.as_deref()).unwrap();
+  let client =
+    create_http_client(args.ca_file.as_deref(), args.ca_data.as_deref())
+      .unwrap();
 
-  let rid = state
-    .resource_table
-    .add("httpClient", Box::new(HttpClientResource::new(client)));
+  let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(json!(rid))
 }
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
-fn create_http_client(ca_file: Option<&str>) -> Result<Client, AnyError> {
+fn create_http_client(
+  ca_file: Option<&str>,
+  ca_data: Option<&str>,
+) -> Result<Client, AnyError> {
   let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
-  if let Some(ca_file) = ca_file {
+  if let Some(ca_data) = ca_data {
+    let ca_data_vec = ca_data.as_bytes().to_vec();
+    let cert = reqwest::Certificate::from_pem(&ca_data_vec)?;
+    builder = builder.add_root_certificate(cert);
+  } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
