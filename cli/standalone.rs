@@ -13,10 +13,9 @@ pub async fn create_standalone_binary(
   mut source_code: Vec<u8>,
   output: PathBuf,
 ) -> Result<(), AnyError> {
-
   let binary_dir = match std::env::var("DENO_INSTALL") {
     Ok(dir) => dir,
-    Err(_) => bail!("Cannot find $DENO_INSTALL in environment variables")
+    Err(_) => bail!("Cannot find $DENO_INSTALL in environment variables"),
   };
   let original_binary_path = PathBuf::from(binary_dir).join("/deno-rt");
   println!("original_binary_path: {:?}", original_binary_path);

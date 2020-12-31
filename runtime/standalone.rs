@@ -1,6 +1,6 @@
 use crate::colors;
-use crate::tokio_util;
 use crate::permissions::Permissions;
+use crate::tokio_util;
 use crate::worker::MainWorker;
 use crate::worker::WorkerOptions;
 use deno_core::error::type_error;
@@ -73,7 +73,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
     should_break_on_first_statement: false,
     module_loader,
     runtime_version: "1.6.3".to_string(), // TODO (yos1p) Deno version
-    ts_version: "4.1.3".to_string(), // TODO (yos1p) TS version
+    ts_version: "4.1.3".to_string(),      // TODO (yos1p) TS version
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
   };
@@ -87,12 +87,10 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
   Ok(())
 }
 
-
 fn get_error_class_name(e: &AnyError) -> &'static str {
-  crate::errors::get_error_class_name(e)
-    .unwrap_or_else(|| {
-      panic!("Error '{}' contains boxed error of unknown type", e);
-    })
+  crate::errors::get_error_class_name(e).unwrap_or_else(|| {
+    panic!("Error '{}' contains boxed error of unknown type", e);
+  })
 }
 
 struct EmbeddedModuleLoader(String);
