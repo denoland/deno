@@ -45,12 +45,33 @@ impl IndexValid {
   }
 }
 
-fn to_range(line_index: &[u32], range: lsp_types::Range) -> Range<usize> {
-  let start =
+fn to_range(
+  content: &str,
+  line_index: &[u32],
+  range: lsp_types::Range,
+) -> Range<usize> {
+  // LSP client counts the number of characters based on character boundaries.
+  // On the other hand, Rust's `String.replace_range()` requires the number of characters to be counted based on byte boundaries.
+  // Therefore, we need to recompute the number of characters based on byte boundaries here.
+  let char_start =
     (line_index[range.start.line as usize] + range.start.character) as usize;
-  let end =
+  let char_end =
     (line_index[range.end.line as usize] + range.end.character) as usize;
-  Range { start, end }
+
+  let mut char_indices = content.char_indices();
+  let byte_start = char_indices
+    .nth(char_start)
+    .expect("Could not get start position")
+    .0;
+  let byte_end = char_indices
+    .nth(char_end - char_start - 1)
+    .expect("Could not get end position")
+    .0;
+
+  Range {
+    start: byte_start,
+    end: byte_end,
+  }
 }
 
 pub fn to_position(line_index: &[u32], char_pos: u32) -> lsp_types::Position {
@@ -90,7 +111,7 @@ pub fn apply_content_changes(
       if !index_valid.covers(range.start.line) {
         line_index = index_lines(&content);
       }
-      let range = to_range(&line_index, range);
+      let range = to_range(content, &line_index, range);
       content.replace_range(range, &change.text);
     } else {
       *content = change.text;

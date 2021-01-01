@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didChange",
+  "params": {
+    "contentChanges": [
+      {
+        "range": {
+          "start": { "character": 8, "line": 1 },
+          "end": { "character": 11, "line": 1 }
+        },
+        "text": "info",
+        "rangeLength": 3
+      }
+    ],
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "version": 2,
+      "languageId": "typescript"
+    }
+  }
+}

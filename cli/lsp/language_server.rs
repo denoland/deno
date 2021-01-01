@@ -1022,9 +1022,9 @@ impl LanguageServer {
       let file_cache = self.file_cache.lock().unwrap();
       Some(format!(
         r#"# Deno Language Server Status
-  
+
   - Documents in memory: {}
-  
+
   "#,
         file_cache.len()
       ))
@@ -1360,6 +1360,47 @@ mod tests {
                 "newText": "variable_modified"
               }]
             }]
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_handle_documents_with_mbc() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_mbc.json", LspResponse::None),
+      ("did_change_notification_mbc.json", LspResponse::None),
+      (
+        "hover_request_mbc.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "(method) Console.info(...data: any[]): void"
+              },
+              ""
+            ],
+            "range": {
+              "start": {
+                "line": 1,
+                "character": 8
+              },
+              "end": {
+                "line": 1,
+                "character": 12
+              }
+            }
           }),
         ),
       ),
