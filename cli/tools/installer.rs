@@ -43,9 +43,9 @@ fn validate_name(exec_name: &str) -> Result<(), AnyError> {
 }
 
 #[cfg(windows)]
-/// On Windows, 2 files are generated. 
-/// One compatible with cmd & powershell with a .cmd extension 
-/// A second compatible with git bash / MINGW64 
+/// On Windows, 2 files are generated.
+/// One compatible with cmd & powershell with a .cmd extension
+/// A second compatible with git bash / MINGW64
 /// Generate batch script to satisfy that.
 fn generate_executable_file(
   file_path: PathBuf,
@@ -447,7 +447,6 @@ mod tests {
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
     }
-
 
     let content = fs::read_to_string(file_path).unwrap();
     // It's annoying when shell scripts don't have NL at the end.
