@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+#![deny(warnings)]
+
 mod rt;
 
 fn main() {
