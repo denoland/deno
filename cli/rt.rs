@@ -42,8 +42,7 @@ pub fn try_run_standalone_binary(args: Vec<String>) -> Result<(), AnyError> {
     current_exe.take(bundle_len).read_to_string(&mut bundle)?;
     // TODO: check amount of bytes read
 
-    let parsed_args: Vec<String> = args[1..].to_vec();
-    if let Err(err) = tokio_util::run_basic(run(bundle, parsed_args)) {
+    if let Err(err) = tokio_util::run_basic(run(bundle, args)) {
       eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
       std::process::exit(1);
     }
@@ -63,7 +62,7 @@ async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
 
   let options = WorkerOptions {
     apply_source_maps: false,
-    args,
+    args: args[1..].to_vec(),
     debug_flag: false,
     user_agent: format!("Deno/{}", deno_version()),
     unstable: true,
