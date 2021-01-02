@@ -468,7 +468,7 @@
       callback = Function.prototype.bind.call(cb, globalThis, ...args);
     } else {
       callback = String(cb);
-      args = []; // args aren't ignored
+      args = []; // args are ignored
     }
     // In the browser, the delay value must be coercible to an integer between 0
     // and INT32_MAX. Any other value will cause the timer to fire immediately.
