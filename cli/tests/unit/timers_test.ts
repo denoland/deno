@@ -30,20 +30,25 @@ unitTest(async function functionParameterBindingSuccess(): Promise<void> {
 
 unitTest(async function stringifyAndEvalNonFunctions(): Promise<void> {
   // eval can only access global scope
-  globalThis.globalPromise = deferred();
-  globalThis.globalCount = 0;
+  const global = globalThis as unknown as {
+    globalPromise: ReturnType<typeof deferred>;
+    globalCount: number;
+  };
+  global.globalPromise = deferred();
+  global.globalCount = 0;
 
-  const notAFunction = "globalThis.uniqueIdentifier++; globalThis.globalPromise.resolve();";
+  const notAFunction =
+    "globalThis.globalCount++; globalThis.globalPromise.resolve();";
 
   setTimeout(notAFunction, 500);
 
-  await globalPromise;
+  await global.globalPromise;
 
   // count should be incremented
-  assertEquals(globalThis.uniqueIdentifier, 1);
+  assertEquals(global.globalCount, 1);
 
-  Reflect.deleteProperty(globalThis, "globalPromise");
-  Reflect.deleteProperty(globalThis, "globalCount");
+  Reflect.deleteProperty(global, "globalPromise");
+  Reflect.deleteProperty(global, "globalCount");
 });
 
 unitTest(async function timeoutSuccess(): Promise<void> {
