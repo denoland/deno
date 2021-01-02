@@ -948,6 +948,24 @@ mod tests {
   }
 
   #[test]
+  fn check_invalid_specifiers() {
+    let perms = Permissions::allow_all();
+
+    let mut test_cases = vec![];
+
+    if cfg!(target_os = "windows") {
+      test_cases.push("file://");
+      test_cases.push("file:///");
+    }
+
+    for url in test_cases {
+      assert!(perms
+        .check_specifier(&ModuleSpecifier::resolve_url_or_path(url).unwrap())
+        .is_err());
+    }
+  }
+
+  #[test]
   fn test_deserialize_perms() {
     let json_perms = r#"
     {
