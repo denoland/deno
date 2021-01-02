@@ -38,7 +38,7 @@ unitTest(async function stringifyAndEvalNonFunctions(): Promise<void> {
   global.globalCount = 0;
 
   const notAFunction =
-    "globalThis.globalCount++; globalThis.globalPromise.resolve();";
+    "globalThis.globalCount++; globalThis.globalPromise.resolve();" as unknown as Function;
 
   setTimeout(notAFunction, 500);
 
