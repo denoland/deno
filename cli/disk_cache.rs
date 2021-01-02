@@ -281,4 +281,23 @@ mod tests {
       )
     }
   }
+
+  #[test]
+  fn test_get_cache_filename_invalid_urls() {
+    let cache_location = if cfg!(target_os = "windows") {
+      PathBuf::from(r"C:\deno_dir\")
+    } else {
+      PathBuf::from("/deno_dir/")
+    };
+
+    let cache = DiskCache::new(&cache_location);
+
+    let test_cases = vec!["file://", "file:///", "unknown://localhost/test.ts"];
+
+    for test_case in &test_cases {
+      let cache_filename =
+        cache.get_cache_filename(&Url::parse(test_case).unwrap());
+      assert_eq!(cache_filename, None);
+    }
+  }
 }
