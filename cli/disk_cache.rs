@@ -69,7 +69,10 @@ impl DiskCache {
       }
       "http" | "https" => out = url_to_filename(url),
       "file" => {
-        let path = url.to_file_path().unwrap();
+        let path = match url.to_file_path() {
+          Ok(path) => path,
+          Err(_) => return None,
+        };
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
