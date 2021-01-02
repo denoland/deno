@@ -87,11 +87,25 @@ jobs:
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
           echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
 
+      - name: Install Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "2.7"
+          architecture: x64
+
       - name: Install Node
         uses: actions/setup-node@v2
         with:
           node-version: "14"
           check-latest: true
+
+      - name: Remove unused versions of Python
+        if: startsWith(matrix.os, 'windows')
+        run: |-
+          $env:PATH -split ";" |
+            Where-Object { Test-Path "$_\python.exe" } |
+            Select-Object -Skip 1 |
+            ForEach-Object { Move-Item "$_" "$_.disabled" }
 
       - name: Setup gcloud (unix)
         if: |
