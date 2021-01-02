@@ -379,6 +379,15 @@ mod tests {
 
     let mut tests =
       Vec::<(ModuleSpecifier, fn(&ModuleSpecifier) -> bool, &str, &str)>::new();
+    // should not convert if the text has no import statement.
+    tests.push((
+      ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
+      |s| s.eq(&ModuleSpecifier::resolve_path("./b.js").unwrap()),
+      "const A = B;",
+      "const A = B;",
+    ));
+
+    // should not convert if the import statement is already valid.
     tests.push((
       ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
       |s| s.eq(&ModuleSpecifier::resolve_path("./b.js").unwrap()),
@@ -386,6 +395,15 @@ mod tests {
       "import { A } from './b.js'",
     ));
 
+    // should not convert if the actual file has no js/ts extension.
+    tests.push((
+      ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
+      |s| s.eq(&ModuleSpecifier::resolve_path("./b.json").unwrap()),
+      "import { A } from './b.js'",
+      "import { A } from './b.js'",
+    ));
+
+    // should convert if the import statement's extension is wrong.
     tests.push((
       ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
       |s| s.eq(&ModuleSpecifier::resolve_path("./b.ts").unwrap()),
@@ -393,6 +411,7 @@ mod tests {
       "import { A } from './b.ts'",
     ));
 
+    // should not convert when the import statement has http scheme (via literal).
     tests.push((
       ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
       |s| {
@@ -405,6 +424,7 @@ mod tests {
       "import { A } from 'https://example/path/to/jquery.ts'",
     ));
 
+    // should not convert when the import statement has http scheme (via import_map).
     tests.push((
       ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
       |s| {
