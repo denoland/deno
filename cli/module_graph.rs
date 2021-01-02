@@ -2300,10 +2300,11 @@ pub mod tests {
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
     assert!(result_info.diagnostics.is_empty());
-    let h = handler.lock().unwrap();
-    assert_eq!(h.version_calls.len(), 2);
-    let ver0 = h.version_calls[0].1.clone();
-    let ver1 = h.version_calls[1].1.clone();
+    let (ver0, ver1) = {
+      let h = handler.lock().unwrap();
+      assert_eq!(h.version_calls.len(), 2);
+      (h.version_calls[0].1.clone(), h.version_calls[1].1.clone())
+    };
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
