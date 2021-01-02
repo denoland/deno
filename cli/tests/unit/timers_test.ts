@@ -7,9 +7,44 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-function waitForMs(ms: number): Promise<number> {
+function waitForMs(ms: number): Promise<void> {
   return new Promise((resolve): number => setTimeout(resolve, ms));
 }
+
+unitTest(async function functionParameterBindingSuccess(): Promise<void> {
+  const promise = deferred();
+  let count = 0;
+
+  const nullProto = (newCount: number): void => {
+    count = newCount;
+    promise.resolve();
+  };
+
+  Reflect.setPrototypeOf(nullProto, null);
+
+  setTimeout(nullProto, 500, 1);
+  await promise;
+  // count should be reassigned
+  assertEquals(count, 1);
+});
+
+unitTest(async function stringifyAndEvalNonFunctions(): Promise<void> {
+  // eval can only access global scope
+  globalThis.globalPromise = deferred();
+  globalThis.globalCount = 0;
+
+  const notAFunction = "globalThis.uniqueIdentifier++; globalThis.globalPromise.resolve();";
+
+  setTimeout(notAFunction, 500);
+
+  await globalPromise;
+
+  // count should be incremented
+  assertEquals(globalThis.uniqueIdentifier, 1);
+
+  Reflect.deleteProperty(globalThis, "globalPromise");
+  Reflect.deleteProperty(globalThis, "globalCount");
+});
 
 unitTest(async function timeoutSuccess(): Promise<void> {
   const promise = deferred();
