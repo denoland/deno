@@ -497,15 +497,24 @@ impl Module {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Stats(pub Vec<(String, u128)>);
+pub struct Stats(pub Vec<(String, u32)>);
 
 impl<'de> Deserialize<'de> for Stats {
   fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {
-    let items: Vec<(String, u128)> = Deserialize::deserialize(deserializer)?;
+    let items: Vec<(String, u32)> = Deserialize::deserialize(deserializer)?;
     Ok(Stats(items))
+  }
+}
+
+impl Serialize for Stats {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.0, serializer)
   }
 }
 
@@ -620,6 +629,10 @@ impl Default for BundleType {
 
 #[derive(Debug, Default)]
 pub struct EmitOptions {
+  /// If true, then code will be type checked, otherwise type checking will be
+  /// skipped.  If false, then swc will be used for the emit, otherwise tsc will
+  /// be used.
+  pub check: bool,
   /// Indicate the form the result of the emit should take.
   pub bundle_type: BundleType,
   /// If `true` then debug logging will be output from the isolate.
@@ -769,8 +782,8 @@ impl Graph {
 
     let s = self.emit_bundle(&root_specifier, &ts_config.into())?;
     let stats = Stats(vec![
-      ("Files".to_string(), self.modules.len() as u128),
-      ("Total time".to_string(), start.elapsed().as_millis()),
+      ("Files".to_string(), self.modules.len() as u32),
+      ("Total time".to_string(), start.elapsed().as_millis() as u32),
     ]);
 
     Ok((s, stats, maybe_ignored_options))
@@ -918,18 +931,22 @@ impl Graph {
   /// emitting single modules as well as bundles, using Deno module resolution
   /// or supplied sources.
   pub fn emit(
-    self,
+    mut self,
     options: EmitOptions,
   ) -> Result<(HashMap<String, String>, ResultInfo), AnyError> {
     let mut config = TsConfig::new(json!({
       "allowJs": true,
+      "checkJs": false,
       // TODO(@kitsonk) consider enabling this by default
       //   see: https://github.com/denoland/deno/issues/7732
       "emitDecoratorMetadata": false,
       "esModuleInterop": true,
       "experimentalDecorators": true,
+      "inlineSourceMap": false,
       "isolatedModules": true,
       "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
       "lib": TypeLib::DenoWindow,
       "module": "esnext",
       "strict": true,
@@ -937,11 +954,7 @@ impl Graph {
     }));
     let opts = match options.bundle_type {
       BundleType::Esm => json!({
-        "checkJs": false,
-        "inlineSourceMap": false,
         "noEmit": true,
-        "jsxFactory": "React.createElement",
-        "jsxFragmentFactory": "React.Fragment",
       }),
       BundleType::None => json!({
         "outDir": "deno://",
@@ -957,74 +970,138 @@ impl Graph {
         None
       };
 
-    let root_names = self.get_root_names(!config.get_check_js());
-    let hash_data =
-      vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
-    let graph = Arc::new(Mutex::new(self));
-
-    let response = tsc::exec(
-      js::compiler_isolate_init(),
-      tsc::Request {
-        config: config.clone(),
-        debug: options.debug,
-        graph: graph.clone(),
-        hash_data,
-        maybe_tsbuildinfo: None,
-        root_names,
-      },
-    )?;
+    if !options.check && config.get_declaration() {
+      return Err(anyhow!("The option of `check` is false, but the compiler option of `declaration` is true which is not currently supported."));
+    }
+    if options.bundle_type != BundleType::None && config.get_declaration() {
+      return Err(anyhow!("The bundle option is set, but the compiler option of `declaration` is true which is not currently supported."));
+    }
 
     let mut emitted_files = HashMap::new();
-    let graph = graph.lock().unwrap();
-    match options.bundle_type {
-      BundleType::Esm => {
-        assert!(
-          response.emitted_files.is_empty(),
-          "No files should have been emitted from tsc."
-        );
-        assert_eq!(
-          graph.roots.len(),
-          1,
-          "Only a single root module supported."
-        );
-        let specifier = &graph.roots[0];
-        let s = graph.emit_bundle(specifier, &config.into())?;
-        emitted_files.insert("deno:///bundle.js".to_string(), s);
-      }
-      BundleType::None => {
-        for emitted_file in &response.emitted_files {
+    if options.check {
+      let root_names = self.get_root_names(!config.get_check_js());
+      let hash_data =
+        vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
+      let graph = Arc::new(Mutex::new(self));
+      let response = tsc::exec(
+        js::compiler_isolate_init(),
+        tsc::Request {
+          config: config.clone(),
+          debug: options.debug,
+          graph: graph.clone(),
+          hash_data,
+          maybe_tsbuildinfo: None,
+          root_names,
+        },
+      )?;
+
+      let graph = graph.lock().unwrap();
+      match options.bundle_type {
+        BundleType::Esm => {
           assert!(
-            emitted_file.maybe_specifiers.is_some(),
-            "Orphaned file emitted."
+            response.emitted_files.is_empty(),
+            "No files should have been emitted from tsc."
           );
-          let specifiers = emitted_file.maybe_specifiers.clone().unwrap();
           assert_eq!(
-            specifiers.len(),
+            graph.roots.len(),
             1,
-            "An unexpected number of specifiers associated with emitted file."
+            "Only a single root module supported."
           );
-          let specifier = specifiers[0].clone();
-          let extension = match emitted_file.media_type {
-            MediaType::JavaScript => ".js",
-            MediaType::SourceMap => ".js.map",
-            MediaType::Dts => ".d.ts",
-            _ => unreachable!(),
-          };
-          let key = format!("{}{}", specifier, extension);
-          emitted_files.insert(key, emitted_file.data.clone());
+          let specifier = &graph.roots[0];
+          let s = graph.emit_bundle(specifier, &config.into())?;
+          emitted_files.insert("deno:///bundle.js".to_string(), s);
+        }
+        BundleType::None => {
+          for emitted_file in &response.emitted_files {
+            assert!(
+              emitted_file.maybe_specifiers.is_some(),
+              "Orphaned file emitted."
+            );
+            let specifiers = emitted_file.maybe_specifiers.clone().unwrap();
+            assert_eq!(
+              specifiers.len(),
+              1,
+              "An unexpected number of specifiers associated with emitted file."
+            );
+            let specifier = specifiers[0].clone();
+            let extension = match emitted_file.media_type {
+              MediaType::JavaScript => ".js",
+              MediaType::SourceMap => ".js.map",
+              MediaType::Dts => ".d.ts",
+              _ => unreachable!(),
+            };
+            let key = format!("{}{}", specifier, extension);
+            emitted_files.insert(key, emitted_file.data.clone());
+          }
+        }
+      };
+
+      Ok((
+        emitted_files,
+        ResultInfo {
+          diagnostics: response.diagnostics,
+          loadable_modules: graph.get_loadable_modules(),
+          maybe_ignored_options,
+          stats: response.stats,
+        },
+      ))
+    } else {
+      let start = Instant::now();
+      let mut emit_count = 0_u32;
+      match options.bundle_type {
+        BundleType::Esm => {
+          assert_eq!(
+            self.roots.len(),
+            1,
+            "Only a single root module supported."
+          );
+          let specifier = &self.roots[0];
+          let s = self.emit_bundle(specifier, &config.into())?;
+          emit_count += 1;
+          emitted_files.insert("deno:///bundle.js".to_string(), s);
+        }
+        BundleType::None => {
+          let emit_options: ast::EmitOptions = config.into();
+          for (_, module_slot) in self.modules.iter_mut() {
+            if let ModuleSlot::Module(module) = module_slot {
+              if !(emit_options.check_js
+                || module.media_type == MediaType::JSX
+                || module.media_type == MediaType::TSX
+                || module.media_type == MediaType::TypeScript)
+              {
+                emitted_files
+                  .insert(module.specifier.to_string(), module.source.clone());
+              }
+              let parsed_module = module.parse()?;
+              let (code, maybe_map) = parsed_module.transpile(&emit_options)?;
+              emit_count += 1;
+              emitted_files.insert(format!("{}.js", module.specifier), code);
+              if let Some(map) = maybe_map {
+                emitted_files
+                  .insert(format!("{}.js.map", module.specifier), map);
+              }
+            }
+          }
+          self.flush()?;
         }
       }
-    };
 
-    Ok((
-      emitted_files,
-      ResultInfo {
-        diagnostics: response.diagnostics,
-        loadable_modules: graph.get_loadable_modules(),
-        maybe_ignored_options,
-        stats: response.stats,
-      },
-    ))
+      let stats = Stats(vec![
+        ("Files".to_string(), self.modules.len() as u32),
+        ("Emitted".to_string(), emit_count),
+        ("Total time".to_string(), start.elapsed().as_millis() as u32),
+      ]);
+
+      Ok((
+        emitted_files,
+        ResultInfo {
+          diagnostics: Default::default(),
+          loadable_modules: self.get_loadable_modules(),
+          maybe_ignored_options,
+          stats,
+        },
+      ))
+    }
   }
 
   /// Shared between `bundle()` and `emit()`.
@@ -1566,10 +1643,9 @@ impl Graph {
     let maybe_ignored_options =
       ts_config.merge_tsconfig(options.maybe_config_path)?;
 
-    let emit_options: ast::EmitOptions = ts_config.clone().into();
-
-    let mut emit_count: u128 = 0;
     let config = ts_config.as_bytes();
+    let emit_options: ast::EmitOptions = ts_config.into();
+    let mut emit_count = 0_u32;
     for (_, module_slot) in self.modules.iter_mut() {
       if let ModuleSlot::Module(module) = module_slot {
         // TODO(kitsonk) a lot of this logic should be refactored into `Module` as
@@ -1604,9 +1680,9 @@ impl Graph {
     self.flush()?;
 
     let stats = Stats(vec![
-      ("Files".to_string(), self.modules.len() as u128),
+      ("Files".to_string(), self.modules.len() as u32),
       ("Emitted".to_string(), emit_count),
-      ("Total time".to_string(), start.elapsed().as_millis()),
+      ("Total time".to_string(), start.elapsed().as_millis() as u32),
     ]);
 
     Ok(ResultInfo {
@@ -2224,10 +2300,11 @@ pub mod tests {
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
     assert!(result_info.diagnostics.is_empty());
-    let h = handler.lock().unwrap();
-    assert_eq!(h.version_calls.len(), 2);
-    let ver0 = h.version_calls[0].1.clone();
-    let ver1 = h.version_calls[1].1.clone();
+    let (ver0, ver1) = {
+      let h = handler.lock().unwrap();
+      assert_eq!(h.version_calls.len(), 2);
+      (h.version_calls[0].1.clone(), h.version_calls[1].1.clone())
+    };
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
@@ -2270,6 +2347,7 @@ pub mod tests {
     .await;
     let (emitted_files, result_info) = graph
       .emit(EmitOptions {
+        check: true,
         bundle_type: BundleType::None,
         debug: false,
         maybe_user_config: None,
@@ -2310,6 +2388,7 @@ pub mod tests {
     .await;
     let (emitted_files, result_info) = graph
       .emit(EmitOptions {
+        check: true,
         bundle_type: BundleType::Esm,
         debug: false,
         maybe_user_config: None,
@@ -2347,6 +2426,7 @@ pub mod tests {
     user_config.insert("declaration".to_string(), json!(true));
     let (emitted_files, result_info) = graph
       .emit(EmitOptions {
+        check: true,
         bundle_type: BundleType::None,
         debug: false,
         maybe_user_config: Some(user_config),
