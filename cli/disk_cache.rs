@@ -292,7 +292,12 @@ mod tests {
 
     let cache = DiskCache::new(&cache_location);
 
-    let test_cases = vec!["file://", "file:///", "unknown://localhost/test.ts"];
+    let mut test_cases = vec!["unknown://localhost/test.ts"];
+
+    if cfg!(target_os = "windows") {
+      test_cases.push("file://");
+      test_cases.push("file:///");
+    }
 
     for test_case in &test_cases {
       let cache_filename =
