@@ -97,6 +97,7 @@ where
   exts.push("ts");
   exts.push("js");
   let maybe_ext = exts.iter().find(|ext| {
+    // The converting target is only filepath.
     if let Ok(path) = import_specifier.as_url().to_file_path() {
       if let Ok(specifier) = ModuleSpecifier::resolve_path(
         &path.with_extension(ext).to_string_lossy().to_string(),
@@ -360,6 +361,74 @@ mod tests {
         },
       }
     );
+  }
+
+  #[test]
+  fn test_fix_auto_import_text_edit() {
+    let maybe_import_map = Some(
+      ImportMap::from_json(
+        "https://deno.land",
+        r#"{
+      "imports": {
+        "jquery": "https://example/path/to/jquery.ts"
+      }
+    }"#,
+      )
+      .unwrap(),
+    );
+
+    let mut tests =
+      Vec::<(ModuleSpecifier, fn(&ModuleSpecifier) -> bool, &str, &str)>::new();
+    tests.push((
+      ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
+      |s| s.eq(&ModuleSpecifier::resolve_path("./b.js").unwrap()),
+      "import { A } from './b.js'",
+      "import { A } from './b.js'",
+    ));
+
+    tests.push((
+      ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
+      |s| s.eq(&ModuleSpecifier::resolve_path("./b.ts").unwrap()),
+      "import { A } from './b.js'",
+      "import { A } from './b.ts'",
+    ));
+
+    tests.push((
+      ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
+      |s| {
+        s.eq(
+          &ModuleSpecifier::resolve_url("https://example/path/to/jquery.js")
+            .unwrap(),
+        )
+      },
+      "import { A } from 'https://example/path/to/jquery.ts'",
+      "import { A } from 'https://example/path/to/jquery.ts'",
+    ));
+
+    tests.push((
+      ModuleSpecifier::resolve_url_or_path("./a.ts").unwrap(),
+      |s| {
+        s.eq(
+          &ModuleSpecifier::resolve_url("https://example/path/to/jquery.js")
+            .unwrap(),
+        )
+      },
+      "import { A } from 'jquery'",
+      "import { A } from 'jquery'",
+    ));
+
+    for test in tests {
+      let actual = fix_auto_import_text_edit(
+        lsp_types::TextEdit {
+          range: lsp_types::Range::default(),
+          new_text: test.2.to_string(),
+        },
+        &test.0,
+        test.1,
+        &maybe_import_map,
+      );
+      assert_eq!(actual.new_text, test.3.to_string());
+    }
   }
 
   #[test]
