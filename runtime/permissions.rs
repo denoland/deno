@@ -581,8 +581,16 @@ impl Permissions {
   ) -> Result<(), AnyError> {
     let url = specifier.as_url();
     if url.scheme() == "file" {
-      let path = url.to_file_path().unwrap();
-      self.check_read(&path)
+      match url.to_file_path() {
+        Ok(path) => self.check_read(&path),
+        Err(_) => Err(
+          std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid module URL",
+          )
+          .into(),
+        ),
+      }
     } else {
       self.check_net_url(url)
     }
