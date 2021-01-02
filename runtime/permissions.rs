@@ -583,13 +583,10 @@ impl Permissions {
     if url.scheme() == "file" {
       match url.to_file_path() {
         Ok(path) => self.check_read(&path),
-        Err(_) => Err(
-          std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Invalid module URL",
-          )
-          .into(),
-        ),
+        Err(_) => Err(uri_error(format!(
+          "Invalid file path.\n  Specifier: {}",
+          specifier
+        ))),
       }
     } else {
       self.check_net_url(url)
