@@ -223,42 +223,27 @@ impl Permissions {
     PermissionState::Prompt
   }
 
-  pub fn query_net(&self, host: &str, port: Option<u16>) -> PermissionState {
+  pub fn query_net<T: AsRef<str>>(
+    &self,
+    host: &Option<&(T, Option<u16>)>,
+  ) -> PermissionState {
     if self.net.global_state == PermissionState::Denied
-      || check_host_and_port_list(host, port, &self.net.denied_list)
+      && match host.as_ref() {
+        None => true,
+        Some(host) => check_host_blocklist(host, &self.net.denied_list),
+      }
     {
       return PermissionState::Denied;
     }
     if self.net.global_state == PermissionState::Granted
-      || check_host_and_port_list(host, port, &self.net.granted_list)
+      || match host.as_ref() {
+        None => false,
+        Some(host) => check_host_allowlist(host, &self.net.granted_list),
+      }
     {
       return PermissionState::Granted;
     }
     PermissionState::Prompt
-  }
-
-  pub fn query_net_url(
-    &self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
-    if url.is_none() {
-      return Ok(self.net.global_state);
-    }
-    let url: &str = url.unwrap();
-    // If url is invalid, then throw a TypeError.
-    let parsed = url::Url::parse(url)?;
-    // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
-    // Note that host:port combos are parsed as scheme:path
-    if parsed.host().is_none() {
-      return Err(custom_error(
-        "URIError",
-        "invalid url format: <scheme>://<host>[:port][/subpath]",
-      ));
-    }
-    Ok(self.query_net(
-      &parsed.host().unwrap().to_string(),
-      parsed.port_or_known_default(),
-    ))
   }
 
   pub fn query_env(&self) -> PermissionState {
@@ -361,39 +346,49 @@ impl Permissions {
     }
   }
 
-  pub fn request_net(
+  pub fn request_net<T: AsRef<str>>(
     &mut self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
-    if let Some(url) = url {
-      let state = self.query_net_url(&Some(url))?;
+    host: &Option<&(T, Option<u16>)>,
+  ) -> PermissionState {
+    if let Some(host) = host {
+      let state = self.query_net(&Some(host));
       if state == PermissionState::Prompt {
+        let host_string = format_host(host);
         if permission_prompt(&format!(
           "Deno requests network access to \"{}\"",
-          url
+          host_string,
         )) {
-          self.net.granted_list.insert(url.to_string());
-          return Ok(PermissionState::Granted);
+          if host.1.is_none() {
+            self
+              .net
+              .granted_list
+              .retain(|h| !h.starts_with(&format!("{}:", host.0.as_ref())));
+          }
+          self.net.granted_list.insert(host_string);
+          return PermissionState::Granted;
         } else {
-          self.net.denied_list.insert(url.to_string());
+          if host.1.is_some() {
+            self.net.denied_list.remove(host.0.as_ref());
+          }
+          self.net.denied_list.insert(host_string);
           self.net.global_state = PermissionState::Denied;
-          return Ok(PermissionState::Denied);
+          return PermissionState::Denied;
         }
       }
-      Ok(state)
+      state
     } else {
-      let state = self.query_net_url(&None)?;
+      let state = self.query_net::<&str>(&None);
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests network access") {
           self.net.granted_list.clear();
           self.net.global_state = PermissionState::Granted;
-          return Ok(PermissionState::Granted);
+          return PermissionState::Granted;
         } else {
           self.net.global_state = PermissionState::Denied;
-          return Ok(PermissionState::Denied);
+          return PermissionState::Denied;
         }
       }
-      Ok(state)
+      state
     }
   }
 
@@ -473,19 +468,25 @@ impl Permissions {
     self.query_write(path)
   }
 
-  pub fn revoke_net(
+  pub fn revoke_net<T: AsRef<str>>(
     &mut self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
-    if let Some(url) = url {
-      self.net.granted_list.remove(*url);
+    host: &Option<&(T, Option<u16>)>,
+  ) -> PermissionState {
+    if let Some(host) = host {
+      self.net.granted_list.remove(&format_host(host));
+      if host.1.is_none() {
+        self
+          .net
+          .granted_list
+          .retain(|h| !h.starts_with(&format!("{}:", host.0.as_ref())));
+      }
     } else {
       self.net.granted_list.clear();
       if self.net.global_state == PermissionState::Granted {
         self.net.global_state = PermissionState::Prompt;
       }
     }
-    self.query_net_url(url)
+    self.query_net(host)
   }
 
   pub fn revoke_env(&mut self) -> PermissionState {
@@ -545,18 +546,31 @@ impl Permissions {
     )
   }
 
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), AnyError> {
-    self.query_net(hostname, Some(port)).check(
-      &format!("network access to \"{}:{}\"", hostname, port),
+  pub fn check_net<T: AsRef<str>>(
+    &self,
+    host: &(T, Option<u16>),
+  ) -> Result<(), AnyError> {
+    self.query_net(&Some(host)).check(
+      &format!("network access to \"{}\"", format_host(host)),
       "--allow-net",
     )
   }
 
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
-    let host = url.host_str().ok_or_else(|| uri_error("missing host"))?;
+    let hostname = url
+      .host_str()
+      .ok_or_else(|| uri_error("Missing host"))?
+      .to_string();
+    let display_host = match url.port() {
+      None => hostname.clone(),
+      Some(port) => format!("{}:{}", hostname, port),
+    };
     self
-      .query_net(host, url.port_or_known_default())
-      .check(&format!("network access to \"{}\"", url), "--allow-net")
+      .query_net(&Some(&(hostname, url.port_or_known_default())))
+      .check(
+        &format!("network access to \"{}\"", display_host),
+        "--allow-net",
+      )
   }
 
   /// A helper function that determines if the module specifier is a local or
@@ -689,14 +703,35 @@ fn check_path_blocklist(path: &Path, blocklist: &HashSet<PathBuf>) -> bool {
   false
 }
 
-fn check_host_and_port_list(
-  host: &str,
-  port: Option<u16>,
+fn check_host_allowlist<T: AsRef<str>>(
+  host: &(T, Option<u16>),
   allowlist: &HashSet<String>,
 ) -> bool {
-  allowlist.contains(host)
-    || (port.is_some()
-      && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
+  let (hostname, port) = host;
+  allowlist.contains(hostname.as_ref())
+    || (port.is_some() && allowlist.contains(&format_host(host)))
+}
+
+fn check_host_blocklist<T: AsRef<str>>(
+  host: &(T, Option<u16>),
+  blocklist: &HashSet<String>,
+) -> bool {
+  let (hostname, port) = host;
+  match port {
+    None => blocklist.iter().any(|host| {
+      host == hostname.as_ref()
+        || host.starts_with(&format!("{}:", hostname.as_ref()))
+    }),
+    Some(_) => blocklist.contains(&format_host(host)),
+  }
+}
+
+fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
+  let (hostname, port) = host;
+  match port {
+    None => hostname.as_ref().to_string(),
+    Some(port) => format!("{}:{}", hostname.as_ref(), port),
+  }
 }
 
 #[cfg(test)]
@@ -851,8 +886,8 @@ mod tests {
       assert_eq!(*is_ok, perms.check_net_url(&u).is_ok());
     }
 
-    for (host, port, is_ok) in domain_tests.iter() {
-      assert_eq!(*is_ok, perms.check_net(host, *port).is_ok());
+    for (hostname, port, is_ok) in domain_tests.iter() {
+      assert_eq!(*is_ok, perms.check_net(&(hostname, Some(*port))).is_ok());
     }
   }
 
@@ -1008,10 +1043,10 @@ mod tests {
       assert_eq!(perms2.query_write(&None), PermissionState::Prompt);
       assert_eq!(perms2.query_write(&Some(&Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.query_write(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms1.query_net_url(&None).unwrap(), PermissionState::Granted);
-      assert_eq!(perms1.query_net_url(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
-      assert_eq!(perms2.query_net_url(&None).unwrap(), PermissionState::Prompt);
-      assert_eq!(perms2.query_net_url(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
+      assert_eq!(perms1.query_net::<&str>(&None), PermissionState::Granted);
+      assert_eq!(perms1.query_net(&Some(&("127.0.0.1", None))), PermissionState::Granted);
+      assert_eq!(perms2.query_net::<&str>(&None), PermissionState::Prompt);
+      assert_eq!(perms2.query_net(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms1.query_env(), PermissionState::Granted);
       assert_eq!(perms2.query_env(), PermissionState::Prompt);
       assert_eq!(perms1.query_run(), PermissionState::Granted);
@@ -1057,9 +1092,9 @@ mod tests {
       set_prompt_result(true);
       assert_eq!(perms.request_write(&None), PermissionState::Denied);
       set_prompt_result(true);
-      assert_eq!(perms.request_net(&None).unwrap(), PermissionState::Granted);
+      assert_eq!(perms.request_net(&Some(&("127.0.0.1", None))), PermissionState::Granted);
       set_prompt_result(false);
-      assert_eq!(perms.request_net(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
+      assert_eq!(perms.request_net(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       set_prompt_result(true);
       assert_eq!(perms.request_env(), PermissionState::Granted);
       set_prompt_result(false);
@@ -1093,7 +1128,8 @@ mod tests {
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Denied,
+        global_state: PermissionState::Prompt,
+        granted_list: svec!["127.0.0.1"].iter().cloned().collect(),
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -1109,7 +1145,8 @@ mod tests {
       assert_eq!(perms.revoke_write(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms.revoke_write(&None), PermissionState::Prompt);
       assert_eq!(perms.query_write(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.revoke_net(&None).unwrap(), PermissionState::Denied);
+      assert_eq!(perms.revoke_net(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms.revoke_net(&Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.revoke_env(), PermissionState::Prompt);
       assert_eq!(perms.revoke_run(), PermissionState::Prompt);
       assert_eq!(perms.revoke_plugin(), PermissionState::Prompt);
