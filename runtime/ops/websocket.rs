@@ -217,6 +217,7 @@ pub async fn op_ws_create(
 #[serde(rename_all = "camelCase")]
 struct SendArgs {
   rid: u32,
+  kind: String,
   text: Option<String>,
 }
 
@@ -227,9 +228,11 @@ pub async fn op_ws_send(
 ) -> Result<Value, AnyError> {
   let args: SendArgs = serde_json::from_value(args)?;
 
-  let msg = match args.text {
-    Some(text) => Message::Text(text),
-    None => Message::Binary(bufs[0].to_vec()),
+  let msg = match args.kind.as_str() {
+    "text" => Message::Text(args.text.unwrap()),
+    "binary" => Message::Binary(bufs[0].to_vec()),
+    "pong" => Message::Pong(vec![]),
+    _ => unreachable!(),
   };
   let rid = args.rid;
 
