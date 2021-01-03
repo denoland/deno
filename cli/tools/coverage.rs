@@ -277,6 +277,8 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
     }
   }
 
+  coverages.sort_by_key(|k| k.script_coverage.url.clone());
+
   Ok(coverages)
 }
 
