@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.6.2"
+version = "1.6.3"
 dependencies = [
  "atty",
  "base64 0.12.3",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.74.0"
+version = "0.75.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "deno_core",
  "rand",
@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "deno_core",
  "reqwest",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "atty",
  "deno_core",
@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "deno_core",
  "futures",

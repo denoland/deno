@@ -1,0 +1,2 @@
+error: Cannot resolve module "file://[WILDCARD]/bad-module.js" from "file://[WILDCARD]/error_009_missing_js_module.js".
+    at file://[WILDCARD]/error_009_missing_js_module.js:1:0

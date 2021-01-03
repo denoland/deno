@@ -17,12 +17,13 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use tokio::fs;
 
 use crate::deno_dir;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
+use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
 use super::analysis;
@@ -42,24 +43,25 @@ use super::utils;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
-  assets: Arc<RwLock<HashMap<ModuleSpecifier, Option<String>>>>,
+  assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<String>>>>,
   client: Client,
   ts_server: TsServer,
-  config: Arc<RwLock<Config>>,
-  doc_data: Arc<RwLock<HashMap<ModuleSpecifier, DocumentData>>>,
-  file_cache: Arc<RwLock<MemoryCache>>,
-  sources: Arc<RwLock<Sources>>,
-  diagnostics: Arc<RwLock<DiagnosticCollection>>,
-  maybe_import_map: Arc<RwLock<Option<ImportMap>>>,
-  maybe_import_map_uri: Arc<RwLock<Option<Url>>>,
+  config: Arc<Mutex<Config>>,
+  doc_data: Arc<Mutex<HashMap<ModuleSpecifier, DocumentData>>>,
+  file_cache: Arc<Mutex<MemoryCache>>,
+  sources: Arc<Mutex<Sources>>,
+  diagnostics: Arc<Mutex<DiagnosticCollection>>,
+  maybe_config_uri: Arc<Mutex<Option<Url>>>,
+  maybe_import_map: Arc<Mutex<Option<ImportMap>>>,
+  maybe_import_map_uri: Arc<Mutex<Option<Url>>>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
-  pub assets: Arc<RwLock<HashMap<ModuleSpecifier, Option<String>>>>,
+  pub assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<String>>>>,
   pub doc_data: HashMap<ModuleSpecifier, DocumentData>,
-  pub file_cache: Arc<RwLock<MemoryCache>>,
-  pub sources: Arc<RwLock<Sources>>,
+  pub file_cache: Arc<Mutex<MemoryCache>>,
+  pub sources: Arc<Mutex<Sources>>,
 }
 
 impl LanguageServer {
@@ -68,7 +70,7 @@ impl LanguageServer {
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
     let location = dir.root.join("deps");
-    let sources = Arc::new(RwLock::new(Sources::new(&location)));
+    let sources = Arc::new(Mutex::new(Sources::new(&location)));
 
     LanguageServer {
       assets: Default::default(),
@@ -79,13 +81,14 @@ impl LanguageServer {
       file_cache: Default::default(),
       sources,
       diagnostics: Default::default(),
+      maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
     }
   }
 
   fn enabled(&self) -> bool {
-    let config = self.config.read().unwrap();
+    let config = self.config.lock().unwrap();
     config.settings.enable
   }
 
@@ -103,12 +106,12 @@ impl LanguageServer {
         return Err(anyhow!("asset source missing: {}", specifier));
       }
     } else {
-      let file_cache = self.file_cache.read().unwrap();
+      let file_cache = self.file_cache.lock().unwrap();
       if let Some(file_id) = file_cache.lookup(&specifier) {
         let file_text = file_cache.get_contents(file_id)?;
         text::index_lines(&file_text)
       } else {
-        let mut sources = self.sources.write().unwrap();
+        let mut sources = self.sources.lock().unwrap();
         if let Some(line_index) = sources.get_line_index(&specifier) {
           line_index
         } else {
@@ -121,20 +124,20 @@ impl LanguageServer {
 
   async fn prepare_diagnostics(&self) -> Result<(), AnyError> {
     let (enabled, lint_enabled) = {
-      let config = self.config.read().unwrap();
+      let config = self.config.lock().unwrap();
       (config.settings.enable, config.settings.lint)
     };
 
     let lint = async {
       if lint_enabled {
-        let diagnostic_collection = self.diagnostics.read().unwrap().clone();
+        let diagnostic_collection = self.diagnostics.lock().unwrap().clone();
         let diagnostics = diagnostics::generate_lint_diagnostics(
           self.snapshot(),
           diagnostic_collection,
         )
         .await;
         {
-          let mut diagnostics_collection = self.diagnostics.write().unwrap();
+          let mut diagnostics_collection = self.diagnostics.lock().unwrap();
           for (file_id, version, diagnostics) in diagnostics {
             diagnostics_collection.set(
               file_id,
@@ -153,7 +156,7 @@ impl LanguageServer {
     let ts = async {
       if enabled {
         let diagnostics = {
-          let diagnostic_collection = self.diagnostics.read().unwrap().clone();
+          let diagnostic_collection = self.diagnostics.lock().unwrap().clone();
           match diagnostics::generate_ts_diagnostics(
             &self.ts_server,
             &diagnostic_collection,
@@ -169,7 +172,7 @@ impl LanguageServer {
           }
         };
         {
-          let mut diagnostics_collection = self.diagnostics.write().unwrap();
+          let mut diagnostics_collection = self.diagnostics.lock().unwrap();
           for (file_id, version, diagnostics) in diagnostics {
             diagnostics_collection.set(
               file_id,
@@ -187,14 +190,14 @@ impl LanguageServer {
 
     let deps = async {
       if enabled {
-        let diagnostics_collection = self.diagnostics.read().unwrap().clone();
+        let diagnostics_collection = self.diagnostics.lock().unwrap().clone();
         let diagnostics = diagnostics::generate_dependency_diagnostics(
           self.snapshot(),
           diagnostics_collection,
         )
         .await?;
         {
-          let mut diagnostics_collection = self.diagnostics.write().unwrap();
+          let mut diagnostics_collection = self.diagnostics.lock().unwrap();
           for (file_id, version, diagnostics) in diagnostics {
             diagnostics_collection.set(
               file_id,
@@ -220,12 +223,12 @@ impl LanguageServer {
 
   async fn publish_diagnostics(&self) -> Result<(), AnyError> {
     let (maybe_changes, diagnostics_collection) = {
-      let mut diagnostics_collection = self.diagnostics.write().unwrap();
+      let mut diagnostics_collection = self.diagnostics.lock().unwrap();
       let maybe_changes = diagnostics_collection.take_changes();
       (maybe_changes, diagnostics_collection.clone())
     };
     if let Some(diagnostic_changes) = maybe_changes {
-      let settings = self.config.read().unwrap().settings.clone();
+      let settings = self.config.lock().unwrap().settings.clone();
       for file_id in diagnostic_changes {
         // TODO(@kitsonk) not totally happy with the way we collect and store
         // different types of diagnostics and offer them up to the client, we
@@ -253,12 +256,12 @@ impl LanguageServer {
           );
         }
         let specifier = {
-          let file_cache = self.file_cache.read().unwrap();
+          let file_cache = self.file_cache.lock().unwrap();
           file_cache.get_specifier(file_id).clone()
         };
         let uri = specifier.as_url().clone();
         let version = if let Some(doc_data) =
-          self.doc_data.read().unwrap().get(&specifier)
+          self.doc_data.lock().unwrap().get(&specifier)
         {
           doc_data.version
         } else {
@@ -277,7 +280,7 @@ impl LanguageServer {
   pub fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
-      doc_data: self.doc_data.read().unwrap().clone(),
+      doc_data: self.doc_data.lock().unwrap().clone(),
       file_cache: self.file_cache.clone(),
       sources: self.sources.clone(),
     }
@@ -285,11 +288,11 @@ impl LanguageServer {
 
   pub async fn update_import_map(&self) -> Result<(), AnyError> {
     let (maybe_import_map, maybe_root_uri) = {
-      let config = self.config.read().unwrap();
+      let config = self.config.lock().unwrap();
       (config.settings.import_map.clone(), config.root_uri.clone())
     };
     if let Some(import_map_str) = &maybe_import_map {
-      info!("update import map");
+      info!("Updating import map from: \"{}\"", import_map_str);
       let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
       {
         Ok(url)
@@ -320,10 +323,10 @@ impl LanguageServer {
         })?;
       let import_map =
         ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
-      *self.maybe_import_map_uri.write().unwrap() = Some(import_map_url);
-      *self.maybe_import_map.write().unwrap() = Some(import_map);
+      *self.maybe_import_map_uri.lock().unwrap() = Some(import_map_url);
+      *self.maybe_import_map.lock().unwrap() = Some(import_map);
     } else {
-      *self.maybe_import_map.write().unwrap() = None;
+      *self.maybe_import_map.lock().unwrap() = None;
     }
     Ok(())
   }
@@ -339,13 +342,55 @@ impl LanguageServer {
       "strict": true,
       "target": "esnext",
     }));
-    {
-      let config = self.config.read().unwrap();
+    let (maybe_config, maybe_root_uri) = {
+      let config = self.config.lock().unwrap();
       if config.settings.unstable {
         let unstable_libs = json!({
           "lib": ["deno.ns", "deno.window", "deno.unstable"]
         });
         tsconfig.merge(&unstable_libs);
+      }
+      (config.settings.config.clone(), config.root_uri.clone())
+    };
+    if let Some(config_str) = &maybe_config {
+      info!("Updating TypeScript configuration from: \"{}\"", config_str);
+      let config_url = if let Ok(url) = Url::from_file_path(config_str) {
+        Ok(url)
+      } else if let Some(root_uri) = &maybe_root_uri {
+        let root_path = root_uri
+          .to_file_path()
+          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+        let config_path = root_path.join(config_str);
+        Url::from_file_path(config_path).map_err(|_| {
+          anyhow!("Bad file path for configuration file: \"{}\"", config_str)
+        })
+      } else {
+        Err(anyhow!(
+          "The path to the configuration file (\"{}\") is not resolvable.",
+          config_str
+        ))
+      }?;
+      let config_path = config_url
+        .to_file_path()
+        .map_err(|_| anyhow!("Bad file path."))?;
+      let config_text =
+        fs::read_to_string(config_path.clone())
+          .await
+          .map_err(|err| {
+            anyhow!(
+              "Failed to load the configuration file at: {}. [{}]",
+              config_url,
+              err
+            )
+          })?;
+      let (value, maybe_ignored_options) =
+        parse_config(&config_text, &config_path)?;
+      tsconfig.merge(&value);
+      *self.maybe_config_uri.lock().unwrap() = Some(config_url);
+      if let Some(ignored_options) = maybe_ignored_options {
+        // TODO(@kitsonk) turn these into diagnostics that can be sent to the
+        // client
+        warn!("{}", ignored_options);
       }
     }
     self
@@ -388,7 +433,7 @@ impl lspower::LanguageServer for LanguageServer {
     }
 
     {
-      let mut config = self.config.write().unwrap();
+      let mut config = self.config.lock().unwrap();
       config.root_uri = params.root_uri;
       if let Some(value) = params.initialization_options {
         config.update(value)?;
@@ -451,10 +496,10 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
-    let maybe_import_map = self.maybe_import_map.read().unwrap().clone();
+    let maybe_import_map = self.maybe_import_map.lock().unwrap().clone();
     if self
       .doc_data
-      .write()
+      .lock()
       .unwrap()
       .insert(
         specifier.clone(),
@@ -472,7 +517,7 @@ impl lspower::LanguageServer for LanguageServer {
 
     self
       .file_cache
-      .write()
+      .lock()
       .unwrap()
       .set_contents(specifier, Some(params.text_document.text.into_bytes()));
     // TODO(@lucacasonato): error handling
@@ -482,15 +527,15 @@ impl lspower::LanguageServer for LanguageServer {
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     let specifier = utils::normalize_url(params.text_document.uri);
     let mut content = {
-      let file_cache = self.file_cache.read().unwrap();
+      let file_cache = self.file_cache.lock().unwrap();
       let file_id = file_cache.lookup(&specifier).unwrap();
       file_cache.get_contents(file_id).unwrap()
     };
     apply_content_changes(&mut content, params.content_changes);
     {
-      let mut doc_data = self.doc_data.write().unwrap();
+      let mut doc_data = self.doc_data.lock().unwrap();
       let doc_data = doc_data.get_mut(&specifier).unwrap();
-      let maybe_import_map = self.maybe_import_map.read().unwrap();
+      let maybe_import_map = self.maybe_import_map.lock().unwrap();
       doc_data.update(
         params.text_document.version,
         &content,
@@ -500,7 +545,7 @@ impl lspower::LanguageServer for LanguageServer {
 
     self
       .file_cache
-      .write()
+      .lock()
       .unwrap()
       .set_contents(specifier, Some(content.into_bytes()));
 
@@ -516,7 +561,7 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
-    if self.doc_data.write().unwrap().remove(&specifier).is_none() {
+    if self.doc_data.lock().unwrap().remove(&specifier).is_none() {
       error!("orphaned document: {}", specifier);
     }
     // TODO(@kitsonk) should we do garbage collection on the diagnostics?
@@ -544,7 +589,7 @@ impl lspower::LanguageServer for LanguageServer {
     match res {
       Err(err) => error!("failed to fetch the extension settings {:?}", err),
       Ok(Some(config)) => {
-        if let Err(err) = self.config.write().unwrap().update(config) {
+        if let Err(err) = self.config.lock().unwrap().update(config) {
           error!("failed to update settings: {}", err);
         }
         if let Err(err) = self.update_import_map().await {
@@ -570,10 +615,22 @@ impl lspower::LanguageServer for LanguageServer {
   ) {
     // if the current import map has changed, we need to reload it
     let maybe_import_map_uri =
-      self.maybe_import_map_uri.read().unwrap().clone();
+      self.maybe_import_map_uri.lock().unwrap().clone();
     if let Some(import_map_uri) = maybe_import_map_uri {
       if params.changes.iter().any(|fe| import_map_uri == fe.uri) {
         if let Err(err) = self.update_import_map().await {
+          self
+            .client
+            .show_message(MessageType::Warning, err.to_string())
+            .await;
+        }
+      }
+    }
+    // if the current tsconfig has changed, we need to reload it
+    let maybe_config_uri = self.maybe_config_uri.lock().unwrap().clone();
+    if let Some(config_uri) = maybe_config_uri {
+      if params.changes.iter().any(|fe| config_uri == fe.uri) {
+        if let Err(err) = self.update_tsconfig().await {
           self
             .client
             .show_message(MessageType::Warning, err.to_string())
@@ -589,7 +646,7 @@ impl lspower::LanguageServer for LanguageServer {
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let specifier = utils::normalize_url(params.text_document.uri.clone());
     let file_text = {
-      let file_cache = self.file_cache.read().unwrap();
+      let file_cache = self.file_cache.lock().unwrap();
       let file_id = file_cache.lookup(&specifier).unwrap();
       // TODO(lucacasonato): handle error properly
       file_cache.get_contents(file_id).unwrap()
@@ -934,7 +991,7 @@ pub struct VirtualTextDocumentParams {
 impl LanguageServer {
   async fn cache(&self, params: CacheParams) -> LspResult<bool> {
     let specifier = utils::normalize_url(params.text_document.uri);
-    let maybe_import_map = self.maybe_import_map.read().unwrap().clone();
+    let maybe_import_map = self.maybe_import_map.lock().unwrap().clone();
     sources::cache(specifier.clone(), maybe_import_map)
       .await
       .map_err(|err| {
@@ -942,9 +999,9 @@ impl LanguageServer {
         LspError::internal_error()
       })?;
     {
-      let file_cache = self.file_cache.read().unwrap();
+      let file_cache = self.file_cache.lock().unwrap();
       if let Some(file_id) = file_cache.lookup(&specifier) {
-        let mut diagnostics_collection = self.diagnostics.write().unwrap();
+        let mut diagnostics_collection = self.diagnostics.lock().unwrap();
         diagnostics_collection.invalidate(&file_id);
       }
     }
@@ -962,7 +1019,7 @@ impl LanguageServer {
     let specifier = utils::normalize_url(params.text_document.uri);
     let url = specifier.as_url();
     let contents = if url.as_str() == "deno:/status.md" {
-      let file_cache = self.file_cache.read().unwrap();
+      let file_cache = self.file_cache.lock().unwrap();
       Some(format!(
         r#"# Deno Language Server Status
   
@@ -987,7 +1044,7 @@ impl LanguageServer {
           }
         }
         _ => {
-          let mut sources = self.sources.write().unwrap();
+          let mut sources = self.sources.lock().unwrap();
           if let Some(text) = sources.get_text(&specifier) {
             Some(text)
           } else {

@@ -391,6 +391,27 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
+    (_, "/multipart_form_bad_content_type") => {
+      let b = "Preamble\r\n\
+             --boundary\t \r\n\
+             Content-Disposition: form-data; name=\"field_1\"\r\n\
+             \r\n\
+             value_1 \r\n\
+             \r\n--boundary\r\n\
+             Content-Disposition: form-data; name=\"field_2\";\
+             filename=\"file.js\"\r\n\
+             Content-Type: text/javascript\r\n\
+             \r\n\
+             console.log(\"Hi\")\
+             \r\n--boundary--\r\n\
+             Epilogue";
+      let mut res = Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-datatststs;boundary=boundary"),
+      );
+      Ok(res)
+    }
     (_, "/bad_redirect") => {
       let mut res = Response::new(Body::empty());
       *res.status_mut() = StatusCode::FOUND;
@@ -701,7 +722,10 @@ async fn wrap_main_https_server() {
   }
 }
 
-#[tokio::main]
+// Use the single-threaded scheduler. The hyper server is used as a point of
+// comparison for the (single-threaded!) benchmarks in cli/bench. We're not
+// comparing apples to apples if we use the default multi-threaded scheduler.
+#[tokio::main(basic_scheduler)]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
