@@ -4352,12 +4352,12 @@ async fn inspector_json() {
   let _ = url.set_scheme("http");
   url.set_path("/json");
   let resp = reqwest::get(url).await.unwrap();
-  assert_eq!(resp.status(), reqwest::StatusCode::from_u16(200).unwrap()); //
-  let enpoint_list = resp
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list = resp
     .json::<Vec<deno_core::serde_json::Value>>()
     .await
     .unwrap();
-  let matching_endpoint = enpoint_list
+  let matching_endpoint = endpoint_list
     .iter()
     .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
   assert!(matching_endpoint.is_some());
@@ -4382,12 +4382,12 @@ async fn inspector_json_list() {
   let _ = url.set_scheme("http");
   url.set_path("/json/list");
   let resp = reqwest::get(url).await.unwrap();
-  assert_eq!(resp.status(), reqwest::StatusCode::from_u16(200).unwrap()); //
-  let enpoint_list = resp
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list = resp
     .json::<Vec<deno_core::serde_json::Value>>()
     .await
     .unwrap();
-  let matching_endpoint = enpoint_list
+  let matching_endpoint = endpoint_list
     .iter()
     .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
   assert!(matching_endpoint.is_some());
