@@ -3334,7 +3334,6 @@ itest!(deno_test_run_combined_coverage {
   exit_code: 0,
 });
 
-
 itest!(deno_lint {
   args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
