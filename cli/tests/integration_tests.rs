@@ -4345,6 +4345,66 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   child.wait().unwrap();
 }
 
+#[tokio::test]
+async fn inspector_json() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list = resp
+    .json::<Vec<deno_core::serde_json::Value>>()
+    .await
+    .unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+}
+
+#[tokio::test]
+async fn inspector_json_list() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json/list");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list = resp
+    .json::<Vec<deno_core::serde_json::Value>>()
+    .await
+    .unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+}
+
 #[test]
 fn websocket() {
   let _g = util::http_server();
