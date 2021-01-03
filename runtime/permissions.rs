@@ -956,6 +956,8 @@ mod tests {
     if cfg!(target_os = "windows") {
       test_cases.push("file://");
       test_cases.push("file:///");
+    } else {
+      test_cases.push("file://remotehost/");
     }
 
     for url in test_cases {
