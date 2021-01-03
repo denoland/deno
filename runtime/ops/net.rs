@@ -687,6 +687,7 @@ async fn op_dns_resolve(
           .next()
           .ok_or_else(|| generic_error("Invalid IP address or port"))?,
         protocol: name_server.protocol.into(),
+        trust_nx_responses: true,
         tls_dns_name: None,
       });
       c
@@ -694,9 +695,9 @@ async fn op_dns_resolve(
       let (c, _) = read_system_conf()?;
       c
     };
-    AsyncResolver::tokio(conf, ResolverOpts::default()).await?
+    AsyncResolver::tokio(conf, ResolverOpts::default())?
   } else {
-    AsyncResolver::tokio_from_system_conf().await?
+    AsyncResolver::tokio_from_system_conf()?
   };
 
   let results: Vec<DnsReturnRecord> = resolver

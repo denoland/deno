@@ -60,8 +60,8 @@ uuid = { version = "0.8.1", features = ["v4"] }
 hyper = "0.13.9"
 webpki = "0.21.3"
 webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'.
-trust-dns-proto = "0.19.6"
-trust-dns-resolver = { version = "0.19.6", features = ["tokio-runtime", "serde-config"] }
+trust-dns-proto = "0.20.0"
+trust-dns-resolver = { version = "0.20.0", features = ["tokio-runtime", "serde-config"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
