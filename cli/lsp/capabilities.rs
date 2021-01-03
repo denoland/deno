@@ -62,7 +62,7 @@ pub fn server_capabilities(
     document_on_type_formatting_provider: None,
     selection_range_provider: None,
     folding_range_provider: None,
-    rename_provider: None,
+    rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,
     execute_command_provider: None,
