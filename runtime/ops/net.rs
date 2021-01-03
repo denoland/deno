@@ -744,10 +744,12 @@ fn rdata_to_return_record(
         target: srv.target().to_string(),
       }),
       TXT => r.as_txt().map(|txt| {
-        // TODO(magurotuna): parses bytes as UTF-8, is it alright?
         let texts: Vec<String> = txt
           .iter()
-          .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+          .map(|bytes| {
+            // Tries to parse these bytes as Latin-1
+            bytes.iter().map(|&b| b as char).collect::<String>()
+          })
           .collect();
         DnsReturnRecord::TXT(texts)
       }),
@@ -835,13 +837,19 @@ mod tests {
   #[test]
   fn rdata_to_return_record_txt() {
     let func = rdata_to_return_record(SupportedRecordType::TXT);
-    let rdata =
-      RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
+    let rdata = RData::TXT(TXT::from_bytes(vec![
+      "foo".as_bytes(),
+      "bar".as_bytes(),
+      &[0xa3],             // "£" in Latin-1
+      &[0xe3, 0x81, 0x82], // "あ" in UTF-8
+    ]));
     assert_eq!(
       func(&rdata),
       Some(DnsReturnRecord::TXT(vec![
         "foo".to_string(),
-        "bar".to_string()
+        "bar".to_string(),
+        "£".to_string(),
+        "ã\u{81}\u{82}".to_string(),
       ]))
     );
   }
