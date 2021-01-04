@@ -38,6 +38,7 @@ use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfigGroup;
 use trust_dns_resolver::config::ResolverConfig;
 use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
 #[cfg(unix)]
@@ -603,25 +604,7 @@ async fn op_dns_resolve(
     options,
   } = serde_json::from_value(args)?;
 
-  // Check for permission. If name server option is provided, use them for checking.
-  // Otherwise, checks if `allow-net` is present without any specific allowlist.
-  {
-    let perm_args = options
-      .as_ref()
-      .and_then(|opt| opt.name_server.as_ref())
-      .map(|ns| (&ns.ip_addr, ns.port));
-
-    let s = state.borrow();
-    let perm = s.borrow::<Permissions>();
-
-    if let Some((ip_addr, port)) = perm_args {
-      perm.check_net(&(ip_addr, Some(port)))?;
-    } else {
-      perm.check_net_all()?;
-    }
-  }
-
-  let resolver = if let Some(name_server) =
+  let (config, opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
     let group = NameServerConfigGroup::from_ips_clear(
@@ -629,11 +612,28 @@ async fn op_dns_resolve(
       name_server.port,
       true,
     );
-    let conf = ResolverConfig::from_parts(None, vec![], group);
-    AsyncResolver::tokio(conf, ResolverOpts::default())?
+    (
+      ResolverConfig::from_parts(None, vec![], group),
+      ResolverOpts::default(),
+    )
   } else {
-    AsyncResolver::tokio_from_system_conf()?
+    system_conf::read_system_conf()?
   };
+
+  {
+    let s = state.borrow();
+    let perm = s.borrow::<Permissions>();
+
+    // Checks permission against the name servers which will be actually queried.
+    for ns in config.name_servers() {
+      let socker_addr = &ns.socket_addr;
+      let ip = socker_addr.ip().to_string();
+      let port = socker_addr.port();
+      perm.check_net(&(ip, Some(port)))?;
+    }
+  }
+
+  let resolver = AsyncResolver::tokio(config, opts)?;
 
   let results: Vec<DnsReturnRecord> = resolver
     .lookup(query, record_type.into(), Default::default())
