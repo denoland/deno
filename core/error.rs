@@ -291,7 +291,7 @@ impl JsError {
               .unwrap();
           let is_promise_all = is_promise_all.is_true();
           let promise_index: Option<v8::Local<v8::Integer>> =
-            get_property(scope, call_site, "columnNumber")
+            get_property(scope, call_site, "promiseIndex")
               .unwrap()
               .try_into()
               .ok();

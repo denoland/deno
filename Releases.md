@@ -6,6 +6,45 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.6.3 / 2020.12.30
+
+- feat(lsp): Implement textDocument/rename (#8910)
+- feat(lsp): Add cache command (#8911)
+- feat(unstable): collect coverage from the run command (#8893)
+- fix: fetch bad URL will not panic (#8884)
+- fix: info does not panic on missing modules (#8924)
+- fix(core): Fix incorrect index in Promise.all error reporting (#8913)
+- fix(lsp): handle ts debug errors better (#8914)
+- fix(lsp): provide diagnostics for unresolved modules (#8872)
+- upgrade: dprint, swc_bundler, swc_common, swc_ecmascript (#8901)
+- upgrade: rusty_v8 0.15.0, v8 8.8.294 (#8898)
+
+Changes in std version 0.83.0:
+
+- feat(std/node): adds fs.mkdtemp & fs.mkdtempSync (#8604)
+- fix(std/http): Don't expose ServerRequest::done as Deferred (#8919)
+
+### 1.6.2 / 2020.12.22
+
+- feat(lsp): support the unstable setting (#8851)
+- feat(unstable): record raw coverage into a directory (#8642)
+- feat(unstable): support in memory certificate data for Deno.createHttpClient
+  (#8739)
+- fix: atomically write files to $DENO_DIR (#8822)
+- fix: implement ReadableStream fetch body handling (#8855)
+- fix: make DNS resolution async (#8743)
+- fix: make dynamic import errors catchable (#8750)
+- fix: respect enable flag for requests in lsp (#8850)
+- refactor: rename runtime/rt to runtime/js (#8806)
+- refactor: rewrite lsp to be async (#8727)
+- refactor: rewrite ops to use ResourceTable2 (#8512)
+- refactor: optimise static assets in lsp (#8771)
+- upgrade TypeScript to 4.1.3 (#8785)
+
+Changes in std version 0.82.0:
+
+- feat(std/node): Added os.type (#8591)
+
 ### 1.6.1 / 2020.12.14
 
 - feat(lsp): support import maps (#8683)
