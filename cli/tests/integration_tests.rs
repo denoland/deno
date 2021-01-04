@@ -3,11 +3,11 @@ use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::url;
 use std::io::{BufRead, Write};
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
 use walkdir::WalkDir;
-use std::path::PathBuf;
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
@@ -4814,34 +4814,44 @@ fn compile_and_overwrite_file() {
 fn concat_bundle(files: Vec<(PathBuf, String)>) -> String {
   let original_url = {
     let (original_file_path, _) = files.last().unwrap();
-    url::Url::from_file_path(original_file_path).unwrap().to_string()
+    url::Url::from_file_path(original_file_path)
+      .unwrap()
+      .to_string()
   };
 
   let mut bundle = String::new();
   let mut bundle_line_count = 0;
   let mut source_map = sourcemap::SourceMapBuilder::new(Some(&original_url));
-  
+
   for (path, text) in files {
     let url = url::Url::from_file_path(path).unwrap().to_string();
     let src_id = source_map.add_source(&url);
     source_map.set_source_contents(src_id, Some(&text));
-  
-    let mut line_index = 0;
-    for line in text.lines() {
+
+    for (line_index, line) in text.lines().enumerate() {
       bundle.push_str(line);
       bundle.push('\n');
-      source_map.add_raw(bundle_line_count, 0, line_index, 0, Some(src_id), None);
+      source_map.add_raw(
+        bundle_line_count,
+        0,
+        line_index as u32,
+        0,
+        Some(src_id),
+        None,
+      );
 
       bundle_line_count += 1;
-      line_index += 1;
     }
     bundle.push('\n');
     bundle_line_count += 1;
   }
 
   let mut source_map_buf: Vec<u8> = vec![];
-  source_map.into_sourcemap().to_writer(&mut source_map_buf).unwrap();
-    
+  source_map
+    .into_sourcemap()
+    .to_writer(&mut source_map_buf)
+    .unwrap();
+
   bundle.push_str("//# sourceMappingURL=data:application/json;base64,");
   let encoded_map = base64::encode(source_map_buf);
   bundle.push_str(&encoded_map);
@@ -4902,10 +4912,13 @@ fn web_platform_tests() {
         None
       });
 
-    let testharness_path = util::tests_path().join("wpt/resources/testharness.js");
+    let testharness_path =
+      util::tests_path().join("wpt/resources/testharness.js");
     let testharness_text = std::fs::read_to_string(&testharness_path).unwrap();
-    let testharnessreporter_path = util::tests_path().join("wpt_testharnessconsolereporter.js");
-    let testharnessreporter_text = std::fs::read_to_string(&testharnessreporter_path).unwrap();
+    let testharnessreporter_path =
+      util::tests_path().join("wpt_testharnessconsolereporter.js");
+    let testharnessreporter_text =
+      std::fs::read_to_string(&testharnessreporter_path).unwrap();
 
     for (test_file_path, expect_fail) in dir {
       let test_file_text = std::fs::read_to_string(&test_file_path).unwrap();
@@ -4920,11 +4933,9 @@ fn web_platform_tests() {
             s
           };
           if s.starts_with('/') {
-            let path = util::tests_path().join("wpt").join(format!(".{}", s));
-            path
+            util::tests_path().join("wpt").join(format!(".{}", s))
           } else if s.starts_with('.') {
-            let path = test_file_path.parent().unwrap().join(s);
-            path
+            test_file_path.parent().unwrap().join(s)
           } else {
             PathBuf::from(s)
           }
@@ -4935,11 +4946,14 @@ fn web_platform_tests() {
         })
         .collect();
 
-        let mut files = Vec::with_capacity(3 + imports.len());
-        files.push((testharness_path.clone(), testharness_text.clone()));
-        files.push((testharnessreporter_path.clone(), testharnessreporter_text.clone()));
-        files.extend(imports);
-        files.push((test_file_path.clone(), test_file_text));
+      let mut files = Vec::with_capacity(3 + imports.len());
+      files.push((testharness_path.clone(), testharness_text.clone()));
+      files.push((
+        testharnessreporter_path.clone(),
+        testharnessreporter_text.clone(),
+      ));
+      files.extend(imports);
+      files.push((test_file_path.clone(), test_file_text));
 
       let bundle = concat_bundle(files);
 
