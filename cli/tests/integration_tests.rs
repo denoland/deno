@@ -4924,7 +4924,7 @@ import "{}";
         let child_stdin = child.stdin.as_mut().unwrap();
         child_stdin.write_all(input.as_bytes()).unwrap();
       }
-      
+
       let output = child.wait_with_output().unwrap();
       assert!(output.status.success());
     }
