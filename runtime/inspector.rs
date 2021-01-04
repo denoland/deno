@@ -182,21 +182,20 @@ fn handle_ws_request(
           .status(http::StatusCode::BAD_REQUEST)
           .body("Not a valid Websocket Request".into()),
       });
-    if resp.is_ok() {
-      tokio::task::spawn_local(async move {
-        let upgraded = body.on_upgrade().await.unwrap();
-        let websocket = tokio_tungstenite::WebSocketStream::from_raw_socket(
-          upgraded,
-          tungstenite::protocol::Role::Server,
-          None,
-        )
-        .await;
-        let (proxy, pump) = create_websocket_proxy(websocket);
+    tokio::task::spawn_local(async move {
+      let upgraded = body.on_upgrade().await.unwrap();
+      let websocket = tokio_tungstenite::WebSocketStream::from_raw_socket(
+        upgraded,
+        tungstenite::protocol::Role::Server,
+        None,
+      )
+      .await;
+      let (proxy, pump) = create_websocket_proxy(websocket);
 
-        let _ = new_websocket_tx.unbounded_send(proxy);
-        pump.await;
-      });
-    }
+      let _ = new_websocket_tx.unbounded_send(proxy);
+      pump.await;
+    });
+
     resp
   } else {
     http::Response::builder()
@@ -276,14 +275,11 @@ async fn server(
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
               handle_ws_request(req, inspector_map.clone())
             }
-            (&http::Method::GET, "/json/version") => {
-              handle_json_version_request(json_version_response.clone())
-            }
             (&http::Method::GET, "/json") => {
               handle_json_request(inspector_map.clone())
             }
-            (&http::Method::GET, "/json/list") => {
-              handle_json_request(inspector_map.clone())
+            (&http::Method::GET, "/json/version") => {
+              handle_json_version_request(json_version_response.clone())
             }
             _ => http::Response::builder()
               .status(http::StatusCode::NOT_FOUND)
