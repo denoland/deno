@@ -25,6 +25,7 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::env;
+use std::fs::read_to_string;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -58,7 +59,13 @@ impl ProgramState {
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
-    let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
+    let ca_file_path =
+      flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
+
+    let ca_data: Option<String> = match ca_file_path.as_ref() {
+      None => None,
+      Some(ca_file_path) => Some(read_to_string(ca_file_path)?),
+    };
 
     let cache_usage = if flags.cached_only {
       CacheSetting::Only
@@ -74,7 +81,7 @@ impl ProgramState {
       http_cache,
       cache_usage,
       !flags.no_remote,
-      ca_file.as_deref(),
+      ca_data.as_deref(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
