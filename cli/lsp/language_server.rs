@@ -460,25 +460,35 @@ impl lspower::LanguageServer for LanguageServer {
         .await;
     }
 
-    // we are going to watch all the JSON files in the workspace, and the
-    // notification handler will pick up any of the changes of those files we
-    // are interested in.
-    let watch_registration_options = DidChangeWatchedFilesRegistrationOptions {
-      watchers: vec![FileSystemWatcher {
-        glob_pattern: "**/*.json".to_string(),
-        kind: Some(WatchKind::Change),
-      }],
-    };
-    let registration = Registration {
-      id: "workspace/didChangeWatchedFiles".to_string(),
-      method: "workspace/didChangeWatchedFiles".to_string(),
-      register_options: Some(
-        serde_json::to_value(watch_registration_options).unwrap(),
-      ),
-    };
-    if let Err(err) = self.client.register_capability(vec![registration]).await
+    if self
+      .config
+      .lock()
+      .unwrap()
+      .client_capabilities
+      .workspace_did_change_watched_files
     {
-      warn!("Client errored on capabilities.\n{}", err);
+      // we are going to watch all the JSON files in the workspace, and the
+      // notification handler will pick up any of the changes of those files we
+      // are interested in.
+      let watch_registration_options =
+        DidChangeWatchedFilesRegistrationOptions {
+          watchers: vec![FileSystemWatcher {
+            glob_pattern: "**/*.json".to_string(),
+            kind: Some(WatchKind::Change),
+          }],
+        };
+      let registration = Registration {
+        id: "workspace/didChangeWatchedFiles".to_string(),
+        method: "workspace/didChangeWatchedFiles".to_string(),
+        register_options: Some(
+          serde_json::to_value(watch_registration_options).unwrap(),
+        ),
+      };
+      if let Err(err) =
+        self.client.register_capability(vec![registration]).await
+      {
+        warn!("Client errored on capabilities.\n{}", err);
+      }
     }
 
     info!("Server ready.");
@@ -575,37 +585,54 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn did_change_configuration(
     &self,
-    _params: DidChangeConfigurationParams,
+    params: DidChangeConfigurationParams,
   ) {
-    let res = self
-      .client
-      .configuration(vec![ConfigurationItem {
-        scope_uri: None,
-        section: Some("deno".to_string()),
-      }])
-      .await
-      .map(|vec| vec.get(0).cloned());
+    let config = if self
+      .config
+      .lock()
+      .unwrap()
+      .client_capabilities
+      .workspace_configuration
+    {
+      self
+        .client
+        .configuration(vec![ConfigurationItem {
+          scope_uri: None,
+          section: Some("deno".to_string()),
+        }])
+        .await
+        .map(|vec| vec.get(0).cloned())
+        .unwrap_or_else(|err| {
+          error!("failed to fetch the extension settings {:?}", err);
+          None
+        })
+    } else {
+      params
+        .settings
+        .as_object()
+        .map(|settings| settings.get("deno"))
+        .flatten()
+        .cloned()
+    };
 
-    match res {
-      Err(err) => error!("failed to fetch the extension settings {:?}", err),
-      Ok(Some(config)) => {
-        if let Err(err) = self.config.lock().unwrap().update(config) {
-          error!("failed to update settings: {}", err);
-        }
-        if let Err(err) = self.update_import_map().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
-        }
-        if let Err(err) = self.update_tsconfig().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
-        }
+    if let Some(config) = config {
+      if let Err(err) = self.config.lock().unwrap().update(config) {
+        error!("failed to update settings: {}", err);
       }
-      _ => error!("received empty extension settings from the client"),
+      if let Err(err) = self.update_import_map().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.update_tsconfig().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+    } else {
+      error!("received empty extension settings from the client");
     }
   }
 
@@ -1022,9 +1049,9 @@ impl LanguageServer {
       let file_cache = self.file_cache.lock().unwrap();
       Some(format!(
         r#"# Deno Language Server Status
-  
+
   - Documents in memory: {}
-  
+
   "#,
         file_cache.len()
       ))
