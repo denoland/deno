@@ -355,7 +355,7 @@ If a module is browser compatible, include the following in the JSDoc at the top
 of the module:
 
 ```ts
-/** This module is browser compatible. */
+// This module is browser compatible.
 ```
 
 Maintain browser compatibility for such a module by either not using the global

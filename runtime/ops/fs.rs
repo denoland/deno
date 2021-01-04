@@ -1660,15 +1660,14 @@ async fn op_utime_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let state = state.borrow();
-  super::check_unstable(&state, "Deno.utime");
+  super::check_unstable(&state.borrow(), "Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow().borrow::<Permissions>().check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_times(path, atime, mtime)?;
