@@ -35,8 +35,7 @@ use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 use trust_dns_proto::rr::record_data::RData;
 use trust_dns_proto::rr::record_type::RecordType;
-use trust_dns_resolver::config::NameServerConfig;
-use trust_dns_resolver::config::Protocol as TrustProtocol;
+use trust_dns_resolver::config::NameServerConfigGroup;
 use trust_dns_resolver::config::ResolverConfig;
 use trust_dns_resolver::config::ResolverOpts;
 use trust_dns_resolver::AsyncResolver;
@@ -567,21 +566,6 @@ enum DnsReturnRecord {
   TXT(Vec<String>),
 }
 
-// TODO(magurotuna): `RecordType` defined in trust_dns_proto doesn't implement Deserialize
-// trait right now, but it's coming in the next version.
-// See https://github.com/bluejekyll/trust-dns/pull/1319
-#[derive(Deserialize, Clone, Copy)]
-enum SupportedRecordType {
-  A,
-  AAAA,
-  ANAME,
-  CNAME,
-  MX,
-  PTR,
-  SRV,
-  TXT,
-}
-
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: Value,
@@ -595,7 +579,7 @@ async fn op_dns_resolve(
   #[serde(rename_all = "camelCase")]
   struct ResolveAddrArgs {
     query: String,
-    record_type: SupportedRecordType,
+    record_type: RecordType,
     options: Option<ResolveDnsOption>,
   }
 
@@ -605,52 +589,12 @@ async fn op_dns_resolve(
     name_server: Option<NameServer>,
   }
 
-  impl Into<RecordType> for SupportedRecordType {
-    fn into(self) -> RecordType {
-      use SupportedRecordType::*;
-      match self {
-        A => RecordType::A,
-        AAAA => RecordType::AAAA,
-        ANAME => RecordType::ANAME,
-        CNAME => RecordType::CNAME,
-        MX => RecordType::MX,
-        PTR => RecordType::PTR,
-        SRV => RecordType::SRV,
-        TXT => RecordType::TXT,
-      }
-    }
-  }
-
-  #[derive(Deserialize, Clone, Copy)]
-  enum Protocol {
-    UDP,
-    TCP,
-  }
-
-  impl Default for Protocol {
-    fn default() -> Self {
-      Self::UDP
-    }
-  }
-
-  impl Into<TrustProtocol> for Protocol {
-    fn into(self) -> TrustProtocol {
-      use Protocol::*;
-      match self {
-        UDP => TrustProtocol::Udp,
-        TCP => TrustProtocol::Tcp,
-      }
-    }
-  }
-
   #[derive(Deserialize)]
   #[serde(rename_all = "camelCase")]
   struct NameServer {
     ip_addr: String,
     #[serde(default = "default_port")]
     port: u16,
-    #[serde(default)]
-    protocol: Protocol,
   }
 
   let ResolveAddrArgs {
@@ -680,16 +624,12 @@ async fn op_dns_resolve(
   let resolver = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
-    let mut conf = ResolverConfig::new();
-    conf.add_name_server(NameServerConfig {
-      socket_addr: resolve_addr(&name_server.ip_addr, name_server.port)
-        .await?
-        .next()
-        .ok_or_else(|| generic_error("Invalid IP address or port"))?,
-      protocol: name_server.protocol.into(),
-      trust_nx_responses: true,
-      tls_dns_name: None,
-    });
+    let group = NameServerConfigGroup::from_ips_clear(
+      &[name_server.ip_addr.parse()?],
+      name_server.port,
+      true,
+    );
+    let conf = ResolverConfig::from_parts(None, vec![], group);
     AsyncResolver::tokio(conf, ResolverOpts::default())?
   } else {
     AsyncResolver::tokio_from_system_conf()?
@@ -706,9 +646,9 @@ async fn op_dns_resolve(
 }
 
 fn rdata_to_return_record(
-  ty: SupportedRecordType,
+  ty: RecordType,
 ) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
-  use SupportedRecordType::*;
+  use RecordType::*;
   move |r: &RData| -> Option<DnsReturnRecord> {
     match ty {
       A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
@@ -748,6 +688,8 @@ fn rdata_to_return_record(
           .collect();
         DnsReturnRecord::TXT(texts)
       }),
+      // TODO(magurotuna): Other record types are not supported
+      _ => todo!(),
     }
   }
 }
@@ -765,7 +707,7 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_a() {
-    let func = rdata_to_return_record(SupportedRecordType::A);
+    let func = rdata_to_return_record(RecordType::A);
     let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
     assert_eq!(
       func(&rdata),
@@ -775,28 +717,28 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_aaaa() {
-    let func = rdata_to_return_record(SupportedRecordType::AAAA);
+    let func = rdata_to_return_record(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
     assert_eq!(func(&rdata), Some(DnsReturnRecord::AAAA("::1".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
-    let func = rdata_to_return_record(SupportedRecordType::ANAME);
+    let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
     assert_eq!(func(&rdata), Some(DnsReturnRecord::ANAME("".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_cname() {
-    let func = rdata_to_return_record(SupportedRecordType::CNAME);
+    let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
     assert_eq!(func(&rdata), Some(DnsReturnRecord::CNAME("".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_mx() {
-    let func = rdata_to_return_record(SupportedRecordType::MX);
+    let func = rdata_to_return_record(RecordType::MX);
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
       func(&rdata),
@@ -809,14 +751,14 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_ptr() {
-    let func = rdata_to_return_record(SupportedRecordType::PTR);
+    let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
     assert_eq!(func(&rdata), Some(DnsReturnRecord::PTR("".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_srv() {
-    let func = rdata_to_return_record(SupportedRecordType::SRV);
+    let func = rdata_to_return_record(RecordType::SRV);
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
       func(&rdata),
@@ -831,7 +773,7 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_txt() {
-    let func = rdata_to_return_record(SupportedRecordType::TXT);
+    let func = rdata_to_return_record(RecordType::TXT);
     let rdata = RData::TXT(TXT::from_bytes(vec![
       "foo".as_bytes(),
       "bar".as_bytes(),
