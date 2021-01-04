@@ -1,7 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::futures;
 use deno_core::futures::prelude::*;
+use deno_core::serde_json;
 use deno_core::url;
+use deno_runtime::deno_fetch::reqwest;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
@@ -4365,14 +4367,13 @@ async fn inspector_json() {
   url.set_path("/json");
   let resp = reqwest::get(url).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list = resp
-    .json::<Vec<deno_core::serde_json::Value>>()
-    .await
-    .unwrap();
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
   let matching_endpoint = endpoint_list
     .iter()
     .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
   assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
 }
 
 #[tokio::test]
@@ -4395,14 +4396,13 @@ async fn inspector_json_list() {
   url.set_path("/json/list");
   let resp = reqwest::get(url).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list = resp
-    .json::<Vec<deno_core::serde_json::Value>>()
-    .await
-    .unwrap();
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
   let matching_endpoint = endpoint_list
     .iter()
     .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
   assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
 }
 
 #[test]
