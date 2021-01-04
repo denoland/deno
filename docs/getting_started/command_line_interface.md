@@ -94,6 +94,13 @@ watcher. When Deno starts up with this flag it watches the entrypoint, and all
 local files the entrypoint statically imports. Whenever one of these files is
 changed on disk, the program will automatically be restarted.
 
+**Note: file watcher is a new feature and still unstable thus it requires
+`--unstable` flag**
+
+```
+deno run --watch --unstable main.ts
+```
+
 ### Integrity flags
 
 Affect commands which can download resources to the cache: `deno cache`,

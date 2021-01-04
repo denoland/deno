@@ -27,8 +27,33 @@ unitTest(
       async (): Promise<void> => {
         await fetch("http://localhost:4000");
       },
-      Deno.errors.Http,
+      TypeError,
       "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchDnsError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://nil/");
+      },
+      TypeError,
+      "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInvalidUriError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://<invalid>/");
+      },
+      URIError,
     );
   },
 );
@@ -199,9 +224,12 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
 unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
   void
 > {
-  await assertThrowsAsync(async () => {
-    await fetch("");
-  }, URIError);
+  await assertThrowsAsync(
+    async () => {
+      await fetch("");
+    },
+    URIError,
+  );
 });
 
 unitTest(
@@ -218,6 +246,25 @@ unitTest(
     assertEquals(file.name, "file.js");
 
     assertEquals(await file.text(), `console.log("Hi")`);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchMultipartFormBadContentType(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/multipart_form_bad_content_type",
+    );
+    assert(response.body !== null);
+
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await response.formData();
+      },
+      TypeError,
+      "Invalid form data",
+    );
+    await response.body.cancel();
   },
 );
 
@@ -729,7 +776,7 @@ unitTest(
     try {
       await response.text();
       fail(
-        "Reponse.text() didn't throw on a filtered response without a body (type error)",
+        "Response.text() didn't throw on a filtered response without a body (type error)",
       );
     } catch (e) {
       return;

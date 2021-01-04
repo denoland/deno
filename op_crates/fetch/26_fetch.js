@@ -138,7 +138,7 @@
   }
 
   function hasHeaderValueOf(s, value) {
-    return new RegExp(`^${value}[\t\s]*;?`).test(s);
+    return new RegExp(`^${value}(?:[\\s;]|$)`).test(s);
   }
 
   function getHeaderValueParams(value) {

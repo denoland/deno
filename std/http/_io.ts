@@ -346,7 +346,7 @@ export async function readRequest(
   req.conn = conn;
   req.r = bufr;
   [req.method, req.url, req.proto] = firstLine.split(" ", 3);
-  [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
+  [req.protoMajor, req.protoMinor] = parseHTTPVersion(req.proto);
   req.headers = headers;
   fixLength(req);
   return req;

@@ -334,7 +334,7 @@ mod internal {
 
   impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
-      self as *const _ == other as *const _
+      std::ptr::eq(self, other)
     }
   }
 
