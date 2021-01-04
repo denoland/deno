@@ -39,7 +39,6 @@ use trust_dns_resolver::config::NameServerConfig;
 use trust_dns_resolver::config::Protocol as TrustProtocol;
 use trust_dns_resolver::config::ResolverConfig;
 use trust_dns_resolver::config::ResolverOpts;
-use trust_dns_resolver::system_conf::read_system_conf;
 use trust_dns_resolver::AsyncResolver;
 
 #[cfg(unix)]
@@ -678,23 +677,19 @@ async fn op_dns_resolve(
     }
   }
 
-  let resolver = if let Some(options) = options {
-    let conf = if let Some(name_server) = options.name_server {
-      let mut c = ResolverConfig::new();
-      c.add_name_server(NameServerConfig {
-        socket_addr: resolve_addr(&name_server.ip_addr, name_server.port)
-          .await?
-          .next()
-          .ok_or_else(|| generic_error("Invalid IP address or port"))?,
-        protocol: name_server.protocol.into(),
-        trust_nx_responses: true,
-        tls_dns_name: None,
-      });
-      c
-    } else {
-      let (c, _) = read_system_conf()?;
-      c
-    };
+  let resolver = if let Some(name_server) =
+    options.as_ref().and_then(|o| o.name_server.as_ref())
+  {
+    let mut conf = ResolverConfig::new();
+    conf.add_name_server(NameServerConfig {
+      socket_addr: resolve_addr(&name_server.ip_addr, name_server.port)
+        .await?
+        .next()
+        .ok_or_else(|| generic_error("Invalid IP address or port"))?,
+      protocol: name_server.protocol.into(),
+      trust_nx_responses: true,
+      tls_dns_name: None,
+    });
     AsyncResolver::tokio(conf, ResolverOpts::default())?
   } else {
     AsyncResolver::tokio_from_system_conf()?
