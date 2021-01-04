@@ -882,9 +882,6 @@ declare namespace Deno {
       /** The port number the query will be sent to.
       * If not specified, defaults to 53. */
       port?: number;
-      /** The protocol the name server is communicated with.
-      * If not specified, defaults to "UDP". */
-      protocol?: "UDP" | "TCP";
     };
   }
 
