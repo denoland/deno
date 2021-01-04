@@ -4872,8 +4872,8 @@ fn web_platform_tests() {
     .unwrap()
     .to_string();
     for (path, expect_fail) in dir {
-      let txt = std::fs::read_to_string(&path).unwrap();
-      let scripts: Vec<String> = txt
+      let test_file_text = std::fs::read_to_string(&path).unwrap();
+      let scripts: Vec<String> = test_file_text
         .split('\n')
         .into_iter()
         .filter_map(|t| t.strip_prefix("// META: script="))
@@ -4885,7 +4885,10 @@ fn web_platform_tests() {
           };
           if s.starts_with('/') {
             let path = util::tests_path().join("wpt").join(format!(".{}", s));
-            url::Url::from_file_path(&path).unwrap().to_string()
+            path.to_str().unwrap().to_string()
+          } else if s.starts_with('.') {
+            let path = path.parent().unwrap().join(s);
+            path.to_str().unwrap().to_string()
           } else {
             s.to_string()
           }
@@ -4897,16 +4900,19 @@ fn web_platform_tests() {
 import "{}";
 import "{}";
 {}
-import "{}";
+{}
         "#,
         testharness_js,
         testharnessreporter_js,
         scripts
           .into_iter()
-          .map(|path| format!(r#"import "{}";"#, path))
+          .map(|path| {
+            println!("{}", path);
+            std::fs::read_to_string(path).unwrap()
+          })
           .collect::<Vec<String>>()
-          .join("\n"),
-        url::Url::from_file_path(&path).unwrap().to_string()
+          .join("\n\n"),
+        test_file_text
       );
 
       println!("Running {}", path.to_str().unwrap());
