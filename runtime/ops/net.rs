@@ -636,7 +636,7 @@ async fn op_dns_resolve(
   let resolver = AsyncResolver::tokio(config, opts)?;
 
   let results: Vec<DnsReturnRecord> = resolver
-    .lookup(query, record_type.into(), Default::default())
+    .lookup(query, record_type, Default::default())
     .await?
     .iter()
     .filter_map(rdata_to_return_record(record_type))
