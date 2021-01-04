@@ -30,10 +30,10 @@ export function yellow(str) {
 const testResults = [];
 const testsExpectFail = JSON.parse(Deno.args[0]);
 
-window.add_result_callback((test) => {
-  const expectFail = testsExpectFail.includes(test.name);
-  let simpleMessage = `test ${test.name} ... `;
-  switch (test.status) {
+window.add_result_callback(({ message, name, stack, status }) => {
+  const expectFail = testsExpectFail.includes(name);
+  let simpleMessage = `test ${name} ... `;
+  switch (status) {
     case 0:
       if (expectFail) {
         simpleMessage += red("ok (expected fail)");
@@ -67,11 +67,11 @@ window.add_result_callback((test) => {
   console.log(simpleMessage);
 
   testResults.push({
-    name: test.name,
-    passed: test.status === 0,
+    name,
+    passed: status === 0,
     expectFail,
-    message: test.message,
-    stack: test.stack,
+    message,
+    stack,
   });
 });
 
@@ -101,13 +101,13 @@ window.add_completion_callback((tests, harnessStatus) => {
     console.log(`\nfailures:\n`);
   }
   for (const result of failed) {
-    console.log("        " + result.name);
+    console.log(`        ${result.name}`);
   }
   if (expectedFailedButPassedCount > 0) {
     console.log(`\nexpected failures that passed:\n`);
   }
   for (const result of expectedFailedButPassed) {
-    console.log("        " + result.name);
+    console.log(`        ${result.name}`);
   }
   console.log(
     `\ntest result: ${
