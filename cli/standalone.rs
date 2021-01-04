@@ -107,10 +107,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
 }
 
 async fn run(source_code: String, args: Vec<String>) -> Result<(), AnyError> {
-  let mut flags = Flags::default();
-  flags.argv = args[1..].to_vec();
-  // TODO(lucacasonato): remove once you can specify this correctly through embedded metadata
-  flags.unstable = true;
+  let flags = Flags {
+    argv: args[1..].to_vec(),
+    // TODO(lucacasonato): remove once you can specify this correctly through embedded metadata
+    unstable: true,
+    ..Default::default()
+  };
   let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
   let permissions = Permissions::allow_all();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
