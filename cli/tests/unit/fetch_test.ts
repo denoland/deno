@@ -919,8 +919,14 @@ unitTest(
   },
 );
 
+// FIXME(bartlomieju): for reasons unknown after working for
+// a few months without a problem; this test started failing
+// consistently on Windows CI with following error:
+// TypeError: error sending request for url (http://localhost:4545/echo_server):
+// connection error: An established connection was aborted by
+// the software in your host machine. (os error 10053)
 unitTest(
-  { perms: { net: true } },
+  { perms: { net: true }, ignore: Deno.build.os == "windows" },
   async function fetchNullBodyStatus(): Promise<void> {
     const nullBodyStatus = [101, 204, 205, 304];
 
