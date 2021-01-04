@@ -4883,7 +4883,7 @@ fn web_platform_tests() {
           } else {
             s
           };
-          if s.starts_with("/") {
+          if s.starts_with('/') {
             let path = util::tests_path().join("wpt").join(format!(".{}", s));
             url::Url::from_file_path(&path).unwrap().to_string()
           } else {
@@ -4920,10 +4920,11 @@ import "{}";
         .stdin(std::process::Stdio::piped())
         .spawn()
         .unwrap();
-      let child_stdin = child.stdin.as_mut().unwrap();
-      child_stdin.write_all(input.as_bytes()).unwrap();
-      drop(child_stdin);
-
+      {
+        let child_stdin = child.stdin.as_mut().unwrap();
+        child_stdin.write_all(input.as_bytes()).unwrap();
+      }
+      
       let output = child.wait_with_output().unwrap();
       assert!(output.status.success());
     }
