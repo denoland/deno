@@ -4809,7 +4809,6 @@ fn compile_and_overwrite_file() {
   assert!(recompile_output.status.success());
 }
 
-
 #[test]
 fn web_platform_tests() {
   use deno_core::serde::Deserialize;
@@ -4819,11 +4818,16 @@ fn web_platform_tests() {
   enum WptConfig {
     Simple(String),
     #[serde(rename_all = "camelCase")]
-    Options { name: String, expect_fail: Vec<String> }
+    Options {
+      name: String,
+      expect_fail: Vec<String>,
+    },
   }
-  
-  let text = std::fs::read_to_string(util::tests_path().join("wpt.json")).unwrap();
-  let config: std::collections::HashMap<String, Vec<WptConfig>> = deno_core::serde_json::from_str(&text).unwrap();
+
+  let text =
+    std::fs::read_to_string(util::tests_path().join("wpt.json")).unwrap();
+  let config: std::collections::HashMap<String, Vec<WptConfig>> =
+    deno_core::serde_json::from_str(&text).unwrap();
 
   for (suite_name, includes) in config.into_iter() {
     let suite_path = util::tests_path().join("wpt").join(suite_name);
@@ -4834,12 +4838,24 @@ fn web_platform_tests() {
       .filter(|f| {
         let filename = f.file_name().to_str().unwrap();
         filename.ends_with(".any.js") || filename.ends_with(".window.js")
-      }).filter_map(|f| {
-        let path = f.path().strip_prefix(&suite_path).unwrap().to_str().unwrap();
+      })
+      .filter_map(|f| {
+        let path = f
+          .path()
+          .strip_prefix(&suite_path)
+          .unwrap()
+          .to_str()
+          .unwrap();
         for cfg in &includes {
           match cfg {
-            WptConfig::Simple(name) if path.starts_with(name) => return Some((f.path().to_owned(), vec![])),
-            WptConfig::Options { name, expect_fail } if path.starts_with(name) => return Some((f.path().to_owned(), expect_fail.to_vec())),
+            WptConfig::Simple(name) if path.starts_with(name) => {
+              return Some((f.path().to_owned(), vec![]))
+            }
+            WptConfig::Options { name, expect_fail }
+              if path.starts_with(name) =>
+            {
+              return Some((f.path().to_owned(), expect_fail.to_vec()))
+            }
             _ => {}
           }
         }
