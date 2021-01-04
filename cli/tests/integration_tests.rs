@@ -6,6 +6,7 @@ use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
+use walkdir::WalkDir;
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
@@ -4806,4 +4807,109 @@ fn compile_and_overwrite_file() {
     .wait_with_output()
     .unwrap();
   assert!(recompile_output.status.success());
+}
+
+
+#[test]
+fn web_platform_tests() {
+  use deno_core::serde::Deserialize;
+
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum WptConfig {
+    Simple(String),
+    #[serde(rename_all = "camelCase")]
+    Options { name: String, expect_fail: Vec<String> }
+  }
+  
+  let text = std::fs::read_to_string(util::tests_path().join("wpt.json")).unwrap();
+  let config: std::collections::HashMap<String, Vec<WptConfig>> = deno_core::serde_json::from_str(&text).unwrap();
+
+  for (suite_name, includes) in config.into_iter() {
+    let suite_path = util::tests_path().join("wpt").join(suite_name);
+    let dir = WalkDir::new(&suite_path)
+      .into_iter()
+      .filter_map(Result::ok)
+      .filter(|e| e.file_type().is_file())
+      .filter(|f| {
+        let filename = f.file_name().to_str().unwrap();
+        filename.ends_with(".any.js") || filename.ends_with(".window.js")
+      }).filter_map(|f| {
+        let path = f.path().strip_prefix(&suite_path).unwrap().to_str().unwrap();
+        for cfg in &includes {
+          match cfg {
+            WptConfig::Simple(name) if path.starts_with(name) => return Some((f.path().to_owned(), vec![])),
+            WptConfig::Options { name, expect_fail } if path.starts_with(name) => return Some((f.path().to_owned(), expect_fail.to_vec())),
+            _ => {}
+          }
+        }
+        None
+      });
+    let testharness_js = url::Url::from_file_path(
+      util::tests_path().join("wpt/resources/testharness.js"),
+    )
+    .unwrap()
+    .to_string();
+    let testharnessreporter_js = url::Url::from_file_path(
+      util::tests_path().join("wpt_testharnessconsolereporter.js"),
+    )
+    .unwrap()
+    .to_string();
+    for (path, expect_fail) in dir {
+      let txt = std::fs::read_to_string(&path).unwrap();
+      let scripts: Vec<String> = txt
+        .split('\n')
+        .into_iter()
+        .filter_map(|t| t.strip_prefix("// META: script="))
+        .map(|s| {
+          let s = if s == "/resources/WebIDLParser.js" {
+            "/resources/webidl2/lib/webidl2.js"
+          } else {
+            s
+          };
+          if s.starts_with("/") {
+            let path = util::tests_path().join("wpt").join(format!(".{}", s));
+            url::Url::from_file_path(&path).unwrap().to_string()
+          } else {
+            s.to_string()
+          }
+        })
+        .collect();
+
+      let input = format!(
+        r#"
+import "{}";
+import "{}";
+{}
+import "{}";
+        "#,
+        testharness_js,
+        testharnessreporter_js,
+        scripts
+          .into_iter()
+          .map(|path| format!(r#"import "{}";"#, path))
+          .collect::<Vec<String>>()
+          .join("\n"),
+        url::Url::from_file_path(&path).unwrap().to_string()
+      );
+
+      println!("Running {}", path.to_str().unwrap());
+      let mut child = util::deno_cmd()
+        .current_dir(path.parent().unwrap())
+        .arg("run")
+        .arg("-A")
+        .arg("--no-check")
+        .arg("-")
+        .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+      let child_stdin = child.stdin.as_mut().unwrap();
+      child_stdin.write_all(input.as_bytes()).unwrap();
+      drop(child_stdin);
+
+      let output = child.wait_with_output().unwrap();
+      assert!(output.status.success());
+    }
+  }
 }

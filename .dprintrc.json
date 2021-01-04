@@ -21,6 +21,7 @@
     "cli/dts/lib.webworker*.d.ts",
     "cli/dts/typescript.d.ts",
     "cli/tests/encoding",
+    "cli/tests/wpt",
     "cli/tsc/*typescript.js",
     "gh-pages",
     "std/**/testdata",
