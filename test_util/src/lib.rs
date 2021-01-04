@@ -90,7 +90,6 @@ pub fn third_party_path() -> PathBuf {
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  println!("target_dir {}", target_dir.display());
   target_dir.into()
 }
 
