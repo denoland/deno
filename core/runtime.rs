@@ -202,6 +202,8 @@ impl JsRuntime {
       unsafe { v8_init() };
     });
 
+    let has_startup_snapshot = options.startup_snapshot.is_some();
+
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
@@ -292,7 +294,13 @@ impl JsRuntime {
       allocations: IsolateAllocations::default(),
     };
 
-    js_runtime.js_init();
+    if !has_startup_snapshot {
+      js_runtime.js_init();
+    }
+
+    if !options.will_snapshot {
+      js_runtime.shared_queue_init();
+    }
 
     js_runtime
   }
@@ -324,13 +332,27 @@ impl JsRuntime {
     s.clone()
   }
 
-  /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn js_init(&mut self) {
+  /// Executes a bit of built-in JavaScript to provide Deno.core and error reporting.
+  ///
+  /// This function can be called during snapshotting.
+  pub fn js_init(&mut self) {
     self
       .execute("deno:core/core.js", include_str!("core.js"))
       .unwrap();
     self
       .execute("deno:core/error.js", include_str!("error.js"))
+      .unwrap();
+  }
+
+  /// Executes a bit of built-in JavaScript to provide shared queue.
+  ///
+  /// This function shouldn't be called during snapshotting.
+  pub fn shared_queue_init(&mut self) {
+    self
+      .execute(
+        "deno:core/shared_queue_init.js",
+        "Deno.core.sharedQueue.init()",
+      )
       .unwrap();
   }
 
