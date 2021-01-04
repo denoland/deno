@@ -64,14 +64,12 @@ SharedQueue Binary Layout
   }
 
   function reset() {
-    // maybeInit();
     shared32[INDEX_NUM_RECORDS] = 0;
     shared32[INDEX_NUM_SHIFTED_OFF] = 0;
     shared32[INDEX_HEAD] = HEAD_INIT;
   }
 
   function head() {
-    // maybeInit();
     return shared32[INDEX_HEAD];
   }
 
@@ -152,7 +150,6 @@ SharedQueue Binary Layout
   }
 
   function setAsyncHandler(opId, cb) {
-    // maybeInit();
     assert(opId != null);
     asyncHandlers[opId] = cb;
   }
@@ -265,6 +262,7 @@ SharedQueue Binary Layout
     resources,
     registerErrorClass,
     getErrorClass,
+    sharedQueueInit: init,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
       MAX_RECORDS,
@@ -274,7 +272,6 @@ SharedQueue Binary Layout
       push,
       reset,
       shift,
-      init,
     },
   });
 })(this);
