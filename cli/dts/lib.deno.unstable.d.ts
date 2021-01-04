@@ -935,7 +935,7 @@ declare namespace Deno {
    * const a = await Deno.resolveDns("example.com", "A");
    *
    * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", protocol: "TCP" },
+   *   nameServer: { ipAddr: "8.8.8.8", port: 1234 },
    * });
    * ```
    *
