@@ -335,7 +335,7 @@ impl JsRuntime {
   /// Executes a bit of built-in JavaScript to provide Deno.core and error reporting.
   ///
   /// This function can be called during snapshotting.
-  pub fn js_init(&mut self) {
+  fn js_init(&mut self) {
     self
       .execute("deno:core/core.js", include_str!("core.js"))
       .unwrap();
@@ -347,7 +347,7 @@ impl JsRuntime {
   /// Executes a bit of built-in JavaScript to provide shared queue.
   ///
   /// This function shouldn't be called during snapshotting.
-  pub fn shared_queue_init(&mut self) {
+  fn shared_queue_init(&mut self) {
     self
       .execute(
         "deno:core/shared_queue_init.js",
