@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags_rt::DenoSubcommand;
 use crate::flags::Flags;
+use crate::flags_rt::DenoSubcommand;
 use crate::rt::Metadata;
 use deno_core::error::bail;
 use deno_core::error::AnyError;

@@ -12,8 +12,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use tempfile::TempDir;
 
-pub use crate::flags_rt::Flags;
 pub use crate::flags_rt::DenoSubcommand;
+pub use crate::flags_rt::Flags;
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
   allowlist

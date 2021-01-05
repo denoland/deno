@@ -3,8 +3,8 @@
 #![deny(warnings)]
 
 mod flags_rt;
-mod version;
 mod rt;
+mod version;
 
 fn main() {
   #[cfg(windows)]
