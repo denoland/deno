@@ -4938,11 +4938,15 @@ fn standalone_runtime_flags() {
     .contains("PermissionDenied: write access"));
 }
 
-fn concat_bundle(files: Vec<(PathBuf, String)>, bundle_path: &Path) -> String {
+fn concat_bundle(
+  files: Vec<(PathBuf, String)>,
+  bundle_path: &Path,
+  init: String,
+) -> String {
   let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
 
-  let mut bundle = String::new();
-  let mut bundle_line_count = 0;
+  let mut bundle = init.clone();
+  let mut bundle_line_count = init.lines().count() as u32;
   let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
 
   for (path, text) in files {
@@ -4982,6 +4986,35 @@ fn concat_bundle(files: Vec<(PathBuf, String)>, bundle_path: &Path) -> String {
   bundle
 }
 
+// TODO(lucacasonato): DRY with tsc_config.rs
+/// Convert a jsonc libraries `JsonValue` to a serde `Value`.
+fn jsonc_to_serde(j: jsonc_parser::JsonValue) -> serde_json::Value {
+  use jsonc_parser::JsonValue;
+  use serde_json::Value;
+  use std::str::FromStr;
+  match j {
+    JsonValue::Array(arr) => {
+      let vec = arr.into_iter().map(jsonc_to_serde).collect();
+      Value::Array(vec)
+    }
+    JsonValue::Boolean(bool) => Value::Bool(bool),
+    JsonValue::Null => Value::Null,
+    JsonValue::Number(num) => {
+      let number =
+        serde_json::Number::from_str(&num).expect("could not parse number");
+      Value::Number(number)
+    }
+    JsonValue::Object(obj) => {
+      let mut map = serde_json::map::Map::new();
+      for (key, json_value) in obj.into_iter() {
+        map.insert(key, jsonc_to_serde(json_value));
+      }
+      Value::Object(map)
+    }
+    JsonValue::String(str) => Value::String(str),
+  }
+}
+
 #[test]
 fn web_platform_tests() {
   use deno_core::serde::Deserialize;
@@ -4998,9 +5031,10 @@ fn web_platform_tests() {
   }
 
   let text =
-    std::fs::read_to_string(util::tests_path().join("wpt.json")).unwrap();
+    std::fs::read_to_string(util::tests_path().join("wpt.jsonc")).unwrap();
+  let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
-    deno_core::serde_json::from_str(&text).unwrap();
+    deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
 
   for (suite_name, includes) in config.into_iter() {
     let suite_path = util::wpt_path().join(suite_name);
@@ -5056,10 +5090,8 @@ fn web_platform_tests() {
           };
           if s.starts_with('/') {
             util::wpt_path().join(format!(".{}", s))
-          } else if s.starts_with('.') {
-            test_file_path.parent().unwrap().join(s)
           } else {
-            PathBuf::from(s)
+            test_file_path.parent().unwrap().join(s)
           }
         })
         .map(|path| {
@@ -5068,40 +5100,56 @@ fn web_platform_tests() {
         })
         .collect();
 
-      let mut files = Vec::with_capacity(3 + imports.len());
-      files.push((testharness_path.clone(), testharness_text.clone()));
-      files.push((
-        testharnessreporter_path.clone(),
-        testharnessreporter_text.clone(),
-      ));
-      files.extend(imports);
-      files.push((test_file_path.clone(), test_file_text));
+      let mut variants: Vec<&str> = test_file_text
+        .split('\n')
+        .into_iter()
+        .filter_map(|t| t.strip_prefix("// META: variant="))
+        .collect();
 
-      let mut file = tempfile::Builder::new()
-        .prefix("wpt-bundle-")
-        .suffix(".js")
-        .rand_bytes(5)
-        .tempfile()
-        .unwrap();
-
-      let bundle = concat_bundle(files, file.path());
-      file.write_all(bundle.as_bytes()).unwrap();
-
-      let child = util::deno_cmd()
-        .current_dir(test_file_path.parent().unwrap())
-        .arg("run")
-        .arg("-A")
-        .arg(file.path())
-        .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-
-      let output = child.wait_with_output().unwrap();
-      if !output.status.success() {
-        file.keep().unwrap();
+      if variants.is_empty() {
+        variants.push("");
       }
-      assert!(output.status.success());
+
+      for variant in variants {
+        let mut files = Vec::with_capacity(3 + imports.len());
+        files.push((testharness_path.clone(), testharness_text.clone()));
+        files.push((
+          testharnessreporter_path.clone(),
+          testharnessreporter_text.clone(),
+        ));
+        files.extend(imports.clone());
+        files.push((test_file_path.clone(), test_file_text.clone()));
+
+        let mut file = tempfile::Builder::new()
+          .prefix("wpt-bundle-")
+          .suffix(".js")
+          .rand_bytes(5)
+          .tempfile()
+          .unwrap();
+
+        let bundle = concat_bundle(
+          files,
+          file.path(),
+          format!("window.location = {{search: \"{}\"}};\n", variant),
+        );
+        file.write_all(bundle.as_bytes()).unwrap();
+
+        let child = util::deno_cmd()
+          .current_dir(test_file_path.parent().unwrap())
+          .arg("run")
+          .arg("-A")
+          .arg(file.path())
+          .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
+          .stdin(std::process::Stdio::piped())
+          .spawn()
+          .unwrap();
+
+        let output = child.wait_with_output().unwrap();
+        if !output.status.success() {
+          file.keep().unwrap();
+        }
+        assert!(output.status.success());
+      }
     }
   }
 }
