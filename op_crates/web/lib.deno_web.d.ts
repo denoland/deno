@@ -9,6 +9,7 @@ declare class DOMException extends Error {
   constructor(message?: string, name?: string);
   readonly name: string;
   readonly message: string;
+  readonly code: number;
 }
 
 interface EventInit {
