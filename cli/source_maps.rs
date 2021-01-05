@@ -126,7 +126,6 @@ pub fn get_orig_position<G: SourceMapGetter>(
           Some(original) => {
             let maybe_source_line =
               if let Some(source_view) = token.get_source_view() {
-                debug!("source view");
                 source_view.get_line(token.get_src_line())
               } else {
                 None
