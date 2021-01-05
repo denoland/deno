@@ -3,6 +3,7 @@ use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::url;
 use std::io::{BufRead, Write};
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
@@ -4811,17 +4812,12 @@ fn compile_and_overwrite_file() {
   assert!(recompile_output.status.success());
 }
 
-fn concat_bundle(files: Vec<(PathBuf, String)>) -> String {
-  let original_url = {
-    let (original_file_path, _) = files.last().unwrap();
-    url::Url::from_file_path(original_file_path)
-      .unwrap()
-      .to_string()
-  };
+fn concat_bundle(files: Vec<(PathBuf, String)>, bundle_path: &Path) -> String {
+  let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
 
   let mut bundle = String::new();
   let mut bundle_line_count = 0;
-  let mut source_map = sourcemap::SourceMapBuilder::new(Some(&original_url));
+  let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
 
   for (path, text) in files {
     let url = url::Url::from_file_path(path).unwrap().to_string();
@@ -4955,24 +4951,30 @@ fn web_platform_tests() {
       files.extend(imports);
       files.push((test_file_path.clone(), test_file_text));
 
-      let bundle = concat_bundle(files);
+      let mut file = tempfile::Builder::new()
+        .prefix("wpt-bundle-")
+        .suffix(".js")
+        .rand_bytes(5)
+        .tempfile()
+        .unwrap();
 
-      let mut child = util::deno_cmd()
+      let bundle = concat_bundle(files, file.path());
+      file.write_all(bundle.as_bytes()).unwrap();
+
+      let child = util::deno_cmd()
         .current_dir(test_file_path.parent().unwrap())
         .arg("run")
         .arg("-A")
-        .arg("--no-check")
-        .arg("-")
+        .arg(file.path())
         .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
         .stdin(std::process::Stdio::piped())
         .spawn()
         .unwrap();
-      {
-        let child_stdin = child.stdin.as_mut().unwrap();
-        child_stdin.write_all(bundle.as_bytes()).unwrap();
-      }
 
       let output = child.wait_with_output().unwrap();
+      if !output.status.success() {
+        file.keep().unwrap();
+      }
       assert!(output.status.success());
     }
   }
