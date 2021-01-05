@@ -785,7 +785,11 @@ export default class Context {
           return ERRNO_BADF;
         }
 
-        const data = new Uint8Array(this.#memory.buffer, pathOffset, pathLength);
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
         data.set(new TextEncoder().encode(entry.vpath));
 
         return ERRNO_SUCCESS;
@@ -1053,7 +1057,11 @@ export default class Context {
         }
 
         const textDecoder = new TextDecoder();
-        const data = new Uint8Array(this.#memory.buffer, pathOffset, pathLength);
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
         const path = resolve(entry.path!, textDecoder.decode(data));
 
         Deno.mkdirSync(path);
@@ -1078,7 +1086,11 @@ export default class Context {
         }
 
         const textDecoder = new TextDecoder();
-        const data = new Uint8Array(this.#memory.buffer, pathOffset, pathLength);
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
         const path = resolve(entry.path!, textDecoder.decode(data));
 
         const memoryView = new DataView(this.#memory.buffer);
@@ -1172,7 +1184,11 @@ export default class Context {
         }
 
         const textDecoder = new TextDecoder();
-        const data = new Uint8Array(this.#memory.buffer, pathOffset, pathLength);
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
         const path = resolve(entry.path!, textDecoder.decode(data));
 
         if ((fstflags & FSTFLAGS_ATIM_NOW) == FSTFLAGS_ATIM_NOW) {
@@ -1424,7 +1440,11 @@ export default class Context {
         }
 
         const textDecoder = new TextDecoder();
-        const data = new Uint8Array(this.#memory.buffer, pathOffset, pathLength);
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
         const path = resolve(entry.path!, textDecoder.decode(data));
 
         if (!Deno.statSync(path).isDirectory) {
@@ -1523,7 +1543,11 @@ export default class Context {
         }
 
         const textDecoder = new TextDecoder();
-        const data = new Uint8Array(this.#memory.buffer, pathOffset, pathLength);
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
         const path = resolve(entry.path!, textDecoder.decode(data));
 
         Deno.removeSync(path);
