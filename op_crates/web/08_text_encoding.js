@@ -1139,7 +1139,7 @@
 
       if (!(dest instanceof Uint8Array)) {
         throw new TypeError(
-          "2 argument to TextEncoder.encodeInto must be Uint8Array",
+          "2nd argument to TextEncoder.encodeInto must be Uint8Array",
         );
       }
 
