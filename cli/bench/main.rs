@@ -171,13 +171,20 @@ fn run_exec_time(deno_exe: &PathBuf, target_dir: &PathBuf) -> Result<Value> {
 
 fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
   let mut size = 0;
+  let mut seen = std::collections::HashSet::new();
   for entry in std::fs::read_dir(target_dir.join("deps")).unwrap() {
     let entry = entry.unwrap();
     let os_str = entry.file_name();
     let name = os_str.to_str().unwrap();
     if name.starts_with(prefix) && name.ends_with(".rlib") {
-      size += entry.metadata().unwrap().len();
-      println!("check size {} {}", name, size);
+      let start = name.split('-').next().unwrap().to_string();
+      if seen.contains(&start) {
+        println!("skip {}", name);
+      } else {
+        seen.insert(start);
+        size += entry.metadata().unwrap().len();
+        println!("check size {} {}", name, size);
+      }
     }
   }
   assert!(size > 0);
@@ -410,6 +417,9 @@ fn main() -> Result<()> {
 
   let mut new_data: Map<String, Value> = Map::new();
 
+  new_data.insert("binary_size".to_string(), get_binary_sizes(&target_dir)?);
+  new_data.insert("bundle_size".to_string(), bundle_benchmark(&deno_exe)?);
+
   new_data.insert(
     "created_at".to_string(),
     Value::String(
@@ -439,9 +449,6 @@ fn main() -> Result<()> {
     "benchmark".to_string(),
     run_exec_time(&deno_exe, &target_dir)?,
   );
-
-  new_data.insert("binary_size".to_string(), get_binary_sizes(&target_dir)?);
-  new_data.insert("bundle_size".to_string(), bundle_benchmark(&deno_exe)?);
 
   // Cannot run throughput benchmark on windows because they don't have nc or
   // pipe.
