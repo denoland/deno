@@ -6,13 +6,13 @@ use deno_fetch::reqwest;
 pub fn init(
   rt: &mut deno_core::JsRuntime,
   user_agent: String,
-  maybe_ca_file: Option<&str>,
+  ca_data: Option<Vec<u8>>,
 ) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
     state.put::<reqwest::Client>({
-      http_util::create_http_client(user_agent, maybe_ca_file).unwrap()
+      http_util::create_http_client(user_agent, ca_data).unwrap()
     });
   }
   super::reg_json_async(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);
