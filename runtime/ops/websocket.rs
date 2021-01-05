@@ -23,8 +23,8 @@ use http::{Method, Request, Uri};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::fs::File;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -39,20 +39,20 @@ use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
 #[derive(Clone)]
-struct WsCaFile(String);
+struct WsCaData(Vec<u8>);
 #[derive(Clone)]
 struct WsUserAgent(String);
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,
-  maybe_ca_file: Option<&str>,
+  ca_data: Option<Vec<u8>>,
   user_agent: String,
 ) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
-    if let Some(ca_file) = maybe_ca_file {
-      state.put::<WsCaFile>(WsCaFile(ca_file.to_string()));
+    if let Some(ca_data) = ca_data {
+      state.put::<WsCaData>(WsCaData(ca_data));
     }
     state.put::<WsUserAgent>(WsUserAgent(user_agent));
   }
@@ -130,7 +130,7 @@ pub async fn op_ws_create(
       );
   }
 
-  let maybe_ca_file = state.borrow().try_borrow::<WsCaFile>().cloned();
+  let ws_ca_data = state.borrow().try_borrow::<WsCaData>().cloned();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
@@ -163,9 +163,8 @@ pub async fn op_ws_create(
         .root_store
         .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
-      if let Some(ws_ca_file) = maybe_ca_file {
-        let key_file = File::open(ws_ca_file.0)?;
-        let reader = &mut BufReader::new(key_file);
+      if let Some(ws_ca_data) = ws_ca_data {
+        let reader = &mut BufReader::new(Cursor::new(ws_ca_data.0));
         config.root_store.add_pem_file(reader).unwrap();
       }
 
@@ -217,6 +216,7 @@ pub async fn op_ws_create(
 #[serde(rename_all = "camelCase")]
 struct SendArgs {
   rid: u32,
+  kind: String,
   text: Option<String>,
 }
 
@@ -227,9 +227,11 @@ pub async fn op_ws_send(
 ) -> Result<Value, AnyError> {
   let args: SendArgs = serde_json::from_value(args)?;
 
-  let msg = match args.text {
-    Some(text) => Message::Text(text),
-    None => Message::Binary(bufs[0].to_vec()),
+  let msg = match args.kind.as_str() {
+    "text" => Message::Text(args.text.unwrap()),
+    "binary" => Message::Binary(bufs[0].to_vec()),
+    "pong" => Message::Pong(vec![]),
+    _ => unreachable!(),
   };
   let rid = args.rid;
 
