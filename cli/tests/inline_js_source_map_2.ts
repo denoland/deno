@@ -1,4 +1,4 @@
-1+1;
+1 + 1;
 interface Test {
   hello: string;
 }
