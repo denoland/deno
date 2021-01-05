@@ -180,6 +180,18 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
     Value::Number(Number::from(test_util::deno_exe_path().metadata()?.len())),
   );
 
+  // add up size for everything in target/release/deps/libswc*
+  let mut swc_size = 0;
+  for entry in std::fs::read_dir(target_dir.join("deps")).unwrap() {
+    let entry = entry.unwrap();
+    if entry.file_name().to_str().unwrap().starts_with("libswc") {
+      swc_size += entry.metadata().unwrap().len();
+    }
+  }
+  assert!(swc_size > 0);
+  println!("swc {} bytes", swc_size);
+  sizes.insert("swc".to_string(), Value::Number(swc_size.into()));
+
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
   for file in walkdir::WalkDir::new(target_dir) {
