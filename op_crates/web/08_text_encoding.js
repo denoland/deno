@@ -169,26 +169,14 @@
   // The encodingMap is a hash of labels that are indexed by the conical
   // encoding.
   const encodingMap = {
-    "windows-1252": [
-      "ansi_x3.4-1968",
-      "ascii",
-      "cp1252",
-      "cp819",
-      "csisolatin1",
-      "ibm819",
-      "iso-8859-1",
-      "iso-ir-100",
-      "iso8859-1",
-      "iso88591",
-      "iso_8859-1",
-      "iso_8859-1:1987",
-      "l1",
-      "latin1",
-      "us-ascii",
-      "windows-1252",
-      "x-cp1252",
+    "utf-8": [
+      "unicode-1-1-utf-8",
+      "unicode11utf8",
+      "unicode20utf8",
+      "utf-8",
+      "utf8",
+      "x-unicode20utf8",
     ],
-    "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"],
     ibm866: ["866", "cp866", "csibm866", "ibm866"],
     "iso-8859-2": [
       "csisolatin2",
@@ -276,6 +264,11 @@
       "iso_8859-8:1988",
       "visual",
     ],
+    "iso-8859-8-i": [
+      "csiso88598i",
+      "iso-8859-8-i",
+      "logical",
+    ],
     "iso-8859-10": [
       "csisolatin6",
       "iso-8859-10",
@@ -296,19 +289,6 @@
       "l9",
     ],
     "iso-8859-16": ["iso-8859-16"],
-    gbk: [
-      "chinese",
-      "csgb2312",
-      "csiso58gb231280",
-      "gb2312",
-      "gb_2312",
-      "gb_2312-80",
-      "gbk",
-      "iso-ir-58",
-      "x-gbk",
-    ],
-    gb18030: ["gb18030"],
-    big5: ["big5", "big5-hkscs", "cn-big5", "csbig5", "x-x-big5"],
     "koi8-r": ["cskoi8r", "koi", "koi8", "koi8-r", "koi8_r"],
     "koi8-u": ["koi8-ru", "koi8-u"],
     macintosh: ["csmacintosh", "mac", "macintosh", "x-mac-roman"],
@@ -322,6 +302,25 @@
     ],
     "windows-1250": ["cp1250", "windows-1250", "x-cp1250"],
     "windows-1251": ["cp1251", "windows-1251", "x-cp1251"],
+    "windows-1252": [
+      "ansi_x3.4-1968",
+      "ascii",
+      "cp1252",
+      "cp819",
+      "csisolatin1",
+      "ibm819",
+      "iso-8859-1",
+      "iso-ir-100",
+      "iso8859-1",
+      "iso88591",
+      "iso_8859-1",
+      "iso_8859-1:1987",
+      "l1",
+      "latin1",
+      "us-ascii",
+      "windows-1252",
+      "x-cp1252",
+    ],
     "windows-1253": ["cp1253", "windows-1253", "x-cp1253"],
     "windows-1254": [
       "cp1254",
@@ -342,6 +341,19 @@
     "windows-1257": ["cp1257", "windows-1257", "x-cp1257"],
     "windows-1258": ["cp1258", "windows-1258", "x-cp1258"],
     "x-mac-cyrillic": ["x-mac-cyrillic", "x-mac-ukrainian"],
+    gbk: [
+      "chinese",
+      "csgb2312",
+      "csiso58gb231280",
+      "gb2312",
+      "gb_2312",
+      "gb_2312-80",
+      "gbk",
+      "iso-ir-58",
+      "x-gbk",
+    ],
+    gb18030: ["gb18030"],
+    big5: ["big5", "big5-hkscs", "cn-big5", "csbig5", "x-x-big5"],
   };
   // We convert these into a Map where every label resolves to its canonical
   // encoding type.
@@ -538,6 +550,26 @@
     1504, 1505, 1506, 1507, 1508, 1509, 1510, 1511,
     1512, 1513, 1514, null, null, 8206, 8207, null,
   ]);
+
+  // deno-fmt-ignore
+  encodingIndexes.set("iso-8859-8-i", [
+      128, 129, 130, 131, 132, 133, 134, 135,
+      136, 137, 138, 139, 140, 141, 142, 143,
+      144, 145, 146, 147, 148, 149, 150, 151,
+      152, 153, 154, 155, 156, 157, 158, 159,
+      160, null, 162, 163, 164, 165, 166, 167,
+      168, 169, 215, 171, 172, 173, 174, 175,
+      176, 177, 178, 179, 180, 181, 182, 183,
+      184, 185, 247, 187, 188, 189, 190, null,
+      null, null, null, null, null, null, null, null,
+      null, null, null, null, null, null, null, null,
+      null, null, null, null, null, null, null, null,
+      null, null, null, null, null, null, null, 8215,
+      1488, 1489, 1490, 1491, 1492, 1493, 1494, 1495,
+      1496, 1497, 1498, 1499, 1500, 1501, 1502, 1503,
+      1504, 1505, 1506, 1507, 1508, 1509, 1510, 1511,
+      1512, 1513, 1514, null, null, 8206, 8207, null,
+    ]);
 
   // deno-fmt-ignore
   encodingIndexes.set("iso-8859-10", [
@@ -957,6 +989,26 @@
     );
   }
 
+  const whitespace = [" ", "\t", "\n", "\f", "\r"];
+  function trimAsciiWhitespace(label) {
+    let start = 0;
+    for (const i in label) {
+      if (!whitespace.includes(label[i])) {
+        start = i;
+        break;
+      }
+    }
+    let end = label.length - 1;
+    for (const _i in label) {
+      const i = end - _i;
+      if (!whitespace.includes(label[i])) {
+        end = i;
+        break;
+      }
+    }
+    return label.substring(start, end + 1);
+  }
+
   class TextDecoder {
     #encoding = "";
 
@@ -973,7 +1025,7 @@
       if (options.fatal) {
         this.fatal = true;
       }
-      const _label = String(label).trim().toLowerCase();
+      const _label = trimAsciiWhitespace(String(label)).toLowerCase();
       const encoding = encodings.get(_label);
       if (!encoding) {
         throw new RangeError(
@@ -1085,21 +1137,28 @@
       const encoder = new UTF8Encoder();
       const inputStream = new Stream(stringToCodePoints(input));
 
+      if (!(dest instanceof Uint8Array)) {
+        throw new TypeError(
+          "2nd argument to TextEncoder.encodeInto must be Uint8Array",
+        );
+      }
+
       let written = 0;
       let read = 0;
       while (true) {
-        const result = encoder.handler(inputStream.read());
+        const item = inputStream.read();
+        const result = encoder.handler(item);
         if (result === "finished") {
           break;
         }
         if (dest.length - written >= result.length) {
           read++;
-          dest.set(result, written);
-          written += result.length;
-          if (result.length > 3) {
+          if (item > 0xFFFF) {
             // increment read a second time if greater than U+FFFF
             read++;
           }
+          dest.set(result, written);
+          written += result.length;
         } else {
           break;
         }
@@ -1151,7 +1210,7 @@
     let type;
 
     let i =
-      ignoreBOM && input[0] === 0xef && input[1] === 0xbb && input[2] === 0xbf
+      !ignoreBOM && input[0] === 0xef && input[1] === 0xbb && input[2] === 0xbf
         ? 3
         : 0;
 

@@ -1,0 +1,138 @@
+{
+  "streams": [
+    {
+      "name": "readable-streams/general",
+      "expectFail": [
+        "ReadableStream can't be constructed with an invalid type",
+        "default ReadableStream getReader() should only accept mode:undefined"
+      ]
+    },
+    "writable-streams/general"
+  ],
+  "encoding": [
+    {
+      "name": "api-basics",
+      "expectFail": [
+        // TODO(lucacasonato): enable when we support utf-16
+        "Decode sample: utf-16le",
+        "Decode sample: utf-16be",
+        "Decode sample: utf-16"
+      ]
+    },
+    "api-invalid-label",
+    "api-replacement-encodings",
+    "api-surrogates-utf8",
+    // TODO(lucacasonato): enable encodeInto. It is buggy at the moment.
+    // "encodeInto",
+    // TODO(lucacasonato): enable when we support iso-2022-jp
+    // "iso-2022-jp-decoder",
+    // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
+    // "replacement-encodings",
+    {
+      "name": "textdecoder-byte-order-marks",
+      "expectFail": [
+        // TODO(lucacasonato): enable when we support utf-16
+        "Byte-order marks: utf-16le",
+        "Byte-order marks: utf-16be"
+      ]
+    },
+    {
+      "name": "textdecoder-copy",
+      "expectFail": [
+        // TODO(lucacasonato): enable when we have stream support
+        "Modify buffer after passing it in (ArrayBuffer)",
+        "Modify buffer after passing it in (SharedArrayBuffer)"
+      ]
+    },
+    "textdecoder-fatal-single-byte",
+    {
+      "name": "textdecoder-fatal.",
+      // TODO(lucacasonato): enable when we support utf-16
+      "expectFail": ["Fatal flag: utf-16le - truncated code unit"]
+    },
+    {
+      "name": "textdecoder-ignorebom",
+      "expectFail": [
+        // TODO(lucacasonato): enable when we support utf-16
+        "BOM is ignored if ignoreBOM option is specified: utf-16le",
+        "BOM is ignored if ignoreBOM option is specified: utf-16be"
+      ]
+    },
+    {
+      "name": "textdecoder-labels",
+      "expectFail": [
+        "chinese => GBK",
+        "csgb2312 => GBK",
+        "csiso58gb231280 => GBK",
+        "gb2312 => GBK",
+        "gb_2312 => GBK",
+        "gb_2312-80 => GBK",
+        "gbk => GBK",
+        "iso-ir-58 => GBK",
+        "x-gbk => GBK",
+        "gb18030 => gb18030",
+        "big5 => Big5",
+        "big5-hkscs => Big5",
+        "cn-big5 => Big5",
+        "csbig5 => Big5",
+        "x-x-big5 => Big5",
+        "cseucpkdfmtjapanese => EUC-JP",
+        "euc-jp => EUC-JP",
+        "x-euc-jp => EUC-JP",
+        "csiso2022jp => ISO-2022-JP",
+        "iso-2022-jp => ISO-2022-JP",
+        "csshiftjis => Shift_JIS",
+        "ms932 => Shift_JIS",
+        "ms_kanji => Shift_JIS",
+        "shift-jis => Shift_JIS",
+        "shift_jis => Shift_JIS",
+        "sjis => Shift_JIS",
+        "windows-31j => Shift_JIS",
+        "x-sjis => Shift_JIS",
+        "cseuckr => EUC-KR",
+        "csksc56011987 => EUC-KR",
+        "euc-kr => EUC-KR",
+        "iso-ir-149 => EUC-KR",
+        "korean => EUC-KR",
+        "ks_c_5601-1987 => EUC-KR",
+        "ks_c_5601-1989 => EUC-KR",
+        "ksc5601 => EUC-KR",
+        "ksc_5601 => EUC-KR",
+        "windows-949 => EUC-KR",
+        "unicodefffe => UTF-16BE",
+        "utf-16be => UTF-16BE",
+        "csunicode => UTF-16LE",
+        "iso-10646-ucs-2 => UTF-16LE",
+        "ucs-2 => UTF-16LE",
+        "unicode => UTF-16LE",
+        "unicodefeff => UTF-16LE",
+        "utf-16 => UTF-16LE",
+        "utf-16le => UTF-16LE",
+        "x-user-defined => x-user-defined"
+      ]
+    }
+    // TODO(lucacasonato): enable when we have stream support
+    // "textdecoder-streaming",
+    // TODO(lucacasonato): enable when we support utf-16
+    // "textdecoder-utf16-surrogates",
+    {
+      "name": "textencoder-constructor-non-utf",
+      "expectFail": [
+        "Encoding argument supported for decode: GBK",
+        "Encoding argument supported for decode: gb18030",
+        "Encoding argument supported for decode: Big5",
+        "Encoding argument supported for decode: EUC-JP",
+        "Encoding argument supported for decode: ISO-2022-JP",
+        "Encoding argument supported for decode: Shift_JIS",
+        "Encoding argument supported for decode: EUC-KR",
+        "Encoding argument supported for decode: UTF-16BE",
+        "Encoding argument supported for decode: UTF-16LE",
+        "Encoding argument supported for decode: x-user-defined"
+      ]
+    },
+    // TODO(lucacasonato): enable when we support utf-16
+    // "textencoder-utf16-surrogates",
+    // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
+    // "unsupported-encodings",
+  ]
+}
