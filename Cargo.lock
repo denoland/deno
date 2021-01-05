@@ -445,7 +445,7 @@ dependencies = [
  "sourcemap",
  "swc_bundler",
  "swc_common",
- "swc_ecmascript 0.17.0",
+ "swc_ecmascript",
  "tempfile",
  "termcolor",
  "test_util",
@@ -498,7 +498,7 @@ dependencies = [
  "serde",
  "serde_json",
  "swc_common",
- "swc_ecmascript 0.17.0",
+ "swc_ecmascript",
  "termcolor",
 ]
 
@@ -526,7 +526,7 @@ dependencies = [
  "serde_json",
  "swc_atoms",
  "swc_common",
- "swc_ecmascript 0.17.0",
+ "swc_ecmascript",
 ]
 
 [[package]]
@@ -643,30 +643,28 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.38.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "233dffe6ee7db1545d10c5eb64c73eb09e2c8887d03092e5e3d04b7e35a9016a"
+version = "0.38.1"
 dependencies = [
  "dprint-core",
  "dprint-swc-ecma-ast-view",
  "fnv",
  "serde",
  "swc_common",
- "swc_ecmascript 0.17.0",
+ "swc_ecmascript",
 ]
 
 [[package]]
 name = "dprint-swc-ecma-ast-view"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9b7823760fa355f812a031026f69656ba30de0a943f7d252dc5fece03e4f66c"
+checksum = "552513c4b96147551a95a01f979c80b828be4ae12e928b3b13fdb7e394a0de0d"
 dependencies = [
  "bumpalo",
  "fnv",
  "num-bigint",
  "swc_atoms",
  "swc_common",
- "swc_ecmascript 0.16.1",
+ "swc_ecmascript",
 ]
 
 [[package]]
@@ -2626,16 +2624,6 @@ dependencies = [
  "swc_common",
  "swc_ecma_ast",
  "swc_visit",
-]
-
-[[package]]
-name = "swc_ecmascript"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a0a8550d9af74d8c9a61a31ffa0efa709f14335fe80f5c51bc747f0265a1756"
-dependencies = [
- "swc_ecma_ast",
- "swc_ecma_parser",
 ]
 
 [[package]]

@@ -41,7 +41,7 @@ base64 = "0.12.3"
 byteorder = "1.3.4"
 clap = "2.33.3"
 dissimilar = "1.0.2"
-dprint-plugin-typescript = "0.38.0"
+dprint-plugin-typescript = { version = "0.38.1", path = "../../dprint-plugin-typescript" }
 encoding_rs = "0.8.24"
 env_logger = "0.7.1"
 filetime = "0.2.12"
