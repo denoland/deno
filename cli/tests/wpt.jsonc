@@ -22,7 +22,13 @@
     "api-invalid-label",
     "api-replacement-encodings",
     "api-surrogates-utf8",
-    // TODO(lucacasonato): enable encodeInto. It is buggy at the moment.
+    // TODO(lucacasonato): enable encodeInto. We have a bug in implementaiton.
+    // {
+    //   "name": "encodeInto",
+    //   "expectFail": [
+    //     "encodeInto() and a detached output buffer"
+    //   ]
+    // },
     // "encodeInto",
     // TODO(lucacasonato): enable when we support iso-2022-jp
     // "iso-2022-jp-decoder",
@@ -134,5 +140,8 @@
     // "textencoder-utf16-surrogates",
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "unsupported-encodings",
+  ],
+  "dom": [
+    "abort/event"
   ]
 }
