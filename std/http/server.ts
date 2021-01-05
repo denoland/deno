@@ -21,9 +21,14 @@ export class ServerRequest {
   conn!: Deno.Conn;
   r!: BufReader;
   w!: BufWriter;
-  done: Deferred<Error | undefined> = deferred();
+  #done: Deferred<Error | undefined> = deferred();
 
   private _contentLength: number | undefined | null = undefined;
+
+  get done(): Promise<Error | undefined> {
+    return this.#done.then((e) => e);
+  }
+
   /**
    * Value of Content-Length header.
    * If null, then content length is invalid or not given (e.g. chunked encoding).
@@ -93,7 +98,7 @@ export class ServerRequest {
     }
     // Signal that this request has been processed and the next pipelined
     // request on the same connection can be accepted.
-    this.done.resolve(err);
+    this.#done.resolve(err);
     if (err) {
       // Error during responding, rethrow.
       throw err;

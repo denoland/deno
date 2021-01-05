@@ -643,12 +643,6 @@ interface PostMessageOptions {
   transfer?: any[];
 }
 
-interface ProgressEventInit extends EventInit {
-  lengthComputable?: boolean;
-  loaded?: number;
-  total?: number;
-}
-
 interface AbstractWorkerEventMap {
   "error": ErrorEvent;
 }
@@ -838,17 +832,6 @@ declare class PerformanceMark extends PerformanceEntry {
 declare class PerformanceMeasure extends PerformanceEntry {
   readonly detail: any;
   readonly entryType: "measure";
-}
-
-/** Events measuring progress of an underlying process, like an HTTP request
- * (for an XMLHttpRequest, or the loading of the underlying resource of an
- * <img>, <audio>, <video>, <style> or <link>). */
-declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
-  constructor(type: string, eventInitDict?: ProgressEventInit);
-  readonly lengthComputable: boolean;
-  readonly loaded: number;
-  readonly target: T | null;
-  readonly total: number;
 }
 
 declare interface CustomEventInit<T = any> extends EventInit {
