@@ -176,8 +176,8 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
     let os_str = entry.file_name();
     let name = os_str.to_str().unwrap();
     if name.starts_with(prefix) && name.ends_with(".rlib") {
-      println!("check size of {}", name);
       size += entry.metadata().unwrap().len();
+      println!("check size {} {}", name, size);
     }
   }
   assert!(size > 0);
