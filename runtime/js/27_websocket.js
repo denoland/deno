@@ -167,6 +167,7 @@
         this.#bufferedAmount += ta.size;
         core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
+          kind: "binary",
         }, ta).then(() => {
           this.#bufferedAmount -= ta.size;
         });
@@ -193,6 +194,7 @@
         this.#bufferedAmount += d.size;
         core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
+          kind: "text",
           text: string,
         }).then(() => {
           this.#bufferedAmount -= d.size;
@@ -264,6 +266,13 @@
           });
           event.target = this;
           this.dispatchEvent(event);
+
+          this.#eventLoop();
+        } else if (message.type === "ping") {
+          core.jsonOpAsync("op_ws_send", {
+            rid: this.#rid,
+            kind: "pong",
+          });
 
           this.#eventLoop();
         } else if (message.type === "close") {
