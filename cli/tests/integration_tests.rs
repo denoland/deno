@@ -5,9 +5,12 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use std::io::{BufRead, Write};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
+use walkdir::WalkDir;
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
@@ -4914,4 +4917,172 @@ fn standalone_runtime_flags() {
   let stderr_str = String::from_utf8(output.stderr).unwrap();
   assert!(util::strip_ansi_codes(&stderr_str)
     .contains("PermissionDenied: write access"));
+}
+
+fn concat_bundle(files: Vec<(PathBuf, String)>, bundle_path: &Path) -> String {
+  let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
+
+  let mut bundle = String::new();
+  let mut bundle_line_count = 0;
+  let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
+
+  for (path, text) in files {
+    let path = std::fs::canonicalize(path).unwrap();
+    let url = url::Url::from_file_path(path).unwrap().to_string();
+    let src_id = source_map.add_source(&url);
+    source_map.set_source_contents(src_id, Some(&text));
+
+    for (line_index, line) in text.lines().enumerate() {
+      bundle.push_str(line);
+      bundle.push('\n');
+      source_map.add_raw(
+        bundle_line_count,
+        0,
+        line_index as u32,
+        0,
+        Some(src_id),
+        None,
+      );
+
+      bundle_line_count += 1;
+    }
+    bundle.push('\n');
+    bundle_line_count += 1;
+  }
+
+  let mut source_map_buf: Vec<u8> = vec![];
+  source_map
+    .into_sourcemap()
+    .to_writer(&mut source_map_buf)
+    .unwrap();
+
+  bundle.push_str("//# sourceMappingURL=data:application/json;base64,");
+  let encoded_map = base64::encode(source_map_buf);
+  bundle.push_str(&encoded_map);
+
+  bundle
+}
+
+#[test]
+fn web_platform_tests() {
+  use deno_core::serde::Deserialize;
+
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum WptConfig {
+    Simple(String),
+    #[serde(rename_all = "camelCase")]
+    Options {
+      name: String,
+      expect_fail: Vec<String>,
+    },
+  }
+
+  let text =
+    std::fs::read_to_string(util::tests_path().join("wpt.json")).unwrap();
+  let config: std::collections::HashMap<String, Vec<WptConfig>> =
+    deno_core::serde_json::from_str(&text).unwrap();
+
+  for (suite_name, includes) in config.into_iter() {
+    let suite_path = util::wpt_path().join(suite_name);
+    let dir = WalkDir::new(&suite_path)
+      .into_iter()
+      .filter_map(Result::ok)
+      .filter(|e| e.file_type().is_file())
+      .filter(|f| {
+        let filename = f.file_name().to_str().unwrap();
+        filename.ends_with(".any.js") || filename.ends_with(".window.js")
+      })
+      .filter_map(|f| {
+        let path = f
+          .path()
+          .strip_prefix(&suite_path)
+          .unwrap()
+          .to_str()
+          .unwrap();
+        for cfg in &includes {
+          match cfg {
+            WptConfig::Simple(name) if path.starts_with(name) => {
+              return Some((f.path().to_owned(), vec![]))
+            }
+            WptConfig::Options { name, expect_fail }
+              if path.starts_with(name) =>
+            {
+              return Some((f.path().to_owned(), expect_fail.to_vec()))
+            }
+            _ => {}
+          }
+        }
+        None
+      });
+
+    let testharness_path = util::wpt_path().join("resources/testharness.js");
+    let testharness_text = std::fs::read_to_string(&testharness_path).unwrap();
+    let testharnessreporter_path =
+      util::tests_path().join("wpt_testharnessconsolereporter.js");
+    let testharnessreporter_text =
+      std::fs::read_to_string(&testharnessreporter_path).unwrap();
+
+    for (test_file_path, expect_fail) in dir {
+      let test_file_text = std::fs::read_to_string(&test_file_path).unwrap();
+      let imports: Vec<(PathBuf, String)> = test_file_text
+        .split('\n')
+        .into_iter()
+        .filter_map(|t| t.strip_prefix("// META: script="))
+        .map(|s| {
+          let s = if s == "/resources/WebIDLParser.js" {
+            "/resources/webidl2/lib/webidl2.js"
+          } else {
+            s
+          };
+          if s.starts_with('/') {
+            util::wpt_path().join(format!(".{}", s))
+          } else if s.starts_with('.') {
+            test_file_path.parent().unwrap().join(s)
+          } else {
+            PathBuf::from(s)
+          }
+        })
+        .map(|path| {
+          let text = std::fs::read_to_string(&path).unwrap();
+          (path, text)
+        })
+        .collect();
+
+      let mut files = Vec::with_capacity(3 + imports.len());
+      files.push((testharness_path.clone(), testharness_text.clone()));
+      files.push((
+        testharnessreporter_path.clone(),
+        testharnessreporter_text.clone(),
+      ));
+      files.extend(imports);
+      files.push((test_file_path.clone(), test_file_text));
+
+      let mut file = tempfile::Builder::new()
+        .prefix("wpt-bundle-")
+        .suffix(".js")
+        .rand_bytes(5)
+        .tempfile()
+        .unwrap();
+
+      let bundle = concat_bundle(files, file.path());
+      file.write_all(bundle.as_bytes()).unwrap();
+
+      let child = util::deno_cmd()
+        .current_dir(test_file_path.parent().unwrap())
+        .arg("run")
+        .arg("-A")
+        .arg(file.path())
+        .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let output = child.wait_with_output().unwrap();
+      if !output.status.success() {
+        file.keep().unwrap();
+      }
+      assert!(output.status.success());
+    }
+  }
 }

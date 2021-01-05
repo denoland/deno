@@ -27,6 +27,7 @@ async function dlint() {
     ":!:cli/tests/lint/**",
     ":!:cli/tests/tsc/**",
     ":!:cli/tsc/*typescript.js",
+    ":!:test_util/wpt/**",
   ]);
 
   if (!sourceFiles.length) {
