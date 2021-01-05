@@ -306,6 +306,21 @@ export interface ContextOptions {
    * Determines if calls to exit from within the WebAssembly module will terminate the proess or return.
    */
   exitOnReturn?: boolean;
+
+  /**
+   * The resource descriptor used as standard input in the WebAssembly module.
+   */
+  stdin?: number;
+
+  /**
+   * The resource descriptor used as standard output in the WebAssembly module.
+   */
+  stdout?: number;
+
+  /**
+   * The resource descriptor used as standard error in the WebAssembly module.
+   */
+  stderr?: number;
 }
 
 /**
@@ -335,17 +350,17 @@ export default class Context {
 
     this.fds = [
       {
-        rid: Deno.stdin.rid,
+        rid: options.stdin ?? Deno.stdin.rid,
         type: FILETYPE_CHARACTER_DEVICE,
         flags: FDFLAGS_APPEND,
       },
       {
-        rid: Deno.stdout.rid,
+        rid: options.stdout ?? Deno.stdout.rid,
         type: FILETYPE_CHARACTER_DEVICE,
         flags: FDFLAGS_APPEND,
       },
       {
-        rid: Deno.stderr.rid,
+        rid: options.stderr ?? Deno.stderr.rid,
         type: FILETYPE_CHARACTER_DEVICE,
         flags: FDFLAGS_APPEND,
       },
