@@ -3443,6 +3443,25 @@ itest!(local_sources_not_cached_in_memory {
   output: "no_mem_cache.js.out",
 });
 
+itest!(inline_js_source_map_2 {
+  args: "run --quiet inline_js_source_map_2.js",
+  output: "inline_js_source_map_2.js.out",
+  exit_code: 1,
+});
+
+itest!(inline_js_source_map_2_with_inline_contents {
+  args: "run --quiet inline_js_source_map_2_with_inline_contents.js",
+  output: "inline_js_source_map_2_with_inline_contents.js.out",
+  exit_code: 1,
+});
+
+itest!(inline_js_source_map_with_contents_from_graph {
+  args: "run --quiet inline_js_source_map_with_contents_from_graph.js",
+  output: "inline_js_source_map_with_contents_from_graph.js.out",
+  exit_code: 1,
+  http_server: true,
+});
+
 #[test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
