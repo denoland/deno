@@ -2637,12 +2637,11 @@ itest!(bundle {
   output: "bundle.test.out",
 });
 
-// TODO(lucacasonato): too many files in cli/tests because of wpt
-// itest!(fmt_check_tests_dir {
-//   args: "fmt --check ./",
-//   output: "fmt/expected_fmt_check_tests_dir.out",
-//   exit_code: 1,
-// });
+itest!(fmt_check_tests_dir {
+  args: "fmt --check ./",
+  output: "fmt/expected_fmt_check_tests_dir.out",
+  exit_code: 1,
+});
 
 itest!(fmt_quiet_check_fmt_dir {
   args: "fmt --check --quiet fmt/",
@@ -4820,6 +4819,7 @@ fn concat_bundle(files: Vec<(PathBuf, String)>, bundle_path: &Path) -> String {
   let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
 
   for (path, text) in files {
+    let path = std::fs::canonicalize(path).unwrap();
     let url = url::Url::from_file_path(path).unwrap().to_string();
     let src_id = source_map.add_source(&url);
     source_map.set_source_contents(src_id, Some(&text));
@@ -4876,7 +4876,7 @@ fn web_platform_tests() {
     deno_core::serde_json::from_str(&text).unwrap();
 
   for (suite_name, includes) in config.into_iter() {
-    let suite_path = util::tests_path().join("wpt").join(suite_name);
+    let suite_path = util::wpt_path().join(suite_name);
     let dir = WalkDir::new(&suite_path)
       .into_iter()
       .filter_map(Result::ok)
@@ -4908,8 +4908,7 @@ fn web_platform_tests() {
         None
       });
 
-    let testharness_path =
-      util::tests_path().join("wpt/resources/testharness.js");
+    let testharness_path = util::wpt_path().join("resources/testharness.js");
     let testharness_text = std::fs::read_to_string(&testharness_path).unwrap();
     let testharnessreporter_path =
       util::tests_path().join("wpt_testharnessconsolereporter.js");
@@ -4929,7 +4928,7 @@ fn web_platform_tests() {
             s
           };
           if s.starts_with('/') {
-            util::tests_path().join("wpt").join(format!(".{}", s))
+            util::wpt_path().join(format!(".{}", s))
           } else if s.starts_with('.') {
             test_file_path.parent().unwrap().join(s)
           } else {
