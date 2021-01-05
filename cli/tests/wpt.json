@@ -1,0 +1,12 @@
+{
+  "streams": [
+    {
+      "name": "readable-streams/general",
+      "expectFail": [
+        "ReadableStream can't be constructed with an invalid type",
+        "default ReadableStream getReader() should only accept mode:undefined"
+      ]
+    },
+    "writable-streams/general"
+  ]
+}

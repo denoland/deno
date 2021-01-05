@@ -11,6 +11,8 @@ use lspower::lsp_types;
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
   pub status_notification: bool,
+  pub workspace_configuration: bool,
+  pub workspace_did_change_watched_files: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -19,7 +21,10 @@ pub struct WorkspaceSettings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
+
+  #[serde(default)]
   pub lint: bool,
+  #[serde(default)]
   pub unstable: bool,
 }
 
@@ -49,6 +54,15 @@ impl Config {
 
       self.client_capabilities.status_notification =
         get_bool("statusNotification");
+    }
+
+    if let Some(workspace) = &capabilities.workspace {
+      self.client_capabilities.workspace_configuration =
+        workspace.configuration.unwrap_or(false);
+      self.client_capabilities.workspace_did_change_watched_files = workspace
+        .did_change_watched_files
+        .and_then(|it| it.dynamic_registration)
+        .unwrap_or(false);
     }
   }
 }

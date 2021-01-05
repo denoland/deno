@@ -22,6 +22,7 @@
     "cli/dts/typescript.d.ts",
     "cli/tests/encoding",
     "cli/tsc/*typescript.js",
+    "test_util/wpt",
     "gh-pages",
     "std/**/testdata",
     "std/**/vendor",
