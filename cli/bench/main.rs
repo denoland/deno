@@ -169,6 +169,21 @@ fn run_exec_time(deno_exe: &PathBuf, target_dir: &PathBuf) -> Result<Value> {
   Ok(Value::Object(results))
 }
 
+fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
+  let mut size = 0;
+  for entry in std::fs::read_dir(target_dir.join("deps")).unwrap() {
+    let entry = entry.unwrap();
+    let os_str = entry.file_name();
+    let name = os_str.to_str().unwrap();
+    if name.starts_with(prefix) && name.ends_with(".rlib") {
+      println!("check size of {}", name);
+      size += entry.metadata().unwrap().len();
+    }
+  }
+  assert!(size > 0);
+  size
+}
+
 const BINARY_TARGET_FILES: &[&str] =
   &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
 fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
@@ -181,16 +196,13 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
   );
 
   // add up size for everything in target/release/deps/libswc*
-  let mut swc_size = 0;
-  for entry in std::fs::read_dir(target_dir.join("deps")).unwrap() {
-    let entry = entry.unwrap();
-    if entry.file_name().to_str().unwrap().starts_with("libswc") {
-      swc_size += entry.metadata().unwrap().len();
-    }
-  }
-  assert!(swc_size > 0);
+  let swc_size = rlib_size(&target_dir, "libswc");
   println!("swc {} bytes", swc_size);
   sizes.insert("swc".to_string(), Value::Number(swc_size.into()));
+
+  let rusty_v8_size = rlib_size(&target_dir, "librusty_v8");
+  println!("rusty_v8 {} bytes", rusty_v8_size);
+  sizes.insert("rusty_v8".to_string(), Value::Number(rusty_v8_size.into()));
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
