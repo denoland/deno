@@ -9,6 +9,12 @@
       "version": "1.0.0"
     },
     "rootUri": null,
+    "initializationOptions": {
+      "enable": true,
+      "lint": true,
+      "importMap": null,
+      "unstable": false
+    },
     "capabilities": {
       "textDocument": {
         "synchronization": {

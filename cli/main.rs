@@ -70,14 +70,12 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::Level;
 use log::LevelFilter;
-use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -86,23 +84,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-
-impl From<Flags> for PermissionsOptions {
-  fn from(flags: Flags) -> Self {
-    Self {
-      allow_env: flags.allow_env,
-      allow_hrtime: flags.allow_hrtime,
-      allow_net: flags.allow_net,
-      allow_plugin: flags.allow_plugin,
-      allow_read: flags.allow_read,
-      allow_run: flags.allow_run,
-      allow_write: flags.allow_write,
-      net_allowlist: flags.net_allowlist,
-      read_allowlist: flags.read_allowlist,
-      write_allowlist: flags.write_allowlist,
-    }
-  }
-}
+use std::sync::Mutex;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -131,7 +113,7 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
-      ca_filepath: program_state.flags.ca_file.clone(),
+      ca_data: program_state.ca_data.clone(),
       user_agent: http_util::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
@@ -207,7 +189,7 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
-    ca_filepath: program_state.flags.ca_file.clone(),
+    ca_data: program_state.ca_data.clone(),
     user_agent: http_util::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
@@ -313,12 +295,15 @@ async fn compile_command(
   flags: Flags,
   source_file: String,
   output: Option<PathBuf>,
+  args: Vec<String>,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
   }
 
   let debug = flags.log_level == Some(log::Level::Debug);
+
+  let run_flags = standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
@@ -348,8 +333,7 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str.as_bytes().to_vec(), output.clone())
-    .await?;
+  create_standalone_binary(bundle_str, run_flags, output.clone()).await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -367,7 +351,7 @@ async fn info_command(
   let program_state = ProgramState::new(flags)?;
   if let Some(specifier) = maybe_specifier {
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
-    let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
+    let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
       &program_state,
       // info accesses dynamically imported modules just for their information
       // so we allow access to all of them.
@@ -515,7 +499,7 @@ async fn create_module_graph_and_maybe_check(
   program_state: Arc<ProgramState>,
   debug: bool,
 ) -> Result<module_graph::Graph, AnyError> {
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     // when bundling, dynamic imports are only access for their type safety,
     // therefore we will allow the graph to access any module.
@@ -868,7 +852,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     async move {
       let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
       let program_state = ProgramState::new(flags)?;
-      let handler = Rc::new(RefCell::new(FetchHandler::new(
+      let handler = Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         Permissions::allow_all(),
       )?));
@@ -948,11 +932,31 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
+
+  let mut maybe_coverage_collector =
+    if let Some(ref coverage_dir) = program_state.coverage_dir {
+      let session = worker.create_inspector_session();
+
+      let coverage_dir = PathBuf::from(coverage_dir);
+      let mut coverage_collector =
+        tools::coverage::CoverageCollector::new(coverage_dir, session);
+      coverage_collector.start_collecting().await?;
+
+      Some(coverage_collector)
+    } else {
+      None
+    };
+
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
+
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    coverage_collector.stop_collecting().await?;
+  }
+
   Ok(())
 }
 
@@ -1067,6 +1071,7 @@ fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
     .any(|flag| flag == "-help" || flag == "--help");
+  // Keep in sync with `standalone.rs`.
   let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
     .chain(v8_flags.iter().cloned())
     .collect::<Vec<_>>();
@@ -1145,7 +1150,8 @@ fn get_subcommand(
     DenoSubcommand::Compile {
       source_file,
       output,
-    } => compile_command(flags, source_file, output).boxed_local(),
+      args,
+    } => compile_command(flags, source_file, output, args).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

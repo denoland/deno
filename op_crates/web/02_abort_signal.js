@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const { setIsTrusted } = window.__bootstrap.event;
+
   const add = Symbol("add");
   const signalAbort = Symbol("signalAbort");
   const remove = Symbol("remove");
@@ -24,7 +26,9 @@
         algorithm();
       }
       this.#abortAlgorithms.clear();
-      this.dispatchEvent(new Event("abort"));
+      const event = new Event("abort");
+      setIsTrusted(event, true);
+      this.dispatchEvent(event);
     }
 
     [remove](algorithm) {

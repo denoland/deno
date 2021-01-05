@@ -14,8 +14,6 @@ use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 
 pub fn get_user_agent() -> String {
   format!("Deno/{}", version::deno())
@@ -25,7 +23,7 @@ pub fn get_user_agent() -> String {
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
   user_agent: String,
-  ca_file: Option<&str>,
+  ca_data: Option<Vec<u8>>,
 ) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -34,10 +32,8 @@ pub fn create_http_client(
     .default_headers(headers)
     .use_rustls_tls();
 
-  if let Some(ca_file) = ca_file {
-    let mut buf = Vec::new();
-    File::open(ca_file)?.read_to_end(&mut buf)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
+  if let Some(ca_data) = ca_data {
+    let cert = reqwest::Certificate::from_pem(&ca_data)?;
     builder = builder.add_root_certificate(cert);
   }
 
@@ -159,9 +155,10 @@ pub async fn fetch_once(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::fs::read;
 
-  fn create_test_client(ca_file: Option<&str>) -> Client {
-    create_http_client("test_client".to_string(), ca_file).unwrap()
+  fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
+    create_http_client("test_client".to_string(), ca_data).unwrap()
   }
 
   #[tokio::test]
@@ -318,10 +315,13 @@ mod tests {
     let client = create_http_client(
       get_user_agent(),
       Some(
-        test_util::root_path()
-          .join("std/http/testdata/tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+        read(
+          test_util::root_path()
+            .join("std/http/testdata/tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap(),
       ),
     )
     .unwrap();
@@ -347,10 +347,13 @@ mod tests {
     let client = create_http_client(
       get_user_agent(),
       Some(
-        test_util::root_path()
-          .join("std/http/testdata/tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+        read(
+          test_util::root_path()
+            .join("std/http/testdata/tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap(),
       ),
     )
     .unwrap();
@@ -375,10 +378,13 @@ mod tests {
     let client = create_http_client(
       get_user_agent(),
       Some(
-        test_util::root_path()
-          .join("std/http/testdata/tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+        read(
+          test_util::root_path()
+            .join("std/http/testdata/tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap(),
       ),
     )
     .unwrap();
@@ -412,10 +418,13 @@ mod tests {
     let client = create_http_client(
       get_user_agent(),
       Some(
-        test_util::root_path()
-          .join("std/http/testdata/tls/RootCA.pem")
-          .to_str()
-          .unwrap(),
+        read(
+          test_util::root_path()
+            .join("std/http/testdata/tls/RootCA.pem")
+            .to_str()
+            .unwrap(),
+        )
+        .unwrap(),
       ),
     )
     .unwrap();

@@ -138,7 +138,7 @@
   }
 
   function hasHeaderValueOf(s, value) {
-    return new RegExp(`^${value}[\t\s]*;?`).test(s);
+    return new RegExp(`^${value}(?:[\\s;]|$)`).test(s);
   }
 
   function getHeaderValueParams(value) {
@@ -1246,8 +1246,12 @@
             body = multipartBuilder.getBody();
             contentType = multipartBuilder.getContentType();
           } else {
-            // TODO: ReadableStream
-            throw new Error("Not implemented");
+            // TODO(lucacasonato): do this in a streaming fashion once we support it
+            const buf = new Buffer();
+            for await (const chunk of init.body) {
+              buf.write(chunk);
+            }
+            body = buf.bytes();
           }
           if (contentType && !headers.has("content-type")) {
             headers.set("content-type", contentType);

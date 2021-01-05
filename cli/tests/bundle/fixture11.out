@@ -8,6 +8,8 @@ var O2;
     O1[O1["C"] = 2] = "C";
 })(O2 || (O2 = {
 }));
+const O1 = O2;
+export { O1 as O };
 class A {
     #a;
     #c;
@@ -27,5 +29,3 @@ class A {
 const a2 = new A();
 a2.a();
 a2.c();
-const O1 = O2;
-export { O1 as O };
