@@ -1200,8 +1200,6 @@ function main() {
   atobThrows2();
   btoaFailed();
   textDecoder2();
-  textDecoderIgnoreBOM();
-  textDecoderNotBOM();
   textDecoderASCII();
   textDecoderErrorEncoding();
   textDecoderHandlesUndefined();
