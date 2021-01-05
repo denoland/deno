@@ -205,11 +205,14 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
   // add up size for everything in target/release/deps/libswc*
   let swc_size = rlib_size(&target_dir, "libswc");
   println!("swc {} bytes", swc_size);
-  sizes.insert("swc".to_string(), Value::Number(swc_size.into()));
+  sizes.insert("swc_rlib".to_string(), Value::Number(swc_size.into()));
 
   let rusty_v8_size = rlib_size(&target_dir, "librusty_v8");
   println!("rusty_v8 {} bytes", rusty_v8_size);
-  sizes.insert("rusty_v8".to_string(), Value::Number(rusty_v8_size.into()));
+  sizes.insert(
+    "rusty_v8_rlib".to_string(),
+    Value::Number(rusty_v8_size.into()),
+  );
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
