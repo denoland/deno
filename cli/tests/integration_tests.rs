@@ -4927,7 +4927,7 @@ fn concat_bundle(
   let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
 
   let mut bundle = init.clone();
-  let mut bundle_line_count = init.lines().collect::<Vec<_>>().len() as u32;
+  let mut bundle_line_count = init.lines().count() as u32;
   let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
 
   for (path, text) in files {
@@ -5087,7 +5087,7 @@ fn web_platform_tests() {
         .filter_map(|t| t.strip_prefix("// META: variant="))
         .collect();
 
-      if variants.len() == 0 {
+      if variants.is_empty() {
         variants.push("");
       }
 
