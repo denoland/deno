@@ -2,6 +2,8 @@
 
 #![deny(warnings)]
 
+mod flags_rt;
+mod version;
 mod rt;
 
 fn main() {

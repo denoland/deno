@@ -1,7 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::futures;
 use deno_core::futures::prelude::*;
+use deno_core::serde_json;
 use deno_core::url;
+use deno_runtime::deno_fetch::reqwest;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
@@ -3328,6 +3330,12 @@ itest!(deno_test_run_run_coverage {
   exit_code: 0,
 });
 
+itest!(deno_test_run_combined_coverage {
+  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts test_run_test_coverage.ts",
+  output: "test_run_combined_coverage.out",
+  exit_code: 0,
+});
+
 itest!(deno_lint {
   args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
@@ -4345,6 +4353,64 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   child.wait().unwrap();
 }
 
+#[tokio::test]
+async fn inspector_json() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_json_list() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json/list");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
+}
+
 #[test]
 fn websocket() {
   let _g = util::http_server();
@@ -4620,6 +4686,8 @@ fn standalone_args() {
     .arg("--output")
     .arg(&exe)
     .arg("./cli/tests/028_args.ts")
+    .arg("a")
+    .arg("b")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4636,7 +4704,7 @@ fn standalone_args() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"foo\n--bar\n--unstable\n");
+  assert_eq!(output.stdout, b"a\nb\nfoo\n--bar\n--unstable\n");
 }
 
 #[test]
@@ -4723,9 +4791,9 @@ fn compile_with_directory_exists_error() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4752,9 +4820,9 @@ fn compile_with_conflict_file_exists_error() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4764,6 +4832,7 @@ fn compile_with_conflict_file_exists_error() {
   let expected_stderr =
     format!("Could not compile: cannot overwrite {:?}.\n", &exe);
   let stderr = String::from_utf8(output.stderr).unwrap();
+  dbg!(&stderr);
   assert!(stderr.contains(&expected_stderr));
   assert!(std::fs::read(&exe)
     .expect("cannot read file")
@@ -4782,9 +4851,9 @@ fn compile_and_overwrite_file() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4797,13 +4866,52 @@ fn compile_and_overwrite_file() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(recompile_output.status.success());
+}
+
+#[test]
+fn standalone_runtime_flags() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("flags.exe")
+  } else {
+    dir.path().join("flags")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--seed")
+    .arg("1")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_runtime_flags.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("PermissionDenied: write access"));
 }
