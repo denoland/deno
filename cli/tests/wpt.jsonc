@@ -116,7 +116,7 @@
         "utf-16le => UTF-16LE",
         "x-user-defined => x-user-defined"
       ]
-    }
+    },
     // TODO(lucacasonato): enable when we have stream support
     // "textdecoder-streaming",
     // TODO(lucacasonato): enable when we support utf-16
