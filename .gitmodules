@@ -5,3 +5,6 @@
 [submodule "std/wasi/testdata"]
 	path = std/wasi/testdata
 	url = https://github.com/khronosproject/wasi-test-suite.git
+[submodule "test_util/wpt"]
+	path = test_util/wpt
+	url = https://github.com/web-platform-tests/wpt.git
