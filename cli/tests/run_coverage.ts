@@ -1,3 +1,3 @@
-import { returnsFoo2 } from "./subdir/mod1.ts";
+import { returnsHi } from "./subdir/mod1.ts";
 
-returnsFoo2();
+returnsHi();

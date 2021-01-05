@@ -20,11 +20,13 @@ use deno_runtime::permissions::Permissions;
 use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::env;
+use std::fs::read;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -50,6 +52,7 @@ pub struct ProgramState {
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub ca_data: Option<Vec<u8>>,
 }
 
 impl ProgramState {
@@ -59,6 +62,10 @@ impl ProgramState {
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
+    let ca_data = match &ca_file {
+      Some(ca_file) => Some(read(ca_file).context("Failed to open ca file")?),
+      None => None,
+    };
 
     let cache_usage = if flags.cached_only {
       CacheSetting::Only
@@ -74,7 +81,7 @@ impl ProgramState {
       http_cache,
       cache_usage,
       !flags.no_remote,
-      ca_file.as_deref(),
+      ca_data.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
@@ -118,6 +125,7 @@ impl ProgramState {
       lockfile,
       maybe_import_map,
       maybe_inspector_server,
+      ca_data,
     };
     Ok(Arc::new(program_state))
   }
