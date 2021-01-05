@@ -3,4 +3,4 @@ interface Test {
   hello: string;
 }
 
-throw new Error("Hello world!" as any as string);
+throw new Error("Hello world!" as unknown as string);

@@ -41,7 +41,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
       js_error.start_column.map(|n| n + 1),
       js_error.source_line.clone(),
       &mut mappings_map,
-      getter.clone(),
+      getter,
     );
   let start_column = start_column.map(|n| n - 1);
   // It is better to just move end_column to be the same distance away from
@@ -134,16 +134,14 @@ pub fn get_orig_position<G: SourceMapGetter>(
 
             let source_line = if let Some(source_line) = maybe_source_line {
               Some(source_line.to_string())
+            } else if let Some(source_line) = getter.get_source_line(
+              original,
+              // Getter expects 0-based line numbers, but ours are 1-based.
+              token.get_src_line() as usize,
+            ) {
+              Some(source_line)
             } else {
-              if let Some(source_line) = getter.get_source_line(
-                original,
-                // Getter expects 0-based line numbers, but ours are 1-based.
-                token.get_src_line() as usize,
-              ) {
-                Some(source_line)
-              } else {
-                source_line
-              }
+              source_line
             };
 
             (
