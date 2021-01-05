@@ -3446,6 +3446,41 @@ itest!(local_sources_not_cached_in_memory {
   output: "no_mem_cache.js.out",
 });
 
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line is not remapped because no inline source contents are included in
+// the sourcemap and the file is not present in the dependency graph.
+itest!(inline_js_source_map_2 {
+  args: "run --quiet inline_js_source_map_2.js",
+  output: "inline_js_source_map_2.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line remapped using th inline source contents that are included in the
+// inline source map.
+itest!(inline_js_source_map_2_with_inline_contents {
+  args: "run --quiet inline_js_source_map_2_with_inline_contents.js",
+  output: "inline_js_source_map_2_with_inline_contents.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, and is loaded into the module
+// graph because of a direct import statement (inline_js_source_map.ts). The
+// source map was generated from an earlier version of this file, where the throw
+// was not commented out. The source line is remapped using source contents that
+// from the module graph.
+itest!(inline_js_source_map_with_contents_from_graph {
+  args: "run --quiet inline_js_source_map_with_contents_from_graph.js",
+  output: "inline_js_source_map_with_contents_from_graph.js.out",
+  exit_code: 1,
+  http_server: true,
+});
+
 #[test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;

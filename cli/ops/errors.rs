@@ -37,11 +37,12 @@ fn op_apply_source_map(
   let mut mappings_map: CachedMaps = HashMap::new();
   let program_state = state.borrow::<Arc<ProgramState>>().clone();
 
-  let (orig_file_name, orig_line_number, orig_column_number) =
+  let (orig_file_name, orig_line_number, orig_column_number, _) =
     get_orig_position(
       args.file_name,
       args.line_number.into(),
       args.column_number.into(),
+      None,
       &mut mappings_map,
       program_state,
     );
