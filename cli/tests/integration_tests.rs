@@ -4740,7 +4740,7 @@ fn compile() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, "Welcome to Deno 🦕\n".as_bytes());
+  assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
 }
 
 #[test]
