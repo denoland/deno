@@ -133,7 +133,7 @@
         type = "classic",
       } = options;
 
-      // TODO
+      // TODO(Soremwar)
       // `deno: true` is kept for backwards compatibility with the previous worker
       // options implementation. Remove for 2.0
       let workerDenoAttributes;

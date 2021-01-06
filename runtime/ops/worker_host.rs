@@ -119,7 +119,7 @@ fn merge_permission_state(
         PermissionState::Denied => Ok(x),
         _ => Err(custom_error(
           "PermissionDenied",
-          "Can't extend current permissions",
+          "Can't escalate parent thread permissions",
         )),
       },
       None => Ok(*target),
@@ -153,7 +153,7 @@ fn merge_net_permissions(
       //Throw
       PermissionState::Granted => Err(custom_error(
         "PermissionDenied",
-        "Can't extend current permissions",
+        "Can't escalate parent thread permissions",
       )),
       //Merge
       PermissionState::Prompt => {
@@ -169,7 +169,7 @@ fn merge_net_permissions(
         } else {
           Err(custom_error(
             "PermissionDenied",
-            "Can't extend current permissions",
+            "Can't escalate parent thread permissions",
           ))
         }
       }
@@ -188,7 +188,7 @@ fn merge_net_permissions(
       }),
       _ => Err(custom_error(
         "PermissionDenied",
-        "Can't extend current permissions",
+        "Can't escalate parent thread permissions",
       )),
     },
   }
@@ -238,7 +238,7 @@ fn merge_read_write_permissions(
       //Throw
       PermissionState::Granted => Err(custom_error(
         "PermissionDenied",
-        "Can't extend current permissions",
+        "Can't escalate parent thread permissions",
       )),
       //Merge
       PermissionState::Prompt => {
@@ -260,7 +260,7 @@ fn merge_read_write_permissions(
         } else {
           Err(custom_error(
             "PermissionDenied",
-            "Can't extend current permissions",
+            "Can't escalate parent thread permissions",
           ))
         }
       }
@@ -279,7 +279,7 @@ fn merge_read_write_permissions(
       }),
       _ => Err(custom_error(
         "PermissionDenied",
-        "Can't extend current permissions",
+        "Can't escalate parent thread permissions",
       )),
     },
   }

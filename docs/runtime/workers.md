@@ -130,7 +130,7 @@ the Worker API. You can find a more detailed description of each of the
 permission options [here](../getting_started/permissions.md).
 
 By default a worker will inherit permissions from the thread it was created in,
-however in order to allow users to limit the access of this workers we provide
+however in order to allow users to limit the access of this worker we provide
 the `deno.permissions` option in the worker API.
 
 - For permissions that support granular access you can pass in a list of the
@@ -151,6 +151,26 @@ the `deno.permissions` option in the worker API.
           new URL("./file_2.txt", import.meta.url),
         ],
         write: false,
+      ],
+    },
+  });
+  ```
+
+- Granular access permissions receive both absolute and relative routes as
+  arguments, however take into account that relative routes will be resolved
+  relative to the file the worker is instantiated in, not the path the worker
+  file is currently in
+
+  ```ts
+  const worker = new Worker(new URL("./worker/worker.js", import.meta.url).href, {
+    type: "module",
+    deno: {
+      namespace: true,
+      permissions: [
+        read: [
+          "/home/user/Documents/deno/worker/file_1.txt",
+          "./worker/file_2.txt",
+        ],
       ],
     },
   });

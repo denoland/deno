@@ -667,7 +667,7 @@ declare class Worker extends EventTarget {
        * available to worker thread. The namespace is disabled by default.
        * 
        * Configure deno.permissions options to change the level of access the worker will
-       * have. By default it will inherit the permissions of it's parent thread. The permissions
+       * have. By default it will inherit the permissions of its parent thread. The permissions
        * of a worker can't be extended beyond its parent's permissions reach.
        * - "inherit" will take the permissions of the thread the worker is created in
        * - You can disable/enable permissions all together by passing a boolean
@@ -715,7 +715,7 @@ declare class Worker extends EventTarget {
        * hello world2
        *
        */
-      // TODO
+      // TODO(Soremwar)
       // `deno: true` is kept for backwards compatibility with the previous worker
       // options implementation. Remove for 2.0
       deno?: true | {

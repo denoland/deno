@@ -2,7 +2,12 @@
 
 // Requires to be run with `--allow-net` flag
 
-import { assert, assertEquals, fail } from "../../std/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  fail,
+} from "../../std/testing/asserts.ts";
 import { deferred } from "../../std/async/deferred.ts";
 
 Deno.test({
@@ -565,28 +570,25 @@ Deno.test("Nested worker limit children permissions granularly", async function 
 
 // This test relies on env permissions not being granted on main thread
 Deno.test("Worker initialization throws on worker permissions greater than parent thread permissions", function () {
-  let errorThrown = false;
-  try {
-    const worker = new Worker(
-      new URL("./workers/deno_worker.ts", import.meta.url).href,
-      {
-        type: "module",
-        deno: {
-          namespace: true,
-          permissions: {
-            env: true,
+  assertThrows(
+    () => {
+      const worker = new Worker(
+        new URL("./workers/deno_worker.ts", import.meta.url).href,
+        {
+          type: "module",
+          deno: {
+            namespace: true,
+            permissions: {
+              env: true,
+            },
           },
         },
-      },
-    );
-    worker.terminate();
-  } catch (error) {
-    errorThrown = true;
-    if (!(error instanceof Deno.errors.PermissionDenied)) {
-      fail(`Unexpected error: ${error}`);
-    }
-  }
-  assert(errorThrown);
+      );
+      worker.terminate();
+    },
+    Deno.errors.PermissionDenied,
+    "Can't escalate parent thread permissions",
+  );
 });
 
 Deno.test("Worker with disabled permissions", async function () {
