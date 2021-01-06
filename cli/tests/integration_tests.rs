@@ -3483,7 +3483,7 @@ itest!(inline_js_source_map_with_contents_from_graph {
 
 // no_asmjs.out is intentionally an empty file
 itest!(no_asmjs {
-  args: "run no_asmjs.ts",
+  args: "run --quiet no_asmjs.ts",
   output: "no_asmjs.out",
 });
 
