@@ -100,7 +100,10 @@ fn create_web_worker_callback(
       || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
+    let module_loader = CliModuleLoader::new_for_worker(
+      program_state.clone(),
+      args.parent_permissions.clone(),
+    );
     let create_web_worker_cb =
       create_web_worker_callback(program_state.clone());
 
