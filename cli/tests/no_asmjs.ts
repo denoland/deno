@@ -3,7 +3,7 @@
 // that are non-existent in the source
 // code, e.g.: JS/TS
 
-const asm_js_module = function () {
+const asmJsModule = function () {
   "use asm";
 
   type f64 = number;
