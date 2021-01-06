@@ -1055,10 +1055,12 @@ async fn test_command(
       let main_module_url = main_module.as_url().to_owned();
       exclude.push(main_module_url);
       tools::coverage::report_coverages(
+        program_state.clone(),
         &coverage_collector.dir,
         quiet,
         exclude,
-      )?;
+      )
+      .await?;
     }
   }
 
