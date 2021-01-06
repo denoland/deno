@@ -25,7 +25,7 @@ pub struct CliModuleLoader {
   /// The initial set of permissions used to resolve the imports in the worker.
   /// They are decoupled from the worker permissions since read access errors
   /// must be raised based on the parent thread permissions
-  pub initial_permissions: Option<Permissions>,
+  pub initial_permissions: Rc<RefCell<Option<Permissions>>>,
   pub program_state: Arc<ProgramState>,
 }
 
@@ -42,7 +42,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map,
       lib,
-      initial_permissions: None,
+      initial_permissions: Rc::new(RefCell::new(None)),
       program_state,
     })
   }
@@ -60,7 +60,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: None,
       lib,
-      initial_permissions: Some(permissions),
+      initial_permissions: Rc::new(RefCell::new(Some(permissions))),
       program_state,
     })
   }
@@ -128,10 +128,12 @@ impl ModuleLoader for CliModuleLoader {
 
     // The permissions that should be applied to any dynamically imported module
     let dynamic_permissions =
-      if let Some(permissions) = self.initial_permissions.as_ref().take() {
-        permissions.clone()
+      // If there are initial permissions assigned to the loader take them 
+      // and use only once for top level module load.
+      // Otherwise use permissions assigned to the current worker.
+      if let Some(permissions) = self.initial_permissions.borrow_mut().take() {
+        permissions
       } else {
-        //Thread assigned permissions
         state.borrow::<Permissions>().clone()
       };
 
