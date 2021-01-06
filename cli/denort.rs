@@ -18,9 +18,8 @@ fn main() {
     std::process::exit(1);
   }
 
-  // TODO (yos1p) Specify better error message
   eprintln!(
-    "{}: Runtime Error.",
+    "{}: This executable is used internally by 'deno compile', it is not meant to be invoked directly.",
     deno_runtime::colors::red_bold("error")
   );
   std::process::exit(1);
