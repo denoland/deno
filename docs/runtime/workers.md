@@ -241,7 +241,7 @@ the `deno.permissions` option in the worker API.
     type: "module",
     deno: {
       namespace: true,
-      permissions: false,
+      permissions: "none",
     },
   });
   ```

@@ -600,7 +600,7 @@ Deno.test("Worker with disabled permissions", async function () {
       type: "module",
       deno: {
         namespace: true,
-        permissions: false,
+        permissions: "none",
       },
     },
   );

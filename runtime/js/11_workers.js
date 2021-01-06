@@ -152,9 +152,9 @@
             : deno?.permissions,
         };
 
-        // If the permission option is set to false, all permissions
+        // If the permission option is set to "none", all permissions
         // must be removed from the worker
-        if (workerDenoAttributes.permissions === false) {
+        if (workerDenoAttributes.permissions === "none") {
           workerDenoAttributes.permissions = {
             env: false,
             hrtime: false,
