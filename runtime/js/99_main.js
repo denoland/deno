@@ -242,6 +242,11 @@ delete Object.prototype.__proto__;
     setTimeout: util.writable(timers.setTimeout),
   };
 
+  // The console seems to be the only one that should be writable and non-enumerable
+  // thus we don't have a unique helper for it. If other properties follow the same
+  // structure, it might be worth it to define a helper in `util`
+  windowOrWorkerGlobalScope.console.enumerable = false;
+
   const mainRuntimeGlobalProperties = {
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),

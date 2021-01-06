@@ -181,27 +181,9 @@
     "user_timing_exists"
   ],
   "console": [
-    {
-      "name": "console-is-a-namespace",
-      "expectFail": [
-        // TODO(???) console is enumerable when it shouldn't be.
-        "console has the right property descriptors"
-      ]
-    },
+    "console-is-a-namespace",
     "console-label-conversion",
-    {
-      "name": "console-namespace-object-class-string",
-      "expectFail": [
-        // TODO(???): Symbol(Symbol.toStringTag) is missing on the console object
-        "@@toStringTag exists on the namespace object with the appropriate descriptor",
-        // TODO(???): doing `toString` on console should return [object console], instead returns [object Object]
-        "Object.prototype.toString applied to the namespace object",
-        // TODO(???): This fails due to precondition and Symbol.toStringTag not existing, the test itself doesn't even run
-        "Object.prototype.toString applied after modifying the namespace object's @@toStringTag",
-        // TODO(???): This fails due to precondition and Symbol.toStringTag not existing, the test itself doesn't even run
-        "Object.prototype.toString applied after deleting @@toStringTag"
-      ]
-    },
+    "console-namespace-object-class-string",
     "console-tests-historical",
   ]
 }
