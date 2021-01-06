@@ -274,7 +274,7 @@
   }
 
   const { console } = globalThis;
-  const OriginalDate = Date;
+  const OriginalDateNow = Date.now;
 
   // Timeout values > TIMEOUT_MAX are set to 1.
   const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -333,7 +333,7 @@
   }
 
   function prepareReadyTimers() {
-    const now = OriginalDate.now();
+    const now = OriginalDateNow();
     // Bail out if we're not expecting the global timer to fire.
     if (globalTimeoutDue === null || pendingEvents > 0) {
       return;
@@ -409,7 +409,7 @@
         const nextDueNode = dueTree.min();
         setOrClearGlobalTimeout(
           nextDueNode && nextDueNode.due,
-          OriginalDate.now(),
+          OriginalDateNow(),
         );
       }
     } else {
@@ -434,25 +434,23 @@
     } else {
       // Interval timer: compute when timer was supposed to fire next.
       // However make sure to never schedule the next interval in the past.
-      const now = OriginalDate.now();
+      const now = OriginalDateNow();
       timer.due = Math.max(now, timer.due + timer.delay);
       schedule(timer, now);
     }
     // Call the user callback. Intermediate assignment is to avoid leaking `this`
     // to it, while also keeping the stack trace neat when it shows up in there.
     const callback = timer.callback;
-    callback();
+    if ("function" === typeof callback) {
+      callback();
+    } else {
+      eval(callback);
+    }
   }
 
   function checkThis(thisArg) {
     if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
       throw new TypeError("Illegal invocation");
-    }
-  }
-
-  function checkBigInt(n) {
-    if (typeof n === "bigint") {
-      throw new TypeError("Cannot convert a BigInt value to a number");
     }
   }
 
@@ -462,12 +460,20 @@
     args,
     repeat,
   ) {
-    // Bind `args` to the callback and bind `this` to globalThis(global).
-    const callback = cb.bind(globalThis, ...args);
+    // If the callack is a function, bind `args` to the callback and bind `this` to globalThis(global).
+    // otherwise call `String` on it, and `eval` it on calls; do not pass variardic args to the string
+    let callback;
+
+    if ("function" === typeof cb) {
+      callback = Function.prototype.bind.call(cb, globalThis, ...args);
+    } else {
+      callback = String(cb);
+      args = []; // args are ignored
+    }
     // In the browser, the delay value must be coercible to an integer between 0
     // and INT32_MAX. Any other value will cause the timer to fire immediately.
     // We emulate this behavior.
-    const now = OriginalDate.now();
+    const now = OriginalDateNow();
     if (delay > TIMEOUT_MAX) {
       console.warn(
         `${delay} does not fit into` +
@@ -500,7 +506,7 @@
     delay = 0,
     ...args
   ) {
-    checkBigInt(delay);
+    delay >>>= 0;
     checkThis(this);
     return setTimer(cb, delay, args, false);
   }
@@ -510,13 +516,13 @@
     delay = 0,
     ...args
   ) {
-    checkBigInt(delay);
+    delay >>>= 0;
     checkThis(this);
     return setTimer(cb, delay, args, true);
   }
 
   function clearTimer(id) {
-    id = Number(id);
+    id >>>= 0;
     const timer = idMap.get(id);
     if (timer === undefined) {
       // Timer doesn't exist any more or never existed. This is not an error.
@@ -528,7 +534,7 @@
   }
 
   function clearTimeout(id = 0) {
-    checkBigInt(id);
+    id >>>= 0;
     if (id === 0) {
       return;
     }
@@ -536,7 +542,7 @@
   }
 
   function clearInterval(id = 0) {
-    checkBigInt(id);
+    id >>>= 0;
     if (id === 0) {
       return;
     }

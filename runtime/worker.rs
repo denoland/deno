@@ -143,8 +143,8 @@ impl MainWorker {
       ops::tty::init(js_runtime);
       ops::websocket::init(
         js_runtime,
-        options.ca_data.clone(),
         options.user_agent.clone(),
+        options.ca_data.clone(),
       );
     }
     {
