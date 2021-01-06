@@ -252,7 +252,7 @@ impl ProgramState {
     match url.scheme() {
       // we should only be looking for emits for schemes that denote external
       // modules, which the disk_cache supports
-      "wasm" | "file" | "http" | "https" => (),
+      "wasm" | "file" | "http" | "https" | "data" => (),
       _ => {
         return None;
       }
@@ -300,24 +300,10 @@ impl SourceMapGetter for ProgramState {
           maybe_map
         } else {
           let code = String::from_utf8(code).unwrap();
-          let lines: Vec<&str> = code.split('\n').collect();
-          if let Some(last_line) = lines.last() {
-            if last_line
-              .starts_with("//# sourceMappingURL=data:application/json;base64,")
-            {
-              let input = last_line.trim_start_matches(
-                "//# sourceMappingURL=data:application/json;base64,",
-              );
-              let decoded_map = base64::decode(input)
-                .expect("Unable to decode source map from emitted file.");
-              Some(decoded_map)
-            } else {
-              None
-            }
-          } else {
-            None
-          }
+          source_map_from_code(code)
         }
+      } else if let Ok(source) = self.load(specifier, None) {
+        source_map_from_code(source.code)
       } else {
         None
       }
@@ -342,6 +328,26 @@ impl SourceMapGetter for ProgramState {
     } else {
       None
     }
+  }
+}
+
+fn source_map_from_code(code: String) -> Option<Vec<u8>> {
+  let lines: Vec<&str> = code.split('\n').collect();
+  if let Some(last_line) = lines.last() {
+    if last_line
+      .starts_with("//# sourceMappingURL=data:application/json;base64,")
+    {
+      let input = last_line.trim_start_matches(
+        "//# sourceMappingURL=data:application/json;base64,",
+      );
+      let decoded_map = base64::decode(input)
+        .expect("Unable to decode source map from emitted file.");
+      Some(decoded_map)
+    } else {
+      None
+    }
+  } else {
+    None
   }
 }
 

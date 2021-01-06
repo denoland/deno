@@ -83,6 +83,10 @@ pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
 }
 
+pub fn wpt_path() -> PathBuf {
+  root_path().join("test_util").join("wpt")
+}
+
 pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
@@ -90,7 +94,6 @@ pub fn third_party_path() -> PathBuf {
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  println!("target_dir {}", target_dir.display());
   target_dir.into()
 }
 
