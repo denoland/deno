@@ -214,14 +214,12 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
     let json = fs::read_to_string(entry.unwrap().path())?;
     let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
 
-    let existing_coverage = coverages
-      .iter_mut()
-      .find(|x| x.url == new_coverage.url);
+    let existing_coverage =
+      coverages.iter_mut().find(|x| x.url == new_coverage.url);
 
     if let Some(existing_coverage) = existing_coverage {
       for new_function in new_coverage.functions {
         let existing_function = existing_coverage
-          
           .functions
           .iter_mut()
           .find(|x| x.function_name == new_function.function_name);
@@ -241,9 +239,7 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
             }
           }
         } else {
-          existing_coverage
-            .functions
-            .push(new_function);
+          existing_coverage.functions.push(new_function);
         }
       }
     } else {
