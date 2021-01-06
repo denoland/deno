@@ -135,13 +135,49 @@
         "Encoding argument supported for decode: UTF-16LE",
         "Encoding argument supported for decode: x-user-defined"
       ]
-    },
+    }
     // TODO(lucacasonato): enable when we support utf-16
     // "textencoder-utf16-surrogates",
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "unsupported-encodings",
   ],
-  "dom": [
-    "abort/event"
+  "dom": ["abort/event"],
+  "hr-time": ["monotonic-clock"],
+  "html": [
+    "webappapis/microtask-queuing/queue-microtask-exceptions.any",
+    "webappapis/microtask-queuing/queue-microtask.any"
+  ],
+  "user-timing": [
+    "clear_all_marks",
+    "clear_all_measures",
+    "clear_non_existent_mark",
+    "clear_non_existent_measure",
+    "clear_one_mark",
+    "clear_one_measure",
+    "entry_type",
+    "mark-entry-constructor",
+    "mark-errors",
+    "mark-measure-return-objects",
+    "mark.any",
+    {
+      "name": "measure_syntax_err",
+      "expectFail": [
+        // TODO(lucacasonato): re-enable when #9009 is fixed.
+        "self.performance.measure(\"measure\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
+        "self.performance.measure(\"measure\", \"mark\", \"existing_mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
+        "self.performance.measure(\"measure\", \"existing_mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
+        "self.performance.measure(\"measure\", \"mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception."
+      ]
+    },
+    "measure-l3",
+    {
+      "name": "structured-serialize-detail",
+      "expectFail": [
+        // TODO(lucacasonato): re-enable when we use real structured clone.
+        "Mark: Throw an exception when the detail property cannot be structured-serialized.",
+        "Measure: Throw an exception when the detail property cannot be structured-serialized."
+      ]
+    },
+    "user_timing_exists"
   ]
 }

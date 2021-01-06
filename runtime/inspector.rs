@@ -23,6 +23,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::v8;
+use deno_websocket::tokio_tungstenite::tungstenite;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::replace;
@@ -40,7 +41,6 @@ use std::sync::Mutex;
 use std::thread;
 use std::{cell::BorrowMutError, convert::Infallible};
 use std::{cell::RefCell, rc::Rc};
-use tokio_tungstenite::tungstenite;
 use uuid::Uuid;
 
 pub struct InspectorServer {
@@ -185,12 +185,13 @@ fn handle_ws_request(
     if resp.is_ok() {
       tokio::task::spawn_local(async move {
         let upgraded = body.on_upgrade().await.unwrap();
-        let websocket = tokio_tungstenite::WebSocketStream::from_raw_socket(
-          upgraded,
-          tungstenite::protocol::Role::Server,
-          None,
-        )
-        .await;
+        let websocket =
+          deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
+            upgraded,
+            tungstenite::protocol::Role::Server,
+            None,
+          )
+          .await;
         let (proxy, pump) = create_websocket_proxy(websocket);
 
         let _ = new_websocket_tx.unbounded_send(proxy);
@@ -353,7 +354,9 @@ impl WebSocketProxy {
 /// be used to send/receive messages on the websocket, and the second element
 /// is a future that does the forwarding.
 fn create_websocket_proxy(
-  websocket: tokio_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
+  websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
+    hyper::upgrade::Upgraded,
+  >,
 ) -> (WebSocketProxy, impl Future<Output = ()> + Send) {
   // The 'outbound' channel carries messages sent to the websocket.
   let (outbound_tx, outbound_rx) = mpsc::unbounded();

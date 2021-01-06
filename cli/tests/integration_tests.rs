@@ -4,6 +4,7 @@ use deno_core::futures::prelude::*;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::path::PathBuf;
@@ -3410,6 +3411,39 @@ itest!(deno_doc {
 itest!(deno_doc_import_map {
   args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
   output: "doc/use_import_map.out",
+});
+
+itest!(import_data_url_error_stack {
+  args: "run --quiet --reload import_data_url_error_stack.ts",
+  output: "import_data_url_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_import_relative {
+  args: "run --quiet --reload import_data_url_import_relative.ts",
+  output: "import_data_url_import_relative.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_imports {
+  args: "run --quiet --reload import_data_url_imports.ts",
+  output: "import_data_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(import_data_url_jsx {
+  args: "run --quiet --reload import_data_url_jsx.ts",
+  output: "import_data_url_jsx.ts.out",
+});
+
+itest!(import_data_url {
+  args: "run --quiet --reload import_data_url.ts",
+  output: "import_data_url.ts.out",
+});
+
+itest!(import_dynamic_data_url {
+  args: "run --quiet --reload import_dynamic_data_url.ts",
+  output: "import_dynamic_data_url.ts.out",
 });
 
 itest!(import_file_with_colon {

@@ -252,7 +252,7 @@ impl ProgramState {
     match url.scheme() {
       // we should only be looking for emits for schemes that denote external
       // modules, which the disk_cache supports
-      "wasm" | "file" | "http" | "https" => (),
+      "wasm" | "file" | "http" | "https" | "data" => (),
       _ => {
         return None;
       }

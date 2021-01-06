@@ -25,7 +25,6 @@ mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
-mod js;
 mod lockfile;
 mod lsp;
 mod media_type;
@@ -276,16 +275,17 @@ fn print_cache_info(
 
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}",
-    crate::js::DENO_NS_LIB,
-    crate::js::DENO_WEB_LIB,
-    crate::js::DENO_FETCH_LIB,
-    crate::js::SHARED_GLOBALS_LIB,
-    crate::js::WINDOW_LIB,
+    "{}\n{}\n{}\n{}\n{}\n{}",
+    crate::tsc::DENO_NS_LIB,
+    crate::tsc::DENO_WEB_LIB,
+    crate::tsc::DENO_FETCH_LIB,
+    crate::tsc::DENO_WEBSOCKET_LIB,
+    crate::tsc::SHARED_GLOBALS_LIB,
+    crate::tsc::WINDOW_LIB,
   );
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::js::UNSTABLE_NS_LIB,));
+    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
   }
 
   types

@@ -580,16 +580,16 @@ impl Permissions {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let url = specifier.as_url();
-    if url.scheme() == "file" {
-      match url.to_file_path() {
+    match url.scheme() {
+      "file" => match url.to_file_path() {
         Ok(path) => self.check_read(&path),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {}",
           specifier
         ))),
-      }
-    } else {
-      self.check_net_url(url)
+      },
+      "data" => Ok(()),
+      _ => self.check_net_url(url),
     }
   }
 
@@ -625,6 +625,12 @@ impl deno_fetch::FetchPermissions for Permissions {
 
   fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
     Permissions::check_read(self, p)
+  }
+}
+
+impl deno_websocket::WebSocketPermissions for Permissions {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    Permissions::check_net_url(self, url)
   }
 }
 
@@ -919,6 +925,13 @@ mod tests {
         ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
           .unwrap(),
         false,
+      ),
+      (
+        ModuleSpecifier::resolve_url_or_path(
+          "data:text/plain,Hello%2C%20Deno!",
+        )
+        .unwrap(),
+        true,
       ),
     ];
 
