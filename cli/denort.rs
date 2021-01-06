@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
-
 mod flags_rt;
 mod rt;
 mod version;
@@ -19,4 +17,11 @@ fn main() {
     );
     std::process::exit(1);
   }
+
+  // TODO (yos1p) Specify better error message
+  eprintln!(
+    "{}: Runtime Error.",
+    deno_runtime::colors::red_bold("error")
+  ); 
+  std::process::exit(1);
 }

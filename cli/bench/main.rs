@@ -205,7 +205,7 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
   // add up size for denort
   sizes.insert(
     "denort".to_string(),
-    Value::Number(Number::from(test_util::denort_exe_path().metadata()?.len()))
+    Value::Number(Number::from(test_util::denort_exe_path().metadata()?.len())),
   );
 
   // add up size for everything in target/release/deps/libswc*
