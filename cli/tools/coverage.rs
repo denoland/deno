@@ -152,7 +152,7 @@ impl PrettyCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
   ) {
-    let lines = script_source.lines().collect::<Vec<_>>();
+    let lines = script_source.split('\n').collect::<Vec<_>>();
 
     let mut covered_lines: Vec<usize> = Vec::new();
     let mut uncovered_lines: Vec<usize> = Vec::new();
@@ -162,27 +162,47 @@ impl PrettyCoverageReporter {
       let line_end_offset = line_start_offset + line.len();
 
       let mut count = 0;
+
+      // Count the hits of ranges that include the entire line which will always be at-least one
+      // as long as the code has been evaluated.
       for function in &script_coverage.functions {
         for range in &function.ranges {
           if range.start_offset <= line_start_offset
             && range.end_offset >= line_end_offset
           {
-            if range.count == 0 {
-              count = 0;
-              break;
-            }
-
             count += range.count;
           }
         }
-
-        line_start_offset = line_end_offset;
       }
+
+      // Reset the count if any block intersects with the current line has a count of
+      // zero.
+      //
+      // We check for intersection instead of inclusion here because a block may be anywhere
+      // inside a line.
+      for function in &script_coverage.functions {
+        for range in &function.ranges {
+          if range.count > 0 {
+            continue;
+          }
+
+          if (range.start_offset < line_start_offset
+            && range.end_offset > line_start_offset)
+            || (range.start_offset < line_end_offset
+              && range.end_offset > line_end_offset)
+          {
+            count = 0;
+          }
+        }
+      }
+
       if count > 0 {
         covered_lines.push(index);
       } else {
         uncovered_lines.push(index);
       }
+
+      line_start_offset += line.len() + 1;
     }
 
     if !self.quiet {
