@@ -22,6 +22,6 @@ fn main() {
   eprintln!(
     "{}: Runtime Error.",
     deno_runtime::colors::red_bold("error")
-  ); 
+  );
   std::process::exit(1);
 }
