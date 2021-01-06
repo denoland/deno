@@ -81,7 +81,6 @@ pub struct JsRuntime {
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
-  needs_init: bool,
   allocations: IsolateAllocations,
 }
 
@@ -202,6 +201,8 @@ impl JsRuntime {
       unsafe { v8_init() };
     });
 
+    let has_startup_snapshot = options.startup_snapshot.is_some();
+
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
@@ -257,7 +258,7 @@ impl JsRuntime {
     let js_error_create_fn = options
       .js_error_create_fn
       .unwrap_or_else(|| Rc::new(JsError::create));
-    let mut op_state = OpState::default();
+    let mut op_state = OpState::new();
 
     if let Some(get_error_class_fn) = options.get_error_class_fn {
       op_state.get_error_class_fn = get_error_class_fn;
@@ -285,13 +286,22 @@ impl JsRuntime {
       waker: AtomicWaker::new(),
     })));
 
-    Self {
+    let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
-      needs_init: true,
       allocations: IsolateAllocations::default(),
+    };
+
+    if !has_startup_snapshot {
+      js_runtime.js_init();
     }
+
+    if !options.will_snapshot {
+      js_runtime.shared_queue_init();
+    }
+
+    js_runtime
   }
 
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
@@ -321,17 +331,29 @@ impl JsRuntime {
     s.clone()
   }
 
-  /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn shared_init(&mut self) {
-    if self.needs_init {
-      self.needs_init = false;
-      self
-        .execute("deno:core/core.js", include_str!("core.js"))
-        .unwrap();
-      self
-        .execute("deno:core/error.js", include_str!("error.js"))
-        .unwrap();
-    }
+  /// Executes a JavaScript code to provide Deno.core and error reporting.
+  ///
+  /// This function can be called during snapshotting.
+  fn js_init(&mut self) {
+    self
+      .execute("deno:core/core.js", include_str!("core.js"))
+      .unwrap();
+    self
+      .execute("deno:core/error.js", include_str!("error.js"))
+      .unwrap();
+  }
+
+  /// Executes a JavaScript code to initialize shared queue binding
+  /// between Rust and JS.
+  ///
+  /// This function mustn't be called during snapshotting.
+  fn shared_queue_init(&mut self) {
+    self
+      .execute(
+        "deno:core/shared_queue_init.js",
+        "Deno.core.sharedQueueInit()",
+      )
+      .unwrap();
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -355,8 +377,6 @@ impl JsRuntime {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), AnyError> {
-    self.shared_init();
-
     let context = self.global_context();
 
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
@@ -481,8 +501,6 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    self.shared_init();
-
     let state_rc = Self::state(self.v8_isolate());
     {
       let state = state_rc.borrow();
@@ -739,8 +757,6 @@ impl JsRuntime {
     load_id: ModuleLoadId,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    self.shared_init();
-
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
     let context1 = self.global_context();
@@ -826,8 +842,6 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> mpsc::Receiver<Result<(), AnyError>> {
-    self.shared_init();
-
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
@@ -1275,7 +1289,6 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
-    self.shared_init();
     let loader = {
       let state_rc = Self::state(self.v8_isolate());
       let state = state_rc.borrow();

@@ -29,9 +29,16 @@ export function yellow(str) {
 
 const testResults = [];
 const testsExpectFail = JSON.parse(Deno.args[0]);
+function shouldExpectFail(name) {
+  if (testsExpectFail.includes(name)) return true;
+  for (const expectFail of testsExpectFail) {
+    if (name.startsWith(expectFail)) return true;
+  }
+  return false;
+}
 
 window.add_result_callback(({ message, name, stack, status }) => {
-  const expectFail = testsExpectFail.includes(name);
+  const expectFail = shouldExpectFail(name);
   let simpleMessage = `test ${name} ... `;
   switch (status) {
     case 0:

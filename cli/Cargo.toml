@@ -23,6 +23,7 @@ path = "./bench/main.rs"
 deno_core = { path = "../core", version = "0.75.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.18.0" }
 deno_web = { path = "../op_crates/web", version = "0.26.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.1.0" }
 regex = "1.3.9"
 serde = { version = "1.0.116", features = ["derive"] }
 
@@ -32,8 +33,8 @@ winapi = "0.3.9"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.75.0" }
-deno_doc = "0.1.19"
-deno_lint = "0.2.14"
+deno_doc = "0.1.20"
+deno_lint = "0.2.15"
 deno_runtime = { path = "../runtime", version = "0.5.0" }
 
 atty = "0.2.14"
@@ -41,7 +42,7 @@ base64 = "0.12.3"
 byteorder = "1.3.4"
 clap = "2.33.3"
 dissimilar = "1.0.2"
-dprint-plugin-typescript = "0.37.0"
+dprint-plugin-typescript = "0.38.1"
 encoding_rs = "0.8.24"
 env_logger = "0.7.1"
 filetime = "0.2.12"
@@ -62,9 +63,9 @@ semver-parser = "0.9.0"
 serde = { version = "1.0.116", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_bundler = "0.18.2"
+swc_bundler = "0.19.1"
 swc_common = { version = "0.10.8", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.16.1", features = ["codegen", "dep_graph", "parser", "react", "transforms", "visit"] }
+swc_ecmascript = { version = "0.17.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
@@ -84,7 +85,6 @@ nix = "0.19.0"
 chrono = "0.4.15"
 os_pipe = "0.9.2"
 test_util = { path = "../test_util" }
-tokio-tungstenite = "0.11.0"
 tower-test = "0.3.0"
 
 [target.'cfg(unix)'.dev-dependencies]

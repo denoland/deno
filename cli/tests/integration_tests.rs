@@ -4,6 +4,7 @@ use deno_core::futures::prelude::*;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::path::PathBuf;
@@ -3407,6 +3408,39 @@ itest!(deno_doc_import_map {
   output: "doc/use_import_map.out",
 });
 
+itest!(import_data_url_error_stack {
+  args: "run --quiet --reload import_data_url_error_stack.ts",
+  output: "import_data_url_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_import_relative {
+  args: "run --quiet --reload import_data_url_import_relative.ts",
+  output: "import_data_url_import_relative.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_imports {
+  args: "run --quiet --reload import_data_url_imports.ts",
+  output: "import_data_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(import_data_url_jsx {
+  args: "run --quiet --reload import_data_url_jsx.ts",
+  output: "import_data_url_jsx.ts.out",
+});
+
+itest!(import_data_url {
+  args: "run --quiet --reload import_data_url.ts",
+  output: "import_data_url.ts.out",
+});
+
+itest!(import_dynamic_data_url {
+  args: "run --quiet --reload import_dynamic_data_url.ts",
+  output: "import_dynamic_data_url.ts.out",
+});
+
 itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
@@ -3439,6 +3473,41 @@ itest!(ignore_require {
 itest!(local_sources_not_cached_in_memory {
   args: "run --allow-read --allow-write no_mem_cache.js",
   output: "no_mem_cache.js.out",
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line is not remapped because no inline source contents are included in
+// the sourcemap and the file is not present in the dependency graph.
+itest!(inline_js_source_map_2 {
+  args: "run --quiet inline_js_source_map_2.js",
+  output: "inline_js_source_map_2.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line remapped using th inline source contents that are included in the
+// inline source map.
+itest!(inline_js_source_map_2_with_inline_contents {
+  args: "run --quiet inline_js_source_map_2_with_inline_contents.js",
+  output: "inline_js_source_map_2_with_inline_contents.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, and is loaded into the module
+// graph because of a direct import statement (inline_js_source_map.ts). The
+// source map was generated from an earlier version of this file, where the throw
+// was not commented out. The source line is remapped using source contents that
+// from the module graph.
+itest!(inline_js_source_map_with_contents_from_graph {
+  args: "run --quiet inline_js_source_map_with_contents_from_graph.js",
+  output: "inline_js_source_map_with_contents_from_graph.js.out",
+  exit_code: 1,
+  http_server: true,
 });
 
 #[test]
@@ -4914,11 +4983,15 @@ fn standalone_runtime_flags() {
     .contains("PermissionDenied: write access"));
 }
 
-fn concat_bundle(files: Vec<(PathBuf, String)>, bundle_path: &Path) -> String {
+fn concat_bundle(
+  files: Vec<(PathBuf, String)>,
+  bundle_path: &Path,
+  init: String,
+) -> String {
   let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
 
-  let mut bundle = String::new();
-  let mut bundle_line_count = 0;
+  let mut bundle = init.clone();
+  let mut bundle_line_count = init.lines().count() as u32;
   let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
 
   for (path, text) in files {
@@ -4958,6 +5031,35 @@ fn concat_bundle(files: Vec<(PathBuf, String)>, bundle_path: &Path) -> String {
   bundle
 }
 
+// TODO(lucacasonato): DRY with tsc_config.rs
+/// Convert a jsonc libraries `JsonValue` to a serde `Value`.
+fn jsonc_to_serde(j: jsonc_parser::JsonValue) -> serde_json::Value {
+  use jsonc_parser::JsonValue;
+  use serde_json::Value;
+  use std::str::FromStr;
+  match j {
+    JsonValue::Array(arr) => {
+      let vec = arr.into_iter().map(jsonc_to_serde).collect();
+      Value::Array(vec)
+    }
+    JsonValue::Boolean(bool) => Value::Bool(bool),
+    JsonValue::Null => Value::Null,
+    JsonValue::Number(num) => {
+      let number =
+        serde_json::Number::from_str(&num).expect("could not parse number");
+      Value::Number(number)
+    }
+    JsonValue::Object(obj) => {
+      let mut map = serde_json::map::Map::new();
+      for (key, json_value) in obj.into_iter() {
+        map.insert(key, jsonc_to_serde(json_value));
+      }
+      Value::Object(map)
+    }
+    JsonValue::String(str) => Value::String(str),
+  }
+}
+
 #[test]
 fn web_platform_tests() {
   use deno_core::serde::Deserialize;
@@ -4974,9 +5076,10 @@ fn web_platform_tests() {
   }
 
   let text =
-    std::fs::read_to_string(util::tests_path().join("wpt.json")).unwrap();
+    std::fs::read_to_string(util::tests_path().join("wpt.jsonc")).unwrap();
+  let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
-    deno_core::serde_json::from_str(&text).unwrap();
+    deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
 
   for (suite_name, includes) in config.into_iter() {
     let suite_path = util::wpt_path().join(suite_name);
@@ -5032,10 +5135,8 @@ fn web_platform_tests() {
           };
           if s.starts_with('/') {
             util::wpt_path().join(format!(".{}", s))
-          } else if s.starts_with('.') {
-            test_file_path.parent().unwrap().join(s)
           } else {
-            PathBuf::from(s)
+            test_file_path.parent().unwrap().join(s)
           }
         })
         .map(|path| {
@@ -5044,40 +5145,56 @@ fn web_platform_tests() {
         })
         .collect();
 
-      let mut files = Vec::with_capacity(3 + imports.len());
-      files.push((testharness_path.clone(), testharness_text.clone()));
-      files.push((
-        testharnessreporter_path.clone(),
-        testharnessreporter_text.clone(),
-      ));
-      files.extend(imports);
-      files.push((test_file_path.clone(), test_file_text));
+      let mut variants: Vec<&str> = test_file_text
+        .split('\n')
+        .into_iter()
+        .filter_map(|t| t.strip_prefix("// META: variant="))
+        .collect();
 
-      let mut file = tempfile::Builder::new()
-        .prefix("wpt-bundle-")
-        .suffix(".js")
-        .rand_bytes(5)
-        .tempfile()
-        .unwrap();
-
-      let bundle = concat_bundle(files, file.path());
-      file.write_all(bundle.as_bytes()).unwrap();
-
-      let child = util::deno_cmd()
-        .current_dir(test_file_path.parent().unwrap())
-        .arg("run")
-        .arg("-A")
-        .arg(file.path())
-        .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-
-      let output = child.wait_with_output().unwrap();
-      if !output.status.success() {
-        file.keep().unwrap();
+      if variants.is_empty() {
+        variants.push("");
       }
-      assert!(output.status.success());
+
+      for variant in variants {
+        let mut files = Vec::with_capacity(3 + imports.len());
+        files.push((testharness_path.clone(), testharness_text.clone()));
+        files.push((
+          testharnessreporter_path.clone(),
+          testharnessreporter_text.clone(),
+        ));
+        files.extend(imports.clone());
+        files.push((test_file_path.clone(), test_file_text.clone()));
+
+        let mut file = tempfile::Builder::new()
+          .prefix("wpt-bundle-")
+          .suffix(".js")
+          .rand_bytes(5)
+          .tempfile()
+          .unwrap();
+
+        let bundle = concat_bundle(
+          files,
+          file.path(),
+          format!("window.location = {{search: \"{}\"}};\n", variant),
+        );
+        file.write_all(bundle.as_bytes()).unwrap();
+
+        let child = util::deno_cmd()
+          .current_dir(test_file_path.parent().unwrap())
+          .arg("run")
+          .arg("-A")
+          .arg(file.path())
+          .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
+          .stdin(std::process::Stdio::piped())
+          .spawn()
+          .unwrap();
+
+        let output = child.wait_with_output().unwrap();
+        if !output.status.success() {
+          file.keep().unwrap();
+        }
+        assert!(output.status.success());
+      }
     }
   }
 }
