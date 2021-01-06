@@ -628,6 +628,12 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
+impl deno_websocket::WebSocketPermissions for Permissions {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    Permissions::check_net_url(self, url)
+  }
+}
+
 /// Shows the permission prompt and returns the answer according to the user input.
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
