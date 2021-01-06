@@ -270,7 +270,7 @@ interface FileDescriptor {
   entries?: Deno.DirEntry[];
 }
 
-export class ExitStatus {
+class ExitStatus {
   code: number;
 
   constructor(code: number) {
@@ -1656,7 +1656,7 @@ export default class Context {
    * which will be used as the address space, if it does not an error will be
    * thrown.
    */
-  start(instance: WebAssembly.Instance) {
+  start(instance: WebAssembly.Instance): null | number | never {
     if (this.#started) {
       throw new Error("WebAssembly.Instance has already started");
     }
@@ -1683,7 +1683,17 @@ export default class Context {
       );
     }
 
-    _start();
+    try {
+      _start();
+    } catch (err) {
+      if (err instanceof ExitStatus) {
+        return err.code;
+      }
+
+      throw err;
+    }
+
+    return null;
   }
 
   /**

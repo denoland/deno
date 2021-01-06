@@ -305,7 +305,7 @@ impl SpecifierHandler for FetchHandler {
           }
         })?;
       let url = source_file.specifier.as_url();
-      let is_remote = url.scheme() != "file";
+      let is_remote = !(url.scheme() == "file" || url.scheme() == "data");
       let filename = disk_cache.get_cache_filename_with_extension(url, "meta");
       let maybe_version = if let Some(filename) = filename {
         if let Ok(bytes) = disk_cache.get(&filename) {

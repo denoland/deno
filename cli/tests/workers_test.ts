@@ -42,6 +42,27 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker from data url",
+  async fn() {
+    const promise = deferred();
+    const tsWorker = new Worker(
+      "data:application/typescript;base64,aWYgKHNlbGYubmFtZSAhPT0gInRzV29ya2VyIikgewogIHRocm93IEVycm9yKGBJbnZhbGlkIHdvcmtlciBuYW1lOiAke3NlbGYubmFtZX0sIGV4cGVjdGVkIHRzV29ya2VyYCk7Cn0KCm9ubWVzc2FnZSA9IGZ1bmN0aW9uIChlKTogdm9pZCB7CiAgcG9zdE1lc3NhZ2UoZS5kYXRhKTsKICBjbG9zZSgpOwp9Owo=",
+      { type: "module", name: "tsWorker" },
+    );
+
+    tsWorker.onmessage = (e): void => {
+      assertEquals(e.data, "Hello World");
+      promise.resolve();
+    };
+
+    tsWorker.postMessage("Hello World");
+
+    await promise;
+    tsWorker.terminate();
+  },
+});
+
+Deno.test({
   name: "worker nested",
   fn: async function (): Promise<void> {
     const promise = deferred();

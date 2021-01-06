@@ -82,6 +82,19 @@ fn get_maybe_hash(
   }
 }
 
+fn hash_data_url(
+  specifier: &ModuleSpecifier,
+  media_type: &MediaType,
+) -> String {
+  assert_eq!(
+    specifier.as_url().scheme(),
+    "data",
+    "Specifier must be a data: specifier."
+  );
+  let hash = crate::checksum::gen(&[specifier.as_url().path().as_bytes()]);
+  format!("data:///{}{}", hash, media_type.as_ts_extension())
+}
+
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
 /// and so we have to detect the apparent media type based on extensions it
 /// supports.
@@ -152,7 +165,9 @@ pub struct Response {
   pub stats: Stats,
 }
 
+#[derive(Debug)]
 struct State {
+  data_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
   graph: Arc<Mutex<Graph>>,
@@ -167,10 +182,12 @@ impl State {
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
+    data_url_map: HashMap<String, ModuleSpecifier>,
   ) -> Self {
     State {
+      data_url_map,
       hash_data,
-      emitted_files: Vec::new(),
+      emitted_files: Default::default(),
       graph,
       maybe_tsbuildinfo,
       maybe_response: None,
@@ -231,7 +248,9 @@ fn emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
         let specifiers = specifiers
           .iter()
           .map(|s| {
-            if let Some(remapped_specifier) = state.root_map.get(s) {
+            if let Some(data_specifier) = state.data_url_map.get(s) {
+              data_specifier.clone()
+            } else if let Some(remapped_specifier) = state.root_map.get(s) {
               remapped_specifier.clone()
             } else {
               ModuleSpecifier::resolve_url_or_path(s).unwrap()
@@ -278,12 +297,15 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     maybe_source
   } else {
     let graph = state.graph.lock().unwrap();
-    let specifier =
-      if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
-        remapped_specifier.clone()
-      } else {
-        specifier
-      };
+    let specifier = if let Some(data_specifier) =
+      state.data_url_map.get(&v.specifier)
+    {
+      data_specifier.clone()
+    } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
+      remapped_specifier.clone()
+    } else {
+      specifier
+    };
     let maybe_source = graph.get_source(&specifier);
     media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
       media_type
@@ -313,7 +335,9 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_resolve\".")?;
   let mut resolved: Vec<(String, String)> = Vec::new();
-  let referrer = if let Some(remapped_base) = state.root_map.get(&v.base) {
+  let referrer = if let Some(data_specifier) = state.data_url_map.get(&v.base) {
+    data_specifier.clone()
+  } else if let Some(remapped_base) = state.root_map.get(&v.base) {
     remapped_base.clone()
   } else {
     ModuleSpecifier::resolve_url_or_path(&v.base).context(
@@ -340,10 +364,18 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               resolved_specifier
             )
           };
-          resolved.push((
-            resolved_specifier.to_string(),
-            media_type.as_ts_extension(),
-          ));
+          let resolved_specifier_str = if resolved_specifier.as_url().scheme()
+            == "data"
+          {
+            let specifier_str = hash_data_url(&resolved_specifier, &media_type);
+            state
+              .data_url_map
+              .insert(specifier_str.clone(), resolved_specifier);
+            specifier_str
+          } else {
+            resolved_specifier.to_string()
+          };
+          resolved.push((resolved_specifier_str, media_type.as_ts_extension()));
         }
         // in certain situations, like certain dynamic imports, we won't have
         // the source file in the graph, so we will return a fake module to
@@ -384,17 +416,24 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   // extensions and remap any that are unacceptable to tsc and add them to the
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
+  let mut data_url_map = HashMap::new();
   let root_names: Vec<String> = request
     .root_names
     .iter()
     .map(|(s, mt)| {
-      let ext_media_type = get_tsc_media_type(s);
-      if mt != &ext_media_type {
-        let new_specifier = format!("{}{}", s, mt.as_ts_extension());
-        root_map.insert(new_specifier.clone(), s.clone());
-        new_specifier
+      if s.as_url().scheme() == "data" {
+        let specifier_str = hash_data_url(s, mt);
+        data_url_map.insert(specifier_str.clone(), s.clone());
+        specifier_str
       } else {
-        s.as_str().to_owned()
+        let ext_media_type = get_tsc_media_type(s);
+        if mt != &ext_media_type {
+          let new_specifier = format!("{}{}", s, mt.as_ts_extension());
+          root_map.insert(new_specifier.clone(), s.clone());
+          new_specifier
+        } else {
+          s.as_str().to_owned()
+        }
       }
     })
     .collect();
@@ -407,6 +446,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       request.hash_data.clone(),
       request.maybe_tsbuildinfo.clone(),
       root_map,
+      data_url_map,
     ));
   }
 
@@ -484,7 +524,13 @@ mod tests {
       .await
       .expect("module not inserted");
     let graph = Arc::new(Mutex::new(builder.get_graph()));
-    State::new(graph, hash_data, maybe_tsbuildinfo, HashMap::new())
+    State::new(
+      graph,
+      hash_data,
+      maybe_tsbuildinfo,
+      HashMap::new(),
+      HashMap::new(),
+    )
   }
 
   async fn test_exec(
@@ -557,6 +603,15 @@ mod tests {
       actual,
       json!({"hash": "ae92df8f104748768838916857a1623b6a3c593110131b0a00f81ad9dac16511"})
     );
+  }
+
+  #[test]
+  fn test_hash_data_url() {
+    let specifier = ModuleSpecifier::resolve_url(
+      "data:application/javascript,console.log(\"Hello%20Deno\");",
+    )
+    .unwrap();
+    assert_eq!(hash_data_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
   }
 
   #[test]

@@ -67,7 +67,7 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
-      "http" | "https" => out = url_to_filename(url),
+      "http" | "https" | "data" => out = url_to_filename(url),
       "file" => {
         let path = match url.to_file_path() {
           Ok(path) => path,
