@@ -417,6 +417,7 @@ dependencies = [
  "deno_lint",
  "deno_runtime",
  "deno_web",
+ "deno_websocket",
  "dissimilar",
  "dprint-plugin-typescript",
  "encoding_rs",
@@ -451,7 +452,6 @@ dependencies = [
  "test_util",
  "tokio 0.2.22",
  "tokio-rustls",
- "tokio-tungstenite",
  "tower-test",
  "uuid",
  "walkdir",
@@ -538,6 +538,7 @@ dependencies = [
  "deno_crypto",
  "deno_fetch",
  "deno_web",
+ "deno_websocket",
  "dlopen",
  "encoding_rs",
  "env_logger",
@@ -563,7 +564,6 @@ dependencies = [
  "test_util",
  "tokio 0.2.22",
  "tokio-rustls",
- "tokio-tungstenite",
  "uuid",
  "webpki",
  "webpki-roots",
@@ -579,6 +579,20 @@ dependencies = [
  "futures",
  "idna",
  "serde",
+]
+
+[[package]]
+name = "deno_websocket"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "http",
+ "serde",
+ "tokio 0.2.22",
+ "tokio-rustls",
+ "tokio-tungstenite",
+ "webpki",
+ "webpki-roots",
 ]
 
 [[package]]

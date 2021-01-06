@@ -4,6 +4,7 @@ use deno_core::futures::prelude::*;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::path::PathBuf;

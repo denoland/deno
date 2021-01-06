@@ -237,8 +237,8 @@ impl WebWorker {
       ops::io::init(js_runtime);
       ops::websocket::init(
         js_runtime,
-        options.ca_data.clone(),
         options.user_agent.clone(),
+        options.ca_data.clone(),
       );
 
       if options.use_deno_namespace {
