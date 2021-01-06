@@ -3430,6 +3430,11 @@ itest!(import_data_url_imports {
   http_server: true,
 });
 
+itest!(import_data_url_jsx {
+  args: "run --quiet --reload import_data_url_jsx.ts",
+  output: "import_data_url_jsx.ts.out",
+});
+
 itest!(import_data_url {
   args: "run --quiet --reload import_data_url.ts",
   output: "import_data_url.ts.out",

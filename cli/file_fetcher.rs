@@ -224,6 +224,8 @@ pub fn map_content_type(
       | "application/node" => {
         map_js_like_extension(specifier, MediaType::JavaScript)
       }
+      "text/jsx" => MediaType::JSX,
+      "text/tsx" => MediaType::TSX,
       "application/json" | "text/json" => MediaType::Json,
       "application/wasm" => MediaType::Wasm,
       // Handle plain and possibly webassembly
@@ -669,6 +671,8 @@ mod tests {
       ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
       ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
       ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
+      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::JSX, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
+      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::TSX, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
     ];
 
     for (
@@ -800,6 +804,18 @@ mod tests {
         "https://deno.land/x/mod",
         Some("application/node".to_string()),
         MediaType::JavaScript,
+        None,
+      ),
+      (
+        "https://deno.land/x/mod",
+        Some("text/jsx".to_string()),
+        MediaType::JSX,
+        None,
+      ),
+      (
+        "https://deno.land/x/mod",
+        Some("text/tsx".to_string()),
+        MediaType::TSX,
         None,
       ),
       (
