@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use tokio::net::lookup_host;
@@ -10,24 +9,20 @@ use tokio::net::lookup_host;
 pub async fn resolve_addr(
   hostname: &str,
   port: u16,
-) -> Result<SocketAddr, AnyError> {
+) -> Result<impl Iterator<Item = SocketAddr> + '_, AnyError> {
   let addr_port_pair = make_addr_port_pair(hostname, port);
-  lookup_host(addr_port_pair)
-    .await?
-    .next()
-    .context("No resolved address found")
+  let result = lookup_host(addr_port_pair).await?;
+  Ok(result)
 }
 
 /// Resolve network address *synchronously*.
 pub fn resolve_addr_sync(
   hostname: &str,
   port: u16,
-) -> Result<SocketAddr, AnyError> {
+) -> Result<impl Iterator<Item = SocketAddr>, AnyError> {
   let addr_port_pair = make_addr_port_pair(hostname, port);
-  addr_port_pair
-    .to_socket_addrs()?
-    .next()
-    .context("No resolved address found")
+  let result = addr_port_pair.to_socket_addrs()?;
+  Ok(result)
 }
 
 fn make_addr_port_pair(hostname: &str, port: u16) -> (&str, u16) {
@@ -52,37 +47,52 @@ mod tests {
 
   #[tokio::test]
   async fn resolve_addr1() {
-    let expected =
-      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 80));
-    let actual = resolve_addr("127.0.0.1", 80).await.unwrap();
+    let expected = vec![SocketAddr::V4(SocketAddrV4::new(
+      Ipv4Addr::new(127, 0, 0, 1),
+      80,
+    ))];
+    let actual = resolve_addr("127.0.0.1", 80)
+      .await
+      .unwrap()
+      .collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 
   #[tokio::test]
   async fn resolve_addr2() {
-    let expected =
-      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 80));
-    let actual = resolve_addr("", 80).await.unwrap();
+    let expected = vec![SocketAddr::V4(SocketAddrV4::new(
+      Ipv4Addr::new(0, 0, 0, 0),
+      80,
+    ))];
+    let actual = resolve_addr("", 80).await.unwrap().collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 
   #[tokio::test]
   async fn resolve_addr3() {
-    let expected =
-      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 25));
-    let actual = resolve_addr("192.0.2.1", 25).await.unwrap();
+    let expected = vec![SocketAddr::V4(SocketAddrV4::new(
+      Ipv4Addr::new(192, 0, 2, 1),
+      25,
+    ))];
+    let actual = resolve_addr("192.0.2.1", 25)
+      .await
+      .unwrap()
+      .collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 
   #[tokio::test]
   async fn resolve_addr_ipv6() {
-    let expected = SocketAddr::V6(SocketAddrV6::new(
+    let expected = vec![SocketAddr::V6(SocketAddrV6::new(
       Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),
       8080,
       0,
       0,
-    ));
-    let actual = resolve_addr("[2001:db8::1]", 8080).await.unwrap();
+    ))];
+    let actual = resolve_addr("[2001:db8::1]", 8080)
+      .await
+      .unwrap()
+      .collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 
@@ -93,37 +103,49 @@ mod tests {
 
   #[test]
   fn resolve_addr_sync1() {
-    let expected =
-      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 80));
-    let actual = resolve_addr_sync("127.0.0.1", 80).unwrap();
+    let expected = vec![SocketAddr::V4(SocketAddrV4::new(
+      Ipv4Addr::new(127, 0, 0, 1),
+      80,
+    ))];
+    let actual = resolve_addr_sync("127.0.0.1", 80)
+      .unwrap()
+      .collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 
   #[test]
   fn resolve_addr_sync2() {
-    let expected =
-      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 80));
-    let actual = resolve_addr_sync("", 80).unwrap();
+    let expected = vec![SocketAddr::V4(SocketAddrV4::new(
+      Ipv4Addr::new(0, 0, 0, 0),
+      80,
+    ))];
+    let actual = resolve_addr_sync("", 80).unwrap().collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 
   #[test]
   fn resolve_addr_sync3() {
-    let expected =
-      SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 25));
-    let actual = resolve_addr_sync("192.0.2.1", 25).unwrap();
+    let expected = vec![SocketAddr::V4(SocketAddrV4::new(
+      Ipv4Addr::new(192, 0, 2, 1),
+      25,
+    ))];
+    let actual = resolve_addr_sync("192.0.2.1", 25)
+      .unwrap()
+      .collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 
   #[test]
   fn resolve_addr_sync_ipv6() {
-    let expected = SocketAddr::V6(SocketAddrV6::new(
+    let expected = vec![SocketAddr::V6(SocketAddrV6::new(
       Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),
       8080,
       0,
       0,
-    ));
-    let actual = resolve_addr_sync("[2001:db8::1]", 8080).unwrap();
+    ))];
+    let actual = resolve_addr_sync("[2001:db8::1]", 8080)
+      .unwrap()
+      .collect::<Vec<_>>();
     assert_eq!(actual, expected);
   }
 

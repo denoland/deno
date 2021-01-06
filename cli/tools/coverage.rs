@@ -75,7 +75,7 @@ impl CoverageCollector {
 
 // TODO(caspervonb) all of these structs can and should be made private, possibly moved to
 // inspector::protocol.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
   pub start_offset: usize,
@@ -83,7 +83,7 @@ pub struct CoverageRange {
   pub count: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverage {
   pub function_name: String,
@@ -91,7 +91,7 @@ pub struct FunctionCoverage {
   pub is_block_coverage: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptCoverage {
   pub script_id: String,
@@ -212,26 +212,46 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
   let entries = fs::read_dir(dir)?;
   for entry in entries {
     let json = fs::read_to_string(entry.unwrap().path())?;
-    let coverage: ScriptCoverage = serde_json::from_str(&json)?;
+    let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
 
-    coverages.push(coverage);
-  }
+    let existing_coverage = coverages
+      .iter_mut()
+      .find(|x| x.url == new_coverage.url);
 
-  // TODO(caspervonb) drain_filter would make this cleaner, its nightly at the moment.
-  if coverages.len() > 1 {
-    coverages.sort_by_key(|k| k.url.clone());
+    if let Some(existing_coverage) = existing_coverage {
+      for new_function in new_coverage.functions {
+        let existing_function = existing_coverage
+          
+          .functions
+          .iter_mut()
+          .find(|x| x.function_name == new_function.function_name);
 
-    for i in (1..coverages.len() - 1).rev() {
-      if coverages[i].url == coverages[i - 1].url {
-        let current = coverages.remove(i);
-        let previous = &mut coverages[i - 1];
+        if let Some(existing_function) = existing_function {
+          for new_range in new_function.ranges {
+            let existing_range =
+              existing_function.ranges.iter_mut().find(|x| {
+                x.start_offset == new_range.start_offset
+                  && x.end_offset == new_range.end_offset
+              });
 
-        for function in current.functions {
-          previous.functions.push(function);
+            if let Some(existing_range) = existing_range {
+              existing_range.count += new_range.count;
+            } else {
+              existing_function.ranges.push(new_range);
+            }
+          }
+        } else {
+          existing_coverage
+            .functions
+            .push(new_function);
         }
       }
+    } else {
+      coverages.push(new_coverage);
     }
   }
+
+  coverages.sort_by_key(|k| k.url.clone());
 
   Ok(coverages)
 }

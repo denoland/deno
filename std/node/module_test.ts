@@ -69,3 +69,8 @@ Deno.test("requireStack", function () {
     assertStringIncludes(e.stack, "/tests/cjs/cjs_throw.js");
   }
 });
+
+Deno.test("requireFileInSymlinkDir", () => {
+  const { C } = require("./tests/cjs/dir");
+  assertEquals(C, "C");
+});

@@ -6,24 +6,25 @@ Testing Deno runtime code requires checking API under different runtime
 permissions (ie. running with different `--allow-*` flags). To accomplish this
 all tests exercised are created using `unitTest()` function.
 
-```
+```ts
 import { unitTest } from "./test_util.ts";
 
 unitTest(function simpleTestFn(): void {
   // test code here
 });
 
-unitTest({
+unitTest(
+  {
     ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   function complexTestFn(): void {
     // test code here
-  }
+  },
 );
 ```
 
-`unitTest` is is a wrapper function that enhances `Deno.test()` API in several
+`unitTest` is a wrapper function that enhances `Deno.test()` API in several
 ways:
 
 - ability to conditionally skip tests using `UnitTestOptions.skip`.
@@ -44,7 +45,7 @@ Runner discovers required permissions combinations by loading
 
 There are three ways to run `unit_test_runner.ts`:
 
-```
+```sh
 # Run all tests. Spawns worker processes for each discovered permission
 # combination:
 target/debug/deno run -A cli/tests/unit/unit_test_runner.ts --master

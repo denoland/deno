@@ -5,7 +5,6 @@ use super::language_server::StateSnapshot;
 use super::text;
 use super::utils;
 
-use crate::js;
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
@@ -22,6 +21,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
@@ -93,7 +93,7 @@ pub async fn get_asset(
     Ok(Some(asset_text.to_string()))
   } else {
     {
-      let assets = state_snapshot.assets.read().unwrap();
+      let assets = state_snapshot.assets.lock().unwrap();
       if let Some(asset) = assets.get(specifier) {
         return Ok(asset.clone());
       }
@@ -106,7 +106,7 @@ pub async fn get_asset(
         )
         .await?,
     )?;
-    let mut assets = state_snapshot.assets.write().unwrap();
+    let mut assets = state_snapshot.assets.lock().unwrap();
     assets.insert(specifier.clone(), asset.clone());
     Ok(asset)
   }
@@ -412,6 +412,85 @@ impl QuickInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameLocation {
+  // inherit from DocumentSpan
+  text_span: TextSpan,
+  file_name: String,
+  original_text_span: Option<TextSpan>,
+  original_file_name: Option<String>,
+  context_span: Option<TextSpan>,
+  original_context_span: Option<TextSpan>,
+  // RenameLocation props
+  prefix_text: Option<String>,
+  suffix_text: Option<String>,
+}
+
+pub struct RenameLocations {
+  pub locations: Vec<RenameLocation>,
+}
+
+impl RenameLocations {
+  pub async fn into_workspace_edit<F, Fut>(
+    self,
+    snapshot: StateSnapshot,
+    index_provider: F,
+    new_name: &str,
+  ) -> Result<lsp_types::WorkspaceEdit, AnyError>
+  where
+    F: Fn(ModuleSpecifier) -> Fut,
+    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
+  {
+    let mut text_document_edit_map: HashMap<Url, lsp_types::TextDocumentEdit> =
+      HashMap::new();
+    for location in self.locations.iter() {
+      let uri = utils::normalize_file_name(&location.file_name)?;
+      let specifier = ModuleSpecifier::resolve_url(&location.file_name)?;
+
+      // ensure TextDocumentEdit for `location.file_name`.
+      if text_document_edit_map.get(&uri).is_none() {
+        text_document_edit_map.insert(
+          uri.clone(),
+          lsp_types::TextDocumentEdit {
+            text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
+              uri: uri.clone(),
+              version: snapshot
+                .doc_data
+                .get(&specifier)
+                .map_or_else(|| None, |data| data.version),
+            },
+            edits: Vec::<
+              lsp_types::OneOf<
+                lsp_types::TextEdit,
+                lsp_types::AnnotatedTextEdit,
+              >,
+            >::new(),
+          },
+        );
+      }
+
+      // push TextEdit for ensured `TextDocumentEdit.edits`.
+      let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
+      document_edit
+        .edits
+        .push(lsp_types::OneOf::Left(lsp_types::TextEdit {
+          range: location
+            .text_span
+            .to_range(&index_provider(specifier.clone()).await?),
+          new_text: new_name.to_string(),
+        }));
+    }
+
+    Ok(lsp_types::WorkspaceEdit {
+      changes: None,
+      document_changes: Some(lsp_types::DocumentChanges::Edits(
+        text_document_edit_map.values().cloned().collect(),
+      )),
+    })
+  }
+}
+
+#[derive(Debug, Deserialize)]
 pub enum HighlightSpanKind {
   #[serde(rename = "none")]
   None,
@@ -687,7 +766,7 @@ fn cache_snapshot(
   {
     let s = ModuleSpecifier::resolve_url(&specifier)?;
     let content = {
-      let file_cache = state.state_snapshot.file_cache.read().unwrap();
+      let file_cache = state.state_snapshot.file_cache.lock().unwrap();
       let file_id = file_cache.lookup(&s).unwrap();
       file_cache.get_contents(file_id)?
     };
@@ -783,7 +862,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap();
     Ok(json!(content.chars().count()))
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     Ok(json!(sources.get_length(&specifier).unwrap()))
   }
 }
@@ -808,7 +887,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap()
       .clone()
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     sources.get_text(&specifier).unwrap()
   };
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -818,7 +897,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
-  let mut sources = if let Ok(sources) = state.state_snapshot.sources.write() {
+  let mut sources = if let Ok(sources) = state.state_snapshot.sources.lock() {
     sources
   } else {
     return Err(custom_error("Deadlock", "deadlock locking sources"));
@@ -919,7 +998,7 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
       return Ok(json!(version.to_string()));
     }
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     if let Some(version) = sources.get_script_version(&specifier) {
       return Ok(json!(version));
     }
@@ -945,7 +1024,7 @@ fn set_asset(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// server.
 pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(js::compiler_isolate_init()),
+    startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   });
 
@@ -1043,12 +1122,8 @@ pub enum RequestMethod {
   Configure(TsConfig),
   /// Retrieve the text of an assets that exists in memory in the isolate.
   GetAsset(ModuleSpecifier),
-  /// Return semantic diagnostics for given file.
-  GetSemanticDiagnostics(ModuleSpecifier),
-  /// Returns suggestion diagnostics for given file.
-  GetSuggestionDiagnostics(ModuleSpecifier),
-  /// Return syntactic diagnostics for a given file.
-  GetSyntacticDiagnostics(ModuleSpecifier),
+  /// Return diagnostics for given file.
+  GetDiagnostics(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Return document highlights at position.
@@ -1059,6 +1134,8 @@ pub enum RequestMethod {
   GetDefinition((ModuleSpecifier, u32)),
   /// Get completion information at a given position (IntelliSense).
   GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  /// Get rename locations at a given position.
+  FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
 }
 
 impl RequestMethod {
@@ -1074,19 +1151,9 @@ impl RequestMethod {
         "method": "getAsset",
         "specifier": specifier,
       }),
-      RequestMethod::GetSemanticDiagnostics(specifier) => json!({
+      RequestMethod::GetDiagnostics(specifier) => json!({
         "id": id,
-        "method": "getSemanticDiagnostics",
-        "specifier": specifier,
-      }),
-      RequestMethod::GetSuggestionDiagnostics(specifier) => json!({
-        "id": id,
-        "method": "getSuggestionDiagnostics",
-        "specifier": specifier,
-      }),
-      RequestMethod::GetSyntacticDiagnostics(specifier) => json!({
-        "id": id,
-        "method": "getSyntacticDiagnostics",
+        "method": "getDiagnostics",
         "specifier": specifier,
       }),
       RequestMethod::GetQuickInfo((specifier, position)) => json!({
@@ -1125,6 +1192,23 @@ impl RequestMethod {
           "specifier": specifier,
           "position": position,
           "preferences": preferences,
+        })
+      }
+      RequestMethod::FindRenameLocations((
+        specifier,
+        position,
+        find_in_strings,
+        find_in_comments,
+        provide_prefix_and_suffix_text_for_rename,
+      )) => {
+        json!({
+          "id": id,
+          "method": "findRenameLocations",
+          "specifier": specifier,
+          "position": position,
+          "findInStrings": find_in_strings,
+          "findInComments": find_in_comments,
+          "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
         })
       }
     }
@@ -1171,7 +1255,7 @@ mod tests {
   use crate::lsp::language_server::DocumentData;
   use std::collections::HashMap;
   use std::sync::Arc;
-  use std::sync::RwLock;
+  use std::sync::Mutex;
 
   fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
     let mut doc_data = HashMap::new();
@@ -1185,7 +1269,7 @@ mod tests {
       );
       file_cache.set_contents(specifier, Some(content.as_bytes().to_vec()));
     }
-    let file_cache = Arc::new(RwLock::new(file_cache));
+    let file_cache = Arc::new(Mutex::new(file_cache));
     StateSnapshot {
       assets: Default::default(),
       doc_data,
@@ -1270,7 +1354,7 @@ mod tests {
   }
 
   #[test]
-  fn test_get_semantic_diagnostics() {
+  fn test_get_diagnostics() {
     let (mut runtime, state_snapshot) = setup(
       false,
       json!({
@@ -1285,7 +1369,7 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSemanticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -1338,7 +1422,7 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSemanticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -1368,11 +1452,29 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
-    assert_eq!(response, json!([]));
+    assert_eq!(
+      response,
+      json!([{
+        "start": {
+          "line": 1,
+          "character": 8
+        },
+        "end": {
+          "line": 1,
+          "character": 30
+        },
+        "fileName": "file:///a.ts",
+        "messageText": "\'A\' is declared but its value is never read.",
+        "sourceLine": "        import { A } from \".\";",
+        "category": 2,
+        "code": 6133,
+        "reportsUnnecessary": true,
+      }])
+    );
   }
 
   #[test]
@@ -1402,7 +1504,7 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -1439,13 +1541,28 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetSyntacticDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(specifier),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(
       response,
       json!([{
+        "start": {
+          "line": 1,
+          "character": 8
+        },
+        "end": {
+          "line": 6,
+          "character": 55,
+        },
+        "fileName": "file:///a.ts",
+        "messageText": "All imports in import declaration are unused.",
+        "sourceLine": "        import {",
+        "category": 2,
+        "code": 6192,
+        "reportsUnnecessary": true
+      }, {
         "start": {
           "line": 8,
           "character": 29
@@ -1461,6 +1578,30 @@ mod tests {
         "code": 1109
       }])
     );
+  }
+
+  #[test]
+  fn test_no_debug_failure() {
+    let (mut runtime, state_snapshot) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      vec![("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
+    );
+    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
+      .expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      state_snapshot,
+      RequestMethod::GetDiagnostics(specifier),
+    );
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response, json!([]));
   }
 
   #[test]

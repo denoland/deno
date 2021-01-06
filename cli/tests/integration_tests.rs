@@ -1,11 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::futures;
 use deno_core::futures::prelude::*;
+use deno_core::serde_json;
 use deno_core::url;
+use deno_runtime::deno_fetch::reqwest;
 use std::io::{BufRead, Write};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
+use walkdir::WalkDir;
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
@@ -922,7 +927,7 @@ fn ts_reload() {
     .output()
     .expect("failed to spawn script");
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
+  assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
     .trim()
     .contains("host.writeFile(\"deno://002_hello.js\")"));
@@ -3328,6 +3333,12 @@ itest!(deno_test_run_run_coverage {
   exit_code: 0,
 });
 
+itest!(deno_test_run_combined_coverage {
+  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts test_run_test_coverage.ts",
+  output: "test_run_combined_coverage.out",
+  exit_code: 0,
+});
+
 itest!(deno_lint {
   args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
@@ -3401,10 +3412,49 @@ itest!(deno_doc_import_map {
   output: "doc/use_import_map.out",
 });
 
+itest!(import_data_url_error_stack {
+  args: "run --quiet --reload import_data_url_error_stack.ts",
+  output: "import_data_url_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_import_relative {
+  args: "run --quiet --reload import_data_url_import_relative.ts",
+  output: "import_data_url_import_relative.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_imports {
+  args: "run --quiet --reload import_data_url_imports.ts",
+  output: "import_data_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(import_data_url_jsx {
+  args: "run --quiet --reload import_data_url_jsx.ts",
+  output: "import_data_url_jsx.ts.out",
+});
+
+itest!(import_data_url {
+  args: "run --quiet --reload import_data_url.ts",
+  output: "import_data_url.ts.out",
+});
+
+itest!(import_dynamic_data_url {
+  args: "run --quiet --reload import_dynamic_data_url.ts",
+  output: "import_dynamic_data_url.ts.out",
+});
+
 itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
+});
+
+itest!(info_missing_module {
+  args: "info error_009_missing_js_module.js",
+  output: "info_missing_module.out",
+  exit_code: 1,
 });
 
 itest!(info_recursive_modules {
@@ -3427,6 +3477,41 @@ itest!(ignore_require {
 itest!(local_sources_not_cached_in_memory {
   args: "run --allow-read --allow-write no_mem_cache.js",
   output: "no_mem_cache.js.out",
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line is not remapped because no inline source contents are included in
+// the sourcemap and the file is not present in the dependency graph.
+itest!(inline_js_source_map_2 {
+  args: "run --quiet inline_js_source_map_2.js",
+  output: "inline_js_source_map_2.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line remapped using th inline source contents that are included in the
+// inline source map.
+itest!(inline_js_source_map_2_with_inline_contents {
+  args: "run --quiet inline_js_source_map_2_with_inline_contents.js",
+  output: "inline_js_source_map_2_with_inline_contents.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, and is loaded into the module
+// graph because of a direct import statement (inline_js_source_map.ts). The
+// source map was generated from an earlier version of this file, where the throw
+// was not commented out. The source line is remapped using source contents that
+// from the module graph.
+itest!(inline_js_source_map_with_contents_from_graph {
+  args: "run --quiet inline_js_source_map_with_contents_from_graph.js",
+  output: "inline_js_source_map_with_contents_from_graph.js.out",
+  exit_code: 1,
+  http_server: true,
 });
 
 #[test]
@@ -4339,6 +4424,64 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   child.wait().unwrap();
 }
 
+#[tokio::test]
+async fn inspector_json() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_json_list() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json/list");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
+}
+
 #[test]
 fn websocket() {
   let _g = util::http_server();
@@ -4614,6 +4757,8 @@ fn standalone_args() {
     .arg("--output")
     .arg(&exe)
     .arg("./cli/tests/028_args.ts")
+    .arg("a")
+    .arg("b")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4630,7 +4775,7 @@ fn standalone_args() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"foo\n--bar\n--unstable\n");
+  assert_eq!(output.stdout, b"a\nb\nfoo\n--bar\n--unstable\n");
 }
 
 #[test]
@@ -4717,9 +4862,9 @@ fn compile_with_directory_exists_error() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4746,9 +4891,9 @@ fn compile_with_conflict_file_exists_error() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4758,6 +4903,7 @@ fn compile_with_conflict_file_exists_error() {
   let expected_stderr =
     format!("Could not compile: cannot overwrite {:?}.\n", &exe);
   let stderr = String::from_utf8(output.stderr).unwrap();
+  dbg!(&stderr);
   assert!(stderr.contains(&expected_stderr));
   assert!(std::fs::read(&exe)
     .expect("cannot read file")
@@ -4776,9 +4922,9 @@ fn compile_and_overwrite_file() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -4791,13 +4937,268 @@ fn compile_and_overwrite_file() {
     .current_dir(util::root_path())
     .arg("compile")
     .arg("--unstable")
-    .arg("./cli/tests/028_args.ts")
     .arg("--output")
     .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(recompile_output.status.success());
+}
+
+#[test]
+fn standalone_runtime_flags() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("flags.exe")
+  } else {
+    dir.path().join("flags")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--seed")
+    .arg("1")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_runtime_flags.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("PermissionDenied: write access"));
+}
+
+fn concat_bundle(
+  files: Vec<(PathBuf, String)>,
+  bundle_path: &Path,
+  init: String,
+) -> String {
+  let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
+
+  let mut bundle = init.clone();
+  let mut bundle_line_count = init.lines().count() as u32;
+  let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
+
+  for (path, text) in files {
+    let path = std::fs::canonicalize(path).unwrap();
+    let url = url::Url::from_file_path(path).unwrap().to_string();
+    let src_id = source_map.add_source(&url);
+    source_map.set_source_contents(src_id, Some(&text));
+
+    for (line_index, line) in text.lines().enumerate() {
+      bundle.push_str(line);
+      bundle.push('\n');
+      source_map.add_raw(
+        bundle_line_count,
+        0,
+        line_index as u32,
+        0,
+        Some(src_id),
+        None,
+      );
+
+      bundle_line_count += 1;
+    }
+    bundle.push('\n');
+    bundle_line_count += 1;
+  }
+
+  let mut source_map_buf: Vec<u8> = vec![];
+  source_map
+    .into_sourcemap()
+    .to_writer(&mut source_map_buf)
+    .unwrap();
+
+  bundle.push_str("//# sourceMappingURL=data:application/json;base64,");
+  let encoded_map = base64::encode(source_map_buf);
+  bundle.push_str(&encoded_map);
+
+  bundle
+}
+
+// TODO(lucacasonato): DRY with tsc_config.rs
+/// Convert a jsonc libraries `JsonValue` to a serde `Value`.
+fn jsonc_to_serde(j: jsonc_parser::JsonValue) -> serde_json::Value {
+  use jsonc_parser::JsonValue;
+  use serde_json::Value;
+  use std::str::FromStr;
+  match j {
+    JsonValue::Array(arr) => {
+      let vec = arr.into_iter().map(jsonc_to_serde).collect();
+      Value::Array(vec)
+    }
+    JsonValue::Boolean(bool) => Value::Bool(bool),
+    JsonValue::Null => Value::Null,
+    JsonValue::Number(num) => {
+      let number =
+        serde_json::Number::from_str(&num).expect("could not parse number");
+      Value::Number(number)
+    }
+    JsonValue::Object(obj) => {
+      let mut map = serde_json::map::Map::new();
+      for (key, json_value) in obj.into_iter() {
+        map.insert(key, jsonc_to_serde(json_value));
+      }
+      Value::Object(map)
+    }
+    JsonValue::String(str) => Value::String(str),
+  }
+}
+
+#[test]
+fn web_platform_tests() {
+  use deno_core::serde::Deserialize;
+
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum WptConfig {
+    Simple(String),
+    #[serde(rename_all = "camelCase")]
+    Options {
+      name: String,
+      expect_fail: Vec<String>,
+    },
+  }
+
+  let text =
+    std::fs::read_to_string(util::tests_path().join("wpt.jsonc")).unwrap();
+  let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
+  let config: std::collections::HashMap<String, Vec<WptConfig>> =
+    deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
+
+  for (suite_name, includes) in config.into_iter() {
+    let suite_path = util::wpt_path().join(suite_name);
+    let dir = WalkDir::new(&suite_path)
+      .into_iter()
+      .filter_map(Result::ok)
+      .filter(|e| e.file_type().is_file())
+      .filter(|f| {
+        let filename = f.file_name().to_str().unwrap();
+        filename.ends_with(".any.js") || filename.ends_with(".window.js")
+      })
+      .filter_map(|f| {
+        let path = f
+          .path()
+          .strip_prefix(&suite_path)
+          .unwrap()
+          .to_str()
+          .unwrap();
+        for cfg in &includes {
+          match cfg {
+            WptConfig::Simple(name) if path.starts_with(name) => {
+              return Some((f.path().to_owned(), vec![]))
+            }
+            WptConfig::Options { name, expect_fail }
+              if path.starts_with(name) =>
+            {
+              return Some((f.path().to_owned(), expect_fail.to_vec()))
+            }
+            _ => {}
+          }
+        }
+        None
+      });
+
+    let testharness_path = util::wpt_path().join("resources/testharness.js");
+    let testharness_text = std::fs::read_to_string(&testharness_path).unwrap();
+    let testharnessreporter_path =
+      util::tests_path().join("wpt_testharnessconsolereporter.js");
+    let testharnessreporter_text =
+      std::fs::read_to_string(&testharnessreporter_path).unwrap();
+
+    for (test_file_path, expect_fail) in dir {
+      let test_file_text = std::fs::read_to_string(&test_file_path).unwrap();
+      let imports: Vec<(PathBuf, String)> = test_file_text
+        .split('\n')
+        .into_iter()
+        .filter_map(|t| t.strip_prefix("// META: script="))
+        .map(|s| {
+          let s = if s == "/resources/WebIDLParser.js" {
+            "/resources/webidl2/lib/webidl2.js"
+          } else {
+            s
+          };
+          if s.starts_with('/') {
+            util::wpt_path().join(format!(".{}", s))
+          } else {
+            test_file_path.parent().unwrap().join(s)
+          }
+        })
+        .map(|path| {
+          let text = std::fs::read_to_string(&path).unwrap();
+          (path, text)
+        })
+        .collect();
+
+      let mut variants: Vec<&str> = test_file_text
+        .split('\n')
+        .into_iter()
+        .filter_map(|t| t.strip_prefix("// META: variant="))
+        .collect();
+
+      if variants.is_empty() {
+        variants.push("");
+      }
+
+      for variant in variants {
+        let mut files = Vec::with_capacity(3 + imports.len());
+        files.push((testharness_path.clone(), testharness_text.clone()));
+        files.push((
+          testharnessreporter_path.clone(),
+          testharnessreporter_text.clone(),
+        ));
+        files.extend(imports.clone());
+        files.push((test_file_path.clone(), test_file_text.clone()));
+
+        let mut file = tempfile::Builder::new()
+          .prefix("wpt-bundle-")
+          .suffix(".js")
+          .rand_bytes(5)
+          .tempfile()
+          .unwrap();
+
+        let bundle = concat_bundle(
+          files,
+          file.path(),
+          format!("window.location = {{search: \"{}\"}};\n", variant),
+        );
+        file.write_all(bundle.as_bytes()).unwrap();
+
+        let child = util::deno_cmd()
+          .current_dir(test_file_path.parent().unwrap())
+          .arg("run")
+          .arg("-A")
+          .arg(file.path())
+          .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
+          .stdin(std::process::Stdio::piped())
+          .spawn()
+          .unwrap();
+
+        let output = child.wait_with_output().unwrap();
+        if !output.status.success() {
+          file.keep().unwrap();
+        }
+        assert!(output.status.success());
+      }
+    }
+  }
 }
