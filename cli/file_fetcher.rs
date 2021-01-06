@@ -157,7 +157,9 @@ fn get_source_from_data_url(
   }
   let path = url.path();
   let mut parts = path.splitn(2, ',');
-  let media_type_part = parts.next().unwrap();
+  let media_type_part =
+    percent_encoding::percent_decode_str(parts.next().unwrap())
+      .decode_utf8()?;
   let data_part = if let Some(data) = parts.next() {
     data
   } else {
