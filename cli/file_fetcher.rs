@@ -155,12 +155,6 @@ fn get_source_from_data_url(
       format!("Unexpected scheme of \"{}\"", url.scheme()),
     ));
   }
-  if url.query().is_some() {
-    return Err(custom_error(
-      "BadUrl",
-      "The data URL includes a query string which is not supported.",
-    ));
-  }
   let path = url.path();
   let mut parts = path.splitn(2, ',');
   let media_type_part = parts.next().unwrap();
@@ -668,6 +662,7 @@ mod tests {
   fn test_get_source_from_data_url() {
     let fixtures = vec![
       ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
+      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=?a=b&b=c", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
       ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
       ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
       ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
