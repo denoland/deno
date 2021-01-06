@@ -8,6 +8,10 @@ exemptLabels:
   - bug
   - suggestion
   - feat
+  - tests
+  - build
+
+exemptMilestones: true
 
 staleLabel: stale
 
