@@ -25,6 +25,23 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+// Declaration files
+
+pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
+pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
+pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
+pub static SHARED_GLOBALS_LIB: &str =
+  include_str!("dts/lib.deno.shared_globals.d.ts");
+pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
+pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
+
+pub static COMPILER_SNAPSHOT: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+
+pub fn compiler_snapshot() -> Snapshot {
+  Snapshot::Static(COMPILER_SNAPSHOT)
+}
+
 /// Provide static assets that are not preloaded in the compiler snapshot.
 pub fn get_asset(asset: &str) -> Option<&'static str> {
   macro_rules! inc {
@@ -357,12 +374,9 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(
-  snapshot: Snapshot,
-  request: Request,
-) -> Result<Response, AnyError> {
+pub fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(snapshot),
+    startup_snapshot: Some(compiler_snapshot()),
     ..Default::default()
   });
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
@@ -442,7 +456,6 @@ mod tests {
   use super::*;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
-  use crate::js;
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
   use crate::tsc_config::TsConfig;
@@ -512,7 +525,26 @@ mod tests {
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
     };
-    exec(js::compiler_isolate_init(), request)
+    exec(request)
+  }
+
+  #[test]
+  fn test_compiler_snapshot() {
+    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+      startup_snapshot: Some(compiler_snapshot()),
+      ..Default::default()
+    });
+    js_runtime
+      .execute(
+        "<anon>",
+        r#"
+      if (!(startup)) {
+          throw Error("bad");
+        }
+        console.log(`ts version: ${ts.version}`);
+      "#,
+      )
+      .unwrap();
   }
 
   #[tokio::test]
