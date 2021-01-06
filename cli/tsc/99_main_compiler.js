@@ -31,8 +31,20 @@ delete Object.prototype.__proto__;
       const stringifiedArgs = args.map((arg) =>
         typeof arg === "string" ? arg : JSON.stringify(arg)
       ).join(" ");
-      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
+      // adding a non-zero integer value to the end of the debug string causes
+      // the message to be printed to stderr instead of stdout, which is better
+      // aligned to the behaviour of debug messages
+      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`, 1);
     }
+  }
+
+  function error(...args) {
+    const stringifiedArgs = args.map((arg) =>
+      typeof arg === "string" || arg instanceof Error
+        ? String(arg)
+        : JSON.stringify(arg)
+    ).join(" ");
+    core.print(`ERROR ${logSource} = ${stringifiedArgs}\n`, 1);
   }
 
   class AssertionError extends Error {
@@ -128,6 +140,9 @@ delete Object.prototype.__proto__;
     // TS2691: An import path cannot end with a '.ts' extension. Consider
     // importing 'bad-module' instead.
     2691,
+    // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
+    // option to 'node', or to add aliases to the 'paths' option?
+    2792,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -492,28 +507,20 @@ delete Object.prototype.__proto__;
           request.specifier,
           ts.ScriptTarget.ESNext,
         );
-        return core.jsonOpSync(
-          "op_set_asset",
-          { text: sourceFile && sourceFile.text },
-        );
+        return respond(id, sourceFile && sourceFile.text);
       }
-      case "getSemanticDiagnostics": {
-        const diagnostics = languageService.getSemanticDiagnostics(
-          request.specifier,
-        ).filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-        return respond(id, fromTypeScriptDiagnostic(diagnostics));
-      }
-      case "getSuggestionDiagnostics": {
-        const diagnostics = languageService.getSuggestionDiagnostics(
-          request.specifier,
-        ).filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-        return respond(id, fromTypeScriptDiagnostic(diagnostics));
-      }
-      case "getSyntacticDiagnostics": {
-        const diagnostics = languageService.getSyntacticDiagnostics(
-          request.specifier,
-        ).filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-        return respond(id, fromTypeScriptDiagnostic(diagnostics));
+      case "getDiagnostics": {
+        try {
+          const diagnostics = [
+            ...languageService.getSemanticDiagnostics(request.specifier),
+            ...languageService.getSuggestionDiagnostics(request.specifier),
+            ...languageService.getSyntacticDiagnostics(request.specifier),
+          ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+          return respond(id, fromTypeScriptDiagnostic(diagnostics));
+        } catch (e) {
+          error(e);
+          return respond(id, []);
+        }
       }
       case "getQuickInfo": {
         return respond(
@@ -562,6 +569,18 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "findRenameLocations": {
+        return respond(
+          id,
+          languageService.findRenameLocations(
+            request.specifier,
+            request.position,
+            request.findInStrings,
+            request.findInComments,
+            request.providePrefixAndSuffixTextForRename,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
@@ -578,7 +597,6 @@ delete Object.prototype.__proto__;
     hasStarted = true;
     languageService = ts.createLanguageService(host);
     core.ops();
-    core.registerErrorClass("Error", Error);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
@@ -594,7 +612,6 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     core.ops();
-    core.registerErrorClass("Error", Error);
     setLogDebug(!!debugFlag, "TS");
   }
 

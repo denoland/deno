@@ -434,7 +434,7 @@ where
 
   Ok(Some(UnaryPermission::<PathBuf> {
     global_state: value.global_state,
-    granted_list: resolve_fs_allowlist(&paths),
+    granted_list: resolve_fs_allowlist(&Some(paths)),
     ..Default::default()
   }))
 }

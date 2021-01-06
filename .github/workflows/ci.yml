@@ -66,7 +66,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.48.0
+          rust-version: 1.49.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -92,6 +92,12 @@ jobs:
         with:
           python-version: "2.7"
           architecture: x64
+
+      - name: Install Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+          check-latest: true
 
       - name: Remove unused versions of Python
         if: startsWith(matrix.os, 'windows')

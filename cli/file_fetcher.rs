@@ -283,14 +283,14 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    maybe_ca_file: Option<&str>,
+    ca_data: Option<Vec<u8>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       allow_remote,
       cache: FileCache::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(get_user_agent(), maybe_ca_file)?,
+      http_client: create_http_client(get_user_agent(), ca_data)?,
     })
   }
 
@@ -364,25 +364,25 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
     permissions: &Permissions,
     redirect_limit: i64,
-  ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
       return futures::future::err(custom_error("Http", "Too many redirects."))
-        .boxed_local();
+        .boxed();
     }
 
     if let Err(err) = permissions.check_specifier(specifier) {
-      return futures::future::err(err).boxed_local();
+      return futures::future::err(err).boxed();
     }
 
     if self.cache_setting.should_use(specifier) {
       match self.fetch_cached(specifier, redirect_limit) {
         Ok(Some(file)) => {
-          return futures::future::ok(file).boxed_local();
+          return futures::future::ok(file).boxed();
         }
         Ok(None) => {}
         Err(err) => {
-          return futures::future::err(err).boxed_local();
+          return futures::future::err(err).boxed();
         }
       }
     }
@@ -395,7 +395,7 @@ impl FileFetcher {
           specifier
         ),
       ))
-      .boxed_local();
+      .boxed();
     }
 
     info!("{} {}", colors::green("Download"), specifier);
@@ -436,7 +436,7 @@ impl FileFetcher {
         }
       }
     }
-    .boxed_local()
+    .boxed()
   }
 
   /// Fetch a source file and asynchronously return it.

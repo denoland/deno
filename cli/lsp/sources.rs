@@ -10,8 +10,13 @@ use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
+use crate::module_graph::GraphBuilder;
+use crate::program_state::ProgramState;
+use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
+use crate::Permissions;
 
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
@@ -19,13 +24,26 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::time::SystemTime;
+
+pub async fn cache(
+  specifier: ModuleSpecifier,
+  maybe_import_map: Option<ImportMap>,
+) -> Result<(), AnyError> {
+  let program_state = Arc::new(ProgramState::new(Default::default())?);
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
+    &program_state,
+    Permissions::allow_all(),
+  )?));
+  let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
+  builder.add(&specifier, false).await
+}
 
 #[derive(Debug, Clone, Default)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
-  maybe_types: Option<analysis::ResolvedImport>,
+  maybe_types: Option<analysis::ResolvedDependency>,
   media_type: MediaType,
   source: String,
   version: String,
@@ -34,7 +52,7 @@ struct Metadata {
 #[derive(Debug, Clone, Default)]
 pub struct Sources {
   http_cache: HttpCache,
-  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
+  maybe_import_map: Option<ImportMap>,
   metadata: HashMap<ModuleSpecifier, Metadata>,
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
   remotes: HashMap<ModuleSpecifier, PathBuf>,
@@ -102,7 +120,7 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             maybe_types = mt;
             Some(dependencies)
@@ -132,7 +150,7 @@ impl Sources {
               Some(analysis::resolve_import(
                 types,
                 &specifier,
-                self.maybe_import_map.clone(),
+                &self.maybe_import_map,
               ))
             } else {
               None
@@ -142,7 +160,7 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             if maybe_types.is_none() {
               maybe_types = mt;
@@ -257,7 +275,7 @@ impl Sources {
     let dependencies = &metadata.dependencies?;
     let dependency = dependencies.get(specifier)?;
     if let Some(type_dependency) = &dependency.maybe_type {
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         type_dependency
       {
         self.resolution_result(resolved_specifier)
@@ -266,7 +284,7 @@ impl Sources {
       }
     } else {
       let code_dependency = &dependency.maybe_code.clone()?;
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         code_dependency
       {
         self.resolution_result(resolved_specifier)

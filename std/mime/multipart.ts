@@ -354,7 +354,7 @@ export class MultipartReader {
         }
       }
     }
-    return multipatFormData(fileMap, valueMap);
+    return multipartFormData(fileMap, valueMap);
   }
 
   private currentPart: PartReader | undefined;
@@ -418,7 +418,7 @@ export class MultipartReader {
   }
 }
 
-function multipatFormData(
+function multipartFormData(
   fileMap: Map<string, FormFile | FormFile[]>,
   valueMap: Map<string, string>,
 ): MultipartFormData {

@@ -45,7 +45,7 @@ pub struct WorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
-  pub ca_filepath: Option<String>,
+  pub ca_data: Option<Vec<u8>>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -87,6 +87,7 @@ impl MainWorker {
     } else {
       None
     };
+
     let should_break_on_first_statement =
       inspector.is_some() && options.should_break_on_first_statement;
 
@@ -113,7 +114,7 @@ impl MainWorker {
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
-        options.ca_filepath.as_deref(),
+        options.ca_data.clone(),
       );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
@@ -142,7 +143,7 @@ impl MainWorker {
       ops::tty::init(js_runtime);
       ops::websocket::init(
         js_runtime,
-        options.ca_filepath.as_deref(),
+        options.ca_data.clone(),
         options.user_agent.clone(),
       );
     }
@@ -269,7 +270,7 @@ mod tests {
       args: vec![],
       debug_flag: false,
       unstable: false,
-      ca_filepath: None,
+      ca_data: None,
       seed: None,
       js_error_create_fn: None,
       create_web_worker_cb: Arc::new(|_| unreachable!()),

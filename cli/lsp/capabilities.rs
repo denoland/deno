@@ -5,16 +5,16 @@
 ///! language server, which helps determine what messages are sent from the
 ///! client.
 ///!
-use lsp_types::ClientCapabilities;
-use lsp_types::CompletionOptions;
-use lsp_types::HoverProviderCapability;
-use lsp_types::OneOf;
-use lsp_types::SaveOptions;
-use lsp_types::ServerCapabilities;
-use lsp_types::TextDocumentSyncCapability;
-use lsp_types::TextDocumentSyncKind;
-use lsp_types::TextDocumentSyncOptions;
-use lsp_types::WorkDoneProgressOptions;
+use lspower::lsp_types::ClientCapabilities;
+use lspower::lsp_types::CompletionOptions;
+use lspower::lsp_types::HoverProviderCapability;
+use lspower::lsp_types::OneOf;
+use lspower::lsp_types::SaveOptions;
+use lspower::lsp_types::ServerCapabilities;
+use lspower::lsp_types::TextDocumentSyncCapability;
+use lspower::lsp_types::TextDocumentSyncKind;
+use lspower::lsp_types::TextDocumentSyncOptions;
+use lspower::lsp_types::WorkDoneProgressOptions;
 
 pub fn server_capabilities(
   _client_capabilities: &ClientCapabilities,
@@ -61,16 +61,16 @@ pub fn server_capabilities(
     document_range_formatting_provider: None,
     document_on_type_formatting_provider: None,
     selection_range_provider: None,
-    semantic_highlighting: None,
     folding_range_provider: None,
-    rename_provider: None,
+    rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,
     execute_command_provider: None,
-    workspace: None,
     call_hierarchy_provider: None,
-    semantic_tokens_provider: None,
     on_type_rename_provider: None,
+    semantic_highlighting: None,
+    semantic_tokens_provider: None,
+    workspace: None,
     experimental: None,
   }
 }

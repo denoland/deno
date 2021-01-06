@@ -20,10 +20,27 @@ use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use serde::Deserialize;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+// Declaration files
+
+pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
+pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
+pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
+pub static SHARED_GLOBALS_LIB: &str =
+  include_str!("dts/lib.deno.shared_globals.d.ts");
+pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
+pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
+
+pub static COMPILER_SNAPSHOT: &[u8] =
+  include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+
+pub fn compiler_snapshot() -> Snapshot {
+  Snapshot::Static(COMPILER_SNAPSHOT)
+}
 
 /// Provide static assets that are not preloaded in the compiler snapshot.
 pub fn get_asset(asset: &str) -> Option<&'static str> {
@@ -115,7 +132,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph: Rc<RefCell<Graph>>,
+  pub graph: Arc<Mutex<Graph>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
@@ -138,7 +155,7 @@ pub struct Response {
 struct State {
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Rc<RefCell<Graph>>,
+  graph: Arc<Mutex<Graph>>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   root_map: HashMap<String, ModuleSpecifier>,
@@ -146,7 +163,7 @@ struct State {
 
 impl State {
   pub fn new(
-    graph: Rc<RefCell<Graph>>,
+    graph: Arc<Mutex<Graph>>,
     hash_data: Vec<Vec<u8>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
@@ -260,7 +277,7 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let graph = state.graph.borrow();
+    let graph = state.graph.lock().unwrap();
     let specifier =
       if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
         remapped_specifier.clone()
@@ -310,7 +327,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let graph = state.graph.borrow();
+      let graph = state.graph.lock().unwrap();
       match graph.resolve(specifier, &referrer, true) {
         Ok(resolved_specifier) => {
           let media_type = if let Some(media_type) =
@@ -357,12 +374,9 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(
-  snapshot: Snapshot,
-  request: Request,
-) -> Result<Response, AnyError> {
+pub fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(snapshot),
+    startup_snapshot: Some(compiler_snapshot()),
     ..Default::default()
   });
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
@@ -442,13 +456,12 @@ mod tests {
   use super::*;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
-  use crate::js;
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
   use crate::tsc_config::TsConfig;
-  use std::cell::RefCell;
   use std::env;
   use std::path::PathBuf;
+  use std::sync::Mutex;
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,
@@ -461,7 +474,7 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/tsc2");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+    let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
     }));
@@ -470,7 +483,7 @@ mod tests {
       .add(&specifier, false)
       .await
       .expect("module not inserted");
-    let graph = Rc::new(RefCell::new(builder.get_graph()));
+    let graph = Arc::new(Mutex::new(builder.get_graph()));
     State::new(graph, hash_data, maybe_tsbuildinfo, HashMap::new())
   }
 
@@ -480,13 +493,13 @@ mod tests {
     let hash_data = vec![b"something".to_vec()];
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/tsc2");
-    let handler = Rc::new(RefCell::new(MockSpecifierHandler {
+    let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..Default::default()
     }));
     let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder.add(&specifier, false).await?;
-    let graph = Rc::new(RefCell::new(builder.get_graph()));
+    let graph = Arc::new(Mutex::new(builder.get_graph()));
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
@@ -512,7 +525,26 @@ mod tests {
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
     };
-    exec(js::compiler_isolate_init(), request)
+    exec(request)
+  }
+
+  #[test]
+  fn test_compiler_snapshot() {
+    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+      startup_snapshot: Some(compiler_snapshot()),
+      ..Default::default()
+    });
+    js_runtime
+      .execute(
+        "<anon>",
+        r#"
+      if (!(startup)) {
+          throw Error("bad");
+        }
+        console.log(`ts version: ${ts.version}`);
+      "#,
+      )
+      .unwrap();
   }
 
   #[tokio::test]

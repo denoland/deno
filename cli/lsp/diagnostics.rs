@@ -2,21 +2,117 @@
 
 use super::analysis::get_lint_references;
 use super::analysis::references_to_diagnostics;
+use super::analysis::ResolvedDependency;
+use super::language_server::StateSnapshot;
 use super::memory_cache::FileId;
-use super::state::ServerStateSnapshot;
 use super::tsc;
 
 use crate::diagnostics;
 use crate::media_type::MediaType;
 
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use deno_core::url::Url;
-use deno_core::JsRuntime;
+use lspower::lsp_types;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum DiagnosticSource {
+  Deno,
+  Lint,
+  TypeScript,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct DiagnosticCollection {
+  map: HashMap<(FileId, DiagnosticSource), Vec<lsp_types::Diagnostic>>,
+  versions: HashMap<FileId, i32>,
+  changes: HashSet<FileId>,
+}
+
+impl DiagnosticCollection {
+  pub fn set(
+    &mut self,
+    file_id: FileId,
+    source: DiagnosticSource,
+    version: Option<i32>,
+    diagnostics: Vec<lsp_types::Diagnostic>,
+  ) {
+    self.map.insert((file_id, source), diagnostics);
+    if let Some(version) = version {
+      self.versions.insert(file_id, version);
+    }
+    self.changes.insert(file_id);
+  }
+
+  pub fn diagnostics_for(
+    &self,
+    file_id: FileId,
+    source: DiagnosticSource,
+  ) -> impl Iterator<Item = &lsp_types::Diagnostic> {
+    self.map.get(&(file_id, source)).into_iter().flatten()
+  }
+
+  pub fn get_version(&self, file_id: &FileId) -> Option<i32> {
+    self.versions.get(file_id).cloned()
+  }
+
+  pub fn invalidate(&mut self, file_id: &FileId) {
+    self.versions.remove(file_id);
+  }
+
+  pub fn take_changes(&mut self) -> Option<HashSet<FileId>> {
+    if self.changes.is_empty() {
+      return None;
+    }
+    Some(mem::take(&mut self.changes))
+  }
+}
+
+pub type DiagnosticVec = Vec<(FileId, Option<i32>, Vec<lsp_types::Diagnostic>)>;
+
+pub async fn generate_lint_diagnostics(
+  state_snapshot: StateSnapshot,
+  diagnostic_collection: DiagnosticCollection,
+) -> DiagnosticVec {
+  tokio::task::spawn_blocking(move || {
+    let mut diagnostic_list = Vec::new();
+
+    let file_cache = state_snapshot.file_cache.lock().unwrap();
+    for (specifier, doc_data) in state_snapshot.doc_data.iter() {
+      let file_id = file_cache.lookup(specifier).unwrap();
+      let version = doc_data.version;
+      let current_version = diagnostic_collection.get_version(&file_id);
+      if version != current_version {
+        let media_type = MediaType::from(specifier);
+        if let Ok(source_code) = file_cache.get_contents(file_id) {
+          if let Ok(references) =
+            get_lint_references(specifier, &media_type, &source_code)
+          {
+            if !references.is_empty() {
+              diagnostic_list.push((
+                file_id,
+                version,
+                references_to_diagnostics(references),
+              ));
+            } else {
+              diagnostic_list.push((file_id, version, Vec::new()));
+            }
+          }
+        } else {
+          error!("Missing file contents for: {}", specifier);
+        }
+      }
+    }
+
+    diagnostic_list
+  })
+  .await
+  .unwrap()
+}
 
 impl<'a> From<&'a diagnostics::DiagnosticCategory>
   for lsp_types::DiagnosticSeverity
@@ -58,93 +154,6 @@ fn to_lsp_range(
   }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum DiagnosticSource {
-  Lint,
-  TypeScript,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct DiagnosticCollection {
-  map: HashMap<(FileId, DiagnosticSource), Vec<lsp_types::Diagnostic>>,
-  versions: HashMap<FileId, i32>,
-  changes: HashSet<FileId>,
-}
-
-impl DiagnosticCollection {
-  pub fn set(
-    &mut self,
-    file_id: FileId,
-    source: DiagnosticSource,
-    version: Option<i32>,
-    diagnostics: Vec<lsp_types::Diagnostic>,
-  ) {
-    self.map.insert((file_id, source), diagnostics);
-    if let Some(version) = version {
-      self.versions.insert(file_id, version);
-    }
-    self.changes.insert(file_id);
-  }
-
-  pub fn diagnostics_for(
-    &self,
-    file_id: FileId,
-    source: DiagnosticSource,
-  ) -> impl Iterator<Item = &lsp_types::Diagnostic> {
-    self.map.get(&(file_id, source)).into_iter().flatten()
-  }
-
-  pub fn get_version(&self, file_id: &FileId) -> Option<i32> {
-    self.versions.get(file_id).cloned()
-  }
-
-  pub fn take_changes(&mut self) -> Option<HashSet<FileId>> {
-    if self.changes.is_empty() {
-      return None;
-    }
-    Some(mem::take(&mut self.changes))
-  }
-}
-
-pub type DiagnosticVec = Vec<(FileId, Option<i32>, Vec<lsp_types::Diagnostic>)>;
-
-pub fn generate_linting_diagnostics(
-  state: &ServerStateSnapshot,
-) -> DiagnosticVec {
-  if !state.config.settings.lint {
-    return Vec::new();
-  }
-  let mut diagnostics = Vec::new();
-  let file_cache = state.file_cache.read().unwrap();
-  for (specifier, doc_data) in state.doc_data.iter() {
-    let file_id = file_cache.lookup(specifier).unwrap();
-    let version = doc_data.version;
-    let current_version = state.diagnostics.get_version(&file_id);
-    if version != current_version {
-      let media_type = MediaType::from(specifier);
-      if let Ok(source_code) = file_cache.get_contents(file_id) {
-        if let Ok(references) =
-          get_lint_references(specifier, &media_type, &source_code)
-        {
-          if !references.is_empty() {
-            diagnostics.push((
-              file_id,
-              version,
-              references_to_diagnostics(references),
-            ));
-          } else {
-            diagnostics.push((file_id, version, Vec::new()));
-          }
-        }
-      } else {
-        error!("Missing file contents for: {}", specifier);
-      }
-    }
-  }
-
-  diagnostics
-}
-
 type TsDiagnostics = Vec<diagnostics::Diagnostic>;
 
 fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
@@ -168,7 +177,7 @@ fn to_lsp_related_information(
           if let (Some(source), Some(start), Some(end)) =
             (&ri.source, &ri.start, &ri.end)
           {
-            let uri = Url::parse(&source).unwrap();
+            let uri = lsp_types::Url::parse(&source).unwrap();
             Some(lsp_types::DiagnosticRelatedInformation {
               location: lsp_types::Location {
                 uri,
@@ -223,46 +232,102 @@ fn ts_json_to_diagnostics(
   )
 }
 
-pub fn generate_ts_diagnostics(
-  state: &ServerStateSnapshot,
-  runtime: &mut JsRuntime,
+pub async fn generate_ts_diagnostics(
+  ts_server: &tsc::TsServer,
+  diagnostic_collection: &DiagnosticCollection,
+  state_snapshot: StateSnapshot,
 ) -> Result<DiagnosticVec, AnyError> {
-  if !state.config.settings.enable {
-    return Ok(Vec::new());
-  }
   let mut diagnostics = Vec::new();
-  let file_cache = state.file_cache.read().unwrap();
-  for (specifier, doc_data) in state.doc_data.iter() {
-    let file_id = file_cache.lookup(specifier).unwrap();
+  let state_snapshot_ = state_snapshot.clone();
+  for (specifier, doc_data) in state_snapshot_.doc_data.iter() {
+    let file_id = {
+      // TODO(lucacasonato): this is highly inefficient
+      let file_cache = state_snapshot_.file_cache.lock().unwrap();
+      file_cache.lookup(specifier).unwrap()
+    };
     let version = doc_data.version;
-    let current_version = state.diagnostics.get_version(&file_id);
+    let current_version = diagnostic_collection.get_version(&file_id);
     if version != current_version {
-      // TODO(@kitsonk): consider refactoring to get all diagnostics in one shot
-      // for a file.
-      let request_semantic_diagnostics =
-        tsc::RequestMethod::GetSemanticDiagnostics(specifier.clone());
-      let mut ts_diagnostics = ts_json_to_diagnostics(tsc::request(
-        runtime,
-        state,
-        request_semantic_diagnostics,
-      )?)?;
-      let request_suggestion_diagnostics =
-        tsc::RequestMethod::GetSuggestionDiagnostics(specifier.clone());
-      ts_diagnostics.append(&mut ts_json_to_diagnostics(tsc::request(
-        runtime,
-        state,
-        request_suggestion_diagnostics,
-      )?)?);
-      let request_syntactic_diagnostics =
-        tsc::RequestMethod::GetSyntacticDiagnostics(specifier.clone());
-      ts_diagnostics.append(&mut ts_json_to_diagnostics(tsc::request(
-        runtime,
-        state,
-        request_syntactic_diagnostics,
-      )?)?);
+      let req = tsc::RequestMethod::GetDiagnostics(specifier.clone());
+      let ts_diagnostics = ts_json_to_diagnostics(
+        ts_server.request(state_snapshot.clone(), req).await?,
+      )?;
       diagnostics.push((file_id, version, ts_diagnostics));
     }
   }
 
   Ok(diagnostics)
+}
+
+pub async fn generate_dependency_diagnostics(
+  state_snapshot: StateSnapshot,
+  diagnostic_collection: DiagnosticCollection,
+) -> Result<DiagnosticVec, AnyError> {
+  tokio::task::spawn_blocking(move || {
+    let mut diagnostics = Vec::new();
+
+    let file_cache = state_snapshot.file_cache.lock().unwrap();
+    let mut sources = if let Ok(sources) = state_snapshot.sources.lock() {
+      sources
+    } else {
+      return Err(custom_error("Deadlock", "deadlock locking sources"));
+    };
+    for (specifier, doc_data) in state_snapshot.doc_data.iter() {
+      let file_id = file_cache.lookup(specifier).unwrap();
+      let version = doc_data.version;
+      let current_version = diagnostic_collection.get_version(&file_id);
+      if version != current_version {
+        let mut diagnostic_list = Vec::new();
+        if let Some(dependencies) = &doc_data.dependencies {
+          for (_, dependency) in dependencies.iter() {
+            if let (Some(code), Some(range)) = (
+              &dependency.maybe_code,
+              &dependency.maybe_code_specifier_range,
+            ) {
+              match code.clone() {
+                ResolvedDependency::Err(message) => {
+                  diagnostic_list.push(lsp_types::Diagnostic {
+                    range: *range,
+                    severity: Some(lsp_types::DiagnosticSeverity::Error),
+                    code: None,
+                    code_description: None,
+                    source: Some("deno".to_string()),
+                    message,
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                  })
+                }
+                ResolvedDependency::Resolved(specifier) => {
+                  if !(state_snapshot.doc_data.contains_key(&specifier) || sources.contains(&specifier)) {
+                    let is_local = specifier.as_url().scheme() == "file";
+                    diagnostic_list.push(lsp_types::Diagnostic {
+                      range: *range,
+                      severity: Some(lsp_types::DiagnosticSeverity::Error),
+                      code: None,
+                      code_description: None,
+                      source: Some("deno".to_string()),
+                      message: if is_local {
+                        format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)
+                      } else {
+                        format!("Unable to load the module: \"{}\".\n  If the module exists, running `deno cache {}` should resolve this error.", specifier, specifier)
+                      },
+                      related_information: None,
+                      tags: None,
+                      data: None,
+                    })
+                  }
+                },
+              }
+            }
+          }
+        }
+        diagnostics.push((file_id, version, diagnostic_list))
+      }
+    }
+
+    Ok(diagnostics)
+  })
+  .await
+  .unwrap()
 }
