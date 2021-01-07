@@ -309,7 +309,7 @@ mod tests {
       Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()
@@ -412,7 +412,7 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()
