@@ -1380,10 +1380,22 @@ async fn op_ftruncate_async(
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
-  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-    Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot truncate this type of resource")),
-  })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  (*fs_file).0.as_mut().unwrap().set_len(len).await?;
   Ok(json!({}))
 }
 
