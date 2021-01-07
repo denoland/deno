@@ -26,6 +26,7 @@ pub fn main() {
 }
 
 fn run(args: Vec<String>) -> Result<(), AnyError> {
-  let (metadata, bundle) = standalone::extract_standalone(args)?.ok_or_else(|| anyhow!("This executable is used internally by 'deno compile', it is not meant to be invoked directly."))?;
+  let (metadata, bundle) = standalone::extract_standalone(args)?
+    .ok_or_else(|| anyhow!("This executable is used internally by 'deno compile', it is not meant to be invoked directly."))?;
   tokio_util::run_basic(standalone::run(bundle, metadata))
 }

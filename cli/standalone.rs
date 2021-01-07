@@ -266,7 +266,7 @@ pub async fn run(
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  Ok(())
+  std::process::exit(0);
 }
 
 fn get_error_class_name(e: &AnyError) -> &'static str {

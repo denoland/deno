@@ -1233,7 +1233,14 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  if let Err(err) = standalone::try_run_standalone_binary(args.clone()) {
+  let standalone_res = match standalone::extract_standalone(args.clone()) {
+    Ok(Some((metadata, bundle))) => {
+      tokio_util::run_basic(standalone::run(bundle, metadata))
+    }
+    Ok(None) => Ok(()),
+    Err(err) => Err(err),
+  };
+  if let Err(err) = standalone_res {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }

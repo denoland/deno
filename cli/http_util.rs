@@ -150,6 +150,7 @@ pub async fn fetch_once(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::version;
   use std::fs::read;
 
   fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
@@ -340,7 +341,7 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()
@@ -371,7 +372,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()
