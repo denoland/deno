@@ -5118,10 +5118,17 @@ struct WPTServer(std::process::Child);
 
 impl Drop for WPTServer {
   fn drop(&mut self) {
-    // TODO(lucacasonato): This should be a more graceful kill where child procs of the proc are also killed.
     match self.0.try_wait() {
       Ok(None) => {
-        self.0.kill().expect("failed to kill 'wpt serve'");
+        if cfg!(target_os = "linux") {
+          println!("libc kill");
+          unsafe {
+            libc::kill(self.0.id() as i32, libc::SIGTERM);
+          }
+        } else {
+          println!("std kill");
+          self.0.kill().expect("killing 'wpt serve' failed");
+        }
         let _ = self.0.wait();
       }
       Ok(Some(status)) => panic!("'wpt serve' exited unexpectedly {}", status),
@@ -5291,7 +5298,8 @@ fn web_platform_tests() {
           .arg("--location")
           .arg(&format!(
             "http://web-platform.test:8000/{}{}",
-            self_path.to_str().unwrap(), variant
+            self_path.to_str().unwrap(),
+            variant
           ))
           .arg("--cert")
           .arg(util::wpt_path().join("tools/certs/cacert.pem"))

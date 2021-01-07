@@ -109,3 +109,35 @@ cargo clean && cargo build -vv
 # Run:
 ./target/debug/deno run cli/tests/002_hello.ts
 ```
+
+### Testing
+
+> :warning: **IMPORTANT**: Our test suite relies on certain entries to be configured in your /etc/hosts file.
+> If these entries are not present in your /etc/hosts file, the `web_platform_tests` test **will** fail. To
+> configure these entries, run the following command:
+>
+> ```shell
+> # macOS / Linux
+> cd test_utils/wpt/
+> ./wpt make-hosts-file | sudo tee -a /etc/hosts
+> ```
+>
+> ```powershell
+> # Windows (use powershell!)
+> cd test_utils/wpt/
+> python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
+> ```
+>
+> If you use WSL, be aware that WSL may attempt to override /etc/hosts each time it is launched, which would
+> then require you to re-run hosts this setup. This behavior [can be configured](https://docs.microsoft.com/en-us/windows/wsl/wsl-config#network).
+
+```shell
+# Run the full test suite:
+cargo test
+
+# Run a specific test:
+cargo test web_platform_tests
+
+# Run a specific test, and don't swallow test output:
+cargo test web_platform_tests -- --nocapture
+```
