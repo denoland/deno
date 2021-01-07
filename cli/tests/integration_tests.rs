@@ -2631,6 +2631,11 @@ itest!(_077_fetch_empty {
   exit_code: 1,
 });
 
+itest!(_078_location_authentication {
+  args: "run --location https://foo:bar@baz/qux 078_location_authentication.ts",
+  output: "078_location_authentication.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

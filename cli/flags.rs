@@ -1437,7 +1437,10 @@ fn location_arg<'a, 'b>() -> Arg<'a, 'b> {
       if url.is_err() {
         return Err("Failed to parse URL".to_string());
       }
-      if !["http", "https"].contains(&url.unwrap().scheme()) {
+      let mut url = url.unwrap();
+      url.set_username("").unwrap();
+      url.set_password(None).unwrap();
+      if !["http", "https"].contains(&url.scheme()) {
         return Err("Expected protocol \"http\" or \"https\"".to_string());
       }
       Ok(())

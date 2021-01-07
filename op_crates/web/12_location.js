@@ -10,6 +10,8 @@
         throw new TypeError("Illegal constructor.");
       }
       const url = new URL(href);
+      url.username = "";
+      url.password = "";
       Object.defineProperties(this, {
         hash: {
           get() {
@@ -49,7 +51,7 @@
         },
         href: {
           get() {
-            return href;
+            return url.href;
           },
           set() {
             throw new DOMException(
@@ -62,18 +64,6 @@
         origin: {
           get() {
             return url.origin;
-          },
-          enumerable: true,
-        },
-        password: {
-          get() {
-            return url.password;
-          },
-          set() {
-            throw new DOMException(
-              `Cannot set "location.password".`,
-              "NotSupportedError",
-            );
           },
           enumerable: true,
         },
@@ -120,18 +110,6 @@
           set() {
             throw new DOMException(
               `Cannot set "location.search".`,
-              "NotSupportedError",
-            );
-          },
-          enumerable: true,
-        },
-        username: {
-          get() {
-            return url.username;
-          },
-          set() {
-            throw new DOMException(
-              `Cannot set "location.username".`,
               "NotSupportedError",
             );
           },
