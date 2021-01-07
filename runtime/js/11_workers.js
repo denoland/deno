@@ -179,7 +179,10 @@
       const hasSourceCode = false;
       const sourceCode = decoder.decode(new Uint8Array());
 
-      if (specifier.startsWith("./") || type == "classic") {
+      if (
+        specifier.startsWith("./") || specifier.startsWith("../") ||
+        specifier.startsWith("/") || type == "classic"
+      ) {
         const baseUrl = getLocationHref();
         if (baseUrl != null) {
           specifier = new URL(specifier, baseUrl).href;
