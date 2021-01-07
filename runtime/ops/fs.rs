@@ -4,6 +4,7 @@ use super::io::std_file_resource;
 use super::io::StreamResource;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
+use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -12,6 +13,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::RcRef;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
@@ -251,14 +253,22 @@ async fn op_seek_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
-  // TODO(ry) This is a fake async op. We need to use poll_fn,
-  // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
-  let pos = std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-    Ok(std_file) => std_file.seek(seek_from).map_err(AnyError::from),
-    Err(_) => Err(type_error(
-      "cannot seek on this type of resource".to_string(),
-    )),
-  })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let pos = (*fs_file).0.as_mut().unwrap().seek(seek_from).await?;
   Ok(json!(pos))
 }
 
