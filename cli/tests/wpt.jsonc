@@ -170,14 +170,7 @@
       ]
     },
     "measure-l3",
-    {
-      "name": "structured-serialize-detail",
-      "expectFail": [
-        // TODO(lucacasonato): re-enable when we use real structured clone.
-        "Mark: Throw an exception when the detail property cannot be structured-serialized.",
-        "Measure: Throw an exception when the detail property cannot be structured-serialized."
-      ]
-    },
+    "structured-serialize-detail",
     "user_timing_exists"
   ]
 }
