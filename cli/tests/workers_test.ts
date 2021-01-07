@@ -640,7 +640,7 @@ Deno.test({
     assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
     const promise = deferred();
     const w = new Worker(
-      "./subdir/test_worker.ts",
+      "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
     w.onmessage = (e): void => {
