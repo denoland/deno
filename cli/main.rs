@@ -55,7 +55,6 @@ use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
-use crate::standalone::create_standalone_binary;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -306,7 +305,8 @@ async fn compile_command(
 
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags = standalone::compile_to_runtime_flags(flags.clone(), args)?;
+  let run_flags =
+    tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
@@ -336,7 +336,12 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str, run_flags, output.clone()).await?;
+  tools::standalone::create_standalone_binary(
+    bundle_str,
+    run_flags,
+    output.clone(),
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 

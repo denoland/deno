@@ -14,6 +14,10 @@ default-run = "deno"
 name = "deno"
 path = "main.rs"
 
+[[bin]]
+name = "denort"
+path = "main_runtime.rs"
+
 [[bench]]
 name = "deno_bench"
 harness = false
