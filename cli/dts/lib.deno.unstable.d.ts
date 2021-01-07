@@ -1306,12 +1306,6 @@ declare namespace Deno {
    * The options used when creating a [HttpClient].
    */
   interface CreateHttpClientOptions {
-    /** A certificate authority to use when validating TLS certificates.
-     *
-     * Requires `allow-read` permission.
-     */
-    caFile?: string;
-
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;

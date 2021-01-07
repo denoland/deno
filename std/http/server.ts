@@ -21,9 +21,11 @@ export class ServerRequest {
   conn!: Deno.Conn;
   r!: BufReader;
   w!: BufWriter;
-  #done: Deferred<Error | undefined> = deferred();
 
-  private _contentLength: number | undefined | null = undefined;
+  #done: Deferred<Error | undefined> = deferred();
+  #contentLength?: number | null = undefined;
+  #body?: Deno.Reader = undefined;
+  #finalized = false;
 
   get done(): Promise<Error | undefined> {
     return this.#done.then((e) => e);
@@ -36,22 +38,20 @@ export class ServerRequest {
   get contentLength(): number | null {
     // undefined means not cached.
     // null means invalid or not provided.
-    if (this._contentLength === undefined) {
+    if (this.#contentLength === undefined) {
       const cl = this.headers.get("content-length");
       if (cl) {
-        this._contentLength = parseInt(cl);
+        this.#contentLength = parseInt(cl);
         // Convert NaN to null (as NaN harder to test)
-        if (Number.isNaN(this._contentLength)) {
-          this._contentLength = null;
+        if (Number.isNaN(this.#contentLength)) {
+          this.#contentLength = null;
         }
       } else {
-        this._contentLength = null;
+        this.#contentLength = null;
       }
     }
-    return this._contentLength;
+    return this.#contentLength;
   }
-
-  private _body: Deno.Reader | null = null;
 
   /**
    * Body of the request.  The easiest way to consume the body is:
@@ -59,9 +59,9 @@ export class ServerRequest {
    *     const buf: Uint8Array = await Deno.readAll(req.body);
    */
   get body(): Deno.Reader {
-    if (!this._body) {
+    if (!this.#body) {
       if (this.contentLength != null) {
-        this._body = bodyReader(this.contentLength, this.r);
+        this.#body = bodyReader(this.contentLength, this.r);
       } else {
         const transferEncoding = this.headers.get("transfer-encoding");
         if (transferEncoding != null) {
@@ -72,14 +72,14 @@ export class ServerRequest {
             parts.includes("chunked"),
             'transfer-encoding must include "chunked" if content-length is not set',
           );
-          this._body = chunkedBodyReader(this.headers, this.r);
+          this.#body = chunkedBodyReader(this.headers, this.r);
         } else {
           // Neither content-length nor transfer-encoding: chunked
-          this._body = emptyReader();
+          this.#body = emptyReader();
         }
       }
     }
-    return this._body;
+    return this.#body;
   }
 
   async respond(r: Response): Promise<void> {
@@ -105,29 +105,28 @@ export class ServerRequest {
     }
   }
 
-  private finalized = false;
   async finalize(): Promise<void> {
-    if (this.finalized) return;
+    if (this.#finalized) return;
     // Consume unread body
     const body = this.body;
     const buf = new Uint8Array(1024);
     while ((await body.read(buf)) !== null) {
       // Pass
     }
-    this.finalized = true;
+    this.#finalized = true;
   }
 }
 
 export class Server implements AsyncIterable<ServerRequest> {
-  private closing = false;
-  private connections: Deno.Conn[] = [];
+  #closing = false;
+  #connections: Deno.Conn[] = [];
 
   constructor(public listener: Deno.Listener) {}
 
   close(): void {
-    this.closing = true;
+    this.#closing = true;
     this.listener.close();
-    for (const conn of this.connections) {
+    for (const conn of this.#connections) {
       try {
         conn.close();
       } catch (e) {
@@ -146,7 +145,7 @@ export class Server implements AsyncIterable<ServerRequest> {
     const reader = new BufReader(conn);
     const writer = new BufWriter(conn);
 
-    while (!this.closing) {
+    while (!this.#closing) {
       let request: ServerRequest | null;
       try {
         request = await readRequest(conn, reader);
@@ -204,13 +203,13 @@ export class Server implements AsyncIterable<ServerRequest> {
   }
 
   private trackConnection(conn: Deno.Conn): void {
-    this.connections.push(conn);
+    this.#connections.push(conn);
   }
 
   private untrackConnection(conn: Deno.Conn): void {
-    const index = this.connections.indexOf(conn);
+    const index = this.#connections.indexOf(conn);
     if (index !== -1) {
-      this.connections.splice(index, 1);
+      this.#connections.splice(index, 1);
     }
   }
 
@@ -221,7 +220,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   private async *acceptConnAndIterateHttpRequests(
     mux: MuxAsyncIterator<ServerRequest>,
   ): AsyncIterableIterator<ServerRequest> {
-    if (this.closing) return;
+    if (this.#closing) return;
     // Wait for a new connection.
     let conn: Deno.Conn;
     try {

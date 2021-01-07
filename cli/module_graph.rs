@@ -13,7 +13,6 @@ use crate::info::ModuleGraphInfo;
 use crate::info::ModuleInfo;
 use crate::info::ModuleInfoMap;
 use crate::info::ModuleInfoMapItem;
-use crate::js;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::specifier_handler::CachedModule;
@@ -855,17 +854,14 @@ impl Graph {
       vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
     let graph = Arc::new(Mutex::new(self));
 
-    let response = tsc::exec(
-      js::compiler_isolate_init(),
-      tsc::Request {
-        config: config.clone(),
-        debug: options.debug,
-        graph: graph.clone(),
-        hash_data,
-        maybe_tsbuildinfo,
-        root_names,
-      },
-    )?;
+    let response = tsc::exec(tsc::Request {
+      config: config.clone(),
+      debug: options.debug,
+      graph: graph.clone(),
+      hash_data,
+      maybe_tsbuildinfo,
+      root_names,
+    })?;
 
     let mut graph = graph.lock().unwrap();
     graph.maybe_tsbuildinfo = response.maybe_tsbuildinfo;
@@ -983,17 +979,14 @@ impl Graph {
       let hash_data =
         vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
       let graph = Arc::new(Mutex::new(self));
-      let response = tsc::exec(
-        js::compiler_isolate_init(),
-        tsc::Request {
-          config: config.clone(),
-          debug: options.debug,
-          graph: graph.clone(),
-          hash_data,
-          maybe_tsbuildinfo: None,
-          root_names,
-        },
-      )?;
+      let response = tsc::exec(tsc::Request {
+        config: config.clone(),
+        debug: options.debug,
+        graph: graph.clone(),
+        hash_data,
+        maybe_tsbuildinfo: None,
+        root_names,
+      })?;
 
       let graph = graph.lock().unwrap();
       match options.bundle_type {
