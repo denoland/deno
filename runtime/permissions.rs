@@ -35,7 +35,9 @@ pub enum PermissionState {
 impl PermissionState {
   /// Check the permission state.
   fn check(self, msg: &str, flag_name: &str) -> Result<(), AnyError> {
-    if self == PermissionState::Granted {
+    if self == PermissionState::Granted
+      || (self == PermissionState::Prompt && permission_prompt(msg))
+    {
       log_perm_access(msg);
       return Ok(());
     }
@@ -97,37 +99,48 @@ pub struct PermissionsOptions {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: bool,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub prompt: bool,
 }
 
 impl Permissions {
   pub fn from_options(opts: &PermissionsOptions) -> Self {
-    fn global_state_from_flag_bool(flag: bool) -> PermissionState {
+    fn global_state_from_flag_bool(
+      flag: bool,
+      prompt: bool,
+    ) -> PermissionState {
       if flag {
         PermissionState::Granted
-      } else {
+      } else if prompt {
         PermissionState::Prompt
+      } else {
+        PermissionState::Denied
       }
     }
-    fn global_state_from_option<T>(flag: &Option<Vec<T>>) -> PermissionState {
+    fn global_state_from_option<T>(
+      flag: &Option<Vec<T>>,
+      prompt: bool,
+    ) -> PermissionState {
       if matches!(flag, Some(v) if v.is_empty()) {
         PermissionState::Granted
-      } else {
+      } else if prompt {
         PermissionState::Prompt
+      } else {
+        PermissionState::Denied
       }
     }
     Self {
       read: UnaryPermission::<PathBuf> {
-        global_state: global_state_from_option(&opts.allow_read),
+        global_state: global_state_from_option(&opts.allow_read, opts.prompt),
         granted_list: resolve_fs_allowlist(&opts.allow_read),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        global_state: global_state_from_option(&opts.allow_write),
+        global_state: global_state_from_option(&opts.allow_write, opts.prompt),
         granted_list: resolve_fs_allowlist(&opts.allow_write),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        global_state: global_state_from_option(&opts.allow_net),
+        global_state: global_state_from_option(&opts.allow_net, opts.prompt),
         granted_list: opts
           .allow_net
           .as_ref()
@@ -135,10 +148,10 @@ impl Permissions {
           .unwrap_or_else(HashSet::new),
         ..Default::default()
       },
-      env: global_state_from_flag_bool(opts.allow_env),
-      run: global_state_from_flag_bool(opts.allow_run),
-      plugin: global_state_from_flag_bool(opts.allow_plugin),
-      hrtime: global_state_from_flag_bool(opts.allow_hrtime),
+      env: global_state_from_flag_bool(opts.allow_env, opts.prompt),
+      run: global_state_from_flag_bool(opts.allow_run, opts.prompt),
+      plugin: global_state_from_flag_bool(opts.allow_plugin, opts.prompt),
+      hrtime: global_state_from_flag_bool(opts.allow_hrtime, opts.prompt),
     }
   }
 
@@ -199,7 +212,7 @@ impl Permissions {
     {
       return PermissionState::Granted;
     }
-    PermissionState::Prompt
+    self.read.global_state
   }
 
   pub fn query_write(&self, path: &Option<&Path>) -> PermissionState {
@@ -220,7 +233,7 @@ impl Permissions {
     {
       return PermissionState::Granted;
     }
-    PermissionState::Prompt
+    self.write.global_state
   }
 
   pub fn query_net<T: AsRef<str>>(
@@ -243,7 +256,7 @@ impl Permissions {
     {
       return PermissionState::Granted;
     }
-    PermissionState::Prompt
+    self.net.global_state
   }
 
   pub fn query_env(&self) -> PermissionState {
