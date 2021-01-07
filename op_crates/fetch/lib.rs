@@ -238,9 +238,7 @@ pub async fn op_fetch_send(
     }
   }
 
-  let stream: Pin<
-    Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>,
-  > = Pin::new(Box::new(res.bytes_stream().map(|r| {
+  let stream: BytesStream = Pin::new(Box::new(res.bytes_stream().map(|r| {
     r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
   })));
   let stream_reader = stream_reader(stream);
@@ -342,13 +340,11 @@ impl Resource for FetchRequestBodyResource {
   }
 }
 
+type BytesStream =
+  Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
+
 struct FetchResponseBodyResource {
-  reader: AsyncRefCell<
-    StreamReader<
-      Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>,
-      bytes::Bytes,
-    >,
-  >,
+  reader: AsyncRefCell<StreamReader<BytesStream, bytes::Bytes>>,
   cancel: CancelHandle,
 }
 
