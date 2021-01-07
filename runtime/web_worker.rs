@@ -137,7 +137,7 @@ pub struct WebWorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
-  pub ca_filepath: Option<String>,
+  pub ca_data: Option<Vec<u8>>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -219,7 +219,7 @@ impl WebWorker {
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
-        options.ca_filepath.as_deref(),
+        options.ca_data.clone(),
       );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
@@ -237,8 +237,8 @@ impl WebWorker {
       ops::io::init(js_runtime);
       ops::websocket::init(
         js_runtime,
-        options.ca_filepath.as_deref(),
         options.user_agent.clone(),
+        options.ca_data.clone(),
       );
 
       if options.use_deno_namespace {
@@ -483,7 +483,7 @@ mod tests {
       apply_source_maps: false,
       debug_flag: false,
       unstable: false,
-      ca_filepath: None,
+      ca_data: None,
       user_agent: "x".to_string(),
       seed: None,
       module_loader,

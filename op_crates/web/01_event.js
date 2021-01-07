@@ -42,6 +42,13 @@
     event.currentTarget = value;
   }
 
+  function setIsTrusted(event, value) {
+    const data = eventData.get(event);
+    if (data) {
+      data.isTrusted = value;
+    }
+  }
+
   function setDispatched(event, value) {
     const data = eventData.get(event);
     if (data) {
@@ -1184,5 +1191,8 @@
   window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.eventTarget = {
     setEventTargetData,
+  };
+  window.__bootstrap.event = {
+    setIsTrusted,
   };
 })(this);

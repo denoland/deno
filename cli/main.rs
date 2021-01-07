@@ -25,7 +25,6 @@ mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
-mod js;
 mod lockfile;
 mod lsp;
 mod media_type;
@@ -101,7 +100,10 @@ fn create_web_worker_callback(
       || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
+    let module_loader = CliModuleLoader::new_for_worker(
+      program_state.clone(),
+      args.parent_permissions.clone(),
+    );
     let create_web_worker_cb =
       create_web_worker_callback(program_state.clone());
 
@@ -113,7 +115,7 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
-      ca_filepath: program_state.flags.ca_file.clone(),
+      ca_data: program_state.ca_data.clone(),
       user_agent: http_util::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
@@ -189,7 +191,7 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
-    ca_filepath: program_state.flags.ca_file.clone(),
+    ca_data: program_state.ca_data.clone(),
     user_agent: http_util::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
@@ -276,16 +278,17 @@ fn print_cache_info(
 
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}",
-    crate::js::DENO_NS_LIB,
-    crate::js::DENO_WEB_LIB,
-    crate::js::DENO_FETCH_LIB,
-    crate::js::SHARED_GLOBALS_LIB,
-    crate::js::WINDOW_LIB,
+    "{}\n{}\n{}\n{}\n{}\n{}",
+    crate::tsc::DENO_NS_LIB,
+    crate::tsc::DENO_WEB_LIB,
+    crate::tsc::DENO_FETCH_LIB,
+    crate::tsc::DENO_WEBSOCKET_LIB,
+    crate::tsc::SHARED_GLOBALS_LIB,
+    crate::tsc::WINDOW_LIB,
   );
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::js::UNSTABLE_NS_LIB,));
+    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
   }
 
   types
@@ -295,12 +298,15 @@ async fn compile_command(
   flags: Flags,
   source_file: String,
   output: Option<PathBuf>,
+  args: Vec<String>,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
   }
 
   let debug = flags.log_level == Some(log::Level::Debug);
+
+  let run_flags = standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
@@ -330,8 +336,7 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str.as_bytes().to_vec(), output.clone())
-    .await?;
+  create_standalone_binary(bundle_str, run_flags, output.clone()).await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -1069,6 +1074,7 @@ fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
     .any(|flag| flag == "-help" || flag == "--help");
+  // Keep in sync with `standalone.rs`.
   let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
     .chain(v8_flags.iter().cloned())
     .collect::<Vec<_>>();
@@ -1147,7 +1153,8 @@ fn get_subcommand(
     DenoSubcommand::Compile {
       source_file,
       output,
-    } => compile_command(flags, source_file, output).boxed_local(),
+      args,
+    } => compile_command(flags, source_file, output, args).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

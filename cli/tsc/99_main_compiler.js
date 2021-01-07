@@ -597,7 +597,6 @@ delete Object.prototype.__proto__;
     hasStarted = true;
     languageService = ts.createLanguageService(host);
     core.ops();
-    core.registerErrorClass("Error", Error);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
@@ -613,7 +612,6 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     core.ops();
-    core.registerErrorClass("Error", Error);
     setLogDebug(!!debugFlag, "TS");
   }
 

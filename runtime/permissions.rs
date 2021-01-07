@@ -78,7 +78,7 @@ pub struct Permissions {
   pub hrtime: PermissionState,
 }
 
-fn resolve_fs_allowlist(allow: &Option<Vec<PathBuf>>) -> HashSet<PathBuf> {
+pub fn resolve_fs_allowlist(allow: &Option<Vec<PathBuf>>) -> HashSet<PathBuf> {
   if let Some(v) = allow {
     v.iter()
       .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
@@ -580,11 +580,16 @@ impl Permissions {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let url = specifier.as_url();
-    if url.scheme() == "file" {
-      let path = url.to_file_path().unwrap();
-      self.check_read(&path)
-    } else {
-      self.check_net_url(url)
+    match url.scheme() {
+      "file" => match url.to_file_path() {
+        Ok(path) => self.check_read(&path),
+        Err(_) => Err(uri_error(format!(
+          "Invalid file path.\n  Specifier: {}",
+          specifier
+        ))),
+      },
+      "data" => Ok(()),
+      _ => self.check_net_url(url),
     }
   }
 
@@ -620,6 +625,12 @@ impl deno_fetch::FetchPermissions for Permissions {
 
   fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
     Permissions::check_read(self, p)
+  }
+}
+
+impl deno_websocket::WebSocketPermissions for Permissions {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    Permissions::check_net_url(self, url)
   }
 }
 
@@ -915,6 +926,13 @@ mod tests {
           .unwrap(),
         false,
       ),
+      (
+        ModuleSpecifier::resolve_url_or_path(
+          "data:text/plain,Hello%2C%20Deno!",
+        )
+        .unwrap(),
+        true,
+      ),
     ];
 
     if cfg!(target_os = "windows") {
@@ -939,6 +957,26 @@ mod tests {
 
     for (specifier, expected) in fixtures {
       assert_eq!(perms.check_specifier(&specifier).is_ok(), expected);
+    }
+  }
+
+  #[test]
+  fn check_invalid_specifiers() {
+    let perms = Permissions::allow_all();
+
+    let mut test_cases = vec![];
+
+    if cfg!(target_os = "windows") {
+      test_cases.push("file://");
+      test_cases.push("file:///");
+    } else {
+      test_cases.push("file://remotehost/");
+    }
+
+    for url in test_cases {
+      assert!(perms
+        .check_specifier(&ModuleSpecifier::resolve_url_or_path(url).unwrap())
+        .is_err());
     }
   }
 

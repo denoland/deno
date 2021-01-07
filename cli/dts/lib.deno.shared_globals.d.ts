@@ -7,6 +7,7 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
+/// <reference lib="deno.websocket" />
 
 declare namespace WebAssembly {
   /**
@@ -661,24 +662,33 @@ declare class Worker extends EventTarget {
     options?: {
       type?: "classic" | "module";
       name?: string;
-      /** UNSTABLE: New API. Expect many changes; most likely this
-       * field will be made into an object for more granular
-       * configuration of worker thread (permissions, import map, etc.).
+      /** UNSTABLE: New API.
        *
-       * Set to `true` to make `Deno` namespace and all of its methods
-       * available to worker thread.
-       *
-       * Currently worker inherits permissions from main thread (permissions
-       * given using `--allow-*` flags).
-       * Configurable permissions are on the roadmap to be implemented.
+       * Set deno.namespace to `true` to make `Deno` namespace and all of its methods
+       * available to worker thread. The namespace is disabled by default.
+       * 
+       * Configure deno.permissions options to change the level of access the worker will
+       * have. By default it will inherit the permissions of its parent thread. The permissions
+       * of a worker can't be extended beyond its parent's permissions reach.
+       * - "inherit" will take the permissions of the thread the worker is created in
+       * - You can disable/enable permissions all together by passing a boolean
+       * - You can provide a list of routes relative to the file the worker
+       *   is created in to limit the access of the worker (read/write permissions only)
        *
        * Example:
        *
        * ```ts
        * // mod.ts
        * const worker = new Worker(
-       *   new URL("deno_worker.ts", import.meta.url).href,
-       *   { type: "module", deno: true }
+       *   new URL("deno_worker.ts", import.meta.url).href, {
+       *     type: "module",
+       *     deno: {
+       *       namespace: true,
+       *       permissions: {
+       *         read: true,
+       *       },
+       *     },
+       *   }
        * );
        * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
@@ -706,7 +716,30 @@ declare class Worker extends EventTarget {
        * hello world2
        *
        */
-      deno?: boolean;
+      // TODO(Soremwar)
+      // `deno: true` is kept for backwards compatibility with the previous worker
+      // options implementation. Remove for 2.0
+      deno?: true | {
+        namespace?: boolean;
+        /** Set to false to disable all the permissions in the worker */
+        permissions?: "inherit" | false | {
+          env?: "inherit" | boolean;
+          hrtime?: "inherit" | boolean;
+          /**
+           * The format of the net access list must be `hostname[:port]`
+           * in order to be resolved
+           * 
+           * ```
+           * net: ["https://deno.land", "localhost:8080"],
+           * ```
+           * */
+          net?: "inherit" | boolean | string[];
+          plugin?: "inherit" | boolean;
+          read?: "inherit" | boolean | Array<string | URL>;
+          run?: "inherit" | boolean;
+          write?: "inherit" | boolean | Array<string | URL>;
+        };
+      };
     },
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
@@ -852,109 +885,3 @@ interface ErrorConstructor {
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.
 }
-
-interface CloseEventInit extends EventInit {
-  code?: number;
-  reason?: string;
-  wasClean?: boolean;
-}
-
-declare class CloseEvent extends Event {
-  constructor(type: string, eventInitDict?: CloseEventInit);
-  /**
-   * Returns the WebSocket connection close code provided by the server.
-   */
-  readonly code: number;
-  /**
-   * Returns the WebSocket connection close reason provided by the server.
-   */
-  readonly reason: string;
-  /**
-   * Returns true if the connection closed cleanly; false otherwise.
-   */
-  readonly wasClean: boolean;
-}
-
-interface WebSocketEventMap {
-  close: CloseEvent;
-  error: Event;
-  message: MessageEvent;
-  open: Event;
-}
-
-/** Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection. */
-declare class WebSocket extends EventTarget {
-  constructor(url: string, protocols?: string | string[]);
-
-  static readonly CLOSED: number;
-  static readonly CLOSING: number;
-  static readonly CONNECTING: number;
-  static readonly OPEN: number;
-
-  /**
-   * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
-   *
-   * Can be set, to change how binary data is returned. The default is "blob".
-   */
-  binaryType: BinaryType;
-  /**
-   * Returns the number of bytes of application data (UTF-8 text and binary data) that have been queued using send() but not yet been transmitted to the network.
-   *
-   * If the WebSocket connection is closed, this attribute's value will only increase with each call to the send() method. (The number does not reset to zero once the connection closes.)
-   */
-  readonly bufferedAmount: number;
-  /**
-   * Returns the extensions selected by the server, if any.
-   */
-  readonly extensions: string;
-  onclose: ((this: WebSocket, ev: CloseEvent) => any) | null;
-  onerror: ((this: WebSocket, ev: Event | ErrorEvent) => any) | null;
-  onmessage: ((this: WebSocket, ev: MessageEvent) => any) | null;
-  onopen: ((this: WebSocket, ev: Event) => any) | null;
-  /**
-   * Returns the subprotocol selected by the server, if any. It can be used in conjunction with the array form of the constructor's second argument to perform subprotocol negotiation.
-   */
-  readonly protocol: string;
-  /**
-   * Returns the state of the WebSocket object's connection. It can have the values described below.
-   */
-  readonly readyState: number;
-  /**
-   * Returns the URL that was used to establish the WebSocket connection.
-   */
-  readonly url: string;
-  /**
-   * Closes the WebSocket connection, optionally using code as the the WebSocket connection close code and reason as the the WebSocket connection close reason.
-   */
-  close(code?: number, reason?: string): void;
-  /**
-   * Transmits data using the WebSocket connection. data can be a string, a Blob, an ArrayBuffer, or an ArrayBufferView.
-   */
-  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void;
-  readonly CLOSED: number;
-  readonly CLOSING: number;
-  readonly CONNECTING: number;
-  readonly OPEN: number;
-  addEventListener<K extends keyof WebSocketEventMap>(
-    type: K,
-    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  removeEventListener<K extends keyof WebSocketEventMap>(
-    type: K,
-    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | EventListenerOptions,
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions,
-  ): void;
-}
-
-type BinaryType = "arraybuffer" | "blob";
