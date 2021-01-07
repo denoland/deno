@@ -1665,24 +1665,41 @@ async fn op_futime_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let mut state = state.borrow_mut();
-  super::check_unstable(&state, "Deno.futime");
+  super::check_unstable2(&state, "Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
-  // TODO Not actually async! https://github.com/denoland/deno/issues/7400
-  std_file_resource(&mut state, rid, |r| match r {
-    Ok(std_file) => {
-      filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
-        .map_err(AnyError::from)
-    }
-    Err(_) => Err(type_error(
-      "cannot futime on this type of resource".to_string(),
-    )),
-  })?;
 
-  Ok(json!({}))
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let std_file = (*fs_file)
+    .0
+    .as_mut()
+    .unwrap()
+    .try_clone()
+    .await?
+    .into_std()
+    .await;
+
+  tokio::task::spawn_blocking(move || {
+    filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;
+    Ok(json!({}))
+  })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
