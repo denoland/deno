@@ -1,31 +1,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const nameToCodeMapping = new Map(
-    Object.entries({
-      IndexSizeError: 1,
-      HierarchyRequestError: 3,
-      WrongDocumentError: 4,
-      InvalidCharacterError: 5,
-      NoModificationAllowedError: 7,
-      NotFoundError: 8,
-      NotSupportedError: 9,
-      InvalidStateError: 11,
-      SyntaxError: 12,
-      InvalidModificationError: 13,
-      NamespaceError: 14,
-      InvalidAccessError: 15,
-      TypeMismatchError: 17,
-      SecurityError: 18,
-      NetworkError: 19,
-      AbortError: 20,
-      URLMismatchError: 21,
-      QuotaExceededError: 22,
-      TimeoutError: 23,
-      InvalidNodeTypeError: 24,
-      DataCloneError: 25,
-    }),
-  );
+  const nameToCodeMapping = Object.create(null);
+  nameToCodeMatting.IndexSizeError = 1;
+  nameToCodeMapping.HierarchyRequestError = 3;
+  nameToCodeMapping.WrongDocumentError = 4;
+  nameToCodeMapping.InvalidCharacterError = 5;
+  nameToCodeMapping.NoModificationAllowedError = 7;
+  nameToCodeMapping.NotFoundError = 8;
+  nameToCodeMapping.NotSupportedError = 9;
+  nameToCodeMapping.InvalidStateError = 11;
+  nameToCodeMapping.SyntaxError = 12;
+  nameToCodeMapping.InvalidModificationError = 13;
+  nameToCodeMapping.NamespaceError = 14;
+  nameToCodeMapping.InvalidAccessError = 15;
+  nameToCodeMapping.TypeMismatchError = 17;
+  nameToCodeMapping.SecurityError = 18;
+  nameToCodeMapping.NetworkError = 19;
+  nameToCodeMapping.AbortError = 20;
+  nameToCodeMapping.URLMismatchError = 21;
+  nameToCodeMapping.QuotaExceededError = 22;
+  nameToCodeMapping.TimeoutError = 23;
+  nameToCodeMapping.InvalidNodeTypeError = 24;
+  nameToCodeMapping.DataCloneError = 25;
 
   class DOMException extends Error {
     #name = "";
@@ -34,7 +31,7 @@
     constructor(message = "", name = "Error") {
       super(message);
       this.#name = name;
-      this.#code = nameToCodeMapping.get(name) ?? 0;
+      this.#code = nameToCodeMapping[name] ?? 0;
     }
 
     get name() {
