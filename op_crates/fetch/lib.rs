@@ -150,7 +150,7 @@ where
     match data.len() {
       0 => {
         // If no body is passed, we return a writer for streaming the body.
-        let (tx, rx) = mpsc::channel::<Result<Vec<u8>, std::io::Error>>(1);
+        let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>(1);
         request = request.body(Body::wrap_stream(rx));
 
         let request_body_rid =
@@ -238,9 +238,9 @@ pub async fn op_fetch_send(
     }
   }
 
-  let stream: BytesStream = Pin::new(Box::new(res.bytes_stream().map(|r| {
+  let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
     r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-  })));
+  }));
   let stream_reader = stream_reader(stream);
   let rid = state
     .borrow_mut()
@@ -330,7 +330,7 @@ impl Resource for FetchRequestResource {
 }
 
 struct FetchRequestBodyResource {
-  body: AsyncRefCell<mpsc::Sender<Result<Vec<u8>, std::io::Error>>>,
+  body: AsyncRefCell<mpsc::Sender<std::io::Result<Vec<u8>>>>,
   cancel: CancelHandle,
 }
 

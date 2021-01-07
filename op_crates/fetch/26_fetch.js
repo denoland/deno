@@ -1211,7 +1211,6 @@
           try {
             await opFetchRequestWrite({ rid: requestBodyRid }, chunk);
           } catch (err) {
-            console.error(err);
             controller.error(err);
             controller.close();
           }
@@ -1327,7 +1326,7 @@
           type: "bytes",
           async pull(controller) {
             try {
-              const chunk = new Uint8Array(32 * 1024);
+              const chunk = new Uint8Array(16 * 1024 + 256);
               const { read } = await core.jsonOpAsync(
                 "op_fetch_response_read",
                 { rid },
