@@ -58,8 +58,8 @@ and then `compinit` to generate them again.
 Example (zsh + oh-my-zsh) [recommended for zsh users] :
 
 ```shell
-mkdir ~/.oh-my-zsh/custom/plugins/deno
-deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
+mkdir $ZSH_CUSTOM/deno
+deno completions zsh > $ZSH_CUSTOM/plugins/deno/_deno
 ```
 
 After this add deno plugin under plugins tag in `~/.zshrc` file. for tools like
