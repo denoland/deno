@@ -217,17 +217,8 @@ pub async fn run(
   source_code: String,
   metadata: Metadata,
 ) -> Result<(), AnyError> {
-  let Metadata {
-    permissions,
-    unstable,
-    argv,
-    v8_flags,
-    log_level,
-    seed,
-    ca_data,
-  } = metadata;
   let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
-  let permissions = Permissions::from_options(&permissions);
+  let permissions = Permissions::from_options(&metadata.permissions);
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
@@ -236,18 +227,18 @@ pub async fn run(
   // Keep in sync with `main.rs`.
   v8_set_flags(
     once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
-      .chain(v8_flags.iter().cloned())
+      .chain(metadata.v8_flags.iter().cloned())
       .collect::<Vec<_>>(),
   );
-  // TODO(nayeemrmn): Unify this Flags -> WorkerOptions mapping with `deno run`.
+  // TODO(nayeemrmn): Unify this metadata -> WorkerOptions mapping with `deno run`.
   let options = WorkerOptions {
     apply_source_maps: false,
-    args: argv,
-    debug_flag: log_level.map_or(false, |l| l == log::Level::Debug),
-    user_agent: crate::version::get_user_agent(),
-    unstable,
-    ca_data,
-    seed,
+    args: metadata.argv,
+    debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
+    user_agent: version::get_user_agent(),
+    unstable: metadata.unstable,
+    ca_data: metadata.ca_data,
+    seed: metadata.seed,
     js_error_create_fn: None,
     create_web_worker_cb,
     attach_inspector: false,
