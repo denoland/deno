@@ -345,10 +345,22 @@ async fn op_fsync_async(
 ) -> Result<Value, AnyError> {
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-    Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
-  })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  (*fs_file).0.as_mut().unwrap().sync_all().await?;
   Ok(json!({}))
 }
 
