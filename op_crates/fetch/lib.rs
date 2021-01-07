@@ -156,7 +156,7 @@ where
         let request_body_rid =
           state.resource_table.add(FetchRequestBodyResource {
             body: AsyncRefCell::new(tx),
-            cancel: Default::default(),
+            cancel: CancelHandle::default(),
           });
 
         Some(request_body_rid)
@@ -247,7 +247,7 @@ pub async fn op_fetch_send(
     .resource_table
     .add(FetchResponseBodyResource {
       reader: AsyncRefCell::new(stream_reader),
-      cancel: Default::default(),
+      cancel: CancelHandle::default(),
     });
 
   Ok(json!({
