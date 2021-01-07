@@ -1127,18 +1127,6 @@
     }
   }
 
-  class StorageEvent extends Event {
-    constructor(type, eventInitDict) {
-      super(type, eventInitDict);
-
-      this.key = eventInitDict.key;
-      this.oldValue = eventInitDict.oldValue;
-      this.newValue = eventInitDict.newValue;
-      this.url = eventInitDict.url;
-      this.storageArea = eventInitDict.storageArea;
-    }
-  }
-
   class CustomEvent extends Event {
     #detail = null;
 
@@ -1195,7 +1183,6 @@
   window.ErrorEvent = ErrorEvent;
   window.CloseEvent = CloseEvent;
   window.MessageEvent = MessageEvent;
-  window.StorageEvent = StorageEvent;
   window.CustomEvent = CustomEvent;
   window.ProgressEvent = ProgressEvent;
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;

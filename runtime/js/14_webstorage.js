@@ -1,27 +1,6 @@
 ((window) => {
   const core = window.Deno.core;
 
-  async function eventLoop(eventRid, rid) {
-    const { key, oldValue, newValue } = await core.jsonOpAsync(
-      "op_localstorage_events_poll",
-      {
-        eventRid,
-        rid,
-      },
-    );
-    if (key !== undefined) {
-      const event = new StorageEvent("storage", {
-        key,
-        newValue,
-        oldValue,
-        storageArea: localStorage,
-      });
-      window.dispatchEvent("storage", event);
-      window.onstorage?.(event);
-    }
-    eventLoop(eventRid, rid);
-  }
-
   function webStorage(session = false) {
     let rid;
 
@@ -32,10 +11,6 @@
           location: "foobar",
         });
         rid = data.rid;
-
-        if (!session) {
-          eventLoop(data.eventRid, data.rid);
-        }
       }
       return rid;
     }

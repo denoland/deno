@@ -63,9 +63,9 @@ pub fn op_localstorage_open(
         params![],
       )
       .unwrap();
-    let session_rid =
+    let rid =
       state.resource_table.add(WebStorageConnectionResource { connection });
-    Ok(json!({ "rid": session_rid }))
+    Ok(json!({ "rid": rid }))
   } else {
     let cli_state = super::global_state(&state);
     let deno_dir = &cli_state.dir;
@@ -76,37 +76,17 @@ pub fn op_localstorage_open(
 
     std::fs::create_dir_all(&path).unwrap();
 
-    let conn = Connection::open(path.join("local_storage")).unwrap();
+    let connection = Connection::open(path.join("local_storage")).unwrap();
 
-    conn
+    connection
       .execute(
         "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
         params![],
       )
       .unwrap();
-    conn
-      .execute(
-        "CREATE TABLE IF NOT EXISTS events (createdBy INT, key VARCHAR, oldValue VARCHAR, newValue VARCHAR)",
-        params![],
-      )
-      .unwrap();
 
-    let (sender, receiver) = mpsc::unbounded_channel::<i64>();
-
-    conn.update_hook(Some(move |_, _: &str, table_name: &str, row_id| {
-      if table_name == "events" {
-        sender.send(row_id).unwrap();
-      }
-    }));
-
-    let event_rid = state
-      .resource_table
-      .add("localStorageEvents", Box::new(receiver));
-    let storage_rid = state.resource_table.add("localStorage", Box::new(conn));
-    Ok(json!({
-      "eventRid": event_rid,
-      "rid": storage_rid,
-    }))
+    let rid = state.resource_table.add(WebStorageConnectionResource { connection });
+    Ok(json!({"rid": rid }))
   }
 }
 
@@ -188,41 +168,12 @@ pub fn op_localstorage_set(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.connection
-    .prepare("SELECT value FROM data WHERE key = ?")
-    .unwrap();
-
-  let old_value: Option<String> = stmt
-    .query_row(params![args.key_name], |row| row.get(0))
-    .optional()
-    .unwrap();
-
   resource.connection
     .execute(
       "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
       params![args.key_name, args.key_value],
     )
     .unwrap();
-
-  let pid = std::process::id();
-  let insert = |event_params: &[&dyn rusqlite::ToSql]| {
-    resource.connection
-      .execute(
-        "INSERT INTO events (createdBy, key, oldValue, newValue) VALUES (?, ?, ?, ?)",
-        event_params,
-      )
-      .unwrap()
-  };
-
-  match old_value {
-    Some(val) => insert(params![pid, args.key_name, val, args.key_value]),
-    None => insert(params![
-      pid,
-      args.key_name,
-      rusqlite::types::Null,
-      args.key_value
-    ]),
-  };
 
   Ok(json!({}))
 }
@@ -275,27 +226,9 @@ pub fn op_localstorage_remove(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.connection
-    .prepare("SELECT value FROM data WHERE key = ?")
-    .unwrap();
-
-  let old_value: Option<String> = stmt
-    .query_row(params![args.key_name], |row| row.get(0))
-    .optional()
-    .unwrap();
-
   resource.connection
     .execute("DELETE FROM data WHERE key = ?", params![args.key_name])
     .unwrap();
-
-  if let Some(val) = old_value {
-    resource.connection
-      .execute(
-        "INSERT INTO events (createdBy, key, oldValue) VALUES (?, ?, ?)",
-        params![std::process::id(), args.key_name, val],
-      )
-      .unwrap();
-  }
 
   Ok(json!({}))
 }
@@ -325,74 +258,5 @@ pub fn op_localstorage_clear(
     )
     .unwrap();
 
-  resource.connection
-    .execute(
-      "INSERT INTO events (createdBy) VALUES (?)",
-      params![std::process::id()],
-    )
-    .unwrap();
-
   Ok(json!({}))
-}
-
-struct Event {
-  created_by: u32,
-  key: Option<String>,
-  old_value: Option<String>,
-  new_value: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EventLoopArgs {
-  event_rid: u32,
-  rid: u32,
-}
-
-pub async fn op_localstorage_events_poll(
-  state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let args: EventLoopArgs = serde_json::from_value(args)?;
-  poll_fn(move |cx| {
-    let mut state = state.borrow_mut();
-    let receiver = state
-      .resource_table
-      .get_mut::<mpsc::UnboundedReceiver<i64>>(args.event_rid)
-      .ok_or_else(bad_resource_id)?;
-
-    receiver.poll_recv(cx).map(|val| {
-      let conn = state
-        .resource_table
-        .get_mut::<Connection>(args.rid)
-        .ok_or_else(bad_resource_id)?;
-
-      let mut stmt = conn
-        .prepare("SELECT * FROM events WHERE rowid = ?")
-        .unwrap();
-
-      let event = stmt
-        .query_row(params![val.unwrap()], |row| {
-          Ok(Event {
-            created_by: row.get_unwrap(0),
-            key: row.get_unwrap(1),
-            old_value: row.get_unwrap(2),
-            new_value: row.get_unwrap(3),
-          })
-        })
-        .unwrap();
-
-      Ok(if event.created_by != std::process::id() {
-        json!({
-          "key": event.key,
-          "oldValue": event.old_value,
-          "newValue": event.new_value,
-        })
-      } else {
-        json!({})
-      })
-    })
-  })
-  .await
 }
