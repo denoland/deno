@@ -1082,7 +1082,7 @@ unitTest(
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
-      `ntransfer-encoding: chunked\r\n\r\n`,
+      `transfer-encoding: chunked\r\n\r\n`,
       "6\r\n",
       "hello \r\n",
       "5\r\n",
