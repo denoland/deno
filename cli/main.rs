@@ -204,6 +204,7 @@ pub fn create_main_worker(
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
+    location: program_state.flags.location.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -1223,6 +1224,21 @@ fn get_subcommand(
   }
 }
 
+fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
+  match result {
+    Ok(value) => value,
+    Err(error) => {
+      let msg = format!(
+        "{}: {}",
+        colors::red_bold("error"),
+        error.to_string().trim()
+      );
+      eprintln!("{}", msg);
+      std::process::exit(1);
+    }
+  }
+}
+
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
@@ -1233,16 +1249,12 @@ pub fn main() {
     std::process::exit(1);
   }
 
-  let flags = flags::flags_from_vec(args);
+  let flags =
+    unwrap_or_exit(flags::flags_from_vec(args).map_err(AnyError::from));
   if !flags.v8_flags.is_empty() {
     init_v8_flags(&*flags.v8_flags);
   }
   init_logger(flags.log_level);
 
-  let subcommand_future = get_subcommand(flags);
-  let result = tokio_util::run_basic(subcommand_future);
-  if let Err(err) = result {
-    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
-    std::process::exit(1);
-  }
+  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
 }

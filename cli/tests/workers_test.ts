@@ -614,3 +614,41 @@ Deno.test("Worker with disabled permissions", async function () {
   await promise;
   worker.terminate();
 });
+
+Deno.test({
+  name: "worker location",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const workerModuleHref =
+      new URL("subdir/worker_location.ts", import.meta.url).href;
+    const w = new Worker(workerModuleHref, { type: "module" });
+    w.onmessage = (e): void => {
+      assertEquals(e.data, workerModuleHref);
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker with relative specifier",
+  fn: async function (): Promise<void> {
+    // TODO(nayeemrmn): Add `Location` and `location` to `dlint`'s globals.
+    // deno-lint-ignore no-undef
+    assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
+    const promise = deferred();
+    const w = new Worker(
+      "./workers/test_worker.ts",
+      { type: "module", name: "tsWorker" },
+    );
+    w.onmessage = (e): void => {
+      assertEquals(e.data, "Hello, world!");
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
+});
