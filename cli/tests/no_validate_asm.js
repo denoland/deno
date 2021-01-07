@@ -3,11 +3,18 @@
 
 const asmJsModule = function () {
   "use asm";
-  function add(x) {
+
+  function func(
+    x,
+  ) {
     x = +x; // cast to float
 
+    ~x;
+    // asmjs error: `~` is only valid on integers
+    // should not log to stdout with --no-validate-asm
   }
-  return { add };
-  // asmjs error: compund object literal syntax isn't allowed
-  // should not log to stdout with --no-validate-asm
+
+  return {
+    f: func,
+  };
 }();
