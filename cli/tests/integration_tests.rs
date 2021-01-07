@@ -3522,6 +3522,23 @@ itest!(inline_js_source_map_with_contents_from_graph {
 });
 
 #[test]
+fn no_validate_asm() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_validate_asm.js")
+    .stderr(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+  assert!(output.stdout.is_empty());
+}
+
+#[test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
