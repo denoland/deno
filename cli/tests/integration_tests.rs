@@ -2651,6 +2651,11 @@ itest!(_078_unload_on_exit {
   output: "078_unload_on_exit.ts.out",
 });
 
+itest!(_079_location_authentication {
+  args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
+  output: "079_location_authentication.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

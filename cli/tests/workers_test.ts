@@ -648,7 +648,7 @@ Deno.test({
       new URL("subdir/worker_location.ts", import.meta.url).href;
     const w = new Worker(workerModuleHref, { type: "module" });
     w.onmessage = (e): void => {
-      assertEquals(e.data, workerModuleHref);
+      assertEquals(e.data, `${workerModuleHref}, true`);
       promise.resolve();
     };
     w.postMessage("Hello, world!");
