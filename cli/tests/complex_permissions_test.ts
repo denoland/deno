@@ -10,8 +10,8 @@ const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
       Deno.writeFileSync(file, new Uint8Array(0), { append: true })
     );
   },
-  netFetch(hosts: string[]): void {
-    hosts.forEach((host) => fetch(host));
+  netFetch(urls: string[]): void {
+    urls.forEach((url) => fetch(url));
   },
   netListen(endpoints: string[]): void {
     endpoints.forEach((endpoint) => {

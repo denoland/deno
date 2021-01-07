@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/** This module is browser compatible. */
+// This module is browser compatible.
 
 export type Ascii85Standard = "Adobe" | "btoa" | "RFC 1924" | "Z85";
 /**
  * encoding/decoding options
- * @property standard - characterset and delimeter (if supported and used). Defaults to Adobe
- * @property delimeter - whether to use a delimeter (if supported) - "<~" and "~>" by default
+ * @property standard - characterset and delimiter (if supported and used). Defaults to Adobe
+ * @property delimiter - whether to use a delimiter (if supported) - "<~" and "~>" by default
  */
 export interface Ascii85Options {
   standard?: Ascii85Standard;
@@ -20,7 +20,7 @@ const Z85 =
  * @param uint8 input to encode
  * @param [options] encoding options
  * @param [options.standard=Adobe] encoding standard (Adobe, btoa, RFC 1924 or Z85)
- * @param [options.delimeter] whether to use a delimeter, if supported by encoding standard
+ * @param [options.delimiter] whether to use a delimiter, if supported by encoding standard
  */
 export function encode(uint8: Uint8Array, options?: Ascii85Options): string {
   const standard = options?.standard ?? "Adobe";

@@ -32,7 +32,7 @@ const desc2 = { name: "write", path: "foo/bar" } as const;
 const desc3 = { name: "net" } as const;
 
 // Net permission to 127.0.0.1:8000.
-const desc4 = { name: "net", url: "127.0.0.1:8000" } as const;
+const desc4 = { name: "net", host: "127.0.0.1:8000" } as const;
 
 // High-resolution time permission.
 const desc5 = { name: "hrtime" } as const;
@@ -86,9 +86,9 @@ const desc1 = { name: "write" } as const;
 // is stronger than
 const desc2 = { name: "write", path: "/foo" } as const;
 
-const desc3 = { name: "net" } as const;
+const desc3 = { name: "net", host: "127.0.0.1" } as const;
 // is stronger than
-const desc4 = { name: "net", url: "127.0.0.1:8000" } as const;
+const desc4 = { name: "net", host: "127.0.0.1:8000" } as const;
 ```
 
 ### Request permissions

@@ -764,16 +764,7 @@ function tryFile(requestPath: string, _isMain: boolean): string | false {
 }
 
 function toRealPath(requestPath: string): string {
-  // Deno does not have realpath implemented yet.
-  let fullPath = requestPath;
-  while (true) {
-    try {
-      fullPath = Deno.readLinkSync(fullPath);
-    } catch {
-      break;
-    }
-  }
-  return path.resolve(requestPath);
+  return Deno.realPathSync(requestPath);
 }
 
 // Given a path, check if the file exists with any of the set extensions

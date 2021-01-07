@@ -283,7 +283,7 @@ comment. If it needs further comments it is not a good example.
 
 Currently, the building process uses `dlint` to validate linting problems in the
 code. If the task requires code that is non-conformant to linter use
-`deno-lint-ignore <code>` directive to supress the warning.
+`deno-lint-ignore <code>` directive to suppress the warning.
 
 ```typescript
 // deno-lint-ignore no-explicit-any
@@ -349,13 +349,13 @@ export function foo(): string {
 programs can rely on. We want to guarantee to users that this code does not
 include potentially unreviewed third party code.
 
-#### Document and maintain browser compatiblity.
+#### Document and maintain browser compatibility.
 
 If a module is browser compatible, include the following in the JSDoc at the top
 of the module:
 
 ```ts
-/** This module is browser compatible. */
+// This module is browser compatible.
 ```
 
 Maintain browser compatibility for such a module by either not using the global

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function fromInit(): void {
   const req = new Request("http://foo/", {
@@ -46,8 +46,10 @@ unitTest(function methodNonString(): void {
 });
 
 unitTest(function requestRelativeUrl(): void {
-  // TODO(nayeemrmn): Base from `--location` when implemented and set.
-  assertThrows(() => new Request("relative-url"), TypeError, "Invalid URL.");
+  assertEquals(
+    new Request("relative-url").url,
+    "http://js-unit-tests/foo/relative-url",
+  );
 });
 
 unitTest(async function cloneRequestBodyStream(): Promise<void> {

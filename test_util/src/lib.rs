@@ -5,32 +5,47 @@
 #[macro_use]
 extern crate lazy_static;
 
-use futures::future::{self, FutureExt};
+use futures::FutureExt;
+use futures::Stream;
+use futures::StreamExt;
+use futures::TryStreamExt;
+use hyper::header::HeaderValue;
+use hyper::service::make_service_fn;
+use hyper::service::service_fn;
+use hyper::Body;
+use hyper::Request;
+use hyper::Response;
+use hyper::Server;
+use hyper::StatusCode;
 use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
+use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
+use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::process::Child;
 use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
+use std::result::Result;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::task::Context;
+use std::task::Poll;
 use tempfile::TempDir;
-use warp::http::HeaderValue;
-use warp::http::Response;
-use warp::http::StatusCode;
-use warp::http::Uri;
-use warp::hyper::Body;
-use warp::reply::with_header;
-use warp::reply::Reply;
-use warp::Filter;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
+use tokio_rustls::rustls;
+use tokio_rustls::TlsAcceptor;
+use tokio_tungstenite::accept_async;
 
 const PORT: u16 = 4545;
 const REDIRECT_PORT: u16 = 4546;
@@ -68,6 +83,10 @@ pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
 }
 
+pub fn wpt_path() -> PathBuf {
+  root_path().join("test_util").join("wpt")
+}
+
 pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
@@ -75,7 +94,6 @@ pub fn third_party_path() -> PathBuf {
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  println!("target_dir {}", target_dir.display());
   target_dir.into()
 }
 
@@ -117,132 +135,225 @@ pub fn test_server_path() -> PathBuf {
 /// Benchmark server that just serves "hello world" responses.
 async fn hyper_hello(port: u16) {
   println!("hyper hello");
-  let route = warp::any().map(|| "Hello World!");
-  warp::serve(route).bind(([127, 0, 0, 1], port)).await;
+  let addr = SocketAddr::from(([127, 0, 0, 1], port));
+  let hello_svc = make_service_fn(|_| async move {
+    Ok::<_, hyper::error::Error>(service_fn(
+      move |_: Request<Body>| async move {
+        Ok::<_, hyper::error::Error>(Response::new(Body::from("Hello World!")))
+      },
+    ))
+  });
+
+  let server = Server::bind(&addr).serve(hello_svc);
+  if let Err(e) = server.await {
+    eprintln!("server error: {}", e);
+  }
 }
 
-#[tokio::main]
-pub async fn run_all_servers() {
-  if let Some(port) = env::args().nth(1) {
-    return hyper_hello(port.parse::<u16>().unwrap()).await;
+fn redirect_resp(url: String) -> Response<Body> {
+  let mut redirect_resp = Response::new(Body::empty());
+  *redirect_resp.status_mut() = StatusCode::MOVED_PERMANENTLY;
+  redirect_resp.headers_mut().insert(
+    hyper::header::LOCATION,
+    HeaderValue::from_str(&url[..]).unwrap(),
+  );
+
+  redirect_resp
+}
+
+async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
+  let p = req.uri().path();
+  assert_eq!(&p[0..1], "/");
+  let url = format!("http://localhost:{}{}", PORT, p);
+
+  Ok(redirect_resp(url))
+}
+
+async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
+  let p = req.uri().path();
+  assert_eq!(&p[0..1], "/");
+  let url = format!("http://localhost:{}{}", REDIRECT_PORT, p);
+
+  Ok(redirect_resp(url))
+}
+
+async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
+  let p = req.uri().path();
+  assert_eq!(&p[0..1], "/");
+  let url = format!("http://localhost:{}{}", INF_REDIRECTS_PORT, p);
+
+  Ok(redirect_resp(url))
+}
+
+async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
+  let p = req.uri().path();
+  assert_eq!(&p[0..1], "/");
+  let url = format!("http://localhost:{}/cli/tests/subdir{}", PORT, p);
+
+  Ok(redirect_resp(url))
+}
+
+async fn run_ws_server(addr: &SocketAddr) {
+  let mut listener = TcpListener::bind(addr).await.unwrap();
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream_fut = accept_async(stream);
+
+      let ws_stream = ws_stream_fut.await;
+      if let Ok(ws_stream) = ws_stream {
+        let (tx, rx) = ws_stream.split();
+        rx.forward(tx)
+          .map(|result| {
+            if let Err(e) = result {
+              println!("websocket server error: {:?}", e);
+            }
+          })
+          .await;
+      }
+    });
+  }
+}
+
+async fn get_tls_config(
+  cert: &str,
+  key: &str,
+) -> io::Result<Arc<rustls::ServerConfig>> {
+  let mut cert_path = root_path();
+  let mut key_path = root_path();
+  cert_path.push(cert);
+  key_path.push(key);
+
+  let cert_file = std::fs::File::open(cert_path)?;
+  let key_file = std::fs::File::open(key_path)?;
+
+  let mut cert_reader = io::BufReader::new(cert_file);
+  let cert = rustls::internal::pemfile::certs(&mut cert_reader)
+    .expect("Cannot load certificate");
+  let mut key_reader = io::BufReader::new(key_file);
+  let key = {
+    let pkcs8_key =
+      rustls::internal::pemfile::pkcs8_private_keys(&mut key_reader)
+        .expect("Cannot load key file");
+    let rsa_key = rustls::internal::pemfile::rsa_private_keys(&mut key_reader)
+      .expect("Cannot load key file");
+    if !pkcs8_key.is_empty() {
+      Some(pkcs8_key[0].clone())
+    } else if !rsa_key.is_empty() {
+      Some(rsa_key[0].clone())
+    } else {
+      None
+    }
+  };
+
+  match key {
+    Some(key) => {
+      let mut config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
+      config
+        .set_single_cert(cert, key)
+        .map_err(|e| {
+          eprintln!("Error setting cert: {:?}", e);
+        })
+        .unwrap();
+
+      return Ok(Arc::new(config));
+    }
+    None => {
+      return Err(io::Error::new(io::ErrorKind::Other, "Cannot find key"));
+    }
+  }
+}
+
+async fn run_wss_server(addr: &SocketAddr) {
+  let cert_file = "std/http/testdata/tls/localhost.crt";
+  let key_file = "std/http/testdata/tls/localhost.key";
+
+  let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
+  let tls_acceptor = TlsAcceptor::from(tls_config);
+  let mut listener = TcpListener::bind(addr).await.unwrap();
+
+  while let Ok((stream, _addr)) = listener.accept().await {
+    let acceptor = tls_acceptor.clone();
+    tokio::spawn(async move {
+      match acceptor.accept(stream).await {
+        Ok(tls_stream) => {
+          let ws_stream_fut = accept_async(tls_stream);
+          let ws_stream = ws_stream_fut.await;
+          if let Ok(ws_stream) = ws_stream {
+            let (tx, rx) = ws_stream.split();
+            rx.forward(tx)
+              .map(|result| {
+                if let Err(e) = result {
+                  println!("Websocket server error: {:?}", e);
+                }
+              })
+              .await;
+          }
+        }
+        Err(e) => {
+          eprintln!("TLS accept error: {:?}", e);
+        }
+      }
+    });
+  }
+}
+
+async fn absolute_redirect(
+  req: Request<Body>,
+) -> hyper::Result<Response<Body>> {
+  let path = req.uri().path();
+
+  if path.starts_with("/REDIRECT") {
+    let url = &req.uri().path()[9..];
+    println!("URL: {:?}", url);
+    let redirect = redirect_resp(url.to_string());
+    return Ok(redirect);
   }
 
-  let routes = warp::path::full().map(|path: warp::path::FullPath| {
-    let p = path.as_str();
-    assert_eq!(&p[0..1], "/");
-    let url = format!("http://localhost:{}{}", PORT, p);
-    let u = url.parse::<Uri>().unwrap();
-    warp::redirect(u)
-  });
-  let redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_PORT));
+  if path.starts_with("/a/b/c") {
+    if let Some(x_loc) = req.headers().get("x-location") {
+      let loc = x_loc.to_str().unwrap();
+      return Ok(redirect_resp(loc.to_string()));
+    }
+  }
 
-  let websocket_route = warp::ws().map(|ws: warp::ws::Ws| {
-    ws.on_upgrade(|websocket| {
-      use futures::stream::StreamExt;
-      let (tx, rx) = websocket.split();
-      rx.forward(tx).map(|result| {
-        if let Err(e) = result {
-          println!("websocket server error: {:?}", e);
-        }
-      })
-    })
-  });
-  let ws_server_fut =
-    warp::serve(websocket_route).bind(([127, 0, 0, 1], WS_PORT));
-  let wss_server_fut = warp::serve(websocket_route)
-    .tls()
-    .cert_path("std/http/testdata/tls/localhost.crt")
-    .key_path("std/http/testdata/tls/localhost.key")
-    .bind(([127, 0, 0, 1], WSS_PORT));
+  let mut file_path = root_path();
+  file_path.push(&req.uri().path()[1..]);
+  if file_path.is_dir() || !file_path.exists() {
+    let mut not_found_resp = Response::new(Body::empty());
+    *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
+    return Ok(not_found_resp);
+  }
 
-  let routes = warp::path::full().map(|path: warp::path::FullPath| {
-    let p = path.as_str();
-    assert_eq!(&p[0..1], "/");
-    let url = format!("http://localhost:{}/cli/tests/subdir{}", PORT, p);
-    let u = url.parse::<Uri>().unwrap();
-    warp::redirect(u)
-  });
-  let another_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
+  let file = tokio::fs::read(file_path).await.unwrap();
+  let file_resp = custom_headers(req.uri().path(), file);
+  return Ok(file_resp);
+}
 
-  let routes = warp::path::full().map(|path: warp::path::FullPath| {
-    let p = path.as_str();
-    assert_eq!(&p[0..1], "/");
-    let url = format!("http://localhost:{}{}", REDIRECT_PORT, p);
-    let u = url.parse::<Uri>().unwrap();
-    warp::redirect(u)
-  });
-  let double_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
+async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
+  return match (req.method(), req.uri().path()) {
+    (&hyper::Method::POST, "/echo_server") => {
+      let (parts, body) = req.into_parts();
+      let mut response = Response::new(body);
 
-  let routes = warp::path::full().map(|path: warp::path::FullPath| {
-    let p = path.as_str();
-    assert_eq!(&p[0..1], "/");
-    let url = format!("http://localhost:{}{}", INF_REDIRECTS_PORT, p);
-    let u = url.parse::<Uri>().unwrap();
-    warp::redirect(u)
-  });
-  let inf_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], INF_REDIRECTS_PORT));
-
-  // redirect server that redirect to absolute paths under same host
-  // redirects /REDIRECT/file_name to /file_name
-  let routes = warp::path("REDIRECT")
-    .and(warp::path::peek())
-    .map(|path: warp::path::Peek| {
-      let p = path.as_str();
-      let url = format!("/{}", p);
-      let u = url.parse::<Uri>().unwrap();
-      warp::redirect(u)
-    })
-    .or(
-      warp::path!("a" / "b" / "c")
-        .and(warp::header::<String>("x-location"))
-        .map(|token: String| {
-          let uri: Uri = token.parse().unwrap();
-          warp::redirect(uri)
-        }),
-    )
-    .or(
-      warp::any()
-        .and(warp::path::peek())
-        .and(warp::fs::dir(root_path()))
-        .map(custom_headers),
-    );
-  let absolute_redirect_server_fut =
-    warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
-
-  let echo_server = warp::path("echo_server")
-    .and(warp::post())
-    .and(warp::body::bytes())
-    .and(warp::header::optional::<String>("x-status"))
-    .and(warp::header::optional::<String>("content-type"))
-    .and(warp::header::optional::<String>("user-agent"))
-    .map(
-      |bytes: bytes::Bytes,
-       status: Option<String>,
-       content_type: Option<String>,
-       user_agent: Option<String>|
-       -> Box<dyn Reply> {
-        let mut res = Response::new(Body::from(bytes));
-        if let Some(v) = status {
-          *res.status_mut() = StatusCode::from_bytes(v.as_bytes()).unwrap();
-        }
-        let h = res.headers_mut();
-        if let Some(v) = content_type {
-          h.insert("content-type", HeaderValue::from_str(&v).unwrap());
-        }
-        if let Some(v) = user_agent {
-          h.insert("user-agent", HeaderValue::from_str(&v).unwrap());
-        }
-        Box::new(res)
-      },
-    );
-  let echo_multipart_file = warp::path("echo_multipart_file")
-    .and(warp::post())
-    .and(warp::body::bytes())
-    .map(|bytes: bytes::Bytes| -> Box<dyn Reply> {
+      if let Some(status) = parts.headers.get("x-status") {
+        *response.status_mut() =
+          StatusCode::from_bytes(status.as_bytes()).unwrap();
+      }
+      if let Some(content_type) = parts.headers.get("content-type") {
+        response
+          .headers_mut()
+          .insert("content-type", content_type.clone());
+      }
+      if let Some(user_agent) = parts.headers.get("user-agent") {
+        response
+          .headers_mut()
+          .insert("user-agent", user_agent.clone());
+      }
+      Ok(response)
+    }
+    (&hyper::Method::POST, "/echo_multipart_file") => {
+      let body = req.into_body();
+      let bytes = &hyper::body::to_bytes(body).await.unwrap()[0..];
       let start = b"--boundary\t \r\n\
                     Content-Disposition: form-data; name=\"field_1\"\r\n\
                     \r\n\
@@ -253,225 +364,407 @@ pub async fn run_all_servers() {
                     Content-Type: application/octet-stream\r\n\
                     \r\n";
       let end = b"\r\n--boundary--\r\n";
-      let b = [start as &[u8], &bytes, end].concat();
+      let b = [start as &[u8], bytes, end].concat();
 
-      let mut res = Response::new(Body::from(b));
-      let h = res.headers_mut();
-      h.insert(
+      let mut response = Response::new(Body::from(b));
+      response.headers_mut().insert(
         "content-type",
         HeaderValue::from_static("multipart/form-data;boundary=boundary"),
       );
-      Box::new(res)
-    });
-  let multipart_form_data =
-    warp::path("multipart_form_data.txt").map(|| -> Box<dyn Reply> {
+      Ok(response)
+    }
+    (_, "/multipart_form_data.txt") => {
       let b = "Preamble\r\n\
-               --boundary\t \r\n\
-               Content-Disposition: form-data; name=\"field_1\"\r\n\
-               \r\n\
-               value_1 \r\n\
-               \r\n--boundary\r\n\
-               Content-Disposition: form-data; name=\"field_2\";\
-               filename=\"file.js\"\r\n\
-               Content-Type: text/javascript\r\n\
-               \r\n\
-               console.log(\"Hi\")\
-               \r\n--boundary--\r\n\
-               Epilogue";
+             --boundary\t \r\n\
+             Content-Disposition: form-data; name=\"field_1\"\r\n\
+             \r\n\
+             value_1 \r\n\
+             \r\n--boundary\r\n\
+             Content-Disposition: form-data; name=\"field_2\";\
+             filename=\"file.js\"\r\n\
+             Content-Type: text/javascript\r\n\
+             \r\n\
+             console.log(\"Hi\")\
+             \r\n--boundary--\r\n\
+             Epilogue";
       let mut res = Response::new(Body::from(b));
       res.headers_mut().insert(
         "content-type",
         HeaderValue::from_static("multipart/form-data;boundary=boundary"),
       );
-      Box::new(res)
-    });
-  let bad_redirect = warp::path("bad_redirect").map(|| -> Box<dyn Reply> {
-    let mut res = Response::new(Body::empty());
-    *res.status_mut() = StatusCode::FOUND;
-    Box::new(res)
-  });
-
-  let etag_script = warp::path!("etag_script.ts")
-    .and(warp::header::optional::<String>("if-none-match"))
-    .map(|if_none_match| -> Box<dyn Reply> {
-      if if_none_match == Some("33a64df551425fcc55e".to_string()) {
-        let r =
-          warp::reply::with_status(warp::reply(), StatusCode::NOT_MODIFIED);
-        let r = with_header(r, "Content-type", "application/typescript");
-        let r = with_header(r, "ETag", "33a64df551425fcc55e");
-        Box::new(r)
-      } else {
-        let mut res = Response::new(Body::from("console.log('etag')"));
-        let h = res.headers_mut();
-        h.insert(
+      Ok(res)
+    }
+    (_, "/multipart_form_bad_content_type") => {
+      let b = "Preamble\r\n\
+             --boundary\t \r\n\
+             Content-Disposition: form-data; name=\"field_1\"\r\n\
+             \r\n\
+             value_1 \r\n\
+             \r\n--boundary\r\n\
+             Content-Disposition: form-data; name=\"field_2\";\
+             filename=\"file.js\"\r\n\
+             Content-Type: text/javascript\r\n\
+             \r\n\
+             console.log(\"Hi\")\
+             \r\n--boundary--\r\n\
+             Epilogue";
+      let mut res = Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-datatststs;boundary=boundary"),
+      );
+      Ok(res)
+    }
+    (_, "/bad_redirect") => {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::FOUND;
+      Ok(res)
+    }
+    (_, "/non_ascii_redirect") => {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
+      res.headers_mut().insert(
+        "location",
+        HeaderValue::from_bytes(b"/redirect\xae").unwrap(),
+      );
+      Ok(res)
+    }
+    (_, "/etag_script.ts") => {
+      let if_none_match = req.headers().get("if-none-match");
+      if if_none_match == Some(&HeaderValue::from_static("33a64df551425fcc55e"))
+      {
+        let mut resp = Response::new(Body::empty());
+        *resp.status_mut() = StatusCode::NOT_MODIFIED;
+        resp.headers_mut().insert(
           "Content-type",
           HeaderValue::from_static("application/typescript"),
         );
-        h.insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
-        Box::new(res)
+        resp
+          .headers_mut()
+          .insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
+
+        Ok(resp)
+      } else {
+        let mut resp = Response::new(Body::from("console.log('etag')"));
+        resp.headers_mut().insert(
+          "Content-type",
+          HeaderValue::from_static("application/typescript"),
+        );
+        resp
+          .headers_mut()
+          .insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
+        Ok(resp)
       }
-    });
-  let xtypescripttypes = warp::path!("xTypeScriptTypes.js")
-    .map(|| {
+    }
+    (_, "/xTypeScriptTypes.js") => {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
-      let h = res.headers_mut();
-      h.insert(
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
       );
-      h.insert(
+      res.headers_mut().insert(
         "X-TypeScript-Types",
         HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
       );
-      res
-    })
-    .or(warp::path!("xTypeScriptTypes.d.ts").map(|| {
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.d.ts") => {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/typescript"),
       );
-      res
-    }))
-    .or(warp::path!("type_directives_redirect.js").map(|| {
+      Ok(res)
+    }
+    (_, "/type_directives_redirect.js") => {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
-      let h = res.headers_mut();
-      h.insert(
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
       );
-      h.insert(
+      res.headers_mut().insert(
         "X-TypeScript-Types",
         HeaderValue::from_static(
           "http://localhost:4547/xTypeScriptTypesRedirect.d.ts",
         ),
       );
-      res
-    }))
-    .or(warp::path!("type_headers_deno_types.foo.js").map(|| {
-      let mut res = Response::new(Body::from("export function foo(text) { console.log(text); }"));
-      let h = res.headers_mut();
-      h.insert(
+      Ok(res)
+    }
+    (_, "/type_headers_deno_types.foo.js") => {
+      let mut res = Response::new(Body::from(
+        "export function foo(text) { console.log(text); }",
+      ));
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
       );
-      h.insert(
+      res.headers_mut().insert(
         "X-TypeScript-Types",
         HeaderValue::from_static(
           "http://localhost:4545/type_headers_deno_types.d.ts",
         ),
       );
-      res
-    }))
-    .or(warp::path!("type_headers_deno_types.d.ts").map(|| {
-      let mut res = Response::new(Body::from("export function foo(text: number): void;"));
-      let h = res.headers_mut();
-      h.insert(
+      Ok(res)
+    }
+    (_, "/type_headers_deno_types.d.ts") => {
+      let mut res =
+        Response::new(Body::from("export function foo(text: number): void;"));
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/typescript"),
       );
-      res
-    }))
-    .or(warp::path!("type_headers_deno_types.foo.d.ts").map(|| {
-      let mut res = Response::new(Body::from("export function foo(text: string): void;"));
-      let h = res.headers_mut();
-      h.insert(
+      Ok(res)
+    }
+    (_, "/type_headers_deno_types.foo.d.ts") => {
+      let mut res =
+        Response::new(Body::from("export function foo(text: string): void;"));
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/typescript"),
       );
-      res
-    }))
-    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirect.d.ts").map(|| {
+      Ok(res)
+    }
+    (_, "/cli/tests/subdir/xTypeScriptTypesRedirect.d.ts") => {
       let mut res = Response::new(Body::from(
         "import './xTypeScriptTypesRedirected.d.ts';",
       ));
-      let h = res.headers_mut();
-      h.insert(
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/typescript"),
       );
-      res
-    }))
-    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirected.d.ts").map(|| {
+      Ok(res)
+    }
+    (_, "/cli/tests/subdir/xTypeScriptTypesRedirected.d.ts") => {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
-      let h = res.headers_mut();
-      h.insert(
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/typescript"),
       );
-      res
-    }))
-    .or(warp::path!("referenceTypes.js").map(|| {
+      Ok(res)
+    }
+    (_, "/referenceTypes.js") => {
       let mut res = Response::new(Body::from("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
-      let h = res.headers_mut();
-      h.insert(
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
       );
-      res
-    }))
-    .or(warp::path!("cli"/"tests"/"subdir"/"file_with_:_in_name.ts").map(|| {
+      Ok(res)
+    }
+    (_, "/cli/tests/subdir/file_with_:_in_name.ts") => {
       let mut res = Response::new(Body::from(
         "console.log('Hello from file_with_:_in_name.ts');",
       ));
-      let h = res.headers_mut();
-      h.insert(
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/typescript"),
       );
-      res
-    }))
-    .or(warp::path!("cli"/"tests"/"subdir"/"no_js_ext@1.0.0").map(|| {
+      Ok(res)
+    }
+    (_, "/cli/tests/subdir/no_js_ext@1.0.0") => {
       let mut res = Response::new(Body::from(
         r#"import { printHello } from "./mod2.ts";
         printHello();
         "#,
       ));
-      let h = res.headers_mut();
-      h.insert(
+      res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
       );
-      res
-    }));
+      Ok(res)
+    }
+    _ => {
+      let mut file_path = root_path();
+      file_path.push(&req.uri().path()[1..]);
+      if let Ok(file) = tokio::fs::read(file_path).await {
+        let file_resp = custom_headers(&req.uri().path()[1..], file);
+        return Ok(file_resp);
+      }
 
-  let content_type_handler = warp::any()
-    .and(warp::path::peek())
-    .and(warp::fs::dir(root_path()))
-    .map(custom_headers)
-    .or(etag_script)
-    .or(xtypescripttypes)
-    .or(echo_server)
-    .or(echo_multipart_file)
-    .or(multipart_form_data)
-    .or(bad_redirect);
+      return Ok(Response::new(Body::empty()));
+    }
+  };
+}
 
-  let http_fut =
-    warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
+/// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs
+struct HyperAcceptor<'a> {
+  acceptor: Pin<
+    Box<
+      dyn Stream<Item = io::Result<tokio_rustls::server::TlsStream<TcpStream>>>
+        + 'a,
+    >,
+  >,
+}
 
-  let https_fut = warp::serve(content_type_handler.clone())
-    .tls()
-    .cert_path("std/http/testdata/tls/localhost.crt")
-    .key_path("std/http/testdata/tls/localhost.key")
-    .bind(([127, 0, 0, 1], HTTPS_PORT));
+impl hyper::server::accept::Accept for HyperAcceptor<'_> {
+  type Conn = tokio_rustls::server::TlsStream<TcpStream>;
+  type Error = io::Error;
+
+  fn poll_accept(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
+    Pin::new(&mut self.acceptor).poll_next(cx)
+  }
+}
+
+unsafe impl std::marker::Send for HyperAcceptor<'_> {}
+
+async fn wrap_redirect_server() {
+  let redirect_svc =
+    make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(redirect)) });
+  let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
+  let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
+  if let Err(e) = redirect_server.await {
+    eprintln!("Redirect error: {:?}", e);
+  }
+}
+
+async fn wrap_double_redirect_server() {
+  let double_redirects_svc = make_service_fn(|_| async {
+    Ok::<_, hyper::Error>(service_fn(double_redirects))
+  });
+  let double_redirects_addr =
+    SocketAddr::from(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
+  let double_redirects_server =
+    Server::bind(&double_redirects_addr).serve(double_redirects_svc);
+  if let Err(e) = double_redirects_server.await {
+    eprintln!("Double redirect error: {:?}", e);
+  }
+}
+
+async fn wrap_inf_redirect_server() {
+  let inf_redirects_svc = make_service_fn(|_| async {
+    Ok::<_, hyper::Error>(service_fn(inf_redirects))
+  });
+  let inf_redirects_addr =
+    SocketAddr::from(([127, 0, 0, 1], INF_REDIRECTS_PORT));
+  let inf_redirects_server =
+    Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
+  if let Err(e) = inf_redirects_server.await {
+    eprintln!("Inf redirect error: {:?}", e);
+  }
+}
+
+async fn wrap_another_redirect_server() {
+  let another_redirect_svc = make_service_fn(|_| async {
+    Ok::<_, hyper::Error>(service_fn(another_redirect))
+  });
+  let another_redirect_addr =
+    SocketAddr::from(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
+  let another_redirect_server =
+    Server::bind(&another_redirect_addr).serve(another_redirect_svc);
+  if let Err(e) = another_redirect_server.await {
+    eprintln!("Another redirect error: {:?}", e);
+  }
+}
+
+async fn wrap_abs_redirect_server() {
+  let abs_redirect_svc = make_service_fn(|_| async {
+    Ok::<_, hyper::Error>(service_fn(absolute_redirect))
+  });
+  let abs_redirect_addr =
+    SocketAddr::from(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
+  let abs_redirect_server =
+    Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
+  if let Err(e) = abs_redirect_server.await {
+    eprintln!("Absolute redirect error: {:?}", e);
+  }
+}
+
+async fn wrap_main_server() {
+  let main_server_svc = make_service_fn(|_| async {
+    Ok::<_, hyper::Error>(service_fn(main_server))
+  });
+  let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+  let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
+  if let Err(e) = main_server.await {
+    eprintln!("HTTP server error: {:?}", e);
+  }
+}
+
+async fn wrap_main_https_server() {
+  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
+  let cert_file = "std/http/testdata/tls/localhost.crt";
+  let key_file = "std/http/testdata/tls/localhost.key";
+  let tls_config = get_tls_config(cert_file, key_file)
+    .await
+    .expect("Cannot get TLS config");
+  let mut tcp = TcpListener::bind(&main_server_https_addr)
+    .await
+    .expect("Cannot bind TCP");
+  loop {
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = tcp
+      .incoming()
+      .map_err(|e| {
+        eprintln!("Error Incoming: {:?}", e);
+        io::Error::new(io::ErrorKind::Other, e)
+      })
+      .and_then(move |s| {
+        use futures::TryFutureExt;
+        tls_acceptor.accept(s).map_err(|e| {
+          eprintln!("TLS Error {:?}", e);
+          e
+        })
+      })
+      .boxed();
+
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, hyper::Error>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
+// Use the single-threaded scheduler. The hyper server is used as a point of
+// comparison for the (single-threaded!) benchmarks in cli/bench. We're not
+// comparing apples to apples if we use the default multi-threaded scheduler.
+#[tokio::main(basic_scheduler)]
+pub async fn run_all_servers() {
+  if let Some(port) = env::args().nth(1) {
+    return hyper_hello(port.parse::<u16>().unwrap()).await;
+  }
+
+  let redirect_server_fut = wrap_redirect_server();
+  let double_redirects_server_fut = wrap_double_redirect_server();
+  let inf_redirects_server_fut = wrap_inf_redirect_server();
+  let another_redirect_server_fut = wrap_another_redirect_server();
+  let abs_redirect_server_fut = wrap_abs_redirect_server();
+
+  let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
+  let ws_server_fut = run_ws_server(&ws_addr);
+  let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
+  let wss_server_fut = run_wss_server(&wss_addr);
+
+  let main_server_fut = wrap_main_server();
+  let main_server_https_fut = wrap_main_https_server();
 
   let mut server_fut = async {
     futures::join!(
-      http_fut,
-      https_fut,
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
       another_redirect_server_fut,
-      inf_redirect_server_fut,
-      double_redirect_server_fut,
-      absolute_redirect_server_fut,
+      inf_redirects_server_fut,
+      double_redirects_server_fut,
+      abs_redirect_server_fut,
+      main_server_fut,
+      main_server_https_fut,
     )
   }
   .boxed();
 
   let mut did_print_ready = false;
-  future::poll_fn(move |cx| {
+  futures::future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
     if !replace(&mut did_print_ready, true) {
       println!("ready");
@@ -481,38 +774,61 @@ pub async fn run_all_servers() {
   .await;
 }
 
-fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
-  let p = path.as_str();
+fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
+  let mut response = Response::new(Body::from(body));
 
   if p.ends_with("cli/tests/x_deno_warning.js") {
-    let f = with_header(f, "Content-Type", "application/javascript");
-    let f = with_header(f, "X-Deno-Warning", "foobar");
-    return Box::new(f);
+    response.headers_mut().insert(
+      "Content-Type",
+      HeaderValue::from_static("application/javascript"),
+    );
+    response
+      .headers_mut()
+      .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
+    return response;
   }
   if p.ends_with("cli/tests/053_import_compression/brotli") {
-    let f = with_header(f, "Content-Encoding", "br");
-    let f = with_header(f, "Content-Type", "application/javascript");
-    let f = with_header(f, "Content-Length", "26");
-    return Box::new(f);
+    response
+      .headers_mut()
+      .insert("Content-Encoding", HeaderValue::from_static("br"));
+    response.headers_mut().insert(
+      "Content-Type",
+      HeaderValue::from_static("application/javascript"),
+    );
+    response
+      .headers_mut()
+      .insert("Content-Length", HeaderValue::from_static("26"));
+    return response;
   }
   if p.ends_with("cli/tests/053_import_compression/gziped") {
-    let f = with_header(f, "Content-Encoding", "gzip");
-    let f = with_header(f, "Content-Type", "application/javascript");
-    let f = with_header(f, "Content-Length", "39");
-    return Box::new(f);
+    response
+      .headers_mut()
+      .insert("Content-Encoding", HeaderValue::from_static("gzip"));
+    response.headers_mut().insert(
+      "Content-Type",
+      HeaderValue::from_static("application/javascript"),
+    );
+    response
+      .headers_mut()
+      .insert("Content-Length", HeaderValue::from_static("39"));
+    return response;
   }
+
   if p.contains("cli/tests/encoding/") {
     let charset = p
       .split_terminator('/')
       .last()
       .unwrap()
       .trim_end_matches(".ts");
-    let f = with_header(
-      f,
+
+    response.headers_mut().insert(
       "Content-Type",
-      &format!("application/typescript;charset={}", charset)[..],
+      HeaderValue::from_str(
+        &format!("application/typescript;charset={}", charset)[..],
+      )
+      .unwrap(),
     );
-    return Box::new(f);
+    return response;
   }
 
   let content_type = if p.contains(".t1.") {
@@ -548,10 +864,13 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   };
 
   if let Some(t) = content_type {
-    Box::new(with_header(f, "Content-Type", t))
-  } else {
-    Box::new(f)
+    response
+      .headers_mut()
+      .insert("Content-Type", HeaderValue::from_str(t).unwrap());
+    return response;
   }
+
+  response
 }
 
 #[derive(Default)]
@@ -779,7 +1098,7 @@ pub fn deno_cmd() -> Command {
 pub fn run_powershell_script_file(
   script_file_path: &str,
   args: Vec<&str>,
-) -> Result<(), i64> {
+) -> std::result::Result<(), i64> {
   let deno_dir = new_deno_dir();
   let mut command = Command::new("powershell.exe");
 
@@ -931,7 +1250,7 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   // needs to be pre-pended so it can safely match anything or nothing and
   // continue matching.
   if pattern.lines().next() == Some(wildcard) {
-    s.insert_str(0, "\n");
+    s.insert(0, '\n');
   }
 
   let mut t = s.split_at(parts[0].len());
@@ -941,7 +1260,7 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
       continue;
     }
     dbg!(part, i);
-    if i == parts.len() - 1 && (*part == "" || *part == "\n") {
+    if i == parts.len() - 1 && (part.is_empty() || *part == "\n") {
       dbg!("exit 1 true", i);
       return true;
     }
@@ -1071,7 +1390,7 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let len = syscall_fields.len();
     let syscall_name = syscall_fields.last().unwrap();
 
-    if 5 <= len && len <= 6 {
+    if (5..=6).contains(&len) {
       summary.insert(
         syscall_name.to_string(),
         StraceOutput {

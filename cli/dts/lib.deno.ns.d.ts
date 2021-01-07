@@ -1079,7 +1079,7 @@ declare namespace Deno {
   export function makeTempDir(options?: MakeTempOptions): Promise<string>;
 
   /** Synchronously creates a new temporary file in the default directory for
-   * temporary files (see also `Deno.dir("temp")`), unless `dir` is specified.
+   * temporary files, unless `dir` is specified.
    * Other optional options include prefixing and suffixing the directory name
    * with `prefix` and `suffix` respectively.
    *
@@ -1098,7 +1098,7 @@ declare namespace Deno {
   export function makeTempFileSync(options?: MakeTempOptions): string;
 
   /** Creates a new temporary file in the default directory for temporary
-   * files (see also `Deno.dir("temp")`), unless `dir` is specified.  Other
+   * files, unless `dir` is specified.  Other
    * optional options include prefixing and suffixing the directory name with
    * `prefix` and `suffix` respectively.
    *

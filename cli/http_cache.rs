@@ -38,6 +38,7 @@ fn base_url_to_filename(url: &Url) -> PathBuf {
       };
       out.push(host_port);
     }
+    "data" => (),
     scheme => {
       unimplemented!(
         "Don't know how to create cache name for scheme: {}",
@@ -72,7 +73,7 @@ pub fn url_to_filename(url: &Url) -> PathBuf {
   cache_filename
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HttpCache {
   pub location: PathBuf,
 }
@@ -87,7 +88,7 @@ impl Metadata {
   pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
     let metadata_filename = Self::filename(cache_filename);
     let json = serde_json::to_string_pretty(self)?;
-    fs_util::write_file(&metadata_filename, json, CACHE_PERM)?;
+    fs_util::atomic_write_file(&metadata_filename, json, CACHE_PERM)?;
     Ok(())
   }
 
@@ -161,7 +162,7 @@ impl HttpCache {
       .expect("Cache filename should have a parent dir");
     self.ensure_dir_exists(parent_filename)?;
     // Cache content
-    fs_util::write_file(&cache_filename, content, CACHE_PERM)?;
+    fs_util::atomic_write_file(&cache_filename, content, CACHE_PERM)?;
 
     let metadata = Metadata {
       url: url.to_string(),
@@ -253,6 +254,14 @@ mod tests {
         "https://deno.land/?asdf=qwer#qwer",
         "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0",
       ),
+      (
+        "data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=",
+        "data/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37",
+      ),
+      (
+        "data:text/plain,Hello%2C%20Deno!",
+        "data/967374e3561d6741234131e342bf5c6848b70b13758adfe23ee1a813a8131818",
+      )
     ];
 
     for (url, expected) in test_cases.iter() {

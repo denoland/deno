@@ -207,6 +207,10 @@ function syscall<T extends CallableFunction>(target: T) {
     try {
       return target(...args);
     } catch (err) {
+      if (err instanceof ExitStatus) {
+        throw err;
+      }
+
       switch (err.name) {
         case "NotFound":
           return ERRNO_NOENT;
@@ -266,39 +270,96 @@ interface FileDescriptor {
   entries?: Deno.DirEntry[];
 }
 
-export interface ContextOptions {
-  args?: string[];
-  env?: { [key: string]: string | undefined };
-  preopens?: { [key: string]: string };
+class ExitStatus {
+  code: number;
+
+  constructor(code: number) {
+    this.code = code;
+  }
 }
 
-export default class Context {
-  args: string[];
-  env: { [key: string]: string | undefined };
-  memory: WebAssembly.Memory;
+export interface ContextOptions {
+  /**
+   * An array of strings that the WebAssembly instance will see as command-line
+   * arguments.
+   *
+   * The first argument is the virtual path to the command itself.
+   */
+  args?: string[];
 
-  fds: FileDescriptor[];
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as its environment.
+   */
+  env?: { [key: string]: string | undefined };
+
+  /**
+   * An object of string keys mapped to string values that the WebAssembly module will see as it's filesystem.
+   *
+   * The string keys of are treated as directories within the sandboxed
+   * filesystem, the values are the real paths to those directories on the host
+   * machine.
+   *
+   */
+  preopens?: { [key: string]: string };
+
+  /**
+   * Determines if calls to exit from within the WebAssembly module will terminate the proess or return.
+   */
+  exitOnReturn?: boolean;
+
+  /**
+   * The resource descriptor used as standard input in the WebAssembly module.
+   */
+  stdin?: number;
+
+  /**
+   * The resource descriptor used as standard output in the WebAssembly module.
+   */
+  stdout?: number;
+
+  /**
+   * The resource descriptor used as standard error in the WebAssembly module.
+   */
+  stderr?: number;
+}
+
+/**
+ * The Context class provides the environment required to run WebAssembly
+ * modules compiled to run with the WebAssembly System Interface.
+ *
+ * Each context represents a distinct sandboxed environment and must have its
+ * command-line arguments, environment variables, and pre-opened directory
+ * structure configured explicitly.
+ */
+export default class Context {
+  #args: string[];
+  #env: { [key: string]: string | undefined };
+  #exitOnReturn: boolean;
+  #memory: WebAssembly.Memory;
+  #fds: FileDescriptor[];
+  #started: boolean;
 
   exports: Record<string, WebAssembly.ImportValue>;
 
   constructor(options: ContextOptions) {
-    this.args = options.args ? options.args : [];
-    this.env = options.env ? options.env : {};
-    this.memory = null!;
+    this.#args = options.args ?? [];
+    this.#env = options.env ?? {};
+    this.#exitOnReturn = options.exitOnReturn ?? true;
+    this.#memory = null!;
 
-    this.fds = [
+    this.#fds = [
       {
-        rid: Deno.stdin.rid,
+        rid: options.stdin ?? Deno.stdin.rid,
         type: FILETYPE_CHARACTER_DEVICE,
         flags: FDFLAGS_APPEND,
       },
       {
-        rid: Deno.stdout.rid,
+        rid: options.stdout ?? Deno.stdout.rid,
         type: FILETYPE_CHARACTER_DEVICE,
         flags: FDFLAGS_APPEND,
       },
       {
-        rid: Deno.stderr.rid,
+        rid: options.stderr ?? Deno.stderr.rid,
         type: FILETYPE_CHARACTER_DEVICE,
         flags: FDFLAGS_APPEND,
       },
@@ -316,7 +377,7 @@ export default class Context {
           vpath,
         };
 
-        this.fds.push(entry);
+        this.#fds.push(entry);
       }
     }
 
@@ -325,16 +386,16 @@ export default class Context {
         argvOffset: number,
         argvBufferOffset: number,
       ): number => {
-        const args = this.args;
-        const text = new TextEncoder();
-        const memoryData = new Uint8Array(this.memory.buffer);
-        const memoryView = new DataView(this.memory.buffer);
+        const args = this.#args;
+        const textEncoder = new TextEncoder();
+        const memoryData = new Uint8Array(this.#memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         for (const arg of args) {
           memoryView.setUint32(argvOffset, argvBufferOffset, true);
           argvOffset += 4;
 
-          const data = text.encode(`${arg}\0`);
+          const data = textEncoder.encode(`${arg}\0`);
           memoryData.set(data, argvBufferOffset);
           argvBufferOffset += data.length;
         }
@@ -346,15 +407,15 @@ export default class Context {
         argcOffset: number,
         argvBufferSizeOffset: number,
       ): number => {
-        const args = this.args;
-        const text = new TextEncoder();
-        const memoryView = new DataView(this.memory.buffer);
+        const args = this.#args;
+        const textEncoder = new TextEncoder();
+        const memoryView = new DataView(this.#memory.buffer);
 
         memoryView.setUint32(argcOffset, args.length, true);
         memoryView.setUint32(
           argvBufferSizeOffset,
           args.reduce(function (acc, arg) {
-            return acc + text.encode(`${arg}\0`).length;
+            return acc + textEncoder.encode(`${arg}\0`).length;
           }, 0),
           true,
         );
@@ -366,16 +427,16 @@ export default class Context {
         environOffset: number,
         environBufferOffset: number,
       ): number => {
-        const entries = Object.entries(this.env);
-        const text = new TextEncoder();
-        const memoryData = new Uint8Array(this.memory.buffer);
-        const memoryView = new DataView(this.memory.buffer);
+        const entries = Object.entries(this.#env);
+        const textEncoder = new TextEncoder();
+        const memoryData = new Uint8Array(this.#memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         for (const [key, value] of entries) {
           memoryView.setUint32(environOffset, environBufferOffset, true);
           environOffset += 4;
 
-          const data = text.encode(`${key}=${value}\0`);
+          const data = textEncoder.encode(`${key}=${value}\0`);
           memoryData.set(data, environBufferOffset);
           environBufferOffset += data.length;
         }
@@ -387,15 +448,15 @@ export default class Context {
         environcOffset: number,
         environBufferSizeOffset: number,
       ): number => {
-        const entries = Object.entries(this.env);
-        const text = new TextEncoder();
-        const memoryView = new DataView(this.memory.buffer);
+        const entries = Object.entries(this.#env);
+        const textEncoder = new TextEncoder();
+        const memoryView = new DataView(this.#memory.buffer);
 
         memoryView.setUint32(environcOffset, entries.length, true);
         memoryView.setUint32(
           environBufferSizeOffset,
           entries.reduce(function (acc, [key, value]) {
-            return acc + text.encode(`${key}=${value}\0`).length;
+            return acc + textEncoder.encode(`${key}=${value}\0`).length;
           }, 0),
           true,
         );
@@ -407,7 +468,7 @@ export default class Context {
         id: number,
         resolutionOffset: number,
       ): number => {
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         switch (id) {
           case CLOCKID_REALTIME: {
@@ -441,7 +502,7 @@ export default class Context {
         precision: bigint,
         timeOffset: number,
       ): number => {
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         switch (id) {
           case CLOCKID_REALTIME: {
@@ -490,7 +551,7 @@ export default class Context {
       "fd_close": syscall((
         fd: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -499,7 +560,7 @@ export default class Context {
           Deno.close(entry.rid);
         }
 
-        delete this.fds[fd];
+        delete this.#fds[fd];
 
         return ERRNO_SUCCESS;
       }),
@@ -507,7 +568,7 @@ export default class Context {
       "fd_datasync": syscall((
         fd: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -521,12 +582,12 @@ export default class Context {
         fd: number,
         offset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
         memoryView.setUint8(offset, entry.type!);
         memoryView.setUint16(offset + 2, entry.flags!, true);
         memoryView.setBigUint64(offset + 8, 0n, true); // TODO
@@ -554,12 +615,12 @@ export default class Context {
         fd: number,
         offset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         const info = Deno.fstatSync(entry.rid!);
 
@@ -626,7 +687,7 @@ export default class Context {
         fd: number,
         size: bigint,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -642,7 +703,7 @@ export default class Context {
         mtim: bigint,
         flags: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -671,13 +732,13 @@ export default class Context {
         offset: bigint,
         nreadOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (entry == null) {
           return ERRNO_BADF;
         }
 
         const seek = Deno.seekSync(entry.rid!, 0, Deno.SeekMode.Current);
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         let nread = 0;
         for (let i = 0; i < iovsLength; i++) {
@@ -688,7 +749,7 @@ export default class Context {
           iovsOffset += 4;
 
           const data = new Uint8Array(
-            this.memory.buffer,
+            this.#memory.buffer,
             dataOffset,
             dataLength,
           );
@@ -705,7 +766,7 @@ export default class Context {
         fd: number,
         prestatOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -714,7 +775,7 @@ export default class Context {
           return ERRNO_BADF;
         }
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
         memoryView.setUint8(prestatOffset, PREOPENTYPE_DIR);
         memoryView.setUint32(
           prestatOffset + 4,
@@ -730,7 +791,7 @@ export default class Context {
         pathOffset: number,
         pathLength: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -739,7 +800,11 @@ export default class Context {
           return ERRNO_BADF;
         }
 
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
         data.set(new TextEncoder().encode(entry.vpath));
 
         return ERRNO_SUCCESS;
@@ -752,13 +817,13 @@ export default class Context {
         offset: bigint,
         nwrittenOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
         const seek = Deno.seekSync(entry.rid!, 0, Deno.SeekMode.Current);
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         let nwritten = 0;
         for (let i = 0; i < iovsLength; i++) {
@@ -769,7 +834,7 @@ export default class Context {
           iovsOffset += 4;
 
           const data = new Uint8Array(
-            this.memory.buffer,
+            this.#memory.buffer,
             dataOffset,
             dataLength,
           );
@@ -788,12 +853,12 @@ export default class Context {
         iovsLength: number,
         nreadOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         let nread = 0;
         for (let i = 0; i < iovsLength; i++) {
@@ -804,7 +869,7 @@ export default class Context {
           iovsOffset += 4;
 
           const data = new Uint8Array(
-            this.memory.buffer,
+            this.#memory.buffer,
             dataOffset,
             dataLength,
           );
@@ -823,13 +888,13 @@ export default class Context {
         cookie: bigint,
         bufferUsedOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        const memoryData = new Uint8Array(this.memory.buffer);
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryData = new Uint8Array(this.#memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         let bufferUsed = 0;
 
@@ -890,20 +955,20 @@ export default class Context {
         fd: number,
         to: number,
       ): number => {
-        if (!this.fds[fd]) {
+        if (!this.#fds[fd]) {
           return ERRNO_BADF;
         }
 
-        if (!this.fds[to]) {
+        if (!this.#fds[to]) {
           return ERRNO_BADF;
         }
 
-        if (this.fds[to].rid) {
-          Deno.close(this.fds[to].rid!);
+        if (this.#fds[to].rid) {
+          Deno.close(this.#fds[to].rid!);
         }
 
-        this.fds[to] = this.fds[fd];
-        delete this.fds[fd];
+        this.#fds[to] = this.#fds[fd];
+        delete this.#fds[fd];
 
         return ERRNO_SUCCESS;
       }),
@@ -914,12 +979,12 @@ export default class Context {
         whence: number,
         newOffsetOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         // FIXME Deno does not support seeking with big integers
         const newOffset = Deno.seekSync(entry.rid!, Number(offset), whence);
@@ -931,7 +996,7 @@ export default class Context {
       "fd_sync": syscall((
         fd: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -945,12 +1010,12 @@ export default class Context {
         fd: number,
         offsetOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         const offset = Deno.seekSync(entry.rid!, 0, Deno.SeekMode.Current);
         memoryView.setBigUint64(offsetOffset, BigInt(offset), true);
@@ -964,12 +1029,12 @@ export default class Context {
         iovsLength: number,
         nwrittenOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         let nwritten = 0;
         for (let i = 0; i < iovsLength; i++) {
@@ -980,7 +1045,7 @@ export default class Context {
           iovsOffset += 4;
 
           const data = new Uint8Array(
-            this.memory.buffer,
+            this.#memory.buffer,
             dataOffset,
             dataLength,
           );
@@ -997,7 +1062,7 @@ export default class Context {
         pathOffset: number,
         pathLength: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1006,9 +1071,13 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const textDecoder = new TextDecoder();
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         Deno.mkdirSync(path);
 
@@ -1022,7 +1091,7 @@ export default class Context {
         pathLength: number,
         bufferOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1031,11 +1100,15 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const textDecoder = new TextDecoder();
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         const info = (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
           ? Deno.statSync(path)
@@ -1116,7 +1189,7 @@ export default class Context {
         mtim: bigint,
         fstflags: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1125,9 +1198,13 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const textDecoder = new TextDecoder();
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         if ((fstflags & FSTFLAGS_ATIM_NOW) == FSTFLAGS_ATIM_NOW) {
           atim = BigInt(Date.now()) * BigInt(1e6);
@@ -1151,8 +1228,8 @@ export default class Context {
         newPathOffset: number,
         newPathLength: number,
       ): number => {
-        const oldEntry = this.fds[oldFd];
-        const newEntry = this.fds[newFd];
+        const oldEntry = this.#fds[oldFd];
+        const newEntry = this.#fds[newFd];
         if (!oldEntry || !newEntry) {
           return ERRNO_BADF;
         }
@@ -1161,19 +1238,19 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const oldData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = resolve(oldEntry.path!, text.decode(oldData));
+        const oldPath = resolve(oldEntry.path!, textDecoder.decode(oldData));
         const newData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolve(newEntry.path!, text.decode(newData));
+        const newPath = resolve(newEntry.path!, textDecoder.decode(newData));
 
         Deno.linkSync(oldPath, newPath);
 
@@ -1191,7 +1268,7 @@ export default class Context {
         fdflags: number,
         openedFdOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1202,7 +1279,7 @@ export default class Context {
 
         const textDecoder = new TextDecoder();
         const pathData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           pathOffset,
           pathLength,
         );
@@ -1234,13 +1311,13 @@ export default class Context {
           // doesn't work with directories on windows so we'll have to work
           // around it for now.
           const entries = Array.from(Deno.readDirSync(path));
-          const openedFd = this.fds.push({
+          const openedFd = this.#fds.push({
             flags: fdflags,
             path,
             entries,
           }) - 1;
 
-          const memoryView = new DataView(this.memory.buffer);
+          const memoryView = new DataView(this.#memory.buffer);
           memoryView.setUint32(openedFdOffset, openedFd, true);
 
           return ERRNO_SUCCESS;
@@ -1314,13 +1391,13 @@ export default class Context {
         }
 
         const { rid } = Deno.openSync(path, options);
-        const openedFd = this.fds.push({
+        const openedFd = this.#fds.push({
           rid,
           flags: fdflags,
           path,
         }) - 1;
 
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
         memoryView.setUint32(openedFdOffset, openedFd, true);
 
         return ERRNO_SUCCESS;
@@ -1334,7 +1411,7 @@ export default class Context {
         bufferLength: number,
         bufferUsedOffset: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1343,11 +1420,11 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const memoryData = new Uint8Array(this.memory.buffer);
-        const memoryView = new DataView(this.memory.buffer);
+        const memoryData = new Uint8Array(this.#memory.buffer);
+        const memoryView = new DataView(this.#memory.buffer);
 
         const pathData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           pathOffset,
           pathLength,
         );
@@ -1368,7 +1445,7 @@ export default class Context {
         pathOffset: number,
         pathLength: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1377,9 +1454,13 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const textDecoder = new TextDecoder();
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         if (!Deno.statSync(path).isDirectory) {
           return ERRNO_NOTDIR;
@@ -1398,8 +1479,8 @@ export default class Context {
         newPathOffset: number,
         newPathLength: number,
       ): number => {
-        const oldEntry = this.fds[fd];
-        const newEntry = this.fds[newFd];
+        const oldEntry = this.#fds[fd];
+        const newEntry = this.#fds[newFd];
         if (!oldEntry || !newEntry) {
           return ERRNO_BADF;
         }
@@ -1408,19 +1489,19 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const oldData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = resolve(oldEntry.path!, text.decode(oldData));
+        const oldPath = resolve(oldEntry.path!, textDecoder.decode(oldData));
         const newData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolve(newEntry.path!, text.decode(newData));
+        const newPath = resolve(newEntry.path!, textDecoder.decode(newData));
 
         Deno.renameSync(oldPath, newPath);
 
@@ -1434,7 +1515,7 @@ export default class Context {
         newPathOffset: number,
         newPathLength: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1443,19 +1524,19 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
+        const textDecoder = new TextDecoder();
         const oldData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = text.decode(oldData);
+        const oldPath = textDecoder.decode(oldData);
         const newData = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolve(entry.path!, text.decode(newData));
+        const newPath = resolve(entry.path!, textDecoder.decode(newData));
 
         Deno.symlinkSync(oldPath, newPath);
 
@@ -1467,7 +1548,7 @@ export default class Context {
         pathOffset: number,
         pathLength: number,
       ): number => {
-        const entry = this.fds[fd];
+        const entry = this.#fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
@@ -1476,9 +1557,13 @@ export default class Context {
           return ERRNO_INVAL;
         }
 
-        const text = new TextDecoder();
-        const data = new Uint8Array(this.memory.buffer, pathOffset, pathLength);
-        const path = resolve(entry.path!, text.decode(data));
+        const textDecoder = new TextDecoder();
+        const data = new Uint8Array(
+          this.#memory.buffer,
+          pathOffset,
+          pathLength,
+        );
+        const path = resolve(entry.path!, textDecoder.decode(data));
 
         Deno.removeSync(path);
 
@@ -1497,7 +1582,11 @@ export default class Context {
       "proc_exit": syscall((
         rval: number,
       ): never => {
-        Deno.exit(rval);
+        if (this.#exitOnReturn) {
+          Deno.exit(rval);
+        }
+
+        throw new ExitStatus(rval);
       }),
 
       "proc_raise": syscall((
@@ -1515,7 +1604,7 @@ export default class Context {
         bufferLength: number,
       ): number => {
         const buffer = new Uint8Array(
-          this.memory.buffer,
+          this.#memory.buffer,
           bufferOffset,
           bufferLength,
         );
@@ -1552,6 +1641,8 @@ export default class Context {
         return ERRNO_NOSYS;
       }),
     };
+
+    this.#started = false;
   }
 
   /**
@@ -1565,14 +1656,20 @@ export default class Context {
    * which will be used as the address space, if it does not an error will be
    * thrown.
    */
-  start(instance: WebAssembly.Instance) {
+  start(instance: WebAssembly.Instance): null | number | never {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
     const { _start, _initialize, memory } = instance.exports;
 
     if (!(memory instanceof WebAssembly.Memory)) {
       throw new TypeError("WebAsembly.instance must provide a memory export");
     }
 
-    this.memory = memory;
+    this.#memory = memory;
 
     if (typeof _initialize == "function") {
       throw new TypeError(
@@ -1586,6 +1683,55 @@ export default class Context {
       );
     }
 
-    _start();
+    try {
+      _start();
+    } catch (err) {
+      if (err instanceof ExitStatus) {
+        return err.code;
+      }
+
+      throw err;
+    }
+
+    return null;
+  }
+
+  /**
+   * Attempt to initialize instance as a reactor by invoking its _initialize() export.
+   *
+   * If instance contains a _start() export, then an exception is thrown.
+   *
+   * The instance must also have a WebAssembly.Memory export named "memory"
+   * which will be used as the address space, if it does not an error will be
+   * thrown.
+   */
+  initialize(instance: WebAssembly.Instance) {
+    if (this.#started) {
+      throw new Error("WebAssembly.Instance has already started");
+    }
+
+    this.#started = true;
+
+    const { _start, _initialize, memory } = instance.exports;
+
+    if (!(memory instanceof WebAssembly.Memory)) {
+      throw new TypeError("WebAsembly.instance must provide a memory export");
+    }
+
+    this.#memory = memory;
+
+    if (typeof _start == "function") {
+      throw new TypeError(
+        "WebAssembly.Instance export _start must not be a function",
+      );
+    }
+
+    if (typeof _initialize != "function") {
+      throw new TypeError(
+        "WebAsembly.instance export _initialize must be a function",
+      );
+    }
+
+    _initialize();
   }
 }

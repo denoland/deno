@@ -1,9 +1,5 @@
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 # Dummy package info required by `cargo fetch`.
-# Use tools/sync_third_party.py to install deps after editing this file.
-# Deno does not build with cargo. Deno uses a build system called gn.
-# See build_extra/rust/BUILD.gn for the manually built configuration of rust
-# crates.
 
 [workspace]
 members = [

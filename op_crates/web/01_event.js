@@ -42,6 +42,13 @@
     event.currentTarget = value;
   }
 
+  function setIsTrusted(event, value) {
+    const data = eventData.get(event);
+    if (data) {
+      data.isTrusted = value;
+    }
+  }
+
   function setDispatched(event, value) {
     const data = eventData.get(event);
     if (data) {
@@ -693,7 +700,7 @@
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
 
-      let capture, once, passive;
+      let capture, once, passive, signal;
       if (typeof listener.options === "boolean") {
         capture = listener.options;
         once = false;
@@ -895,7 +902,19 @@
           return;
         }
       }
-
+      if (options?.signal) {
+        const signal = options?.signal;
+        if (signal.aborted) {
+          // If signal is not null and its aborted flag is set, then return.
+          return;
+        } else {
+          // If listener’s signal is not null, then add the following abort
+          // abort steps to it: Remove an event listener.
+          signal.addEventListener("abort", () => {
+            this.removeEventListener(type, callback, options);
+          });
+        }
+      }
       listeners[type].push({ callback, options });
     }
 
@@ -1185,5 +1204,8 @@
   window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.eventTarget = {
     setEventTargetData,
+  };
+  window.__bootstrap.event = {
+    setIsTrusted,
   };
 })(this);
