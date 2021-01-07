@@ -10,6 +10,7 @@ exemptLabels:
   - feat
   - tests
   - build
+  - docs
 
 exemptMilestones: true
 
