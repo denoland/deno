@@ -1,15 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 #![deny(warnings)]
-#![allow(dead_code)]
 
 #[macro_use]
 extern crate lazy_static;
-#[macro_use]
-extern crate log;
 
 mod colors;
-mod http_util;
 mod standalone;
 mod tokio_util;
 mod version;

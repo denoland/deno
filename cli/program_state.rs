@@ -106,7 +106,7 @@ impl ProgramState {
     let maybe_inspector_server = match maybe_inspect_host {
       Some(host) => Some(Arc::new(InspectorServer::new(
         host,
-        http_util::get_user_agent(),
+        version::get_user_agent(),
       ))),
       None => None,
     };

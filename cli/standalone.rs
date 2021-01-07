@@ -1,5 +1,4 @@
 use crate::colors;
-use crate::tokio_util;
 use crate::version;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -117,16 +116,6 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 /// These are dereferenced, and the bundle is executed under the configuration
 /// specified by the metadata. If no magic trailer is present, this function
 /// exits with `Ok(())`.
-pub fn try_run_standalone_binary(args: Vec<String>) -> Result<(), AnyError> {
-  match extract_standalone(args) {
-    Ok(Some((metadata, bundle))) => {
-      tokio_util::run_basic(run(bundle, metadata))
-    }
-    Ok(None) => Ok(()),
-    Err(err) => Err(err),
-  }
-}
-
 pub fn extract_standalone(
   args: Vec<String>,
 ) -> Result<Option<(Metadata, String)>, AnyError> {
@@ -255,7 +244,7 @@ pub async fn run(
     apply_source_maps: false,
     args: argv,
     debug_flag: log_level.map_or(false, |l| l == log::Level::Debug),
-    user_agent: crate::http_util::get_user_agent(),
+    user_agent: crate::version::get_user_agent(),
     unstable,
     ca_data,
     seed,

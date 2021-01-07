@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::version;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -14,10 +13,6 @@ use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use std::collections::HashMap;
-
-pub fn get_user_agent() -> String {
-  format!("Deno/{}", version::deno())
-}
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
