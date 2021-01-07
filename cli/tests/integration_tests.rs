@@ -5,6 +5,7 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
+use std::io::BufReader;
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::path::PathBuf;
@@ -5113,6 +5114,22 @@ fn jsonc_to_serde(j: jsonc_parser::JsonValue) -> serde_json::Value {
   }
 }
 
+struct WPTServer(std::process::Child);
+
+impl Drop for WPTServer {
+  fn drop(&mut self) {
+    // TODO(lucacasonato): This should be a more graceful kill where child procs of the proc are also killed.
+    match self.0.try_wait() {
+      Ok(None) => {
+        self.0.kill().expect("failed to kill 'wpt serve'");
+        let _ = self.0.wait();
+      }
+      Ok(Some(status)) => panic!("'wpt serve' exited unexpectedly {}", status),
+      Err(e) => panic!("'wpt serve' error: {}", e),
+    }
+  }
+}
+
 #[test]
 fn web_platform_tests() {
   use deno_core::serde::Deserialize;
@@ -5133,6 +5150,43 @@ fn web_platform_tests() {
   let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
     deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
+
+  let mut proc = Command::new("python3")
+    .current_dir(util::wpt_path())
+    .arg("wpt")
+    .arg("serve")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = proc.stderr.as_mut().unwrap();
+  let mut stderr = BufReader::new(stderr).lines();
+  let mut ready_8000 = false;
+  let mut ready_8443 = false;
+  let mut ready_8444 = false;
+  let mut ready_9000 = false;
+  while let Ok(line) = stderr.next().unwrap() {
+    if !line.starts_with("DEBUG:") {
+      eprintln!("{}", line);
+    }
+    if line.contains("web-platform.test:8000") {
+      ready_8000 = true;
+    }
+    if line.contains("web-platform.test:8443") {
+      ready_8443 = true;
+    }
+    if line.contains("web-platform.test:8444") {
+      ready_8444 = true;
+    }
+    if line.contains("web-platform.test:9000") {
+      ready_9000 = true;
+    }
+    if ready_8000 && ready_8443 && ready_8444 && ready_9000 {
+      break;
+    }
+  }
+
+  let _wpt_server = WPTServer(proc);
 
   for (suite_name, includes) in config.into_iter() {
     let suite_path = util::wpt_path().join(suite_name);
@@ -5198,14 +5252,15 @@ fn web_platform_tests() {
         })
         .collect();
 
-      let mut variants: Vec<&str> = test_file_text
+      let mut variants: Vec<String> = test_file_text
         .split('\n')
         .into_iter()
         .filter_map(|t| t.strip_prefix("// META: variant="))
+        .map(|t| format!("?{}", t))
         .collect();
 
       if variants.is_empty() {
-        variants.push("");
+        variants.push("".to_string());
       }
 
       for variant in variants {
@@ -5228,11 +5283,18 @@ fn web_platform_tests() {
         let bundle = concat_bundle(files, file.path(), "".to_string());
         file.write_all(bundle.as_bytes()).unwrap();
 
+        let self_path = test_file_path.strip_prefix(util::wpt_path()).unwrap();
+
         let child = util::deno_cmd()
           .current_dir(test_file_path.parent().unwrap())
           .arg("run")
           .arg("--location")
-          .arg(&format!("http://web-platform-tests/?{}", variant))
+          .arg(&format!(
+            "http://web-platform.test:8000/{}{}",
+            self_path.to_str().unwrap(), variant
+          ))
+          .arg("--cert")
+          .arg(util::wpt_path().join("tools/certs/cacert.pem"))
           .arg("-A")
           .arg(file.path())
           .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
