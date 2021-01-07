@@ -184,10 +184,10 @@ where
     .resource_table
     .add(FetchRequestResource(Box::pin(fut)));
 
-  return Ok(json!({
+  Ok(json!({
     "requestRid": request_rid,
     "requestBodyRid": maybe_request_body_rid
-  }));
+  }))
 }
 
 pub async fn op_fetch_send(
