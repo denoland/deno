@@ -72,14 +72,14 @@
       if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
         throw new DOMException(
           "Only ws & wss schemes are allowed in a WebSocket URL.",
-          "SyntaxError",
+          "DOMException",
         );
       }
 
       if (wsURL.hash !== "" || wsURL.href.endsWith("#")) {
         throw new DOMException(
           "Fragments are not allowed in a WebSocket URL.",
-          "SyntaxError",
+          "DOMException",
         );
       }
 
