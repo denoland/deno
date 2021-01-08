@@ -1,29 +1,32 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const nameToCodeMapping = Object.create(null);
-  nameToCodeMapping.IndexSizeError = 1;
-  nameToCodeMapping.HierarchyRequestError = 3;
-  nameToCodeMapping.WrongDocumentError = 4;
-  nameToCodeMapping.InvalidCharacterError = 5;
-  nameToCodeMapping.NoModificationAllowedError = 7;
-  nameToCodeMapping.NotFoundError = 8;
-  nameToCodeMapping.NotSupportedError = 9;
-  nameToCodeMapping.InvalidStateError = 11;
-  nameToCodeMapping.SyntaxError = 12;
-  nameToCodeMapping.InvalidModificationError = 13;
-  nameToCodeMapping.NamespaceError = 14;
-  nameToCodeMapping.InvalidAccessError = 15;
-  nameToCodeMapping.TypeMismatchError = 17;
-  nameToCodeMapping.SecurityError = 18;
-  nameToCodeMapping.NetworkError = 19;
-  nameToCodeMapping.AbortError = 20;
-  nameToCodeMapping.URLMismatchError = 21;
-  nameToCodeMapping.QuotaExceededError = 22;
-  nameToCodeMapping.TimeoutError = 23;
-  nameToCodeMapping.InvalidNodeTypeError = 24;
-  nameToCodeMapping.DataCloneError = 25;
-
+  const nameToCodeMapping = Object.create(
+    null,
+    {
+      IndexSizeError: { value: 1 },
+      HierarchyRequestError: { value: 3 },
+      WrongDocumentError: { value: 4 },
+      InvalidCharacterError: { value: 5 },
+      NoModificationAllowedError: { value: 7 },
+      NotFoundError: { value: 8 },
+      NotSupportedError: { value: 9 },
+      InvalidStateError: { value: 11 },
+      SyntaxError: { value: 12 },
+      InvalidModificationError: { value: 13 },
+      NamespaceError: { value: 14 },
+      InvalidAccessError: { value: 15 },
+      TypeMismatchError: { value: 17 },
+      SecurityError: { value: 18 },
+      NetworkError: { value: 19 },
+      AbortError: { value: 20 },
+      URLMismatchError: { value: 21 },
+      QuotaExceededError: { value: 22 },
+      TimeoutError: { value: 23 },
+      InvalidNodeTypeError: { value: 24 },
+      DataCloneError: { value: 25 },
+    },
+  );
   class DOMException extends Error {
     #name = "";
     #code = 0;
