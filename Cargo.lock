@@ -546,6 +546,7 @@ dependencies = [
  "deno_fetch",
  "deno_web",
  "deno_websocket",
+ "deno_webstorage",
  "dlopen",
  "encoding_rs",
  "env_logger",
@@ -562,7 +563,6 @@ dependencies = [
  "percent-encoding",
  "regex",
  "ring",
- "rusqlite",
  "rustyline",
  "rustyline-derive",
  "serde",
@@ -601,6 +601,15 @@ dependencies = [
  "tokio-tungstenite",
  "webpki",
  "webpki-roots 0.19.0",
+]
+
+[[package]]
+name = "deno_webstorage"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "rusqlite",
+ "serde",
 ]
 
 [[package]]
