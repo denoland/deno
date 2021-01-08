@@ -25,7 +25,7 @@ use crate::tsc;
 use crate::tsc_config::IgnoredCompilerOptions;
 use crate::tsc_config::TsConfig;
 use crate::version;
-use crate::AnyError;
+use deno_core::error::AnyError;
 
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;

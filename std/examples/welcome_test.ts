@@ -14,7 +14,7 @@ Deno.test("[examples/welcome] print a welcome message", async () => {
   try {
     const output = await process.output();
     const actual = decoder.decode(output).trim();
-    const expected = "Welcome to Deno 🦕";
+    const expected = "Welcome to Deno!";
     assertStrictEquals(actual, expected);
   } finally {
     process.close();

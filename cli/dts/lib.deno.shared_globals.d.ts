@@ -666,7 +666,7 @@ declare class Worker extends EventTarget {
        *
        * Set deno.namespace to `true` to make `Deno` namespace and all of its methods
        * available to worker thread. The namespace is disabled by default.
-       * 
+       *
        * Configure deno.permissions options to change the level of access the worker will
        * have. By default it will inherit the permissions of its parent thread. The permissions
        * of a worker can't be extended beyond its parent's permissions reach.
@@ -718,17 +718,16 @@ declare class Worker extends EventTarget {
        */
       // TODO(Soremwar)
       // `deno: true` is kept for backwards compatibility with the previous worker
-      // options implementation. Remove for 2.0
+      // options implementation. Remove for 2.0.
       deno?: true | {
         namespace?: boolean;
-        /** Set to false to disable all the permissions in the worker */
-        permissions?: "inherit" | false | {
+        /** Set to `"none"` to disable all the permissions in the worker. */
+        permissions?: "inherit" | "none" | {
           env?: "inherit" | boolean;
           hrtime?: "inherit" | boolean;
-          /**
-           * The format of the net access list must be `hostname[:port]`
-           * in order to be resolved
-           * 
+          /** The format of the net access list must be `hostname[:port]`
+           * in order to be resolved.
+           *
            * ```
            * net: ["https://deno.land", "localhost:8080"],
            * ```
