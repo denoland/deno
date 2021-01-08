@@ -2,7 +2,7 @@
 
 ((window) => {
   const nameToCodeMapping = Object.create(null);
-  nameToCodeMatting.IndexSizeError = 1;
+  nameToCodeMapping.IndexSizeError = 1;
   nameToCodeMapping.HierarchyRequestError = 3;
   nameToCodeMapping.WrongDocumentError = 4;
   nameToCodeMapping.InvalidCharacterError = 5;
