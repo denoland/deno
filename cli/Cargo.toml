@@ -56,7 +56,7 @@ indexmap = "1.6.0"
 jsonc-parser = "0.14.0"
 lazy_static = "1.4.0"
 libc = "0.2.77"
-log = "0.4.11"
+log = { version = "0.4.11", features = ["serde"] }
 lspower = "0.1.0"
 notify = "5.0.0-pre.3"
 percent-encoding = "2.1.0"
