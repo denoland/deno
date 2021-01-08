@@ -34,8 +34,15 @@ pub enum PermissionState {
 
 impl PermissionState {
   /// Check the permission state.
-  fn check(self, msg: &str, flag_name: &str) -> Result<(), AnyError> {
-    if self == PermissionState::Granted {
+  fn check(
+    self,
+    msg: &str,
+    flag_name: &str,
+    prompt: bool,
+  ) -> Result<(), AnyError> {
+    if self == PermissionState::Granted
+      || (prompt && self == PermissionState::Prompt && permission_prompt(msg))
+    {
       log_perm_access(msg);
       return Ok(());
     }
@@ -76,6 +83,7 @@ pub struct Permissions {
   pub run: PermissionState,
   pub plugin: PermissionState,
   pub hrtime: PermissionState,
+  pub prompt: bool,
 }
 
 pub fn resolve_fs_allowlist(allow: &Option<Vec<PathBuf>>) -> HashSet<PathBuf> {
@@ -140,6 +148,7 @@ impl Permissions {
       run: global_state_from_flag_bool(opts.allow_run),
       plugin: global_state_from_flag_bool(opts.allow_plugin),
       hrtime: global_state_from_flag_bool(opts.allow_hrtime),
+      prompt: opts.prompt,
     }
   }
 
@@ -152,7 +161,7 @@ impl Permissions {
     } else {
       match self
         .query_read(&Some(&current_dir().unwrap()))
-        .check("", "")
+        .check("", "", false)
       {
         Ok(_) => resolved_path.clone(),
         Err(_) => path.to_path_buf(),
@@ -179,6 +188,7 @@ impl Permissions {
       run: PermissionState::Granted,
       plugin: PermissionState::Granted,
       hrtime: PermissionState::Granted,
+      prompt: false,
     }
   }
 
@@ -186,17 +196,17 @@ impl Permissions {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.read.global_state == PermissionState::Denied
       && match path.as_ref() {
-      None => true,
-      Some(path) => check_path_blocklist(path, &self.read.denied_list),
-    }
+        None => true,
+        Some(path) => check_path_blocklist(path, &self.read.denied_list),
+      }
     {
       return PermissionState::Denied;
     }
     if self.read.global_state == PermissionState::Granted
       || match path.as_ref() {
-      None => false,
-      Some(path) => check_path_allowlist(path, &self.read.granted_list),
-    }
+        None => false,
+        Some(path) => check_path_allowlist(path, &self.read.granted_list),
+      }
     {
       return PermissionState::Granted;
     }
@@ -207,17 +217,17 @@ impl Permissions {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.write.global_state == PermissionState::Denied
       && match path.as_ref() {
-      None => true,
-      Some(path) => check_path_blocklist(path, &self.write.denied_list),
-    }
+        None => true,
+        Some(path) => check_path_blocklist(path, &self.write.denied_list),
+      }
     {
       return PermissionState::Denied;
     }
     if self.write.global_state == PermissionState::Granted
       || match path.as_ref() {
-      None => false,
-      Some(path) => check_path_allowlist(path, &self.write.granted_list),
-    }
+        None => false,
+        Some(path) => check_path_allowlist(path, &self.write.granted_list),
+      }
     {
       return PermissionState::Granted;
     }
@@ -230,17 +240,17 @@ impl Permissions {
   ) -> PermissionState {
     if self.net.global_state == PermissionState::Denied
       && match host.as_ref() {
-      None => true,
-      Some(host) => check_host_blocklist(host, &self.net.denied_list),
-    }
+        None => true,
+        Some(host) => check_host_blocklist(host, &self.net.denied_list),
+      }
     {
       return PermissionState::Denied;
     }
     if self.net.global_state == PermissionState::Granted
       || match host.as_ref() {
-      None => false,
-      Some(host) => check_host_allowlist(host, &self.net.granted_list),
-    }
+        None => false,
+        Some(host) => check_host_allowlist(host, &self.net.granted_list),
+      }
     {
       return PermissionState::Granted;
     }
@@ -523,6 +533,7 @@ impl Permissions {
     self.query_read(&Some(&resolved_path)).check(
       &format!("read access to \"{}\"", display_path.display()),
       "--allow-read",
+      self.prompt,
     )
   }
 
@@ -534,9 +545,11 @@ impl Permissions {
     display: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
-    self
-      .query_read(&Some(&resolved_path))
-      .check(&format!("read access to <{}>", display), "--allow-read")
+    self.query_read(&Some(&resolved_path)).check(
+      &format!("read access to <{}>", display),
+      "--allow-read",
+      self.prompt,
+    )
   }
 
   pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
@@ -544,6 +557,7 @@ impl Permissions {
     self.query_write(&Some(&resolved_path)).check(
       &format!("write access to \"{}\"", display_path.display()),
       "--allow-write",
+      self.prompt,
     )
   }
 
@@ -554,6 +568,7 @@ impl Permissions {
     self.query_net(&Some(host)).check(
       &format!("network access to \"{}\"", format_host(host)),
       "--allow-net",
+      self.prompt,
     )
   }
 
@@ -571,6 +586,7 @@ impl Permissions {
       .check(
         &format!("network access to \"{}\"", display_host),
         "--allow-net",
+        self.prompt,
       )
   }
 
@@ -595,13 +611,17 @@ impl Permissions {
   }
 
   pub fn check_env(&self) -> Result<(), AnyError> {
-    self
-      .env
-      .check("access to environment variables", "--allow-env")
+    self.env.check(
+      "access to environment variables",
+      "--allow-env",
+      self.prompt,
+    )
   }
 
   pub fn check_run(&self) -> Result<(), AnyError> {
-    self.run.check("access to run a subprocess", "--allow-run")
+    self
+      .run
+      .check("access to run a subprocess", "--allow-run", self.prompt)
   }
 
   pub fn check_plugin(&self, path: &Path) -> Result<(), AnyError> {
@@ -609,13 +629,16 @@ impl Permissions {
     self.plugin.check(
       &format!("access to open a plugin: {}", display_path.display()),
       "--allow-plugin",
+      self.prompt,
     )
   }
 
   pub fn check_hrtime(&self) -> Result<(), AnyError> {
-    self
-      .hrtime
-      .check("access to high precision time", "--allow-hrtime")
+    self.hrtime.check(
+      "access to high precision time",
+      "--allow-hrtime",
+      self.prompt,
+    )
   }
 }
 
@@ -1023,6 +1046,7 @@ mod tests {
       run: PermissionState::Granted,
       hrtime: PermissionState::Granted,
       plugin: PermissionState::Granted,
+      prompt: false,
     };
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
@@ -1048,6 +1072,7 @@ mod tests {
       run: PermissionState::Granted,
       plugin: PermissionState::Granted,
       hrtime: PermissionState::Granted,
+      prompt: false,
     };
     let perms2 = Permissions {
       read: UnaryPermission {
@@ -1069,6 +1094,7 @@ mod tests {
       run: PermissionState::Prompt,
       plugin: PermissionState::Prompt,
       hrtime: PermissionState::Prompt,
+      prompt: false,
     };
     #[rustfmt::skip]
     {
@@ -1116,6 +1142,7 @@ mod tests {
       run: PermissionState::Prompt,
       plugin: PermissionState::Prompt,
       hrtime: PermissionState::Prompt,
+      prompt: false,
     };
     #[rustfmt::skip]
     {
@@ -1175,6 +1202,7 @@ mod tests {
       run: PermissionState::Granted,
       plugin: PermissionState::Prompt,
       hrtime: PermissionState::Denied,
+      prompt: false,
     };
     #[rustfmt::skip]
     {

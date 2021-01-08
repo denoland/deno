@@ -322,6 +322,7 @@ fn create_worker_permissions(
       permission_args.write,
       &main_thread_permissions,
     )?,
+    prompt: false,
   })
 }
 
