@@ -144,6 +144,7 @@
   "dom": ["abort/event"],
   "hr-time": ["monotonic-clock"],
   "html": [
+    "webappapis/atob/base64.any.js",
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
     "webappapis/microtask-queuing/queue-microtask.any"
   ],
