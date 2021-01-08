@@ -146,8 +146,7 @@
   "html": [
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
     "webappapis/microtask-queuing/queue-microtask.any",
-    "webappapis/timers/cleartimeout-clearinterval.any.js",
-    "webappapis/timers/missing-timeout-setinterval.any.js"
+    "webappapis/timers",
   ],
   "user-timing": [
     "clear_all_marks",
