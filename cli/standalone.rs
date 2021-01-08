@@ -10,6 +10,7 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -39,7 +40,7 @@ pub struct Metadata {
   pub unstable: bool,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
-  pub location: Vec<String>,
+  pub location: Option<Url>,
   pub v8_flags: Vec<String>,
   #[serde(deserialize_with = "deserialize_maybe_log_level")]
   #[serde(serialize_with = "serialize_maybe_log_level")]
@@ -265,4 +266,5 @@ pub async fn run(
 fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_runtime::errors::get_error_class_name(e).unwrap_or_else(|| {
     panic!("Error '{}' contains boxed error of unknown type", e);
+  })
 }

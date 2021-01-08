@@ -5038,17 +5038,13 @@ fn standalone_runtime_flags() {
 
 #[test]
 fn denort_direct_use_error() {
-  let output = Command::new(util::denort_exe_path())
+  let status = Command::new(util::denort_exe_path())
     .current_dir(util::root_path())
-    .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
-    .wait_with_output()
+    .wait()
     .unwrap();
-  assert!(!output.status.success());
-  let stderr_str = String::from_utf8(output.stderr).unwrap();
-  assert!(util::strip_ansi_codes(&stderr_str)
-    .contains("This executable is used internally by 'deno compile', it is not meant to be invoked directly."));
+  assert!(!status.success());
 }
 
 fn concat_bundle(

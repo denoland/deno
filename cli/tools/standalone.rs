@@ -30,7 +30,7 @@ pub async fn create_standalone_binary(
     argv: flags.argv.clone(),
     unstable: flags.unstable,
     seed: flags.seed,
-    location: flags.location.map(|u| u.to_string()),
+    location: flags.location.clone(),
     permissions: flags.clone().into(),
     v8_flags: flags.v8_flags.clone(),
     log_level: flags.log_level,
