@@ -3,6 +3,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { Window } = window.__bootstrap.globalInterfaces;
+  const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
   const build = window.__bootstrap.build.build;
@@ -127,6 +128,7 @@
 
     constructor(specifier, options = {}) {
       super();
+      specifier = String(specifier);
       const {
         deno = {},
         name = "unknown",
@@ -176,6 +178,16 @@
       this.#name = name;
       const hasSourceCode = false;
       const sourceCode = decoder.decode(new Uint8Array());
+
+      if (
+        specifier.startsWith("./") || specifier.startsWith("../") ||
+        specifier.startsWith("/") || type == "classic"
+      ) {
+        const baseUrl = getLocationHref();
+        if (baseUrl != null) {
+          specifier = new URL(specifier, baseUrl).href;
+        }
+      }
 
       const { id } = createWorker(
         specifier,
