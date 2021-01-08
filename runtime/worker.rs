@@ -63,6 +63,7 @@ pub struct WorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub location: Option<Url>,
 }
 
 impl MainWorker {
@@ -179,6 +180,7 @@ impl MainWorker {
       "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
+      "location": options.location,
     });
 
     let script = format!(
@@ -282,6 +284,7 @@ mod tests {
       ts_version: "x".to_string(),
       no_color: true,
       get_error_class_fn: None,
+      location: None,
     };
 
     MainWorker::from_options(main_module, permissions, &options)

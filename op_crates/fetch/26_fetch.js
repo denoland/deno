@@ -5,6 +5,7 @@
 
   // provided by "deno_web"
   const { URLSearchParams } = window.__bootstrap.url;
+  const { getLocationHref } = window.__bootstrap.location;
 
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -999,8 +1000,10 @@
         this.credentials = input.credentials;
         this._stream = input._stream;
       } else {
-        // TODO(nayeemrmn): Base from `--location` when implemented and set.
-        this.url = new URL(String(input)).href;
+        const baseUrl = getLocationHref();
+        this.url = baseUrl != null
+          ? new URL(String(input), baseUrl).href
+          : new URL(String(input)).href;
       }
 
       if (init && "method" in init && init.method) {
@@ -1187,22 +1190,27 @@
     }
   }
 
+  let baseUrl = null;
+
+  function setBaseUrl(href) {
+    baseUrl = href;
+  }
+
   async function sendFetchReq(url, method, headers, body, clientRid) {
     let headerArray = [];
     if (headers) {
       headerArray = Array.from(headers.entries());
     }
 
-    const args = {
-      method,
-      url,
-      headers: headerArray,
-      clientRid,
-      hasBody: !!body,
-    };
-
     const { requestRid, requestBodyRid } = opFetch(
-      args,
+      {
+        method,
+        url,
+        baseUrl,
+        headers: headerArray,
+        clientRid,
+        hasBody: !!body,
+      },
       body instanceof Uint8Array ? body : undefined,
     );
     if (requestBodyRid) {
@@ -1421,6 +1429,7 @@
     Blob,
     DomFile,
     FormData,
+    setBaseUrl,
     fetch,
     Request,
     Response,

@@ -1246,7 +1246,7 @@ fn bundle_import_map_no_check() {
     .current_dir(util::root_path())
     .arg("bundle")
     .arg("--no-check")
-    .arg("--importmap")
+    .arg("--import-map")
     .arg(import_map_path)
     .arg("--unstable")
     .arg(import)
@@ -1689,7 +1689,7 @@ fn repl_test_pty_bad_input() {
 
 #[test]
 #[ignore]
-fn run_watch_with_importmap_and_relative_paths() {
+fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
     filename: &'static str,
@@ -1722,7 +1722,7 @@ fn run_watch_with_importmap_and_relative_paths() {
     .arg("run")
     .arg("--unstable")
     .arg("--watch")
-    .arg("--importmap")
+    .arg("--import-map")
     .arg(&import_map_path)
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
@@ -2307,6 +2307,8 @@ fn workers() {
     .current_dir(util::tests_path())
     .arg("test")
     .arg("--reload")
+    .arg("--location")
+    .arg("http://127.0.0.1:4545/cli/tests/")
     .arg("--allow-net")
     .arg("--allow-read")
     .arg("--unstable")
@@ -2548,6 +2550,23 @@ itest!(_067_test_no_run_type_error {
   exit_code: 1,
 });
 
+itest!(_070_location {
+  args: "run --location https://foo/bar?baz#bat 070_location.ts",
+  output: "070_location.ts.out",
+});
+
+itest!(_071_location_unset {
+  args: "run 071_location_unset.ts",
+  output: "071_location_unset.ts.out",
+  exit_code: 1,
+});
+
+itest!(_072_location_relative_fetch {
+  args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
+  output: "072_location_relative_fetch.ts.out",
+  http_server: true,
+});
+
 itest!(_073_worker_error {
   args: "run -A 073_worker_error.ts",
   output: "073_worker_error.ts.out",
@@ -2568,6 +2587,12 @@ itest!(_075_import_local_query_hash {
 itest!(_076_info_json_deps_order {
   args: "info --unstable --json 076_info_json_deps_order.ts",
   output: "076_info_json_deps_order.out",
+});
+
+itest!(_077_fetch_empty {
+  args: "run -A 077_fetch_empty.ts",
+  output: "077_fetch_empty.ts.out",
+  exit_code: 1,
 });
 
 itest!(js_import_detect {
@@ -3316,6 +3341,12 @@ itest!(deno_test_coverage {
   exit_code: 0,
 });
 
+itest!(deno_test_branch_coverage {
+  args: "test --coverage --unstable test_branch_coverage.ts",
+  output: "test_branch_coverage.out",
+  exit_code: 0,
+});
+
 itest!(deno_test_coverage_explicit {
   args: "test --coverage=.test_coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
@@ -3514,6 +3545,23 @@ itest!(inline_js_source_map_with_contents_from_graph {
   exit_code: 1,
   http_server: true,
 });
+
+#[test]
+fn no_validate_asm() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_validate_asm.js")
+    .stderr(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+  assert!(output.stdout.is_empty());
+}
 
 #[test]
 fn cafile_env_fetch() {
@@ -4740,7 +4788,7 @@ fn compile() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, "Welcome to Deno 🦕\n".as_bytes());
+  assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
 }
 
 #[test]
@@ -5177,16 +5225,14 @@ fn web_platform_tests() {
           .tempfile()
           .unwrap();
 
-        let bundle = concat_bundle(
-          files,
-          file.path(),
-          format!("window.location = {{search: \"{}\"}};\n", variant),
-        );
+        let bundle = concat_bundle(files, file.path(), "".to_string());
         file.write_all(bundle.as_bytes()).unwrap();
 
         let child = util::deno_cmd()
           .current_dir(test_file_path.parent().unwrap())
           .arg("run")
+          .arg("--location")
+          .arg(&format!("http://web-platform-tests/?{}", variant))
           .arg("-A")
           .arg(file.path())
           .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())

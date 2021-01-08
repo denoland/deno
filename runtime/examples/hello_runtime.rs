@@ -39,6 +39,7 @@ async fn main() -> Result<(), AnyError> {
     ts_version: "x".to_string(),
     no_color: false,
     get_error_class_fn: Some(&get_error_class_name),
+    location: None,
   };
 
   let js_path =
