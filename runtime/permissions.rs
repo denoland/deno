@@ -1027,7 +1027,8 @@ mod tests {
       "env": "Granted",
       "run": "Granted",
       "plugin": "Granted",
-      "hrtime": "Granted"
+      "hrtime": "Granted",
+      "prompt": false
     }
     "#;
     let perms0 = Permissions {
