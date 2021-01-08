@@ -22,8 +22,8 @@ pub mod tls;
 pub mod tty;
 pub mod web_worker;
 pub mod websocket;
-pub mod worker_host;
 pub mod webstorage;
+pub mod worker_host;
 
 use crate::metrics::metrics_op;
 use deno_core::error::AnyError;

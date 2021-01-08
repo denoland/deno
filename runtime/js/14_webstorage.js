@@ -8,7 +8,6 @@
       if (!rid) {
         const data = core.jsonOpSync("op_localstorage_open", {
           session,
-          location: "foobar",
         });
         rid = data.rid;
       }

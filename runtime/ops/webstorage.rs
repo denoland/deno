@@ -1,21 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::checksum;
-use deno_core::{BufVec, OpState, ZeroCopyBuf, Resource};
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
-use deno_core::futures::future::poll_fn;
-use rusqlite::{params, Connection, OptionalExtension};
-use serde::Deserialize;
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use std::cell::RefCell;
-use std::rc::Rc;
-use tokio::sync::mpsc;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ZeroCopyBuf;
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::Deserialize;
 use std::borrow::Cow;
+use std::path::PathBuf;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+#[derive(Clone)]
+pub struct LocationDataDir(pub Option<PathBuf>);
+
+pub fn init(rt: &mut deno_core::JsRuntime, deno_dir: Option<PathBuf>) {
+  {
+    let op_state = rt.op_state();
+    let mut state = op_state.borrow_mut();
+    state.put::<LocationDataDir>(LocationDataDir(deno_dir));
+  }
   super::reg_json_sync(rt, "op_localstorage_open", op_localstorage_open);
   super::reg_json_sync(rt, "op_localstorage_length", op_localstorage_length);
   super::reg_json_sync(rt, "op_localstorage_key", op_localstorage_key);
@@ -23,11 +29,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_localstorage_get", op_localstorage_get);
   super::reg_json_sync(rt, "op_localstorage_remove", op_localstorage_remove);
   super::reg_json_sync(rt, "op_localstorage_clear", op_localstorage_clear);
-  super::reg_json_async(
-    rt,
-    "op_localstorage_events_poll",
-    op_localstorage_events_poll,
-  );
 }
 
 struct WebStorageConnectionResource {
@@ -40,12 +41,10 @@ impl Resource for WebStorageConnectionResource {
   }
 }
 
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
   session: bool,
-  location: String,
 }
 
 pub fn op_localstorage_open(
@@ -63,17 +62,12 @@ pub fn op_localstorage_open(
         params![],
       )
       .unwrap();
-    let rid =
-      state.resource_table.add(WebStorageConnectionResource { connection });
+    let rid = state
+      .resource_table
+      .add(WebStorageConnectionResource { connection });
     Ok(json!({ "rid": rid }))
   } else {
-    let cli_state = super::global_state(&state);
-    let deno_dir = &cli_state.dir;
-    let path = deno_dir
-      .root
-      .join("web_storage")
-      .join(checksum::gen(&[args.location.as_bytes()]));
-
+    let path = &state.borrow::<LocationDataDir>().0.clone().unwrap();
     std::fs::create_dir_all(&path).unwrap();
 
     let connection = Connection::open(path.join("local_storage")).unwrap();
@@ -85,8 +79,10 @@ pub fn op_localstorage_open(
       )
       .unwrap();
 
-    let rid = state.resource_table.add(WebStorageConnectionResource { connection });
-    Ok(json!({"rid": rid }))
+    let rid = state
+      .resource_table
+      .add(WebStorageConnectionResource { connection });
+    Ok(json!({ "rid": rid }))
   }
 }
 
@@ -107,7 +103,10 @@ pub fn op_localstorage_length(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.connection.prepare("SELECT COUNT(*) FROM data").unwrap();
+  let mut stmt = resource
+    .connection
+    .prepare("SELECT COUNT(*) FROM data")
+    .unwrap();
 
   let length: u32 = stmt.query_row(params![], |row| row.get(0)).unwrap();
 
@@ -132,7 +131,8 @@ pub fn op_localstorage_key(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.connection
+  let mut stmt = resource
+    .connection
     .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")
     .unwrap();
 
@@ -168,7 +168,8 @@ pub fn op_localstorage_set(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource.connection
+  resource
+    .connection
     .execute(
       "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
       params![args.key_name, args.key_value],
@@ -196,7 +197,8 @@ pub fn op_localstorage_get(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.connection
+  let mut stmt = resource
+    .connection
     .prepare("SELECT value FROM data WHERE key = ?")
     .unwrap();
 
@@ -226,7 +228,8 @@ pub fn op_localstorage_remove(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource.connection
+  resource
+    .connection
     .execute("DELETE FROM data WHERE key = ?", params![args.key_name])
     .unwrap();
 
@@ -250,8 +253,12 @@ pub fn op_localstorage_clear(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource.connection.execute("DROP TABLE data", params![]).unwrap();
-  resource.connection
+  resource
+    .connection
+    .execute("DROP TABLE data", params![])
+    .unwrap();
+  resource
+    .connection
     .execute(
       "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
       params![],

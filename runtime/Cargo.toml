@@ -49,7 +49,7 @@ notify = "5.0.0-pre.3"
 percent-encoding = "2.1.0"
 regex = "1.3.9"
 ring = "0.16.19"
-rusqlite = { version = "0.24.0", features = ["hooks", "unlock_notify", "bundled"] }
+rusqlite = { version = "0.24.2", features = ["hooks", "unlock_notify", "bundled"] }
 rustyline = { version = "7.1.0", default-features = false }
 rustyline-derive = "0.4.0"
 serde = { version = "1.0.116", features = ["derive"] }

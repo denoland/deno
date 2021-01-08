@@ -40,6 +40,7 @@ async fn main() -> Result<(), AnyError> {
     no_color: false,
     get_error_class_fn: Some(&get_error_class_name),
     location: None,
+    location_data_dir: None,
   };
 
   let js_path =

@@ -184,6 +184,7 @@ async fn run(source_code: String, metadata: Metadata) -> Result<(), AnyError> {
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
     location: flags.location,
+    location_data_dir: None, // TODO
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

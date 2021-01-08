@@ -64,6 +64,7 @@ pub struct WorkerOptions {
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
+  pub location_data_dir: Option<std::path::PathBuf>,
 }
 
 impl MainWorker {
@@ -147,7 +148,7 @@ impl MainWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       );
-      ops::webstorage::init(js_runtime);
+      ops::webstorage::init(js_runtime, options.location_data_dir.clone());
     }
     {
       let op_state = js_runtime.op_state();
@@ -286,6 +287,7 @@ mod tests {
       no_color: true,
       get_error_class_fn: None,
       location: None,
+      location_data_dir: None,
     };
 
     MainWorker::from_options(main_module, permissions, &options)
