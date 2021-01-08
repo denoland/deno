@@ -179,5 +179,23 @@
       ]
     },
     "user_timing_exists"
+  ],
+  "wasm":[
+    "jsapi/constructor/compile",
+    "jsapi/constructor/toStringTag",
+    "jsapi/constructor/validate",
+    "jsapi/global/constructor",
+    "jsapi/global/toString",
+    "jsapi/global/value-get-set",
+    "jsapi/global/valueOf",
+    "jsapi/instance/toString",
+    "jsapi/memory/toString",
+    "jsapi/module/constructor",
+    "jsapi/module/customSections",
+    "jsapi/module/exports",
+    "jsapi/module/imports",
+    "jsapi/module/toString",
+    "jsapi/table/get-set",
+    "jsapi/table/toString",
   ]
 }
