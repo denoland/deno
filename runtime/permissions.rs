@@ -35,9 +35,7 @@ pub enum PermissionState {
 impl PermissionState {
   /// Check the permission state.
   fn check(self, msg: &str, flag_name: &str) -> Result<(), AnyError> {
-    if self == PermissionState::Granted
-      || (self == PermissionState::Prompt && permission_prompt(msg))
-    {
+    if self == PermissionState::Granted {
       log_perm_access(msg);
       return Ok(());
     }
@@ -104,43 +102,33 @@ pub struct PermissionsOptions {
 
 impl Permissions {
   pub fn from_options(opts: &PermissionsOptions) -> Self {
-    fn global_state_from_flag_bool(
-      flag: bool,
-      prompt: bool,
-    ) -> PermissionState {
+    fn global_state_from_flag_bool(flag: bool) -> PermissionState {
       if flag {
         PermissionState::Granted
-      } else if prompt {
-        PermissionState::Prompt
       } else {
-        PermissionState::Denied
+        PermissionState::Prompt
       }
     }
-    fn global_state_from_option<T>(
-      flag: &Option<Vec<T>>,
-      prompt: bool,
-    ) -> PermissionState {
+    fn global_state_from_option<T>(flag: &Option<Vec<T>>) -> PermissionState {
       if matches!(flag, Some(v) if v.is_empty()) {
         PermissionState::Granted
-      } else if prompt {
-        PermissionState::Prompt
       } else {
-        PermissionState::Denied
+        PermissionState::Prompt
       }
     }
     Self {
       read: UnaryPermission::<PathBuf> {
-        global_state: global_state_from_option(&opts.allow_read, opts.prompt),
+        global_state: global_state_from_option(&opts.allow_read),
         granted_list: resolve_fs_allowlist(&opts.allow_read),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        global_state: global_state_from_option(&opts.allow_write, opts.prompt),
+        global_state: global_state_from_option(&opts.allow_write),
         granted_list: resolve_fs_allowlist(&opts.allow_write),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        global_state: global_state_from_option(&opts.allow_net, opts.prompt),
+        global_state: global_state_from_option(&opts.allow_net),
         granted_list: opts
           .allow_net
           .as_ref()
@@ -148,10 +136,10 @@ impl Permissions {
           .unwrap_or_else(HashSet::new),
         ..Default::default()
       },
-      env: global_state_from_flag_bool(opts.allow_env, opts.prompt),
-      run: global_state_from_flag_bool(opts.allow_run, opts.prompt),
-      plugin: global_state_from_flag_bool(opts.allow_plugin, opts.prompt),
-      hrtime: global_state_from_flag_bool(opts.allow_hrtime, opts.prompt),
+      env: global_state_from_flag_bool(opts.allow_env),
+      run: global_state_from_flag_bool(opts.allow_run),
+      plugin: global_state_from_flag_bool(opts.allow_plugin),
+      hrtime: global_state_from_flag_bool(opts.allow_hrtime),
     }
   }
 
@@ -198,42 +186,42 @@ impl Permissions {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.read.global_state == PermissionState::Denied
       && match path.as_ref() {
-        None => true,
-        Some(path) => check_path_blocklist(path, &self.read.denied_list),
-      }
+      None => true,
+      Some(path) => check_path_blocklist(path, &self.read.denied_list),
+    }
     {
       return PermissionState::Denied;
     }
     if self.read.global_state == PermissionState::Granted
       || match path.as_ref() {
-        None => false,
-        Some(path) => check_path_allowlist(path, &self.read.granted_list),
-      }
+      None => false,
+      Some(path) => check_path_allowlist(path, &self.read.granted_list),
+    }
     {
       return PermissionState::Granted;
     }
-    self.read.global_state
+    PermissionState::Prompt
   }
 
   pub fn query_write(&self, path: &Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.write.global_state == PermissionState::Denied
       && match path.as_ref() {
-        None => true,
-        Some(path) => check_path_blocklist(path, &self.write.denied_list),
-      }
+      None => true,
+      Some(path) => check_path_blocklist(path, &self.write.denied_list),
+    }
     {
       return PermissionState::Denied;
     }
     if self.write.global_state == PermissionState::Granted
       || match path.as_ref() {
-        None => false,
-        Some(path) => check_path_allowlist(path, &self.write.granted_list),
-      }
+      None => false,
+      Some(path) => check_path_allowlist(path, &self.write.granted_list),
+    }
     {
       return PermissionState::Granted;
     }
-    self.write.global_state
+    PermissionState::Prompt
   }
 
   pub fn query_net<T: AsRef<str>>(
@@ -242,21 +230,21 @@ impl Permissions {
   ) -> PermissionState {
     if self.net.global_state == PermissionState::Denied
       && match host.as_ref() {
-        None => true,
-        Some(host) => check_host_blocklist(host, &self.net.denied_list),
-      }
+      None => true,
+      Some(host) => check_host_blocklist(host, &self.net.denied_list),
+    }
     {
       return PermissionState::Denied;
     }
     if self.net.global_state == PermissionState::Granted
       || match host.as_ref() {
-        None => false,
-        Some(host) => check_host_allowlist(host, &self.net.granted_list),
-      }
+      None => false,
+      Some(host) => check_host_allowlist(host, &self.net.granted_list),
+    }
     {
       return PermissionState::Granted;
     }
-    self.net.global_state
+    PermissionState::Prompt
   }
 
   pub fn query_env(&self) -> PermissionState {
