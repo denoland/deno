@@ -109,7 +109,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
   fn register_op(
     &mut self,
     name: &str,
-    dispatch_op_fn: plugin_api::DispatchOpFn,
+    dispatch_op_fn: Box<plugin_api::DispatchOpFn>,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
     let plugin_op_fn = move |state_rc: Rc<RefCell<OpState>>,
