@@ -39,6 +39,7 @@ pub struct Metadata {
   pub unstable: bool,
   pub seed: Option<u64>,
   pub permissions: PermissionsOptions,
+  pub location: Vec<String>,
   pub v8_flags: Vec<String>,
   #[serde(deserialize_with = "deserialize_maybe_log_level")]
   #[serde(serialize_with = "serialize_maybe_log_level")]
@@ -249,6 +250,7 @@ pub async fn run(
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
+    location: metadata.location,
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
@@ -263,5 +265,4 @@ pub async fn run(
 fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_runtime::errors::get_error_class_name(e).unwrap_or_else(|| {
     panic!("Error '{}' contains boxed error of unknown type", e);
-  })
 }

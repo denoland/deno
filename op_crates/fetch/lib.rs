@@ -100,12 +100,12 @@ where
   struct FetchArgs {
     method: Option<String>,
     url: String,
+    base_url: Option<String>,
     headers: Vec<(String, String)>,
     client_rid: Option<u32>,
   }
 
   let args: FetchArgs = serde_json::from_value(args)?;
-  let url = args.url;
 
   let client = if let Some(rid) = args.client_rid {
     let state_ = state.borrow();
@@ -125,10 +125,16 @@ where
     None => Method::GET,
   };
 
-  let url_ = Url::parse(&url)?;
+  let base_url = match args.base_url {
+    Some(base_url) => Some(Url::parse(&base_url)?),
+    _ => None,
+  };
+  let url = Url::options()
+    .base_url(base_url.as_ref())
+    .parse(&args.url)?;
 
   // Check scheme before asking for net permission
-  let scheme = url_.scheme();
+  let scheme = url.scheme();
   if scheme != "http" && scheme != "https" {
     return Err(type_error(format!("scheme '{}' not supported", scheme)));
   }
@@ -136,10 +142,10 @@ where
   {
     let state_ = state.borrow();
     let permissions = state_.borrow::<FP>();
-    permissions.check_net_url(&url_)?;
+    permissions.check_net_url(&url)?;
   }
 
-  let mut request = client.request(method, url_);
+  let mut request = client.request(method, url);
 
   match data.len() {
     0 => {}
