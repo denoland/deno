@@ -5,6 +5,8 @@
     let rid;
 
     function getRid() {
+      if (!session) window.location;
+
       if (!rid) {
         const data = core.jsonOpSync("op_localstorage_open", {
           session,
