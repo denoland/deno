@@ -6,15 +6,11 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
-use deno_core::serde::de;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
-use deno_core::serde::Serializer;
 use deno_core::url::Url;
 use deno_runtime::permissions::PermissionsOptions;
 use log::Level;
-use std::fmt;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -100,66 +96,7 @@ impl Default for DenoSubcommand {
   }
 }
 
-fn deserialize_maybe_log_level<'de, D>(d: D) -> Result<Option<Level>, D::Error>
-where
-  D: Deserializer<'de>,
-{
-  struct OptionalLogLevelVisitor;
-  impl<'de> de::Visitor<'de> for OptionalLogLevelVisitor {
-    type Value = Option<Level>;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-      write!(formatter, "null or a valid log level string")
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-      E: de::Error,
-    {
-      Ok(None)
-    }
-
-    fn visit_some<D>(self, d: D) -> Result<Self::Value, D::Error>
-    where
-      D: de::Deserializer<'de>,
-    {
-      struct LogLevelVisitor;
-      impl<'de> de::Visitor<'de> for LogLevelVisitor {
-        type Value = Level;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-          write!(formatter, "a valid log level string")
-        }
-
-        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-        where
-          E: de::Error,
-        {
-          Level::from_str(s).map_err(|_| {
-            de::Error::invalid_value(de::Unexpected::Str(s), &self)
-          })
-        }
-      }
-      Ok(Some(d.deserialize_str(LogLevelVisitor)?))
-    }
-  }
-  d.deserialize_option(OptionalLogLevelVisitor)
-}
-
-fn serialize_maybe_log_level<S>(
-  maybe_level: &Option<Level>,
-  s: S,
-) -> Result<S::Ok, S::Error>
-where
-  S: Serializer,
-{
-  match maybe_level {
-    None => s.serialize_none(),
-    Some(level) => s.serialize_str(&level.to_string()),
-  }
-}
-
-#[derive(Clone, Debug, PartialEq, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -185,8 +122,6 @@ pub struct Flags {
   pub inspect_brk: Option<SocketAddr>,
   pub lock: Option<PathBuf>,
   pub lock_write: bool,
-  #[serde(deserialize_with = "deserialize_maybe_log_level")]
-  #[serde(serialize_with = "serialize_maybe_log_level")]
   pub log_level: Option<Level>,
   pub no_check: bool,
   pub no_prompts: bool,
