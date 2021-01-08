@@ -1,9 +1,11 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::metrics::metrics_op;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::prelude::*;
+use deno_core::json_op_async;
+use deno_core::json_op_sync;
 use deno_core::plugin_api;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -130,6 +132,44 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
       .state
       .op_table
       .register_op(name, metrics_op(Box::new(plugin_op_fn)))
+  }
+
+  fn register_json_op_sync(
+    &mut self,
+    name: &str,
+    dispatch_op_fn: Box<plugin_api::JsonOpSync>,
+  ) -> OpId {
+    let plugin_lib = self.plugin_lib.clone();
+    let plugin_op_fn =
+      move |state: &mut OpState,
+            value: Value,
+            zero_copy: &mut [ZeroCopyBuf]| {
+        let mut interface = PluginInterface::new(state, &plugin_lib);
+        dispatch_op_fn(&mut interface, value, zero_copy)
+      };
+    self
+      .state
+      .op_table
+      .register_op(name, metrics_op(json_op_sync(plugin_op_fn)))
+  }
+
+  fn register_json_op_async(
+    &mut self,
+    name: &str,
+    dispatch_op_fn: Box<plugin_api::JsonOpAsync>,
+  ) -> OpId {
+    let plugin_lib = self.plugin_lib.clone();
+    let plugin_op_fn = move |state_rc: Rc<RefCell<OpState>>,
+                             value: Value,
+                             mut zero_copy: BufVec| {
+      let mut state = state_rc.borrow_mut();
+      let mut interface = PluginInterface::new(&mut state, &plugin_lib);
+      dispatch_op_fn(&mut interface, value, &zero_copy)
+    };
+    self
+      .state
+      .op_table
+      .register_op(name, metrics_op(json_op_async(plugin_op_fn)))
   }
 }
 
