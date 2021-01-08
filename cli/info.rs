@@ -2,8 +2,8 @@
 
 use crate::colors;
 use crate::media_type::serialize_media_type;
-use crate::MediaType;
-use crate::ModuleSpecifier;
+use crate::media_type::MediaType;
+use deno_core::ModuleSpecifier;
 
 use serde::Serialize;
 use serde::Serializer;

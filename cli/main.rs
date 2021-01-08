@@ -55,7 +55,6 @@ use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
-use crate::standalone::create_standalone_binary;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -116,7 +115,7 @@ fn create_web_worker_callback(
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
       ca_data: program_state.ca_data.clone(),
-      user_agent: http_util::get_user_agent(),
+      user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
       create_web_worker_cb,
@@ -192,7 +191,7 @@ pub fn create_main_worker(
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
     ca_data: program_state.ca_data.clone(),
-    user_agent: http_util::get_user_agent(),
+    user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
@@ -315,7 +314,8 @@ async fn compile_command(
 
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags = standalone::compile_to_runtime_flags(flags.clone(), args)?;
+  let run_flags =
+    tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
@@ -345,7 +345,12 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str, run_flags, output.clone()).await?;
+  tools::standalone::create_standalone_binary(
+    bundle_str,
+    run_flags,
+    output.clone(),
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -1252,7 +1257,14 @@ pub fn main() {
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  if let Err(err) = standalone::try_run_standalone_binary(args.clone()) {
+  let standalone_res = match standalone::extract_standalone(args.clone()) {
+    Ok(Some((metadata, bundle))) => {
+      tokio_util::run_basic(standalone::run(bundle, metadata))
+    }
+    Ok(None) => Ok(()),
+    Err(err) => Err(err),
+  };
+  if let Err(err) = standalone_res {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }

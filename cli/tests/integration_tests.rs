@@ -5036,6 +5036,17 @@ fn standalone_runtime_flags() {
     .contains("PermissionDenied: write access"));
 }
 
+#[test]
+fn denort_direct_use_error() {
+  let status = Command::new(util::denort_exe_path())
+    .current_dir(util::root_path())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+}
+
 fn concat_bundle(
   files: Vec<(PathBuf, String)>,
   bundle_path: &Path,
