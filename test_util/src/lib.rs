@@ -5,17 +5,17 @@
 #[macro_use]
 extern crate lazy_static;
 
+use core::mem::replace;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
-use futures::TryStreamExt;
 use hyper::header::HeaderValue;
+use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use hyper::server::Server;
 use hyper::StatusCode;
 use os_pipe::pipe;
 #[cfg(unix)]
@@ -26,7 +26,6 @@ use std::env;
 use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::mem::replace;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -146,11 +145,9 @@ async fn hyper_hello(port: u16) {
   println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let hello_svc = make_service_fn(|_| async move {
-    Ok::<_, hyper::Error>(service_fn(
-      move |_: Request<Body>| async move {
-        Ok::<_, hyper::Error>(Response::new(Body::from("Hello World!")))
-      },
-    ))
+    Ok::<_, hyper::Error>(service_fn(move |_: Request<Body>| async move {
+      Ok::<_, hyper::Error>(Response::new(Body::from("Hello World!")))
+    }))
   });
 
   let server = Server::bind(&addr).serve(hello_svc);
@@ -203,7 +200,7 @@ async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 }
 
 async fn run_ws_server(addr: &SocketAddr) {
-  let mut listener = TcpListener::bind(addr).await.unwrap();
+  let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
       let ws_stream_fut = accept_async(stream);
@@ -278,7 +275,7 @@ async fn run_wss_server(addr: &SocketAddr) {
 
   let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
-  let mut listener = TcpListener::bind(addr).await.unwrap();
+  let listener = TcpListener::bind(addr).await.unwrap();
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -731,7 +728,7 @@ async fn wrap_main_https_server() {
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
 // comparing apples to apples if we use the default multi-threaded scheduler.
-#[tokio::main(basic_scheduler)]
+#[tokio::main(flavor = "current_thread")]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
