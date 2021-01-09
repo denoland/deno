@@ -180,7 +180,7 @@
     },
     "user_timing_exists"
   ],
-  "wasm":[
+  "wasm": [
     "jsapi/constructor/compile",
     "jsapi/constructor/toStringTag",
     "jsapi/constructor/validate",
@@ -200,6 +200,5 @@
     "webapi/body",
     "webapi/invalid-args",
     "webapi/rejected-arg"
-
   ]
 }
