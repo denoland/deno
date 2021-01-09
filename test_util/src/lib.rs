@@ -21,12 +21,14 @@ use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
+use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -40,12 +42,26 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::net::UdpSocket;
+use tokio::runtime::Builder;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
+use trust_dns_client::rr::LowerName;
+use trust_dns_client::rr::RecordType;
+use trust_dns_client::rr::RrKey;
+use trust_dns_server::authority::Catalog;
+use trust_dns_server::authority::ZoneType;
+use trust_dns_server::proto::rr::record_data::RData;
+use trust_dns_server::proto::rr::resource::Record;
+use trust_dns_server::proto::rr::Name;
+use trust_dns_server::proto::rr::RecordSet;
+use trust_dns_server::store::in_memory::InMemoryAuthority;
+use trust_dns_server::ServerFuture;
 
 const PORT: u16 = 4545;
 const REDIRECT_PORT: u16 = 4546;
@@ -56,6 +72,7 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const DNS_PORT: u16 = 4553;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -680,6 +697,48 @@ async fn wrap_abs_redirect_server() {
   }
 }
 
+async fn run_dns_server() {
+  let catalog = {
+    let zone_type = ZoneType::Master;
+    let records = {
+      let mut map = BTreeMap::new();
+
+      let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record_set = RecordSet::from(record);
+      map.insert(
+        RrKey::new(
+          "www.example.com".parse::<LowerName>().unwrap(),
+          RecordType::A,
+        ),
+        record_set,
+      );
+
+      map
+    };
+
+    let authority = Box::new(
+      InMemoryAuthority::new(Name::root(), records, zone_type, false).unwrap(),
+    );
+    let mut c = Catalog::new();
+    c.upsert(Name::root().into(), authority);
+    c
+  };
+
+  let mut server_fut = ServerFuture::new(catalog);
+  let runtime = {
+    let mut b = Builder::new();
+    b.basic_scheduler().build().unwrap()
+  };
+  let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
+  let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
+  let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
+  server_fut.register_socket(udp_socket, &runtime);
+  server_fut
+    .register_listener(tcp_listener, Duration::from_secs(5), &runtime)
+    .unwrap();
+}
+
 async fn wrap_main_server() {
   let main_server_svc = make_service_fn(|_| async {
     Ok::<_, hyper::Error>(service_fn(main_server))
@@ -754,6 +813,8 @@ pub async fn run_all_servers() {
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
 
+  let dns_server_fut = run_dns_server();
+
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
 
@@ -762,6 +823,7 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      dns_server_fut,
       another_redirect_server_fut,
       inf_redirects_server_fut,
       double_redirects_server_fut,

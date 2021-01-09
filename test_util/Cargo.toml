@@ -22,6 +22,8 @@ tempfile = "3.1.0"
 hyper = "0.13"
 tokio-tungstenite = "0.11"
 tokio-rustls = "0.14"
+trust-dns-server = "0.19.6"
+trust-dns-client = "0.19.6"
 
 [target.'cfg(unix)'.dependencies]
 pty = "0.2.2"
