@@ -1,6 +1,9 @@
 {
   "WebCryptoAPI": {
-    "getRandomValues.any.js": true
+    "getRandomValues.any.js": true,
+    "digest": {
+      "digest.https.any.js": true
+    }
   },
   "console": {
     "console-is-a-namespace.any.js": true,

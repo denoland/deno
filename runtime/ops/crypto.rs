@@ -15,4 +15,5 @@ pub fn init(rt: &mut deno_core::JsRuntime, maybe_seed: Option<u64>) {
     "op_crypto_get_random_values",
     deno_crypto::op_crypto_get_random_values,
   );
+  super::reg_json_async(rt, "op_crypto_subtle_digest", deno_crypto::op_crypto_subtle_digest);
 }

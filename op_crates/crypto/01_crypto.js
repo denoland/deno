@@ -9,7 +9,7 @@
   function getRandomValues(arrayBufferView) {
     if (!ArrayBuffer.isView(arrayBufferView)) {
       throw new TypeError(
-        "Argument 1 does not implement interface ArrayBufferView",
+        "Argument 1 does not implement the interface ArrayBufferView",
       );
     }
     if (
@@ -81,7 +81,21 @@
     }
   }
 
-  const supportedAlgorithms = {};
+  const supportedAlgorithms = {
+    digest: new RegisteredAlgorithmsContainer({
+      "SHA-1": {},
+      "SHA-256": {},
+      "SHA-384": {},
+      "SHA-512": {},
+    }),
+  };
+
+  const digestByteLengths = {
+    "SHA-1": 20,
+    "SHA-256": 32,
+    "SHA-384": 48,
+    "SHA-512": 64,
+  };
 
   function normalizeAlgorithm(algorithm, registeredAlgorithms) {
     let alg;
@@ -130,8 +144,26 @@
       throw new Error("Not implemented");
     },
     async digest(algorithm, data) {
-      await Promise.resolve();
-      throw new Error("Not implemented");
+      let input;
+      if (data instanceof ArrayBuffer) {
+        input = new Uint8Array(data);
+      } else if (ArrayBuffer.isView(data)) {
+        input = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        throw new TypeError(
+          "Argument 2 is not an ArrayBuffer nor does it implement the interface ArrayBufferView",
+        );
+      }
+      const alg = normalizeAlgorithm(algorithm, supportedAlgorithms.digest);
+      const output = new ArrayBuffer(digestByteLengths[alg.name]);
+      await core.jsonOpAsync(
+        "op_crypto_subtle_digest",
+        alg,
+        // We need to copy the input because the specs require it.
+        input.slice(0),
+        new Uint8Array(output, 0, output.byteLength),
+      );
+      return output;
     },
     async encrypt(algorithm, key, data) {
       await Promise.resolve();
