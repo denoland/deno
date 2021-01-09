@@ -219,12 +219,12 @@ fn check_write_permissions(
 
 fn merge_read_write_permissions(
   permission_type: WorkerPermissionType,
-  target: &UnaryPermission<PathBuf>,
+  target: UnaryPermission<PathBuf>,
   incoming: Option<UnaryPermission<PathBuf>>,
   current_permissions: &mut Permissions,
 ) -> Result<UnaryPermission<PathBuf>, AnyError> {
   if incoming.is_none() {
-    return Ok(target.clone());
+    return Ok(target);
   };
 
   let new_permissions = incoming.unwrap();
@@ -255,7 +255,7 @@ fn merge_read_write_permissions(
           Ok(UnaryPermission::<PathBuf> {
             global_state: new_permissions.global_state,
             granted_list: new_permissions.granted_list,
-            denied_list: target.denied_list.clone(),
+            denied_list: target.denied_list,
           })
         } else {
           Err(custom_error(
@@ -308,9 +308,9 @@ fn create_worker_permissions(
     )?,
     read: merge_read_write_permissions(
       WorkerPermissionType::READ,
-      &main_thread_permissions.read,
+      main_thread_permissions.read.clone(),
       permission_args.read,
-      &main_thread_permissions,
+      main_thread_permissions,
     )?,
     run: merge_permission_state(
       &main_thread_permissions.run,
@@ -318,9 +318,9 @@ fn create_worker_permissions(
     )?,
     write: merge_read_write_permissions(
       WorkerPermissionType::WRITE,
-      &main_thread_permissions.write,
+      main_thread_permissions.write.clone(),
       permission_args.write,
-      &main_thread_permissions,
+      main_thread_permissions,
     )?,
     prompt: false,
   })
