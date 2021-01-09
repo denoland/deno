@@ -85,7 +85,7 @@ fn op_run(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().check_run()?;
+  state.borrow_mut::<Permissions>().check_run()?;
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -189,8 +189,8 @@ async fn op_run_status(
   let rid = args.rid as u32;
 
   {
-    let s = state.borrow();
-    s.borrow::<Permissions>().check_run()?;
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<Permissions>().check_run()?;
   }
 
   let resource = state
@@ -286,7 +286,7 @@ fn op_kill(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.kill");
-  state.borrow::<Permissions>().check_run()?;
+  state.borrow_mut::<Permissions>().check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;
   kill(args.pid, args.signo)?;

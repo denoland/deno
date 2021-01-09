@@ -420,7 +420,7 @@ fn op_chdir(
 ) -> Result<Value, AnyError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
-  state.borrow::<Permissions>().check_read(&d)?;
+  state.borrow_mut::<Permissions>().check_read(&d)?;
   set_current_dir(&d)?;
   Ok(json!({}))
 }
@@ -441,7 +441,7 @@ fn op_mkdir_sync(
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow_mut::<Permissions>().check_write(&path)?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
   builder.recursive(args.recursive);
@@ -464,8 +464,8 @@ async fn op_mkdir_async(
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_write(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -500,7 +500,7 @@ fn op_chmod_sync(
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow_mut::<Permissions>().check_write(&path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
   #[cfg(unix)]
   {
@@ -528,8 +528,8 @@ async fn op_chmod_async(
   let mode = args.mode & 0o777;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_write(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -568,7 +568,7 @@ fn op_chown_sync(
 ) -> Result<Value, AnyError> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow_mut::<Permissions>().check_write(&path)?;
   debug!(
     "op_chown_sync {} {:?} {:?}",
     path.display(),
@@ -599,8 +599,8 @@ async fn op_chown_async(
   let path = Path::new(&args.path).to_path_buf();
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_write(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -642,7 +642,7 @@ fn op_remove_sync(
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow_mut::<Permissions>().check_write(&path)?;
 
   #[cfg(not(unix))]
   use std::os::windows::prelude::MetadataExt;
@@ -686,8 +686,8 @@ async fn op_remove_async(
   let recursive = args.recursive;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_write(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -865,7 +865,7 @@ fn op_stat_sync(
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
-  state.borrow::<Permissions>().check_read(&path)?;
+  state.borrow_mut::<Permissions>().check_read(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
     std::fs::symlink_metadata(&path)?
@@ -885,8 +885,8 @@ async fn op_stat_async(
   let lstat = args.lstat;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_read(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_read(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -973,7 +973,7 @@ fn op_read_dir_sync(
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  state.borrow::<Permissions>().check_read(&path)?;
+  state.borrow_mut::<Permissions>().check_read(&path)?;
 
   debug!("op_read_dir_sync {}", path.display());
   let entries: Vec<_> = std::fs::read_dir(path)?
@@ -1005,8 +1005,8 @@ async fn op_read_dir_async(
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_read(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_read(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_dir_async {}", path.display());
@@ -1166,7 +1166,7 @@ fn op_symlink_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  state.borrow::<Permissions>().check_write(&newpath)?;
+  state.borrow_mut::<Permissions>().check_write(&newpath)?;
 
   debug!(
     "op_symlink_sync {} {}",
@@ -1219,8 +1219,8 @@ async fn op_symlink_async(
   let newpath = PathBuf::from(&args.newpath);
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_write(&newpath)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_write(&newpath)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -1276,7 +1276,7 @@ fn op_read_link_sync(
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  state.borrow::<Permissions>().check_read(&path)?;
+  state.borrow_mut::<Permissions>().check_read(&path)?;
 
   debug!("op_read_link_value {}", path.display());
   let target = std::fs::read_link(&path)?.into_os_string();
@@ -1292,8 +1292,8 @@ async fn op_read_link_async(
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_read(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_read(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_link_async {}", path.display());
@@ -1360,7 +1360,7 @@ fn op_truncate_sync(
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow_mut::<Permissions>().check_write(&path)?;
 
   debug!("op_truncate_sync {} {}", path.display(), len);
   let f = std::fs::OpenOptions::new().write(true).open(&path)?;
@@ -1377,8 +1377,8 @@ async fn op_truncate_async(
   let path = PathBuf::from(&args.path);
   let len = args.len;
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().check_write(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().check_write(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_truncate_async {} {}", path.display(), len);
@@ -1650,7 +1650,7 @@ fn op_utime_sync(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow_mut::<Permissions>().check_write(&path)?;
   filetime::set_file_times(path, atime, mtime)?;
   Ok(json!({}))
 }

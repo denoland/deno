@@ -54,6 +54,30 @@ impl PermissionState {
     let message = format!("{}, run again with the {} flag", msg, flag_name);
     Err(custom_error("PermissionDenied", message))
   }
+
+  fn check_modify(
+    &mut self,
+    msg: &str,
+    flag_name: &str,
+    prompt: bool,
+  ) -> Result<(), AnyError> {
+    if *self == PermissionState::Granted {
+      log_perm_access(msg);
+      return Ok(());
+    } else if prompt && *self == PermissionState::Prompt {
+      match permission_prompt(msg) {
+        PromptResult::AllowAlways => {
+          *self = PermissionState::Granted;
+          log_perm_access(msg);
+          return Ok(());
+        }
+        PromptResult::AllowOnce => return Ok(()),
+        _ => {}
+      }
+    }
+    let message = format!("{}, run again with the {} flag", msg, flag_name);
+    Err(custom_error("PermissionDenied", message))
+  }
 }
 
 impl fmt::Display for PermissionState {
@@ -441,8 +465,11 @@ impl Permissions {
 
   pub fn request_env(&mut self) -> PermissionState {
     if self.env == PermissionState::Prompt {
-      permission_prompt("Deno requests access to environment variables")
-        .into_permission_state(&mut self.env)
+      let x =
+        permission_prompt("Deno requests access to environment variables")
+          .into_permission_state(&mut self.env);
+      println!("{}", self.env);
+      x
     } else {
       self.env
     }
@@ -558,7 +585,7 @@ impl Permissions {
 
   pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
-    self.query_read(&Some(&resolved_path)).check(
+    self.query_read(&Some(&resolved_path)).check_modify(
       &format!("read access to \"{}\"", display_path.display()),
       "--allow-read",
       self.prompt,
@@ -573,7 +600,7 @@ impl Permissions {
     display: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
-    self.query_read(&Some(&resolved_path)).check(
+    self.query_read(&Some(&resolved_path)).check_modify(
       &format!("read access to <{}>", display),
       "--allow-read",
       self.prompt,
@@ -582,7 +609,7 @@ impl Permissions {
 
   pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
-    self.query_write(&Some(&resolved_path)).check(
+    self.query_write(&Some(&resolved_path)).check_modify(
       &format!("write access to \"{}\"", display_path.display()),
       "--allow-write",
       self.prompt,
@@ -593,7 +620,7 @@ impl Permissions {
     &self,
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
-    self.query_net(&Some(host)).check(
+    self.query_net(&Some(host)).check_modify(
       &format!("network access to \"{}\"", format_host(host)),
       "--allow-net",
       self.prompt,
@@ -611,7 +638,7 @@ impl Permissions {
     };
     self
       .query_net(&Some(&(hostname, url.port_or_known_default())))
-      .check(
+      .check_modify(
         &format!("network access to \"{}\"", display_host),
         "--allow-net",
         self.prompt,
@@ -638,31 +665,33 @@ impl Permissions {
     }
   }
 
-  pub fn check_env(&self) -> Result<(), AnyError> {
-    self.env.check(
+  pub fn check_env(&mut self) -> Result<(), AnyError> {
+    self.env.check_modify(
       "access to environment variables",
       "--allow-env",
       self.prompt,
     )
   }
 
-  pub fn check_run(&self) -> Result<(), AnyError> {
-    self
-      .run
-      .check("access to run a subprocess", "--allow-run", self.prompt)
+  pub fn check_run(&mut self) -> Result<(), AnyError> {
+    self.run.check_modify(
+      "access to run a subprocess",
+      "--allow-run",
+      self.prompt,
+    )
   }
 
-  pub fn check_plugin(&self, path: &Path) -> Result<(), AnyError> {
+  pub fn check_plugin(&mut self, path: &Path) -> Result<(), AnyError> {
     let (_, display_path) = self.resolved_and_display_path(path);
-    self.plugin.check(
+    self.plugin.check_modify(
       &format!("access to open a plugin: {}", display_path.display()),
       "--allow-plugin",
       self.prompt,
     )
   }
 
-  pub fn check_hrtime(&self) -> Result<(), AnyError> {
-    self.hrtime.check(
+  pub fn check_hrtime(&mut self) -> Result<(), AnyError> {
+    self.hrtime.check_modify(
       "access to high precision time",
       "--allow-hrtime",
       self.prompt,
