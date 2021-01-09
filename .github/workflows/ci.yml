@@ -66,7 +66,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.48.0
+          rust-version: 1.49.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -92,6 +92,12 @@ jobs:
         with:
           python-version: "2.7"
           architecture: x64
+
+      - name: Install Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+          check-latest: true
 
       - name: Remove unused versions of Python
         if: startsWith(matrix.os, 'windows')
@@ -169,6 +175,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          zip -r denort-x86_64-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
 
       - name: Pre-release (mac)
@@ -178,6 +185,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
+          zip -r denort-x86_64-apple-darwin.zip denort
 
       - name: Pre-release (windows)
         if: |
@@ -185,6 +193,7 @@ jobs:
           matrix.kind == 'test_release'
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
 
       - name: Upload canary (unix)
         if: |

@@ -10,15 +10,35 @@ use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
+use crate::module_graph::GraphBuilder;
+use crate::program_state::ProgramState;
+use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
+use deno_runtime::permissions::Permissions;
 
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::SystemTime;
+
+pub async fn cache(
+  specifier: ModuleSpecifier,
+  maybe_import_map: Option<ImportMap>,
+) -> Result<(), AnyError> {
+  let program_state = Arc::new(ProgramState::new(Default::default())?);
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
+    &program_state,
+    Permissions::allow_all(),
+  )?));
+  let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
+  builder.add(&specifier, false).await
+}
 
 #[derive(Debug, Clone, Default)]
 struct Metadata {

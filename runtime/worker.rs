@@ -45,7 +45,7 @@ pub struct WorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
-  pub ca_filepath: Option<String>,
+  pub ca_data: Option<Vec<u8>>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -63,6 +63,7 @@ pub struct WorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub location: Option<Url>,
 }
 
 impl MainWorker {
@@ -114,7 +115,7 @@ impl MainWorker {
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
-        options.ca_filepath.as_deref(),
+        options.ca_data.clone(),
       );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
@@ -143,8 +144,8 @@ impl MainWorker {
       ops::tty::init(js_runtime);
       ops::websocket::init(
         js_runtime,
-        options.ca_filepath.as_deref(),
         options.user_agent.clone(),
+        options.ca_data.clone(),
       );
     }
     {
@@ -179,6 +180,7 @@ impl MainWorker {
       "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
+      "location": options.location,
     });
 
     let script = format!(
@@ -270,7 +272,7 @@ mod tests {
       args: vec![],
       debug_flag: false,
       unstable: false,
-      ca_filepath: None,
+      ca_data: None,
       seed: None,
       js_error_create_fn: None,
       create_web_worker_cb: Arc::new(|_| unreachable!()),
@@ -282,6 +284,7 @@ mod tests {
       ts_version: "x".to_string(),
       no_color: true,
       get_error_class_fn: None,
+      location: None,
     };
 
     MainWorker::from_options(main_module, permissions, &options)

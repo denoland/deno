@@ -1,0 +1,22 @@
+# https://github.com/probot/stale
+
+daysUntilStale: 60
+
+daysUntilClose: 7
+
+exemptLabels:
+  - bug
+  - suggestion
+  - feat
+  - tests
+  - build
+  - docs
+
+exemptMilestones: true
+
+staleLabel: stale
+
+markComment: >
+  This issue has been [automatically marked as stale](https://probot.github.io/apps/stale/#how-it-works)
+  because it has not had recent activity. It will be closed in 7 days if no
+  further activity occurs. Thank you for your contributions.

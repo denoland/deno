@@ -4,6 +4,7 @@ use super::io::std_file_resource;
 use super::io::StreamResource;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
+use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -12,6 +13,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::RcRef;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
@@ -251,14 +253,22 @@ async fn op_seek_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
-  // TODO(ry) This is a fake async op. We need to use poll_fn,
-  // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
-  let pos = std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-    Ok(std_file) => std_file.seek(seek_from).map_err(AnyError::from),
-    Err(_) => Err(type_error(
-      "cannot seek on this type of resource".to_string(),
-    )),
-  })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let pos = (*fs_file).0.as_mut().unwrap().seek(seek_from).await?;
   Ok(json!(pos))
 }
 
@@ -289,10 +299,22 @@ async fn op_fdatasync_async(
 ) -> Result<Value, AnyError> {
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-    Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
-  })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  (*fs_file).0.as_mut().unwrap().sync_data().await?;
   Ok(json!({}))
 }
 
@@ -323,10 +345,22 @@ async fn op_fsync_async(
 ) -> Result<Value, AnyError> {
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-    Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
-  })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  (*fs_file).0.as_mut().unwrap().sync_all().await?;
   Ok(json!({}))
 }
 
@@ -360,13 +394,22 @@ async fn op_fstat_async(
 
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let metadata =
-    std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-      Ok(std_file) => std_file.metadata().map_err(AnyError::from),
-      Err(_) => {
-        Err(type_error("cannot stat this type of resource".to_string()))
-      }
-    })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let metadata = (*fs_file).0.as_mut().unwrap().metadata().await?;
   Ok(get_stat_json(metadata))
 }
 
@@ -1337,10 +1380,22 @@ async fn op_ftruncate_async(
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
-  std_file_resource(&mut state.borrow_mut(), rid, |r| match r {
-    Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
-    Err(_) => Err(type_error("cannot truncate this type of resource")),
-  })?;
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  (*fs_file).0.as_mut().unwrap().set_len(len).await?;
   Ok(json!({}))
 }
 
@@ -1610,24 +1665,41 @@ async fn op_futime_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let mut state = state.borrow_mut();
-  super::check_unstable(&state, "Deno.futime");
+  super::check_unstable2(&state, "Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
-  // TODO Not actually async! https://github.com/denoland/deno/issues/7400
-  std_file_resource(&mut state, rid, |r| match r {
-    Ok(std_file) => {
-      filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
-        .map_err(AnyError::from)
-    }
-    Err(_) => Err(type_error(
-      "cannot futime on this type of resource".to_string(),
-    )),
-  })?;
 
-  Ok(json!({}))
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StreamResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let std_file = (*fs_file)
+    .0
+    .as_mut()
+    .unwrap()
+    .try_clone()
+    .await?
+    .into_std()
+    .await;
+
+  tokio::task::spawn_blocking(move || {
+    filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;
+    Ok(json!({}))
+  })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -1660,15 +1732,14 @@ async fn op_utime_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let state = state.borrow();
-  super::check_unstable(&state, "Deno.utime");
+  super::check_unstable(&state.borrow(), "Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state.borrow::<Permissions>().check_write(&path)?;
+  state.borrow().borrow::<Permissions>().check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_times(path, atime, mtime)?;

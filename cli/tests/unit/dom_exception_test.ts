@@ -6,4 +6,13 @@ unitTest(function testDomError() {
   assert(de);
   assertEquals(de.message, "foo");
   assertEquals(de.name, "bar");
+  assertEquals(de.code, 0);
+});
+
+unitTest(function testKnownDomException() {
+  const de = new DOMException("foo", "SyntaxError");
+  assert(de);
+  assertEquals(de.message, "foo");
+  assertEquals(de.name, "SyntaxError");
+  assertEquals(de.code, 12);
 });

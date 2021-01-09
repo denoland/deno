@@ -83,6 +83,10 @@ pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
 }
 
+pub fn wpt_path() -> PathBuf {
+  root_path().join("test_util").join("wpt")
+}
+
 pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
@@ -90,13 +94,21 @@ pub fn third_party_path() -> PathBuf {
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  println!("target_dir {}", target_dir.display());
   target_dir.into()
 }
 
 pub fn deno_exe_path() -> PathBuf {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
+
+pub fn denort_exe_path() -> PathBuf {
+  // Something like /Users/rld/src/deno/target/debug/deps/denort
+  let mut p = target_dir().join("denort");
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -388,6 +400,27 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       res.headers_mut().insert(
         "content-type",
         HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+      );
+      Ok(res)
+    }
+    (_, "/multipart_form_bad_content_type") => {
+      let b = "Preamble\r\n\
+             --boundary\t \r\n\
+             Content-Disposition: form-data; name=\"field_1\"\r\n\
+             \r\n\
+             value_1 \r\n\
+             \r\n--boundary\r\n\
+             Content-Disposition: form-data; name=\"field_2\";\
+             filename=\"file.js\"\r\n\
+             Content-Type: text/javascript\r\n\
+             \r\n\
+             console.log(\"Hi\")\
+             \r\n--boundary--\r\n\
+             Epilogue";
+      let mut res = Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-datatststs;boundary=boundary"),
       );
       Ok(res)
     }
@@ -695,7 +728,10 @@ async fn wrap_main_https_server() {
   }
 }
 
-#[tokio::main]
+// Use the single-threaded scheduler. The hyper server is used as a point of
+// comparison for the (single-threaded!) benchmarks in cli/bench. We're not
+// comparing apples to apples if we use the default multi-threaded scheduler.
+#[tokio::main(basic_scheduler)]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
