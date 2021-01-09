@@ -1261,8 +1261,26 @@ pub fn main() {
     std::process::exit(1);
   }
 
-  let flags =
-    unwrap_or_exit(flags::flags_from_vec(args).map_err(AnyError::from));
+  let flags = match flags::flags_from_vec(args) {
+    Ok(flags) => flags,
+    Err(clap::Error {
+      kind,
+      message,
+      info,
+    }) if kind == clap::ErrorKind::HelpDisplayed
+      || kind == clap::ErrorKind::VersionDisplayed =>
+    {
+      clap::Error {
+        info,
+        kind,
+        message,
+      }
+      .write_to(&mut std::io::stdout())
+      .unwrap();
+      std::process::exit(0);
+    }
+    Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
+  };
   if !flags.v8_flags.is_empty() {
     init_v8_flags(&*flags.v8_flags);
   }
