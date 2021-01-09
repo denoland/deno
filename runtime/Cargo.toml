@@ -57,8 +57,6 @@ sys-info = "0.7.0"
 termcolor = "1.1.0"
 tokio = { version = "1.0", features = ["full"] }
 tokio-rustls = "0.22.0"
-# Keep in-sync with warp.
-tokio-tungstenite = "0.13.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 hyper = { version = "0.14.2", features = ["server"] }
 webpki = "0.21.3"

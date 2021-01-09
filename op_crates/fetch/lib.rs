@@ -219,10 +219,7 @@ pub async fn op_fetch_read(
     .ok_or_else(bad_resource_id)?;
   let mut response = RcRef::map(&resource, |r| &r.response).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let maybe_chunk = (&mut *response)
-    .chunk()
-    .or_cancel(cancel)
-    .await??;
+  let maybe_chunk = (&mut *response).chunk().or_cancel(cancel).await??;
   if let Some(chunk) = maybe_chunk {
     // TODO(ry) This is terribly inefficient. Make this zero-copy.
     Ok(json!({ "chunk": &*chunk }))

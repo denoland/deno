@@ -16,6 +16,7 @@ use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task;
 use deno_core::futures::task::Context;
 use deno_core::futures::task::Poll;
@@ -31,7 +32,6 @@ use std::mem::take;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::ops::Deref;
-use deno_core::futures::stream::StreamExt;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::process;
@@ -59,10 +59,10 @@ impl InspectorServer {
     let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
 
     let thread_handle = thread::spawn(move || {
-      let mut rt = crate::tokio_util::create_basic_runtime();
+      let rt = crate::tokio_util::create_basic_runtime();
       let local = tokio::task::LocalSet::new();
       local.block_on(
-        &mut rt,
+        &rt,
         server(host, register_inspector_rx, shutdown_server_rx, name),
       )
     });

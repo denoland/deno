@@ -27,10 +27,10 @@ use std::cell::RefCell;
 use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::rc::Rc;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
-use tokio::io::AsyncWriteExt;
 
 #[cfg(unix)]
 use super::net_unix;

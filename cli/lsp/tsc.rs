@@ -53,7 +53,7 @@ impl TsServer {
       // the language server...
       let mut ts_runtime = start(false).expect("could not start tsc");
 
-      let mut runtime = create_basic_runtime();
+      let runtime = create_basic_runtime();
       runtime.block_on(async {
         while let Some((req, state_snapshot, tx)) = rx.recv().await {
           let value = request(&mut ts_runtime, state_snapshot, req);
@@ -482,6 +482,7 @@ impl RenameLocations {
     }
 
     Ok(lsp_types::WorkspaceEdit {
+      change_annotations: None,
       changes: None,
       document_changes: Some(lsp_types::DocumentChanges::Edits(
         text_document_edit_map.values().cloned().collect(),
