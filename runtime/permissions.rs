@@ -46,8 +46,8 @@ impl PermissionState {
       return Ok(());
     } else if prompt && self == PermissionState::Prompt {
       match permission_prompt(msg) {
-        PromptResult::AllowAlways => { return Ok(()) }
-        PromptResult::AllowOnce => { return Ok(()) }
+        PromptResult::AllowAlways => return Ok(()),
+        PromptResult::AllowOnce => return Ok(()),
         _ => {}
       }
     }
@@ -296,12 +296,8 @@ impl Permissions {
             self.read.granted_list.insert(resolved_path);
             PermissionState::Granted
           }
-          PromptResult::AllowOnce => {
-            PermissionState::Granted
-          }
-          PromptResult::DenyOnce => {
-            PermissionState::Denied
-          }
+          PromptResult::AllowOnce => PermissionState::Granted,
+          PromptResult::DenyOnce => PermissionState::Denied,
           PromptResult::DenyAlways => {
             self
               .read
@@ -311,7 +307,7 @@ impl Permissions {
             self.read.global_state = PermissionState::Denied;
             PermissionState::Denied
           }
-        }
+        };
       }
       state
     } else {
@@ -323,17 +319,13 @@ impl Permissions {
             self.read.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResult::AllowOnce => {
-            PermissionState::Granted
-          }
-          PromptResult::DenyOnce => {
-            PermissionState::Denied
-          }
+          PromptResult::AllowOnce => PermissionState::Granted,
+          PromptResult::DenyOnce => PermissionState::Denied,
           PromptResult::DenyAlways => {
             self.read.global_state = PermissionState::Denied;
             PermissionState::Denied
           }
-        }
+        };
       }
       state
     }
@@ -356,12 +348,8 @@ impl Permissions {
             self.write.granted_list.insert(resolved_path);
             PermissionState::Granted
           }
-          PromptResult::AllowOnce => {
-            PermissionState::Granted
-          }
-          PromptResult::DenyOnce => {
-            PermissionState::Denied
-          }
+          PromptResult::AllowOnce => PermissionState::Granted,
+          PromptResult::DenyOnce => PermissionState::Denied,
           PromptResult::DenyAlways => {
             self
               .write
@@ -371,7 +359,7 @@ impl Permissions {
             self.write.global_state = PermissionState::Denied;
             PermissionState::Denied
           }
-        }
+        };
       }
       state
     } else {
@@ -383,17 +371,13 @@ impl Permissions {
             self.write.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResult::AllowOnce => {
-            PermissionState::Granted
-          }
-          PromptResult::DenyOnce => {
-            PermissionState::Denied
-          }
+          PromptResult::AllowOnce => PermissionState::Granted,
+          PromptResult::DenyOnce => PermissionState::Denied,
           PromptResult::DenyAlways => {
             self.write.global_state = PermissionState::Denied;
             PermissionState::Denied
           }
-        }
+        };
       }
       state
     }
@@ -421,12 +405,8 @@ impl Permissions {
             self.net.granted_list.insert(host_string);
             PermissionState::Granted
           }
-          PromptResult::AllowOnce => {
-            PermissionState::Granted
-          }
-          PromptResult::DenyOnce => {
-            PermissionState::Denied
-          }
+          PromptResult::AllowOnce => PermissionState::Granted,
+          PromptResult::DenyOnce => PermissionState::Denied,
           PromptResult::DenyAlways => {
             if host.1.is_some() {
               self.net.denied_list.remove(host.0.as_ref());
@@ -435,7 +415,7 @@ impl Permissions {
             self.net.global_state = PermissionState::Denied;
             PermissionState::Denied
           }
-        }
+        };
       }
       state
     } else {
@@ -447,17 +427,13 @@ impl Permissions {
             self.net.global_state = PermissionState::Granted;
             PermissionState::Granted
           }
-          PromptResult::AllowOnce => {
-            PermissionState::Granted
-          }
-          PromptResult::DenyOnce => {
-            PermissionState::Denied
-          }
+          PromptResult::AllowOnce => PermissionState::Granted,
+          PromptResult::DenyOnce => PermissionState::Denied,
           PromptResult::DenyAlways => {
             self.net.global_state = PermissionState::Denied;
             PermissionState::Denied
           }
-        }
+        };
       }
       state
     }
@@ -465,7 +441,8 @@ impl Permissions {
 
   pub fn request_env(&mut self) -> PermissionState {
     if self.env == PermissionState::Prompt {
-      permission_prompt("Deno requests access to environment variables").into_permission_state(&mut self.env)
+      permission_prompt("Deno requests access to environment variables")
+        .into_permission_state(&mut self.env)
     } else {
       self.env
     }
@@ -473,7 +450,8 @@ impl Permissions {
 
   pub fn request_run(&mut self) -> PermissionState {
     if self.run == PermissionState::Prompt {
-      permission_prompt("Deno requests to access to run a subprocess").into_permission_state(&mut self.run)
+      permission_prompt("Deno requests to access to run a subprocess")
+        .into_permission_state(&mut self.run)
     } else {
       self.run
     }
@@ -481,7 +459,8 @@ impl Permissions {
 
   pub fn request_plugin(&mut self) -> PermissionState {
     if self.plugin == PermissionState::Prompt {
-      permission_prompt("Deno requests to open plugins").into_permission_state(&mut self.plugin)
+      permission_prompt("Deno requests to open plugins")
+        .into_permission_state(&mut self.plugin)
     } else {
       self.plugin
     }
@@ -489,7 +468,8 @@ impl Permissions {
 
   pub fn request_hrtime(&mut self) -> PermissionState {
     if self.hrtime == PermissionState::Prompt {
-      permission_prompt("Deno requests access to high precision time").into_permission_state(&mut self.hrtime)
+      permission_prompt("Deno requests access to high precision time")
+        .into_permission_state(&mut self.hrtime)
     } else {
       self.hrtime
     }
@@ -715,18 +695,17 @@ pub enum PromptResult {
 }
 
 impl PromptResult {
-  fn into_permission_state(self, permission: &mut PermissionState) -> PermissionState {
-    return match self {
+  fn into_permission_state(
+    self,
+    permission: &mut PermissionState,
+  ) -> PermissionState {
+    match self {
       PromptResult::AllowAlways => {
         *permission = PermissionState::Granted;
         *permission
       }
-      PromptResult::AllowOnce => {
-        PermissionState::Granted
-      }
-      PromptResult::DenyOnce => {
-        PermissionState::Denied
-      }
+      PromptResult::AllowOnce => PermissionState::Granted,
+      PromptResult::DenyOnce => PermissionState::Denied,
       PromptResult::DenyAlways => {
         *permission = PermissionState::Denied;
         *permission
@@ -761,8 +740,7 @@ fn permission_prompt(message: &str) -> PromptResult {
       'd' => return PromptResult::DenyAlways,
       _ => {
         // If we don't get a recognized option try again.
-        let msg_again =
-          format!("Unrecognized option '{}' {}", ch, opts);
+        let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
         eprint!("{}", colors::bold(&msg_again));
       }
     };
