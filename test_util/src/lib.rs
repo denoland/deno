@@ -679,9 +679,8 @@ async fn wrap_abs_redirect_server() {
 }
 
 async fn wrap_main_server() {
-  let main_server_svc = make_service_fn(|_| async {
-    Ok::<_, Infallible>(service_fn(main_server))
-  });
+  let main_server_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
