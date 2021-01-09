@@ -22,6 +22,7 @@ use os_pipe::pipe;
 pub use pty;
 use regex::Regex;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::env;
 use std::io;
 use std::io::Read;
@@ -145,8 +146,8 @@ async fn hyper_hello(port: u16) {
   println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let hello_svc = make_service_fn(|_| async move {
-    Ok::<_, hyper::Error>(service_fn(move |_: Request<Body>| async move {
-      Ok::<_, hyper::Error>(Response::new(Body::from("Hello World!")))
+    Ok::<_, Infallible>(service_fn(move |_: Request<Body>| async move {
+      Ok::<_, Infallible>(Response::new(Body::from("Hello World!")))
     }))
   });
 
@@ -617,7 +618,7 @@ unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {
   let redirect_svc =
-    make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(redirect)) });
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(redirect)) });
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
   if let Err(e) = redirect_server.await {
@@ -627,7 +628,7 @@ async fn wrap_redirect_server() {
 
 async fn wrap_double_redirect_server() {
   let double_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(double_redirects))
+    Ok::<_, Infallible>(service_fn(double_redirects))
   });
   let double_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
@@ -640,7 +641,7 @@ async fn wrap_double_redirect_server() {
 
 async fn wrap_inf_redirect_server() {
   let inf_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(inf_redirects))
+    Ok::<_, Infallible>(service_fn(inf_redirects))
   });
   let inf_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], INF_REDIRECTS_PORT));
@@ -653,7 +654,7 @@ async fn wrap_inf_redirect_server() {
 
 async fn wrap_another_redirect_server() {
   let another_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(another_redirect))
+    Ok::<_, Infallible>(service_fn(another_redirect))
   });
   let another_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
@@ -666,7 +667,7 @@ async fn wrap_another_redirect_server() {
 
 async fn wrap_abs_redirect_server() {
   let abs_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(absolute_redirect))
+    Ok::<_, Infallible>(service_fn(absolute_redirect))
   });
   let abs_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
@@ -679,7 +680,7 @@ async fn wrap_abs_redirect_server() {
 
 async fn wrap_main_server() {
   let main_server_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(main_server))
+    Ok::<_, Infallible>(service_fn(main_server))
   });
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
@@ -711,7 +712,7 @@ async fn wrap_main_https_server() {
     .boxed();
 
     let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, hyper::Error>(service_fn(main_server))
+      Ok::<_, Infallible>(service_fn(main_server))
     });
     let main_server_https = Server::builder(HyperAcceptor {
       acceptor: incoming_tls_stream,
@@ -728,7 +729,7 @@ async fn wrap_main_https_server() {
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
 // comparing apples to apples if we use the default multi-threaded scheduler.
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
