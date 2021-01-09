@@ -41,11 +41,15 @@ impl PermissionState {
     flag_name: &str,
     prompt: bool,
   ) -> Result<(), AnyError> {
-    if self == PermissionState::Granted
-      || (prompt && self == PermissionState::Prompt && permission_prompt(msg))
-    {
+    if self == PermissionState::Granted {
       log_perm_access(msg);
       return Ok(());
+    } else if prompt && self == PermissionState::Prompt {
+      match permission_prompt(msg) {
+        PromptResult::AllowAlways => { return Ok(()) }
+        PromptResult::AllowOnce => { return Ok(()) }
+        _ => {}
+      }
     }
     let message = format!("{}, run again with the {} flag", msg, flag_name);
     Err(custom_error("PermissionDenied", message))
@@ -280,37 +284,55 @@ impl Permissions {
       let (resolved_path, display_path) = self.resolved_and_display_path(path);
       let state = self.query_read(&Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!(
+        return match permission_prompt(&format!(
           "Deno requests read access to \"{}\"",
           display_path.display()
         )) {
-          self
-            .read
-            .granted_list
-            .retain(|path| !path.starts_with(&resolved_path));
-          self.read.granted_list.insert(resolved_path);
-          return PermissionState::Granted;
-        } else {
-          self
-            .read
-            .denied_list
-            .retain(|path| !resolved_path.starts_with(path));
-          self.read.denied_list.insert(resolved_path);
-          self.read.global_state = PermissionState::Denied;
-          return PermissionState::Denied;
+          PromptResult::AllowAlways => {
+            self
+              .read
+              .granted_list
+              .retain(|path| !path.starts_with(&resolved_path));
+            self.read.granted_list.insert(resolved_path);
+            PermissionState::Granted
+          }
+          PromptResult::AllowOnce => {
+            PermissionState::Granted
+          }
+          PromptResult::DenyOnce => {
+            PermissionState::Denied
+          }
+          PromptResult::DenyAlways => {
+            self
+              .read
+              .denied_list
+              .retain(|path| !resolved_path.starts_with(path));
+            self.read.denied_list.insert(resolved_path);
+            self.read.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       }
       state
     } else {
       let state = self.query_read(&None);
       if state == PermissionState::Prompt {
-        if permission_prompt("Deno requests read access") {
-          self.read.granted_list.clear();
-          self.read.global_state = PermissionState::Granted;
-          return PermissionState::Granted;
-        } else {
-          self.read.global_state = PermissionState::Denied;
-          return PermissionState::Denied;
+        return match permission_prompt("Deno requests read access") {
+          PromptResult::AllowAlways => {
+            self.read.granted_list.clear();
+            self.read.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResult::AllowOnce => {
+            PermissionState::Granted
+          }
+          PromptResult::DenyOnce => {
+            PermissionState::Denied
+          }
+          PromptResult::DenyAlways => {
+            self.read.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       }
       state
@@ -322,37 +344,55 @@ impl Permissions {
       let (resolved_path, display_path) = self.resolved_and_display_path(path);
       let state = self.query_write(&Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!(
+        return match permission_prompt(&format!(
           "Deno requests write access to \"{}\"",
           display_path.display()
         )) {
-          self
-            .write
-            .granted_list
-            .retain(|path| !path.starts_with(&resolved_path));
-          self.write.granted_list.insert(resolved_path);
-          return PermissionState::Granted;
-        } else {
-          self
-            .write
-            .denied_list
-            .retain(|path| !resolved_path.starts_with(path));
-          self.write.denied_list.insert(resolved_path);
-          self.write.global_state = PermissionState::Denied;
-          return PermissionState::Denied;
+          PromptResult::AllowAlways => {
+            self
+              .write
+              .granted_list
+              .retain(|path| !path.starts_with(&resolved_path));
+            self.write.granted_list.insert(resolved_path);
+            PermissionState::Granted
+          }
+          PromptResult::AllowOnce => {
+            PermissionState::Granted
+          }
+          PromptResult::DenyOnce => {
+            PermissionState::Denied
+          }
+          PromptResult::DenyAlways => {
+            self
+              .write
+              .denied_list
+              .retain(|path| !resolved_path.starts_with(path));
+            self.write.denied_list.insert(resolved_path);
+            self.write.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       }
       state
     } else {
       let state = self.query_write(&None);
       if state == PermissionState::Prompt {
-        if permission_prompt("Deno requests write access") {
-          self.write.granted_list.clear();
-          self.write.global_state = PermissionState::Granted;
-          return PermissionState::Granted;
-        } else {
-          self.write.global_state = PermissionState::Denied;
-          return PermissionState::Denied;
+        return match permission_prompt("Deno requests write access") {
+          PromptResult::AllowAlways => {
+            self.write.granted_list.clear();
+            self.write.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResult::AllowOnce => {
+            PermissionState::Granted
+          }
+          PromptResult::DenyOnce => {
+            PermissionState::Denied
+          }
+          PromptResult::DenyAlways => {
+            self.write.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       }
       state
@@ -367,38 +407,56 @@ impl Permissions {
       let state = self.query_net(&Some(host));
       if state == PermissionState::Prompt {
         let host_string = format_host(host);
-        if permission_prompt(&format!(
+        return match permission_prompt(&format!(
           "Deno requests network access to \"{}\"",
           host_string,
         )) {
-          if host.1.is_none() {
-            self
-              .net
-              .granted_list
-              .retain(|h| !h.starts_with(&format!("{}:", host.0.as_ref())));
+          PromptResult::AllowAlways => {
+            if host.1.is_none() {
+              self
+                .net
+                .granted_list
+                .retain(|h| !h.starts_with(&format!("{}:", host.0.as_ref())));
+            }
+            self.net.granted_list.insert(host_string);
+            PermissionState::Granted
           }
-          self.net.granted_list.insert(host_string);
-          return PermissionState::Granted;
-        } else {
-          if host.1.is_some() {
-            self.net.denied_list.remove(host.0.as_ref());
+          PromptResult::AllowOnce => {
+            PermissionState::Granted
           }
-          self.net.denied_list.insert(host_string);
-          self.net.global_state = PermissionState::Denied;
-          return PermissionState::Denied;
+          PromptResult::DenyOnce => {
+            PermissionState::Denied
+          }
+          PromptResult::DenyAlways => {
+            if host.1.is_some() {
+              self.net.denied_list.remove(host.0.as_ref());
+            }
+            self.net.denied_list.insert(host_string);
+            self.net.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       }
       state
     } else {
       let state = self.query_net::<&str>(&None);
       if state == PermissionState::Prompt {
-        if permission_prompt("Deno requests network access") {
-          self.net.granted_list.clear();
-          self.net.global_state = PermissionState::Granted;
-          return PermissionState::Granted;
-        } else {
-          self.net.global_state = PermissionState::Denied;
-          return PermissionState::Denied;
+        return match permission_prompt("Deno requests network access") {
+          PromptResult::AllowAlways => {
+            self.net.granted_list.clear();
+            self.net.global_state = PermissionState::Granted;
+            PermissionState::Granted
+          }
+          PromptResult::AllowOnce => {
+            PermissionState::Granted
+          }
+          PromptResult::DenyOnce => {
+            PermissionState::Denied
+          }
+          PromptResult::DenyAlways => {
+            self.net.global_state = PermissionState::Denied;
+            PermissionState::Denied
+          }
         }
       }
       state
@@ -407,46 +465,34 @@ impl Permissions {
 
   pub fn request_env(&mut self) -> PermissionState {
     if self.env == PermissionState::Prompt {
-      if permission_prompt("Deno requests access to environment variables") {
-        self.env = PermissionState::Granted;
-      } else {
-        self.env = PermissionState::Denied;
-      }
+      permission_prompt("Deno requests access to environment variables").into_permission_state(&mut self.env)
+    } else {
+      self.env
     }
-    self.env
   }
 
   pub fn request_run(&mut self) -> PermissionState {
     if self.run == PermissionState::Prompt {
-      if permission_prompt("Deno requests to access to run a subprocess") {
-        self.run = PermissionState::Granted;
-      } else {
-        self.run = PermissionState::Denied;
-      }
+      permission_prompt("Deno requests to access to run a subprocess").into_permission_state(&mut self.run)
+    } else {
+      self.run
     }
-    self.run
   }
 
   pub fn request_plugin(&mut self) -> PermissionState {
     if self.plugin == PermissionState::Prompt {
-      if permission_prompt("Deno requests to open plugins") {
-        self.plugin = PermissionState::Granted;
-      } else {
-        self.plugin = PermissionState::Denied;
-      }
+      permission_prompt("Deno requests to open plugins").into_permission_state(&mut self.plugin)
+    } else {
+      self.plugin
     }
-    self.plugin
   }
 
   pub fn request_hrtime(&mut self) -> PermissionState {
     if self.hrtime == PermissionState::Prompt {
-      if permission_prompt("Deno requests access to high precision time") {
-        self.hrtime = PermissionState::Granted;
-      } else {
-        self.hrtime = PermissionState::Denied;
-      }
+      permission_prompt("Deno requests access to high precision time").into_permission_state(&mut self.hrtime)
+    } else {
+      self.hrtime
     }
-    self.hrtime
   }
 
   pub fn revoke_read(&mut self, path: &Option<&Path>) -> PermissionState {
@@ -660,17 +706,44 @@ impl deno_websocket::WebSocketPermissions for Permissions {
   }
 }
 
+#[derive(Debug, Clone)]
+pub enum PromptResult {
+  AllowAlways = 0,
+  AllowOnce = 1,
+  DenyOnce = 2,
+  DenyAlways = 3,
+}
+
+impl PromptResult {
+  fn into_permission_state(self, permission: &mut PermissionState) -> PermissionState {
+    return match self {
+      PromptResult::AllowAlways => {
+        *permission = PermissionState::Granted;
+        *permission
+      }
+      PromptResult::AllowOnce => {
+        PermissionState::Granted
+      }
+      PromptResult::DenyOnce => {
+        PermissionState::Denied
+      }
+      PromptResult::DenyAlways => {
+        *permission = PermissionState::Denied;
+        *permission
+      }
+    }
+  }
+}
+
 /// Shows the permission prompt and returns the answer according to the user input.
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
-fn permission_prompt(message: &str) -> bool {
+fn permission_prompt(message: &str) -> PromptResult {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    return false;
+    return PromptResult::DenyAlways;
   };
-  let msg = format!(
-    "️{}  {}. Grant? [g/d (g = grant, d = deny)] ",
-    PERMISSION_EMOJI, message
-  );
+  let opts = "[a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ";
+  let msg = format!("️{}  {}. Grant? {}", PERMISSION_EMOJI, message, opts);
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", colors::bold(&msg));
   loop {
@@ -678,16 +751,18 @@ fn permission_prompt(message: &str) -> bool {
     let stdin = io::stdin();
     let result = stdin.read_line(&mut input);
     if result.is_err() {
-      return false;
+      return PromptResult::DenyOnce;
     };
     let ch = input.chars().next().unwrap();
     match ch.to_ascii_lowercase() {
-      'g' => return true,
-      'd' => return false,
+      'a' => return PromptResult::AllowAlways,
+      'y' => return PromptResult::AllowOnce,
+      'n' => return PromptResult::DenyOnce,
+      'd' => return PromptResult::DenyAlways,
       _ => {
         // If we don't get a recognized option try again.
         let msg_again =
-          format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
+          format!("Unrecognized option '{}' {}", ch, opts);
         eprint!("{}", colors::bold(&msg_again));
       }
     };
@@ -711,8 +786,12 @@ fn set_prompt_result(value: bool) {
 // When testing, permission prompt returns the value of STUB_PROMPT_VALUE
 // which we set from the test functions.
 #[cfg(test)]
-fn permission_prompt(_message: &str) -> bool {
-  STUB_PROMPT_VALUE.load(Ordering::SeqCst)
+fn permission_prompt(_message: &str) -> PromptResult {
+  if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
+    PromptResult::AllowAlways
+  } else {
+    PromptResult::DenyAlways
+  }
 }
 
 fn log_perm_access(message: &str) {
