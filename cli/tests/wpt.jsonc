@@ -173,5 +173,26 @@
     "measure-l3",
     "structured-serialize-detail",
     "user_timing_exists"
+  ],
+  "url": [
+    // TODO(kt3k): enable the commented out tests
+    // "percent-encoding.window",
+    // "toascii.window",
+    // "url-constructor.any",
+    // "url-origin.any",
+    // "url-searchparams.any",
+    // "url-setters-stripping.any",
+    "url-tojson.any",
+    // "urlencoded-parser.any",
+    "urlsearchparams-append.any",
+    // "urlsearchparams-constructor.any",
+    "urlsearchparams-delete.any",
+    // "urlsearchparams-foreach.any",
+    "urlsearchparams-get.any",
+    "urlsearchparams-getall.any",
+    "urlsearchparams-has.any",
+    "urlsearchparams-set.any",
+    "urlsearchparams-sort.any",
+    "urlsearchparams-stringifier.any"
   ]
 }
