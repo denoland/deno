@@ -48,14 +48,14 @@ pub struct WsCaData(pub Vec<u8>);
 pub struct WsUserAgent(pub String);
 
 pub trait WebSocketPermissions {
-  fn check_net_url(&self, _url: &url::Url) -> Result<(), AnyError>;
+  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
 }
 
 /// For use with `op_websocket_*` when the user does not want permissions.
 pub struct NoWebSocketPermissions;
 
 impl WebSocketPermissions for NoWebSocketPermissions {
-  fn check_net_url(&self, _url: &url::Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -101,7 +101,7 @@ where
   let args: CheckPermissionArgs = serde_json::from_value(args)?;
 
   state
-    .borrow::<WP>()
+    .borrow_mut::<WP>()
     .check_net_url(&url::Url::parse(&args.url)?)?;
 
   Ok(json!({}))
@@ -125,8 +125,8 @@ where
   let args: CreateArgs = serde_json::from_value(args)?;
 
   {
-    let s = state.borrow();
-    s.borrow::<WP>()
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<WP>()
       .check_net_url(&url::Url::parse(&args.url)?)
       .expect(
         "Permission check should have been done in op_ws_check_permission",

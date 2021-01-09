@@ -30,7 +30,7 @@ fn op_main_module(
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .check_read_blind(&main_path, "main_module")?;
   }
   Ok(json!(&main))

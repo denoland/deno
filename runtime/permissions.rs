@@ -40,14 +40,14 @@ impl PermissionState {
     msg: &str,
     flag_name: &str,
     prompt: bool,
-  ) -> Result<(), AnyError> {
+  ) -> Result<PromptResult, AnyError> {
     if self == PermissionState::Granted {
       log_perm_access(msg);
-      return Ok(());
+      return Ok(PromptResult::AllowAlways);
     } else if prompt && self == PermissionState::Prompt {
       match permission_prompt(msg) {
-        PromptResult::AllowAlways => return Ok(()),
-        PromptResult::AllowOnce => return Ok(()),
+        PromptResult::AllowAlways => return Ok(PromptResult::AllowAlways),
+        PromptResult::AllowOnce => return Ok(PromptResult::AllowOnce),
         _ => {}
       }
     }
@@ -583,51 +583,91 @@ impl Permissions {
     self.hrtime
   }
 
-  pub fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+  pub fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
-    self.query_read(&Some(&resolved_path)).check_modify(
+    match self.query_read(&Some(&resolved_path)).check(
       &format!("read access to \"{}\"", display_path.display()),
       "--allow-read",
       self.prompt,
-    )
+    ) {
+      Ok(PromptResult::AllowAlways) => {
+        self.read.granted_list.insert(resolved_path);
+        Ok(())
+      }
+      Ok(PromptResult::AllowOnce) => {
+        Ok(())
+      }
+      Ok(_) => unreachable!(),
+      Err(e) => Err(e)
+    }
   }
 
   /// As `check_read()`, but permission error messages will anonymize the path
   /// by replacing it with the given `display`.
   pub fn check_read_blind(
-    &self,
+    &mut self,
     path: &Path,
     display: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
-    self.query_read(&Some(&resolved_path)).check_modify(
+    match self.query_read(&Some(&resolved_path)).check(
       &format!("read access to <{}>", display),
       "--allow-read",
       self.prompt,
-    )
+    ) {
+      Ok(PromptResult::AllowAlways) => {
+        self.read.granted_list.insert(resolved_path);
+        Ok(())
+      }
+      Ok(PromptResult::AllowOnce) => {
+        Ok(())
+      }
+      Ok(_) => unreachable!(),
+      Err(e) => Err(e)
+    }
   }
 
-  pub fn check_write(&self, path: &Path) -> Result<(), AnyError> {
+  pub fn check_write(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
-    self.query_write(&Some(&resolved_path)).check_modify(
+    match self.query_write(&Some(&resolved_path)).check(
       &format!("write access to \"{}\"", display_path.display()),
       "--allow-write",
       self.prompt,
-    )
+    ) {
+      Ok(PromptResult::AllowAlways) => {
+        self.write.granted_list.insert(resolved_path);
+        Ok(())
+      }
+      Ok(PromptResult::AllowOnce) => {
+        Ok(())
+      }
+      Ok(_) => unreachable!(),
+      Err(e) => Err(e)
+    }
   }
 
   pub fn check_net<T: AsRef<str>>(
-    &self,
+    &mut self,
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
-    self.query_net(&Some(host)).check_modify(
+    match self.query_net(&Some(host)).check(
       &format!("network access to \"{}\"", format_host(host)),
       "--allow-net",
       self.prompt,
-    )
+    ) {
+      Ok(PromptResult::AllowAlways) => {
+        self.net.granted_list.insert(format_host(host));
+        Ok(())
+      }
+      Ok(PromptResult::AllowOnce) => {
+        Ok(())
+      }
+      Ok(_) => unreachable!(),
+      Err(e) => Err(e)
+    }
   }
 
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+  pub fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     let hostname = url
       .host_str()
       .ok_or_else(|| uri_error("Missing host"))?
@@ -636,19 +676,29 @@ impl Permissions {
       None => hostname.clone(),
       Some(port) => format!("{}:{}", hostname, port),
     };
-    self
+    match self
       .query_net(&Some(&(hostname, url.port_or_known_default())))
-      .check_modify(
+      .check(
         &format!("network access to \"{}\"", display_host),
         "--allow-net",
         self.prompt,
-      )
+      ) {
+      Ok(PromptResult::AllowAlways) => {
+        self.net.granted_list.insert(display_host); // TODO
+        Ok(())
+      }
+      Ok(PromptResult::AllowOnce) => {
+        Ok(())
+      }
+      Ok(_) => unreachable!(),
+      Err(e) => Err(e)
+    }
   }
 
   /// A helper function that determines if the module specifier is a local or
   /// remote, and performs a read or net check for the specifier.
   pub fn check_specifier(
-    &self,
+    &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let url = specifier.as_url();
@@ -700,17 +750,17 @@ impl Permissions {
 }
 
 impl deno_fetch::FetchPermissions for Permissions {
-  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     Permissions::check_net_url(self, url)
   }
 
-  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+  fn check_read(&mut self, p: &PathBuf) -> Result<(), AnyError> {
     Permissions::check_read(self, p)
   }
 }
 
 impl deno_websocket::WebSocketPermissions for Permissions {
-  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     Permissions::check_net_url(self, url)
   }
 }
@@ -875,7 +925,7 @@ mod tests {
       PathBuf::from("/b/c"),
     ];
 
-    let perms = Permissions::from_options(&PermissionsOptions {
+    let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_read: Some(allowlist.clone()),
       allow_write: Some(allowlist),
       ..Default::default()
@@ -930,7 +980,7 @@ mod tests {
 
   #[test]
   fn test_check_net() {
-    let perms = Permissions::from_options(&PermissionsOptions {
+    let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_net: Some(svec![
         "localhost",
         "deno.land",
@@ -1021,7 +1071,7 @@ mod tests {
     } else {
       vec![PathBuf::from("/a")]
     };
-    let perms = Permissions::from_options(&PermissionsOptions {
+    let mut perms = Permissions::from_options(&PermissionsOptions {
       allow_read: Some(read_allowlist),
       allow_net: Some(svec!["localhost"]),
       ..Default::default()
@@ -1074,7 +1124,7 @@ mod tests {
 
   #[test]
   fn check_invalid_specifiers() {
-    let perms = Permissions::allow_all();
+    let mut perms = Permissions::allow_all();
 
     let mut test_cases = vec![];
 

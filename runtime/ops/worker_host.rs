@@ -201,7 +201,7 @@ enum WorkerPermissionType {
 
 fn check_read_permissions(
   allow_list: &HashSet<PathBuf>,
-  current_permissions: &Permissions,
+  current_permissions: &mut Permissions,
 ) -> bool {
   allow_list
     .iter()
@@ -210,7 +210,7 @@ fn check_read_permissions(
 
 fn check_write_permissions(
   allow_list: &HashSet<PathBuf>,
-  current_permissions: &Permissions,
+  current_permissions: &mut Permissions,
 ) -> bool {
   allow_list
     .iter()
@@ -221,7 +221,7 @@ fn merge_read_write_permissions(
   permission_type: WorkerPermissionType,
   target: &UnaryPermission<PathBuf>,
   incoming: Option<UnaryPermission<PathBuf>>,
-  current_permissions: &Permissions,
+  current_permissions: &mut Permissions,
 ) -> Result<UnaryPermission<PathBuf>, AnyError> {
   if incoming.is_none() {
     return Ok(target.clone());
@@ -286,7 +286,7 @@ fn merge_read_write_permissions(
 }
 
 fn create_worker_permissions(
-  main_thread_permissions: &Permissions,
+  main_thread_permissions: &mut Permissions,
   permission_args: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
   Ok(Permissions {
@@ -470,10 +470,10 @@ fn op_create_worker(
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno.namespace");
   }
-  let parent_permissions = state.borrow::<Permissions>().clone();
+  let mut parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {
     super::check_unstable(state, "Worker.deno.permissions");
-    create_worker_permissions(&parent_permissions, permissions)?
+    create_worker_permissions(&mut parent_permissions, permissions)?
   } else {
     parent_permissions.clone()
   };

@@ -111,7 +111,7 @@ fn op_fs_events_open(
   };
   for path in &args.paths {
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .check_read(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }

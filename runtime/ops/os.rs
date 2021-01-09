@@ -33,7 +33,7 @@ fn op_exec_path(
 ) -> Result<Value, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .check_read_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`

@@ -81,8 +81,8 @@ async fn op_start_tls(
   }
   {
     super::check_unstable2(&state, "Deno.startTls");
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
     permissions.check_net(&(&domain, Some(0)))?;
     if let Some(path) = cert_file.clone() {
       permissions.check_read(Path::new(&path))?;
@@ -145,8 +145,8 @@ async fn op_connect_tls(
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   {
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
     permissions.check_net(&(&args.hostname, Some(args.port)))?;
     if let Some(path) = cert_file.clone() {
       permissions.check_read(Path::new(&path))?;
@@ -289,7 +289,7 @@ fn op_listen_tls(
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
-    let permissions = state.borrow::<Permissions>();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.check_net(&(&args.hostname, Some(args.port)))?;
     permissions.check_read(Path::new(&cert_file))?;
     permissions.check_read(Path::new(&key_file))?;

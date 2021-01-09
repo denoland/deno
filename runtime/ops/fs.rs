@@ -155,7 +155,7 @@ fn open_helper(
     let _ = mode; // avoid unused warning
   }
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   let options = args.options;
 
   if options.read {
@@ -742,7 +742,7 @@ fn op_copy_file_sync(
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.check_read(&from)?;
   permissions.check_write(&to)?;
 
@@ -769,8 +769,8 @@ async fn op_copy_file_async(
   let to = PathBuf::from(&args.to);
 
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.check_read(&from)?;
     permissions.check_write(&to)?;
   }
@@ -916,7 +916,7 @@ fn op_realpath_sync(
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.check_read(&path)?;
   if path.is_relative() {
     permissions.check_read_blind(&current_dir()?, "CWD")?;
@@ -939,8 +939,8 @@ async fn op_realpath_async(
   let path = PathBuf::from(&args.path);
 
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.check_read(&path)?;
     if path.is_relative() {
       permissions.check_read_blind(&current_dir()?, "CWD")?;
@@ -1050,7 +1050,7 @@ fn op_rename_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.check_read(&oldpath)?;
   permissions.check_write(&oldpath)?;
   permissions.check_write(&newpath)?;
@@ -1068,8 +1068,8 @@ async fn op_rename_async(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.check_read(&oldpath)?;
     permissions.check_write(&oldpath)?;
     permissions.check_write(&newpath)?;
@@ -1104,7 +1104,7 @@ fn op_link_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.check_read(&oldpath)?;
   permissions.check_write(&newpath)?;
 
@@ -1125,8 +1125,8 @@ async fn op_link_async(
   let newpath = PathBuf::from(&args.newpath);
 
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.check_read(&oldpath)?;
     permissions.check_write(&newpath)?;
   }
@@ -1455,7 +1455,7 @@ fn op_make_temp_dir_sync(
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1484,9 +1484,9 @@ async fn op_make_temp_dir_async(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
-    let state = state.borrow();
+    let mut state = state.borrow_mut();
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
@@ -1520,7 +1520,7 @@ fn op_make_temp_file_sync(
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1549,9 +1549,9 @@ async fn op_make_temp_file_async(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
-    let state = state.borrow();
+    let mut state = state.borrow_mut();
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
@@ -1667,7 +1667,7 @@ async fn op_utime_async(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state.borrow().borrow::<Permissions>().check_write(&path)?;
+  state.borrow_mut().borrow_mut::<Permissions>().check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_times(path, atime, mtime)?;
@@ -1684,7 +1684,7 @@ fn op_cwd(
 ) -> Result<Value, AnyError> {
   let path = current_dir()?;
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(json!(path_str))
