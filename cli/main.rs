@@ -1263,20 +1263,11 @@ pub fn main() {
 
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,
-    Err(clap::Error {
-      kind,
-      message,
-      info,
-    }) if kind == clap::ErrorKind::HelpDisplayed
-      || kind == clap::ErrorKind::VersionDisplayed =>
+    Err(Err(err @ clap::Error { .. }))
+      if err.kind == clap::ErrorKind::HelpDisplayed
+        || err.kind == clap::ErrorKind::VersionDisplayed =>
     {
-      clap::Error {
-        info,
-        kind,
-        message,
-      }
-      .write_to(&mut std::io::stdout())
-      .unwrap();
+      err.write_to(&mut std::io::stdout()).unwrap();
       std::process::exit(0);
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
