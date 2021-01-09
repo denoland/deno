@@ -33,7 +33,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::rc::Rc;
-use tokio_compat_02::FutureExt;
 
 pub use reqwest; // Re-export reqwest
 
@@ -222,7 +221,6 @@ pub async fn op_fetch_read(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_chunk = (&mut *response)
     .chunk()
-    .compat()
     .or_cancel(cancel)
     .await??;
   if let Some(chunk) = maybe_chunk {

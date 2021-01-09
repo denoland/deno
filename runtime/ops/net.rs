@@ -30,6 +30,7 @@ use std::rc::Rc;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use tokio::io::AsyncWriteExt;
 
 #[cfg(unix)]
 use super::net_unix;
@@ -345,7 +346,8 @@ async fn op_shutdown(
   let rid = args.rid as u32;
   let how = args.how;
 
-  let shutdown_mode = match how {
+  // TODO(bartlomieju): no longer needed after Tokio 1.0 upgrade
+  let _shutdown_mode = match how {
     0 => Shutdown::Read, // TODO: nonsense, remove me.
     1 => Shutdown::Write,
     _ => unimplemented!(),
@@ -357,18 +359,18 @@ async fn op_shutdown(
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
   if let Some(stream) = resource.downcast_rc::<TcpStreamResource>() {
-    let wr = stream.wr_borrow_mut().await;
-    TcpStream::shutdown((*wr).as_ref(), shutdown_mode)?;
+    let mut wr = stream.wr_borrow_mut().await;
+    wr.shutdown().await?;
     return Ok(json!({}));
   }
 
   #[cfg(unix)]
   if let Some(stream) = resource.downcast_rc::<StreamResource>() {
     if stream.unix_stream.is_some() {
-      let wr = RcRef::map(stream, |r| r.unix_stream.as_ref().unwrap())
+      let mut wr = RcRef::map(stream, |r| r.unix_stream.as_ref().unwrap())
         .borrow_mut()
         .await;
-      net_unix::UnixStream::shutdown(&*wr, shutdown_mode)?;
+      wr.shutdown().await?;
       return Ok(json!({}));
     }
   }

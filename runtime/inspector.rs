@@ -31,6 +31,7 @@ use std::mem::take;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::ops::Deref;
+use deno_core::futures::stream::StreamExt;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::process;
@@ -182,9 +183,13 @@ fn handle_ws_request(
           .status(http::StatusCode::BAD_REQUEST)
           .body("Not a valid Websocket Request".into()),
       });
+
+    let (parts, _) = req.into_parts();
+    let req = http::Request::from_parts(parts, body);
+
     if resp.is_ok() {
       tokio::task::spawn_local(async move {
-        let upgraded = body.on_upgrade().await.unwrap();
+        let upgraded = hyper::upgrade::on(req).await.unwrap();
         let websocket =
           deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
             upgraded,

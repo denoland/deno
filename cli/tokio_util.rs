@@ -9,7 +9,7 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     // parallel for deno fmt.
     // The default value is 512, which is an unhelpfully large thread pool. We
     // don't ever want to have more than a couple dozen threads.
-    .max_threads(32)
+    .max_blocking_threads(32)
     .build()
     .unwrap()
 }

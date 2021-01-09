@@ -10,6 +10,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_runtime::inspector::InspectorSession;
 use deno_runtime::worker::MainWorker;
+use deno_core::futures::FutureExt;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -305,7 +306,7 @@ async fn read_line_and_poll(
     // Because an inspector websocket client may choose to connect at anytime when we have an
     // inspector server we need to keep polling the worker to pick up new connections.
     let mut timeout =
-      tokio::time::sleep(tokio::time::Duration::from_millis(100));
+      tokio::time::sleep(tokio::time::Duration::from_millis(100)).boxed_local();
 
     tokio::select! {
       result = &mut line => {

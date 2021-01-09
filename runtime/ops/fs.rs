@@ -23,6 +23,7 @@ use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
 use std::io::{Seek, SeekFrom};
+use tokio::io::AsyncSeekExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;

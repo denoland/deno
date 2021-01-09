@@ -13,8 +13,6 @@ use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
@@ -95,7 +93,7 @@ pub async fn fetch_once(
     let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
     request = request.header(IF_NONE_MATCH, if_none_match_val);
   }
-  let response = request.send().compat().await?;
+  let response = request.send().await?;
 
   if response.status() == StatusCode::NOT_MODIFIED {
     return Ok(FetchOnceResult::NotModified);
