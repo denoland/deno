@@ -84,6 +84,7 @@ pub struct Permissions {
   pub run: PermissionState,
   pub plugin: PermissionState,
   pub hrtime: PermissionState,
+  // TODO: dont expose prompt. currently not possible due to permissions' design limitations
   pub prompt: bool,
 }
 
