@@ -88,7 +88,7 @@ struct CheckPermissionArgs {
 }
 
 // This op is needed because creating a WS instance in JavaScript is a sync
-// operation and should throw error when permissions are not fullfiled,
+// operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
@@ -305,7 +305,7 @@ pub async fn op_ws_next_event(
   let val = rx.next().or_cancel(cancel).await?;
   let res = match val {
     Some(Ok(Message::Text(text))) => json!({
-      "type": "string",
+      "kind": "string",
       "data": text
     }),
     Some(Ok(Message::Binary(data))) => {
