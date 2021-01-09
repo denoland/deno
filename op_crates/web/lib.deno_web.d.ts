@@ -9,6 +9,7 @@ declare class DOMException extends Error {
   constructor(message?: string, name?: string);
   readonly name: string;
   readonly message: string;
+  readonly code: number;
 }
 
 interface EventInit {
@@ -146,6 +147,23 @@ interface AddEventListenerOptions extends EventListenerOptions {
 
 interface EventListenerOptions {
   capture?: boolean;
+}
+
+interface ProgressEventInit extends EventInit {
+  lengthComputable?: boolean;
+  loaded?: number;
+  total?: number;
+}
+
+/** Events measuring progress of an underlying process, like an HTTP request
+ * (for an XMLHttpRequest, or the loading of the underlying resource of an
+ * <img>, <audio>, <video>, <style> or <link>). */
+declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
+  constructor(type: string, eventInitDict?: ProgressEventInit);
+  readonly lengthComputable: boolean;
+  readonly loaded: number;
+  readonly target: T | null;
+  readonly total: number;
 }
 
 /** Decodes a string of data which has been encoded using base-64 encoding.
@@ -295,3 +313,69 @@ declare var FileReader: {
   readonly EMPTY: number;
   readonly LOADING: number;
 };
+
+/** The location (URL) of the object it is linked to. Changes done on it are
+ * reflected on the object it relates to. Accessible via
+ * `globalThis.location`. */
+declare class Location {
+  constructor();
+  /** Returns a DOMStringList object listing the origins of the ancestor
+   * browsing contexts, from the parent browsing context to the top-level
+   * browsing context.
+   *
+   * Always empty in Deno. */
+  readonly ancestorOrigins: DOMStringList;
+  /** Returns the Location object's URL's fragment (includes leading "#" if non-empty).
+   *
+   * Cannot be set in Deno. */
+  hash: string;
+  /** Returns the Location object's URL's host and port (if different from the default port for the scheme).
+   *
+   * Cannot be set in Deno. */
+  host: string;
+  /** Returns the Location object's URL's host.
+   *
+   * Cannot be set in Deno. */
+  hostname: string;
+  /** Returns the Location object's URL.
+   *
+   * Cannot be set in Deno. */
+  href: string;
+  toString(): string;
+  /** Returns the Location object's URL's origin. */
+  readonly origin: string;
+  /** Returns the Location object's URL's path.
+   *
+   * Cannot be set in Deno. */
+  pathname: string;
+  /** Returns the Location object's URL's port.
+   *
+   * Cannot be set in Deno. */
+  port: string;
+  /** Returns the Location object's URL's scheme.
+   *
+   * Cannot be set in Deno. */
+  protocol: string;
+  /** Returns the Location object's URL's query (includes leading "?" if
+   * non-empty).
+   *
+   * Cannot be set in Deno. */
+  search: string;
+  /** Navigates to the given URL.
+   *
+   * Cannot be set in Deno. */
+  assign(url: string): void;
+  /** Reloads the current page.
+   *
+   * Disabled in Deno. */
+  reload(): void;
+  /** @deprecated */
+  reload(forcedReload: boolean): void;
+  /** Removes the current page from the session history and navigates to the
+   * given URL.
+   *
+   * Disabled in Deno. */
+  replace(url: string): void;
+}
+
+declare var location: Location;

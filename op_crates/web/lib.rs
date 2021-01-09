@@ -62,6 +62,10 @@ pub fn init(isolate: &mut JsRuntime) {
     ),
     ("deno:op_crates/web/11_url.js", include_str!("11_url.js")),
     (
+      "deno:op_crates/web/12_location.js",
+      include_str!("12_location.js"),
+    ),
+    (
       "deno:op_crates/web/21_filereader.js",
       include_str!("21_filereader.js"),
     ),

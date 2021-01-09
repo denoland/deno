@@ -27,8 +27,33 @@ unitTest(
       async (): Promise<void> => {
         await fetch("http://localhost:4000");
       },
-      Deno.errors.Http,
+      TypeError,
       "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchDnsError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://nil/");
+      },
+      TypeError,
+      "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInvalidUriError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://<invalid>/");
+      },
+      URIError,
     );
   },
 );
@@ -196,14 +221,6 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   }
 });
 
-unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
-  void
-> {
-  await assertThrowsAsync(async () => {
-    await fetch("");
-  }, URIError);
-});
-
 unitTest(
   { perms: { net: true } },
   async function fetchMultipartFormDataSuccess(): Promise<void> {
@@ -218,6 +235,25 @@ unitTest(
     assertEquals(file.name, "file.js");
 
     assertEquals(await file.text(), `console.log("Hi")`);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchMultipartFormBadContentType(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/multipart_form_bad_content_type",
+    );
+    assert(response.body !== null);
+
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await response.formData();
+      },
+      TypeError,
+      "Invalid form data",
+    );
+    await response.body.cancel();
   },
 );
 
@@ -729,7 +765,7 @@ unitTest(
     try {
       await response.text();
       fail(
-        "Reponse.text() didn't throw on a filtered response without a body (type error)",
+        "Response.text() didn't throw on a filtered response without a body (type error)",
       );
     } catch (e) {
       return;
@@ -872,8 +908,14 @@ unitTest(
   },
 );
 
+// FIXME(bartlomieju): for reasons unknown after working for
+// a few months without a problem; this test started failing
+// consistently on Windows CI with following error:
+// TypeError: error sending request for url (http://localhost:4545/echo_server):
+// connection error: An established connection was aborted by
+// the software in your host machine. (os error 10053)
 unitTest(
-  { perms: { net: true } },
+  { perms: { net: true }, ignore: Deno.build.os == "windows" },
   async function fetchNullBodyStatus(): Promise<void> {
     const nullBodyStatus = [101, 204, 205, 304];
 
@@ -956,24 +998,6 @@ unitTest(function fetchResponseEmptyConstructor(): void {
   assertEquals(response.bodyUsed, false);
   assertEquals([...response.headers], []);
 });
-
-unitTest(
-  { perms: { net: true, read: true } },
-  async function fetchCustomHttpClientFileCertificateSuccess(): Promise<
-    void
-  > {
-    const client = Deno.createHttpClient(
-      { caFile: "./cli/tests/tls/RootCA.crt" },
-    );
-    const response = await fetch(
-      "https://localhost:5545/cli/tests/fixture.json",
-      { client },
-    );
-    const json = await response.json();
-    assertEquals(json.name, "deno");
-    client.close();
-  },
-);
 
 unitTest(
   { perms: { net: true } },

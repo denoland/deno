@@ -1,0 +1,22 @@
+[WILDCARD][Function: Location]
+Location { [Symbol(Symbol.toStringTag)]: "Location" }
+Location {
+  hash: [Getter/Setter],
+  host: [Getter/Setter],
+  hostname: [Getter/Setter],
+  href: [Getter/Setter],
+  origin: [Getter],
+  password: [Getter/Setter],
+  pathname: [Getter/Setter],
+  port: [Getter/Setter],
+  protocol: [Getter/Setter],
+  search: [Getter/Setter],
+  username: [Getter/Setter],
+  ancestorOrigins: [Getter],
+  assign: [Function: assign],
+  reload: [Function: reload],
+  replace: [Function: replace],
+  toString: [Function: toString]
+}
+NotSupportedError: Cannot set "location.hostname".
+[WILDCARD]

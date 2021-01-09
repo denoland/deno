@@ -25,7 +25,6 @@ mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
-mod js;
 mod lockfile;
 mod lsp;
 mod media_type;
@@ -56,7 +55,6 @@ use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
-use crate::standalone::create_standalone_binary;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -70,14 +68,12 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::Level;
 use log::LevelFilter;
-use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -86,23 +82,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-
-impl From<Flags> for PermissionsOptions {
-  fn from(flags: Flags) -> Self {
-    Self {
-      allow_env: flags.allow_env,
-      allow_hrtime: flags.allow_hrtime,
-      allow_net: flags.allow_net,
-      allow_plugin: flags.allow_plugin,
-      allow_read: flags.allow_read,
-      allow_run: flags.allow_run,
-      allow_write: flags.allow_write,
-      net_allowlist: flags.net_allowlist,
-      read_allowlist: flags.read_allowlist,
-      write_allowlist: flags.write_allowlist,
-    }
-  }
-}
+use std::sync::Mutex;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -119,7 +99,10 @@ fn create_web_worker_callback(
       || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
+    let module_loader = CliModuleLoader::new_for_worker(
+      program_state.clone(),
+      args.parent_permissions.clone(),
+    );
     let create_web_worker_cb =
       create_web_worker_callback(program_state.clone());
 
@@ -131,8 +114,8 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
-      ca_filepath: program_state.flags.ca_file.clone(),
-      user_agent: http_util::get_user_agent(),
+      ca_data: program_state.ca_data.clone(),
+      user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
       create_web_worker_cb,
@@ -207,8 +190,8 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
-    ca_filepath: program_state.flags.ca_file.clone(),
-    user_agent: http_util::get_user_agent(),
+    ca_data: program_state.ca_data.clone(),
+    user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
@@ -220,6 +203,7 @@ pub fn create_main_worker(
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
+    location: program_state.flags.location.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -294,16 +278,17 @@ fn print_cache_info(
 
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}",
-    crate::js::DENO_NS_LIB,
-    crate::js::DENO_WEB_LIB,
-    crate::js::DENO_FETCH_LIB,
-    crate::js::SHARED_GLOBALS_LIB,
-    crate::js::WINDOW_LIB,
+    "{}\n{}\n{}\n{}\n{}\n{}",
+    crate::tsc::DENO_NS_LIB,
+    crate::tsc::DENO_WEB_LIB,
+    crate::tsc::DENO_FETCH_LIB,
+    crate::tsc::DENO_WEBSOCKET_LIB,
+    crate::tsc::SHARED_GLOBALS_LIB,
+    crate::tsc::WINDOW_LIB,
   );
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::js::UNSTABLE_NS_LIB,));
+    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
   }
 
   types
@@ -313,12 +298,16 @@ async fn compile_command(
   flags: Flags,
   source_file: String,
   output: Option<PathBuf>,
+  args: Vec<String>,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
   }
 
   let debug = flags.log_level == Some(log::Level::Debug);
+
+  let run_flags =
+    tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
@@ -348,8 +337,12 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str.as_bytes().to_vec(), output.clone())
-    .await?;
+  tools::standalone::create_standalone_binary(
+    bundle_str,
+    run_flags,
+    output.clone(),
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -367,7 +360,7 @@ async fn info_command(
   let program_state = ProgramState::new(flags)?;
   if let Some(specifier) = maybe_specifier {
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
-    let handler = Rc::new(RefCell::new(specifier_handler::FetchHandler::new(
+    let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
       &program_state,
       // info accesses dynamically imported modules just for their information
       // so we allow access to all of them.
@@ -515,7 +508,7 @@ async fn create_module_graph_and_maybe_check(
   program_state: Arc<ProgramState>,
   debug: bool,
 ) -> Result<module_graph::Graph, AnyError> {
-  let handler = Rc::new(RefCell::new(FetchHandler::new(
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     // when bundling, dynamic imports are only access for their type safety,
     // therefore we will allow the graph to access any module.
@@ -868,7 +861,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     async move {
       let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
       let program_state = ProgramState::new(flags)?;
-      let handler = Rc::new(RefCell::new(FetchHandler::new(
+      let handler = Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         Permissions::allow_all(),
       )?));
@@ -948,11 +941,31 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
+
+  let mut maybe_coverage_collector =
+    if let Some(ref coverage_dir) = program_state.coverage_dir {
+      let session = worker.create_inspector_session();
+
+      let coverage_dir = PathBuf::from(coverage_dir);
+      let mut coverage_collector =
+        tools::coverage::CoverageCollector::new(coverage_dir, session);
+      coverage_collector.start_collecting().await?;
+
+      Some(coverage_collector)
+    } else {
+      None
+    };
+
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
+
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    coverage_collector.stop_collecting().await?;
+  }
+
   Ok(())
 }
 
@@ -1053,10 +1066,12 @@ async fn test_command(
       let main_module_url = main_module.as_url().to_owned();
       exclude.push(main_module_url);
       tools::coverage::report_coverages(
+        program_state.clone(),
         &coverage_collector.dir,
         quiet,
         exclude,
-      )?;
+      )
+      .await?;
     }
   }
 
@@ -1067,6 +1082,7 @@ fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
     .any(|flag| flag == "-help" || flag == "--help");
+  // Keep in sync with `standalone.rs`.
   let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
     .chain(v8_flags.iter().cloned())
     .collect::<Vec<_>>();
@@ -1145,7 +1161,8 @@ fn get_subcommand(
     DenoSubcommand::Compile {
       source_file,
       output,
-    } => compile_command(flags, source_file, output).boxed_local(),
+      args,
+    } => compile_command(flags, source_file, output, args).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,
@@ -1212,26 +1229,53 @@ fn get_subcommand(
   }
 }
 
+fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
+  match result {
+    Ok(value) => value,
+    Err(error) => {
+      let msg = format!(
+        "{}: {}",
+        colors::red_bold("error"),
+        error.to_string().trim()
+      );
+      eprintln!("{}", msg);
+      std::process::exit(1);
+    }
+  }
+}
+
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  if let Err(err) = standalone::try_run_standalone_binary(args.clone()) {
+  let standalone_res = match standalone::extract_standalone(args.clone()) {
+    Ok(Some((metadata, bundle))) => {
+      tokio_util::run_basic(standalone::run(bundle, metadata))
+    }
+    Ok(None) => Ok(()),
+    Err(err) => Err(err),
+  };
+  if let Err(err) = standalone_res {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }
 
-  let flags = flags::flags_from_vec(args);
+  let flags = match flags::flags_from_vec(args) {
+    Ok(flags) => flags,
+    Err(err @ clap::Error { .. })
+      if err.kind == clap::ErrorKind::HelpDisplayed
+        || err.kind == clap::ErrorKind::VersionDisplayed =>
+    {
+      err.write_to(&mut std::io::stdout()).unwrap();
+      std::process::exit(0);
+    }
+    Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
+  };
   if !flags.v8_flags.is_empty() {
     init_v8_flags(&*flags.v8_flags);
   }
   init_logger(flags.log_level);
 
-  let subcommand_future = get_subcommand(flags);
-  let result = tokio_util::run_basic(subcommand_future);
-  if let Err(err) = result {
-    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
-    std::process::exit(1);
-  }
+  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
 }

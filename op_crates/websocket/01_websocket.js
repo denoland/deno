@@ -2,11 +2,63 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { requiredArguments, defineEventHandler } = window.__bootstrap.webUtil;
+
+  // provided by "deno_web"
+  const { URL } = window.__bootstrap.url;
+
   const CONNECTING = 0;
   const OPEN = 1;
   const CLOSING = 2;
   const CLOSED = 3;
+
+  function requiredArguments(
+    name,
+    length,
+    required,
+  ) {
+    if (length < required) {
+      const errMsg = `${name} requires at least ${required} argument${
+        required === 1 ? "" : "s"
+      }, but only ${length} present`;
+      throw new TypeError(errMsg);
+    }
+  }
+
+  const handlerSymbol = Symbol("eventHandlers");
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return wrappedHandler.handler.call(this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+  // TODO(lucacasonato) reuse when we can reuse code between web crates
+  function defineEventHandler(emitter, name) {
+    // HTML specification section 8.1.5.1
+    Object.defineProperty(emitter, `on${name}`, {
+      get() {
+        return this[handlerSymbol]?.get(name)?.handler;
+      },
+      set(value) {
+        if (!this[handlerSymbol]) {
+          this[handlerSymbol] = new Map();
+        }
+        let handlerWrapper = this[handlerSymbol]?.get(name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+        }
+        this[handlerSymbol].set(name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
+  }
 
   class WebSocket extends EventTarget {
     #readyState = CONNECTING;
@@ -167,6 +219,7 @@
         this.#bufferedAmount += ta.size;
         core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
+          kind: "binary",
         }, ta).then(() => {
           this.#bufferedAmount -= ta.size;
         });
@@ -193,6 +246,7 @@
         this.#bufferedAmount += d.size;
         core.jsonOpAsync("op_ws_send", {
           rid: this.#rid,
+          kind: "text",
           text: string,
         }).then(() => {
           this.#bufferedAmount -= d.size;
@@ -266,6 +320,13 @@
           this.dispatchEvent(event);
 
           this.#eventLoop();
+        } else if (message.type === "ping") {
+          core.jsonOpAsync("op_ws_send", {
+            rid: this.#rid,
+            kind: "pong",
+          });
+
+          this.#eventLoop();
         } else if (message.type === "close") {
           this.#readyState = CLOSED;
           const event = new CloseEvent("close", {
@@ -310,7 +371,6 @@
   defineEventHandler(WebSocket.prototype, "error");
   defineEventHandler(WebSocket.prototype, "close");
   defineEventHandler(WebSocket.prototype, "open");
-  window.__bootstrap.webSocket = {
-    WebSocket,
-  };
+
+  window.__bootstrap.webSocket = { WebSocket };
 })(this);
