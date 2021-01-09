@@ -2595,6 +2595,16 @@ itest!(_077_fetch_empty {
   exit_code: 1,
 });
 
+#[cfg(unix)]
+#[test]
+fn _078_permission_prompt() {
+  let args = "run --prompt 078_permission_prompt.ts";
+  let output = "078_permission_prompt.ts.out";
+  let input = b"g\n";
+
+  util::test_pty(args, output, input);
+}
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
