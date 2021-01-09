@@ -197,5 +197,9 @@
     "jsapi/module/toString",
     "jsapi/table/get-set",
     "jsapi/table/toString",
+    "webapi/body",
+    "webapi/invalid-args",
+    "webapi/rejected-arg"
+
   ]
 }
