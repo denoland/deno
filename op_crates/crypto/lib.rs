@@ -25,7 +25,7 @@ pub fn init(isolate: &mut JsRuntime) {
   }
 }
 
-pub fn op_get_random_values(
+pub fn op_crypto_get_random_values(
   state: &mut OpState,
   _args: Value,
   zero_copy: &mut [ZeroCopyBuf],
