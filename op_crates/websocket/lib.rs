@@ -155,7 +155,7 @@ where
   let try_socket = TcpStream::connect(addr).await;
   let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
     Ok(socket) => socket,
-    Err(_) => return Ok(json!({"success": false})),
+    Err(_) => return Ok(json!({ "success": false })),
   };
 
   let socket: MaybeTlsStream = match uri.scheme_str() {
@@ -311,22 +311,24 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Binary(data))) => {
       // TODO(ry): don't use json to send binary data.
       json!({
-        "type": "binary",
+        "kind": "binary",
         "data": data
       })
     }
     Some(Ok(Message::Close(Some(frame)))) => json!({
-      "type": "close",
-      "code": u16::from(frame.code),
-      "reason": frame.reason.as_ref()
+      "kind": "close",
+      "data": {
+        "code": u16::from(frame.code),
+        "reason": frame.reason.as_ref()
+      }
     }),
-    Some(Ok(Message::Close(None))) => json!({ "type": "close" }),
-    Some(Ok(Message::Ping(_))) => json!({"type": "ping"}),
-    Some(Ok(Message::Pong(_))) => json!({"type": "pong"}),
-    Some(Err(_)) => json!({"type": "error"}),
+    Some(Ok(Message::Close(None))) => json!({ "kind": "close" }),
+    Some(Ok(Message::Ping(_))) => json!({ "kind": "ping" }),
+    Some(Ok(Message::Pong(_))) => json!({ "kind": "pong" }),
+    Some(Err(_)) => json!({ "kind": "error" }),
     None => {
       state.borrow_mut().resource_table.close(args.rid).unwrap();
-      json!({"type": "closed"})
+      json!({ "kind": "closed" })
     }
   };
   Ok(res)

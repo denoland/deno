@@ -294,59 +294,78 @@
     }
 
     async #eventLoop() {
-      if (this.#readyState === OPEN) {
+      while (this.#readyState === OPEN) {
         const message = await core.jsonOpAsync(
           "op_ws_next_event",
           { rid: this.#rid },
         );
-        if (message.type === "string" || message.type === "binary") {
-          let data;
 
-          if (message.type === "string") {
-            data = message.data;
-          } else {
+        switch (message.kind) {
+          case "string": {
+            const event = new MessageEvent("message", {
+              data: message.data,
+              origin: this.#url,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
+
+            break;
+          }
+
+          case "binary": {
+            let data;
+
             if (this.binaryType === "blob") {
               data = new Blob([new Uint8Array(message.data)]);
             } else {
               data = new Uint8Array(message.data).buffer;
             }
+
+            const event = new MessageEvent("message", {
+              data,
+              origin: this.#url,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
+
+            break;
           }
 
-          const event = new MessageEvent("message", {
-            data,
-            origin: this.#url,
-          });
-          event.target = this;
-          this.dispatchEvent(event);
+          case "ping":
+            core.jsonOpAsync("op_ws_send", {
+              rid: this.#rid,
+              kind: "pong",
+            });
 
-          this.#eventLoop();
-        } else if (message.type === "ping") {
-          core.jsonOpAsync("op_ws_send", {
-            rid: this.#rid,
-            kind: "pong",
-          });
+            break;
 
-          this.#eventLoop();
-        } else if (message.type === "close") {
-          this.#readyState = CLOSED;
-          const event = new CloseEvent("close", {
-            wasClean: true,
-            code: message.code,
-            reason: message.reason,
-          });
-          event.target = this;
-          this.dispatchEvent(event);
-        } else if (message.type === "error") {
-          this.#readyState = CLOSED;
+          case "close": {
+            this.#readyState = CLOSED;
 
-          const errorEv = new ErrorEvent("error");
-          errorEv.target = this;
-          this.dispatchEvent(errorEv);
+            const event = new CloseEvent("close", {
+              wasClean: true,
+              code: message.data.code,
+              reason: message.data.reason,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
 
-          this.#readyState = CLOSED;
-          const closeEv = new CloseEvent("close");
-          closeEv.target = this;
-          this.dispatchEvent(closeEv);
+            break;
+          }
+
+          case "error": {
+            this.#readyState = CLOSED;
+
+            const errorEv = new ErrorEvent("error");
+            errorEv.target = this;
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            closeEv.target = this;
+            this.dispatchEvent(closeEv);
+
+            break;
+          }
         }
       }
     }
