@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+// allow(dead_code) because denort does not use this.
+#![allow(dead_code)]
+
 use regex::Regex;
 use std::env;
 use std::fmt;

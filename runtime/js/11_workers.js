@@ -3,6 +3,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { Window } = window.__bootstrap.globalInterfaces;
+  const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
   const build = window.__bootstrap.build.build;
@@ -46,6 +47,13 @@
   }
 
   function decodeMessage(dataIntArray) {
+    // Temporary solution until structured clone arrives in v8.
+    // Current clone is made by parsing json to byte array and from byte array back to json.
+    // In that case "undefined" transforms to empty byte array, but empty byte array does not transform back to undefined.
+    // Thats why this special is statement is needed.
+    if (dataIntArray.length == 0) {
+      return undefined;
+    }
     const dataJson = decoder.decode(dataIntArray);
     return JSON.parse(dataJson);
   }
@@ -127,6 +135,7 @@
 
     constructor(specifier, options = {}) {
       super();
+      specifier = String(specifier);
       const {
         deno = {},
         name = "unknown",
@@ -176,6 +185,16 @@
       this.#name = name;
       const hasSourceCode = false;
       const sourceCode = decoder.decode(new Uint8Array());
+
+      if (
+        specifier.startsWith("./") || specifier.startsWith("../") ||
+        specifier.startsWith("/") || type == "classic"
+      ) {
+        const baseUrl = getLocationHref();
+        if (baseUrl != null) {
+          specifier = new URL(specifier, baseUrl).href;
+        }
+      }
 
       const { id } = createWorker(
         specifier,
