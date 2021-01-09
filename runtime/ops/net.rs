@@ -23,7 +23,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::Shutdown;
@@ -546,27 +545,6 @@ fn op_listen(
   }
 }
 
-#[derive(Serialize, PartialEq, Debug)]
-#[serde(untagged)]
-enum DnsReturnRecord {
-  A(String),
-  AAAA(String),
-  ANAME(String),
-  CNAME(String),
-  MX {
-    preference: u16,
-    exchange: String,
-  },
-  PTR(String),
-  SRV {
-    priority: u16,
-    weight: u16,
-    port: u16,
-    target: String,
-  },
-  TXT(Vec<String>),
-}
-
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: Value,
@@ -635,48 +613,36 @@ async fn op_dns_resolve(
 
   let resolver = AsyncResolver::tokio(config, opts)?;
 
-  let results: Vec<DnsReturnRecord> = resolver
+  let results: Vec<String> = resolver
     .lookup(query, record_type, Default::default())
     .await?
     .iter()
-    .filter_map(rdata_to_return_record(record_type))
+    .filter_map(rdata_to_string(record_type))
     .collect();
 
   Ok(json!(results))
 }
 
-fn rdata_to_return_record(
-  ty: RecordType,
-) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
+fn rdata_to_string(ty: RecordType) -> impl Fn(&RData) -> Option<String> {
   use RecordType::*;
-  move |r: &RData| -> Option<DnsReturnRecord> {
+  move |r: &RData| -> Option<String> {
     match ty {
-      A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
-      AAAA => r
-        .as_aaaa()
-        .map(ToString::to_string)
-        .map(DnsReturnRecord::AAAA),
-      ANAME => r
-        .as_aname()
-        .map(ToString::to_string)
-        .map(DnsReturnRecord::ANAME),
-      CNAME => r
-        .as_cname()
-        .map(ToString::to_string)
-        .map(DnsReturnRecord::CNAME),
-      MX => r.as_mx().map(|mx| DnsReturnRecord::MX {
-        preference: mx.preference(),
-        exchange: mx.exchange().to_string(),
+      A => r.as_a().map(ToString::to_string),
+      AAAA => r.as_aaaa().map(ToString::to_string),
+      ANAME => r.as_aname().map(ToString::to_string),
+      CNAME => r.as_cname().map(ToString::to_string),
+      MX => r.as_mx().map(|mx| {
+        format!("{pref} {ex}", pref = mx.preference(), ex = mx.exchange())
       }),
-      PTR => r
-        .as_ptr()
-        .map(ToString::to_string)
-        .map(DnsReturnRecord::PTR),
-      SRV => r.as_srv().map(|srv| DnsReturnRecord::SRV {
-        priority: srv.priority(),
-        weight: srv.weight(),
-        port: srv.port(),
-        target: srv.target().to_string(),
+      PTR => r.as_ptr().map(ToString::to_string),
+      SRV => r.as_srv().map(|srv| {
+        format!(
+          "{priority} {weight} {port} {target}",
+          priority = srv.priority(),
+          weight = srv.weight(),
+          port = srv.port(),
+          target = srv.target()
+        )
       }),
       TXT => r.as_txt().map(|txt| {
         let texts: Vec<String> = txt
@@ -686,7 +652,7 @@ fn rdata_to_return_record(
             bytes.iter().map(|&b| b as char).collect::<String>()
           })
           .collect();
-        DnsReturnRecord::TXT(texts)
+        texts.join(" ")
       }),
       // TODO(magurotuna): Other record types are not supported
       _ => todo!(),
@@ -707,87 +673,62 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_a() {
-    let func = rdata_to_return_record(RecordType::A);
+    let func = rdata_to_string(RecordType::A);
     let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
-    assert_eq!(
-      func(&rdata),
-      Some(DnsReturnRecord::A("127.0.0.1".to_string()))
-    );
+    assert_eq!(func(&rdata), Some("127.0.0.1".to_string()));
   }
 
   #[test]
   fn rdata_to_return_record_aaaa() {
-    let func = rdata_to_return_record(RecordType::AAAA);
+    let func = rdata_to_string(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::AAAA("::1".to_string())));
+    assert_eq!(func(&rdata), Some("::1".to_string()));
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
-    let func = rdata_to_return_record(RecordType::ANAME);
+    let func = rdata_to_string(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::ANAME("".to_string())));
+    assert_eq!(func(&rdata), Some("".to_string()));
   }
 
   #[test]
   fn rdata_to_return_record_cname() {
-    let func = rdata_to_return_record(RecordType::CNAME);
+    let func = rdata_to_string(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::CNAME("".to_string())));
+    assert_eq!(func(&rdata), Some("".to_string()));
   }
 
   #[test]
   fn rdata_to_return_record_mx() {
-    let func = rdata_to_return_record(RecordType::MX);
+    let func = rdata_to_string(RecordType::MX);
     let rdata = RData::MX(MX::new(10, Name::new()));
-    assert_eq!(
-      func(&rdata),
-      Some(DnsReturnRecord::MX {
-        preference: 10,
-        exchange: "".to_string()
-      })
-    );
+    assert_eq!(func(&rdata), Some("10 ".to_string()));
   }
 
   #[test]
   fn rdata_to_return_record_ptr() {
-    let func = rdata_to_return_record(RecordType::PTR);
+    let func = rdata_to_string(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::PTR("".to_string())));
+    assert_eq!(func(&rdata), Some("".to_string()));
   }
 
   #[test]
   fn rdata_to_return_record_srv() {
-    let func = rdata_to_return_record(RecordType::SRV);
+    let func = rdata_to_string(RecordType::SRV);
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
-    assert_eq!(
-      func(&rdata),
-      Some(DnsReturnRecord::SRV {
-        priority: 1,
-        weight: 2,
-        port: 3,
-        target: "".to_string()
-      })
-    );
+    assert_eq!(func(&rdata), Some("1 2 3 ".to_string()));
   }
 
   #[test]
   fn rdata_to_return_record_txt() {
-    let func = rdata_to_return_record(RecordType::TXT);
+    let func = rdata_to_string(RecordType::TXT);
     let rdata = RData::TXT(TXT::from_bytes(vec![
       "foo".as_bytes(),
       "bar".as_bytes(),
       &[0xa3],             // "£" in Latin-1
       &[0xe3, 0x81, 0x82], // "あ" in UTF-8
     ]));
-    assert_eq!(
-      func(&rdata),
-      Some(DnsReturnRecord::TXT(vec![
-        "foo".to_string(),
-        "bar".to_string(),
-        "£".to_string(),
-        "ã\u{81}\u{82}".to_string(),
-      ]))
-    );
+    assert_eq!(func(&rdata), Some("foo bar £ ã\u{81}\u{82}".to_string()));
   }
 }
