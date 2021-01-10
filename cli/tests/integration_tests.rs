@@ -64,6 +64,42 @@ fn std_lint() {
 }
 
 #[test]
+fn help_flag() {
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("--help")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn version_short_flag() {
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("-V")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn version_long_flag() {
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("--version")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
 fn unit_test_lint() {
   let status = util::deno_cmd()
     .arg("lint")
