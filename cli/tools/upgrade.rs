@@ -2,7 +2,7 @@
 
 //! This module provides feature to upgrade deno executable
 
-use crate::AnyError;
+use deno_core::error::AnyError;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;

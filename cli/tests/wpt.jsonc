@@ -146,7 +146,8 @@
   "html": [
     "webappapis/atob/base64.any.js",
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
-    "webappapis/microtask-queuing/queue-microtask.any"
+    "webappapis/microtask-queuing/queue-microtask.any",
+    "webappapis/timers",
   ],
   "user-timing": [
     "clear_all_marks",
@@ -171,14 +172,7 @@
       ]
     },
     "measure-l3",
-    {
-      "name": "structured-serialize-detail",
-      "expectFail": [
-        // TODO(lucacasonato): re-enable when we use real structured clone.
-        "Mark: Throw an exception when the detail property cannot be structured-serialized.",
-        "Measure: Throw an exception when the detail property cannot be structured-serialized."
-      ]
-    },
+    "structured-serialize-detail",
     "user_timing_exists"
   ]
 }

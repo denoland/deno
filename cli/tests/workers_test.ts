@@ -385,6 +385,31 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "Worker post undefined",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const worker = new Worker(
+      new URL("./worker_post_undefined.ts", import.meta.url).href,
+      { type: "module" },
+    );
+
+    const handleWorkerMessage = (e: MessageEvent): void => {
+      console.log("main <- worker:", e.data);
+      worker.terminate();
+      promise.resolve();
+    };
+
+    worker.addEventListener("messageerror", () => console.log("message error"));
+    worker.addEventListener("error", () => console.log("error"));
+    worker.addEventListener("message", handleWorkerMessage);
+
+    console.log("\npost from parent");
+    worker.postMessage(undefined);
+    await promise;
+  },
+});
+
 Deno.test("Worker inherits permissions", async function () {
   const promise = deferred();
   const worker = new Worker(

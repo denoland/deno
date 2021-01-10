@@ -175,6 +175,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          zip -r denort-x86_64-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
 
       - name: Pre-release (mac)
@@ -184,6 +185,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
+          zip -r denort-x86_64-apple-darwin.zip denort
 
       - name: Pre-release (windows)
         if: |
@@ -191,6 +193,7 @@ jobs:
           matrix.kind == 'test_release'
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
 
       - name: Upload canary (unix)
         if: |

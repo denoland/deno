@@ -4,10 +4,10 @@ use crate::colors;
 use crate::http_cache::HttpCache;
 use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
-use crate::http_util::get_user_agent;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
 use crate::text_encoding;
+use crate::version::get_user_agent;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::custom_error;
