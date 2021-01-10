@@ -173,5 +173,14 @@
     "measure-l3",
     "structured-serialize-detail",
     "user_timing_exists"
+  ],
+  "console": [
+    "console-is-a-namespace",
+    "console-label-conversion",
+    "console-namespace-object-class-string",
+    "console-tests-historical",
+  ],
+  "WebCryptoApi": [
+    "getRandomValues"
   ]
 }
