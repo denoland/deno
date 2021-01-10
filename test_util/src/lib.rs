@@ -699,7 +699,6 @@ async fn wrap_abs_redirect_server() {
 
 async fn run_dns_server() {
   let catalog = {
-    let zone_type = ZoneType::Master;
     let records = {
       let mut map = BTreeMap::new();
 
@@ -718,7 +717,8 @@ async fn run_dns_server() {
     };
 
     let authority = Box::new(
-      InMemoryAuthority::new(Name::root(), records, zone_type, false).unwrap(),
+      InMemoryAuthority::new(Name::root(), records, ZoneType::Master, false)
+        .unwrap(),
     );
     let mut c = Catalog::new();
     c.upsert(Name::root().into(), authority);
