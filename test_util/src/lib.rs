@@ -42,6 +42,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use std::sync::RwLock;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
@@ -49,7 +50,6 @@ use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
-use tokio::runtime::Builder;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
@@ -747,26 +747,22 @@ async fn run_dns_server() {
       map
     };
 
-    let authority = Box::new(
-      InMemoryAuthority::new(Name::root(), records, ZoneType::Master, false)
+    let authority = Box::new(Arc::new(RwLock::new(
+      InMemoryAuthority::new(Name::root(), records, ZoneType::Primary, false)
         .unwrap(),
-    );
+    )));
     let mut c = Catalog::new();
     c.upsert(Name::root().into(), authority);
     c
   };
 
   let mut server_fut = ServerFuture::new(catalog);
-  let runtime = {
-    let mut b = Builder::new();
-    b.basic_scheduler().build().unwrap()
-  };
   let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
   let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
   let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
-  server_fut.register_socket(udp_socket, &runtime);
+  server_fut.register_socket(udp_socket);
   server_fut
-    .register_listener(tcp_listener, Duration::from_secs(5), &runtime)
+    .register_listener(tcp_listener, Duration::from_secs(5))
     .unwrap();
 }
 
