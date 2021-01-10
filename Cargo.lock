@@ -539,9 +539,11 @@ dependencies = [
 name = "deno_fetch"
 version = "0.18.0"
 dependencies = [
+ "bytes 0.5.6",
  "deno_core",
  "reqwest",
  "serde",
+ "tokio 0.2.22",
 ]
 
 [[package]]

@@ -15,8 +15,18 @@ pub fn init(
       http_util::create_http_client(user_agent, ca_data).unwrap()
     });
   }
-  super::reg_json_async(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);
-  super::reg_json_async(rt, "op_fetch_read", deno_fetch::op_fetch_read);
+  super::reg_json_sync(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);
+  super::reg_json_async(rt, "op_fetch_send", deno_fetch::op_fetch_send);
+  super::reg_json_async(
+    rt,
+    "op_fetch_request_write",
+    deno_fetch::op_fetch_request_write,
+  );
+  super::reg_json_async(
+    rt,
+    "op_fetch_response_read",
+    deno_fetch::op_fetch_response_read,
+  );
   super::reg_json_sync(
     rt,
     "op_create_http_client",
