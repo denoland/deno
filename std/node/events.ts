@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Copyright (c) 2019 Denolibs authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
