@@ -174,5 +174,8 @@
     "measure-l3",
     "structured-serialize-detail",
     "user_timing_exists"
+  ],
+  "WebCryptoApi": [
+    "getRandomValues"
   ]
 }
