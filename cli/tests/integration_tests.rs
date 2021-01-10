@@ -2595,6 +2595,12 @@ itest!(_077_fetch_empty {
   exit_code: 1,
 });
 
+itest!(_078_resolve_dns {
+  args: "run --allow-net --unstable 078_resolve_dns.ts",
+  output: "078_resolve_dns.ts.out",
+  http_server: true,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
