@@ -29,6 +29,7 @@ use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -37,6 +38,7 @@ use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 use std::result::Result;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -56,6 +58,7 @@ use trust_dns_client::rr::RecordType;
 use trust_dns_client::rr::RrKey;
 use trust_dns_server::authority::Catalog;
 use trust_dns_server::authority::ZoneType;
+use trust_dns_server::proto::rr::rdata::soa::SOA;
 use trust_dns_server::proto::rr::record_data::RData;
 use trust_dns_server::proto::rr::resource::Record;
 use trust_dns_server::proto::rr::Name;
@@ -702,6 +705,22 @@ async fn run_dns_server() {
     let records = {
       let mut map = BTreeMap::new();
 
+      // Inserts SOA record
+      let soa = SOA::new(
+        Name::root(),
+        Name::from_str("example").unwrap(),
+        0,
+        i32::MAX,
+        i32::MAX,
+        i32::MAX,
+        0,
+      );
+      let rdata = RData::SOA(soa);
+      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record_set = RecordSet::from(record);
+      map.insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
+
+      // Inserts A record
       let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
       let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
@@ -709,6 +728,18 @@ async fn run_dns_server() {
         RrKey::new(
           "www.example.com".parse::<LowerName>().unwrap(),
           RecordType::A,
+        ),
+        record_set,
+      );
+
+      // Inserts AAAA record
+      let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
+      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record_set = RecordSet::from(record);
+      map.insert(
+        RrKey::new(
+          "www.example.com".parse::<LowerName>().unwrap(),
+          RecordType::AAAA,
         ),
         record_set,
       );
