@@ -55,7 +55,7 @@ unitTest(function atobThrows3(): void {
   try {
     atob("foobar!!");
   } catch (e) {
-    if (e instanceof DOMException && e.toString().startsWith("DOMException:")) {
+    if (e instanceof DOMException && e.toString().startsWith("InvalidCharacterError:")) {
       threw = true;
     }
   }
