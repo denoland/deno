@@ -313,7 +313,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(
     stringify(console),
-    `{
+    `console {
   log: [Function: log],
   debug: [Function: log],
   info: [Function: log],
@@ -334,6 +334,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   clear: [Function: clear],
   trace: [Function: trace],
   indentLevel: 0,
+  [Symbol(Symbol.toStringTag)]: "console",
   [Symbol(isConsoleInstance)]: true
 }`,
   );
