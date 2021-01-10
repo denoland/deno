@@ -759,9 +759,7 @@ async fn run_dns_server() {
   let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
   let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
   server_fut.register_socket(udp_socket);
-  server_fut
-    .register_listener(tcp_listener, Duration::from_secs(5))
-    .unwrap();
+  server_fut.register_listener(tcp_listener, Duration::from_secs(5));
 }
 
 async fn wrap_main_server() {
