@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { notImplemented } from "./_utils.ts";
+import process from "./_process.ts";
 
 /** https://nodejs.org/api/process.html#process_process_arch */
 export const arch = process.arch;
@@ -33,6 +33,8 @@ export const version = process.version;
 
 /** https://nodejs.org/api/process.html#process_process_versions */
 export const versions = process.versions;
+
+export default process;
 
 //TODO
 //Remove on 1.0

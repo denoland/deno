@@ -1,33 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "./_utils.ts";
 
-/** https://nodejs.org/api/process.html#process_process_arch */
-export const arch = Deno.build.arch;
-
-/** https://nodejs.org/api/process.html#process_process_chdir_directory */
-export const chdir = Deno.chdir;
-
-/** https://nodejs.org/api/process.html#process_process_cwd */
-export const cwd = Deno.cwd;
-
-/** https://nodejs.org/api/process.html#process_process_exit_code */
-export const exit = Deno.exit;
-
-/** https://nodejs.org/api/process.html#process_process_pid */
-export const pid = Deno.pid;
-
-/** https://nodejs.org/api/process.html#process_process_platform */
-export const platform = Deno.build.os === "windows" ? "win32" : Deno.build.os;
-
-/** https://nodejs.org/api/process.html#process_process_version */
-export const version = `v${Deno.version.deno}`;
-
-/** https://nodejs.org/api/process.html#process_process_versions */
-export const versions = {
-  node: Deno.version.deno,
-  ...Deno.version,
-};
-
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
 function nextTick(this: unknown, cb: () => void): void;
 function nextTick<T extends Array<unknown>>(
@@ -157,11 +130,11 @@ export const process = {
   },
 };
 
-export default process;
-
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
   writable: true,
   configurable: false,
   value: "process",
 });
+
+export default process;
