@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.

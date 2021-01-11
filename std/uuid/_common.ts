@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /**
  * Converts the byte array to a UUID string
  * @param bytes Used to convert Byte to Hex

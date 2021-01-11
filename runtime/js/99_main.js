@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { serve, ServerRequest } from "../../std/http/server.ts";
 import { assertEquals } from "../../std/testing/asserts.ts";
 
