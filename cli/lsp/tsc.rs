@@ -604,7 +604,11 @@ impl DefinitionInfoAndBoundSpan {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp_types::LocationLink>::new();
       for di in definitions {
-        if let Some(link) = di.document_span.to_link(line_index, index_provider.clone()).await {
+        if let Some(link) = di
+          .document_span
+          .to_link(line_index, index_provider.clone())
+          .await
+        {
           location_links.push(link);
         }
       }
