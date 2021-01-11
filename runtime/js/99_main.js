@@ -9,6 +9,7 @@ delete Object.prototype.__proto__;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
+  const location = window.__bootstrap.location;
   const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -196,6 +197,8 @@ delete Object.prototype.__proto__;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
+    Location: location.locationConstructorDescriptor,
+    location: location.locationDescriptor,
     Blob: util.nonEnumerable(fetch.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       streams.ByteLengthQueuingStrategy,
@@ -241,6 +244,11 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
   };
+
+  // The console seems to be the only one that should be writable and non-enumerable
+  // thus we don't have a unique helper for it. If other properties follow the same
+  // structure, it might be worth it to define a helper in `util`
+  windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
     Window: globalInterfaces.windowConstructorDescriptor,
@@ -290,7 +298,19 @@ delete Object.prototype.__proto__;
     defineEventHandler(window, "unload", null);
 
     runtimeStart(runtimeOptions);
-    const { args, noColor, pid, ppid, unstableFlag } = runtimeOptions;
+    const {
+      args,
+      location: locationHref,
+      noColor,
+      pid,
+      ppid,
+      unstableFlag,
+    } = runtimeOptions;
+
+    if (locationHref != null) {
+      location.setLocationHref(locationHref);
+      fetch.setBaseUrl(locationHref);
+    }
 
     registerErrors();
 
@@ -349,8 +369,11 @@ delete Object.prototype.__proto__;
       runtimeOptions,
       internalName ?? name,
     );
-    const { unstableFlag, pid, noColor, args } = runtimeOptions;
+    const { unstableFlag, pid, noColor, args, location: locationHref } =
+      runtimeOptions;
 
+    location.setLocationHref(locationHref);
+    fetch.setBaseUrl(locationHref);
     registerErrors();
 
     const finalDenoNs = {

@@ -105,7 +105,7 @@
     if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
       throw new DOMException(
         "The string to be decoded is not correctly encoded",
-        "DataDecodeError",
+        "InvalidCharacterError",
       );
     }
 

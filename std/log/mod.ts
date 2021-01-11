@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { Logger } from "./logger.ts";
 import type { GenericFunction } from "./logger.ts";
 import {

@@ -2,11 +2,63 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { requiredArguments, defineEventHandler } = window.__bootstrap.webUtil;
+
+  // provided by "deno_web"
+  const { URL } = window.__bootstrap.url;
+
   const CONNECTING = 0;
   const OPEN = 1;
   const CLOSING = 2;
   const CLOSED = 3;
+
+  function requiredArguments(
+    name,
+    length,
+    required,
+  ) {
+    if (length < required) {
+      const errMsg = `${name} requires at least ${required} argument${
+        required === 1 ? "" : "s"
+      }, but only ${length} present`;
+      throw new TypeError(errMsg);
+    }
+  }
+
+  const handlerSymbol = Symbol("eventHandlers");
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return wrappedHandler.handler.call(this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+  // TODO(lucacasonato) reuse when we can reuse code between web crates
+  function defineEventHandler(emitter, name) {
+    // HTML specification section 8.1.5.1
+    Object.defineProperty(emitter, `on${name}`, {
+      get() {
+        return this[handlerSymbol]?.get(name)?.handler;
+      },
+      set(value) {
+        if (!this[handlerSymbol]) {
+          this[handlerSymbol] = new Map();
+        }
+        let handlerWrapper = this[handlerSymbol]?.get(name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+        }
+        this[handlerSymbol].set(name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
+  }
 
   class WebSocket extends EventTarget {
     #readyState = CONNECTING;
@@ -242,59 +294,78 @@
     }
 
     async #eventLoop() {
-      if (this.#readyState === OPEN) {
+      while (this.#readyState === OPEN) {
         const message = await core.jsonOpAsync(
           "op_ws_next_event",
           { rid: this.#rid },
         );
-        if (message.type === "string" || message.type === "binary") {
-          let data;
 
-          if (message.type === "string") {
-            data = message.data;
-          } else {
+        switch (message.kind) {
+          case "string": {
+            const event = new MessageEvent("message", {
+              data: message.data,
+              origin: this.#url,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
+
+            break;
+          }
+
+          case "binary": {
+            let data;
+
             if (this.binaryType === "blob") {
               data = new Blob([new Uint8Array(message.data)]);
             } else {
               data = new Uint8Array(message.data).buffer;
             }
+
+            const event = new MessageEvent("message", {
+              data,
+              origin: this.#url,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
+
+            break;
           }
 
-          const event = new MessageEvent("message", {
-            data,
-            origin: this.#url,
-          });
-          event.target = this;
-          this.dispatchEvent(event);
+          case "ping":
+            core.jsonOpAsync("op_ws_send", {
+              rid: this.#rid,
+              kind: "pong",
+            });
 
-          this.#eventLoop();
-        } else if (message.type === "ping") {
-          core.jsonOpAsync("op_ws_send", {
-            rid: this.#rid,
-            kind: "pong",
-          });
+            break;
 
-          this.#eventLoop();
-        } else if (message.type === "close") {
-          this.#readyState = CLOSED;
-          const event = new CloseEvent("close", {
-            wasClean: true,
-            code: message.code,
-            reason: message.reason,
-          });
-          event.target = this;
-          this.dispatchEvent(event);
-        } else if (message.type === "error") {
-          this.#readyState = CLOSED;
+          case "close": {
+            this.#readyState = CLOSED;
 
-          const errorEv = new ErrorEvent("error");
-          errorEv.target = this;
-          this.dispatchEvent(errorEv);
+            const event = new CloseEvent("close", {
+              wasClean: true,
+              code: message.data.code,
+              reason: message.data.reason,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
 
-          this.#readyState = CLOSED;
-          const closeEv = new CloseEvent("close");
-          closeEv.target = this;
-          this.dispatchEvent(closeEv);
+            break;
+          }
+
+          case "error": {
+            this.#readyState = CLOSED;
+
+            const errorEv = new ErrorEvent("error");
+            errorEv.target = this;
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            closeEv.target = this;
+            this.dispatchEvent(closeEv);
+
+            break;
+          }
         }
       }
     }
@@ -319,7 +390,6 @@
   defineEventHandler(WebSocket.prototype, "error");
   defineEventHandler(WebSocket.prototype, "close");
   defineEventHandler(WebSocket.prototype, "open");
-  window.__bootstrap.webSocket = {
-    WebSocket,
-  };
+
+  window.__bootstrap.webSocket = { WebSocket };
 })(this);

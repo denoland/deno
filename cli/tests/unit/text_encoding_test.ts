@@ -50,6 +50,21 @@ unitTest(function atobThrows2(): void {
   assert(threw);
 });
 
+unitTest(function atobThrows3(): void {
+  let threw = false;
+  try {
+    atob("foobar!!");
+  } catch (e) {
+    if (
+      e instanceof DOMException &&
+      e.toString().startsWith("InvalidCharacterError:")
+    ) {
+      threw = true;
+    }
+  }
+  assert(threw);
+});
+
 unitTest(function btoaFailed(): void {
   const text = "你好";
   assertThrows(() => {

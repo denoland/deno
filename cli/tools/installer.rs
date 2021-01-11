@@ -202,6 +202,10 @@ pub fn install(
 
   let mut executable_args = vec!["run".to_string()];
   executable_args.extend_from_slice(&flags.to_permission_args());
+  if let Some(url) = flags.location.as_ref() {
+    executable_args.push("--location".to_string());
+    executable_args.push(url.to_string());
+  }
   if let Some(ca_file) = flags.ca_file {
     executable_args.push("--cert".to_string());
     executable_args.push(ca_file)
