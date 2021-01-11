@@ -3664,6 +3664,8 @@ fn cafile_install_remote_module() {
     .arg("https://localhost:5545/cli/tests/echo.ts")
     .output()
     .expect("Failed to spawn script");
+  println!("{}", std::str::from_utf8(&install_output.stdout).unwrap());
+  eprintln!("{}", std::str::from_utf8(&install_output.stderr).unwrap());
   assert!(install_output.status.success());
 
   let mut echo_test_path = bin_dir.join("echo_test");
