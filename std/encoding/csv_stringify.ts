@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Implements the CSV spec at https://tools.ietf.org/html/rfc4180
 
 // This module is browser compatible.
