@@ -38,6 +38,7 @@ function shouldExpectFail(name) {
 }
 
 window.add_result_callback(({ message, name, stack, status }) => {
+  const expectFail = shouldExpectFail(name);
   testResults.push({
     name,
     passed: status === 0,
@@ -45,8 +46,6 @@ window.add_result_callback(({ message, name, stack, status }) => {
     message,
     stack,
   });
-
-  const expectFail = shouldExpectFail(name);
   let simpleMessage = `test ${name} ... `;
   switch (status) {
     case 0:
