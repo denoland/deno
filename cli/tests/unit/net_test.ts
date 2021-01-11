@@ -607,7 +607,7 @@ unitTest(
     iteratorReq(listener);
     const conn = await Deno.connect(addr);
     await conn.write(new Uint8Array([1, 2, 3, 4]));
-    const buf = new Uint8Array(3);
+    const buf = new Uint8Array(10);
     await conn.read(buf);
     conn!.close();
     acceptedConn!.close();
