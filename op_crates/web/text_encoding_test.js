@@ -1304,9 +1304,7 @@ function big5Test(tests) {
   const assertions = [];
 
   function assertEquals(expected, actual, msg = "") {
-    if (expected !== actual) {
-      assertions.push([expected, actual, msg]);
-    }
+    if (expected !== actual) assertions.push([expected, actual, msg]);
   }
 
   function final() {
