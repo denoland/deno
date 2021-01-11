@@ -14,7 +14,7 @@ use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
-use crate::Permissions;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;

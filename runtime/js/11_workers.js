@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const core = window.Deno.core;
@@ -47,6 +47,13 @@
   }
 
   function decodeMessage(dataIntArray) {
+    // Temporary solution until structured clone arrives in v8.
+    // Current clone is made by parsing json to byte array and from byte array back to json.
+    // In that case "undefined" transforms to empty byte array, but empty byte array does not transform back to undefined.
+    // Thats why this special is statement is needed.
+    if (dataIntArray.length == 0) {
+      return undefined;
+    }
     const dataJson = decoder.decode(dataIntArray);
     return JSON.parse(dataJson);
   }

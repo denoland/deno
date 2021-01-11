@@ -145,7 +145,8 @@
   "hr-time": ["monotonic-clock"],
   "html": [
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
-    "webappapis/microtask-queuing/queue-microtask.any"
+    "webappapis/microtask-queuing/queue-microtask.any",
+    "webappapis/timers"
   ],
   "user-timing": [
     "clear_all_marks",
@@ -170,14 +171,7 @@
       ]
     },
     "measure-l3",
-    {
-      "name": "structured-serialize-detail",
-      "expectFail": [
-        // TODO(lucacasonato): re-enable when we use real structured clone.
-        "Mark: Throw an exception when the detail property cannot be structured-serialized.",
-        "Measure: Throw an exception when the detail property cannot be structured-serialized."
-      ]
-    },
+    "structured-serialize-detail",
     "user_timing_exists"
   ],
   "url": [
@@ -586,5 +580,12 @@
     "urlsearchparams-set",
     "urlsearchparams-sort",
     "urlsearchparams-stringifier"
-  ]
+  ],
+  "console": [
+    "console-is-a-namespace",
+    "console-label-conversion",
+    "console-namespace-object-class-string",
+    "console-tests-historical"
+  ],
+  "WebCryptoApi": ["getRandomValues"]
 }

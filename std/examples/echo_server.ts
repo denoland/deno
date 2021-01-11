@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 const hostname = "0.0.0.0";
 const port = 8080;
 const listener = Deno.listen({ hostname, port });

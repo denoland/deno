@@ -15,5 +15,8 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.75.0", path = "../../core" }
+
+bytes = "0.5.6"
 reqwest = { version = "0.10.8", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.116", features = ["derive"] }
+tokio = { version = "0.2.22", features = ["full"] }
