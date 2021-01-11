@@ -39,10 +39,6 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#process_process_arch */
   arch = Deno.build.arch;
 
-  get data(){
-    return [Deno.execPath(), fromFileUrl(Deno.mainModule), ...Deno.args];
-  }
-
   //TODO(Soremwar)
   //Totally not the best way to do this
   #argv = (() => {
@@ -54,7 +50,7 @@ class Process extends EventEmitter {
     } = [];
 
     args[Deno.customInspect] = () => {
-      return Deno.inspect(this.data, {
+      return Deno.inspect([Deno.execPath(), fromFileUrl(Deno.mainModule), ...Deno.args], {
         colors: true,
       });
     };
@@ -250,7 +246,7 @@ class Process extends EventEmitter {
 }
 
 /** https://nodejs.org/api/process.html#process_process */
-const process = new Process();
+const process = new Process;
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
