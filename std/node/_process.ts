@@ -39,12 +39,43 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#process_process_arch */
   arch = Deno.build.arch;
 
-  /** https://nodejs.org/api/process.html#process_process_argv */
-  get argv(): string[] {
-    // Getter delegates --allow-env and --allow-read until request
-    // Getter also allows the export Proxy instance to function as intended
+  get data(){
     return [Deno.execPath(), fromFileUrl(Deno.mainModule), ...Deno.args];
   }
+
+  //TODO(Soremwar)
+  //Totally not the best way to do this
+  #argv = (() => {
+    //deno-lint-ignore ban-ts-comment
+    //@ts-ignore
+    const args: {
+      [Deno.customInspect] : () => string,
+      [key: number]: string,
+    } = [];
+
+    args[Deno.customInspect] = () => {
+      return Deno.inspect(this.data, {
+        colors: true,
+      });
+    };
+
+    return args;
+  })();
+
+  /** https://nodejs.org/api/process.html#process_process_argv */
+  argv: {[key: number]: string} = new Proxy(this.#argv, {
+    get(target, prop){
+      if(prop === Deno.customInspect){
+        return target[Deno.customInspect];
+      }
+      //TODO(Soremwar)
+      //This could be greatly improved if TS added support for private accessors
+      return [Deno.execPath(), fromFileUrl(Deno.mainModule), ...Deno.args][prop as number];
+    },
+    ownKeys(){
+      return Reflect.ownKeys([Deno.execPath(), fromFileUrl(Deno.mainModule), ...Deno.args]);
+    },
+  });
 
   /** https://nodejs.org/api/process.html#process_process_chdir_directory */
   chdir = Deno.chdir;
@@ -55,12 +86,30 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = Deno.exit;
 
+  #env = {
+    [Deno.customInspect]: function(){
+      return Deno.inspect(Deno.env.toObject(), {
+        colors: true,
+      });
+    },
+  };
+
   /** https://nodejs.org/api/process.html#process_process_env */
-  get env(): { [index: string]: string } {
-    // Getter delegates --allow-env and --allow-read until request
-    // Getter also allows the export Proxy instance to function as intended
-    return Deno.env.toObject();
-  }
+  env: { [index: string]: string } = new Proxy(this.#env, {
+    get(target, prop){
+      if(prop === Deno.customInspect){
+        return target[Deno.customInspect];
+      }
+      return Deno.env.get(String(prop));
+    },
+    ownKeys(){
+      return Reflect.ownKeys(Deno.env.toObject());
+    },
+    set(_target, prop, value){
+      Deno.env.set(String(prop), String(value));
+      return value;
+    },
+  });
 
   /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
   nextTick(this: unknown, cb: () => void): void;
