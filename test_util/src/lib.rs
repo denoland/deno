@@ -699,6 +699,7 @@ async fn wrap_main_https_server() {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
+    println!("tls ready");
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = async_stream::stream! {
@@ -894,9 +895,17 @@ impl HttpServerCount {
       let stdout = test_server.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
       let lines = BufReader::new(stdout).lines();
+      let mut ready = false;
+      let mut tls_ready = false;
       for maybe_line in lines {
         if let Ok(line) = maybe_line {
           if line.starts_with("ready") {
+            ready = true;
+          }
+          if line.starts_with("tls ready") {
+            tls_ready = true;
+          }
+          if ready && tls_ready {
             break;
           }
         } else {
