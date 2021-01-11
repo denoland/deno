@@ -220,6 +220,16 @@ jobs:
           echo $(git rev-parse HEAD) > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
+      - name: Configure hosts file for WPT (unix)
+        if: runner.os != 'Windows'
+        run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
+        working-directory: test_util/wpt/
+
+      - name: Configure hosts file for WPT (windows)
+        if: runner.os == 'Windows'
+        working-directory: test_util/wpt/
+        run: python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
+
       - name: Test release
         if: matrix.kind == 'test_release'
         run: cargo test --release --locked --all-targets
