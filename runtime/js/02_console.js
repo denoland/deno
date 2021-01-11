@@ -4,7 +4,6 @@
   const core = window.Deno.core;
   const exposeForTest = window.__bootstrap.internals.exposeForTest;
   const colors = window.__bootstrap.colors;
-  const { PermissionDenied } = window.__bootstrap.errors;
 
   function isInvalidDate(x) {
     return isNaN(x.getTime());
