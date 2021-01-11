@@ -169,7 +169,7 @@
    * @returns {ArrayBufferLike}
    */
   function transferArrayBuffer(O) {
-    assert(isDetachedBuffer(O));
+    assert(!isDetachedBuffer(O));
     const transferredIshVersion = O.slice(0);
     Object.defineProperty(O, "byteLength", {
       get() {
