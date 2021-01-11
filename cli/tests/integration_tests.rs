@@ -1488,7 +1488,7 @@ fn wait_for_process_finished(
 }
 
 #[test]
-//#[ignore]
+#[ignore]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
