@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "./_utils.ts";
 import EventEmitter from "./events.ts";
+import { fromFileUrl } from "../path/mod.ts";
 
 const notImplementedEvents = [
   "beforeExit",
@@ -42,7 +43,7 @@ class Process extends EventEmitter {
   get argv(): string[] {
     // Getter delegates --allow-env and --allow-read until request
     // Getter also allows the export Proxy instance to function as intended
-    return [Deno.execPath(), ...Deno.args];
+    return [Deno.execPath(), fromFileUrl(Deno.mainModule), ...Deno.args];
   }
 
   /** https://nodejs.org/api/process.html#process_process_chdir_directory */
