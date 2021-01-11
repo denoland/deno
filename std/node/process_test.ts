@@ -12,30 +12,6 @@ import "./global.ts";
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
 
 Deno.test({
-  name: "process exports are as they should be",
-  fn() {
-    // * should be the same as process, default, and globalThis.process
-    // without the export aliases, and with properties that are not standalone
-    const allKeys = new Set<string>(Object.keys(all));
-    //TODO
-    //Remove on 1.0
-    //Kept for backwars compatibility with std `import { process }`
-    allKeys.delete("process");
-    // without esm default
-    allKeys.delete("default");
-    // with on, stdin, stderr, and stdout, which is not exported via *
-    allKeys.add("on");
-    allKeys.add("stdin");
-    allKeys.add("stderr");
-    allKeys.add("stdout");
-    const allStr = Array.from(allKeys).sort().join(" ");
-    assertEquals(Object.keys(all.default).sort().join(" "), allStr);
-    assertEquals(Object.keys(all.process).sort().join(" "), allStr);
-    assertEquals(Object.keys(process).sort().join(" "), allStr);
-  },
-});
-
-Deno.test({
   name: "process.cwd and process.chdir success",
   fn() {
     assertEquals(process.cwd(), Deno.cwd());
@@ -114,6 +90,16 @@ Deno.test({
       Error,
       "implemented",
     );
+
+    let triggered = false;
+    process.on("exit", () => {
+      triggered = true;
+    });
+    process.emit("exit");
+    assert(triggered);
+
+    //TODO(Soremwar)
+    //Add proper process exit case
   },
 });
 

@@ -28,6 +28,15 @@ export const pid = process.pid;
 /** https://nodejs.org/api/process.html#process_process_platform */
 export const platform = process.platform;
 
+/** https://nodejs.org/api/process.html#process_process_stderr */
+export const stderr = process.stderr;
+
+/** https://nodejs.org/api/process.html#process_process_stdin */
+export const stdin = process.stdin;
+
+/** https://nodejs.org/api/process.html#process_process_stdout */
+export const stdout = process.stdout;
+
 /** https://nodejs.org/api/process.html#process_process_version */
 export const version = process.version;
 
