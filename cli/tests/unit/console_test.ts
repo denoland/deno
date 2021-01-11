@@ -839,7 +839,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     () => stringify(new A()),
     Error,
     "BOOM",
-    "Custom inspect won't attempt to parse if user defined function throws"
+    "Custom inspect won't attempt to parse if user defined function throws",
   );
 
   class B {
