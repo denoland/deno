@@ -4,6 +4,7 @@
   const core = window.Deno.core;
   const exposeForTest = window.__bootstrap.internals.exposeForTest;
   const colors = window.__bootstrap.colors;
+  const { PermissionDenied } = window.__bootstrap.errors;
 
   function isInvalidDate(x) {
     return isNaN(x.getTime());
@@ -190,11 +191,7 @@
 
   function inspectFunction(value, _ctx) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      try {
-        return String(value[customInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[customInspect]());
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
@@ -865,11 +862,7 @@
     inspectOptions,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      try {
-        return String(value[customInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[customInspect]());
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in op_crates/web we don't want to depend on unique "Deno.customInspect"
@@ -880,11 +873,7 @@
       nonUniqueCustomInspect in value &&
       typeof value[nonUniqueCustomInspect] === "function"
     ) {
-      try {
-        return String(value[nonUniqueCustomInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[nonUniqueCustomInspect]());
     }
     if (value instanceof Error) {
       return String(value.stack);
