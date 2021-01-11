@@ -8,6 +8,7 @@
 use lspower::lsp_types::ClientCapabilities;
 use lspower::lsp_types::CompletionOptions;
 use lspower::lsp_types::HoverProviderCapability;
+use lspower::lsp_types::ImplementationProviderCapability;
 use lspower::lsp_types::OneOf;
 use lspower::lsp_types::SaveOptions;
 use lspower::lsp_types::ServerCapabilities;
@@ -50,7 +51,9 @@ pub fn server_capabilities(
     declaration_provider: None,
     definition_provider: Some(OneOf::Left(true)),
     type_definition_provider: None,
-    implementation_provider: None,
+    implementation_provider: Some(ImplementationProviderCapability::Simple(
+      true,
+    )),
     references_provider: Some(OneOf::Left(true)),
     document_highlight_provider: Some(OneOf::Left(true)),
     document_symbol_provider: None,

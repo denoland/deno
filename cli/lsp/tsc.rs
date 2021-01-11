@@ -413,6 +413,66 @@ impl QuickInfo {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DocumentSpan {
+  text_span: TextSpan,
+  pub file_name: String,
+  original_text_span: Option<TextSpan>,
+  original_file_name: Option<String>,
+  context_span: Option<TextSpan>,
+  original_context_span: Option<TextSpan>,
+}
+
+impl DocumentSpan {
+  pub async fn to_link<F, Fut>(
+    &self,
+    line_index: &[u32],
+    index_provider: F,
+  ) -> Option<lsp_types::LocationLink>
+  where
+    F: Fn(ModuleSpecifier) -> Fut,
+    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
+  {
+    let target_specifier =
+      ModuleSpecifier::resolve_url(&self.file_name).unwrap();
+    if let Ok(target_line_index) = index_provider(target_specifier).await {
+      let target_uri = utils::normalize_file_name(&self.file_name).unwrap();
+      let (target_range, target_selection_range) =
+        if let Some(context_span) = &self.context_span {
+          (
+            context_span.to_range(&target_line_index),
+            self.text_span.to_range(&target_line_index),
+          )
+        } else {
+          (
+            self.text_span.to_range(&target_line_index),
+            self.text_span.to_range(&target_line_index),
+          )
+        };
+      let link = lsp_types::LocationLink {
+        origin_selection_range: Some(self.text_span.to_range(line_index)),
+        target_uri,
+        target_range,
+        target_selection_range,
+      };
+      Some(link)
+    } else {
+      None
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImplementationLocation {
+  #[serde(flatten)]
+  pub document_span: DocumentSpan,
+  // ImplementationLocation props
+  kind: ScriptElementKind,
+  display_parts: Vec<SymbolDisplayPart>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenameLocation {
   // inherit from DocumentSpan
   text_span: TextSpan,
@@ -519,12 +579,9 @@ pub struct DefinitionInfo {
   name: String,
   container_kind: Option<ScriptElementKind>,
   container_name: Option<String>,
-  text_span: TextSpan,
-  pub file_name: String,
-  original_text_span: Option<TextSpan>,
-  original_file_name: Option<String>,
-  context_span: Option<TextSpan>,
-  original_context_span: Option<TextSpan>,
+
+  #[serde(flatten)]
+  pub document_span: DocumentSpan,
 }
 
 #[derive(Debug, Deserialize)]
@@ -541,34 +598,14 @@ impl DefinitionInfoAndBoundSpan {
     index_provider: F,
   ) -> Option<lsp_types::GotoDefinitionResponse>
   where
-    F: Fn(ModuleSpecifier) -> Fut,
+    F: Fn(ModuleSpecifier) -> Fut + Clone,
     Fut: Future<Output = Result<Vec<u32>, AnyError>>,
   {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp_types::LocationLink>::new();
       for di in definitions {
-        let target_specifier =
-          ModuleSpecifier::resolve_url(&di.file_name).unwrap();
-        if let Ok(target_line_index) = index_provider(target_specifier).await {
-          let target_uri = utils::normalize_file_name(&di.file_name).unwrap();
-          let (target_range, target_selection_range) =
-            if let Some(context_span) = &di.context_span {
-              (
-                context_span.to_range(&target_line_index),
-                di.text_span.to_range(&target_line_index),
-              )
-            } else {
-              (
-                di.text_span.to_range(&target_line_index),
-                di.text_span.to_range(&target_line_index),
-              )
-            };
-          location_links.push(lsp_types::LocationLink {
-            origin_selection_range: Some(self.text_span.to_range(line_index)),
-            target_uri,
-            target_range,
-            target_selection_range,
-          });
+        if let Some(link) = di.document_span.to_link(line_index, index_provider.clone()).await {
+          location_links.push(link);
         }
       }
       Some(lsp_types::GotoDefinitionResponse::Link(location_links))
@@ -1134,6 +1171,8 @@ pub enum RequestMethod {
   GetDefinition((ModuleSpecifier, u32)),
   /// Get completion information at a given position (IntelliSense).
   GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  /// Get implementation information for a specific position.
+  GetImplementation((ModuleSpecifier, u32)),
   /// Get rename locations at a given position.
   FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
 }
@@ -1194,6 +1233,12 @@ impl RequestMethod {
           "preferences": preferences,
         })
       }
+      RequestMethod::GetImplementation((specifier, position)) => json!({
+          "id": id,
+          "method": "getImplementation",
+          "specifier": specifier,
+          "position": position,
+      }),
       RequestMethod::FindRenameLocations((
         specifier,
         position,
