@@ -3,7 +3,6 @@
 
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
-import * as all from "./process.ts";
 import { argv, env } from "./process.ts";
 import { delay } from "../async/delay.ts";
 import "./global.ts";
@@ -112,7 +111,10 @@ Deno.test({
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
       "deno included in the file name of argv[0]",
     );
-    // we cannot test for anything else (we see test runner arguments here)
+    assertEquals(
+      process.argv[1],
+      path.fromFileUrl(Deno.mainModule),
+    );
   },
 });
 

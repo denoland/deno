@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import processModule from "./_process.ts";
+import processModule from "./process.ts";
 import { Buffer as bufferModule } from "./buffer.ts";
 import timers from "./timers.ts";
 
