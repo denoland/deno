@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
 //! https://chromedevtools.github.io/devtools-protocol/

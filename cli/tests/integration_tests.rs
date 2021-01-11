@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::serde_json;
