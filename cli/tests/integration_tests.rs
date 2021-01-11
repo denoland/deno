@@ -5283,6 +5283,7 @@ fn web_platform_tests() {
           .arg("-A")
           .arg(file.path())
           .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
+          .arg("--quiet")
           .stdin(std::process::Stdio::piped())
           .spawn()
           .unwrap();
