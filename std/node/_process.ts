@@ -24,7 +24,7 @@ const notImplementedEvents = [
 ];
 
 class Process extends EventEmitter {
-  constructor(){
+  constructor() {
     super();
 
     //This causes the exit event to be binded to the unload event
@@ -79,14 +79,14 @@ class Process extends EventEmitter {
       queueMicrotask(cb);
     }
   }
-  
+
   /** https://nodejs.org/api/process.html#process_process_events */
   //deno-lint-ignore ban-types
   on(event: typeof notImplementedEvents[number], listener: Function): never;
   on(event: "exit", listener: (code: number) => void): this;
   //deno-lint-ignore no-explicit-any
   on(event: string, listener: (...args: any[]) => void): this {
-    if(notImplementedEvents.includes(event)){
+    if (notImplementedEvents.includes(event)) {
       notImplemented();
     }
 
@@ -105,17 +105,20 @@ class Process extends EventEmitter {
     notImplemented();
   }
 
-  //deno-lint-ignore ban-types
-  removeListener(event: typeof notImplementedEvents[number], listener: Function): never;
+  removeListener(
+    event: typeof notImplementedEvents[number],
+    //deno-lint-ignore ban-types
+    listener: Function,
+  ): never;
   removeListener(event: "exit", listener: (code: number) => void): this;
   //deno-lint-ignore no-explicit-any
   removeListener(event: string, listener: (...args: any[]) => void): this {
-    if(notImplementedEvents.includes(event)){
+    if (notImplementedEvents.includes(event)) {
       notImplemented();
     }
 
     super.removeListener("exit", listener);
-    
+
     return this;
   }
 
@@ -197,7 +200,7 @@ class Process extends EventEmitter {
 }
 
 /** https://nodejs.org/api/process.html#process_process */
-const process = new Process;
+const process = new Process();
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
