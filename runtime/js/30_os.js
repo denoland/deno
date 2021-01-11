@@ -24,6 +24,9 @@
   }
 
   function exit(code = 0) {
+    // Invokes the `unload` hooks before exiting
+    // ref: https://github.com/denoland/deno/issues/3603
+    window.dispatchEvent(new Event("unload"));
     core.jsonOpSync("op_exit", { code });
     throw new Error("Code not reachable");
   }
