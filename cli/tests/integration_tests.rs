@@ -2632,7 +2632,7 @@ itest!(_077_fetch_empty {
 });
 
 itest!(_078_unload_on_exit {
-  args: "run -A 078_unload_on_exit.ts",
+  args: "run 078_unload_on_exit.ts",
   output: "078_unload_on_exit.ts.out",
 });
 
