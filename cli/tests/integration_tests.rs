@@ -1488,7 +1488,7 @@ fn wait_for_process_finished(
 }
 
 #[test]
-#[ignore]
+//#[ignore]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1569,6 +1569,21 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Update the content of the imported file with invalid syntax
+  std::fs::write(&another_file, "syntax error ^^").expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Modify the imported file and make sure that restarting occurs
+  std::fs::write(&another_file, "export const foo = 'modified!';")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("modified!"));
   wait_for_process_finished("Process", &mut stderr_lines);
 
   // the watcher process is still alive
