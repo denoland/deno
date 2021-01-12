@@ -143,11 +143,7 @@ fn op_close(
   args: Value,
   _buf: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let rid: u32 = args
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
+  let rid: u32 = args.as_u64().unwrap().try_into().unwrap();
   debug!("close rid={}", rid);
   state
     .resource_table
@@ -161,11 +157,7 @@ async fn op_accept(
   args: Value,
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid: u32 = args
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
+  let rid: u32 = args.as_u64().unwrap().try_into().unwrap();
   debug!("accept rid={}", rid);
 
   let listener = state
@@ -184,11 +176,7 @@ async fn op_read(
   mut bufs: BufVec,
 ) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  let rid: u32 = args
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
+  let rid: u32 = args.as_u64().unwrap().try_into().unwrap();
   debug!("read rid={}", rid);
 
   let stream = state
@@ -206,11 +194,7 @@ async fn op_write(
   bufs: BufVec,
 ) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  let rid: u32 = args
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
+  let rid: u32 = args.as_u64().unwrap().try_into().unwrap();
   debug!("write rid={}", rid);
 
   let stream = state
