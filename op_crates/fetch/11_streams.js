@@ -51,7 +51,7 @@
 
     /** @returns {"pending" | "fulfilled"} */
     get state() {
-      return this.state;
+      return this.#state;
     }
 
     /** @param {any=} reason */
@@ -73,6 +73,120 @@
     }
   }
 
+  /**
+   * @param {(...args: any[]) => any} fn 
+   * @param {boolean} enforcePromise 
+   * @returns {(...args: any[]) => any}
+   */
+  function reflectApply(fn, enforcePromise) {
+    if (typeof fn !== "function") {
+      throw new TypeError("The property must be a function.");
+    }
+    return function (...args) {
+      if (enforcePromise) {
+        try {
+          return resolvePromiseWith(Reflect.apply(fn, this, args));
+        } catch (err) {
+          return Promise.reject(err);
+        }
+      }
+      return Reflect.apply(fn, this, args);
+    };
+  }
+
+  /**
+   * @template I
+   * @template O
+   * @param {Transformer<I, O>} transformer 
+   * @returns {Transformer<I, O>}
+   */
+  function convertTransformer(transformer) {
+    const transformerDict = Object.create(null);
+    if (transformer === null) {
+      return transformerDict;
+    }
+    if ("flush" in transformer) {
+      transformerDict.flush = reflectApply(transformer.flush, true);
+    }
+    if ("readableType" in transformer) {
+      transformerDict.readableType = transformer.readableType;
+    }
+    if ("start" in transformer) {
+      transformerDict.start = reflectApply(transformer.start, false);
+    }
+    if ("transform" in transformer) {
+      transformerDict.transform = reflectApply(transformer.transform, true);
+    }
+    if ("writableType" in transformer) {
+      transformerDict.writableType = transformer.writableType;
+    }
+    return transformerDict;
+  }
+
+  /**
+   * @template W
+   * @param {UnderlyingSink<W>} underlyingSink 
+   * @returns {UnderlyingSink<W>}
+   */
+  function convertUnderlyingSink(underlyingSink) {
+    const underlyingSinkDict = Object.create(null);
+    if (underlyingSink === null) {
+      return underlyingSinkDict;
+    }
+    if ("abort" in underlyingSink) {
+      underlyingSinkDict.abort = reflectApply(underlyingSink.abort, true);
+    }
+    if ("close" in underlyingSink) {
+      underlyingSinkDict.close = reflectApply(underlyingSink.close, true);
+    }
+    if ("start" in underlyingSink) {
+      underlyingSinkDict.start = reflectApply(underlyingSink.start, false);
+    }
+    if (underlyingSink.type) {
+      underlyingSinkDict.type = underlyingSink.type;
+    }
+    if ("write" in underlyingSink) {
+      underlyingSinkDict.write = reflectApply(underlyingSink.write, true);
+    }
+    return underlyingSinkDict;
+  }
+
+  /**
+   * @template R
+   * @param {UnderlyingSource<R>} underlyingSource 
+   * @returns {UnderlyingSource<R>}
+   */
+  function convertUnderlyingSource(underlyingSource) {
+    const underlyingSourceDict = Object.create(null);
+    if (underlyingSource === null) {
+      throw new TypeError("Underlying source cannot be null");
+    }
+    if (underlyingSource === undefined) {
+      return underlyingSourceDict;
+    }
+    if ("cancel" in underlyingSource) {
+      underlyingSourceDict.cancel = reflectApply(underlyingSource.cancel, true);
+    }
+    if ("pull" in underlyingSource) {
+      underlyingSourceDict.pull = reflectApply(underlyingSource.pull, true);
+    }
+    if ("start" in underlyingSource) {
+      underlyingSourceDict.start = reflectApply(underlyingSource.start, false);
+    }
+    if (underlyingSource.type !== undefined) {
+      if (underlyingSourceDict.type === null) {
+        throw new TypeError("type cannot be null");
+      }
+      const type = String(underlyingSource.type);
+      if (type !== "bytes") {
+        throw new TypeError("invalid underlying source type");
+      }
+      underlyingSourceDict.type = type;
+    }
+    return underlyingSourceDict;
+  }
+
+  const originalPromise = Promise;
   const originalPromiseThen = Promise.prototype.then;
 
   /**
@@ -88,11 +202,20 @@
     return originalPromiseThen.call(promise, onFulfilled, onRejected);
   }
 
+  /**
+   * @template T
+   * @param {T | PromiseLike<T>} value 
+   * @returns {Promise<T>}
+   */
+  function resolvePromiseWith(value) {
+    return new originalPromise((resolve) => resolve(value));
+  }
+
   /** @param {any} e */
   function rethrowAssertionErrorRejection(e) {
     if (e && e instanceof AssertionError) {
       queueMicrotask(() => {
-        throw e;
+        console.error(`Internal Error: ${e.stack}`);
       });
     }
   }
@@ -295,9 +418,9 @@
     sizeAlgorithm,
   ) {
     assert(isNonNegativeNumber(highWaterMark));
-    const stream = new WritableStream();
+    const stream = Object.create(WritableStream.prototype);
     initializeWritableStream(stream);
-    const controller = new WritableStreamDefaultController();
+    const controller = Object.create(WritableStreamDefaultController.prototype);
     setUpWritableStreamDefaultController(
       stream,
       controller,
@@ -354,10 +477,10 @@
     if (!("highWaterMark" in strategy)) {
       return defaultHWM;
     }
-    const highWaterMark = strategy.highWaterMark;
+    const highWaterMark = Number(strategy.highWaterMark);
     if (Number.isNaN(highWaterMark) || highWaterMark < 0) {
       throw RangeError(
-        `Expected highWaterMark to be a positive number, got "${highWaterMark}".`,
+        `Expected highWaterMark to be a positive number or Infinity, got "${highWaterMark}".`,
       );
     }
     return highWaterMark;
@@ -369,10 +492,12 @@
    * @return {(chunk: T) => number}
    */
   function extractSizeAlgorithm(strategy) {
-    if (!("size" in strategy)) {
+    const { size } = strategy;
+
+    if (!size) {
       return () => 1;
     }
-    return (chunk) => strategy.size.call(strategy, chunk);
+    return (chunk) => size(chunk);
   }
 
   /**
@@ -403,16 +528,22 @@
     readableHighWaterMark,
     readableSizeAlgorithm,
   ) {
-    const startAlgorithm = () => startPromise.promise;
-    /** @type {(chunk: I) => Promise<void>} */
-    const writeAlgorithm = (chunk) =>
-      transformStreamDefaultSinkWriteAlgorithm(stream, chunk);
-    /** @type {(reason?: any) => Promise<void>} */
-    const abortAlgorithm = (reason) =>
-      transformStreamDefaultSinkAbortAlgorithm(stream, reason);
-    /** @type {() => Promise<void>} */
-    const closeAlgorithm = () =>
-      transformStreamDefaultSinkCloseAlgorithm(stream);
+    function startAlgorithm() {
+      return startPromise.promise;
+    }
+
+    function writeAlgorithm(chunk) {
+      return transformStreamDefaultSinkWriteAlgorithm(stream, chunk);
+    }
+
+    function abortAlgorithm(reason) {
+      return transformStreamDefaultSinkAbortAlgorithm(stream, reason);
+    }
+
+    function closeAlgorithm() {
+      return transformStreamDefaultSinkCloseAlgorithm(stream);
+    }
+
     stream[_writable] = createWritableStream(
       startAlgorithm,
       writeAlgorithm,
@@ -421,14 +552,16 @@
       writableHighWaterMark,
       writableSizeAlgorithm,
     );
-    /** @type {() => Promise<void>} */
-    const pullAlgorithm = () =>
-      transformStreamDefaultSourcePullAlgorithm(stream);
-    /** @type {(reason?: any) => Promise<void>} */
-    const cancelAlgorithm = (reason) => {
+
+    function pullAlgorithm() {
+      return transformStreamDefaultSourcePullAlgorithm(stream);
+    }
+
+    function cancelAlgorithm(reason) {
       transformStreamErrorWritableAndUnblockWrite(stream, reason);
-      return Promise.resolve(undefined);
-    };
+      return resolvePromiseWith(undefined);
+    }
+
     stream[_readable] = createReadableStream(
       startAlgorithm,
       pullAlgorithm,
@@ -436,6 +569,7 @@
       readableHighWaterMark,
       readableSizeAlgorithm,
     );
+
     stream[_backpressure] = stream[_backpressureChangePromise] = undefined;
     transformStreamSetBackpressure(stream, true);
     stream[_controller] = undefined;
@@ -496,6 +630,15 @@
   function isReadableStreamDefaultReader(value) {
     return !(typeof value !== "object" || value === null ||
       !(_readRequests in value));
+  }
+
+  /**
+   * @param {ReadableStream} stream 
+   * @returns {boolean}
+   */
+  function isReadableStreamDisturbed(stream) {
+    assert(isReadableStream(stream));
+    return stream[_disturbed];
   }
 
   /**
@@ -1637,7 +1780,7 @@
    * @template R
    * @param {ReadableStream<R>} stream 
    * @param {ReadableStreamDefaultController<R>} controller 
-   * @param {(controller: ReadableStreamDefaultController<R>) => void} startAlgorithm 
+   * @param {(controller: ReadableStreamDefaultController<R>) => void | Promise<void>} startAlgorithm 
    * @param {(controller: ReadableStreamDefaultController<R>) => Promise<void>} pullAlgorithm 
    * @param {(reason: any) => Promise<void>} cancelAlgorithm 
    * @param {number} highWaterMark 
@@ -1663,14 +1806,13 @@
     controller[_cancelAlgorithm] = cancelAlgorithm;
     stream[_controller] = controller;
     const startResult = startAlgorithm(controller);
-    const startPromise = Promise.resolve(startResult);
-    uponFulfillment(startPromise, () => {
+    const startPromise = resolvePromiseWith(startResult);
+    uponPromise(startPromise, () => {
       controller[_started] = true;
       assert(controller[_pulling] === false);
       assert(controller[_pullAgain] === false);
       readableStreamDefaultControllerCallPullIfNeeded(controller);
-    });
-    uponRejection(startPromise, (r) => {
+    }, (r) => {
       readableStreamDefaultControllerError(controller, r);
     });
   }
@@ -2049,6 +2191,7 @@
    * @template O
    * @param {TransformStream<I, O>} stream 
    * @param {I} chunk 
+   * @returns {Promise<void>}
    */
   function transformStreamDefaultSinkWriteAlgorithm(stream, chunk) {
     assert(stream[_writable][_state] === "writable");
@@ -2405,7 +2548,7 @@
   function writableStreamDefaultWriterAbort(writer, reason) {
     const stream = writer[_stream];
     assert(stream !== undefined);
-    return writableStreamAbort(stream);
+    return writableStreamAbort(stream, reason);
   }
 
   /**
@@ -2452,7 +2595,7 @@
       writer[_closedPromise] = new Deferred();
       writer[_closedPromise].reject(error);
     }
-    setPromiseIsHandledToTrue(writer[_readyPromise].promise);
+    setPromiseIsHandledToTrue(writer[_closedPromise].promise);
   }
 
   /** 
@@ -2756,6 +2899,13 @@
     next() {
       /** @type {ReadableStreamDefaultReader} */
       const reader = this[_reader];
+      if (reader[_stream] === undefined) {
+        return Promise.reject(
+          new TypeError(
+            "Cannot get the next iteration result once the reader has been released.",
+          ),
+        );
+      }
       /** @type {Deferred<IteratorResult<any>>} */
       const promise = new Deferred();
       /** @type {ReadRequest} */
@@ -2801,9 +2951,18 @@
     /** @type {number} */
     highWaterMark;
 
-    constructor({ highWaterMark }) {
+    /** @param {{ highWaterMark: number }} init */
+    constructor(init) {
+      if (
+        typeof init !== "object" || init === null || !("highWaterMark" in init)
+      ) {
+        throw new TypeError(
+          "init must be an object that contains a property named highWaterMark",
+        );
+      }
+      const { highWaterMark } = init;
       this[_globalObject] = window;
-      this.highWaterMark = highWaterMark;
+      this.highWaterMark = Number(highWaterMark);
     }
 
     /** @returns {(chunk: ArrayBufferView) => number} */
@@ -2829,10 +2988,18 @@
     /** @type {number} */
     highWaterMark;
 
-    /** @type {{ highWaterMark: number }} */
-    constructor({ highWaterMark }) {
+    /** @param {{ highWaterMark: number }} init */
+    constructor(init) {
+      if (
+        typeof init !== "object" || init === null || !("highWaterMark" in init)
+      ) {
+        throw new TypeError(
+          "init must be an object that contains a property named highWaterMark",
+        );
+      }
+      const { highWaterMark } = init;
       this[_globalObject] = window;
-      this.highWaterMark = highWaterMark;
+      this.highWaterMark = Number(highWaterMark);
     }
 
     /** @returns {(chunk: any) => 1} */
@@ -2874,8 +3041,8 @@
      * @param {UnderlyingSource<R>=} underlyingSource 
      * @param {QueuingStrategy<R>=} strategy 
      */
-    constructor(underlyingSource = null, strategy = {}) {
-      const underlyingSourceDict = { ...underlyingSource };
+    constructor(underlyingSource, strategy = {}) {
+      const underlyingSourceDict = convertUnderlyingSource(underlyingSource);
       initializeReadableStream(this);
       if (underlyingSourceDict.type === "bytes") {
         if (strategy.size !== undefined) {
@@ -2925,11 +3092,22 @@
      * @param {ReadableStreamGetReaderOptions=} options 
      * @returns {ReadableStreamDefaultReader<R>}
      */
-    getReader({ mode } = {}) {
+    getReader(options = {}) {
+      if (typeof options !== "object") {
+        throw new TypeError("options must be an object");
+      }
+      if (options === null) {
+        options = {};
+      }
+      /** @type {any} */
+      let { mode } = options;
       if (mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       }
-      assert(mode === "byob");
+      mode = String(mode);
+      if (mode !== "byob") {
+        throw new TypeError("Invalid mode.");
+      }
       // 3. Return ? AcquireReadableStreamBYOBReader(this).
       throw new RangeError(`Unsupported mode "${String(mode)}"`);
     }
@@ -3053,6 +3231,9 @@
 
     /** @param {ReadableStream<R>} stream */
     constructor(stream) {
+      if (!(stream instanceof ReadableStream)) {
+        throw new TypeError("stream is not a ReadableStream");
+      }
       super();
       setUpReadableStreamDefaultReader(this, stream);
     }
@@ -3283,7 +3464,7 @@
      */
     [_cancelSteps](reason) {
       resetQueue(this);
-      const result = this[_cancelAlgorithm]();
+      const result = this[_cancelAlgorithm](reason);
       readableStreamDefaultControllerClearAlgorithms(this);
       return result;
     }
@@ -3339,7 +3520,7 @@
       writableStrategy = {},
       readableStrategy = {},
     ) {
-      const transformerDict = { ...transformer };
+      const transformerDict = convertTransformer(transformer);
       if (transformerDict.readableType) {
         throw new RangeError("readableType transformers not supported.");
       }
@@ -3463,7 +3644,7 @@
      * @param {QueuingStrategy<W>=} strategy 
      */
     constructor(underlyingSink = null, strategy = {}) {
-      const underlyingSinkDict = { ...underlyingSink };
+      const underlyingSinkDict = convertUnderlyingSink(underlyingSink);
       if (underlyingSinkDict.type != null) {
         throw new RangeError(
           'WritableStream does not support "type" in the underlying sink.',
@@ -3667,6 +3848,9 @@
   }
 
   window.__bootstrap.streams = {
+    // Non-Public
+    isReadableStreamDisturbed,
+    // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
     CountQueuingStrategy,
     ReadableStream,

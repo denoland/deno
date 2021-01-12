@@ -43,3 +43,7 @@ interface VoidFunction {
 // ** Ambient Definitions and Interfaces not provided by fetch **
 
 declare function queueMicrotask(callback: VoidFunction): void;
+
+declare namespace Deno {
+  function inspect(value: unknown, options?: Record<string, unknown>): string;
+}

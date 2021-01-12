@@ -10,7 +10,7 @@ unitTest(function streamReadableHwmError() {
         new ReadableStream<number>(undefined, { highWaterMark });
       },
       RangeError,
-      "highWaterMark must be a positive number or Infinity.  Received:",
+      "Expected highWaterMark to be a positive number or Infinity, got ",
     );
   }
 
@@ -35,7 +35,7 @@ unitTest(function streamWriteableHwmError() {
         );
       },
       RangeError,
-      "highWaterMark must be a positive number or Infinity.  Received:",
+      "Expected highWaterMark to be a positive number or Infinity, got ",
     );
   }
 
@@ -57,7 +57,7 @@ unitTest(function streamTransformHwmError() {
         new TransformStream(undefined, undefined, { highWaterMark });
       },
       RangeError,
-      "highWaterMark must be a positive number or Infinity.  Received:",
+      "Expected highWaterMark to be a positive number or Infinity, got ",
     );
   }
 

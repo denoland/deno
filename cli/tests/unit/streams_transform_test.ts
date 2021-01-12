@@ -187,7 +187,7 @@ unitTest(async function transformStreamCanReadBothChunks() {
   assert(!result2.done, "stream should not be done");
 });
 
-unitTest(async function transformStreamCanReadWhatIsWritten() {
+unitTest(async function transformStreamCanReadWhatIsWritten2() {
   let c: TransformStreamDefaultController;
   const ts = new TransformStream({
     start(controller: TransformStreamDefaultController): void {
