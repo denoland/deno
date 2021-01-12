@@ -144,8 +144,6 @@ fn op_close(
   _buf: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let rid: u32 = args
-    .get("rid")
-    .unwrap()
     .as_u64()
     .unwrap()
     .try_into()
@@ -164,8 +162,6 @@ async fn op_accept(
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
   let rid: u32 = args
-    .get("rid")
-    .unwrap()
     .as_u64()
     .unwrap()
     .try_into()
@@ -189,8 +185,6 @@ async fn op_read(
 ) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   let rid: u32 = args
-    .get("rid")
-    .unwrap()
     .as_u64()
     .unwrap()
     .try_into()
@@ -213,8 +207,6 @@ async fn op_write(
 ) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   let rid: u32 = args
-    .get("rid")
-    .unwrap()
     .as_u64()
     .unwrap()
     .try_into()

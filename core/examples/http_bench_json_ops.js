@@ -11,13 +11,13 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  const { rid } = Deno.core.jsonOpSync("listen", {});
+  const { rid } = Deno.core.jsonOpSync("listen");
   return rid;
 }
 
 /** Accepts a connection, returns rid. */
 async function accept(serverRid) {
-  const { rid } = await Deno.core.jsonOpAsync("accept", { rid: serverRid });
+  const { rid } = await Deno.core.jsonOpAsync("accept", serverRid);
   return rid;
 }
 
@@ -26,18 +26,18 @@ async function accept(serverRid) {
  * Returns bytes read.
  */
 async function read(rid, data) {
-  const { nread } = await Deno.core.jsonOpAsync("read", { rid }, data);
+  const { nread } = await Deno.core.jsonOpAsync("read", rid, data);
   return nread;
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 async function write(rid, data) {
-  const { nwritten } = await Deno.core.jsonOpAsync("write", { rid }, data);
+  const { nwritten } = await Deno.core.jsonOpAsync("write", rid, data);
   return nwritten;
 }
 
 function close(rid) {
-  Deno.core.jsonOpSync("close", { rid });
+  Deno.core.jsonOpSync("close", rid);
 }
 
 async function serve(rid) {
