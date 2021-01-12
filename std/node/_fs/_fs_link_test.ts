@@ -1,15 +1,10 @@
-<<<<<<< HEAD
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertStringIncludes,
   fail,
 } from "../../testing/asserts.ts";
-=======
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "../../testing/asserts.ts";
->>>>>>> 36ff7bdf575e0547fabd8957ee778cc4224d5956
 import { link, linkSync } from "./_fs_link.ts";
 
 Deno.test({
