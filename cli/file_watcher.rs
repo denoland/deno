@@ -172,7 +172,7 @@ where
   let mut debounce = Debounce::new();
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.
-  let mut paths;
+  let mut paths = Vec::new();
   let mut module = None;
 
   loop {
@@ -185,7 +185,10 @@ where
         module = Some(module_info);
       }
       ModuleResolutionResult::Fail { source_path, error } => {
-        paths = vec![source_path];
+        if paths.is_empty() {
+          paths = vec![source_path];
+        }
+
         if module.is_none() {
           eprintln!("{}: {}", colors::red_bold("error"), error);
         }
