@@ -1805,7 +1805,7 @@ declare namespace Deno {
    */
   export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
 
-  /** Shutdown socket send and receive operations.
+  /** Shutdown socket send operations.
    *
    * Matches behavior of POSIX shutdown(3).
    *
