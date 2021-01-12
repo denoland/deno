@@ -10,7 +10,6 @@ use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
-use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -219,19 +218,12 @@ where
   F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
   R: Future<Output = Result<Value, AnyError>> + 'static,
 {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct Params {
-    promise_id: u64,
-    args: Value,
-  }
   let try_dispatch_op =
     move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
-      let params: Params = serde_json::from_slice(&bufs[0])?;
-      let promise_id = params.promise_id;
+      let (promise_id, args): (u64, Value) = serde_json::from_slice(&bufs[0])?;
       let bufs = bufs[1..].into();
       use crate::futures::FutureExt;
-      let fut = op_fn(state.clone(), params.args, bufs).map(move |result| {
+      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
         json_serialize_op_result(
           Some(promise_id),
           result,
