@@ -430,7 +430,7 @@ pub fn run_web_worker(
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
-  let mut rt = create_basic_runtime();
+  let rt = create_basic_runtime();
 
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
