@@ -2646,6 +2646,11 @@ itest!(_077_fetch_empty {
   exit_code: 1,
 });
 
+itest!(_078_unload_on_exit {
+  args: "run 078_unload_on_exit.ts",
+  output: "078_unload_on_exit.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
