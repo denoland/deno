@@ -181,7 +181,7 @@ Deno.test("toReadableCheck", async function (): Promise<void> {
   const writableStream = readableStreamFromAsyncIterator(iter);
 
   const decoder = new TextDecoder();
-  for await (const chunk of writableStream.getIterator()) {
+  for await (const chunk of writableStream) {
     readChunks.push(decoder.decode(chunk));
   }
 

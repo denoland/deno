@@ -933,7 +933,12 @@
       }
       reader[_readRequests] = [];
     }
-    reader[_closedPromise].resolve(undefined);
+    // this is non-spec, but when using an async iterator to read, and there is
+    // a pending read request, the `closeSteps()` will resolve the close promise
+    // causing a promise to be already resolved here.
+    if (reader[_closedPromise].state === "pending") {
+      reader[_closedPromise].resolve(undefined);
+    }
   }
 
   /** @param {ReadableStreamDefaultController<any>} controller */
@@ -1148,9 +1153,8 @@
     // 3.5.6.8 Otherwise, support BYOB Reader
     /** @type {Deferred<void>} */
     const closedPromise = reader[_closedPromise];
+    console.log("closedPromise rejected");
     closedPromise.reject(e);
-    closedPromise.reject = undefined;
-    closedPromise.resolve = undefined;
     setPromiseIsHandledToTrue(closedPromise.promise);
   }
 
@@ -1523,11 +1527,17 @@
     assert(reader[_stream][_reader] === reader);
     if (reader[_stream][_state] === "readable") {
       reader[_closedPromise].reject(
-        new TypeError("ReadableStream is in a readable state."),
+        new TypeError(
+          "Reader was released and can no longer be used to monitor the stream's closedness.",
+        ),
       );
     } else {
       reader[_closedPromise] = new Deferred();
-      reader[_closedPromise].reject(new TypeError("Reading is closed."));
+      reader[_closedPromise].reject(
+        new TypeError(
+          "Reader was released and can no longer be used to monitor the stream's closedness.",
+        ),
+      );
     }
     setPromiseIsHandledToTrue(reader[_closedPromise].promise);
     reader[_stream][_reader] = undefined;
