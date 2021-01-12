@@ -200,24 +200,23 @@ SharedQueue Binary Layout
   const promiseTable = {};
 
   function processResponse(res) {
-    if ("ok" in res) {
-      return res.ok;
+    if ("err" in res) {
+      const ErrorClass = getErrorClass(res.err.className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw new ErrorClass(res.err.message);
     }
-    const ErrorClass = getErrorClass(res.err.className);
-    if (!ErrorClass) {
-      throw new Error(
-        `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-      );
-    }
-    throw new ErrorClass(res.err.message);
+    return res.ok;
   }
 
   async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
-    args.promiseId = nextPromiseId++;
-    const argsBuf = encodeJson(args);
-    dispatch(opName, argsBuf, ...zeroCopy);
+    const argsBuf = encodeJson({ promiseId: nextPromiseId++, args });
+    processResponse(dispatch(opName, argsBuf, ...zeroCopy));
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
