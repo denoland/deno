@@ -5114,6 +5114,16 @@ fn concat_bundle(
   let mut bundle_line_count = init.lines().count() as u32;
   let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
 
+  // In classic workers, `importScripts()` performs an actual import.
+  // However, we don't implement that function in Deno as we want to enforce
+  // the use of ES6 modules.
+  // To work around this, we:
+  // 1. Define `importScripts()` as a no-op (code below)
+  // 2. Capture its parameter from the source code and add it to the list of
+  // files to concatenate. (see `web_platform_tests()`)
+  bundle.push_str("function importScripts() {}\n");
+  bundle_line_count += 1;
+
   for (path, text) in files {
     let path = std::fs::canonicalize(path).unwrap();
     let url = url::Url::from_file_path(path).unwrap().to_string();
@@ -5209,7 +5219,9 @@ fn web_platform_tests() {
       .filter(|e| e.file_type().is_file())
       .filter(|f| {
         let filename = f.file_name().to_str().unwrap();
-        filename.ends_with(".any.js") || filename.ends_with(".window.js")
+        filename.ends_with(".any.js")
+          || filename.ends_with(".window.js")
+          || filename.ends_with(".worker.js")
       })
       .filter_map(|f| {
         let path = f
@@ -5246,7 +5258,21 @@ fn web_platform_tests() {
       let imports: Vec<(PathBuf, String)> = test_file_text
         .split('\n')
         .into_iter()
-        .filter_map(|t| t.strip_prefix("// META: script="))
+        .filter_map(|t| {
+          // Hack: we don't implement `importScripts()`, and instead capture the
+          // parameter in source code; see `concat_bundle()` for more details.
+          if let Some(rest_import_scripts) = t.strip_prefix("importScripts(\"")
+          {
+            if let Some(import_path) = rest_import_scripts.strip_suffix("\");")
+            {
+              // The code in `testharness.js` silences the test outputs.
+              if import_path != "/resources/testharness.js" {
+                return Some(import_path);
+              }
+            }
+          }
+          t.strip_prefix("// META: script=")
+        })
         .map(|s| {
           let s = if s == "/resources/WebIDLParser.js" {
             "/resources/webidl2/lib/webidl2.js"
