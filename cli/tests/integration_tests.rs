@@ -3600,6 +3600,7 @@ fn no_validate_asm() {
 }
 
 #[test]
+#[ignore]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
@@ -3643,6 +3644,7 @@ fn cafile_fetch() {
 }
 
 #[test]
+#[ignore]
 fn cafile_install_remote_module() {
   let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
