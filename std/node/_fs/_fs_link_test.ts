@@ -68,7 +68,8 @@ Deno.test("[std/node/fs] link callback isn't called twice if error is thrown", a
   const importUrl = new URL("./_fs_link.ts", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { link } from ${JSON.stringify(importUrl)}`,
-    invocation: `link(${JSON.stringify(tempFile)}, ${JSON.stringify(linkFile)}, `,
+    invocation: `link(${JSON.stringify(tempFile)}, 
+                      ${JSON.stringify(linkFile)}, `,
     async cleanup() {
       await Deno.remove(tempDir, { recursive: true });
     },
