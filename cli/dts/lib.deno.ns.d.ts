@@ -1710,13 +1710,6 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
-     * callers should just use `close()`.
-     *
-     * **Unstable** because of lack of testing and because Deno.shutdown is also
-     * unstable.
-     * */
-    closeWrite(): void;
   }
 
   export interface ListenOptions {
@@ -1808,6 +1801,18 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+
+  /** Shutdown socket send and receive operations.
+   *
+   * Matches behavior of POSIX shutdown(3).
+   *
+   * ```ts
+   * const listener = Deno.listen({ port: 80 });
+   * const conn = await listener.accept();
+   * Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   * ```
+   */
+  export function shutdown(rid: number): Promise<void>;
 
   export interface Metrics {
     opsDispatched: number;

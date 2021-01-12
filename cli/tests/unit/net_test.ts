@@ -515,66 +515,6 @@ unitTest(
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
-    perms: { net: true },
-  },
-  async function netCloseWriteSuccess() {
-    const addr = { hostname: "127.0.0.1", port: 3500 };
-    const listener = Deno.listen(addr);
-    const closeDeferred = deferred();
-    listener.accept().then(async (conn) => {
-      await conn.write(new Uint8Array([1, 2, 3]));
-      await closeDeferred;
-      conn.close();
-    });
-    const conn = await Deno.connect(addr);
-    conn.closeWrite(); // closing write
-    const buf = new Uint8Array(1024);
-    // Check read not impacted
-    const readResult = await conn.read(buf);
-    assertEquals(3, readResult);
-    assertEquals(1, buf[0]);
-    assertEquals(2, buf[1]);
-    assertEquals(3, buf[2]);
-    // Check write should be closed
-    await assertThrowsAsync(async () => {
-      await conn.write(new Uint8Array([1, 2, 3]));
-    }, Deno.errors.BrokenPipe);
-    closeDeferred.resolve();
-    listener.close();
-    conn.close();
-  },
-);
-
-unitTest(
-  {
-    // FIXME(bartlomieju)
-    ignore: true,
-    perms: { net: true },
-  },
-  async function netDoubleCloseWrite() {
-    const addr = { hostname: "127.0.0.1", port: 3500 };
-    const listener = Deno.listen(addr);
-    const closeDeferred = deferred();
-    listener.accept().then(async (conn) => {
-      await closeDeferred;
-      conn.close();
-    });
-    const conn = await Deno.connect(addr);
-    conn.closeWrite(); // closing write
-    assertThrows(() => {
-      // Duplicated close should throw error
-      conn.closeWrite();
-    }, Deno.errors.NotConnected);
-    closeDeferred.resolve();
-    listener.close();
-    conn.close();
-  },
-);
-
-unitTest(
-  {
     perms: { net: true },
   },
   async function netHangsOnClose() {

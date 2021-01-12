@@ -588,7 +588,6 @@ Deno.test({
         "PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nzzzzzzz\r\nhello",
       ),
     );
-    await conn.closeWrite();
     const responseString = decode(await Deno.readAll(conn));
     assertEquals(
       responseString,
@@ -619,7 +618,6 @@ Deno.test({
       conn,
       encode("PUT / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHello"),
     );
-    conn.closeWrite();
     const responseString = decode(await Deno.readAll(conn));
     assertEquals(
       responseString,
