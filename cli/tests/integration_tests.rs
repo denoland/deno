@@ -3621,6 +3621,7 @@ fn cafile_env_fetch() {
 }
 
 #[test]
+#[ignore]
 fn cafile_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
