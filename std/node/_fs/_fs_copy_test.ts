@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertStringIncludes } from "../../testing/asserts.ts";
+import * as path from "../../path/mod.ts";
+import { assert } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { copyFile, copyFileSync } from "./_fs_copy.ts";
 import { existsSync } from "./_fs_exists.ts";
 
@@ -36,32 +38,16 @@ Deno.test("[std/node/fs] copyFile callback isn't called twice if error is thrown
   // So the only way to test this is to spawn a subprocess, and succeed if it has a non-zero exit code.
   // (assertThrowsAsync won't work because there's no way to catch the error.)
   const tempDir = await Deno.makeTempDir();
-  await Deno.writeTextFile(`${tempDir}/file1.txt`, "hello world");
-  const p = Deno.run({
-    cmd: [
-      Deno.execPath(),
-      "eval",
-      "--no-check",
-      `
-      import { copyFile } from "${
-        new URL("./_fs_copy.ts", import.meta.url).href
-      }";
-
-      copyFile(${JSON.stringify(`${tempDir}/file1.txt`)}, ${
-        JSON.stringify(`${tempDir}/file2.txt`)
-      }, (err) => {
-        // If the bug is present and the callback is called again with an error,
-        // don't throw another error, so if the subprocess fails we know it had the correct behaviour.
-        if (!err) throw new Error("success");
-      });`,
-    ],
-    stderr: "piped",
+  const tempFile1 = path.join(tempDir, "file1.txt");
+  const tempFile2 = path.join(tempDir, "file2.txt");
+  await Deno.writeTextFile(tempFile1, "hello world");
+  const importUrl = new URL("./_fs_copy.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { copyFile } from ${JSON.stringify(importUrl)}`,
+    invocation: `copyFile(${JSON.stringify(tempFile1)}, 
+                          ${JSON.stringify(tempFile2)}, `,
+    async cleanup() {
+      await Deno.remove(tempDir, { recursive: true });
+    },
   });
-  const status = await p.status();
-  const stderr = new TextDecoder().decode(await Deno.readAll(p.stderr));
-  p.close();
-  p.stderr.close();
-  await Deno.remove(tempDir, { recursive: true });
-  assert(!status.success);
-  assertStringIncludes(stderr, "Error: success");
 });

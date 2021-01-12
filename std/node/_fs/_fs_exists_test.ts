@@ -29,20 +29,16 @@ Deno.test("existsSyncFile", function () {
 });
 
 Deno.test("[std/node/fs] exists callback isn't called twice if error is thrown", async () => {
-  // The correct behaviour is not to catch any errors thrown,
-  // but that means there'll be an uncaught error and the test will fail.
-  // So the only way to test this is to spawn a subprocess, and succeed if it has a non-zero exit code.
-  // (assertThrowsAsync won't work because there's no way to catch the error.)
+  // This doesn't use `assertCallbackErrorUncaught()` because `exists()` doesn't return a standard node callback, which is what it expects.
   const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_exists.ts", import.meta.url);
   const p = Deno.run({
     cmd: [
       Deno.execPath(),
       "eval",
       "--no-check",
       `
-      import { exists } from "${
-        new URL("./_fs_exists.ts", import.meta.url).href
-      }";
+      import { exists } from ${JSON.stringify(importUrl)};
 
       exists(${JSON.stringify(tempFile)}, (exists) => {
         // If the bug is present and the callback is called again with false (meaning an error occured),
@@ -56,7 +52,7 @@ Deno.test("[std/node/fs] exists callback isn't called twice if error is thrown",
   const stderr = new TextDecoder().decode(await Deno.readAll(p.stderr));
   p.close();
   p.stderr.close();
-  await Deno.remove(tempFile, { recursive: true });
+  await Deno.remove(tempFile);
   assert(!status.success);
   assertStringIncludes(stderr, "Error: success");
 });

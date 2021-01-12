@@ -1,10 +1,5 @@
-import {
-  assert,
-  assertEquals,
-  assertNotEquals,
-  assertStringIncludes,
-  fail,
-} from "../../testing/asserts.ts";
+import { assertEquals, assertNotEquals, fail } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { readdir, readdirSync } from "./_fs_readdir.ts";
 import { join } from "../../path/mod.ts";
 
@@ -85,29 +80,12 @@ Deno.test("[std/node/fs] readdir callback isn't called twice if error is thrown"
   // So the only way to test this is to spawn a subprocess, and succeed if it has a non-zero exit code.
   // (assertThrowsAsync won't work because there's no way to catch the error.)
   const tempDir = await Deno.makeTempDir();
-  const p = Deno.run({
-    cmd: [
-      Deno.execPath(),
-      "eval",
-      "--no-check",
-      `
-      import { readdir } from "${
-        new URL("./_fs_readdir.ts", import.meta.url).href
-      }";
-
-      readdir(${JSON.stringify(tempDir)}, (err) => {
-        // If the bug is present and the callback is called again with an error,
-        // don't throw another error, so if the subprocess fails we know it had the correct behaviour.
-        if (!err) throw new Error("success");
-      });`,
-    ],
-    stderr: "piped",
+  const importUrl = new URL("./_fs_readdir.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { readdir } from ${JSON.stringify(importUrl)}`,
+    invocation: `readdir(${JSON.stringify(tempDir)}, `,
+    async cleanup() {
+      await Deno.remove(tempDir);
+    },
   });
-  const status = await p.status();
-  const stderr = new TextDecoder().decode(await Deno.readAll(p.stderr));
-  p.close();
-  p.stderr.close();
-  await Deno.remove(tempDir);
-  assert(!status.success);
-  assertStringIncludes(stderr, "Error: success");
 });
