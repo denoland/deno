@@ -1,7 +1,12 @@
 // deno-lint-ignore-file no-undef
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  fail,
+} from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { argv, env } from "./process.ts";
 import { delay } from "../async/delay.ts";
@@ -80,7 +85,7 @@ Deno.test({
 
 Deno.test({
   name: "process.on",
-  fn() {
+  async fn() {
     assertEquals(typeof process.on, "function");
     assertThrows(
       () => {
@@ -97,8 +102,32 @@ Deno.test({
     process.emit("exit");
     assert(triggered);
 
-    //TODO(Soremwar)
-    //Add proper process exit case
+    const cwd = path.dirname(path.fromFileUrl(import.meta.url));
+
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "run",
+        "./process_exit_test.ts",
+      ],
+      cwd,
+      stdout: "piped",
+    });
+
+    const decoder = new TextDecoder();
+    const rawOutput = await p.output();
+    assertEquals(
+      decoder
+        .decode(rawOutput)
+        .trim()
+        .replace(
+          //deno-lint-ignore no-control-regex
+          /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
+          "",
+        ),
+      "1\n2",
+    );
+    p.close();
   },
 });
 
