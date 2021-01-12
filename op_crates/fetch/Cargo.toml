@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-bytes = "1"
+bytes = "1.0.1"
 deno_core = { version = "0.75.0", path = "../../core" }
 reqwest = { version = "0.11.0", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.116", features = ["derive"] }

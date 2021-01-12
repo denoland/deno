@@ -13,18 +13,18 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-anyhow = "1.0.32"
-futures = "0.3.8"
-indexmap = "1.6.0"
+anyhow = "1.0.38"
+futures = "0.3.9"
+indexmap = "1.6.1"
 lazy_static = "1.4.0"
-libc = "0.2.77"
-log = "0.4.11"
+libc = "0.2.82"
+log = "0.4.13"
+pin-project = "1.0.4"
 rusty_v8 = "0.15.0"
-serde_json = { version = "1.0", features = ["preserve_order"] }
-serde = { version = "1.0", features = ["derive"] }
-smallvec = "1.4.2"
-url = { version = "2.2", features = ["serde"] }
-pin-project = "1.0.2"
+serde = { version = "1.0.116", features = ["derive"] }
+serde_json = { version = "1.0.61", features = ["preserve_order"] }
+smallvec = "1.6.1"
+url = { version = "2.2.0", features = ["serde"] }
 
 [[example]]
 name = "http_bench_bin_ops"
