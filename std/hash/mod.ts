@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import { Hash } from "./_wasm/hash.ts";
 import type { Hasher } from "./hasher.ts";

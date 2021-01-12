@@ -38,6 +38,8 @@ Some Web APIs are using ops under the hood, eg. `console`, `performance`.
   [Body](https://developer.mozilla.org/en-US/docs/Web/API/Body) and
   [Headers](https://developer.mozilla.org/en-US/docs/Web/API/Headers): modern
   Promise-based HTTP Request API.
+- [location](https://developer.mozilla.org/en-US/docs/Web/API/Window/location)
+  and [Location](https://developer.mozilla.org/en-US/docs/Web/API/Location).
 - [FormData](https://developer.mozilla.org/en-US/docs/Web/API/FormData): access
   to a `multipart/form-data` serialization.
 - [Performance](https://developer.mozilla.org/en-US/docs/Web/API/Performance):

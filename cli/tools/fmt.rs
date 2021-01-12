@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).

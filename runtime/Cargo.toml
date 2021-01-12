@@ -1,4 +1,4 @@
-# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_runtime"
@@ -22,6 +22,7 @@ deno_core = { path = "../core", version = "0.75.0" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.9.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.18.0" }
 deno_web = { path = "../op_crates/web", version = "0.26.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.1.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
@@ -32,6 +33,7 @@ deno_core = { path = "../core", version = "0.75.0" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.9.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.18.0" }
 deno_web = { path = "../op_crates/web", version = "0.26.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.1.0" }
 
 atty = "0.2.14"
 dlopen = "0.1.8"
@@ -55,7 +57,6 @@ sys-info = "0.7.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
 tokio-rustls = "0.14.1"
-tokio-tungstenite = "0.11.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 hyper = "0.13.9"
 webpki = "0.21.3"

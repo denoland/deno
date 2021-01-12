@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 type Writer = Deno.Writer;
 type WriterSync = Deno.WriterSync;
 import { decode, encode } from "../encoding/utf8.ts";

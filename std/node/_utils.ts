@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { deferred } from "../async/mod.ts";
 import { fail } from "../testing/asserts.ts";
 

@@ -1,0 +1,24 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_websocket"
+version = "0.1.0"
+edition = "2018"
+description = "Implementation of WebSocket API for Deno"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { version = "0.75.0", path = "../../core" }
+http = "0.2.1"
+tokio = { version = "0.2.22", features = ["full"] }
+tokio-rustls = "0.14.1"
+tokio-tungstenite = "0.11.0"
+serde = { version = "1.0.116", features = ["derive"] }
+webpki = "0.21.3"
+webpki-roots = "=0.19.0" # Pinned to v0.19.0 to match 'reqwest'.

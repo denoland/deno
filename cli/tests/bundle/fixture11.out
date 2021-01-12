@@ -1,6 +1,3 @@
-function a() {
-    console.log("a");
-}
 var O2;
 (function(O1) {
     O1[O1["A"] = 0] = "A";
@@ -8,6 +5,9 @@ var O2;
     O1[O1["C"] = 2] = "C";
 })(O2 || (O2 = {
 }));
+function a() {
+    console.log("a");
+}
 const O1 = O2;
 export { O1 as O };
 class A {
@@ -29,3 +29,4 @@ class A {
 const a2 = new A();
 a2.a();
 a2.c();
+const O3 = O2;

@@ -1,11 +1,10 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::ResolvedDependency;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::utils;
 
-use crate::js;
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
@@ -1025,7 +1024,7 @@ fn set_asset(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// server.
 pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(js::compiler_isolate_init()),
+    startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   });
 

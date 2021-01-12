@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function btoaSuccess(): void {
@@ -46,6 +46,21 @@ unitTest(function atobThrows2(): void {
     atob("aGVsbG8gd29ybGQ===");
   } catch (e) {
     threw = true;
+  }
+  assert(threw);
+});
+
+unitTest(function atobThrows3(): void {
+  let threw = false;
+  try {
+    atob("foobar!!");
+  } catch (e) {
+    if (
+      e instanceof DOMException &&
+      e.toString().startsWith("InvalidCharacterError:")
+    ) {
+      threw = true;
+    }
   }
   assert(threw);
 });

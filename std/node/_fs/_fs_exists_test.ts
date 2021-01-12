@@ -1,9 +1,14 @@
+<<<<<<< HEAD
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertStringIncludes,
 } from "../../testing/asserts.ts";
+=======
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import { assertEquals } from "../../testing/asserts.ts";
+>>>>>>> 36ff7bdf575e0547fabd8957ee778cc4224d5956
 import { exists, existsSync } from "./_fs_exists.ts";
 
 Deno.test("existsFile", async function () {

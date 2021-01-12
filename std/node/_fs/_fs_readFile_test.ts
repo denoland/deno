@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { readFile, readFileSync } from "./_fs_readFile.ts";
 import * as path from "../../path/mod.ts";
 import {

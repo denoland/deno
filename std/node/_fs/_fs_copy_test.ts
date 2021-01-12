@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertStringIncludes } from "../../testing/asserts.ts";
 import { copyFile, copyFileSync } from "./_fs_copy.ts";
 import { existsSync } from "./_fs_exists.ts";
