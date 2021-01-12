@@ -16,6 +16,7 @@ use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -321,7 +322,7 @@ pub async fn op_fetch_response_read(
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let mut buf = data[0].clone();
-  let read = (&mut *reader).read(&mut buf).or_cancel(cancel).await??;
+  let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
   Ok(json!({ "read": read }))
 }
 
