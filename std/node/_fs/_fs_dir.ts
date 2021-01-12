@@ -34,7 +34,7 @@ export default class Dir {
           }
         }, (err) => {
           if (callback) {
-            callback(err, null);
+            callback(err);
           }
           reject(err);
         });

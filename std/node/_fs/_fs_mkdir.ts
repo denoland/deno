@@ -39,7 +39,7 @@ export function mkdir(
   Deno.mkdir(path, { recursive, mode })
     .then(() => {
       if (typeof callback === "function") {
-        callback();
+        callback(null);
       }
     }, (err) => {
       if (typeof callback === "function") {

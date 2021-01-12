@@ -37,13 +37,13 @@ export type MaybeEmpty<T> = T | null | undefined;
 export function intoCallbackAPI<T>(
   // deno-lint-ignore no-explicit-any
   func: (...args: any[]) => Promise<T>,
-  cb: MaybeEmpty<(err: MaybeNull<Error>, value: MaybeEmpty<T>) => void>,
+  cb: MaybeEmpty<(err: MaybeNull<Error>, value?: MaybeEmpty<T>) => void>,
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): void {
   func(...args).then(
     (value) => cb && cb(null, value),
-    (err) => cb && cb(err, null),
+    (err) => cb && cb(err),
   );
 }
 
@@ -51,13 +51,13 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
   // deno-lint-ignore no-explicit-any
   func: (...args: any[]) => Promise<T1>,
   interceptor: (v: T1) => T2,
-  cb: MaybeEmpty<(err: MaybeNull<Error>, value: MaybeEmpty<T2>) => void>,
+  cb: MaybeEmpty<(err: MaybeNull<Error>, value?: MaybeEmpty<T2>) => void>,
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ): void {
   func(...args).then(
     (value) => cb && cb(null, interceptor(value)),
-    (err) => cb && cb(err, null),
+    (err) => cb && cb(err),
   );
 }
 

@@ -39,8 +39,7 @@ export default function randomBytes(
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
   if (typeof cb === "function") {
-    // deno-lint-ignore no-explicit-any
-    let err: any = null, bytes: Buffer;
+    let err: Error | null = null, bytes: Buffer;
     try {
       bytes = generateRandomBytes(size);
     } catch (e) {
@@ -56,7 +55,11 @@ export default function randomBytes(
       }
     }
     setTimeout(() => {
-      cb(err, bytes);
+      if (err) {
+        cb(err);
+      } else {
+        cb(null, bytes);
+      }
     }, 0);
   } else {
     return generateRandomBytes(size);

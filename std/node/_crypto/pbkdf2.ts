@@ -162,10 +162,10 @@ export function pbkdf2(
   iterations: number,
   keylen: number,
   digest: Algorithms = "sha1",
-  callback: ((err?: Error, derivedKey?: Buffer) => void),
+  callback: ((err: Error | null, derivedKey?: Buffer) => void),
 ): void {
   setTimeout(() => {
-    let err, res;
+    let err = null, res;
     try {
       res = pbkdf2Sync(
         password,
@@ -177,6 +177,10 @@ export function pbkdf2(
     } catch (e) {
       err = e;
     }
-    callback(err, res);
+    if (err) {
+      callback(err);
+    } else {
+      callback(null, res);
+    }
   }, 0);
 }

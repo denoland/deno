@@ -58,7 +58,7 @@ export function appendFile(
   })
     .then(() => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
-      callbackFn();
+      callbackFn(null);
     }, (err) => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn(err);

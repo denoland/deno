@@ -6,7 +6,7 @@ import {
   TextEncodings,
 } from "../_utils.ts";
 
-export type CallbackWithError = (err?: Error | null) => void;
+export type CallbackWithError = (err: Error | null) => void;
 
 export interface FileOptions {
   encoding?: Encodings;

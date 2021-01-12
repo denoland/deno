@@ -9,7 +9,7 @@ export function copyFile(
 ): void {
   source = source instanceof URL ? fromFileUrl(source) : source;
 
-  Deno.copyFile(source, destination).then(() => callback(), callback);
+  Deno.copyFile(source, destination).then(() => callback(null), callback);
 }
 
 export function copyFileSync(source: string | URL, destination: string): void {
