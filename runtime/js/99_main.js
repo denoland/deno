@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
@@ -244,6 +244,11 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
   };
+
+  // The console seems to be the only one that should be writable and non-enumerable
+  // thus we don't have a unique helper for it. If other properties follow the same
+  // structure, it might be worth it to define a helper in `util`
+  windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
     Window: globalInterfaces.windowConstructorDescriptor,

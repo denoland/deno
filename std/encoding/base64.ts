@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // deno-fmt-ignore
 const base64abc = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", 

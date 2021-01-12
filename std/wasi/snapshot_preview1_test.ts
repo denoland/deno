@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import Context from "./snapshot_preview1.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";

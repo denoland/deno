@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ///!
 ///! Provides information about what capabilities that are supported by the
@@ -67,10 +67,11 @@ pub fn server_capabilities(
     color_provider: None,
     execute_command_provider: None,
     call_hierarchy_provider: None,
-    on_type_rename_provider: None,
     semantic_highlighting: None,
     semantic_tokens_provider: None,
     workspace: None,
     experimental: None,
+    linked_editing_range_provider: None,
+    moniker_provider: None,
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::io::StreamResource;
 use super::io::TcpStreamResource;
@@ -303,6 +303,7 @@ fn op_listen_tls(
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
   let std_listener = std::net::TcpListener::bind(&addr)?;
+  std_listener.set_nonblocking(true)?;
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let tls_listener_resource = TlsListenerResource {
@@ -341,7 +342,7 @@ async fn op_accept_tls(
     .resource_table
     .get::<TlsListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
-  let mut listener = RcRef::map(&resource, |r| &r.listener)
+  let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);

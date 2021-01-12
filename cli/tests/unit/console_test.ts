@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -313,7 +313,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(
     stringify(console),
-    `{
+    `console {
   log: [Function: log],
   debug: [Function: log],
   info: [Function: log],
@@ -334,6 +334,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   clear: [Function: clear],
   trace: [Function: trace],
   indentLevel: 0,
+  [Symbol(Symbol.toStringTag)]: "console",
   [Symbol(isConsoleInstance)]: true
 }`,
   );
