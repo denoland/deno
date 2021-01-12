@@ -1571,6 +1571,21 @@ fn run_watch() {
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
 
+  // Update the content of the imported file with invalid syntax
+  std::fs::write(&another_file, "syntax error ^^").expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Modify the imported file and make sure that restarting occurs
+  std::fs::write(&another_file, "export const foo = 'modified!';")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("modified!"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
   // the watcher process is still alive
   assert!(child.try_wait().unwrap().is_none());
 
@@ -2629,6 +2644,11 @@ itest!(_077_fetch_empty {
   args: "run -A 077_fetch_empty.ts",
   output: "077_fetch_empty.ts.out",
   exit_code: 1,
+});
+
+itest!(_078_unload_on_exit {
+  args: "run 078_unload_on_exit.ts",
+  output: "078_unload_on_exit.ts.out",
 });
 
 itest!(js_import_detect {
