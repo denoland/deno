@@ -283,6 +283,7 @@ Deno.test("[ws] ws.close() should use 1000 as close code", async () => {
 function dummyConn(r: Deno.Reader, w: Deno.Writer): Deno.Conn {
   return {
     rid: -1,
+    closeWrite: (): void => {},
     read: (x: Uint8Array): Promise<number | null> => r.read(x),
     write: (x: Uint8Array): Promise<number> => w.write(x),
     close: (): void => {},

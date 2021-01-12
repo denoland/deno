@@ -226,7 +226,7 @@ export async function reportToConn(
   const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
   await Deno.writeAll(conn, encodedMsg);
   if (message.end != null) {
-    conn.close();
+    conn.closeWrite();
   }
 }
 

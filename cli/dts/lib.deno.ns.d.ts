@@ -1710,6 +1710,9 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
+    /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
+     * callers should just use `close()`. */
+    closeWrite(): void;
   }
 
   export interface ListenOptions {

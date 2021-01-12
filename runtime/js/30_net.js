@@ -66,6 +66,10 @@
     close() {
       core.close(this.rid);
     }
+
+    closeWrite() {
+      shutdown(this.rid);
+    }
   }
 
   class Listener {
