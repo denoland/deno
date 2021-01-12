@@ -38,11 +38,16 @@ const _argv: {
   [key: number]: string;
 } = [];
 
-_argv[Deno.customInspect] = () => {
-  return Deno.inspect(getArguments(), {
-    colors: true,
-  });
-};
+Object.defineProperty(_argv, Deno.customInspect, {
+  enumerable: false,
+  configurable: false,
+  writable: false,
+  value: function () {
+    return Deno.inspect(getArguments(), {
+      colors: true,
+    });
+  },
+});
 
 /** https://nodejs.org/api/process.html#process_process_argv */
 export const argv: { [key: number]: string } = new Proxy(_argv, {
@@ -65,13 +70,22 @@ export const chdir = Deno.chdir;
 /** https://nodejs.org/api/process.html#process_process_cwd */
 export const cwd = Deno.cwd;
 
-const _env = {
-  [Deno.customInspect]: function () {
+//deno-lint-ignore ban-ts-comment
+//@ts-ignore
+const _env: {
+  [Deno.customInspect]: () => string;
+} = {};
+
+Object.defineProperty(_env, Deno.customInspect, {
+  enumerable: false,
+  configurable: false,
+  writable: false,
+  value: function () {
     return Deno.inspect(Deno.env.toObject(), {
       colors: true,
     });
   },
-};
+});
 
 /** https://nodejs.org/api/process.html#process_process_env */
 export const env: { [index: string]: string } = new Proxy(_env, {
