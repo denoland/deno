@@ -841,19 +841,6 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     "BOOM",
     "Custom inspect won't attempt to parse if user defined function throws",
   );
-
-  class B {
-    constructor(public field: { a: string }) {}
-    [customInspect](): string {
-      return this.field.a;
-    }
-  }
-
-  assertEquals(stringify(new B({ a: "a" })), "a");
-  assertEquals(
-    stringify(B.prototype),
-    "B { [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
-  );
 });
 
 unitTest(function consoleTestWithCustomInspectFunction(): void {
