@@ -1809,7 +1809,7 @@ declare namespace Deno {
    * ```ts
    * const listener = Deno.listen({ port: 80 });
    * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   * Deno.shutdown(conn.rid);
    * ```
    */
   export function shutdown(rid: number): Promise<void>;
