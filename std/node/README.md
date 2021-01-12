@@ -121,13 +121,17 @@ caught and call the callback again.
 The correct way to do it is like this:
 
 ```ts
-let err = null, value;
+let err, value;
 try {
   value = process();
 } catch (e) {
   err = e;
 }
-callback(err, value);
+if (err) {
+  callback(err); // Make sure arguments.length === 1
+} else {
+  callback(null, value);
+}
 ```
 
 It's not as clean, but prevents the callback being called twice.
