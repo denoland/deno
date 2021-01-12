@@ -434,6 +434,7 @@ fn listen_tcp(
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_listener = std::net::TcpListener::bind(&addr)?;
+  std_listener.set_nonblocking(true)?;
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = TcpListenerResource {
@@ -450,6 +451,7 @@ fn listen_udp(
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
+  std_socket.set_nonblocking(true)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {

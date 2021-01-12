@@ -303,6 +303,7 @@ fn op_listen_tls(
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
   let std_listener = std::net::TcpListener::bind(&addr)?;
+  std_listener.set_nonblocking(true)?;
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let tls_listener_resource = TlsListenerResource {
