@@ -1,15 +1,14 @@
 // deno-lint-ignore-file no-undef
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+import "./global.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { stripColor } from "../fmt/colors.ts";
 import * as path from "../path/mod.ts";
-import { argv, env } from "./process.ts";
 import { delay } from "../async/delay.ts";
-import "./global.ts";
-
-// NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
-// (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
+import {
+  env,
+} from "./process.ts";
 
 Deno.test({
   name: "process.cwd and process.chdir success",
@@ -124,7 +123,6 @@ Deno.test({
   name: "process.argv",
   fn() {
     assert(Array.isArray(process.argv));
-    assert(Array.isArray(argv));
     assert(
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
       "deno included in the file name of argv[0]",
@@ -144,9 +142,8 @@ Deno.test({
     assertEquals(typeof (process.env.HELLO), "string");
     assertEquals(process.env.HELLO, "WORLD");
 
-    // TODO(caspervonb) test the globals in a different setting (they're broken)
-    // assertEquals(typeof env.HELLO, "string");
-    // assertEquals(env.HELLO, "WORLD");
+    assertEquals(typeof env.HELLO, "string");
+    assertEquals(env.HELLO, "WORLD");
   },
 });
 

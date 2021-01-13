@@ -46,7 +46,10 @@ Object.defineProperty(_argv, Deno.customInspect, {
   },
 });
 
-/** https://nodejs.org/api/process.html#process_process_argv */
+/**
+ * https://nodejs.org/api/process.html#process_process_argv
+ * Read permissions are required in order to get the executable route
+ * */
 export const argv: { [key: number]: string } = new Proxy(_argv, {
   get(target, prop) {
     if (prop === Deno.customInspect) {
@@ -81,7 +84,10 @@ Object.defineProperty(_env, Deno.customInspect, {
   },
 });
 
-/** https://nodejs.org/api/process.html#process_process_env */
+/**
+ * https://nodejs.org/api/process.html#process_process_env
+ * Requires env permissions
+ * */
 export const env: { [index: string]: string } = new Proxy(_env, {
   get(target, prop) {
     if (prop === Deno.customInspect) {
@@ -150,7 +156,10 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#process_process_arch */
   arch = arch;
 
-  /** https://nodejs.org/api/process.html#process_process_argv */
+  /**
+   * https://nodejs.org/api/process.html#process_process_argv
+   * Read permissions are required in order to get the executable route
+   * */
   argv = argv;
 
   /** https://nodejs.org/api/process.html#process_process_chdir_directory */
@@ -162,7 +171,10 @@ class Process extends EventEmitter {
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = exit;
 
-  /** https://nodejs.org/api/process.html#process_process_env */
+  /**
+   * https://nodejs.org/api/process.html#process_process_env
+   * Requires env permissions
+   * */
   env = env;
 
   /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
@@ -296,6 +308,9 @@ Object.defineProperty(process, Symbol.toStringTag, {
 
 export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
+export const stderr = process.stderr;
+export const stdin = process.stdin;
+export const stdout = process.stdout;
 
 export default process;
 
