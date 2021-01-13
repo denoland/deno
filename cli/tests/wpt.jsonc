@@ -103,9 +103,7 @@
     {
       "name": "textdecoder-fatal.",
       // TODO(lucacasonato): enable when we support utf-16
-      "expectFail": [
-        "Fatal flag: utf-16le - truncated code unit"
-      ]
+      "expectFail": ["Fatal flag: utf-16le - truncated code unit"]
     },
     {
       "name": "textdecoder-ignorebom",
@@ -192,12 +190,8 @@
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "unsupported-encodings",
   ],
-  "dom": [
-    "abort/event"
-  ],
-  "hr-time": [
-    "monotonic-clock"
-  ],
+  "dom": ["abort/event"],
+  "hr-time": ["monotonic-clock"],
   "html": [
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
     "webappapis/microtask-queuing/queue-microtask.any",

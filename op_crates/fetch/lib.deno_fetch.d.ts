@@ -150,7 +150,6 @@ declare class ByteLengthQueuingStrategy
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(
     { writable, readable }: {
@@ -176,31 +175,6 @@ declare var ReadableStream: {
     underlyingSource?: UnderlyingSource<R>,
     strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
-};
-
-interface ReadableStreamBYOBReader {
-  readonly closed: Promise<void>;
-  cancel(reason?: any): Promise<void>;
-  read<T extends ArrayBufferView>(
-    view: T,
-  ): Promise<ReadableStreamReadResult<T>>;
-  releaseLock(): void;
-}
-
-declare var ReadableStreamBYOBReader: {
-  prototype: ReadableStreamBYOBReader;
-  new (): ReadableStreamBYOBReader;
-};
-
-interface ReadableStreamBYOBRequest {
-  readonly view: ArrayBufferView;
-  respond(bytesWritten: number): void;
-  respondWithNewView(view: ArrayBufferView): void;
-}
-
-declare var ReadableStreamBYOBRequest: {
-  prototype: ReadableStreamBYOBRequest;
-  new (): ReadableStreamBYOBRequest;
 };
 
 interface WritableStreamDefaultControllerCloseCallback {
@@ -247,11 +221,6 @@ declare var WritableStream: {
 interface WritableStreamDefaultController {
   error(error?: any): void;
 }
-
-declare var WritableStreamDefaultController: {
-  prototype: WritableStreamDefaultController;
-  new (): WritableStreamDefaultController;
-};
 
 /** This Streams API interface is the object returned by
  * WritableStream.getWriter() and once created locks the < writer to the
