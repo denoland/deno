@@ -149,13 +149,13 @@ pub unsafe fn v8_init() {
   let platform = v8::new_default_platform().unwrap();
   v8::V8::initialize_platform(platform);
   v8::V8::initialize();
-  // TODO(ry) This makes WASM compile synchronously. Eventually we should
-  // remove this to make it work asynchronously too. But that requires getting
-  // PumpMessageLoop and RunMicrotasks setup correctly.
-  // See https://github.com/denoland/deno/issues/2544
   let argv = vec![
     "".to_string(),
     "--wasm-test-streaming".to_string(),
+    // TODO(ry) This makes WASM compile synchronously. Eventually we should
+    // remove this to make it work asynchronously too. But that requires getting
+    // PumpMessageLoop and RunMicrotasks setup correctly.
+    // See https://github.com/denoland/deno/issues/2544
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
     "--no-validate-asm".to_string(),
