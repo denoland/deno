@@ -34,7 +34,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "PluginPermissionDescriptor",
   "ReadPermissionDescriptor",
   "RunPermissionDescriptor",
-  "ShutdownMode",
   "Signal",
   "SignalStream",
   "StartTlsOptions",

@@ -39,6 +39,13 @@ function shouldExpectFail(name) {
 
 window.add_result_callback(({ message, name, stack, status }) => {
   const expectFail = shouldExpectFail(name);
+  testResults.push({
+    name,
+    passed: status === 0,
+    expectFail,
+    message,
+    stack,
+  });
   let simpleMessage = `test ${name} ... `;
   switch (status) {
     case 0:
@@ -46,6 +53,10 @@ window.add_result_callback(({ message, name, stack, status }) => {
         simpleMessage += red("ok (expected fail)");
       } else {
         simpleMessage += green("ok");
+        if (Deno.args[1] == "--quiet") {
+          // don't print `ok` tests if --quiet is enabled
+          return;
+        }
       }
       break;
     case 1:
@@ -72,14 +83,6 @@ window.add_result_callback(({ message, name, stack, status }) => {
   }
 
   console.log(simpleMessage);
-
-  testResults.push({
-    name,
-    passed: status === 0,
-    expectFail,
-    message,
-    stack,
-  });
 });
 
 window.add_completion_callback((tests, harnessStatus) => {

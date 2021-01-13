@@ -569,6 +569,15 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getImplementation": {
+        return respond(
+          id,
+          languageService.getImplementationAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
       case "findRenameLocations": {
         return respond(
           id,

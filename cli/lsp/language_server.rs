@@ -11,6 +11,7 @@ use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
+use lspower::lsp_types::request::*;
 use lspower::lsp_types::*;
 use lspower::Client;
 use std::collections::HashMap;
@@ -888,6 +889,69 @@ impl lspower::LanguageServer for LanguageServer {
 
     if let Some(completions) = maybe_completion_info {
       Ok(Some(completions.into_completion_response(&line_index)))
+    } else {
+      Ok(None)
+    }
+  }
+
+  async fn goto_implementation(
+    &self,
+    params: GotoImplementationParams,
+  ) -> LspResult<Option<GotoImplementationResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let specifier = utils::normalize_url(
+      params.text_document_position_params.text_document.uri,
+    );
+    let line_index =
+      self
+        .get_line_index(specifier.clone())
+        .await
+        .map_err(|err| {
+          error!("Failed to get line_index {:#?}", err);
+          LspError::internal_error()
+        })?;
+
+    let req = tsc::RequestMethod::GetImplementation((
+      specifier,
+      text::to_char_pos(
+        &line_index,
+        params.text_document_position_params.position,
+      ),
+    ));
+    let res =
+      self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {:#?}", err);
+          LspError::invalid_request()
+        })?;
+
+    let maybe_implementations = serde_json::from_value::<Option<Vec<tsc::ImplementationLocation>>>(res)
+      .map_err(|err| {
+        error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {:#?}", err);
+        LspError::internal_error()
+      })?;
+
+    if let Some(implementations) = maybe_implementations {
+      let mut results = Vec::new();
+      for impl_ in implementations {
+        let document_span = impl_.document_span;
+        let impl_specifier =
+          ModuleSpecifier::resolve_url(&document_span.file_name).unwrap();
+        let impl_line_index =
+          &self.get_line_index(impl_specifier).await.unwrap();
+        if let Some(link) = document_span
+          .to_link(impl_line_index, |s| self.get_line_index(s))
+          .await
+        {
+          results.push(link);
+        }
+      }
+      Ok(Some(GotoDefinitionResponse::Link(results)))
     } else {
       Ok(None)
     }
