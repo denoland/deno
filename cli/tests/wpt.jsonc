@@ -182,5 +182,11 @@
   ],
   "WebCryptoApi": [
     "getRandomValues"
+  ],
+  "WebIDL": [
+    "ecmascript-binding/es-exceptions/DOMException-constants",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-behavior",
+    "ecmascript-binding/es-exceptions/DOMException-custom-bindings"
   ]
 }
