@@ -796,12 +796,9 @@ async fn run_dns_server() {
       // Inserts TXT record
       let rdata =
         RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
-      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+      let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
       let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new(lookup_name_lower.clone(), RecordType::TXT),
-        record_set,
-      );
+      map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
 
       map
     };
