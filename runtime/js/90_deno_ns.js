@@ -111,7 +111,6 @@
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     shutdown: __bootstrap.net.shutdown,
-    ShutdownMode: __bootstrap.net.ShutdownMode,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,

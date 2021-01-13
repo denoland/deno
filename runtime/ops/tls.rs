@@ -24,23 +24,50 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::From;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use tokio_rustls::{
   rustls::{
     internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
-    Certificate, NoClientAuth, PrivateKey, ServerConfig,
+    Certificate, NoClientAuth, PrivateKey, ServerConfig, StoresClientSessions,
   },
   TlsAcceptor,
 };
 use webpki::DNSNameRef;
+
+lazy_static::lazy_static! {
+  static ref CLIENT_SESSION_MEMORY_CACHE: Arc<ClientSessionMemoryCache> =
+    Arc::new(ClientSessionMemoryCache::default());
+}
+
+#[derive(Default)]
+struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
+
+impl StoresClientSessions for ClientSessionMemoryCache {
+  fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+    self.0.lock().unwrap().get(key).cloned()
+  }
+
+  fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
+    let mut sessions = self.0.lock().unwrap();
+    // TODO(bnoordhuis) Evict sessions LRU-style instead of arbitrarily.
+    while sessions.len() >= 1024 {
+      let key = sessions.keys().next().unwrap().clone();
+      sessions.remove(&key);
+    }
+    sessions.insert(key, value);
+    true
+  }
+}
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_start_tls", op_start_tls);
@@ -102,6 +129,7 @@ async fn op_start_tls(
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
   let mut config = ClientConfig::new();
+  config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
   config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
@@ -165,6 +193,7 @@ async fn op_connect_tls(
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
   let mut config = ClientConfig::new();
+  config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
   config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);

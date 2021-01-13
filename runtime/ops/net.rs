@@ -24,7 +24,6 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use tokio::io::AsyncWriteExt;
@@ -331,7 +330,6 @@ async fn op_connect(
 #[derive(Deserialize)]
 struct ShutdownArgs {
   rid: i32,
-  how: i32,
 }
 
 async fn op_shutdown(
@@ -344,14 +342,6 @@ async fn op_shutdown(
   let args: ShutdownArgs = serde_json::from_value(args)?;
 
   let rid = args.rid as u32;
-  let how = args.how;
-
-  // TODO(bartlomieju): no longer needed after Tokio 1.0 upgrade
-  let _shutdown_mode = match how {
-    0 => Shutdown::Read, // TODO: nonsense, remove me.
-    1 => Shutdown::Write,
-    _ => unimplemented!(),
-  };
 
   let resource = state
     .borrow()
