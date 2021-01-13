@@ -101,7 +101,7 @@ declare var ReadableStreamDefaultController: {
 };
 
 interface ReadableByteStreamController {
-  readonly byobRequest: ReadableStreamBYOBRequest | undefined;
+  readonly byobRequest: undefined;
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: ArrayBufferView): void;
