@@ -5204,12 +5204,15 @@ impl Drop for WPTServer {
   fn drop(&mut self) {
     match self.0.try_wait() {
       Ok(None) => {
-        if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
           println!("libc kill");
           unsafe {
             libc::kill(self.0.id() as i32, libc::SIGTERM);
           }
-        } else {
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
           println!("std kill");
           self.0.kill().expect("killing 'wpt serve' failed");
         }
