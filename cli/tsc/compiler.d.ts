@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
@@ -49,6 +49,7 @@ declare global {
     | GetReferencesRequest
     | GetDefinitionRequest
     | GetCompletionsRequest
+    | GetImplementationRequest
     | FindRenameLocationsRequest;
 
   interface BaseLanguageServerRequest {
@@ -102,6 +103,12 @@ declare global {
     specifier: string;
     position: number;
     preferences: ts.UserPreferences;
+  }
+
+  interface GetImplementationRequest extends BaseLanguageServerRequest {
+    method: "getImplementation";
+    specifier: string;
+    position: number;
   }
 
   interface FindRenameLocationsRequest extends BaseLanguageServerRequest {

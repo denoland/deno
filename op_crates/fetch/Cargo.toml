@@ -1,4 +1,4 @@
-# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_fetch"
@@ -14,9 +14,10 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
+bytes = "1.0.1"
 deno_core = { version = "0.75.0", path = "../../core" }
-
-bytes = "0.5.6"
-reqwest = { version = "0.10.8", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
+reqwest = { version = "0.11.0", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.116", features = ["derive"] }
-tokio = { version = "0.2.22", features = ["full"] }
+tokio = { version = "1.0.1", features = ["full"] }
+tokio-stream = "0.1.1"
+tokio-util = "0.6.0"

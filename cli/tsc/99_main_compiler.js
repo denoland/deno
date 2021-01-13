@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -564,6 +564,15 @@ delete Object.prototype.__proto__;
         return respond(
           id,
           languageService.getDefinitionAndBoundSpan(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getImplementation": {
+        return respond(
+          id,
+          languageService.getImplementationAtPosition(
             request.specifier,
             request.position,
           ),

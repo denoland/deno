@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::inspector::DenoInspector;
@@ -430,7 +430,7 @@ pub fn run_web_worker(
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
-  let mut rt = create_basic_runtime();
+  let rt = create_basic_runtime();
 
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
