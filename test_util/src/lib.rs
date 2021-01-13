@@ -705,11 +705,12 @@ async fn run_dns_server() {
   let catalog = {
     let records = {
       let mut map = BTreeMap::new();
-      let lookup_name = "www.example.com".parse::<LowerName>().unwrap();
+      let lookup_name = "www.example.com".parse::<Name>().unwrap();
+      let lookup_name_lower = LowerName::new(&lookup_name);
 
       // Inserts SOA record
       let soa = SOA::new(
-        Name::root(),
+        Name::from_str("net").unwrap(),
         Name::from_str("example").unwrap(),
         0,
         i32::MAX,
@@ -724,46 +725,54 @@ async fn run_dns_server() {
 
       // Inserts A record
       let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
-      map.insert(RrKey::new(lookup_name.clone(), RecordType::A), record_set);
+      map.insert(
+        RrKey::new(lookup_name_lower.clone(), RecordType::A),
+        record_set,
+      );
 
       // Inserts AAAA record
       let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
       map.insert(
-        RrKey::new(lookup_name.clone(), RecordType::AAAA),
+        RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
         record_set,
       );
 
       // Inserts ANAME record
       let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
       map.insert(
-        RrKey::new(lookup_name.clone(), RecordType::ANAME),
+        RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
         record_set,
       );
 
       // Inserts CNAME record
       let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record =
+        Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
       map.insert(
-        RrKey::new(lookup_name.clone(), RecordType::CNAME),
+        RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
         record_set,
       );
 
       // Inserts MX record
       let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
-      map.insert(RrKey::new(lookup_name.clone(), RecordType::MX), record_set);
+      map.insert(
+        RrKey::new(lookup_name_lower.clone(), RecordType::MX),
+        record_set,
+      );
 
       // Inserts PTR record
       let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record =
+        Record::from_rdata(Name::from_str("5.6.7.8").unwrap(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
       map.insert(
         RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
@@ -772,24 +781,39 @@ async fn run_dns_server() {
 
       // Inserts SRV record
       let rdata =
-        RData::SRV(SRV::new(0, 100, 1234, Name::from_str("src.com").unwrap()));
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+        RData::SRV(SRV::new(0, 100, 1234, Name::from_str("srv.com").unwrap()));
+      let record = Record::from_rdata(
+        Name::from_str("_Service._TCP.example.com").unwrap(),
+        u32::MAX,
+        rdata,
+      );
       let record_set = RecordSet::from(record);
-      map.insert(RrKey::new(lookup_name.clone(), RecordType::SRV), record_set);
+      map.insert(
+        RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
+        record_set,
+      );
 
       // Inserts TXT record
       let rdata =
         RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
       let record_set = RecordSet::from(record);
-      map.insert(RrKey::new(lookup_name.clone(), RecordType::TXT), record_set);
+      map.insert(
+        RrKey::new(lookup_name_lower.clone(), RecordType::TXT),
+        record_set,
+      );
 
       map
     };
 
     let authority = Box::new(Arc::new(RwLock::new(
-      InMemoryAuthority::new(Name::root(), records, ZoneType::Primary, false)
-        .unwrap(),
+      InMemoryAuthority::new(
+        Name::from_str("com").unwrap(),
+        records,
+        ZoneType::Primary,
+        false,
+      )
+      .unwrap(),
     )));
     let mut c = Catalog::new();
     c.upsert(Name::root().into(), authority);
