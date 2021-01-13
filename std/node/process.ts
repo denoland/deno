@@ -41,11 +41,8 @@ const _argv: {
 Object.defineProperty(_argv, Deno.customInspect, {
   enumerable: false,
   configurable: false,
-  writable: false,
-  value: function () {
-    return Deno.inspect(getArguments(), {
-      colors: true,
-    });
+  get: function () {
+    return getArguments();
   },
 });
 
@@ -79,11 +76,8 @@ const _env: {
 Object.defineProperty(_env, Deno.customInspect, {
   enumerable: false,
   configurable: false,
-  writable: false,
-  value: function () {
-    return Deno.inspect(Deno.env.toObject(), {
-      colors: true,
-    });
+  get: function () {
+    return Deno.env.toObject();
   },
 });
 
