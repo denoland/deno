@@ -1,8 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
-  tokio::runtime::Builder::new()
-    .basic_scheduler()
+  tokio::runtime::Builder::new_current_thread()
     .enable_io()
     .enable_time()
     // This limits the number of threads for blocking operations (like for
@@ -10,7 +9,7 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     // parallel for deno fmt.
     // The default value is 512, which is an unhelpfully large thread pool. We
     // don't ever want to have more than a couple dozen threads.
-    .max_threads(32)
+    .max_blocking_threads(32)
     .build()
     .unwrap()
 }
@@ -20,6 +19,6 @@ pub fn run_basic<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R>,
 {
-  let mut rt = create_basic_runtime();
+  let rt = create_basic_runtime();
   rt.block_on(future)
 }

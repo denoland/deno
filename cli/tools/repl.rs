@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
 use crate::ast::TokenOrComment;
@@ -6,6 +6,7 @@ use crate::colors;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_runtime::inspector::InspectorSession;
@@ -277,7 +278,7 @@ async fn post_message_and_poll(
         // A zero delay is long enough to yield the thread in order to prevent the loop from
         // running hot for messages that are taking longer to resolve like for example an
         // evaluation of top level await.
-        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
       }
     }
   }
@@ -305,7 +306,7 @@ async fn read_line_and_poll(
     // Because an inspector websocket client may choose to connect at anytime when we have an
     // inspector server we need to keep polling the worker to pick up new connections.
     let mut timeout =
-      tokio::time::delay_for(tokio::time::Duration::from_millis(100));
+      tokio::time::sleep(tokio::time::Duration::from_millis(100)).boxed_local();
 
     tokio::select! {
       result = &mut line => {

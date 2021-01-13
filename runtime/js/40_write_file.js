@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 ((window) => {
   const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
   const { open, openSync } = window.__bootstrap.files;

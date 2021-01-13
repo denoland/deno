@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /* TODO https://github.com/denoland/deno/issues/7540
 import { unitTest, assert, assertEquals } from "./test_util.ts";

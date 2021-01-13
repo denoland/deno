@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use core::task::{Context, Poll};
@@ -18,21 +18,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
-use tokio::time::{delay_for, Delay};
+use tokio::time::sleep;
 
 const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
 
 type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 struct Debounce {
-  delay: Delay,
+  sleep: Pin<Box<dyn Future<Output = ()>>>,
   event_detected: Arc<AtomicBool>,
 }
 
 impl Debounce {
   fn new() -> Self {
     Self {
-      delay: delay_for(DEBOUNCE_INTERVAL_MS),
+      sleep: sleep(DEBOUNCE_INTERVAL_MS).boxed_local(),
       event_detected: Arc::new(AtomicBool::new(false)),
     }
   }
@@ -52,9 +52,9 @@ impl Stream for Debounce {
       inner.event_detected.store(false, Ordering::Relaxed);
       Poll::Ready(Some(()))
     } else {
-      match inner.delay.poll_unpin(cx) {
+      match inner.sleep.poll_unpin(cx) {
         Poll::Ready(_) => {
-          inner.delay = delay_for(DEBOUNCE_INTERVAL_MS);
+          inner.sleep = sleep(DEBOUNCE_INTERVAL_MS).boxed_local();
           Poll::Pending
         }
         Poll::Pending => Poll::Pending,
@@ -172,7 +172,7 @@ where
   let mut debounce = Debounce::new();
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.
-  let mut paths;
+  let mut paths = Vec::new();
   let mut module = None;
 
   loop {
@@ -185,7 +185,10 @@ where
         module = Some(module_info);
       }
       ModuleResolutionResult::Fail { source_path, error } => {
-        paths = vec![source_path];
+        if paths.is_empty() {
+          paths = vec![source_path];
+        }
+
         if module.is_none() {
           eprintln!("{}: {}", colors::red_bold("error"), error);
         }
