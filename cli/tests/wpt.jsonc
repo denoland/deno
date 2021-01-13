@@ -187,6 +187,11 @@
     "ecmascript-binding/es-exceptions/DOMException-constants",
     "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",
     "ecmascript-binding/es-exceptions/DOMException-constructor-behavior",
-    "ecmascript-binding/es-exceptions/DOMException-custom-bindings"
+    {
+      "name": "ecmascript-binding/es-exceptions/DOMException-custom-bindings",
+      "expectFail": [
+        "does not inherit from Error: class-side"
+      ]
+    }
   ]
 }

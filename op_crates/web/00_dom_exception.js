@@ -59,19 +59,16 @@
 
   // Defined in WebIDL 4.3.
   // https://heycam.github.io/webidl/#idl-DOMException
-  class DOMException {
+  class DOMException extends Error {
     #message = "";
     #name = "";
     #code = 0;
 
     constructor(message = "", name = "Error") {
+      super();
       this.#message = String(message);
       this.#name = name;
       this.#code = nameToCodeMapping[name] ?? 0;
-      this.stack = new Error().stack.replace(
-        /^Error/,
-        this.#message ? `DOMException: ${this.#message}` : "DOMException",
-      );
     }
 
     get message() {
@@ -90,12 +87,6 @@
       return "DOMException";
     }
   }
-
-  // According to WPT (DOMException-custom-bindings.any.js),
-  // the prototype inherits from Error.prototype, but the class itself doesn't inherit
-  // from Error. So we avoid using class...extends, and instead use Object.setPrototypeOf
-  // for only inheriting from the prototype.
-  Object.setPrototypeOf(DOMException.prototype, Error.prototype);
 
   defineProperty(DOMException.prototype, "message", { enumerable: true });
   defineProperty(DOMException.prototype, "name", { enumerable: true });
