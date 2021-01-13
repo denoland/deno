@@ -55,8 +55,6 @@ export const argv: { [key: number]: string } = new Proxy(_argv, {
     if (prop === Deno.customInspect) {
       return target[Deno.customInspect];
     }
-    //TODO(Soremwar)
-    //This could be greatly improved if TS added support for private accessors
     return getArguments()[prop as number];
   },
   ownKeys() {
