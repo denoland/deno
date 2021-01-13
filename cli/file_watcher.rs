@@ -55,8 +55,7 @@ impl Stream for Debounce {
     self: Pin<&mut Self>,
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
-    if self.event_detected.load(Ordering::Relaxed) {
-      self.event_detected.store(false, Ordering::Relaxed);
+    if self.event_detected.swap(false, Ordering::Relaxed) {
       Poll::Ready(Some(()))
     } else {
       let mut timer = self.project().timer;
