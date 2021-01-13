@@ -6,5 +6,5 @@ console.log(location);
 try {
   location.hostname = "bar";
 } catch (error) {
-  console.log(error);
+  console.log(error.toString());
 }

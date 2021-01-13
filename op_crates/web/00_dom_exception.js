@@ -68,7 +68,10 @@
       this.#message = String(message);
       this.#name = name;
       this.#code = nameToCodeMapping[name] ?? 0;
-      this.stack = new Error().stack.replace(/^Error/, "DOMException");
+      this.stack = new Error().stack.replace(
+        /^Error/,
+        this.#message ? `DOMException: ${this.#message}` : "DOMException",
+      );
     }
 
     get message() {
