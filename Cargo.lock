@@ -431,6 +431,7 @@ dependencies = [
  "notify",
  "os_pipe",
  "percent-encoding",
+ "pin-project 1.0.4",
  "regex",
  "ring",
  "rustyline",
