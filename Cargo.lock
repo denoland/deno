@@ -2810,6 +2810,7 @@ dependencies = [
  "os_pipe",
  "pty",
  "regex",
+ "serde",
  "tempfile",
  "tokio",
  "tokio-rustls",

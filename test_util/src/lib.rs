@@ -21,6 +21,7 @@ use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -1366,7 +1367,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StraceOutput {
   pub percent_time: f64,
   pub seconds: f64,

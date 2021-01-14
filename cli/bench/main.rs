@@ -1,12 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::serde_json::{self, map::Map, Number, Value};
+use deno_core::serde_json::{self, Value};
+use serde::Serialize;
 use std::{
+  collections::HashMap,
   convert::From,
   env, fs,
   path::PathBuf,
   process::{Command, Stdio},
 };
+use test_util::StraceOutput;
 
 mod http;
 mod throughput;
@@ -102,7 +105,10 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
 
 const RESULT_KEYS: &[&str] =
   &["mean", "stddev", "user", "system", "min", "max"];
-fn run_exec_time(deno_exe: &PathBuf, target_dir: &PathBuf) -> Result<Value> {
+fn run_exec_time(
+  deno_exe: &PathBuf,
+  target_dir: &PathBuf,
+) -> Result<HashMap<String, HashMap<String, f64>>> {
   let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
 
   let benchmark_file = target_dir.join("hyperfine_results.json");
@@ -143,7 +149,7 @@ fn run_exec_time(deno_exe: &PathBuf, target_dir: &PathBuf) -> Result<Value> {
     true,
   );
 
-  let mut results = Map::new();
+  let mut results: HashMap<String, HashMap<String, f64>> = HashMap::new();
   let hyperfine_results = read_json(benchmark_file)?;
   for ((name, _, _), data) in EXEC_TIME_BENCHMARKS.iter().zip(
     hyperfine_results
@@ -157,16 +163,15 @@ fn run_exec_time(deno_exe: &PathBuf, target_dir: &PathBuf) -> Result<Value> {
     let data = data.as_object().unwrap().clone();
     results.insert(
       name.to_string(),
-      Value::Object(
-        data
-          .into_iter()
-          .filter(|(key, _)| RESULT_KEYS.contains(&key.as_str()))
-          .collect::<Map<String, Value>>(),
-      ),
+      data
+        .into_iter()
+        .filter(|(key, _)| RESULT_KEYS.contains(&key.as_str()))
+        .map(|(key, val)| (key.to_string(), val.as_f64().unwrap()))
+        .collect(),
     );
   }
 
-  Ok(Value::Object(results))
+  Ok(results)
 }
 
 fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
@@ -193,32 +198,29 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
 
 const BINARY_TARGET_FILES: &[&str] =
   &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
-fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
-  let mut sizes = Map::new();
-  let mut mtimes = std::collections::HashMap::new();
+fn get_binary_sizes(target_dir: &PathBuf) -> Result<HashMap<String, u64>> {
+  let mut sizes: HashMap<String, u64> = HashMap::new();
+  let mut mtimes = HashMap::new();
 
   sizes.insert(
     "deno".to_string(),
-    Value::Number(Number::from(test_util::deno_exe_path().metadata()?.len())),
+    test_util::deno_exe_path().metadata()?.len(),
   );
 
   // add up size for denort
   sizes.insert(
     "denort".to_string(),
-    Value::Number(Number::from(test_util::denort_exe_path().metadata()?.len())),
+    test_util::denort_exe_path().metadata()?.len(),
   );
 
   // add up size for everything in target/release/deps/libswc*
   let swc_size = rlib_size(&target_dir, "libswc");
   println!("swc {} bytes", swc_size);
-  sizes.insert("swc_rlib".to_string(), Value::Number(swc_size.into()));
+  sizes.insert("swc_rlib".to_string(), swc_size);
 
   let rusty_v8_size = rlib_size(&target_dir, "librusty_v8");
   println!("rusty_v8 {} bytes", rusty_v8_size);
-  sizes.insert(
-    "rusty_v8_rlib".to_string(),
-    Value::Number(rusty_v8_size.into()),
-  );
+  sizes.insert("rusty_v8_rlib".to_string(), rusty_v8_size);
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
@@ -244,18 +246,18 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
     }
 
     mtimes.insert(filename.clone(), file_mtime);
-    sizes.insert(filename, Value::Number(Number::from(meta.len())));
+    sizes.insert(filename, meta.len());
   }
 
-  Ok(Value::Object(sizes))
+  Ok(sizes)
 }
 
 const BUNDLES: &[(&str, &str)] = &[
   ("file_server", "./std/http/file_server.ts"),
   ("gist", "./std/examples/gist.ts"),
 ];
-fn bundle_benchmark(deno_exe: &PathBuf) -> Result<Value> {
-  let mut sizes = Map::new();
+fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
+  let mut sizes: HashMap<String, u64> = HashMap::new();
 
   for (name, url) in BUNDLES {
     let path = format!("{}.bundle.js", name);
@@ -275,71 +277,48 @@ fn bundle_benchmark(deno_exe: &PathBuf) -> Result<Value> {
 
     let file = PathBuf::from(path);
     assert!(file.is_file());
-    sizes.insert(
-      name.to_string(),
-      Value::Number(Number::from(file.metadata()?.len())),
-    );
+    sizes.insert(name.to_string(), file.metadata()?.len());
     let _ = fs::remove_file(file);
   }
 
-  Ok(Value::Object(sizes))
+  Ok(sizes)
 }
 
-fn run_throughput(deno_exe: &PathBuf) -> Result<Value> {
-  let mut m = Map::new();
+fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
+  let mut m: HashMap<String, f64> = HashMap::new();
 
   m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
   m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100)?);
   m.insert("10M_tcp".to_string(), throughput::tcp(deno_exe, 10)?);
   m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10)?);
 
-  Ok(Value::Object(m))
+  Ok(m)
 }
 
-fn run_http(
-  target_dir: &PathBuf,
-  new_data: &mut Map<String, Value>,
-) -> Result<()> {
+fn run_http(target_dir: &PathBuf, new_data: &mut BenchResult) -> Result<()> {
   let stats = http::benchmark(target_dir)?;
 
-  new_data.insert(
-    "req_per_sec".to_string(),
-    Value::Object(
-      stats
-        .iter()
-        .map(|(name, result)| {
-          (name.clone(), Value::Number(Number::from(result.requests)))
-        })
-        .collect::<Map<String, Value>>(),
-    ),
-  );
+  new_data.req_per_sec = stats
+    .iter()
+    .map(|(name, result)| (name.clone(), result.requests))
+    .collect();
 
-  new_data.insert(
-    "max_latency".to_string(),
-    Value::Object(
-      stats
-        .iter()
-        .map(|(name, result)| {
-          (
-            name.clone(),
-            Value::Number(Number::from_f64(result.latency).unwrap()),
-          )
-        })
-        .collect::<Map<String, Value>>(),
-    ),
-  );
+  new_data.max_latency = stats
+    .iter()
+    .map(|(name, result)| (name.clone(), result.latency))
+    .collect();
 
   Ok(())
 }
 
 fn run_strace_benchmarks(
   deno_exe: &PathBuf,
-  new_data: &mut Map<String, Value>,
+  new_data: &mut BenchResult,
 ) -> Result<()> {
   use std::io::Read;
 
-  let mut thread_count = Map::new();
-  let mut syscall_count = Map::new();
+  let mut thread_count: HashMap<String, StraceOutput> = HashMap::new();
+  let mut syscall_count: HashMap<String, StraceOutput> = HashMap::new();
 
   for (name, args, _) in EXEC_TIME_BENCHMARKS {
     let mut file = tempfile::NamedTempFile::new()?;
@@ -361,26 +340,20 @@ fn run_strace_benchmarks(
     file.as_file_mut().read_to_string(&mut output)?;
 
     let strace_result = test_util::parse_strace_output(&output);
-    thread_count.insert(
-      name.to_string(),
-      Value::Number(Number::from(
-        strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1,
-      )),
-    );
-    syscall_count.insert(
-      name.to_string(),
-      Value::Number(Number::from(strace_result.get("total").unwrap().calls)),
-    );
+    let clone = strace_result.get("clone").unwrap().clone();
+    let total = strace_result.get("total").unwrap().clone();
+    thread_count.insert(name.to_string(), clone);
+    syscall_count.insert(name.to_string(), total);
   }
 
-  new_data.insert("thread_count".to_string(), Value::Object(thread_count));
-  new_data.insert("syscall_count".to_string(), Value::Object(syscall_count));
+  new_data.thread_count = thread_count;
+  new_data.syscall_count = syscall_count;
 
   Ok(())
 }
 
-fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<Value> {
-  let mut results = Map::new();
+fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
+  let mut results: HashMap<String, u64> = HashMap::new();
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {
     let proc = Command::new("time")
@@ -396,13 +369,10 @@ fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<Value> {
     }
     let out = String::from_utf8(proc_result.stderr)?;
 
-    results.insert(
-      name.to_string(),
-      Value::Number(Number::from(test_util::parse_max_mem(&out).unwrap())),
-    );
+    results.insert(name.to_string(), test_util::parse_max_mem(&out).unwrap());
   }
 
-  Ok(Value::Object(results))
+  Ok(results)
 }
 
 fn cargo_deps() -> usize {
@@ -418,6 +388,44 @@ fn cargo_deps() -> usize {
   println!("cargo_deps {}", count);
   assert!(count > 10); // Sanity check.
   count
+}
+
+#[derive(Serialize)]
+struct BenchResult {
+  created_at: String,
+  sha1: String,
+  binary_size: HashMap<String, u64>,
+  bundle_size: HashMap<String, u64>,
+  cargo_deps: usize,
+  // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
+  // When this is changed, the historical data in gh-pages branch needs to be
+  // changed too.
+  benchmark: HashMap<String, HashMap<String, f64>>,
+  throughput: HashMap<String, f64>,
+  max_memory: HashMap<String, u64>,
+  req_per_sec: HashMap<String, u64>,
+  max_latency: HashMap<String, f64>,
+  thread_count: HashMap<String, StraceOutput>,
+  syscall_count: HashMap<String, StraceOutput>,
+}
+
+impl BenchResult {
+  pub fn new() -> BenchResult {
+    return BenchResult {
+      created_at: String::new(),
+      sha1: String::new(),
+      binary_size: HashMap::new(),
+      bundle_size: HashMap::new(),
+      cargo_deps: 0,
+      benchmark: HashMap::new(),
+      throughput: HashMap::new(),
+      max_memory: HashMap::new(),
+      req_per_sec: HashMap::new(),
+      max_latency: HashMap::new(),
+      thread_count: HashMap::new(),
+      syscall_count: HashMap::new(),
+    };
+  }
 }
 
 /*
@@ -439,52 +447,35 @@ fn main() -> Result<()> {
 
   env::set_current_dir(&test_util::root_path())?;
 
-  let mut new_data: Map<String, Value> = Map::new();
-  new_data.insert(
-    "created_at".to_string(),
-    Value::String(
-      chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    ),
-  );
-  new_data.insert(
-    "sha1".to_string(),
-    Value::String(
-      test_util::run_collect(
-        &["git", "rev-parse", "HEAD"],
-        None,
-        None,
-        None,
-        true,
-      )
-      .0
-      .trim()
-      .to_string(),
-    ),
-  );
+  let mut new_data = BenchResult::new();
+  new_data.created_at =
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+  new_data.sha1 = test_util::run_collect(
+    &["git", "rev-parse", "HEAD"],
+    None,
+    None,
+    None,
+    true,
+  )
+  .0
+  .trim()
+  .to_string();
 
-  new_data.insert("binary_size".to_string(), get_binary_sizes(&target_dir)?);
-  new_data.insert("bundle_size".to_string(), bundle_benchmark(&deno_exe)?);
-  new_data.insert("cargo_deps".to_string(), Value::Number(cargo_deps().into()));
-
-  // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
-  // When this is changed, the historical data in gh-pages branch needs to be
-  // changed too.
-  new_data.insert(
-    "benchmark".to_string(),
-    run_exec_time(&deno_exe, &target_dir)?,
-  );
+  new_data.binary_size = get_binary_sizes(&target_dir)?;
+  new_data.bundle_size = bundle_benchmark(&deno_exe)?;
+  new_data.cargo_deps = cargo_deps();
+  new_data.benchmark = run_exec_time(&deno_exe, &target_dir)?;
 
   // Cannot run throughput benchmark on windows because they don't have nc or
   // pipe.
   if cfg!(not(target_os = "windows")) {
-    new_data.insert("throughput".to_string(), run_throughput(&deno_exe)?);
+    new_data.throughput = run_throughput(&deno_exe)?;
     run_http(&target_dir, &mut new_data)?;
   }
 
   if cfg!(target_os = "linux") {
     run_strace_benchmarks(&deno_exe, &mut new_data)?;
-    new_data
-      .insert("max_memory".to_string(), run_max_mem_benchmark(&deno_exe)?);
+    new_data.max_memory = run_max_mem_benchmark(&deno_exe)?;
   }
 
   println!("===== <BENCHMARK RESULTS>");
@@ -492,7 +483,7 @@ fn main() -> Result<()> {
   println!("\n===== </BENCHMARK RESULTS>");
 
   if let Some(filename) = target_dir.join("bench.json").to_str() {
-    write_json(filename, &Value::Object(new_data))?;
+    write_json(filename, &serde_json::to_value(&new_data)?)?;
   } else {
     eprintln!("Cannot write bench.json, path is invalid");
   }
