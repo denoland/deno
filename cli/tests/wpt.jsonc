@@ -145,7 +145,8 @@
   "hr-time": ["monotonic-clock"],
   "html": [
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
-    "webappapis/microtask-queuing/queue-microtask.any"
+    "webappapis/microtask-queuing/queue-microtask.any",
+    "webappapis/timers",
   ],
   "user-timing": [
     "clear_all_marks",
@@ -170,14 +171,32 @@
       ]
     },
     "measure-l3",
-    {
-      "name": "structured-serialize-detail",
-      "expectFail": [
-        // TODO(lucacasonato): re-enable when we use real structured clone.
-        "Mark: Throw an exception when the detail property cannot be structured-serialized.",
-        "Measure: Throw an exception when the detail property cannot be structured-serialized."
-      ]
-    },
+    "structured-serialize-detail",
     "user_timing_exists"
+  ],
+  "console": [
+    "console-is-a-namespace",
+    "console-label-conversion",
+    "console-namespace-object-class-string",
+    "console-tests-historical",
+  ],
+  "WebCryptoApi": [
+    "getRandomValues"
+  ],
+  "WebIDL": [
+    "ecmascript-binding/es-exceptions/DOMException-constants",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-behavior",
+    {
+      "name": "ecmascript-binding/es-exceptions/DOMException-custom-bindings",
+      "expectFail": [
+        // TODO(kt3k): Enable this test.
+        // We can pass this test by using Object.setPrototypeOf(...) instead of
+        // class...extends, but that causes a problem in printing of uncaught
+        // DOMException. We might need to modify how to print uncaught error in
+        // `//core/error.rs`.
+        "does not inherit from Error: class-side"
+      ]
+    }
   ]
 }

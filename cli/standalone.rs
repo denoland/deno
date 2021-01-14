@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::version;
@@ -201,6 +201,12 @@ pub async fn run(
 
 fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_runtime::errors::get_error_class_name(e).unwrap_or_else(|| {
-    panic!("Error '{}' contains boxed error of unknown type", e);
+    panic!(
+      "Error '{}' contains boxed error of unsupported type:{}",
+      e,
+      e.chain()
+        .map(|e| format!("\n  {:?}", e))
+        .collect::<String>()
+    );
   })
 }

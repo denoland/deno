@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // Requires to be run with `--allow-net` flag
 
@@ -382,6 +382,31 @@ Deno.test({
     }, 1000);
     await promise;
     w.terminate();
+  },
+});
+
+Deno.test({
+  name: "Worker post undefined",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const worker = new Worker(
+      new URL("./worker_post_undefined.ts", import.meta.url).href,
+      { type: "module" },
+    );
+
+    const handleWorkerMessage = (e: MessageEvent): void => {
+      console.log("main <- worker:", e.data);
+      worker.terminate();
+      promise.resolve();
+    };
+
+    worker.addEventListener("messageerror", () => console.log("message error"));
+    worker.addEventListener("error", () => console.log("error"));
+    worker.addEventListener("message", handleWorkerMessage);
+
+    console.log("\npost from parent");
+    worker.postMessage(undefined);
+    await promise;
   },
 });
 

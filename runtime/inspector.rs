@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
 //! https://chromedevtools.github.io/devtools-protocol/
@@ -16,6 +16,7 @@ use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task;
 use deno_core::futures::task::Context;
 use deno_core::futures::task::Poll;
@@ -58,10 +59,10 @@ impl InspectorServer {
     let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
 
     let thread_handle = thread::spawn(move || {
-      let mut rt = crate::tokio_util::create_basic_runtime();
+      let rt = crate::tokio_util::create_basic_runtime();
       let local = tokio::task::LocalSet::new();
       local.block_on(
-        &mut rt,
+        &rt,
         server(host, register_inspector_rx, shutdown_server_rx, name),
       )
     });
@@ -182,9 +183,13 @@ fn handle_ws_request(
           .status(http::StatusCode::BAD_REQUEST)
           .body("Not a valid Websocket Request".into()),
       });
+
+    let (parts, _) = req.into_parts();
+    let req = http::Request::from_parts(parts, body);
+
     if resp.is_ok() {
       tokio::task::spawn_local(async move {
-        let upgraded = body.on_upgrade().await.unwrap();
+        let upgraded = hyper::upgrade::on(req).await.unwrap();
         let websocket =
           deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
             upgraded,

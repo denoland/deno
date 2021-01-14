@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const core = window.Deno.core;
@@ -1449,7 +1449,14 @@
       // For historical web-compatibility reasons, the namespace object for
       // console must have as its [[Prototype]] an empty object, created as if
       // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
-      const console = Object.create({});
+      const console = Object.create({}, {
+        [Symbol.toStringTag]: {
+          enumerable: false,
+          writable: false,
+          configurable: true,
+          value: "console",
+        },
+      });
       Object.assign(console, this);
       return console;
     }

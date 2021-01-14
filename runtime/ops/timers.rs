@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! This module helps deno implement timers.
 //!
@@ -60,7 +60,7 @@ impl GlobalTimer {
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
 
-    let delay = tokio::time::delay_until(deadline.into());
+    let delay = tokio::time::sleep_until(deadline.into()).boxed_local();
     let rx = rx
       .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 

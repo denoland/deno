@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #![deny(warnings)]
 
@@ -1261,8 +1261,17 @@ pub fn main() {
     std::process::exit(1);
   }
 
-  let flags =
-    unwrap_or_exit(flags::flags_from_vec(args).map_err(AnyError::from));
+  let flags = match flags::flags_from_vec(args) {
+    Ok(flags) => flags,
+    Err(err @ clap::Error { .. })
+      if err.kind == clap::ErrorKind::HelpDisplayed
+        || err.kind == clap::ErrorKind::VersionDisplayed =>
+    {
+      err.write_to(&mut std::io::stdout()).unwrap();
+      std::process::exit(0);
+    }
+    Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
+  };
   if !flags.v8_flags.is_empty() {
     init_v8_flags(&*flags.v8_flags);
   }
