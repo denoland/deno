@@ -37,11 +37,21 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+declare var ReadableStreamDefaultReader: {
+  prototype: ReadableStreamDefaultReader;
+  new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
+};
+
 interface ReadableStreamReader<R = any> {
   cancel(): Promise<void>;
   read(): Promise<ReadableStreamReadResult<R>>;
   releaseLock(): void;
 }
+
+declare var ReadableStreamReader: {
+  prototype: ReadableStreamReader;
+  new (): ReadableStreamReader;
+};
 
 interface ReadableByteStreamControllerCallback {
   (controller: ReadableByteStreamController): void | PromiseLike<void>;
@@ -53,6 +63,14 @@ interface UnderlyingByteSource {
   pull?: ReadableByteStreamControllerCallback;
   start?: ReadableByteStreamControllerCallback;
   type: "bytes";
+}
+
+interface UnderlyingSink<W = any> {
+  abort?: WritableStreamErrorCallback;
+  close?: WritableStreamDefaultControllerCloseCallback;
+  start?: WritableStreamDefaultControllerStartCallback;
+  type?: undefined;
+  write?: WritableStreamDefaultControllerWriteCallback<W>;
 }
 
 interface UnderlyingSource<R = any> {
@@ -77,6 +95,11 @@ interface ReadableStreamDefaultController<R = any> {
   error(error?: any): void;
 }
 
+declare var ReadableStreamDefaultController: {
+  prototype: ReadableStreamDefaultController;
+  new (): ReadableStreamDefaultController;
+};
+
 interface ReadableByteStreamController {
   readonly byobRequest: undefined;
   readonly desiredSize: number | null;
@@ -84,6 +107,11 @@ interface ReadableByteStreamController {
   enqueue(chunk: ArrayBufferView): void;
   error(error?: any): void;
 }
+
+declare var ReadableByteStreamController: {
+  prototype: ReadableByteStreamController;
+  new (): ReadableByteStreamController;
+};
 
 interface PipeOptions {
   preventAbort?: boolean;
@@ -122,14 +150,9 @@ declare class ByteLengthQueuingStrategy
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
-  // getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(
-    {
-      writable,
-      readable,
-    }: {
+    { writable, readable }: {
       writable: WritableStream<R>;
       readable: ReadableStream<T>;
     },
@@ -174,27 +197,22 @@ interface WritableStreamErrorCallback {
   (reason: any): void | PromiseLike<void>;
 }
 
-interface UnderlyingSink<W = any> {
-  abort?: WritableStreamErrorCallback;
-  close?: WritableStreamDefaultControllerCloseCallback;
-  start?: WritableStreamDefaultControllerStartCallback;
-  type?: undefined;
-  write?: WritableStreamDefaultControllerWriteCallback<W>;
-}
-
 /** This Streams API interface provides a standard abstraction for writing
  * streaming data to a destination, known as a sink. This object comes with
  * built-in backpressure and queuing. */
-declare class WritableStream<W = any> {
-  constructor(
-    underlyingSink?: UnderlyingSink<W>,
-    strategy?: QueuingStrategy<W>,
-  );
+interface WritableStream<W = any> {
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
-  close(): Promise<void>;
   getWriter(): WritableStreamDefaultWriter<W>;
 }
+
+declare var WritableStream: {
+  prototype: WritableStream;
+  new <W = any>(
+    underlyingSink?: UnderlyingSink<W>,
+    strategy?: QueuingStrategy<W>,
+  ): WritableStream<W>;
+};
 
 /** This Streams API interface represents a controller allowing control of a
  * WritableStream's state. When constructing a WritableStream, the underlying
@@ -218,15 +236,24 @@ interface WritableStreamDefaultWriter<W = any> {
   write(chunk: W): Promise<void>;
 }
 
-declare class TransformStream<I = any, O = any> {
-  constructor(
-    transformer?: Transformer<I, O>,
-    writableStrategy?: QueuingStrategy<I>,
-    readableStrategy?: QueuingStrategy<O>,
-  );
+declare var WritableStreamDefaultWriter: {
+  prototype: WritableStreamDefaultWriter;
+  new (): WritableStreamDefaultWriter;
+};
+
+interface TransformStream<I = any, O = any> {
   readonly readable: ReadableStream<O>;
   readonly writable: WritableStream<I>;
 }
+
+declare var TransformStream: {
+  prototype: TransformStream;
+  new <I = any, O = any>(
+    transformer?: Transformer<I, O>,
+    writableStrategy?: QueuingStrategy<I>,
+    readableStrategy?: QueuingStrategy<O>,
+  ): TransformStream<I, O>;
+};
 
 interface TransformStreamDefaultController<O = any> {
   readonly desiredSize: number | null;

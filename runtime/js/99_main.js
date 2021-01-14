@@ -223,6 +223,9 @@ delete Object.prototype.__proto__;
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
+    ReadableStreamDefaultReader: util.nonEnumerable(
+      streams.ReadableStreamDefaultReader,
+    ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
     TextDecoder: util.nonEnumerable(TextDecoder),
@@ -233,6 +236,9 @@ delete Object.prototype.__proto__;
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
+    WritableStreamDefaultWriter: util.nonEnumerable(
+      streams.WritableStreamDefaultWriter,
+    ),
     atob: util.writable(atob),
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
