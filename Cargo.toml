@@ -6,6 +6,7 @@ members = [
   "core",
   "runtime",
   "test_plugin",
+  "test_ffi",
   "test_util",
   "op_crates/fetch",
   "op_crates/web",

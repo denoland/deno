@@ -23,6 +23,7 @@ pub mod tty;
 pub mod web_worker;
 pub mod websocket;
 pub mod worker_host;
+pub mod ffi;
 
 use crate::metrics::metrics_op;
 use deno_core::error::AnyError;

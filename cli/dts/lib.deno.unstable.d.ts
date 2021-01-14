@@ -1255,6 +1255,57 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): Promise<void>;
+
+  export type DyLibraryDataType =
+    | "i8"
+    | "i16"
+    | "i32"
+    | "i64"
+    | "u8"
+    | "u16"
+    | "u32"
+    | "u64"
+    | "f32"
+    | "f64";
+
+  export interface CallDylibraryOptions {
+    params?: {
+      typeName: DyLibraryDataType;
+      value: any;
+    }[];
+    returnType?: DyLibraryDataType;
+  }
+
+  export class DyLibrary {
+    /** Call dynamic library function
+     *
+     * ```ts
+     * const lib = await Deno.loadLibrary("./libtest.dylib");
+     * const rval = lib.call("some_func", {
+     *   params: [{ typeName: "i32", value: 10 }]
+     *   returnType: "i32"
+     * });
+     * console.log(rval);
+     * ```
+     */
+    call<T = any>(name: string, options?: CallDylibraryOptions): T;
+
+    /** Unload dynamic library */
+    close(): void;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Load a dynamic library from the given file name,
+   *
+   * ```ts
+   * const lib = await Deno.loadLibrary("./libtest.dylib");
+   * lib.call("some_func");
+   * ```
+   *
+   * Requires `allow-all` permission.
+   */
+  export function loadLibrary(filename: string): DyLibrary;
 }
 
 declare function fetch(

@@ -130,5 +130,6 @@
     symlinkSync: __bootstrap.fs.symlinkSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
+    loadLibrary: __bootstrap.ffi.loadLibrary,
   };
 })(this);

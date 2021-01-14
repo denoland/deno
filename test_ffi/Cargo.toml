@@ -1,0 +1,17 @@
+
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "test_ffi"
+version = "0.0.1"
+authors = ["the deno authors"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2.80"
+
+[dev-dependencies]
+test_util = { path = "../test_util" }
