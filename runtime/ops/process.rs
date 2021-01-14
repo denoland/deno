@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::io::{std_file_resource, StreamResource};
 use crate::permissions::Permissions;
@@ -199,7 +199,7 @@ async fn op_run_status(
     .get::<ChildResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut child = resource.borrow_mut().await;
-  let run_status = (&mut *child).await?;
+  let run_status = child.wait().await?;
   let code = run_status.code();
 
   #[cfg(unix)]

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -1071,8 +1071,12 @@ unitTest(
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
-      `content-length: 11\r\n\r\n`,
-      "hello world",
+      `transfer-encoding: chunked\r\n\r\n`,
+      "6\r\n",
+      "hello \r\n",
+      "5\r\n",
+      "world\r\n",
+      "0\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
   },

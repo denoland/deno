@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -834,32 +834,6 @@ declare namespace Deno {
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
-
-  /** **UNSTABLE**: Under consideration to remove `ShutdownMode` entirely.
-   *
-   * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
-   *
-   * See: http://man7.org/linux/man-pages/man2/shutdown.2.html */
-  export enum ShutdownMode {
-    Read = 0,
-    Write,
-    ReadWrite, // TODO(ry) panics on ReadWrite.
-  }
-
-  /** **UNSTABLE**: Both the `how` parameter and `ShutdownMode` enum are under
-   * consideration for removal.
-   *
-   * Shutdown socket send and receive operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
-   *
-   * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
-   * ```
-   */
-  export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
