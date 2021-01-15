@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_crypto::op_crypto_get_random_values;
 use deno_crypto::rand::rngs::StdRng;
 use deno_crypto::rand::SeedableRng;
