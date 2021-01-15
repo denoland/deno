@@ -53,6 +53,7 @@ function runTestAsync() {
     testAsync,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([49, 50, 51]),
+    new Uint8Array([99, 98, 97]),
   );
 
   if (response != null || response != undefined) {
