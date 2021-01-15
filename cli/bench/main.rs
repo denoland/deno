@@ -9,7 +9,6 @@ use std::{
   path::PathBuf,
   process::{Command, Stdio},
 };
-use test_util::StraceOutput;
 
 mod http;
 mod throughput;
@@ -317,8 +316,8 @@ fn run_strace_benchmarks(
 ) -> Result<()> {
   use std::io::Read;
 
-  let mut thread_count: HashMap<String, StraceOutput> = HashMap::new();
-  let mut syscall_count: HashMap<String, StraceOutput> = HashMap::new();
+  let mut thread_count: HashMap<String, u64> = HashMap::new();
+  let mut syscall_count: HashMap<String, u64> = HashMap::new();
 
   for (name, args, _) in EXEC_TIME_BENCHMARKS {
     let mut file = tempfile::NamedTempFile::new()?;
@@ -340,8 +339,8 @@ fn run_strace_benchmarks(
     file.as_file_mut().read_to_string(&mut output)?;
 
     let strace_result = test_util::parse_strace_output(&output);
-    let clone = strace_result.get("clone").unwrap().clone();
-    let total = strace_result.get("total").unwrap().clone();
+    let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0);
+    let total = strace_result.get("total").unwrap().calls;
     thread_count.insert(name.to_string(), clone);
     syscall_count.insert(name.to_string(), total);
   }
@@ -405,8 +404,8 @@ struct BenchResult {
   max_memory: HashMap<String, u64>,
   req_per_sec: HashMap<String, u64>,
   max_latency: HashMap<String, f64>,
-  thread_count: HashMap<String, StraceOutput>,
-  syscall_count: HashMap<String, StraceOutput>,
+  thread_count: HashMap<String, u64>,
+  syscall_count: HashMap<String, u64>,
 }
 
 impl BenchResult {
