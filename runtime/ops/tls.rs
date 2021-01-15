@@ -398,6 +398,13 @@ async fn op_accept_tls(
     .try_or_cancel(cancel)
     .await?;
 
+  let sni = tls_stream
+    .get_ref()
+    .1
+    .get_sni_hostname()
+    .unwrap()
+    .to_owned();
+
   let rid = {
     let mut state_ = state.borrow_mut();
     state_
@@ -407,6 +414,7 @@ async fn op_accept_tls(
 
   Ok(json!({
     "rid": rid,
+    "sni": sni,
     "localAddr": {
       "transport": "tcp",
       "hostname": local_addr.ip().to_string(),
