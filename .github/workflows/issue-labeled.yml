@@ -1,0 +1,18 @@
+name: Issue Labeled
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  issue-labeled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: duplicate
+        if: github.event.label.name == 'duplicate'
+        uses: actions-cool/issues-helper@v1.10
+        with:
+          actions: 'remove-labels'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          labels: 'bug, core, feat, web, cli, swc, needs investigation, upstream'
