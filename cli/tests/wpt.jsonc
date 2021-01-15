@@ -645,7 +645,6 @@
     {
       "name": "urlsearchparams-constructor",
       "expectFail": [
-        "URLSearchParams constructor, DOMException as argument",
         "URLSearchParams constructor, empty string as argument",
         "Construct with 2 unpaired surrogates (no trailing)",
         "Construct with 3 unpaired surrogates (no leading)",
