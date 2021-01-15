@@ -37,10 +37,12 @@
     #rid = 0;
     #remoteAddr = null;
     #localAddr = null;
-    constructor(rid, remoteAddr, localAddr) {
+    #sni = null;
+    constructor(rid, remoteAddr, localAddr, sni) {
       this.#rid = rid;
       this.#remoteAddr = remoteAddr;
       this.#localAddr = localAddr;
+      this.#sni = sni;
     }
 
     get rid() {
@@ -53,6 +55,10 @@
 
     get localAddr() {
       return this.#localAddr;
+    }
+
+    get sni() {
+      return this.#sni;
     }
 
     write(p) {
