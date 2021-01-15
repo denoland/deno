@@ -1,7 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-// To run this test manually:
-//   cd test_plugin
-//   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
 
 use std::process::Command;
 use test_util::deno_cmd;
