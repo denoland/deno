@@ -166,7 +166,7 @@ fn run_exec_time(
       data
         .into_iter()
         .filter(|(key, _)| RESULT_KEYS.contains(&key.as_str()))
-        .map(|(key, val)| (key.to_string(), val.as_f64().unwrap()))
+        .map(|(key, val)| (key, val.as_f64().unwrap()))
         .collect(),
     );
   }
@@ -411,7 +411,7 @@ struct BenchResult {
 
 impl BenchResult {
   pub fn new() -> BenchResult {
-    return BenchResult {
+    BenchResult {
       created_at: String::new(),
       sha1: String::new(),
       binary_size: HashMap::new(),
@@ -424,7 +424,7 @@ impl BenchResult {
       max_latency: HashMap::new(),
       thread_count: HashMap::new(),
       syscall_count: HashMap::new(),
-    };
+    }
   }
 }
 
