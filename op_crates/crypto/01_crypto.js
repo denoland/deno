@@ -36,7 +36,7 @@
       arrayBufferView.byteOffset,
       arrayBufferView.byteLength,
     );
-    core.jsonOpSync("op_get_random_values", {}, ui8);
+    core.jsonOpSync("op_crypto_get_random_values", {}, ui8);
     return arrayBufferView;
   }
 
