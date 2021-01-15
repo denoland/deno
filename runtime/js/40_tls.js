@@ -40,7 +40,7 @@
   class TLSListener extends Listener {
     async accept() {
       const res = await opAcceptTLS(this.rid);
-      return new Conn(res.rid, res.remoteAddr, res.localAddr);
+      return new Conn(res.rid, res.remoteAddr, res.localAddr, res.sni);
     }
   }
 
