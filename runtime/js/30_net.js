@@ -38,7 +38,7 @@
     #remoteAddr = null;
     #localAddr = null;
     #sni = null;
-    constructor(rid, remoteAddr, localAddr, sni) {
+    constructor(rid, remoteAddr, localAddr, sni = null) {
       this.#rid = rid;
       this.#remoteAddr = remoteAddr;
       this.#localAddr = localAddr;
