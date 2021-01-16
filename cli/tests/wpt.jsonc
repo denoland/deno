@@ -193,7 +193,12 @@
   "dom": ["abort/event"],
   "hr-time": ["monotonic-clock"],
   "html": [
-    "webappapis/atob/base64.any.js",
+    {
+      name: "webappapis/atob",
+      expectFail: [
+        "TypeError: error sending request for url (http://web-platform-tests/fetch/data-urls/resources/base64.json)",
+      ],
+    },
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
     "webappapis/microtask-queuing/queue-microtask.any",
     "webappapis/timers",
