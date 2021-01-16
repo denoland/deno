@@ -261,7 +261,7 @@ unitTest(
 
     const incoming = await incomingPromise;
 
-    assertEquals((incoming as Deno.Conn & { sni?: string }).sni, hostname);
+    assertEquals(incoming.sni, hostname);
     listener.close();
     incoming.close();
   },
