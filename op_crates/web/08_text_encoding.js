@@ -128,9 +128,10 @@
     for (let i = 0; i < s.length; i++) {
       const charCode = s[i].charCodeAt(0);
       if (charCode > 0xff) {
-        throw new TypeError(
+        throw new DOMException(
           "The string to be encoded contains characters " +
             "outside of the Latin1 range.",
+          "InvalidCharacterError",
         );
       }
       byteArray.push(charCode);
