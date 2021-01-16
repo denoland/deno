@@ -128,8 +128,8 @@ unitTest(async function bufferBasicOperations(): Promise<void> {
     await empty(buf, testString.slice(0, 20), new Uint8Array(5));
     await empty(buf, "", new Uint8Array(100));
 
-    // TODO buf.writeByte()
-    // TODO buf.readByte()
+    // TODO(bartlomieju): buf.writeByte()
+    // TODO(bartlomieju): buf.readByte()
   }
 });
 

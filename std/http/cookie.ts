@@ -178,7 +178,7 @@ export function setCookie(res: { headers?: Headers }, cookie: Cookie): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
-  // TODO (zekth) : Add proper parsing of Set-Cookie headers
+  // TODO(zekth) : Add proper parsing of Set-Cookie headers
   // Parsing cookie headers to make consistent set-cookie header
   // ref: https://tools.ietf.org/html/rfc6265#section-4.1.1
   const v = toString(cookie);

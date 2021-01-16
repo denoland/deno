@@ -668,7 +668,7 @@
       setRelatedTarget(eventImpl, null);
     }
 
-    // TODO: invoke activation targets if HTML nodes will be implemented
+    // TODO(bartlomieju): invoke activation targets if HTML nodes will be implemented
     // if (activationTarget !== null) {
     //   if (!eventImpl.defaultPrevented) {
     //     activationTarget._activationBehavior();

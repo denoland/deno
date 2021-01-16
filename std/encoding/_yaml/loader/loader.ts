@@ -667,7 +667,7 @@ function readDoubleQuotedScalar(
       if (isEOL(ch)) {
         skipSeparationSpace(state, false, nodeIndent);
 
-        // TODO: rework to inline fn with no type cast?
+        // TODO(bartlomieju): rework to inline fn with no type cast?
       } else if (ch < 256 && simpleEscapeCheck[ch]) {
         state.result += simpleEscapeMap[ch];
         state.position++;
