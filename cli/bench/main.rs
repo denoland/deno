@@ -2,6 +2,7 @@
 
 use deno_core::serde_json::{self, Value};
 use serde::Serialize;
+use std::time::SystemTime;
 use std::{
   collections::HashMap,
   convert::From,
@@ -148,7 +149,7 @@ fn run_exec_time(
     true,
   );
 
-  let mut results: HashMap<String, HashMap<String, f64>> = HashMap::new();
+  let mut results = HashMap::<String, HashMap<String, f64>>::new();
   let hyperfine_results = read_json(benchmark_file)?;
   for ((name, _, _), data) in EXEC_TIME_BENCHMARKS.iter().zip(
     hyperfine_results
@@ -198,8 +199,8 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
 const BINARY_TARGET_FILES: &[&str] =
   &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
 fn get_binary_sizes(target_dir: &PathBuf) -> Result<HashMap<String, u64>> {
-  let mut sizes: HashMap<String, u64> = HashMap::new();
-  let mut mtimes = HashMap::new();
+  let mut sizes = HashMap::<String, u64>::new();
+  let mut mtimes = HashMap::<String, SystemTime>::new();
 
   sizes.insert(
     "deno".to_string(),
@@ -256,7 +257,7 @@ const BUNDLES: &[(&str, &str)] = &[
   ("gist", "./std/examples/gist.ts"),
 ];
 fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
-  let mut sizes: HashMap<String, u64> = HashMap::new();
+  let mut sizes = HashMap::<String, u64>::new();
 
   for (name, url) in BUNDLES {
     let path = format!("{}.bundle.js", name);
@@ -284,7 +285,7 @@ fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
 }
 
 fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
-  let mut m: HashMap<String, f64> = HashMap::new();
+  let mut m = HashMap::<String, f64>::new();
 
   m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
   m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100)?);
@@ -316,8 +317,8 @@ fn run_strace_benchmarks(
 ) -> Result<()> {
   use std::io::Read;
 
-  let mut thread_count: HashMap<String, u64> = HashMap::new();
-  let mut syscall_count: HashMap<String, u64> = HashMap::new();
+  let mut thread_count = HashMap::<String, u64>::new();
+  let mut syscall_count = HashMap::<String, u64>::new();
 
   for (name, args, _) in EXEC_TIME_BENCHMARKS {
     let mut file = tempfile::NamedTempFile::new()?;
@@ -352,7 +353,7 @@ fn run_strace_benchmarks(
 }
 
 fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
-  let mut results: HashMap<String, u64> = HashMap::new();
+  let mut results = HashMap::<String, u64>::new();
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {
     let proc = Command::new("time")
