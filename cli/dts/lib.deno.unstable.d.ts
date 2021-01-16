@@ -1255,6 +1255,24 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): Promise<void>;
+  export interface Conn {
+    /** The local address of the connection. */
+    readonly localAddr: Addr;
+    /** The remote address of the connection. */
+    readonly remoteAddr: Addr;
+    /** The resource ID of the connection. */
+    readonly rid: number;
+    /** **UNSTABLE**: yet to be vetted.
+     * The SNI the client sent to the server during the TLS handshake. If the
+     * connection was not made over TLS, or the client did not send the SNI
+     * during the [client hello](https://tools.ietf.org/html/rfc5246#section-7.4.1.2)
+     * message this property will be undefined.
+     */
+    readonly sni?: string;
+    /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
+     * callers should just use `close()`. */
+    closeWrite(): void;
+  }
 }
 
 declare function fetch(
