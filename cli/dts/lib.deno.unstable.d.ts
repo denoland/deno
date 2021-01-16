@@ -1266,9 +1266,9 @@ declare namespace Deno {
      * The SNI the client sent to the server during the TLS handshake. If the
      * connection was not made over TLS, or the client did not send the SNI
      * during the [client hello](https://tools.ietf.org/html/rfc5246#section-7.4.1.2)
-     * message this property will be undefined.
+     * message this property will be `null`.
      */
-    readonly sni?: string;
+    readonly sni: string | null;
     /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
      * callers should just use `close()`. */
     closeWrite(): void;
