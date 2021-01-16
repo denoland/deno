@@ -2,6 +2,7 @@
 
 use super::io::StreamResource;
 use super::io::TcpStreamResource;
+use super::UnstableChecker;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -398,12 +399,19 @@ async fn op_accept_tls(
     .try_or_cancel(cancel)
     .await?;
 
-  let sni = tls_stream
-      .get_ref()
-      .1
-      .get_sni_hostname()
-      .map(str::to_string);
-  
+  let sni = {
+    let _state = state.borrow();
+    if _state.borrow::<UnstableChecker>().unstable {
+      tls_stream
+        .get_ref()
+        .1
+        .get_sni_hostname()
+        .map(str::to_string)
+    } else {
+      None
+    }
+  };
+
   let rid = {
     let mut state_ = state.borrow_mut();
     state_
