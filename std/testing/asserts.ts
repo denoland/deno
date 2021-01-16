@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // This module is browser compatible. Do not rely on good formatting of values
 // for AssertionError messages in browsers.
 

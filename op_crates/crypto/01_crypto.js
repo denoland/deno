@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const core = window.Deno.core;
@@ -36,7 +36,7 @@
       arrayBufferView.byteOffset,
       arrayBufferView.byteLength,
     );
-    core.jsonOpSync("op_get_random_values", {}, ui8);
+    core.jsonOpSync("op_crypto_get_random_values", {}, ui8);
     return arrayBufferView;
   }
 

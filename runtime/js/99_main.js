@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
@@ -223,6 +223,9 @@ delete Object.prototype.__proto__;
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
+    ReadableStreamDefaultReader: util.nonEnumerable(
+      streams.ReadableStreamDefaultReader,
+    ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
     TextDecoder: util.nonEnumerable(TextDecoder),
@@ -233,6 +236,9 @@ delete Object.prototype.__proto__;
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
+    WritableStreamDefaultWriter: util.nonEnumerable(
+      streams.WritableStreamDefaultWriter,
+    ),
     atob: util.writable(atob),
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
@@ -244,6 +250,11 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
   };
+
+  // The console seems to be the only one that should be writable and non-enumerable
+  // thus we don't have a unique helper for it. If other properties follow the same
+  // structure, it might be worth it to define a helper in `util`
+  windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
     Window: globalInterfaces.windowConstructorDescriptor,
