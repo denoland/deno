@@ -266,7 +266,7 @@ const tests: Array<[string, any, string]> = [
   ["%3c", "⌘".charCodeAt(0), "  ⌘"],
   ["%-3c", "⌘".charCodeAt(0), "⌘  "],
   // Runes that are not printable.
-  // {"%c", '\U00000e00', "\u0e00"}, 
+  // {"%c", '\U00000e00', "\u0e00"},
   // TODO(bartlomieju) check if \U escape exists in js
   //["%c", '\U0010ffff'.codePointAt(0), "\U0010ffff"],
 
@@ -292,7 +292,7 @@ const tests: Array<[string, any, string]> = [
   ["%.0s", "日本語日本語", ""],
   ["%.5s", "日本語日本語", "日本語日本"],
   ["%.10s", "日本語日本語", "日本語日本語"],
-  // ["%08q", "abc", `000"abc"`], 
+  // ["%08q", "abc", `000"abc"`],
   // TODO(bartlomieju): verb q
   // ["%-8q", "abc", `"abc"   `],
   //["%.5q", "abcdefghijklmnopqrstuvwxyz", `"abcde"`],
@@ -303,7 +303,7 @@ const tests: Array<[string, any, string]> = [
   // our %x takes lower byte of string "%.1x", "日本語", "e6"],,
   ["%.1x", "日本語", "e5"],
   //["%10.1q", "日本語日本語", `       "日"`],
-  // ["%10v", null, "     <nil>"], 
+  // ["%10v", null, "     <nil>"],
   // TODO(bartlomieju): null, undefined ...
   // ["%-10v", null, "<nil>     "],
 
@@ -356,9 +356,9 @@ const tests: Array<[string, any, string]> = [
   ["%-#20.8x", 0x1234abc, "0x01234abc          "],
   ["%-#20.8X", 0x1234abc, "0X01234ABC          "],
   ["%-#20.8o", parseInt("01234", 8), "00001234            "],
-  // Test correct f.intbuf overflow checks. 
+  // Test correct f.intbuf overflow checks.
   // TODO(bartlomieju): lazy
-  // unicode format 
+  // unicode format
   // TODO(bartlomieju): decide whether unicode verb makes sense %U
 
   // floats
@@ -495,7 +495,7 @@ const tests: Array<[string, any, string]> = [
   ["%g", 1.23456789e-3, "0.00123457"], // see above prec6 = precdef6 - (-3+1)
   //["%g", 1.23456789e20, "1.23456789e+20"],
   ["%g", 1.23456789e20, "1.23457e+20"],
-  // arrays 
+  // arrays
   // TODO(bartlomieju):
   // slice : go specific
 

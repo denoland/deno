@@ -1,9 +1,9 @@
 {
-    "rules": {
-        "tags": ["recommended"],
-        "include": [
-            "ban-untagged-todo"
-        ],
-        "exclude": []
-    }
+  "rules": {
+    "tags": ["recommended"],
+    "include": [
+      "ban-untagged-todo"
+    ],
+    "exclude": []
+  }
 }
