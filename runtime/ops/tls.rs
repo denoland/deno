@@ -398,13 +398,11 @@ async fn op_accept_tls(
     .try_or_cancel(cancel)
     .await?;
 
-  let sni = {
-    tls_stream
+  let sni = tls_stream
       .get_ref()
       .1
       .get_sni_hostname()
-      .map(str::to_string)
-  };
+      .map(str::to_string);
   
   let rid = {
     let mut state_ = state.borrow_mut();
