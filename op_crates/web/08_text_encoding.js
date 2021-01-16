@@ -123,6 +123,7 @@
   }
 
   function btoa(s) {
+    s = String(s);
     const byteArray = [];
     for (let i = 0; i < s.length; i++) {
       const charCode = s[i].charCodeAt(0);
