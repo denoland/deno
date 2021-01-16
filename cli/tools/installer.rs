@@ -842,9 +842,11 @@ mod tests {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
-    let local_module = temp_dir.path().join("Magnús/echo_server.ts");
-    let local_module_url = Url::from_file_path(&local_module).unwrap();
+    let unicode_dir = temp_dir.path().join("Magnús");
+    std::fs::create_dir(&unicode_dir).unwrap();
+    let local_module = unicode_dir.join("echo_server.ts");
     let local_module_str = local_module.to_string_lossy();
+    std::fs::write(&local_module, "// Some JavaScript I guess").unwrap();
 
     install(
       Flags::default(),
