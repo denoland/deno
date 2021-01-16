@@ -55,7 +55,7 @@ const readMakers: ReadMaker[] = [
     fn: (r): iotest.OneByteReader => new iotest.OneByteReader(r),
   },
   { name: "half", fn: (r): iotest.HalfReader => new iotest.HalfReader(r) },
-  // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
+  // TODO(bartlomieju): { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
 

@@ -278,7 +278,7 @@ delete Object.prototype.__proto__;
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),
-    // TODO: should be readonly?
+    // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
     workerMessageRecvCallback: util.nonEnumerable(workerMessageRecvCallback),

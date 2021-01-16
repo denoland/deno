@@ -236,7 +236,7 @@ Deno.test({
       assert(file.tempfile != null);
       assertEquals(file.size, size);
       assertEquals(file.type, "application/octet-stream");
-      // TODO checksum of tmp & sampleFile
+      // TODO(bartlomieju): checksum of tmp & sampleFile
     } finally {
       await Deno.remove(multipartFile);
       await Deno.remove(sampleFile);
