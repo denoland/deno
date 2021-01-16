@@ -236,7 +236,6 @@ unitTest(
 unitTest(
   { perms: { net: true, read: true } },
   async function getAndConnectWithSNI(): Promise<void> {
-    const resolvable = deferred();
     const hostname = "localhost";
     const port = 3600;
     const certFile = "cli/tests/tls/localhost.crt";
@@ -250,24 +249,20 @@ unitTest(
       keyFile,
     });
 
-    listener.accept().then((conn) => {
-      assertEquals((conn as Deno.Conn & { sni?: string }).sni, hostname);
-      setTimeout(() => {
-        listener.close();
-        conn.close();
-        resolvable.resolve();
-      }, 0);
+    const incomingPromise = listener.accept();
+
+    const outgoing = await Deno.connectTls({
+      hostname,
+      port,
+      certFile: rootCertFile,
     });
 
-    async function connect() {
-      const conn = await Deno.connectTls({
-        hostname,
-        port,
-        certFile: rootCertFile,
-      });
-      conn.close();
-    }
+    outgoing.close();
 
-    await resolvable;
+    const incoming = await incomingPromise;
+
+    assertEquals((incoming as Deno.Conn & { sni?: string }).sni, hostname);
+    listener.close();
+    incoming.close();
   },
 );
