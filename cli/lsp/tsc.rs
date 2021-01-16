@@ -500,7 +500,8 @@ impl RenameLocations {
       HashMap::new();
     for location in self.locations.iter() {
       let uri = utils::normalize_file_name(&location.document_span.file_name)?;
-      let specifier = ModuleSpecifier::resolve_url(&location.document_span.file_name)?;
+      let specifier =
+        ModuleSpecifier::resolve_url(&location.document_span.file_name)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -656,7 +657,8 @@ pub struct ReferenceEntry {
 
 impl ReferenceEntry {
   pub fn to_location(&self, line_index: &[u32]) -> lsp_types::Location {
-    let uri = utils::normalize_file_name(&self.document_span.file_name).unwrap();
+    let uri =
+      utils::normalize_file_name(&self.document_span.file_name).unwrap();
     lsp_types::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
