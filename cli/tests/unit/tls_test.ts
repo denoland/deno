@@ -9,6 +9,7 @@ import {
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../std/io/bufio.ts";
 import { TextProtoReader } from "../../../std/textproto/mod.ts";
+import { resolve } from "../../../std/path/win32.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -230,5 +231,43 @@ unitTest(
     }
 
     conn.close();
+  },
+);
+unitTest(
+  { perms: { net: true, read: true } },
+  async function getAndConnectWithSNI(): Promise<void> {
+    const resolvable = deferred();
+    const hostname = "localhost";
+    const port = 3600;
+    const certFile = "cli/tests/tls/localhost.crt";
+    const keyFile = "cli/tests/tls/localhost.key";
+    const rootCertFile = "cli/tests/tls/RootCa.pem";
+
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      certFile,
+      keyFile,
+    });
+
+    listener.accept().then((conn) => {
+      assertEquals((conn as Deno.Conn & { sni?: string }).sni, hostname);
+      setTimeout(() => {
+        listener.close();
+        conn.close();
+        resolvable.resolve();
+      }, 0);
+    });
+
+    async function connect() {
+      const conn = await Deno.connectTls({
+        hostname,
+        port,
+        certFile: rootCertFile,
+      });
+      conn.close();
+    }
+
+    await resolvable;
   },
 );
