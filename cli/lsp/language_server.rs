@@ -812,7 +812,7 @@ impl lspower::LanguageServer for LanguageServer {
           continue;
         }
         let reference_specifier =
-          ModuleSpecifier::resolve_url(&reference.file_name).unwrap();
+          ModuleSpecifier::resolve_url(&reference.document_span.file_name).unwrap();
         // TODO(lucacasonato): handle error correctly
         let line_index =
           self.get_line_index(reference_specifier).await.unwrap();

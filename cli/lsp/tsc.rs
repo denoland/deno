@@ -474,13 +474,8 @@ pub struct ImplementationLocation {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameLocation {
-  // inherit from DocumentSpan
-  text_span: TextSpan,
-  file_name: String,
-  original_text_span: Option<TextSpan>,
-  original_file_name: Option<String>,
-  context_span: Option<TextSpan>,
-  original_context_span: Option<TextSpan>,
+  #[serde(flatten)]
+  document_span: DocumentSpan,
   // RenameLocation props
   prefix_text: Option<String>,
   suffix_text: Option<String>,
@@ -504,8 +499,8 @@ impl RenameLocations {
     let mut text_document_edit_map: HashMap<Url, lsp_types::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
-      let uri = utils::normalize_file_name(&location.file_name)?;
-      let specifier = ModuleSpecifier::resolve_url(&location.file_name)?;
+      let uri = utils::normalize_file_name(&location.document_span.file_name)?;
+      let specifier = ModuleSpecifier::resolve_url(&location.document_span.file_name)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -535,6 +530,7 @@ impl RenameLocations {
         .edits
         .push(lsp_types::OneOf::Left(lsp_types::TextEdit {
           range: location
+            .document_span
             .text_span
             .to_range(&index_provider(specifier.clone()).await?),
           new_text: new_name.to_string(),
@@ -654,20 +650,16 @@ pub struct ReferenceEntry {
   is_write_access: bool,
   pub is_definition: bool,
   is_in_string: Option<bool>,
-  text_span: TextSpan,
-  pub file_name: String,
-  original_text_span: Option<TextSpan>,
-  original_file_name: Option<String>,
-  context_span: Option<TextSpan>,
-  original_context_span: Option<TextSpan>,
+  #[serde(flatten)]
+  pub document_span: DocumentSpan,
 }
 
 impl ReferenceEntry {
   pub fn to_location(&self, line_index: &[u32]) -> lsp_types::Location {
-    let uri = utils::normalize_file_name(&self.file_name).unwrap();
+    let uri = utils::normalize_file_name(&self.document_span.file_name).unwrap();
     lsp_types::Location {
       uri,
-      range: self.text_span.to_range(line_index),
+      range: self.document_span.text_span.to_range(line_index),
     }
   }
 }
