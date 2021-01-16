@@ -64,14 +64,24 @@ fn create_compiler_snapshot(
     println!("cargo:rerun-if-changed={}", path.display());
   }
 
-  // libs that should be loaded into the isolate before snapshotting.
-  let libs = vec![
-    // Deno custom type libraries
+  let path_dts = cwd.join("dts");
+
+  // Deno custom type libraries
+  let deno_libs = vec![
     "deno.window",
     "deno.worker",
     "deno.shared_globals",
     "deno.ns",
     "deno.unstable",
+  ];
+
+  // ensure we invalidate the build properly.
+  for name in deno_libs.iter() {
+    println!("cargo:rerun-if-changed={}", path_dts.join(format!("lib.{}.d.ts", name)).display());
+  }
+
+  // libs that should be loaded into the isolate before snapshotting.
+  let mut libs = vec![
     // Deno built-in type libraries
     "es5",
     "es2015.collection",
@@ -117,6 +127,7 @@ fn create_compiler_snapshot(
     "esnext.weakref",
   ];
 
+  libs.extend(deno_libs);
   // create a copy of the vector that includes any op crate libs to be passed
   // to the JavaScript compiler to build into the snapshot
   let mut build_libs = libs.clone();
@@ -125,7 +136,6 @@ fn create_compiler_snapshot(
   }
 
   let re_asset = Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
-  let path_dts = cwd.join("dts");
   let build_specifier = "asset:///bootstrap.ts";
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
