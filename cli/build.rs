@@ -77,7 +77,10 @@ fn create_compiler_snapshot(
 
   // ensure we invalidate the build properly.
   for name in deno_libs.iter() {
-    println!("cargo:rerun-if-changed={}", path_dts.join(format!("lib.{}.d.ts", name)).display());
+    println!(
+      "cargo:rerun-if-changed={}",
+      path_dts.join(format!("lib.{}.d.ts", name)).display()
+    );
   }
 
   // libs that should be loaded into the isolate before snapshotting.
