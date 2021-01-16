@@ -6,7 +6,6 @@ use crate::colors;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_runtime::inspector::InspectorSession;
@@ -29,6 +28,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use swc_ecmascript::parser::token::{Token, Word};
+use tokio::pin;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -305,8 +305,10 @@ async fn read_line_and_poll(
 
     // Because an inspector websocket client may choose to connect at anytime when we have an
     // inspector server we need to keep polling the worker to pick up new connections.
-    let mut timeout =
-      tokio::time::sleep(tokio::time::Duration::from_millis(100)).boxed_local();
+    // TODO(piscisaureus): the above comment is a red herring; figure out if/why
+    // the event loop isn't woken by a waker when a websocket client connects.
+    let timeout = tokio::time::sleep(tokio::time::Duration::from_millis(100));
+    pin!(timeout);
 
     tokio::select! {
       result = &mut line => {
@@ -315,7 +317,7 @@ async fn read_line_and_poll(
       _ = worker.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }
-      _ = &mut timeout => {
+      _ = timeout => {
         poll_worker = true
       }
     }
