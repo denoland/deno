@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json::{self, map::Map, Number, Value};
 use std::{
@@ -202,6 +202,12 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<Value> {
     Value::Number(Number::from(test_util::deno_exe_path().metadata()?.len())),
   );
 
+  // add up size for denort
+  sizes.insert(
+    "denort".to_string(),
+    Value::Number(Number::from(test_util::denort_exe_path().metadata()?.len())),
+  );
+
   // add up size for everything in target/release/deps/libswc*
   let swc_size = rlib_size(&target_dir, "libswc");
   println!("swc {} bytes", swc_size);
@@ -399,6 +405,21 @@ fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<Value> {
   Ok(Value::Object(results))
 }
 
+fn cargo_deps() -> usize {
+  let cargo_lock = test_util::root_path().join("Cargo.lock");
+  let mut count = 0;
+  let file = std::fs::File::open(cargo_lock).unwrap();
+  use std::io::BufRead;
+  for line in std::io::BufReader::new(file).lines() {
+    if line.unwrap().starts_with("[[package]]") {
+      count += 1
+    }
+  }
+  println!("cargo_deps {}", count);
+  assert!(count > 10); // Sanity check.
+  count
+}
+
 /*
  TODO(SyrupThinker)
  Switch to the #[bench] attribute once
@@ -419,10 +440,6 @@ fn main() -> Result<()> {
   env::set_current_dir(&test_util::root_path())?;
 
   let mut new_data: Map<String, Value> = Map::new();
-
-  new_data.insert("binary_size".to_string(), get_binary_sizes(&target_dir)?);
-  new_data.insert("bundle_size".to_string(), bundle_benchmark(&deno_exe)?);
-
   new_data.insert(
     "created_at".to_string(),
     Value::String(
@@ -444,6 +461,10 @@ fn main() -> Result<()> {
       .to_string(),
     ),
   );
+
+  new_data.insert("binary_size".to_string(), get_binary_sizes(&target_dir)?);
+  new_data.insert("bundle_size".to_string(), bundle_benchmark(&deno_exe)?);
+  new_data.insert("cargo_deps".to_string(), Value::Number(cargo_deps().into()));
 
   // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
   // When this is changed, the historical data in gh-pages branch needs to be

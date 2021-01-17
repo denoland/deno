@@ -131,7 +131,7 @@ Copy bytes from one binary array to another.
 ```typescript
 import { copy } from "https://deno.land/std@$STD_VERSION/bytes/mod.ts";
 
-const dst = new Uint8Array(4);
+const dest = new Uint8Array(4);
 const src = Uint8Array.of(1, 2, 3, 4);
 const len = copy(src, dest); // returns len = 4
 ```

@@ -2,7 +2,7 @@
 // https://github.com/golang/go/tree/go1.13.10/src/hash/fnv/fnv_test.go
 // Copyright 2011 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { Fnv32, Fnv32a, Fnv64, Fnv64a } from "./fnv.ts";
 

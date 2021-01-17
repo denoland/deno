@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use clap::App;
 use clap::AppSettings;
@@ -6,14 +6,11 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
-use deno_core::serde::de;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
-use deno_core::serde::Serializer;
+use deno_core::url::Url;
 use deno_runtime::permissions::PermissionsOptions;
 use log::Level;
-use std::fmt;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -100,66 +97,7 @@ impl Default for DenoSubcommand {
   }
 }
 
-fn deserialize_maybe_log_level<'de, D>(d: D) -> Result<Option<Level>, D::Error>
-where
-  D: Deserializer<'de>,
-{
-  struct OptionalLogLevelVisitor;
-  impl<'de> de::Visitor<'de> for OptionalLogLevelVisitor {
-    type Value = Option<Level>;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-      write!(formatter, "null or a valid log level string")
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-      E: de::Error,
-    {
-      Ok(None)
-    }
-
-    fn visit_some<D>(self, d: D) -> Result<Self::Value, D::Error>
-    where
-      D: de::Deserializer<'de>,
-    {
-      struct LogLevelVisitor;
-      impl<'de> de::Visitor<'de> for LogLevelVisitor {
-        type Value = Level;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-          write!(formatter, "a valid log level string")
-        }
-
-        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-        where
-          E: de::Error,
-        {
-          Level::from_str(s).map_err(|_| {
-            de::Error::invalid_value(de::Unexpected::Str(s), &self)
-          })
-        }
-      }
-      Ok(Some(d.deserialize_str(LogLevelVisitor)?))
-    }
-  }
-  d.deserialize_option(OptionalLogLevelVisitor)
-}
-
-fn serialize_maybe_log_level<S>(
-  maybe_level: &Option<Level>,
-  s: S,
-) -> Result<S::Ok, S::Error>
-where
-  S: Serializer,
-{
-  match maybe_level {
-    None => s.serialize_none(),
-    Some(level) => s.serialize_str(&level.to_string()),
-  }
-}
-
-#[derive(Clone, Debug, PartialEq, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -173,6 +111,7 @@ pub struct Flags {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: bool,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub location: Option<Url>,
   pub cache_blocklist: Vec<String>,
   pub ca_file: Option<String>,
   pub cached_only: bool,
@@ -184,8 +123,6 @@ pub struct Flags {
   pub inspect_brk: Option<SocketAddr>,
   pub lock: Option<PathBuf>,
   pub lock_write: bool,
-  #[serde(deserialize_with = "deserialize_maybe_log_level")]
-  #[serde(serialize_with = "serialize_maybe_log_level")]
   pub log_level: Option<Level>,
   pub no_check: bool,
   pub no_prompts: bool,
@@ -325,19 +262,13 @@ lazy_static! {
 }
 
 /// Main entry point for parsing deno's command line flags.
-/// Exits the process on error.
-pub fn flags_from_vec(args: Vec<String>) -> Flags {
-  match flags_from_vec_safe(args) {
-    Ok(flags) => flags,
-    Err(err) => err.exit(),
-  }
-}
-
-/// Same as flags_from_vec but does not exit on error.
-pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
+pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
   let app = clap_root(&*version);
-  let matches = app.get_matches_from_safe(args)?;
+  let matches = app.get_matches_from_safe(args).map_err(|e| clap::Error {
+    message: e.message.trim_start_matches("error: ").to_string(),
+    ..e
+  })?;
 
   let mut flags = Flags::default();
 
@@ -599,7 +530,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     print,
     code,
     as_typescript,
-  }
+  };
 }
 
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -673,6 +604,7 @@ fn runtime_args<'a, 'b>(
   };
   app
     .arg(cached_only_arg())
+    .arg(location_arg())
     .arg(v8_flags_arg())
     .arg(seed_arg())
 }
@@ -691,8 +623,10 @@ fn runtime_args_parse(
   if include_inspector {
     inspect_arg_parse(flags, matches);
   }
+  location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
+  inspect_arg_parse(flags, matches);
 }
 
 fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -1495,6 +1429,33 @@ fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
 }
 
+fn location_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.location = matches
+    .value_of("location")
+    .map(|href| Url::parse(href).unwrap());
+}
+
+fn location_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("location")
+    .long("location")
+    .takes_value(true)
+    .value_name("HREF")
+    .validator(|href| {
+      let url = Url::parse(&href);
+      if url.is_err() {
+        return Err("Failed to parse URL".to_string());
+      }
+      let mut url = url.unwrap();
+      url.set_username("").unwrap();
+      url.set_password(None).unwrap();
+      if !["http", "https"].contains(&url.scheme()) {
+        return Err("Expected protocol \"http\" or \"https\"".to_string());
+      }
+      Ok(())
+    })
+    .help("Value of 'globalThis.location' used by some web APIs")
+}
+
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
@@ -1737,7 +1698,6 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 // TODO(ry) move this to utility module and add test.
 /// Strips fragment part of URL. Panics on bad URL.
 pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
-  use deno_core::url::Url;
   let mut out: Vec<String> = vec![];
   for urlstr in urls.iter() {
     if let Ok(mut url) = Url::from_str(urlstr) {
@@ -1766,7 +1726,7 @@ mod tests {
   #[test]
   fn global_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "--unstable", "--log-level", "debug", "--quiet", "run", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--unstable", "--log-level", "debug", "--quiet", "run", "script.ts"]);
     let flags = r.unwrap();
     assert_eq!(
       flags,
@@ -1780,15 +1740,14 @@ mod tests {
       }
     );
     #[rustfmt::skip]
-    let r2 = flags_from_vec_safe(svec!["deno", "run", "--unstable", "--log-level", "debug", "--quiet", "script.ts"]);
+    let r2 = flags_from_vec(svec!["deno", "run", "--unstable", "--log-level", "debug", "--quiet", "script.ts"]);
     let flags2 = r2.unwrap();
     assert_eq!(flags2, flags);
   }
 
   #[test]
   fn upgrade() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "upgrade", "--dry-run", "--force"]);
+    let r = flags_from_vec(svec!["deno", "upgrade", "--dry-run", "--force"]);
     let flags = r.unwrap();
     assert_eq!(
       flags,
@@ -1808,15 +1767,15 @@ mod tests {
 
   #[test]
   fn version() {
-    let r = flags_from_vec_safe(svec!["deno", "--version"]);
+    let r = flags_from_vec(svec!["deno", "--version"]);
     assert_eq!(r.unwrap_err().kind, clap::ErrorKind::VersionDisplayed);
-    let r = flags_from_vec_safe(svec!["deno", "-V"]);
+    let r = flags_from_vec(svec!["deno", "-V"]);
     assert_eq!(r.unwrap_err().kind, clap::ErrorKind::VersionDisplayed);
   }
 
   #[test]
   fn run_reload() {
-    let r = flags_from_vec_safe(svec!["deno", "run", "-r", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "-r", "script.ts"]);
     let flags = r.unwrap();
     assert_eq!(
       flags,
@@ -1832,7 +1791,7 @@ mod tests {
 
   #[test]
   fn run_watch() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--unstable",
@@ -1855,13 +1814,8 @@ mod tests {
 
   #[test]
   fn run_reload_allow_write() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "run",
-      "-r",
-      "--allow-write",
-      "script.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "-r", "--allow-write", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1877,7 +1831,7 @@ mod tests {
 
   #[test]
   fn run_v8_flags() {
-    let r = flags_from_vec_safe(svec!["deno", "run", "--v8-flags=--help"]);
+    let r = flags_from_vec(svec!["deno", "run", "--v8-flags=--help"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1889,7 +1843,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--v8-flags=--expose-gc,--gc-stats=1",
@@ -1909,7 +1863,7 @@ mod tests {
 
   #[test]
   fn script_args() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--allow-net",
@@ -1932,7 +1886,7 @@ mod tests {
 
   #[test]
   fn allow_all() {
-    let r = flags_from_vec_safe(svec!["deno", "run", "--allow-all", "gist.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--allow-all", "gist.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1953,8 +1907,7 @@ mod tests {
 
   #[test]
   fn allow_read() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "run", "--allow-read", "gist.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--allow-read", "gist.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1969,8 +1922,7 @@ mod tests {
 
   #[test]
   fn allow_hrtime() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "run", "--allow-hrtime", "gist.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--allow-hrtime", "gist.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1988,7 +1940,7 @@ mod tests {
     // notice that flags passed after double dash will not
     // be parsed to Flags but instead forwarded to
     // script args as Deno.args
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--allow-write",
@@ -2012,8 +1964,7 @@ mod tests {
 
   #[test]
   fn fmt() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "fmt", "script_1.ts", "script_2.ts"]);
+    let r = flags_from_vec(svec!["deno", "fmt", "script_1.ts", "script_2.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2030,7 +1981,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "fmt", "--check"]);
+    let r = flags_from_vec(svec!["deno", "fmt", "--check"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2044,7 +1995,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "fmt"]);
+    let r = flags_from_vec(svec!["deno", "fmt"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2058,7 +2009,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "fmt", "--watch", "--unstable"]);
+    let r = flags_from_vec(svec!["deno", "fmt", "--watch", "--unstable"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2074,7 +2025,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "fmt",
       "--check",
@@ -2101,7 +2052,7 @@ mod tests {
 
   #[test]
   fn language_server() {
-    let r = flags_from_vec_safe(svec!["deno", "lsp"]);
+    let r = flags_from_vec(svec!["deno", "lsp"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2113,7 +2064,7 @@ mod tests {
 
   #[test]
   fn lint() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "lint",
       "--unstable",
@@ -2137,7 +2088,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "lint",
       "--unstable",
@@ -2160,7 +2111,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable", "--rules"]);
+    let r = flags_from_vec(svec!["deno", "lint", "--unstable", "--rules"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2175,7 +2126,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "lint",
       "--unstable",
@@ -2199,7 +2150,7 @@ mod tests {
 
   #[test]
   fn types() {
-    let r = flags_from_vec_safe(svec!["deno", "types"]);
+    let r = flags_from_vec(svec!["deno", "types"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2211,7 +2162,7 @@ mod tests {
 
   #[test]
   fn cache() {
-    let r = flags_from_vec_safe(svec!["deno", "cache", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "cache", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2225,7 +2176,7 @@ mod tests {
 
   #[test]
   fn info() {
-    let r = flags_from_vec_safe(svec!["deno", "info", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "info", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2237,7 +2188,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "info", "--reload", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "info", "--reload", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2250,7 +2201,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "info", "--json", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "info", "--json", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2262,7 +2213,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "info"]);
+    let r = flags_from_vec(svec!["deno", "info"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2274,7 +2225,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "info", "--json"]);
+    let r = flags_from_vec(svec!["deno", "info", "--json"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2289,13 +2240,8 @@ mod tests {
 
   #[test]
   fn tsconfig() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "run",
-      "-c",
-      "tsconfig.json",
-      "script.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "-c", "tsconfig.json", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2310,8 +2256,7 @@ mod tests {
 
   #[test]
   fn eval() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "eval", "'console.log(\"hello\")'"]);
+    let r = flags_from_vec(svec!["deno", "eval", "'console.log(\"hello\")'"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2334,7 +2279,7 @@ mod tests {
 
   #[test]
   fn eval_p() {
-    let r = flags_from_vec_safe(svec!["deno", "eval", "-p", "1+2"]);
+    let r = flags_from_vec(svec!["deno", "eval", "-p", "1+2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2357,12 +2302,8 @@ mod tests {
 
   #[test]
   fn eval_typescript() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "eval",
-      "-T",
-      "'console.log(\"hello\")'"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "eval", "-T", "'console.log(\"hello\")'"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2386,7 +2327,7 @@ mod tests {
   #[test]
   fn eval_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "eval", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
+    let r = flags_from_vec(svec!["deno", "eval", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2405,6 +2346,7 @@ mod tests {
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
+        location: Some(Url::parse("https://foo/").unwrap()),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
@@ -2422,7 +2364,7 @@ mod tests {
 
   #[test]
   fn eval_args() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "eval",
       "console.log(Deno.args)",
@@ -2452,7 +2394,7 @@ mod tests {
 
   #[test]
   fn repl() {
-    let r = flags_from_vec_safe(svec!["deno"]);
+    let r = flags_from_vec(svec!["deno"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2473,7 +2415,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "repl", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2489,6 +2431,7 @@ mod tests {
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
+        location: Some(Url::parse("https://foo/").unwrap()),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
@@ -2509,7 +2452,7 @@ mod tests {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       format!("--allow-read=.,{}", temp_dir.to_str().unwrap()),
@@ -2532,7 +2475,7 @@ mod tests {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       format!("--allow-write=.,{}", temp_dir.to_str().unwrap()),
@@ -2552,7 +2495,7 @@ mod tests {
 
   #[test]
   fn allow_net_allowlist() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--allow-net=127.0.0.1",
@@ -2572,7 +2515,7 @@ mod tests {
 
   #[test]
   fn bundle() {
-    let r = flags_from_vec_safe(svec!["deno", "bundle", "source.ts"]);
+    let r = flags_from_vec(svec!["deno", "bundle", "source.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2587,7 +2530,7 @@ mod tests {
 
   #[test]
   fn bundle_with_config() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "bundle",
       "--no-remote",
@@ -2613,8 +2556,7 @@ mod tests {
 
   #[test]
   fn bundle_with_output() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "bundle", "source.ts", "bundle.js"]);
+    let r = flags_from_vec(svec!["deno", "bundle", "source.ts", "bundle.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2630,7 +2572,7 @@ mod tests {
 
   #[test]
   fn bundle_with_lock() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "bundle",
       "--lock-write",
@@ -2653,8 +2595,7 @@ mod tests {
 
   #[test]
   fn bundle_with_reload() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "bundle", "--reload", "source.ts"]);
+    let r = flags_from_vec(svec!["deno", "bundle", "--reload", "source.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2670,9 +2611,8 @@ mod tests {
 
   #[test]
   fn bundle_nocheck() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "bundle", "--no-check", "script.ts"])
-        .unwrap();
+    let r = flags_from_vec(svec!["deno", "bundle", "--no-check", "script.ts"])
+      .unwrap();
     assert_eq!(
       r,
       Flags {
@@ -2688,7 +2628,7 @@ mod tests {
 
   #[test]
   fn bundle_watch() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "bundle",
       "--watch",
@@ -2711,7 +2651,7 @@ mod tests {
 
   #[test]
   fn run_import_map() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--unstable",
@@ -2733,7 +2673,7 @@ mod tests {
 
   #[test]
   fn info_import_map() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "info",
       "--unstable",
@@ -2756,7 +2696,7 @@ mod tests {
 
   #[test]
   fn cache_import_map() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "cache",
       "--unstable",
@@ -2778,7 +2718,7 @@ mod tests {
 
   #[test]
   fn doc_import_map() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "doc",
       "--unstable",
@@ -2804,7 +2744,7 @@ mod tests {
   #[test]
   fn cache_multiple() {
     let r =
-      flags_from_vec_safe(svec!["deno", "cache", "script.ts", "script_two.ts"]);
+      flags_from_vec(svec!["deno", "cache", "script.ts", "script_two.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2818,8 +2758,7 @@ mod tests {
 
   #[test]
   fn run_seed() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "run", "--seed", "250", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--seed", "250", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2835,7 +2774,7 @@ mod tests {
 
   #[test]
   fn run_seed_with_v8_flags() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--seed",
@@ -2858,7 +2797,7 @@ mod tests {
 
   #[test]
   fn install() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "install",
       "https://deno.land/std/examples/colors.ts"
@@ -2881,7 +2820,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "install", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2914,12 +2853,8 @@ mod tests {
 
   #[test]
   fn log_level() {
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "run",
-      "--log-level=debug",
-      "script.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--log-level=debug", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2934,7 +2869,7 @@ mod tests {
 
   #[test]
   fn quiet() {
-    let r = flags_from_vec_safe(svec!["deno", "run", "-q", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "-q", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2949,7 +2884,7 @@ mod tests {
 
   #[test]
   fn completions() {
-    let r = flags_from_vec_safe(svec!["deno", "completions", "zsh"]).unwrap();
+    let r = flags_from_vec(svec!["deno", "completions", "zsh"]).unwrap();
 
     match r.subcommand {
       DenoSubcommand::Completions { buf } => assert!(!buf.is_empty()),
@@ -2959,7 +2894,7 @@ mod tests {
 
   #[test]
   fn run_with_args() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "script.ts",
@@ -2976,9 +2911,11 @@ mod tests {
         ..Flags::default()
       }
     );
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
+      "--location",
+      "https:foo",
       "--allow-read",
       "script.ts",
       "--allow-net",
@@ -2993,14 +2930,14 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
+        location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
         argv: svec!["--allow-net", "-r", "--help", "--foo", "bar"],
         ..Flags::default()
       }
     );
 
-    let r =
-      flags_from_vec_safe(svec!["deno", "run", "script.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "run", "script.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3011,7 +2948,7 @@ mod tests {
         ..Flags::default()
       }
     );
-    let r = flags_from_vec_safe(svec!["deno", "run", "script.ts", "-"]);
+    let r = flags_from_vec(svec!["deno", "run", "script.ts", "-"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3024,7 +2961,7 @@ mod tests {
     );
 
     let r =
-      flags_from_vec_safe(svec!["deno", "run", "script.ts", "-", "foo", "bar"]);
+      flags_from_vec(svec!["deno", "run", "script.ts", "-", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3039,8 +2976,7 @@ mod tests {
 
   #[test]
   fn no_check() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "run", "--no-check", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--no-check", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3055,8 +2991,7 @@ mod tests {
 
   #[test]
   fn no_remote() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "run", "--no-remote", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--no-remote", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3071,8 +3006,7 @@ mod tests {
 
   #[test]
   fn cached_only() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "run", "--cached-only", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--cached-only", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3087,7 +3021,7 @@ mod tests {
 
   #[test]
   fn allow_net_allowlist_with_ports() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--allow-net=deno.land,:8000,:4545",
@@ -3115,7 +3049,7 @@ mod tests {
 
   #[test]
   fn allow_net_allowlist_with_ipv6_address() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
@@ -3146,7 +3080,7 @@ mod tests {
 
   #[test]
   fn lock_write() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--lock-write",
@@ -3169,7 +3103,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3183,6 +3117,7 @@ mod tests {
         },
         unstable: true,
         coverage_dir: Some("cov".to_string()),
+        location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
         argv: svec!["arg1", "arg2"],
         ..Flags::default()
@@ -3192,7 +3127,7 @@ mod tests {
 
   #[test]
   fn run_with_cafile() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "run",
       "--cert",
@@ -3213,7 +3148,7 @@ mod tests {
 
   #[test]
   fn bundle_with_cafile() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "bundle",
       "--cert",
@@ -3235,8 +3170,7 @@ mod tests {
 
   #[test]
   fn upgrade_with_ca_file() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "upgrade", "--cert", "example.crt"]);
+    let r = flags_from_vec(svec!["deno", "upgrade", "--cert", "example.crt"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3256,7 +3190,7 @@ mod tests {
 
   #[test]
   fn cache_with_cafile() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "cache",
       "--cert",
@@ -3278,7 +3212,7 @@ mod tests {
 
   #[test]
   fn info_with_cafile() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "info",
       "--cert",
@@ -3300,8 +3234,7 @@ mod tests {
 
   #[test]
   fn doc() {
-    let r =
-      flags_from_vec_safe(svec!["deno", "doc", "--json", "path/to/module.ts"]);
+    let r = flags_from_vec(svec!["deno", "doc", "--json", "path/to/module.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3315,7 +3248,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "doc",
       "path/to/module.ts",
@@ -3334,7 +3267,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "doc"]);
+    let r = flags_from_vec(svec!["deno", "doc"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3348,8 +3281,7 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec_safe(svec!["deno", "doc", "--builtin", "Deno.Listener"]);
+    let r = flags_from_vec(svec!["deno", "doc", "--builtin", "Deno.Listener"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3363,12 +3295,8 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec_safe(svec![
-      "deno",
-      "doc",
-      "--private",
-      "path/to/module.js"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "doc", "--private", "path/to/module.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3385,7 +3313,7 @@ mod tests {
 
   #[test]
   fn inspect_default_host() {
-    let r = flags_from_vec_safe(svec!["deno", "run", "--inspect", "foo.js"]);
+    let r = flags_from_vec(svec!["deno", "run", "--inspect", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3400,7 +3328,7 @@ mod tests {
 
   #[test]
   fn compile() {
-    let r = flags_from_vec_safe(svec![
+    let r = flags_from_vec(svec![
       "deno",
       "compile",
       "https://deno.land/std/examples/colors.ts"
@@ -3421,7 +3349,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec_safe(svec!["deno", "compile", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3440,6 +3368,7 @@ mod tests {
         lock_write: true,
         ca_file: Some("example.crt".to_string()),
         cached_only: true,
+        location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
         allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],

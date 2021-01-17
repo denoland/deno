@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
 use crate::module_graph::TypeLib;
@@ -22,6 +22,10 @@ pub struct CliModuleLoader {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub lib: TypeLib,
+  /// The initial set of permissions used to resolve the imports in the worker.
+  /// They are decoupled from the worker permissions since read access errors
+  /// must be raised based on the parent thread permissions
+  pub initial_permissions: Rc<RefCell<Option<Permissions>>>,
   pub program_state: Arc<ProgramState>,
 }
 
@@ -38,11 +42,15 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map,
       lib,
+      initial_permissions: Rc::new(RefCell::new(None)),
       program_state,
     })
   }
 
-  pub fn new_for_worker(program_state: Arc<ProgramState>) -> Rc<Self> {
+  pub fn new_for_worker(
+    program_state: Arc<ProgramState>,
+    permissions: Permissions,
+  ) -> Rc<Self> {
     let lib = if program_state.flags.unstable {
       TypeLib::UnstableDenoWorker
     } else {
@@ -52,6 +60,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: None,
       lib,
+      initial_permissions: Rc::new(RefCell::new(Some(permissions))),
       program_state,
     })
   }
@@ -118,7 +127,16 @@ impl ModuleLoader for CliModuleLoader {
     let state = op_state.borrow();
 
     // The permissions that should be applied to any dynamically imported module
-    let dynamic_permissions = state.borrow::<Permissions>().clone();
+    let dynamic_permissions =
+      // If there are initial permissions assigned to the loader take them 
+      // and use only once for top level module load.
+      // Otherwise use permissions assigned to the current worker.
+      if let Some(permissions) = self.initial_permissions.borrow_mut().take() {
+        permissions
+      } else {
+        state.borrow::<Permissions>().clone()
+      };
+
     let lib = self.lib.clone();
     drop(state);
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   GlobOptions,
   globToRegExp,
@@ -32,7 +32,6 @@ interface SplitPath {
   winRoot?: string;
 }
 
-// TODO: Maybe make this public somewhere.
 function split(path: string): SplitPath {
   const s = SEP_PATTERN.source;
   const segments = path

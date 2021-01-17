@@ -7,7 +7,7 @@ WebSockets, use the
 ## Usage
 
 ```ts
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { serve } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import {
   acceptWebSocket,

@@ -5,7 +5,7 @@
 Most modules in the repository should have the following copyright header:
 
 ```ts
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 ```
 
 If the code originates elsewhere, ensure that the file has the proper copyright

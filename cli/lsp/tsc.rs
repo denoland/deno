@@ -1,11 +1,10 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::ResolvedDependency;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::utils;
 
-use crate::js;
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
@@ -54,7 +53,7 @@ impl TsServer {
       // the language server...
       let mut ts_runtime = start(false).expect("could not start tsc");
 
-      let mut runtime = create_basic_runtime();
+      let runtime = create_basic_runtime();
       runtime.block_on(async {
         while let Some((req, state_snapshot, tx)) = rx.recv().await {
           let value = request(&mut ts_runtime, state_snapshot, req);
@@ -414,14 +413,69 @@ impl QuickInfo {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RenameLocation {
-  // inherit from DocumentSpan
+pub struct DocumentSpan {
   text_span: TextSpan,
-  file_name: String,
+  pub file_name: String,
   original_text_span: Option<TextSpan>,
   original_file_name: Option<String>,
   context_span: Option<TextSpan>,
   original_context_span: Option<TextSpan>,
+}
+
+impl DocumentSpan {
+  pub async fn to_link<F, Fut>(
+    &self,
+    line_index: &[u32],
+    index_provider: F,
+  ) -> Option<lsp_types::LocationLink>
+  where
+    F: Fn(ModuleSpecifier) -> Fut,
+    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
+  {
+    let target_specifier =
+      ModuleSpecifier::resolve_url(&self.file_name).unwrap();
+    if let Ok(target_line_index) = index_provider(target_specifier).await {
+      let target_uri = utils::normalize_file_name(&self.file_name).unwrap();
+      let (target_range, target_selection_range) =
+        if let Some(context_span) = &self.context_span {
+          (
+            context_span.to_range(&target_line_index),
+            self.text_span.to_range(&target_line_index),
+          )
+        } else {
+          (
+            self.text_span.to_range(&target_line_index),
+            self.text_span.to_range(&target_line_index),
+          )
+        };
+      let link = lsp_types::LocationLink {
+        origin_selection_range: Some(self.text_span.to_range(line_index)),
+        target_uri,
+        target_range,
+        target_selection_range,
+      };
+      Some(link)
+    } else {
+      None
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImplementationLocation {
+  #[serde(flatten)]
+  pub document_span: DocumentSpan,
+  // ImplementationLocation props
+  kind: ScriptElementKind,
+  display_parts: Vec<SymbolDisplayPart>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameLocation {
+  #[serde(flatten)]
+  document_span: DocumentSpan,
   // RenameLocation props
   prefix_text: Option<String>,
   suffix_text: Option<String>,
@@ -445,8 +499,9 @@ impl RenameLocations {
     let mut text_document_edit_map: HashMap<Url, lsp_types::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
-      let uri = utils::normalize_file_name(&location.file_name)?;
-      let specifier = ModuleSpecifier::resolve_url(&location.file_name)?;
+      let uri = utils::normalize_file_name(&location.document_span.file_name)?;
+      let specifier =
+        ModuleSpecifier::resolve_url(&location.document_span.file_name)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -476,6 +531,7 @@ impl RenameLocations {
         .edits
         .push(lsp_types::OneOf::Left(lsp_types::TextEdit {
           range: location
+            .document_span
             .text_span
             .to_range(&index_provider(specifier.clone()).await?),
           new_text: new_name.to_string(),
@@ -483,6 +539,7 @@ impl RenameLocations {
     }
 
     Ok(lsp_types::WorkspaceEdit {
+      change_annotations: None,
       changes: None,
       document_changes: Some(lsp_types::DocumentChanges::Edits(
         text_document_edit_map.values().cloned().collect(),
@@ -520,12 +577,9 @@ pub struct DefinitionInfo {
   name: String,
   container_kind: Option<ScriptElementKind>,
   container_name: Option<String>,
-  text_span: TextSpan,
-  pub file_name: String,
-  original_text_span: Option<TextSpan>,
-  original_file_name: Option<String>,
-  context_span: Option<TextSpan>,
-  original_context_span: Option<TextSpan>,
+
+  #[serde(flatten)]
+  pub document_span: DocumentSpan,
 }
 
 #[derive(Debug, Deserialize)]
@@ -542,34 +596,18 @@ impl DefinitionInfoAndBoundSpan {
     index_provider: F,
   ) -> Option<lsp_types::GotoDefinitionResponse>
   where
-    F: Fn(ModuleSpecifier) -> Fut,
+    F: Fn(ModuleSpecifier) -> Fut + Clone,
     Fut: Future<Output = Result<Vec<u32>, AnyError>>,
   {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp_types::LocationLink>::new();
       for di in definitions {
-        let target_specifier =
-          ModuleSpecifier::resolve_url(&di.file_name).unwrap();
-        if let Ok(target_line_index) = index_provider(target_specifier).await {
-          let target_uri = utils::normalize_file_name(&di.file_name).unwrap();
-          let (target_range, target_selection_range) =
-            if let Some(context_span) = &di.context_span {
-              (
-                context_span.to_range(&target_line_index),
-                di.text_span.to_range(&target_line_index),
-              )
-            } else {
-              (
-                di.text_span.to_range(&target_line_index),
-                di.text_span.to_range(&target_line_index),
-              )
-            };
-          location_links.push(lsp_types::LocationLink {
-            origin_selection_range: Some(self.text_span.to_range(line_index)),
-            target_uri,
-            target_range,
-            target_selection_range,
-          });
+        if let Some(link) = di
+          .document_span
+          .to_link(line_index, index_provider.clone())
+          .await
+        {
+          location_links.push(link);
         }
       }
       Some(lsp_types::GotoDefinitionResponse::Link(location_links))
@@ -613,20 +651,17 @@ pub struct ReferenceEntry {
   is_write_access: bool,
   pub is_definition: bool,
   is_in_string: Option<bool>,
-  text_span: TextSpan,
-  pub file_name: String,
-  original_text_span: Option<TextSpan>,
-  original_file_name: Option<String>,
-  context_span: Option<TextSpan>,
-  original_context_span: Option<TextSpan>,
+  #[serde(flatten)]
+  pub document_span: DocumentSpan,
 }
 
 impl ReferenceEntry {
   pub fn to_location(&self, line_index: &[u32]) -> lsp_types::Location {
-    let uri = utils::normalize_file_name(&self.file_name).unwrap();
+    let uri =
+      utils::normalize_file_name(&self.document_span.file_name).unwrap();
     lsp_types::Location {
       uri,
-      range: self.text_span.to_range(line_index),
+      range: self.document_span.text_span.to_range(line_index),
     }
   }
 }
@@ -1025,7 +1060,7 @@ fn set_asset(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// server.
 pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(js::compiler_isolate_init()),
+    startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   });
 
@@ -1135,6 +1170,8 @@ pub enum RequestMethod {
   GetDefinition((ModuleSpecifier, u32)),
   /// Get completion information at a given position (IntelliSense).
   GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  /// Get implementation information for a specific position.
+  GetImplementation((ModuleSpecifier, u32)),
   /// Get rename locations at a given position.
   FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
 }
@@ -1195,6 +1232,12 @@ impl RequestMethod {
           "preferences": preferences,
         })
       }
+      RequestMethod::GetImplementation((specifier, position)) => json!({
+          "id": id,
+          "method": "getImplementation",
+          "specifier": specifier,
+          "position": position,
+      }),
       RequestMethod::FindRenameLocations((
         specifier,
         position,

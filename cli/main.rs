@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #![deny(warnings)]
 
@@ -25,7 +25,6 @@ mod http_cache;
 mod http_util;
 mod import_map;
 mod info;
-mod js;
 mod lockfile;
 mod lsp;
 mod media_type;
@@ -56,7 +55,6 @@ use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
-use crate::standalone::create_standalone_binary;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -101,7 +99,10 @@ fn create_web_worker_callback(
       || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
-    let module_loader = CliModuleLoader::new_for_worker(program_state.clone());
+    let module_loader = CliModuleLoader::new_for_worker(
+      program_state.clone(),
+      args.parent_permissions.clone(),
+    );
     let create_web_worker_cb =
       create_web_worker_callback(program_state.clone());
 
@@ -114,7 +115,7 @@ fn create_web_worker_callback(
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
       ca_data: program_state.ca_data.clone(),
-      user_agent: http_util::get_user_agent(),
+      user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
       create_web_worker_cb,
@@ -190,7 +191,7 @@ pub fn create_main_worker(
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
     ca_data: program_state.ca_data.clone(),
-    user_agent: http_util::get_user_agent(),
+    user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
@@ -202,6 +203,7 @@ pub fn create_main_worker(
     ts_version: version::TYPESCRIPT.to_string(),
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
+    location: program_state.flags.location.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -276,16 +278,17 @@ fn print_cache_info(
 
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}",
-    crate::js::DENO_NS_LIB,
-    crate::js::DENO_WEB_LIB,
-    crate::js::DENO_FETCH_LIB,
-    crate::js::SHARED_GLOBALS_LIB,
-    crate::js::WINDOW_LIB,
+    "{}\n{}\n{}\n{}\n{}\n{}",
+    crate::tsc::DENO_NS_LIB,
+    crate::tsc::DENO_WEB_LIB,
+    crate::tsc::DENO_FETCH_LIB,
+    crate::tsc::DENO_WEBSOCKET_LIB,
+    crate::tsc::SHARED_GLOBALS_LIB,
+    crate::tsc::WINDOW_LIB,
   );
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::js::UNSTABLE_NS_LIB,));
+    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
   }
 
   types
@@ -303,7 +306,8 @@ async fn compile_command(
 
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags = standalone::compile_to_runtime_flags(flags.clone(), args)?;
+  let run_flags =
+    tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
@@ -333,7 +337,12 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  create_standalone_binary(bundle_str, run_flags, output.clone()).await?;
+  tools::standalone::create_standalone_binary(
+    bundle_str,
+    run_flags,
+    output.clone(),
+  )
+  .await?;
 
   info!("{} {}", colors::green("Emit"), output.display());
 
@@ -1058,10 +1067,12 @@ async fn test_command(
       let main_module_url = main_module.as_url().to_owned();
       exclude.push(main_module_url);
       tools::coverage::report_coverages(
+        program_state.clone(),
         &coverage_collector.dir,
         quiet,
         exclude,
-      )?;
+      )
+      .await?;
     }
   }
 
@@ -1222,26 +1233,53 @@ fn get_subcommand(
   }
 }
 
+fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
+  match result {
+    Ok(value) => value,
+    Err(error) => {
+      let msg = format!(
+        "{}: {}",
+        colors::red_bold("error"),
+        error.to_string().trim()
+      );
+      eprintln!("{}", msg);
+      std::process::exit(1);
+    }
+  }
+}
+
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
 
   let args: Vec<String> = env::args().collect();
-  if let Err(err) = standalone::try_run_standalone_binary(args.clone()) {
+  let standalone_res = match standalone::extract_standalone(args.clone()) {
+    Ok(Some((metadata, bundle))) => {
+      tokio_util::run_basic(standalone::run(bundle, metadata))
+    }
+    Ok(None) => Ok(()),
+    Err(err) => Err(err),
+  };
+  if let Err(err) = standalone_res {
     eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
     std::process::exit(1);
   }
 
-  let flags = flags::flags_from_vec(args);
+  let flags = match flags::flags_from_vec(args) {
+    Ok(flags) => flags,
+    Err(err @ clap::Error { .. })
+      if err.kind == clap::ErrorKind::HelpDisplayed
+        || err.kind == clap::ErrorKind::VersionDisplayed =>
+    {
+      err.write_to(&mut std::io::stdout()).unwrap();
+      std::process::exit(0);
+    }
+    Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
+  };
   if !flags.v8_flags.is_empty() {
     init_v8_flags(&*flags.v8_flags);
   }
   init_logger(flags.log_level);
 
-  let subcommand_future = get_subcommand(flags);
-  let result = tokio_util::run_basic(subcommand_future);
-  if let Err(err) = result {
-    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
-    std::process::exit(1);
-  }
+  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -219,17 +219,6 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   for (let i = 0; i < u8a.byteLength; i++) {
     assertEquals(u8a[i], u8a1[i]);
   }
-});
-
-unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
-  void
-> {
-  await assertThrowsAsync(
-    async () => {
-      await fetch("");
-    },
-    URIError,
-  );
 });
 
 unitTest(
@@ -1058,9 +1047,13 @@ unitTest(
     const buf = bufferServer(addr);
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
-    await writer.write(new TextEncoder().encode("hello "));
-    await writer.write(new TextEncoder().encode("world"));
-    await writer.close();
+    // transformer writes don't resolve until they are read, so awaiting these
+    // will cause the transformer to hang, as the suspend the transformer, it
+    // is also illogical to await for the reads, as that is the whole point of
+    // streams is to have a "queue" which gets drained...
+    writer.write(new TextEncoder().encode("hello "));
+    writer.write(new TextEncoder().encode("world"));
+    writer.close();
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
       headers: [
@@ -1082,8 +1075,12 @@ unitTest(
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
-      `content-length: 11\r\n\r\n`,
-      "hello world",
+      `transfer-encoding: chunked\r\n\r\n`,
+      "6\r\n",
+      "hello \r\n",
+      "5\r\n",
+      "world\r\n",
+      "0\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
   },

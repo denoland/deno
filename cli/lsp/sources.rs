@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
 use super::text;
@@ -14,7 +14,7 @@ use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
-use crate::Permissions;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;

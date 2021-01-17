@@ -1,13 +1,62 @@
 {
   "streams": [
+    // "piping/abort",
+    // "piping/close-propagation-backward",
+    // "piping/close-propagation-forward",
+    // "piping/error-propagation-backward",
+    // "piping/error-propagation-forward",
+    "piping/flow-control",
+    // "piping/general",
+    "piping/multiple-propagation",
+    // "piping/pipe-through",
+    "piping/then-interception",
+    // "piping/throwing-options",
+    // "piping/transform-streams",
+    "queuing-strategies.any",
+    // "readable-byte-streams",
+    // "readable-streams/async-iterator",
+    // "readable-streams/bad-strategies",
+    // "readable-streams/bad-underlying-source",
+    // "readable-streams/cancel",
+    // "readable-streams/constructor",
+    "readable-streams/count-queuing-strategy-integration",
+    "readable-streams/default-reader",
+    "readable-streams/floating-point-total-queue-size",
+    "readable-streams/garbage-collection",
+    "readable-streams/general",
     {
-      "name": "readable-streams/general",
+      "name": "readable-streams/patched-global",
       "expectFail": [
-        "ReadableStream can't be constructed with an invalid type",
-        "default ReadableStream getReader() should only accept mode:undefined"
+        "ReadableStream async iterator should use the original values of getReader() and ReadableStreamDefaultReader methods"
       ]
     },
-    "writable-streams/general"
+    "readable-streams/reentrant-strategies",
+    "readable-streams/tee",
+    // "readable-streams/templated",
+    "transform-streams/backpressure",
+    "transform-streams/errors",
+    "transform-streams/flush",
+    "transform-streams/general",
+    "transform-streams/lipfuzz",
+    // "transform-streams/patched-global",
+    "transform-streams/properties",
+    "transform-streams/reentrant-strategies",
+    "transform-streams/strategies",
+    // "transform-streams/terminate",
+    // "writable-streams/aborting",
+    // "writable-streams/bad-strategies",
+    "writable-streams/bad-underlying-sinks",
+    "writable-streams/byte-length-queuing-strategy",
+    // "writable-streams/close",
+    // "writable-streams/constructor",
+    "writable-streams/count-queuing-strategy",
+    "writable-streams/error",
+    "writable-streams/floating-point-total-queue-size",
+    "writable-streams/general",
+    "writable-streams/properties",
+    "writable-streams/reentrant-strategy",
+    "writable-streams/start",
+    "writable-streams/write"
   ],
   "encoding": [
     {
@@ -135,13 +184,127 @@
         "Encoding argument supported for decode: UTF-16LE",
         "Encoding argument supported for decode: x-user-defined"
       ]
-    },
+    }
     // TODO(lucacasonato): enable when we support utf-16
     // "textencoder-utf16-surrogates",
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "unsupported-encodings",
   ],
-  "dom": [
-    "abort/event"
+  "dom": ["abort/event"],
+  "hr-time": ["monotonic-clock"],
+  "html": [
+    "webappapis/microtask-queuing/queue-microtask-exceptions.any",
+    "webappapis/microtask-queuing/queue-microtask.any",
+    "webappapis/timers"
+  ],
+  "user-timing": [
+    "clear_all_marks",
+    "clear_all_measures",
+    "clear_non_existent_mark",
+    "clear_non_existent_measure",
+    "clear_one_mark",
+    "clear_one_measure",
+    "entry_type",
+    "mark-entry-constructor",
+    "mark-errors",
+    "mark-measure-return-objects",
+    "mark.any",
+    {
+      "name": "measure_syntax_err",
+      "expectFail": [
+        // TODO(lucacasonato): re-enable when #9009 is fixed.
+        "self.performance.measure(\"measure\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
+        "self.performance.measure(\"measure\", \"mark\", \"existing_mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
+        "self.performance.measure(\"measure\", \"existing_mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
+        "self.performance.measure(\"measure\", \"mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception."
+      ]
+    },
+    "measure-l3",
+    "structured-serialize-detail",
+    "user_timing_exists"
+  ],
+  "wasm": [
+    "jsapi/constructor/compile",
+    "jsapi/constructor/multi-value",
+    "jsapi/constructor/toStringTag",
+    "jsapi/constructor/validate",
+    "jsapi/global/constructor",
+    "jsapi/global/toString",
+    "jsapi/global/value-get-set",
+    "jsapi/global/valueOf",
+    "jsapi/instance/toString",
+    "jsapi/instance/constructor-caching",
+    "jsapi/memory/toString",
+    "jsapi/module/constructor",
+    "jsapi/module/customSections",
+    "jsapi/module/exports",
+    "jsapi/module/imports",
+    "jsapi/module/toString",
+    "jsapi/table/get-set",
+    "jsapi/table/toString",
+    "webapi/body",
+    "webapi/invalid-args",
+    "webapi/rejected-arg",
+    "webapi/status",
+    "webapi/create_multiple_memory",
+    "create_multiple_memory"
+
+    //FAILING TESTS
+    // "jsapi/constructor/instantiate-bad-imports",
+    // "jsapi/constructor/instantiate",
+    // "jsapi/global/type",
+    // "jsapi/instance/constructor-bad-imports",
+    // "jsapi/instance/constructor",
+    // "jsapi/instance/exports",
+    // "jsapi/memory/buffer",
+    // "jsapi/memory/constructor-shared",
+    // "jsapi/memory/constructor-types",
+    // "jsapi/memory/constructor",
+    // "jsapi/memory/grow",
+    // "jsapi/memory/type",
+    // "jsapi/table/constructor-types",
+    // "jsapi/table/constructor",
+    // "jsapi/table/grow-reftypes",
+    // "jsapi/table/grow",
+    // "jsapi/table/length",
+    // "jsapi/idlharness",
+    // "jsapi/instance",
+    // "jsapi/prototypes",
+    // "serialization/arraybuffer/transfer"
+    // "serialization/module/nested-worker-success",
+    // "serialization/module/serialization-via-idb",
+    // "serialization/module/serialization-via-notifications-api",
+    // "webapi/abort",
+    // "webapi/contenttype",
+    // "webapi/empty-body",
+    // "webapi/historical",
+    // "webapi/idlharness",
+    // "webapi/instantiateStreaming-bad-imports",
+    // "webapi/instantiateStreaming",
+    // "webapi/invalid-code",
+    // "webapi/origin",
+  ],
+  "console": [
+    "console-is-a-namespace",
+    "console-label-conversion",
+    "console-namespace-object-class-string",
+    "console-tests-historical"
+  ],
+  "WebCryptoApi": ["getRandomValues"]
+  "WebIDL": [
+    "ecmascript-binding/es-exceptions/DOMException-constants",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-behavior",
+    {
+      "name": "ecmascript-binding/es-exceptions/DOMException-custom-bindings",
+      "expectFail": [
+        // TODO(kt3k): Enable this test.
+        // We can pass this test by using Object.setPrototypeOf(...) instead of
+        // class...extends, but that causes a problem in printing of uncaught
+        // DOMException. We might need to modify how to print uncaught error in
+        // `//core/error.rs`.
+        "does not inherit from Error: class-side"
+      ]
+    }
   ]
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import { relative, resolve } from "../path/mod.ts";
 
@@ -270,7 +270,7 @@ interface FileDescriptor {
   entries?: Deno.DirEntry[];
 }
 
-export class ExitStatus {
+class ExitStatus {
   code: number;
 
   constructor(code: number) {
@@ -590,8 +590,10 @@ export default class Context {
         const memoryView = new DataView(this.#memory.buffer);
         memoryView.setUint8(offset, entry.type!);
         memoryView.setUint16(offset + 2, entry.flags!, true);
-        memoryView.setBigUint64(offset + 8, 0n, true); // TODO
-        memoryView.setBigUint64(offset + 16, 0n, true); // TODO
+        // TODO(bartlomieju)
+        memoryView.setBigUint64(offset + 8, 0n, true);
+        // TODO(bartlomieju)
+        memoryView.setBigUint64(offset + 16, 0n, true);
 
         return ERRNO_SUCCESS;
       }),
@@ -1371,19 +1373,19 @@ export default class Context {
         }
 
         if ((fdflags & FDFLAGS_DSYNC) != 0) {
-          // TODO (caspervonb) review if we can emulate this.
+          // TODO(caspervonb): review if we can emulate this.
         }
 
         if ((fdflags & FDFLAGS_NONBLOCK) != 0) {
-          // TODO (caspervonb) review if we can emulate this.
+          // TODO(caspervonb): review if we can emulate this.
         }
 
         if ((fdflags & FDFLAGS_RSYNC) != 0) {
-          // TODO (caspervonb) review if we can emulate this.
+          // TODO(caspervonb): review if we can emulate this.
         }
 
         if ((fdflags & FDFLAGS_SYNC) != 0) {
-          // TODO (caspervonb) review if we can emulate this.
+          // TODO(caspervonb): review if we can emulate this.
         }
 
         if (!options.read && !options.write && !options.truncate) {
@@ -1656,7 +1658,7 @@ export default class Context {
    * which will be used as the address space, if it does not an error will be
    * thrown.
    */
-  start(instance: WebAssembly.Instance) {
+  start(instance: WebAssembly.Instance): null | number | never {
     if (this.#started) {
       throw new Error("WebAssembly.Instance has already started");
     }
@@ -1683,7 +1685,17 @@ export default class Context {
       );
     }
 
-    _start();
+    try {
+      _start();
+    } catch (err) {
+      if (err instanceof ExitStatus) {
+        return err.code;
+      }
+
+      throw err;
+    }
+
+    return null;
   }
 
   /**

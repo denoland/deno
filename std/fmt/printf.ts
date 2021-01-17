@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /**
  * This implementation is inspired by POSIX and Golang but does not port
  * implementation code. */
@@ -151,7 +151,8 @@ class Printf {
               }
           } // switch c
           break;
-        case State.POSITIONAL: // either a verb or * only verb for now, TODO
+        case State.POSITIONAL:
+          // TODO(bartlomieju): either a verb or * only verb for now
           if (c === "*") {
             const worp = this.flags.precision === -1
               ? WorP.WIDTH
@@ -689,7 +690,7 @@ class Printf {
           if (i !== 0 && this.flags.space) {
             hex += sharp ? " 0x" : " ";
           }
-          // TODO: for now only taking into account the
+          // TODO(bartlomieju): for now only taking into account the
           // lower half of the codePoint, ie. as if a string
           // is a list of 8bit values instead of UCS2 runes
           const c = (val.charCodeAt(i) & 0xff).toString(16);

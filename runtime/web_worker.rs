@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::inspector::DenoInspector;
@@ -130,6 +130,7 @@ pub struct WebWorker {
   terminate_rx: mpsc::Receiver<()>,
   handle: WebWorkerHandle,
   pub use_deno_namespace: bool,
+  pub main_module: ModuleSpecifier,
 }
 
 pub struct WebWorkerOptions {
@@ -197,6 +198,7 @@ impl WebWorker {
       terminate_rx,
       handle,
       use_deno_namespace: options.use_deno_namespace,
+      main_module: main_module.clone(),
     };
 
     {
@@ -237,8 +239,8 @@ impl WebWorker {
       ops::io::init(js_runtime);
       ops::websocket::init(
         js_runtime,
-        options.ca_data.clone(),
         options.user_agent.clone(),
+        options.ca_data.clone(),
       );
 
       if options.use_deno_namespace {
@@ -286,6 +288,7 @@ impl WebWorker {
       "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
+      "location": self.main_module,
     });
 
     let runtime_options_str =
@@ -427,7 +430,7 @@ pub fn run_web_worker(
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
-  let mut rt = create_basic_runtime();
+  let rt = create_basic_runtime();
 
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
