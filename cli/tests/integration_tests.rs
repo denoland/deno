@@ -2653,7 +2653,13 @@ itest!(_078_unload_on_exit {
 
 itest!(_079_location_authentication {
   args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
-  output: "079_location_authentication.ts.out",
+  output: "079_location_authentication.ts.out",heck permissions for Deno.emit()
+});
+
+itest!(_080_deno_emit_permissions {
+  args: "run --unstable 080_deno_emit_permissions.ts",
+  output: "080_deno_emit_permissions.ts.out",
+  exit_code: 1,
 });
 
 itest!(js_import_detect {
