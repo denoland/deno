@@ -21,7 +21,7 @@
     if (typeof mark === "string") {
       const entry = findMostRecent(mark, "mark");
       if (!entry) {
-        throw new SyntaxError(`Cannot find mark: "${mark}".`);
+        throw new DOMException(`Failed to execute 'measure' on 'Performance': The mark '${mark}' does not exist.`, "SyntaxError");
       }
       return entry.startTime;
     }
@@ -115,6 +115,7 @@
       name,
       options = {},
     ) {
+      // add args length >= 1 assertion here
       if (typeof options !== "object") {
         throw new TypeError("Invalid options");
       }
