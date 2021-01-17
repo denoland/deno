@@ -450,12 +450,14 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
   let lite = matches.is_present("lite");
+  let target = matches.value_of("target").map(String::from);
 
   flags.subcommand = DenoSubcommand::Compile {
     source_file,
     output,
     args,
     lite,
+    target,
   };
 }
 

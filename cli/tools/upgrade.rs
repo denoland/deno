@@ -176,7 +176,7 @@ async fn download_package(
   }
 }
 
-fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
+pub fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
