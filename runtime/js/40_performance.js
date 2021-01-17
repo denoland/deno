@@ -45,9 +45,7 @@
     );
   }
 
-  function now() {
-    return opNow();
-  }
+  const now = opNow;
 
   class PerformanceEntry {
     #name = "";
@@ -118,11 +116,9 @@
       name,
       options = {},
     ) {
-      // add args length >= 1 assertion here
-      if (typeof options !== "object") {
-        throw new TypeError("Invalid options");
-      }
-      const { detail = null, startTime = now() } = options;
+      requiredArguments("PerformanceMark", arguments.length, 1);
+      const { detail = null, startTime = now() } = options ?? {};
+
       super(name, "mark", startTime, 0, illegalConstructorKey);
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
