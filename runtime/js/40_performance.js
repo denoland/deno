@@ -23,7 +23,7 @@
       const entry = findMostRecent(mark, "mark");
       if (!entry) {
         throw new DOMException(
-          `Failed to execute 'measure' on 'Performance': The mark '${mark}' does not exist.`,
+          `Cannot find mark: "${mark}".`,
           "SyntaxError",
         );
       }
@@ -118,6 +118,15 @@
       options = {},
     ) {
       requiredArguments("PerformanceMark", arguments.length, 1);
+      {
+        const option_type = typeof options;
+        if (
+          option_type !== "object" && option_type !== "function" &&
+          option_type !== "undefined"
+        ) {
+          throw new TypeError("Invalid options");
+        }
+      }
       const { detail = null, startTime = now() } = options ?? {};
 
       super(name, "mark", startTime, 0, illegalConstructorKey);
