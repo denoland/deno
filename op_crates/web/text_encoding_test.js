@@ -254,9 +254,9 @@ function textEncodeIntoDetachedBuffer() {
   const bytes = new Uint8Array(memory.buffer, 0, 100);
   memory.grow(0); // detaches memory.buffer
   const result = encoder.encodeInto(fixture, bytes);
+  assert(bytes.byteLength === 0);
   assert(result.read === 0);
   assert(result.written === 0);
-  assertArrayEquals(Array.from(bytes), [0xf0, 0x9d, 0x93, 0xbd, 0x00]);
 }
 
 function textDecoderSharedUint8Array() {
