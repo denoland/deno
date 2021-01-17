@@ -197,8 +197,6 @@ delete Object.prototype.__proto__;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
-    Location: location.locationConstructorDescriptor,
-    location: location.locationDescriptor,
     Blob: util.nonEnumerable(fetch.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       streams.ByteLengthQueuingStrategy,
@@ -257,6 +255,8 @@ delete Object.prototype.__proto__;
   windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
+    Location: location.locationConstructorDescriptor,
+    location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
@@ -272,6 +272,8 @@ delete Object.prototype.__proto__;
   };
 
   const workerRuntimeGlobalProperties = {
+    WorkerLocation: location.workerLocationConstructorDescriptor,
+    location: location.workerLocationDescriptor,
     WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
     DedicatedWorkerGlobalScope:
       globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
