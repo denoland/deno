@@ -3335,6 +3335,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "compile",
+      "--lite",
       "https://deno.land/std/examples/colors.ts"
     ]);
     assert_eq!(
@@ -3344,6 +3345,8 @@ mod tests {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: None,
           args: vec![],
+          target: None,
+          lite: true,
         },
         ..Flags::default()
       }
@@ -3361,6 +3364,8 @@ mod tests {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
+          target: None,
+          lite: false,
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
