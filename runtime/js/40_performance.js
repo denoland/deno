@@ -3,6 +3,7 @@
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
   const { cloneValue, illegalConstructorKey } = window.__bootstrap.webUtil;
+  const { requiredArguments } = window.__bootstrap.webUtil;
 
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
