@@ -29,6 +29,8 @@ pub enum DenoSubcommand {
     source_file: String,
     output: Option<PathBuf>,
     args: Vec<String>,
+    target: Option<String>,
+    lite: bool,
   },
   Completions {
     buf: Box<[u8]>,
@@ -447,11 +449,13 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let args = script.split_off(1);
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
+  let lite = matches.is_present("lite");
 
   flags.subcommand = DenoSubcommand::Compile {
     source_file,
     output,
     args,
+    lite,
   };
 }
 
@@ -893,11 +897,24 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("Output file (defaults to $PWD/<inferred-name>)")
         .takes_value(true)
     )
+    .arg(
+      Arg::with_name("target")
+        .long("target")
+        .help("Target OS architecture")
+        .takes_value(true)
+        .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin"])
+    )
+    .arg(
+      Arg::with_name("lite")
+        .long("lite")
+        .help("Use lite runtime")
+    )
     .about("Compile the script into a self contained executable")
     .long_about(
       "Compiles the given script into a self contained executable.
   deno compile --unstable https://deno.land/std/http/file_server.ts
   deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
+  deno compile --unstable --lite --target x86_64-unknown-linux-gnu https://deno.land/std/http/file_server.ts
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and used
@@ -909,9 +926,7 @@ The executable name is inferred by default:
   - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
     and the path has no parent, take the file name of the parent path. Otherwise
     settle with the generic name.
-  - If the resulting name has an '@...' suffix, strip it.
-
-Cross compiling binaries for different platforms is not currently possible.",
+  - If the resulting name has an '@...' suffix, strip it.",
     )
 }
 
