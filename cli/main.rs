@@ -337,9 +337,11 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
+  let original_binary_path = std::env::current_exe()?;
   tools::standalone::create_standalone_binary(
     bundle_str,
     run_flags,
+    &original_binary_path,
     output.clone(),
   )
   .await?;

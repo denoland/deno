@@ -11,6 +11,7 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 
 use crate::standalone::Metadata;
@@ -21,6 +22,7 @@ use crate::standalone::MAGIC_TRAILER;
 pub async fn create_standalone_binary(
   source_code: String,
   flags: Flags,
+  original_binary_path: &Path,
   output: PathBuf,
 ) -> Result<(), AnyError> {
   let mut source_code = source_code.as_bytes().to_vec();
@@ -39,7 +41,6 @@ pub async fn create_standalone_binary(
     ca_data,
   };
   let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
-  let original_binary_path = std::env::current_exe()?;
   let mut original_bin = tokio::fs::read(original_binary_path).await?;
 
   let bundle_pos = original_bin.len();
