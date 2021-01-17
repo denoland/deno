@@ -340,7 +340,7 @@ fn run_strace_benchmarks(
     file.as_file_mut().read_to_string(&mut output)?;
 
     let strace_result = test_util::parse_strace_output(&output);
-    let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0);
+    let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
     let total = strace_result.get("total").unwrap().calls;
     thread_count.insert(name.to_string(), clone);
     syscall_count.insert(name.to_string(), total);
