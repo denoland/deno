@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
@@ -128,8 +128,8 @@ unitTest(async function bufferBasicOperations(): Promise<void> {
     await empty(buf, testString.slice(0, 20), new Uint8Array(5));
     await empty(buf, "", new Uint8Array(100));
 
-    // TODO buf.writeByte()
-    // TODO buf.readByte()
+    // TODO(bartlomieju): buf.writeByte()
+    // TODO(bartlomieju): buf.readByte()
   }
 });
 

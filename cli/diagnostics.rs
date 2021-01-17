@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 
@@ -34,7 +34,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "PluginPermissionDescriptor",
   "ReadPermissionDescriptor",
   "RunPermissionDescriptor",
-  "ShutdownMode",
   "Signal",
   "SignalStream",
   "StartTlsOptions",
