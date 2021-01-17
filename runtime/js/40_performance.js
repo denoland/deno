@@ -21,7 +21,10 @@
     if (typeof mark === "string") {
       const entry = findMostRecent(mark, "mark");
       if (!entry) {
-        throw new DOMException(`Failed to execute 'measure' on 'Performance': The mark '${mark}' does not exist.`, "SyntaxError");
+        throw new DOMException(
+          `Failed to execute 'measure' on 'Performance': The mark '${mark}' does not exist.`,
+          "SyntaxError",
+        );
       }
       return entry.startTime;
     }
