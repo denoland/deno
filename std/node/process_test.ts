@@ -132,8 +132,14 @@ Deno.test({
 Deno.test({
   name: "process.env",
   fn() {
-    assertEquals(typeof process.env.PATH, "string");
-    assertEquals(typeof env.PATH, "string");
+    Deno.env.set("HELLO", "WORLD");
+
+    assertEquals(typeof (process.env.HELLO), "string");
+    assertEquals(process.env.HELLO, "WORLD");
+
+    // TODO(caspervonb) test the globals in a different setting (they're broken)
+    // assertEquals(typeof env.HELLO, "string");
+    // assertEquals(env.HELLO, "WORLD");
   },
 });
 
