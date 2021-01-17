@@ -118,15 +118,19 @@
       options = {},
     ) {
       requiredArguments("PerformanceMark", arguments.length, 1);
-      {
-        const option_type = typeof options;
-        if (
-          option_type !== "object" && option_type !== "function" &&
-          option_type !== "undefined"
-        ) {
+
+      // ensure options is object-ish, or null-ish
+      switch (typeof options) {
+        case "object": // includes null
+        case "function":
+        case "undefined": {
+          break;
+        }
+        default: {
           throw new TypeError("Invalid options");
         }
       }
+
       const { detail = null, startTime = now() } = options ?? {};
 
       super(name, "mark", startTime, 0, illegalConstructorKey);
