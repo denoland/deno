@@ -59,6 +59,7 @@
     "writable-streams/write"
   ],
   "encoding": [
+    "api-basics",
     "api-invalid-label",
     "api-replacement-encodings",
     "api-surrogates-utf8",
@@ -74,6 +75,7 @@
     // "iso-2022-jp-decoder",
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "replacement-encodings",
+    "textdecoder-byte-order-marks",
     {
       "name": "textdecoder-copy",
       "expectFail": [
@@ -83,6 +85,8 @@
       ]
     },
     "textdecoder-fatal-single-byte",
+    "textdecoder-fatal.",
+    "textdecoder-ignorebom",
     {
       "name": "textdecoder-labels",
       "expectFail": [
