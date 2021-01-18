@@ -79,7 +79,7 @@ fn format_markdown(
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
-        let extension = match tag {
+        let extension = match tag.as_str() {
           "javascript" => "js",
           "typescript" => "ts",
           rest => rest,
