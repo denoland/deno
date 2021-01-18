@@ -2672,6 +2672,12 @@ itest!(_079_location_authentication {
   output: "079_location_authentication.ts.out",
 });
 
+itest!(_080_deno_emit_permissions {
+  args: "run --unstable 080_deno_emit_permissions.ts",
+  output: "080_deno_emit_permissions.ts.out",
+  exit_code: 1,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

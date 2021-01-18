@@ -19,6 +19,7 @@ hyper = { version = "0.14.2", features = ["server", "http1", "runtime"] }
 lazy_static = "1.4.0"
 os_pipe = "0.9.2"
 regex = "1.4.3"
+serde = { version = "1.0.116", features = ["derive"] }
 tempfile = "3.1.0"
 tokio = { version = "1.0.1", features = ["full"] }
 tokio-rustls = "0.22.0"
