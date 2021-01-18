@@ -150,12 +150,10 @@ impl PrettyCoverageReporter {
 
       let mut count = 0;
 
-      let ignore = ignored_spans
-        .iter()
-        .any(|span| {
-          (span.lo.0 as usize) <= line_start_offset
-            && (span.hi.0 as usize) >= line_end_offset
-        });
+      let ignore = ignored_spans.iter().any(|span| {
+        (span.lo.0 as usize) <= line_start_offset
+          && (span.hi.0 as usize) >= line_end_offset
+      });
 
       if ignore {
         covered_lines.push(index);
