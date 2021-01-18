@@ -63,14 +63,21 @@ pub async fn format(
 
 /// Formats markdown (using https://github.com/dprint/dprint-plugin-markdown) and its code blocks
 /// (ts/tsx, js/jsx).
-fn format_markdown(file_text: &str) -> Result<String, String> {
-  let ts_config = get_typescript_config();
+fn format_markdown(
+  file_text: &str,
+  ts_config: dprint_plugin_typescript::configuration::Configuration,
+) -> Result<String, String> {
   let md_config = get_markdown_config();
   dprint_plugin_markdown::format_text(
     &file_text,
     &md_config,
-    Box::new(move |tag, text, _| {
-      if matches!(tag, "ts" | "tsx" | "js" | "jsx") {
+    Box::new(move |tag, text, line_width| {
+      if matches!(
+        tag.to_lowercase(),
+        "ts" | "tsx" | "js" | "jsx" | "javascript" | "typescript"
+      ) {
+        let mut codeblock_config = ts_config.clone();
+        codeblock_config.line_width = line_width;
         dprint_plugin_typescript::format_text(
           &PathBuf::from("_rand.".to_owned() + tag),
           &text,
@@ -101,7 +108,7 @@ async fn check_source_files(
       let file_text = read_file_contents(&file_path)?.text;
       let ext = get_extension(&file_path).unwrap_or_else(String::new);
       let r = if ext == "md" {
-        format_markdown(&file_text)
+        format_markdown(&file_text, config.clone())
       } else {
         dprint_plugin_typescript::format_text(&file_path, &file_text, &config)
       };
@@ -160,7 +167,7 @@ async fn format_source_files(
       let file_contents = read_file_contents(&file_path)?;
       let ext = get_extension(&file_path).unwrap_or_else(String::new);
       let r = if ext == "md" {
-        format_markdown(&file_contents.text)
+        format_markdown(&file_contents.text, config.clone())
       } else {
         dprint_plugin_typescript::format_text(
           &file_path,
@@ -221,7 +228,7 @@ pub fn format_stdin(check: bool, ext: String) -> Result<(), AnyError> {
   }
   let config = get_typescript_config();
   let r = if ext.as_str() == "md" {
-    format_markdown(&source)
+    format_markdown(&source, config)
   } else {
     // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
     dprint_plugin_typescript::format_text(
@@ -264,7 +271,13 @@ fn get_typescript_config(
 
 fn get_markdown_config() -> dprint_plugin_markdown::configuration::Configuration
 {
-  dprint_plugin_markdown::configuration::ConfigurationBuilder::new().build()
+  dprint_plugin_markdown::configuration::ConfigurationBuilder::new()
+    // Matches `.dprintrc.json` in the repository
+    .text_wrap("always")
+    .ignore_directive("deno-fmt-ignore")
+    .ignore_start_directive("deno-fmt-ignore-start")
+    .ignore_end_directive("deno-fmt-ignore-end")
+    .build()
 }
 
 struct FileContents {
