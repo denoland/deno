@@ -195,11 +195,22 @@ Too few arguments:
     S("%d") %!(MISSING 'd')"
 
 # Colors
+
 Adds functions used for displaying colored text.
-  
+
 ## Usage
+
 ```typescript
-import { bgBlue, italic, red, bold, bgRgb24, bgRgb8, rgb8, rgb24 } from "https://deno.land/std@0.83.0/fmt/colors.ts";
+import {
+  bgBlue,
+  bgRgb24,
+  bgRgb8,
+  bold,
+  italic,
+  red,
+  rgb24,
+  rgb8,
+} from "https://deno.land/std@0.83.0/fmt/colors.ts";
 
 console.log(bgBlue(italic(red(bold("Hello, World!")))));
 
@@ -212,18 +223,18 @@ console.log(bgRgb8("Hello, World!", 42));
 // and 24bit rgb
 
 console.log(rgb24("Hello, World!", {
-      r: 41,
-      g: 42,
-      b: 43,
-    }));
-
+  r: 41,
+  g: 42,
+  b: 43,
+}));
 
 console.log(bgRgb24("Hello, World!", {
-      r: 41,
-      g: 42,
-      b: 43,
-    }));
+  r: 41,
+  g: 42,
+  b: 43,
+}));
 ```
+
 [1]: https://pubs.opengroup.org/onlinepubs/009695399/functions/fprintf.html
 [2]: https://golang.org/pkg/fmt/
 [3]: https://console.spec.whatwg.org/#object-formats
