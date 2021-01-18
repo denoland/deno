@@ -155,6 +155,7 @@ pub unsafe fn v8_init() {
   // See https://github.com/denoland/deno/issues/2544
   let argv = vec![
     "".to_string(),
+    "--wasm-test-streaming".to_string(),
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
   ];
