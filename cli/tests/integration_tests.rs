@@ -3415,6 +3415,12 @@ itest!(deno_test_coverage {
   exit_code: 0,
 });
 
+itest!(deno_test_comment_coverage {
+  args: "test --coverage --unstable test_comment_coverage.ts",
+  output: "test_comment_coverage.out",
+  exit_code: 0,
+});
+
 itest!(deno_test_branch_coverage {
   args: "test --coverage --unstable test_branch_coverage.ts",
   output: "test_branch_coverage.out",
