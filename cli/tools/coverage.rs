@@ -159,6 +159,7 @@ impl PrettyCoverageReporter {
         .is_some();
 
       if ignore {
+        covered_lines.push(index);
         continue;
       }
 
