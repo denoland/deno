@@ -45,6 +45,7 @@ atty = "0.2.14"
 base64 = "0.13.0"
 byteorder = "1.4.2"
 clap = "2.33.3"
+difference = "2.0.0"
 dissimilar = "1.0.2"
 dprint-plugin-typescript = "0.38.1"
 encoding_rs = "0.8.26"
@@ -73,6 +74,7 @@ swc_common = { version = "0.10.8", features = ["sourcemap"] }
 swc_ecmascript = { version = "0.17.1", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.2"
+text-size = "1.1.0"
 tokio = { version = "1.0.1", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }

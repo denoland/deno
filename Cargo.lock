@@ -413,6 +413,7 @@ dependencies = [
  "deno_runtime",
  "deno_web",
  "deno_websocket",
+ "difference",
  "dissimilar",
  "dprint-plugin-typescript",
  "encoding_rs",
@@ -446,6 +447,7 @@ dependencies = [
  "tempfile",
  "termcolor",
  "test_util",
+ "text-size",
  "tokio",
  "tokio-rustls",
  "tower-test",
@@ -605,6 +607,12 @@ dependencies = [
  "quote 1.0.7",
  "syn 1.0.56",
 ]
+
+[[package]]
+name = "difference"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
 
 [[package]]
 name = "digest"
@@ -2816,6 +2824,12 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
 ]
+
+[[package]]
+name = "text-size"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "288cb548dbe72b652243ea797201f3d481a0609a967980fcc5b2315ea811560a"
 
 [[package]]
 name = "textwrap"

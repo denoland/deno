@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
-use super::text;
+use super::text::LineIndex;
 
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
@@ -75,19 +75,26 @@ impl Sources {
     false
   }
 
-  pub fn get_length(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
+  /// Provides the length of the source content, calculated in a way that should
+  /// match the behavior of JavaScript, where strings are stored effectively as
+  /// `&[u16]` and when counting "chars" we need to represent the string as a
+  /// UTF-16 string in Rust.
+  pub fn get_length_utf16(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<usize> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.source.chars().count())
+    Some(metadata.source.encode_utf16().count())
   }
 
   pub fn get_line_index(
     &mut self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Vec<u32>> {
+  ) -> Option<LineIndex> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(text::index_lines(&metadata.source))
+    Some(LineIndex::new(&metadata.source))
   }
 
   pub fn get_media_type(
@@ -388,7 +395,7 @@ mod tests {
   }
 
   #[test]
-  fn test_sources_get_length() {
+  fn test_sources_get_length_utf16() {
     let (mut sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
@@ -396,7 +403,7 @@ mod tests {
       &tests.join("001_hello.js").to_string_lossy(),
     )
     .unwrap();
-    let actual = sources.get_length(&specifier);
+    let actual = sources.get_length_utf16(&specifier);
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual, 28);
