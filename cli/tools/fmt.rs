@@ -80,9 +80,9 @@ fn format_markdown(
         let mut codeblock_config = ts_config.clone();
         codeblock_config.line_width = line_width;
         dprint_plugin_typescript::format_text(
-          &PathBuf::from("_rand.".to_owned() + &tag),
+          &PathBuf::from(format!("deno_fmt_{}", tag)),
           &text,
-          &ts_config,
+          &codeblock_config,
         )
       } else {
         Ok(text.to_string())
