@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // The following code is based off of text-encoding at:
 // https://github.com/inexorabletash/text-encoding
@@ -105,7 +105,7 @@
     if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
       throw new DOMException(
         "The string to be decoded is not correctly encoded",
-        "DataDecodeError",
+        "InvalidCharacterError",
       );
     }
 
@@ -1134,14 +1134,16 @@
       return new Uint8Array(output);
     }
     encodeInto(input, dest) {
-      const encoder = new UTF8Encoder();
-      const inputStream = new Stream(stringToCodePoints(input));
-
       if (!(dest instanceof Uint8Array)) {
         throw new TypeError(
           "2nd argument to TextEncoder.encodeInto must be Uint8Array",
         );
       }
+      if (dest.byteLength === 0) {
+        return { read: 0, written: 0 };
+      }
+      const encoder = new UTF8Encoder();
+      const inputStream = new Stream(stringToCodePoints(input));
 
       let written = 0;
       let read = 0;

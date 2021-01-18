@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../_util/deep_assign.ts";
 import { assert } from "../_util/assert.ts";
 
@@ -464,7 +464,7 @@ class Parser {
     for (let i = 0; i < this.tomlLines.length; i++) {
       const line = this.tomlLines[i];
 
-      // TODO (zekth) Handle unflat of array of tables
+      // TODO(zekth): Handle unflat of array of tables
       if (this._isGroup(line)) {
         // if the current group is an array we push the
         // parsed objects in it.

@@ -1,6 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::version;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -14,10 +13,6 @@ use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use std::collections::HashMap;
-
-pub fn get_user_agent() -> String {
-  format!("Deno/{}", version::deno())
-}
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
@@ -155,6 +150,7 @@ pub async fn fetch_once(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::version;
   use std::fs::read;
 
   fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
@@ -313,7 +309,7 @@ mod tests {
       Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()
@@ -345,7 +341,7 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()
@@ -376,7 +372,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()
@@ -416,7 +412,7 @@ mod tests {
     )
     .unwrap();
     let client = create_http_client(
-      get_user_agent(),
+      version::get_user_agent(),
       Some(
         read(
           test_util::root_path()

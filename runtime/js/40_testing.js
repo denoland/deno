@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const core = window.Deno.core;
@@ -199,8 +199,8 @@ finishing test case.`;
 
   exposeForTest("reportToConsole", reportToConsole);
 
-  // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
-  // TODO: implements PromiseLike<RunTestsEndResult>
+  // TODO(bartlomieju): already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
+  // TODO(bartlomieju): implements PromiseLike<RunTestsEndResult>
   class TestRunner {
     #usedOnly = false;
 

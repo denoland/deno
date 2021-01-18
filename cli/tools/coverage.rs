@@ -1,15 +1,20 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::module_graph::TypeLib;
+use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use deno_runtime::inspector::InspectorSession;
+use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct CoverageCollector {
@@ -51,31 +56,8 @@ impl CoverageCollector {
 
     let script_coverages = take_coverage_result.result;
     for script_coverage in script_coverages {
-      let get_script_source_value = self
-        .session
-        .post_message(
-          "Debugger.getScriptSource",
-          Some(json!({
-              "scriptId": script_coverage.script_id,
-          })),
-        )
-        .await?;
-
-      let get_script_source_result: GetScriptSourceResult =
-        serde_json::from_value(get_script_source_value)?;
-
-      let script_source = get_script_source_result.script_source.clone();
-
-      let coverage = Coverage {
-        script_coverage,
-        script_source,
-      };
-
-      // TODO(caspervonb) Would be much better to look up the source during the reporting stage
-      // instead of storing it here.
-      // Long term, that's what we should be doing.
       let filename = format!("{}.json", Uuid::new_v4());
-      let json = serde_json::to_string(&coverage)?;
+      let json = serde_json::to_string(&script_coverage)?;
       fs::write(self.dir.join(filename), &json)?;
     }
 
@@ -117,13 +99,6 @@ pub struct ScriptCoverage {
   pub functions: Vec<FunctionCoverage>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct Coverage {
-  pub script_coverage: ScriptCoverage,
-  pub script_source: String,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TakePreciseCoverageResult {
@@ -152,7 +127,7 @@ impl PrettyCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
   ) {
-    let lines = script_source.lines().collect::<Vec<_>>();
+    let lines = script_source.split('\n').collect::<Vec<_>>();
 
     let mut covered_lines: Vec<usize> = Vec::new();
     let mut uncovered_lines: Vec<usize> = Vec::new();
@@ -162,27 +137,47 @@ impl PrettyCoverageReporter {
       let line_end_offset = line_start_offset + line.len();
 
       let mut count = 0;
+
+      // Count the hits of ranges that include the entire line which will always be at-least one
+      // as long as the code has been evaluated.
       for function in &script_coverage.functions {
         for range in &function.ranges {
           if range.start_offset <= line_start_offset
             && range.end_offset >= line_end_offset
           {
-            if range.count == 0 {
-              count = 0;
-              break;
-            }
-
             count += range.count;
           }
         }
-
-        line_start_offset = line_end_offset;
       }
+
+      // Reset the count if any block intersects with the current line has a count of
+      // zero.
+      //
+      // We check for intersection instead of inclusion here because a block may be anywhere
+      // inside a line.
+      for function in &script_coverage.functions {
+        for range in &function.ranges {
+          if range.count > 0 {
+            continue;
+          }
+
+          if (range.start_offset < line_start_offset
+            && range.end_offset > line_start_offset)
+            || (range.start_offset < line_end_offset
+              && range.end_offset > line_end_offset)
+          {
+            count = 0;
+          }
+        }
+      }
+
       if count > 0 {
         covered_lines.push(index);
       } else {
         uncovered_lines.push(index);
       }
+
+      line_start_offset += line.len() + 1;
     }
 
     if !self.quiet {
@@ -231,22 +226,20 @@ impl PrettyCoverageReporter {
   }
 }
 
-fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
-  let mut coverages: Vec<Coverage> = Vec::new();
+fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
+  let mut coverages: Vec<ScriptCoverage> = Vec::new();
 
   let entries = fs::read_dir(dir)?;
   for entry in entries {
     let json = fs::read_to_string(entry.unwrap().path())?;
-    let new_coverage: Coverage = serde_json::from_str(&json)?;
+    let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
 
-    let existing_coverage = coverages
-      .iter_mut()
-      .find(|x| x.script_coverage.url == new_coverage.script_coverage.url);
+    let existing_coverage =
+      coverages.iter_mut().find(|x| x.url == new_coverage.url);
 
     if let Some(existing_coverage) = existing_coverage {
-      for new_function in new_coverage.script_coverage.functions {
+      for new_function in new_coverage.functions {
         let existing_function = existing_coverage
-          .script_coverage
           .functions
           .iter_mut()
           .find(|x| x.function_name == new_function.function_name);
@@ -266,10 +259,7 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
             }
           }
         } else {
-          existing_coverage
-            .script_coverage
-            .functions
-            .push(new_function);
+          existing_coverage.functions.push(new_function);
         }
       }
     } else {
@@ -277,19 +267,19 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<Coverage>, AnyError> {
     }
   }
 
-  coverages.sort_by_key(|k| k.script_coverage.url.clone());
+  coverages.sort_by_key(|k| k.url.clone());
 
   Ok(coverages)
 }
 
 fn filter_coverages(
-  coverages: Vec<Coverage>,
+  coverages: Vec<ScriptCoverage>,
   exclude: Vec<Url>,
-) -> Vec<Coverage> {
+) -> Vec<ScriptCoverage> {
   coverages
     .into_iter()
     .filter(|e| {
-      if let Ok(url) = Url::parse(&e.script_coverage.url) {
+      if let Ok(url) = Url::parse(&e.url) {
         if url.path().ends_with("__anonymous__") {
           return false;
         }
@@ -313,10 +303,11 @@ fn filter_coverages(
 
       false
     })
-    .collect::<Vec<Coverage>>()
+    .collect::<Vec<ScriptCoverage>>()
 }
 
-pub fn report_coverages(
+pub async fn report_coverages(
+  program_state: Arc<ProgramState>,
   dir: &PathBuf,
   quiet: bool,
   exclude: Vec<Url>,
@@ -325,9 +316,22 @@ pub fn report_coverages(
   let coverages = filter_coverages(coverages, exclude);
 
   let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
-  for coverage in coverages {
-    let script_coverage = coverage.script_coverage;
-    let script_source = coverage.script_source;
+  for script_coverage in coverages {
+    let module_specifier =
+      ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+    program_state
+      .prepare_module_load(
+        module_specifier.clone(),
+        TypeLib::UnstableDenoWindow,
+        Permissions::allow_all(),
+        false,
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
+
+    let module_source = program_state.load(module_specifier.clone(), None)?;
+    let script_source = &module_source.code;
+
     coverage_reporter.visit_coverage(&script_coverage, &script_source);
   }
 

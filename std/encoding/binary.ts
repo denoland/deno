@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 type RawBaseType = "int8" | "int16" | "int32" | "uint8" | "uint16" | "uint32";
 type RawNumberType = RawBaseType | "float32" | "float64";

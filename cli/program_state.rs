@@ -1,11 +1,10 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
-use crate::http_util;
 use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
 use crate::module_graph::CheckOptions;
@@ -14,6 +13,7 @@ use crate::module_graph::TranspileOptions;
 use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
+use crate::version;
 use deno_runtime::inspector::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
@@ -106,7 +106,7 @@ impl ProgramState {
     let maybe_inspector_server = match maybe_inspect_host {
       Some(host) => Some(Arc::new(InspectorServer::new(
         host,
-        http_util::get_user_agent(),
+        version::get_user_agent(),
       ))),
       None => None,
     };
