@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "./_utils.ts";
 import EventEmitter from "./events.ts";
 import { fromFileUrl } from "../path/mod.ts";
@@ -312,7 +312,7 @@ export const stdout = process.stdout;
 
 export default process;
 
-//TODO
+//TODO(Soremwar)
 //Remove on 1.0
 //Kept for backwars compatibility with std
 export { process };
