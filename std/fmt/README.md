@@ -190,6 +190,15 @@ Too few arguments:
 
     S("%d") %!(MISSING 'd')"
 
+# Colors
+Adds functions for displaying text with ANSI color codes.
+  
+# Example Usage
+```typescript
+import { bgBlue, italic, red, bold } from "https://deno.land/std@0.83.0/fmt/colors.ts";
+
+console.log(bgBlue(italic(red(bold("Hello world!")))));
+```
 [1]: https://pubs.opengroup.org/onlinepubs/009695399/functions/fprintf.html
 [2]: https://golang.org/pkg/fmt/
 [3]: https://console.spec.whatwg.org/#object-formats
