@@ -58,6 +58,7 @@ use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::join_all;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::serde_json;
@@ -1006,15 +1007,29 @@ async fn test_command(
           .collect()
       };
 
-      for module in test_modules {
-        let mut builder = module_graph::GraphBuilder::new(
-          handler.clone(),
-          program_state.maybe_import_map.clone(),
-          program_state.lockfile.clone(),
-        );
-        let module_specifier = ModuleSpecifier::resolve_url(module.as_str())?;
-        builder.add(&module_specifier, false).await?;
-        let modules = builder.get_graph().get_modules();
+      let graphs = join_all(test_modules.into_iter().map(|module| {
+        let handler = handler.clone();
+        let maybe_import_map = program_state.maybe_import_map.clone();
+        let lockfile = program_state.lockfile.clone();
+        async move {
+          let mut builder = module_graph::GraphBuilder::new(
+            handler,
+            maybe_import_map,
+            lockfile,
+          );
+          let module_specifier = ModuleSpecifier::resolve_url(module.as_str())?;
+          builder.add(&module_specifier, false).await?;
+          Ok::<module_graph::Graph, AnyError>(builder.get_graph())
+        }
+      }))
+      .await
+      .into_iter()
+      .collect::<Result<Vec<_>, _>>()?;
+
+      for graph in graphs {
+        let root = graph.info()?.module;
+        let modules = graph.get_modules();
+
         paths_to_watch.extend(
           modules
             .iter()
@@ -1026,24 +1041,32 @@ async fn test_command(
             ModuleSpecifier::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
             if modules.contains(&path) {
-              modules_to_reload.push(module_specifier);
+              modules_to_reload.push(root);
               break;
             }
           }
         }
       }
 
-      Ok(modules_to_reload)
+      Ok((paths_to_watch, modules_to_reload))
     }
     .map(move |result| {
       if files_changed
-        && matches!(result, Ok(ref modules) if modules.is_empty())
+        && matches!(result, Ok((_, ref modules)) if modules.is_empty())
       {
         ResolutionResult::Ignore
       } else {
-        ResolutionResult::Restart {
-          paths_to_watch,
-          result,
+        match result {
+          Ok((paths_to_watch, modules_to_reload)) => {
+            ResolutionResult::Restart {
+              paths_to_watch,
+              result: Ok(modules_to_reload),
+            }
+          }
+          Err(e) => ResolutionResult::Restart {
+            paths_to_watch,
+            result: Err(e),
+          },
         }
       }
     })
