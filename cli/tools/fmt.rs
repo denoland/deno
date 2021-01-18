@@ -72,14 +72,15 @@ fn format_markdown(
     &file_text,
     &md_config,
     Box::new(move |tag, text, line_width| {
+      let tag = tag.to_lowercase();
       if matches!(
-        tag.to_lowercase(),
+        tag.as_str(),
         "ts" | "tsx" | "js" | "jsx" | "javascript" | "typescript"
       ) {
         let mut codeblock_config = ts_config.clone();
         codeblock_config.line_width = line_width;
         dprint_plugin_typescript::format_text(
-          &PathBuf::from("_rand.".to_owned() + tag),
+          &PathBuf::from("_rand.".to_owned() + &tag),
           &text,
           &ts_config,
         )
@@ -273,7 +274,7 @@ fn get_markdown_config() -> dprint_plugin_markdown::configuration::Configuration
 {
   dprint_plugin_markdown::configuration::ConfigurationBuilder::new()
     // Matches `.dprintrc.json` in the repository
-    .text_wrap("always")
+    .text_wrap(dprint_plugin_markdown::configuration::TextWrap::Always)
     .ignore_directive("deno-fmt-ignore")
     .ignore_start_directive("deno-fmt-ignore-start")
     .ignore_end_directive("deno-fmt-ignore-end")
