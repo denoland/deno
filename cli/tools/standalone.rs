@@ -31,11 +31,8 @@ pub async fn get_base_binary(
   }
 
   let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-  let binary_name = if lite {
-    format!("denort-{}.zip", target)
-  } else {
-    format!("deno-{}.zip", target)
-  };
+  let exe_name = if lite { "denort" } else { "deno" };
+  let binary_name = format!("{}-{}.zip", exe_name, target);
 
   let binary_path_suffix = if crate::version::is_canary() {
     format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -51,7 +48,7 @@ pub async fn get_base_binary(
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
-  let base_binary_path = crate::tools::upgrade::unpack(archive_data)?;
+  let base_binary_path = crate::tools::upgrade::unpack(archive_data, exe_name)?;
   let base_binary = tokio::fs::read(base_binary_path).await?;
   Ok(base_binary)
 }
