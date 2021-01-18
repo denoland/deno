@@ -516,7 +516,7 @@ fn fmt_test() {
   let badly_formatted_original_js =
     util::root_path().join("cli/tests/badly_formatted.mjs");
   let badly_formatted_original_md =
-    util::root_path().join("cli/tests/badly_formatted_md");
+    util::root_path().join("cli/tests/badly_formatted.md");
   let badly_formatted_js = t.path().join("badly_formatted.js");
   let badly_formatted_md = t.path().join("badly_formatted.md");
   let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();

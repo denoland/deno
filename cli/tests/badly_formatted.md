@@ -1,5 +1,3 @@
-<!-- Not using an extension to avoid triggering dprint. -->
-
 # Hello      Markdown
 
 ```js
