@@ -201,7 +201,7 @@ fn to_lsp_related_information(
 }
 
 fn ts_json_to_diagnostics(
-  diagnostics: &Vec<diagnostics::Diagnostic>,
+  diagnostics: &[diagnostics::Diagnostic],
 ) -> Vec<lsp_types::Diagnostic> {
   diagnostics
     .iter()

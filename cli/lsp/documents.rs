@@ -194,7 +194,7 @@ impl DocumentCache {
     text: String,
   ) {
     self.docs.insert(
-      specifier.clone(),
+      specifier,
       DocumentData {
         bytes: Some(text.as_bytes().to_owned()),
         version: Some(version),
@@ -219,11 +219,7 @@ impl DocumentCache {
   }
 
   pub fn version(&self, specifier: &ModuleSpecifier) -> Option<i32> {
-    if let Some(doc) = self.docs.get(specifier) {
-      doc.version.clone()
-    } else {
-      None
-    }
+    self.docs.get(specifier).and_then(|doc| doc.version)
   }
 }
 
