@@ -6,9 +6,7 @@ import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { stripColor } from "../fmt/colors.ts";
 import * as path from "../path/mod.ts";
 import { delay } from "../async/delay.ts";
-import {
-  env,
-} from "./process.ts";
+import { env } from "./process.ts";
 
 Deno.test({
   name: "process.cwd and process.chdir success",
