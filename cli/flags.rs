@@ -48,7 +48,7 @@ pub enum DenoSubcommand {
     check: bool,
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
-    stdin_markdown: bool,
+    ext: String,
   },
   Info {
     json: bool,
@@ -399,9 +399,11 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
+  let ext = matches.value_of("ext").unwrap().to_string();
+
   flags.subcommand = DenoSubcommand::Fmt {
     check: matches.is_present("check"),
-    stdin_markdown: matches.is_present("stdin-markdown"),
+    ext,
     files,
     ignore,
   }
@@ -806,10 +808,12 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(false),
     )
     .arg(
-      Arg::with_name("stdin-markdown")
-        .long("stdin-markdown")
-        .help("Consider standard input (stdin) as markdown")
-        .takes_value(false),
+      Arg::with_name("ext")
+        .long("ext")
+        .help("Set standard input (stdin) content type")
+        .takes_value(true)
+        .default_value("ts")
+        .possible_values(&["ts", "tsx", "js", "jsx", "md"]),
     )
     .arg(
       Arg::with_name("ignore")
@@ -1975,7 +1979,7 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
-          stdin_markdown: false,
+          ext: "ts".to_string()
         },
         ..Flags::default()
       }
@@ -1989,7 +1993,7 @@ mod tests {
           ignore: vec![],
           check: true,
           files: vec![],
-          stdin_markdown: false,
+          ext: "ts".to_string(),
         },
         ..Flags::default()
       }
@@ -2003,7 +2007,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          stdin_markdown: false,
+          ext: "ts".to_string(),
         },
         ..Flags::default()
       }
@@ -2017,7 +2021,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          stdin_markdown: false,
+          ext: "ts".to_string(),
         },
         watch: true,
         unstable: true,
@@ -2041,7 +2045,7 @@ mod tests {
           ignore: vec![PathBuf::from("bar.js")],
           check: true,
           files: vec![PathBuf::from("foo.ts")],
-          stdin_markdown: false,
+          ext: "ts".to_string(),
         },
         watch: true,
         unstable: true,

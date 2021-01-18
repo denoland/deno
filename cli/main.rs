@@ -798,10 +798,10 @@ async fn format_command(
   args: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   check: bool,
-  stdin_markdown: bool,
+  ext: String,
 ) -> Result<(), AnyError> {
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(check, stdin_markdown);
+    return tools::fmt::format_stdin(check, ext);
   }
 
   tools::fmt::format(args, ignore, check, flags.watch).await?;
@@ -1168,10 +1168,8 @@ fn get_subcommand(
       check,
       files,
       ignore,
-      stdin_markdown,
-    } => {
-      format_command(flags, files, ignore, check, stdin_markdown).boxed_local()
-    }
+      ext,
+    } => format_command(flags, files, ignore, check, ext).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
