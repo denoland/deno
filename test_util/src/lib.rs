@@ -1,32 +1,33 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 
 #[macro_use]
 extern crate lazy_static;
 
+use core::mem::replace;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
-use futures::TryStreamExt;
 use hyper::header::HeaderValue;
+use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use hyper::Server;
 use hyper::StatusCode;
 use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
+use serde::Serialize;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::env;
 use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::mem::replace;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -83,6 +84,10 @@ pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
 }
 
+pub fn wpt_path() -> PathBuf {
+  root_path().join("test_util").join("wpt")
+}
+
 pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
@@ -90,13 +95,21 @@ pub fn third_party_path() -> PathBuf {
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  println!("target_dir {}", target_dir.display());
   target_dir.into()
 }
 
 pub fn deno_exe_path() -> PathBuf {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
+
+pub fn denort_exe_path() -> PathBuf {
+  // Something like /Users/rld/src/deno/target/debug/deps/denort
+  let mut p = target_dir().join("denort");
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -134,11 +147,9 @@ async fn hyper_hello(port: u16) {
   println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let hello_svc = make_service_fn(|_| async move {
-    Ok::<_, hyper::error::Error>(service_fn(
-      move |_: Request<Body>| async move {
-        Ok::<_, hyper::error::Error>(Response::new(Body::from("Hello World!")))
-      },
-    ))
+    Ok::<_, Infallible>(service_fn(move |_: Request<Body>| async move {
+      Ok::<_, Infallible>(Response::new(Body::from("Hello World!")))
+    }))
   });
 
   let server = Server::bind(&addr).serve(hello_svc);
@@ -191,7 +202,7 @@ async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 }
 
 async fn run_ws_server(addr: &SocketAddr) {
-  let mut listener = TcpListener::bind(addr).await.unwrap();
+  let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
       let ws_stream_fut = accept_async(stream);
@@ -266,7 +277,7 @@ async fn run_wss_server(addr: &SocketAddr) {
 
   let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
-  let mut listener = TcpListener::bind(addr).await.unwrap();
+  let listener = TcpListener::bind(addr).await.unwrap();
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -388,6 +399,27 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       res.headers_mut().insert(
         "content-type",
         HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+      );
+      Ok(res)
+    }
+    (_, "/multipart_form_bad_content_type") => {
+      let b = "Preamble\r\n\
+             --boundary\t \r\n\
+             Content-Disposition: form-data; name=\"field_1\"\r\n\
+             \r\n\
+             value_1 \r\n\
+             \r\n--boundary\r\n\
+             Content-Disposition: form-data; name=\"field_2\";\
+             filename=\"file.js\"\r\n\
+             Content-Type: text/javascript\r\n\
+             \r\n\
+             console.log(\"Hi\")\
+             \r\n--boundary--\r\n\
+             Epilogue";
+      let mut res = Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-datatststs;boundary=boundary"),
       );
       Ok(res)
     }
@@ -587,7 +619,7 @@ unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {
   let redirect_svc =
-    make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(redirect)) });
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(redirect)) });
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
   if let Err(e) = redirect_server.await {
@@ -597,7 +629,7 @@ async fn wrap_redirect_server() {
 
 async fn wrap_double_redirect_server() {
   let double_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(double_redirects))
+    Ok::<_, Infallible>(service_fn(double_redirects))
   });
   let double_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
@@ -610,7 +642,7 @@ async fn wrap_double_redirect_server() {
 
 async fn wrap_inf_redirect_server() {
   let inf_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(inf_redirects))
+    Ok::<_, Infallible>(service_fn(inf_redirects))
   });
   let inf_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], INF_REDIRECTS_PORT));
@@ -623,7 +655,7 @@ async fn wrap_inf_redirect_server() {
 
 async fn wrap_another_redirect_server() {
   let another_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(another_redirect))
+    Ok::<_, Infallible>(service_fn(another_redirect))
   });
   let another_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
@@ -636,7 +668,7 @@ async fn wrap_another_redirect_server() {
 
 async fn wrap_abs_redirect_server() {
   let abs_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(absolute_redirect))
+    Ok::<_, Infallible>(service_fn(absolute_redirect))
   });
   let abs_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
@@ -648,9 +680,8 @@ async fn wrap_abs_redirect_server() {
 }
 
 async fn wrap_main_server() {
-  let main_server_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(main_server))
-  });
+  let main_server_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
@@ -665,29 +696,24 @@ async fn wrap_main_https_server() {
   let tls_config = get_tls_config(cert_file, key_file)
     .await
     .expect("Cannot get TLS config");
-  let mut tcp = TcpListener::bind(&main_server_https_addr)
-    .await
-    .expect("Cannot bind TCP");
   loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("tls ready");
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
-    let incoming_tls_stream = tcp
-      .incoming()
-      .map_err(|e| {
-        eprintln!("Error Incoming: {:?}", e);
-        io::Error::new(io::ErrorKind::Other, e)
-      })
-      .and_then(move |s| {
-        use futures::TryFutureExt;
-        tls_acceptor.accept(s).map_err(|e| {
-          eprintln!("TLS Error {:?}", e);
-          e
-        })
-      })
-      .boxed();
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+          let stream = tls_acceptor.accept(socket);
+          yield stream.await;
+      }
+    }
+    .boxed();
 
     let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, hyper::Error>(service_fn(main_server))
+      Ok::<_, Infallible>(service_fn(main_server))
     });
     let main_server_https = Server::builder(HyperAcceptor {
       acceptor: incoming_tls_stream,
@@ -701,7 +727,10 @@ async fn wrap_main_https_server() {
   }
 }
 
-#[tokio::main]
+// Use the single-threaded scheduler. The hyper server is used as a point of
+// comparison for the (single-threaded!) benchmarks in cli/bench. We're not
+// comparing apples to apples if we use the default multi-threaded scheduler.
+#[tokio::main(flavor = "current_thread")]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
@@ -867,9 +896,17 @@ impl HttpServerCount {
       let stdout = test_server.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
       let lines = BufReader::new(stdout).lines();
+      let mut ready = false;
+      let mut tls_ready = false;
       for maybe_line in lines {
         if let Ok(line) = maybe_line {
           if line.starts_with("ready") {
+            ready = true;
+          }
+          if line.starts_with("tls ready") {
+            tls_ready = true;
+          }
+          if ready && tls_ready {
             break;
           }
         } else {
@@ -1330,7 +1367,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StraceOutput {
   pub percent_time: f64,
   pub seconds: f64,

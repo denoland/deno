@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
 import { assert } from "../_util/assert.ts";
@@ -178,7 +178,7 @@ export function setCookie(res: { headers?: Headers }, cookie: Cookie): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
-  // TODO (zekth) : Add proper parsing of Set-Cookie headers
+  // TODO(zekth) : Add proper parsing of Set-Cookie headers
   // Parsing cookie headers to make consistent set-cookie header
   // ref: https://tools.ietf.org/html/rfc6265#section-4.1.1
   const v = toString(cookie);

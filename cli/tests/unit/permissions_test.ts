@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
   assertThrows,
@@ -13,9 +13,9 @@ unitTest(async function permissionInvalidName(): Promise<void> {
   }, Error);
 });
 
-unitTest(async function permissionNetInvalidUrl(): Promise<void> {
+unitTest(async function permissionNetInvalidHost(): Promise<void> {
   await assertThrowsAsync(async () => {
-    await Deno.permissions.query({ name: "net", url: ":" });
+    await Deno.permissions.query({ name: "net", host: ":" });
   }, URIError);
 });
 

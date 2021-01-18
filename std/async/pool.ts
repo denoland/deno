@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /**
  * pooledMap transforms values from an (async) iterable into another async
@@ -42,5 +42,5 @@ export function pooledMap<T, R>(
     await Promise.all(executing);
     writer.close();
   })();
-  return res.readable.getIterator();
+  return res.readable[Symbol.asyncIterator]();
 }

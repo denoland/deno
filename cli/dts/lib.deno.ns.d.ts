@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -1711,11 +1711,7 @@ declare namespace Deno {
     /** The resource ID of the connection. */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
-     * callers should just use `close()`.
-     *
-     * **Unstable** because of lack of testing and because Deno.shutdown is also
-     * unstable.
-     * */
+     * callers should just use `close()`. */
     closeWrite(): void;
   }
 
@@ -1808,6 +1804,18 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+
+  /** Shutdown socket send operations.
+   *
+   * Matches behavior of POSIX shutdown(3).
+   *
+   * ```ts
+   * const listener = Deno.listen({ port: 80 });
+   * const conn = await listener.accept();
+   * Deno.shutdown(conn.rid);
+   * ```
+   */
+  export function shutdown(rid: number): Promise<void>;
 
   export interface Metrics {
     opsDispatched: number;

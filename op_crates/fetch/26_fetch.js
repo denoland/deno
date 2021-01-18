@@ -1,10 +1,11 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const core = window.Deno.core;
 
   // provided by "deno_web"
   const { URLSearchParams } = window.__bootstrap.url;
+  const { getLocationHref } = window.__bootstrap.location;
 
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -138,7 +139,7 @@
   }
 
   function hasHeaderValueOf(s, value) {
-    return new RegExp(`^${value}[\t\s]*;?`).test(s);
+    return new RegExp(`^${value}(?:[\\s;]|$)`).test(s);
   }
 
   function getHeaderValueParams(value) {
@@ -282,7 +283,7 @@
   }
 
   function getStream(blobBytes) {
-    // TODO: Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
+    // TODO(bartlomieju): Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
     return new ReadableStream({
       type: "bytes",
       start: (controller) => {
@@ -896,8 +897,20 @@
     if (body != null) {
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
     }
+    return core.jsonOpSync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+  }
 
-    return core.jsonOpAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+  function opFetchSend(args) {
+    return core.jsonOpAsync("op_fetch_send", args);
+  }
+
+  function opFetchRequestWrite(args, body) {
+    const zeroCopy = new Uint8Array(
+      body.buffer,
+      body.byteOffset,
+      body.byteLength,
+    );
+    return core.jsonOpAsync("op_fetch_request_write", args, zeroCopy);
   }
 
   const NULL_BODY_STATUS = [101, 204, 205, 304];
@@ -987,8 +1000,10 @@
         this.credentials = input.credentials;
         this._stream = input._stream;
       } else {
-        // TODO(nayeemrmn): Base from `--location` when implemented and set.
-        this.url = new URL(String(input)).href;
+        const baseUrl = getLocationHref();
+        this.url = baseUrl != null
+          ? new URL(String(input), baseUrl).href
+          : new URL(String(input)).href;
       }
 
       if (init && "method" in init && init.method) {
@@ -1175,20 +1190,47 @@
     }
   }
 
-  function sendFetchReq(url, method, headers, body, clientRid) {
+  let baseUrl = null;
+
+  function setBaseUrl(href) {
+    baseUrl = href;
+  }
+
+  async function sendFetchReq(url, method, headers, body, clientRid) {
     let headerArray = [];
     if (headers) {
       headerArray = Array.from(headers.entries());
     }
 
-    const args = {
-      method,
-      url,
-      headers: headerArray,
-      clientRid,
-    };
+    const { requestRid, requestBodyRid } = opFetch(
+      {
+        method,
+        url,
+        baseUrl,
+        headers: headerArray,
+        clientRid,
+        hasBody: !!body,
+      },
+      body instanceof Uint8Array ? body : undefined,
+    );
+    if (requestBodyRid) {
+      const writer = new WritableStream({
+        async write(chunk, controller) {
+          try {
+            await opFetchRequestWrite({ rid: requestBodyRid }, chunk);
+          } catch (err) {
+            controller.error(err);
+            controller.close();
+          }
+        },
+        close() {
+          core.close(requestBodyRid);
+        },
+      });
+      body.pipeTo(writer);
+    }
 
-    return opFetch(args, body);
+    return await opFetchSend({ rid: requestRid });
   }
 
   async function fetch(input, init) {
@@ -1198,7 +1240,7 @@
     let body;
     let clientRid = null;
     let redirected = false;
-    let remRedirectCount = 20; // TODO: use a better way to handle
+    let remRedirectCount = 20; // TODO(bartlomieju): use a better way to handle
 
     if (typeof input === "string" || input instanceof URL) {
       url = typeof input === "string" ? input : input.href;
@@ -1245,13 +1287,8 @@
             );
             body = multipartBuilder.getBody();
             contentType = multipartBuilder.getContentType();
-          } else {
-            // TODO(lucacasonato): do this in a streaming fashion once we support it
-            const buf = new Buffer();
-            for await (const chunk of init.body) {
-              buf.write(chunk);
-            }
-            body = buf.bytes();
+          } else if (init.body instanceof ReadableStream) {
+            body = init.body;
           }
           if (contentType && !headers.has("content-type")) {
             headers.set("content-type", contentType);
@@ -1267,8 +1304,8 @@
       method = input.method;
       headers = input.headers;
 
-      if (input._bodySource) {
-        body = new DataView(await input.arrayBuffer());
+      if (input.body) {
+        body = input.body;
       }
     }
 
@@ -1282,7 +1319,7 @@
         body,
         clientRid,
       );
-      const rid = fetchResponse.bodyRid;
+      const rid = fetchResponse.responseRid;
 
       if (
         NULL_BODY_STATUS.includes(fetchResponse.status) ||
@@ -1290,21 +1327,28 @@
       ) {
         // We won't use body of received response, so close it now
         // otherwise it will be kept in resource table.
-        core.close(fetchResponse.bodyRid);
+        core.close(rid);
         responseBody = null;
       } else {
         responseBody = new ReadableStream({
           type: "bytes",
           async pull(controller) {
             try {
-              const result = await core.jsonOpAsync("op_fetch_read", { rid });
-              if (!result || !result.chunk) {
+              const chunk = new Uint8Array(16 * 1024 + 256);
+              const { read } = await core.jsonOpAsync(
+                "op_fetch_response_read",
+                { rid },
+                chunk,
+              );
+              if (read != 0) {
+                if (chunk.length == read) {
+                  controller.enqueue(chunk);
+                } else {
+                  controller.enqueue(chunk.subarray(0, read));
+                }
+              } else {
                 controller.close();
                 core.close(rid);
-              } else {
-                // TODO(ry) This is terribly inefficient. Make this zero-copy.
-                const chunk = new Uint8Array(result.chunk);
-                controller.enqueue(chunk);
               }
             } catch (e) {
               controller.error(e);
@@ -1385,6 +1429,7 @@
     Blob,
     DomFile,
     FormData,
+    setBaseUrl,
     fetch,
     Request,
     Response,

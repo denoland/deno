@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
 use crate::runtime::JsRuntimeState;
@@ -653,6 +653,14 @@ fn decode(
       view.byte_length(),
     )
   };
+
+  // Strip BOM
+  let buf =
+    if buf.len() >= 3 && buf[0] == 0xef && buf[1] == 0xbb && buf[2] == 0xbf {
+      &buf[3..]
+    } else {
+      buf
+    };
 
   // If `String::new_from_utf8()` returns `None`, this means that the
   // length of the decoded string would be longer than what V8 can

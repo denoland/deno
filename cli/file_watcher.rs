@@ -1,10 +1,10 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use core::task::{Context, Poll};
 use deno_core::error::AnyError;
+use deno_core::futures::ready;
 use deno_core::futures::stream::{Stream, StreamExt};
-use deno_core::futures::{Future, FutureExt};
+use deno_core::futures::Future;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
@@ -12,28 +12,36 @@ use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use pin_project::pin_project;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
+use tokio::pin;
 use tokio::select;
-use tokio::time::{delay_for, Delay};
+use tokio::time::sleep;
+use tokio::time::Instant;
+use tokio::time::Sleep;
 
-const DEBOUNCE_INTERVAL_MS: Duration = Duration::from_millis(200);
+const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
 type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
+#[pin_project(project = DebounceProjection)]
 struct Debounce {
-  delay: Delay,
+  #[pin]
+  timer: Sleep,
   changed_paths: Arc<Mutex<HashSet<PathBuf>>>,
 }
 
 impl Debounce {
   fn new() -> Self {
     Self {
-      delay: delay_for(DEBOUNCE_INTERVAL_MS),
+      timer: sleep(DEBOUNCE_INTERVAL),
       changed_paths: Arc::new(Mutex::new(HashSet::new())),
     }
   }
@@ -42,24 +50,22 @@ impl Debounce {
 impl Stream for Debounce {
   type Item = Vec<PathBuf>;
 
-  /// Note that this never returns `Poll::Ready(None)`, which means that file watcher will be alive
-  /// until the Deno process is terminated.
+  /// Note that this never returns `Poll::Ready(None)`, which means that the
+  /// file watcher will be alive until the Deno process is terminated.
   fn poll_next(
     self: Pin<&mut Self>,
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
-    let inner = self.get_mut();
-    let mut changed_paths = inner.changed_paths.lock().unwrap();
+    let mut changed_paths = self.changed_paths.lock().unwrap();
     if changed_paths.len() > 0 {
       Poll::Ready(Some(changed_paths.drain().collect()))
     } else {
-      match inner.delay.poll_unpin(cx) {
-        Poll::Ready(_) => {
-          inner.delay = delay_for(DEBOUNCE_INTERVAL_MS);
-          Poll::Pending
-        }
-        Poll::Pending => Poll::Pending,
+      drop(changed_paths);
+      let mut timer = self.project().timer;
+      if let Poll::Ready(_) = timer.as_mut().poll(cx) {
+        timer.reset(Instant::now() + DEBOUNCE_INTERVAL);
       }
+      Poll::Pending
     }
   }
 }
@@ -82,7 +88,7 @@ pub enum ResolutionResult<T> {
 
 async fn next_restart<F, T: Clone>(
   resolver: &mut F,
-  debounce: &mut Debounce,
+  debounce: &mut Pin<&mut Debounce>,
   initial: bool,
 ) -> (Vec<PathBuf>, Result<T, AnyError>)
 where
@@ -134,7 +140,9 @@ where
   G: FnMut(T) -> FileWatcherFuture<Result<(), AnyError>>,
   T: Clone,
 {
-  let mut debounce = Debounce::new();
+  let debounce = Debounce::new();
+  pin!(debounce);
+
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.
   let mut paths_to_watch;

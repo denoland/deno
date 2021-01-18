@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { pooledMap } from "./pool.ts";
 import { assert } from "../testing/asserts.ts";
 

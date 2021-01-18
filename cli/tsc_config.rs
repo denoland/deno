@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util::canonicalize_path;
 use deno_core::error::AnyError;
@@ -49,6 +49,15 @@ impl fmt::Display for IgnoredCompilerOptions {
   }
 }
 
+impl Serialize for IgnoredCompilerOptions {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.items, serializer)
+  }
+}
+
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
@@ -64,7 +73,6 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "importHelpers",
   "inlineSourceMap",
   "inlineSources",
-  "isolatedModules",
   "module",
   "noEmitHelpers",
   "noLib",
@@ -97,6 +105,7 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "help",
   "incremental",
   "init",
+  "isolatedModules",
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
@@ -241,6 +250,14 @@ impl TsConfig {
   pub fn get_check_js(&self) -> bool {
     if let Some(check_js) = self.0.get("checkJs") {
       check_js.as_bool().unwrap_or(false)
+    } else {
+      false
+    }
+  }
+
+  pub fn get_declaration(&self) -> bool {
+    if let Some(declaration) = self.0.get("declaration") {
+      declaration.as_bool().unwrap_or(false)
     } else {
       false
     }

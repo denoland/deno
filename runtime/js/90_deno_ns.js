@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const __bootstrap = window.__bootstrap;
@@ -94,9 +94,7 @@
     signals: __bootstrap.signals.signals,
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
-    transpileOnly: __bootstrap.compilerApi.transpileOnly,
-    compile: __bootstrap.compilerApi.compile,
-    bundle: __bootstrap.compilerApi.bundle,
+    emit: __bootstrap.compilerApi.emit,
     permissions: __bootstrap.permissions.permissions,
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
@@ -113,7 +111,6 @@
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     shutdown: __bootstrap.net.shutdown,
-    ShutdownMode: __bootstrap.net.ShutdownMode,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
