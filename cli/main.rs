@@ -974,8 +974,7 @@ async fn test_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let paths_to_watch: Vec<_> =
-    include.iter().map(PathBuf::from).collect();
+  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
 
   let main_module = ModuleSpecifier::resolve_path("$deno$test.ts")?;
 
