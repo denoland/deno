@@ -688,11 +688,16 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    // TODO(lucacasonato): handle error correctly
-    let line_index =
-      self.get_line_index(specifier.clone()).await.map_err(|_| {
-        LspError::invalid_params("The specifier could not be found.")
-      })?;
+    let line_index = if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetQuickInfo((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -703,7 +708,8 @@ impl lspower::LanguageServer for LanguageServer {
     let maybe_quick_info: Option<tsc::QuickInfo> =
       serde_json::from_value(res).unwrap();
     if let Some(quick_info) = maybe_quick_info {
-      Ok(Some(quick_info.to_hover(&line_index)))
+      let hover = quick_info.to_hover(&line_index);
+      Ok(Some(hover))
     } else {
       Ok(None)
     }
@@ -719,8 +725,16 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index = if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let files_to_search = vec![specifier.clone()];
     let req = tsc::RequestMethod::GetDocumentHighlights((
       specifier,
@@ -755,8 +769,16 @@ impl lspower::LanguageServer for LanguageServer {
     }
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
-    // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index = if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetReferences((
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
@@ -798,8 +820,16 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index = if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetDefinition((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -831,7 +861,16 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index = if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetCompletions((
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
@@ -864,14 +903,16 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    let line_index =
-      self
-        .get_line_index(specifier.clone())
-        .await
-        .map_err(|err| {
-          error!("Failed to get line_index {:#?}", err);
-          LspError::internal_error()
-        })?;
+    let line_index = if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
 
     let req = tsc::RequestMethod::GetImplementation((
       specifier,
@@ -924,14 +965,16 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
 
-    let line_index =
-      self
-        .get_line_index(specifier.clone())
-        .await
-        .map_err(|err| {
-          error!("Failed to get line_index {:#?}", err);
-          LspError::internal_error()
-        })?;
+    let line_index = if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
 
     let req = tsc::RequestMethod::FindRenameLocations((
       specifier,
