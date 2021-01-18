@@ -152,11 +152,10 @@ impl PrettyCoverageReporter {
 
       let ignore = ignored_spans
         .iter()
-        .find(|span| {
+        .any(|span| {
           (span.lo.0 as usize) <= line_start_offset
             && (span.hi.0 as usize) >= line_end_offset
-        })
-        .is_some();
+        });
 
       if ignore {
         covered_lines.push(index);
