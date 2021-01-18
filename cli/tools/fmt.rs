@@ -16,7 +16,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -41,7 +40,7 @@ pub async fn format(
     collect_files(&args, &ignore, is_supported_ext_md)
   };
   let operation = |paths: Vec<PathBuf>| {
-    let config = get_config();
+    let config = get_typescript_config();
     async move {
       if check {
         check_source_files(config, paths).await?;
@@ -65,18 +64,17 @@ pub async fn format(
 /// Formats markdown (using https://github.com/dprint/dprint-plugin-markdown) and its code blocks
 /// (ts/tsx, js/jsx).
 fn format_markdown(file_text: &str) -> Result<String, String> {
-  use dprint_plugin_markdown::*;
-  let config = get_config();
-  let md_config = configuration::ConfigurationBuilder::new().build();
-  format_text(
+  let ts_config = get_typescript_config();
+  let md_config = get_markdown_config();
+  dprint_plugin_markdown::format_text(
     &file_text,
     &md_config,
     Box::new(move |tag, text, _| {
       if matches!(tag, "ts" | "tsx" | "js" | "jsx") {
-        dprint::format_text(
+        dprint_plugin_typescript::format_text(
           &PathBuf::from("_rand.".to_owned() + tag),
           &text,
-          &config,
+          &ts_config,
         )
       } else {
         Ok(text.to_string())
@@ -86,7 +84,7 @@ fn format_markdown(file_text: &str) -> Result<String, String> {
 }
 
 async fn check_source_files(
-  config: dprint::configuration::Configuration,
+  config: dprint_plugin_typescript::configuration::Configuration,
   paths: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
@@ -101,16 +99,12 @@ async fn check_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
-      let r: Result<String, String>;
-      let ext = match get_extension(&file_path) {
-        Some(ext) => ext,
-        None => String::new(),
-      };
-      if ext == "md" {
-        r = format_markdown(&file_text)
+      let ext = get_extension(&file_path).unwrap_or_else(String::new);
+      let r = if ext == "md" {
+        format_markdown(&file_text)
       } else {
-        r = dprint::format_text(&file_path, &file_text, &config);
-      }
+        dprint_plugin_typescript::format_text(&file_path, &file_text, &config)
+      };
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_text {
@@ -151,7 +145,7 @@ async fn check_source_files(
 }
 
 async fn format_source_files(
-  config: dprint::configuration::Configuration,
+  config: dprint_plugin_typescript::configuration::Configuration,
   paths: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
@@ -164,16 +158,16 @@ async fn format_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
-      let r: Result<String, String>;
-      let ext = match get_extension(&file_path) {
-        Some(ext) => ext,
-        None => String::new(),
-      };
-      if ext == "md" {
-        r = format_markdown(&file_contents.text)
+      let ext = get_extension(&file_path).unwrap_or_else(String::new);
+      let r = if ext == "md" {
+        format_markdown(&file_contents.text)
       } else {
-        r = dprint::format_text(&file_path, &file_contents.text, &config);
-      }
+        dprint_plugin_typescript::format_text(
+          &file_path,
+          &file_contents.text,
+          &config,
+        )
+      };
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
@@ -225,14 +219,17 @@ pub fn format_stdin(check: bool, ext: String) -> Result<(), AnyError> {
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
-  let config = get_config();
-  let r: Result<String, String>;
-  if ext.as_str() == "md" {
-    r = format_markdown(&source);
+  let config = get_typescript_config();
+  let r = if ext.as_str() == "md" {
+    format_markdown(&source)
   } else {
     // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
-    r = dprint::format_text(&PathBuf::from("_stdin.ts"), &source, &config);
-  }
+    dprint_plugin_typescript::format_text(
+      &PathBuf::from("_stdin.ts"),
+      &source,
+      &config,
+    )
+  };
   match r {
     Ok(formatted_text) => {
       if check {
@@ -258,9 +255,16 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-fn get_config() -> dprint::configuration::Configuration {
-  use dprint::configuration::*;
-  ConfigurationBuilder::new().deno().build()
+fn get_typescript_config(
+) -> dprint_plugin_typescript::configuration::Configuration {
+  dprint_plugin_typescript::configuration::ConfigurationBuilder::new()
+    .deno()
+    .build()
+}
+
+fn get_markdown_config() -> dprint_plugin_markdown::configuration::Configuration
+{
+  dprint_plugin_markdown::configuration::ConfigurationBuilder::new().build()
 }
 
 struct FileContents {
