@@ -191,7 +191,7 @@ Too few arguments:
     S("%d") %!(MISSING 'd')"
 
 # Colors
-Adds functions for displaying text with ANSI color codes.
+Adds functions used for displaying colored text.
   
 ## Usage
 ```typescript
