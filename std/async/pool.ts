@@ -42,5 +42,5 @@ export function pooledMap<T, R>(
     await Promise.all(executing);
     writer.close();
   })();
-  return res.readable.getIterator();
+  return res.readable[Symbol.asyncIterator]();
 }

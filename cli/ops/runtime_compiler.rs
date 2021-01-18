@@ -66,9 +66,9 @@ async fn op_emit(
   let mut is_dynamic = false;
   let handler: Arc<Mutex<dyn SpecifierHandler>> =
     if let Some(sources) = args.sources {
-      is_dynamic = true;
       Arc::new(Mutex::new(MemoryHandler::new(sources)))
     } else {
+      is_dynamic = true;
       Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         runtime_permissions,

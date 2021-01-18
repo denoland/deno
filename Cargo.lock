@@ -437,6 +437,7 @@ dependencies = [
  "notify",
  "os_pipe",
  "percent-encoding",
+ "pin-project 1.0.4",
  "regex",
  "ring",
  "rustyline",
@@ -462,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.75.0"
+version = "0.76.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -481,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "deno_core",
  "rand 0.7.3",
@@ -505,7 +506,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -518,9 +519,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "201dc00be199fea9fc4ff0a5f3a92625bb449bae976f61f0a792a769f7bcea31"
+checksum = "d75b5605c28abeb3cea94aaa9af235c2b28211d9538255c65b70c1d923d554bc"
 dependencies = [
  "anyhow",
  "derive_more",
@@ -536,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "atty",
  "deno_core",
@@ -580,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "deno_core",
  "futures",
@@ -590,7 +591,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "deno_core",
  "http",
@@ -2914,6 +2915,7 @@ dependencies = [
  "os_pipe",
  "pty",
  "regex",
+ "serde",
  "tempfile",
  "tokio",
  "tokio-rustls",

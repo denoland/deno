@@ -389,7 +389,7 @@ class Module {
     const module = new Module(filename, parent);
 
     if (isMain) {
-      // TODO: set process info
+      // TODO(bartlomieju): set process info
       // process.mainModule = module;
       module.id = ".";
     }
@@ -1052,7 +1052,7 @@ type RequireWrapper = (
 ) => void;
 
 function wrapSafe(filename: string, content: string): RequireWrapper {
-  // TODO: fix this
+  // TODO(bartlomieju): fix this
   const wrapper = Module.wrap(content);
   // deno-lint-ignore no-explicit-any
   const [f, err] = (Deno as any).core.evalContext(wrapper, filename);
@@ -1135,7 +1135,7 @@ function makeRequireFunction(mod: Module): RequireFunction {
   }
 
   resolve.paths = paths;
-  // TODO: set main
+  // TODO(bartlomieju): set main
   // require.main = process.mainModule;
 
   // Enable support to add extra extension types.

@@ -12,6 +12,7 @@ import {
   assert,
   assertEquals,
   assertStringIncludes,
+  assertThrows,
   unitTest,
 } from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
@@ -834,19 +835,11 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     }
   }
 
-  assertEquals(stringify(new A()), "A {}");
-
-  class B {
-    constructor(public field: { a: string }) {}
-    [customInspect](): string {
-      return this.field.a;
-    }
-  }
-
-  assertEquals(stringify(new B({ a: "a" })), "a");
-  assertEquals(
-    stringify(B.prototype),
-    "B { [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
+  assertThrows(
+    () => stringify(new A()),
+    Error,
+    "BOOM",
+    "Custom inspect won't attempt to parse if user defined function throws",
   );
 });
 
