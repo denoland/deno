@@ -77,10 +77,20 @@ fn format_markdown(
         tag.as_str(),
         "ts" | "tsx" | "js" | "jsx" | "javascript" | "typescript"
       ) {
+        // It's important to tell dprint proper file extension, otherwise
+        // it might parse the file twice.
+        let extension = match tag {
+          "javascript" => "js",
+          "typescript" => "ts",
+          rest => rest,
+        };
+        let fake_filename =
+          PathBuf::from(format!("deno_fmt_stdin.{}", extension));
+
         let mut codeblock_config = ts_config.clone();
         codeblock_config.line_width = line_width;
         dprint_plugin_typescript::format_text(
-          &PathBuf::from(format!("deno_fmt_{}", tag)),
+          &fake_filename,
           &text,
           &codeblock_config,
         )
