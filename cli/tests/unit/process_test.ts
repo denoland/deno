@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -434,16 +434,20 @@ unitTest(
     });
     await p.status();
 
-    // On Windows the underlying Rust API returns `ERROR_ACCESS_DENIED`,
-    // which serves kind of as a catch all error code. More specific
-    // error codes do exist, e.g. `ERROR_WAIT_NO_CHILDREN`; it's unclear
-    // why they're not returned.
-    const expectedErrorType = Deno.build.os === "windows"
-      ? Deno.errors.PermissionDenied
-      : Deno.errors.NotFound;
-    assertThrows(
-      () => p.kill(Deno.Signal.SIGTERM),
-      expectedErrorType,
+    let error = null;
+    try {
+      p.kill(Deno.Signal.SIGTERM);
+    } catch (e) {
+      error = e;
+    }
+
+    assert(
+      error instanceof Deno.errors.NotFound ||
+        // On Windows, the underlying Windows API may return
+        // `ERROR_ACCESS_DENIED` when the process has exited, but hasn't been
+        // completely cleaned up yet and its `pid` is still valid.
+        (Deno.build.os === "windows" &&
+          error instanceof Deno.errors.PermissionDenied),
     );
 
     p.close();

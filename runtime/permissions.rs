@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt;
@@ -88,7 +89,7 @@ pub fn resolve_fs_allowlist(allow: &Option<Vec<PathBuf>>) -> HashSet<PathBuf> {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct PermissionsOptions {
   pub allow_env: bool,
   pub allow_hrtime: bool,

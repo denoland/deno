@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
 use crate::module_graph::BundleType;
@@ -66,9 +66,9 @@ async fn op_emit(
   let mut is_dynamic = false;
   let handler: Arc<Mutex<dyn SpecifierHandler>> =
     if let Some(sources) = args.sources {
-      is_dynamic = true;
       Arc::new(Mutex::new(MemoryHandler::new(sources)))
     } else {
+      is_dynamic = true;
       Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         runtime_permissions,

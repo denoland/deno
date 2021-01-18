@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../_util/assert.ts";
@@ -65,7 +65,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     }
     const line = await tp.readLine();
     if (line === null) throw new Deno.errors.UnexpectedEof();
-    // TODO: handle chunk extension
+    // TODO(bartlomieju): handle chunk extension
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
     if (Number.isNaN(chunkSize) || chunkSize < 0) {

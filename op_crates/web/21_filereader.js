@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const base64 = window.__bootstrap.base64;
@@ -61,7 +61,7 @@
         if (!chunk.done && chunk.value instanceof Uint8Array) {
           chunks.push(chunk.value);
 
-          // TODO: (only) If roughly 50ms have passed since last progress
+          // TODO(bartlomieju): (only) If roughly 50ms have passed since last progress
           {
             const size = chunks.reduce((p, i) => p + i.byteLength, 0);
             const ev = new ProgressEvent("progress", {

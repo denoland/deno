@@ -7,7 +7,7 @@ import timers from "./timers.ts";
 // Definitions for this are quite delicate
 // This ensures modifications to the global namespace don't break on TypeScript
 
-// TODO
+// TODO(bartlomieju):
 // Deno lint marks globals defined by this module as undefined
 // probably gonna change in the future
 

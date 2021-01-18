@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // Requires to be run with `--allow-net` flag
 
@@ -385,6 +385,31 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "Worker post undefined",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const worker = new Worker(
+      new URL("./worker_post_undefined.ts", import.meta.url).href,
+      { type: "module" },
+    );
+
+    const handleWorkerMessage = (e: MessageEvent): void => {
+      console.log("main <- worker:", e.data);
+      worker.terminate();
+      promise.resolve();
+    };
+
+    worker.addEventListener("messageerror", () => console.log("message error"));
+    worker.addEventListener("error", () => console.log("error"));
+    worker.addEventListener("message", handleWorkerMessage);
+
+    console.log("\npost from parent");
+    worker.postMessage(undefined);
+    await promise;
+  },
+});
+
 Deno.test("Worker inherits permissions", async function () {
   const promise = deferred();
   const worker = new Worker(
@@ -613,4 +638,40 @@ Deno.test("Worker with disabled permissions", async function () {
   worker.postMessage(null);
   await promise;
   worker.terminate();
+});
+
+Deno.test({
+  name: "worker location",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const workerModuleHref =
+      new URL("subdir/worker_location.ts", import.meta.url).href;
+    const w = new Worker(workerModuleHref, { type: "module" });
+    w.onmessage = (e): void => {
+      assertEquals(e.data, `${workerModuleHref}, true`);
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker with relative specifier",
+  fn: async function (): Promise<void> {
+    assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
+    const promise = deferred();
+    const w = new Worker(
+      "./workers/test_worker.ts",
+      { type: "module", name: "tsWorker" },
+    );
+    w.onmessage = (e): void => {
+      assertEquals(e.data, "Hello, world!");
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
@@ -315,7 +315,7 @@ declare function setInterval(
 /** Cancels a timed, repeating action which was previously started by a call
  * to `setInterval()`
  *
- *     const id = setInterval(()= > {console.log('hello');}, 500);
+ *     const id = setInterval(() => {console.log('hello');}, 500);
  *     ...
  *     clearInterval(id);
  */
@@ -323,7 +323,7 @@ declare function clearInterval(id?: number): void;
 
 /** Cancels a scheduled action initiated by `setTimeout()`
  *
- *     const id = setTimeout(()= > {console.log('hello');}, 500);
+ *     const id = setTimeout(() => {console.log('hello');}, 500);
  *     ...
  *     clearTimeout(id);
  */

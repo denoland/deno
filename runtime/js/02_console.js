@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const core = window.Deno.core;
@@ -190,11 +190,7 @@
 
   function inspectFunction(value, _ctx) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      try {
-        return String(value[customInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[customInspect]());
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
@@ -865,11 +861,7 @@
     inspectOptions,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      try {
-        return String(value[customInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[customInspect]());
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in op_crates/web we don't want to depend on unique "Deno.customInspect"
@@ -880,11 +872,7 @@
       nonUniqueCustomInspect in value &&
       typeof value[nonUniqueCustomInspect] === "function"
     ) {
-      try {
-        return String(value[nonUniqueCustomInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[nonUniqueCustomInspect]());
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1449,7 +1437,14 @@
       // For historical web-compatibility reasons, the namespace object for
       // console must have as its [[Prototype]] an empty object, created as if
       // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
-      const console = Object.create({});
+      const console = Object.create({}, {
+        [Symbol.toStringTag]: {
+          enumerable: false,
+          writable: false,
+          configurable: true,
+          value: "console",
+        },
+      });
       Object.assign(console, this);
       return console;
     }

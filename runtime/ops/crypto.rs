@@ -1,5 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use deno_crypto::op_get_random_values;
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+use deno_crypto::op_crypto_get_random_values;
 use deno_crypto::rand::rngs::StdRng;
 use deno_crypto::rand::SeedableRng;
 
@@ -10,5 +10,9 @@ pub fn init(rt: &mut deno_core::JsRuntime, maybe_seed: Option<u64>) {
     let mut state = op_state.borrow_mut();
     state.put::<StdRng>(rng);
   }
-  super::reg_json_sync(rt, "op_get_random_values", op_get_random_values);
+  super::reg_json_sync(
+    rt,
+    "op_crypto_get_random_values",
+    op_crypto_get_random_values,
+  );
 }
