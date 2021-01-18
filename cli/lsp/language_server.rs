@@ -1347,6 +1347,48 @@ mod tests {
     ]);
     harness.run().await;
   }
+
+  #[tokio::test]
+  async fn test_hover_change_mbc() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_mbc.json", LspResponse::None),
+      ("did_change_notification_mbc.json", LspResponse::None),
+      (
+        "hover_request_mbc.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "const b: \"🇺🇸😃\"",
+              },
+              "",
+            ],
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 15,
+              },
+              "end": {
+                "line": 2,
+                "character": 16,
+              },
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
   #[tokio::test]
   async fn test_rename() {
     let mut harness = LspTestHarness::new(vec![
