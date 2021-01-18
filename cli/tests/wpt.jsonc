@@ -243,13 +243,13 @@
     "jsapi/table/get-set",
     "jsapi/table/toString",
     "webapi/body",
-    "webapi/invalid-args",
     "webapi/rejected-arg",
     "webapi/status",
     "webapi/create_multiple_memory",
     "create_multiple_memory"
 
-    //FAILING TESTS
+    // FAILING TESTS
+    // "webapi/invalid-args",
     // "jsapi/constructor/instantiate-bad-imports",
     // "jsapi/constructor/instantiate",
     // "jsapi/global/type",
