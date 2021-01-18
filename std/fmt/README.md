@@ -193,7 +193,7 @@ Too few arguments:
 # Colors
 Adds functions for displaying text with ANSI color codes.
   
-# Example Usage
+## Example Usage
 ```typescript
 import { bgBlue, italic, red, bold } from "https://deno.land/std@0.83.0/fmt/colors.ts";
 
