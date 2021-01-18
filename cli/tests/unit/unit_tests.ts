@@ -57,6 +57,7 @@ import "./response_test.ts";
 import "./signal_test.ts";
 import "./stat_test.ts";
 import "./stdio_test.ts";
+import "./streams_deprecated.ts";
 import "./symlink_test.ts";
 import "./sync_test.ts";
 import "./text_encoding_test.ts";

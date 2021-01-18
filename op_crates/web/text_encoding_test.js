@@ -243,6 +243,22 @@ function textEncodeInto3() {
   assertArrayEquals(Array.from(bytes), [0xf0, 0x9d, 0x93, 0xbd, 0x00]);
 }
 
+function textEncodeIntoDetachedBuffer() {
+  const fixture = "𝓽𝓮𝔁𝓽";
+  const encoder = new TextEncoder();
+  const memory = new WebAssembly.Memory({
+    initial: 1,
+    maximum: 1,
+    shared: false,
+  });
+  const bytes = new Uint8Array(memory.buffer, 0, 100);
+  memory.grow(0); // detaches memory.buffer
+  const result = encoder.encodeInto(fixture, bytes);
+  assert(bytes.byteLength === 0);
+  assert(result.read === 0);
+  assert(result.written === 0);
+}
+
 function textDecoderSharedUint8Array() {
   const ab = new SharedArrayBuffer(6);
   const dataView = new DataView(ab);
@@ -1209,6 +1225,7 @@ function main() {
   textEncodeInto();
   textEncodeInto2();
   textEncodeInto3();
+  textEncodeIntoDetachedBuffer();
   textDecoderSharedUint8Array();
   textDecoderSharedInt32Array();
   toStringShouldBeWebCompatibility();
