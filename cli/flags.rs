@@ -928,7 +928,13 @@ The executable name is inferred by default:
   - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
     and the path has no parent, take the file name of the parent path. Otherwise
     settle with the generic name.
-  - If the resulting name has an '@...' suffix, strip it.",
+  - If the resulting name has an '@...' suffix, strip it.
+  
+This commands supports cross-compiling to different target architectures using `--target` flag.
+On the first invocation with deno will download proper binary and cache it in $DENO_DIR.
+
+It is possible to use \"lite\" binaries when compiling by passing `--lite` flag; these are stripped down versions
+of the deno binary that do not contain built-in tooling (eg. formatter, linter). This feature is experimental.",
     )
 }
 

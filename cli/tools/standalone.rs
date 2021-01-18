@@ -63,15 +63,6 @@ async fn download_base_binary(
   let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
 
   let client_builder = Client::builder();
-
-  // TODO:
-  // // If we have been provided a CA Certificate, add it into the HTTP client
-  // if let Some(ca_file) = ca_file {
-  //   let buf = std::fs::read(ca_file)?;
-  //   let cert = reqwest::Certificate::from_pem(&buf)?;
-  //   client_builder = client_builder.add_root_certificate(cert);
-  // }
-
   let client = client_builder.build()?;
 
   println!("Checking {}", &download_url);
