@@ -1,5 +1,5 @@
 test:
-	cargo build
+	cargo build -p test_util
 	cargo test
 
 fmt:
