@@ -193,11 +193,32 @@ Too few arguments:
 # Colors
 Adds functions for displaying text with ANSI color codes.
   
-## Example Usage
+## Usage
 ```typescript
-import { bgBlue, italic, red, bold } from "https://deno.land/std@0.83.0/fmt/colors.ts";
+import { bgBlue, italic, red, bold, bgRgb24, bgRgb8, rgb8, rgb24 } from "https://deno.land/std@0.83.0/fmt/colors.ts";
 
-console.log(bgBlue(italic(red(bold("Hello world!")))));
+console.log(bgBlue(italic(red(bold("Hello, World!")))));
+
+// also supports 8bit colors
+
+console.log(rgb8("Hello, World!", 42));
+
+console.log(bgRgb8("Hello, World!", 42));
+
+// and 24bit rgb
+
+console.log(rgb24("Hello, World!", {
+      r: 41,
+      g: 42,
+      b: 43,
+    }));
+
+
+console.log(bgRgb24("Hello, World!", {
+      r: 41,
+      g: 42,
+      b: 43,
+    }));
 ```
 [1]: https://pubs.opengroup.org/onlinepubs/009695399/functions/fprintf.html
 [2]: https://golang.org/pkg/fmt/
