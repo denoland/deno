@@ -7,6 +7,10 @@ If you are looking for the documentation proper, skip to:
 
     "printf: prints formatted output"
 
+and
+
+    "Colors"
+
 below.
 
 ## Discussion
