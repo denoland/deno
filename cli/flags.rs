@@ -914,9 +914,9 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Compile the script into a self contained executable")
     .long_about(
       "Compiles the given script into a self contained executable.
-  deno compile --unstable https://deno.land/std/http/file_server.ts
+  deno compile --unstable -A https://deno.land/std/http/file_server.ts
   deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
-  deno compile --unstable --lite --target x86_64-unknown-linux-gnu https://deno.land/std/http/file_server.ts
+  deno compile --unstable --lite --target x86_64-unknown-linux-gnu -A https://deno.land/std/http/file_server.ts
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and used
@@ -934,7 +934,8 @@ This commands supports cross-compiling to different target architectures using `
 On the first invocation with deno will download proper binary and cache it in $DENO_DIR.
 
 It is possible to use \"lite\" binaries when compiling by passing `--lite` flag; these are stripped down versions
-of the deno binary that do not contain built-in tooling (eg. formatter, linter). This feature is experimental.",
+of the deno binary that do not contain built-in tooling (eg. formatter, linter). This feature is experimental.
+",
     )
 }
 
