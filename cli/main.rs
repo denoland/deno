@@ -1268,6 +1268,7 @@ pub fn main() {
         || err.kind == clap::ErrorKind::VersionDisplayed =>
     {
       err.write_to(&mut std::io::stdout()).unwrap();
+      std::io::stdout().write_all(b"\n").unwrap();
       std::process::exit(0);
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
