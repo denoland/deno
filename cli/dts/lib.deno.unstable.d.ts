@@ -1266,7 +1266,8 @@ declare namespace Deno {
     | "u32"
     | "u64"
     | "f32"
-    | "f64";
+    | "f64"
+    | "cstr";
 
   export interface CallDylibraryOptions {
     params?: {

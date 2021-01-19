@@ -1,6 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use std::{any::Any, borrow::Cow, ffi::c_void, path::PathBuf, rc::Rc};
+use std::{
+  any::Any,
+  borrow::Cow,
+  ffi::{c_void, CString},
+  path::PathBuf,
+  rc::Rc,
+};
 
 use deno_core::{
   error::AnyError,
@@ -8,6 +14,7 @@ use deno_core::{
   OpState, Resource, ZeroCopyBuf,
 };
 use dlopen::symbor::Library;
+use libc::c_char;
 use libffi::high as ffi;
 use serde::Deserialize;
 
@@ -103,6 +110,10 @@ fn op_call_libaray_ffi(
         let val = param.value.as_u64().unwrap() as u8;
         call_args.push((Box::new(val), param.type_name.clone()));
       }
+      "u16" => {
+        let val = param.value.as_u64().unwrap() as u16;
+        call_args.push((Box::new(val), param.type_name.clone()));
+      }
       "u32" => {
         let val = param.value.as_u64().unwrap() as u32;
         call_args.push((Box::new(val), param.type_name.clone()));
@@ -118,6 +129,11 @@ fn op_call_libaray_ffi(
       "f64" => {
         let val = param.value.as_f64().unwrap();
         call_args.push((Box::new(val), param.type_name.clone()));
+      }
+      "cstr" => {
+        let val = param.value.as_str().unwrap();
+        let cstr = val.as_ptr() as *const c_char;
+        call_args.push((Box::new(cstr), param.type_name.clone()));
       }
       _ => {}
     });
@@ -167,6 +183,10 @@ fn op_call_libaray_ffi(
           let v = val.downcast_ref::<f64>().unwrap();
           ffi::arg(&*v)
         }
+        "cstr" => {
+          let v = val.downcast_ref::<*const c_char>().unwrap();
+          ffi::arg(&*v)
+        }
         _ => ffi::arg(&()),
       }
     })
@@ -212,6 +232,13 @@ fn op_call_libaray_ffi(
     }
     "f64" => {
       json!(unsafe { ffi::call::<f64>(fn_code_ptr, params.as_slice()) })
+    }
+    "cstr" => {
+      let val = unsafe {
+        let ptr = ffi::call::<*mut c_char>(fn_code_ptr, params.as_slice());
+        CString::from_raw(ptr)
+      };
+      json!(val.into_string().unwrap())
     }
     _ => {
       unsafe { ffi::call::<()>(fn_code_ptr, params.as_slice()) };

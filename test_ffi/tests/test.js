@@ -105,6 +105,14 @@ console.log(
   }),
 );
 
+console.log(
+  "concat_string",
+  lib.call("concat_string", {
+    params: [{ typeName: "cstr", value: "Deno" }],
+    returnType: "cstr",
+  }),
+);
+
 lib.close();
 
 console.log("Deno.resources():", Deno.resources());

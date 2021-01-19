@@ -1,3 +1,6 @@
+use libc::c_char;
+use std::ffi::{CStr, CString};
+
 #[no_mangle]
 pub fn print_something() {
   println!("something");
@@ -51,4 +54,13 @@ pub fn add_one_f32(arg: f32) -> f32 {
 #[no_mangle]
 pub fn add_one_f64(arg: f64) -> f64 {
   arg + 1.0
+}
+
+#[no_mangle]
+pub extern "C" fn concat_string(str: *const c_char) -> *const c_char {
+  let str = unsafe { CStr::from_ptr(str) };
+  let mut hello = String::from("hello ");
+  hello.push_str(str.to_str().unwrap());
+  let str = CString::new(hello).unwrap();
+  str.into_raw()
 }
