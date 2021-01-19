@@ -10,7 +10,6 @@
       "first_steps": "First steps",
       "command_line_interface": "Command line interface",
       "permissions": "Permissions",
-      "typescript": "Using TypeScript",
       "webassembly": "Using WebAssembly",
       "debugging_your_code": "Debugging your code"
     }
