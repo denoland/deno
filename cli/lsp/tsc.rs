@@ -82,6 +82,14 @@ impl TsServer {
   }
 }
 
+/// An lsp representation of an asset in memory, that has either been retrieved
+/// from static assets built into Rust, or static assets built into tsc.
+#[derive(Debug, Clone)]
+pub struct AssetDocument {
+  pub text: String,
+  pub line_index: LineIndex,
+}
+
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
@@ -89,28 +97,41 @@ pub async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
   state_snapshot: &StateSnapshot,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
-  if let Some(asset_text) = tsc::get_asset(&specifier_str) {
-    Ok(Some(asset_text.to_string()))
+  if let Some(text) = tsc::get_asset(&specifier_str) {
+    let maybe_asset = Some(AssetDocument {
+      line_index: LineIndex::new(text),
+      text: text.to_string(),
+    });
+    state_snapshot
+      .assets
+      .lock()
+      .unwrap()
+      .insert(specifier.clone(), maybe_asset.clone());
+    Ok(maybe_asset)
   } else {
-    {
-      let assets = state_snapshot.assets.lock().unwrap();
-      if let Some(asset) = assets.get(specifier) {
-        return Ok(asset.clone());
-      }
-    }
-    let asset: Option<String> = serde_json::from_value(
-      ts_server
-        .request(
-          state_snapshot.clone(),
-          RequestMethod::GetAsset(specifier.clone()),
-        )
-        .await?,
-    )?;
-    let mut assets = state_snapshot.assets.lock().unwrap();
-    assets.insert(specifier.clone(), asset.clone());
-    Ok(asset)
+    let res = ts_server
+      .request(
+        state_snapshot.clone(),
+        RequestMethod::GetAsset(specifier.clone()),
+      )
+      .await?;
+    let maybe_text: Option<String> = serde_json::from_value(res)?;
+    let maybe_asset = if let Some(text) = maybe_text {
+      Some(AssetDocument {
+        line_index: LineIndex::new(&text),
+        text,
+      })
+    } else {
+      None
+    };
+    state_snapshot
+      .assets
+      .lock()
+      .unwrap()
+      .insert(specifier.clone(), maybe_asset.clone());
+    Ok(maybe_asset)
   }
 }
 

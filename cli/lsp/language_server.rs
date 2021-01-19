@@ -37,12 +37,13 @@ use super::sources::Sources;
 use super::text;
 use super::text::LineIndex;
 use super::tsc;
+use super::tsc::AssetDocument;
 use super::tsc::TsServer;
 use super::utils;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
-  assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<String>>>>,
+  assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
   client: Client,
   ts_server: TsServer,
   config: Arc<Mutex<Config>>,
@@ -56,7 +57,7 @@ pub struct LanguageServer {
 
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
-  pub assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<String>>>>,
+  pub assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
   pub documents: DocumentCache,
   pub sources: Arc<Mutex<Sources>>,
 }
@@ -88,32 +89,60 @@ impl LanguageServer {
     config.settings.enable
   }
 
+  /// Searches assets, open documents and external sources for a line_index,
+  /// which might be performed asynchronously, hydrating in memory caches for
+  /// subsequent requests.
   pub async fn get_line_index(
     &self,
     specifier: ModuleSpecifier,
   ) -> Result<LineIndex, AnyError> {
-    let line_index = if specifier.as_url().scheme() == "asset" {
-      let state_snapshot = self.snapshot();
-      if let Some(source) =
-        tsc::get_asset(&specifier, &self.ts_server, &state_snapshot).await?
-      {
-        LineIndex::new(&source)
+    if specifier.as_url().scheme() == "asset" {
+      let maybe_asset =
+        { self.assets.lock().unwrap().get(&specifier).cloned() };
+      if let Some(maybe_asset) = maybe_asset {
+        if let Some(asset) = maybe_asset {
+          Ok(asset.line_index)
+        } else {
+          Err(anyhow!("asset is missing: {}", specifier))
+        }
       } else {
-        return Err(anyhow!("asset source missing: {}", specifier));
+        let state_snapshot = self.snapshot();
+        if let Some(asset) =
+          tsc::get_asset(&specifier, &self.ts_server, &state_snapshot).await?
+        {
+          Ok(asset.line_index)
+        } else {
+          Err(anyhow!("asset is missing: {}", specifier))
+        }
       }
     } else if let Some(line_index) =
       self.documents.lock().unwrap().line_index(&specifier)
     {
-      line_index
+      Ok(line_index)
+    } else if let Some(line_index) =
+      self.sources.lock().unwrap().get_line_index(&specifier)
+    {
+      Ok(line_index)
     } else {
-      let mut sources = self.sources.lock().unwrap();
-      if let Some(line_index) = sources.get_line_index(&specifier) {
-        line_index
+      Err(anyhow!("Unable to find line index for: {}", specifier))
+    }
+  }
+
+  /// Only searches already cached assets and documents for a line index.  If
+  /// the line index cannot be found, `None` is returned.
+  pub fn get_line_index_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<LineIndex> {
+    if specifier.as_url().scheme() == "asset" {
+      if let Some(Some(asset)) = self.assets.lock().unwrap().get(specifier) {
+        Some(asset.line_index.clone())
       } else {
-        return Err(anyhow!("source for specifier not found: {}", specifier));
+        None
       }
-    };
-    Ok(line_index)
+    } else {
+      self.documents.lock().unwrap().line_index(specifier)
+    }
   }
 
   async fn prepare_diagnostics(&self) -> Result<(), AnyError> {
@@ -688,16 +717,15 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    let line_index = if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
-    {
-      line_index
-    } else {
-      return Err(LspError::invalid_params(format!(
-        "An unexpected specifier ({}) was provided.",
-        specifier
-      )));
-    };
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetQuickInfo((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -725,16 +753,15 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    let line_index = if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
-    {
-      line_index
-    } else {
-      return Err(LspError::invalid_params(format!(
-        "An unexpected specifier ({}) was provided.",
-        specifier
-      )));
-    };
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let files_to_search = vec![specifier.clone()];
     let req = tsc::RequestMethod::GetDocumentHighlights((
       specifier,
@@ -769,16 +796,15 @@ impl lspower::LanguageServer for LanguageServer {
     }
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
-    let line_index = if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
-    {
-      line_index
-    } else {
-      return Err(LspError::invalid_params(format!(
-        "An unexpected specifier ({}) was provided.",
-        specifier
-      )));
-    };
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetReferences((
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
@@ -820,16 +846,15 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    let line_index = if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
-    {
-      line_index
-    } else {
-      return Err(LspError::invalid_params(format!(
-        "An unexpected specifier ({}) was provided.",
-        specifier
-      )));
-    };
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetDefinition((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -861,16 +886,15 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
-    let line_index = if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
-    {
-      line_index
-    } else {
-      return Err(LspError::invalid_params(format!(
-        "An unexpected specifier ({}) was provided.",
-        specifier
-      )));
-    };
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetCompletions((
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
@@ -903,16 +927,15 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    let line_index = if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
-    {
-      line_index
-    } else {
-      return Err(LspError::invalid_params(format!(
-        "An unexpected specifier ({}) was provided.",
-        specifier
-      )));
-    };
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
 
     let req = tsc::RequestMethod::GetImplementation((
       specifier,
@@ -965,16 +988,15 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
 
-    let line_index = if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
-    {
-      line_index
-    } else {
-      return Err(LspError::invalid_params(format!(
-        "An unexpected specifier ({}) was provided.",
-        specifier
-      )));
-    };
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
 
     let req = tsc::RequestMethod::FindRenameLocations((
       specifier,
@@ -1113,16 +1135,26 @@ impl LanguageServer {
     } else {
       match url.scheme() {
         "asset" => {
-          let state_snapshot = self.snapshot();
-          if let Some(text) =
-            tsc::get_asset(&specifier, &self.ts_server, &state_snapshot)
-              .await
-              .map_err(|_| LspError::internal_error())?
-          {
-            Some(text)
+          let maybe_asset =
+            { self.assets.lock().unwrap().get(&specifier).cloned() };
+          if let Some(maybe_asset) = maybe_asset {
+            if let Some(asset) = maybe_asset {
+              Some(asset.text)
+            } else {
+              None
+            }
           } else {
-            error!("Missing asset: {}", specifier);
-            None
+            let state_snapshot = self.snapshot();
+            if let Some(asset) =
+              tsc::get_asset(&specifier, &self.ts_server, &state_snapshot)
+                .await
+                .map_err(|_| LspError::internal_error())?
+            {
+              Some(asset.text)
+            } else {
+              error!("Missing asset: {}", specifier);
+              None
+            }
           }
         }
         _ => {
