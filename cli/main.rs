@@ -1249,7 +1249,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
         "{}: {}",
         colors::red_bold("error"),
         // TODO(lucacasonato): print anyhow error chain here
-        error.root_cause().to_string().trim()
+        error.to_string().trim()
       );
       eprintln!("{}", msg);
       std::process::exit(1);
