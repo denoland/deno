@@ -5,6 +5,7 @@ pub use dispatch_minimal::MinimalOp;
 
 pub mod crypto;
 pub mod fetch;
+pub mod ffi;
 pub mod fs;
 pub mod fs_events;
 pub mod io;
@@ -23,7 +24,6 @@ pub mod tty;
 pub mod web_worker;
 pub mod websocket;
 pub mod worker_host;
-pub mod ffi;
 
 use crate::metrics::metrics_op;
 use deno_core::error::AnyError;

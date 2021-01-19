@@ -13,7 +13,9 @@ if (Deno.build.os === "darwin") {
   filenameSuffix = ".dylib";
 }
 
-const filename = `../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
+const filename = `../target/${
+  Deno.args[0]
+}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
 console.log("Deno.resources():", Deno.resources());
 
@@ -28,7 +30,7 @@ console.log(
   lib.call("add_one_i8", {
     params: [{ typeName: "i8", value: 1 }],
     returnType: "i8",
-  })
+  }),
 );
 
 console.log(
@@ -36,7 +38,7 @@ console.log(
   lib.call("add_one_i16", {
     params: [{ typeName: "i16", value: 1 }],
     returnType: "i16",
-  })
+  }),
 );
 
 console.log(
@@ -44,7 +46,7 @@ console.log(
   lib.call("add_one_i32", {
     params: [{ typeName: "i32", value: 1 }],
     returnType: "i32",
-  })
+  }),
 );
 
 console.log(
@@ -52,7 +54,7 @@ console.log(
   lib.call("add_one_i64", {
     params: [{ typeName: "i64", value: 1 }],
     returnType: "i64",
-  })
+  }),
 );
 
 console.log(
@@ -60,7 +62,7 @@ console.log(
   lib.call("add_one_u8", {
     params: [{ typeName: "u8", value: 1 }],
     returnType: "u8",
-  })
+  }),
 );
 
 console.log(
@@ -68,7 +70,7 @@ console.log(
   lib.call("add_one_u16", {
     params: [{ typeName: "u16", value: 1 }],
     returnType: "u16",
-  })
+  }),
 );
 
 console.log(
@@ -76,7 +78,7 @@ console.log(
   lib.call("add_one_u32", {
     params: [{ typeName: "u32", value: 1 }],
     returnType: "u32",
-  })
+  }),
 );
 
 console.log(
@@ -84,7 +86,7 @@ console.log(
   lib.call("add_one_i64", {
     params: [{ typeName: "i64", value: 1 }],
     returnType: "i64",
-  })
+  }),
 );
 
 console.log(
@@ -92,7 +94,7 @@ console.log(
   lib.call("add_one_f32", {
     params: [{ typeName: "f32", value: 2.5 }],
     returnType: "f32",
-  })
+  }),
 );
 
 console.log(
@@ -100,7 +102,7 @@ console.log(
   lib.call("add_one_f64", {
     params: [{ typeName: "f64", value: 2.14 }],
     returnType: "f64",
-  })
+  }),
 );
 
 lib.close();
