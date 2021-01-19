@@ -916,7 +916,7 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("target")
         .help("Target OS architecture")
         .takes_value(true)
-        .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin"])
+        .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"])
     )
     .arg(
       Arg::with_name("lite")
@@ -943,7 +943,8 @@ The executable name is inferred by default:
   - If the resulting name has an '@...' suffix, strip it.
   
 This commands supports cross-compiling to different target architectures using `--target` flag.
-On the first invocation with deno will download proper binary and cache it in $DENO_DIR.
+On the first invocation with deno will download proper binary and cache it in $DENO_DIR. The
+aarch64-apple-darwin target is not supported in canary.
 
 It is possible to use \"lite\" binaries when compiling by passing `--lite` flag; these are stripped down versions
 of the deno binary that do not contain built-in tooling (eg. formatter, linter). This feature is experimental.
