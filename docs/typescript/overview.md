@@ -95,6 +95,29 @@ looks the same. So we look at the path, and if we see something that has a path
 that ends with `.d.ts` we treat it as a type definition only file instead of
 "runnable" TypeScript.
 
+#### Supported media types
+
+The following table provides a list of media types which Deno supports when
+identifying the type of file of a remote module:
+
+| Media Type                 | How File is Handled                                         |
+| -------------------------- | ----------------------------------------------------------- |
+| `application/typescript`   | TypeScript (with path extension influence)                  |
+| `text/typescript`          | TypeScript (with path extension influence)                  |
+| `video/vnd.dlna.mpeg-tts`  | TypeScript (with path extension influence)                  |
+| `video/mp2t`               | TypeScript (with path extension influence)                  |
+| `application/x-typescript` | TypeScript (with path extension influence)                  |
+| `application/javascript`   | JavaScript (with path extensions influence)                 |
+| `text/javascript`          | JavaScript (with path extensions influence)                 |
+| `application/ecmascript`   | JavaScript (with path extensions influence)                 |
+| `text/ecmascript`          | JavaScript (with path extensions influence)                 |
+| `application/x-javascript` | JavaScript (with path extensions influence)                 |
+| `application/node`         | JavaScript (with path extensions influence)                 |
+| `text/jsx`                 | JSX                                                         |
+| `text/tsx`                 | TSX                                                         |
+| `text/plain`               | Attempt to determine that path extension, otherwise unknown |
+| `application/octet-stream` | Attempt to determine that path extension, otherwise unknown |
+
 ### Strict by default
 
 Deno type checks TypeScript in _strict_ mode by default, and the TypeScript core

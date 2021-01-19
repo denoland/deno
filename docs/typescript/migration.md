@@ -2,7 +2,7 @@
 
 One of the advantages of Deno is that it treats TypeScript and JavaScript pretty
 equally. This might mean that transitioning from JavaScript to TypeScript or
-even from JavaScript to TypeScript is something you want to accomplish. There
+even from TypeScript to JavaScript is something you want to accomplish. There
 are several features of Deno that can help with this.
 
 ### Type checking JavaScript

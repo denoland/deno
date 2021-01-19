@@ -21,7 +21,6 @@
       "stability": "Stability",
       "program_lifecycle": "Program lifecycle",
       "permission_apis": "Permission APIs",
-      "compiler_apis": "Compiler APIs",
       "web_platform_apis": "Web Platform APIs",
       "location_api": "Location API",
       "workers": "Workers"
