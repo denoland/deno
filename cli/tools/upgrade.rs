@@ -40,9 +40,7 @@ pub async fn upgrade_command(
   let install_version = match version {
     Some(passed_version) => {
       let current_is_passed = if canary {
-        let mut passed_hash = passed_version.clone();
-        passed_hash.truncate(7);
-        crate::version::GIT_COMMIT_HASH == passed_hash
+        crate::version::GIT_COMMIT_HASH == passed_version
       } else if !crate::version::is_canary() {
         crate::version::deno() == passed_version
       } else {

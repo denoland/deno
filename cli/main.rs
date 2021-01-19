@@ -1250,6 +1250,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       let msg = format!(
         "{}: {}",
         colors::red_bold("error"),
+        // TODO(lucacasonato): print anyhow error chain here
         error.to_string().trim()
       );
       eprintln!("{}", msg);

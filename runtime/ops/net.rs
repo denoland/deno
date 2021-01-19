@@ -22,6 +22,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -30,6 +31,13 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use trust_dns_proto::rr::record_data::RData;
+use trust_dns_proto::rr::record_type::RecordType;
+use trust_dns_resolver::config::NameServerConfigGroup;
+use trust_dns_resolver::config::ResolverConfig;
+use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::system_conf;
+use trust_dns_resolver::AsyncResolver;
 
 #[cfg(unix)]
 use super::net_unix;
@@ -45,6 +53,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_listen", op_listen);
   super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
   super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
+  super::reg_json_async(rt, "op_dns_resolve", op_dns_resolve);
 }
 
 #[derive(Deserialize)]
@@ -529,5 +538,251 @@ fn op_listen(
     }
     #[cfg(unix)]
     _ => Err(type_error("Wrong argument format!")),
+  }
+}
+
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(untagged)]
+enum DnsReturnRecord {
+  A(String),
+  AAAA(String),
+  ANAME(String),
+  CNAME(String),
+  MX {
+    preference: u16,
+    exchange: String,
+  },
+  PTR(String),
+  SRV {
+    priority: u16,
+    weight: u16,
+    port: u16,
+    target: String,
+  },
+  TXT(Vec<String>),
+}
+
+async fn op_dns_resolve(
+  state: Rc<RefCell<OpState>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, AnyError> {
+  fn default_port() -> u16 {
+    53
+  }
+
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct ResolveAddrArgs {
+    query: String,
+    record_type: RecordType,
+    options: Option<ResolveDnsOption>,
+  }
+
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct ResolveDnsOption {
+    name_server: Option<NameServer>,
+  }
+
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct NameServer {
+    ip_addr: String,
+    #[serde(default = "default_port")]
+    port: u16,
+  }
+
+  let ResolveAddrArgs {
+    query,
+    record_type,
+    options,
+  } = serde_json::from_value(args)?;
+
+  let (config, opts) = if let Some(name_server) =
+    options.as_ref().and_then(|o| o.name_server.as_ref())
+  {
+    let group = NameServerConfigGroup::from_ips_clear(
+      &[name_server.ip_addr.parse()?],
+      name_server.port,
+      true,
+    );
+    (
+      ResolverConfig::from_parts(None, vec![], group),
+      ResolverOpts::default(),
+    )
+  } else {
+    system_conf::read_system_conf()?
+  };
+
+  {
+    let s = state.borrow();
+    let perm = s.borrow::<Permissions>();
+
+    // Checks permission against the name servers which will be actually queried.
+    for ns in config.name_servers() {
+      let socker_addr = &ns.socket_addr;
+      let ip = socker_addr.ip().to_string();
+      let port = socker_addr.port();
+      perm.check_net(&(ip, Some(port)))?;
+    }
+  }
+
+  let resolver = AsyncResolver::tokio(config, opts)?;
+
+  let results: Vec<DnsReturnRecord> = resolver
+    .lookup(query, record_type, Default::default())
+    .await?
+    .iter()
+    .filter_map(rdata_to_return_record(record_type))
+    .collect();
+
+  Ok(json!(results))
+}
+
+fn rdata_to_return_record(
+  ty: RecordType,
+) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
+  use RecordType::*;
+  move |r: &RData| -> Option<DnsReturnRecord> {
+    match ty {
+      A => r.as_a().map(ToString::to_string).map(DnsReturnRecord::A),
+      AAAA => r
+        .as_aaaa()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::AAAA),
+      ANAME => r
+        .as_aname()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::ANAME),
+      CNAME => r
+        .as_cname()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::CNAME),
+      MX => r.as_mx().map(|mx| DnsReturnRecord::MX {
+        preference: mx.preference(),
+        exchange: mx.exchange().to_string(),
+      }),
+      PTR => r
+        .as_ptr()
+        .map(ToString::to_string)
+        .map(DnsReturnRecord::PTR),
+      SRV => r.as_srv().map(|srv| DnsReturnRecord::SRV {
+        priority: srv.priority(),
+        weight: srv.weight(),
+        port: srv.port(),
+        target: srv.target().to_string(),
+      }),
+      TXT => r.as_txt().map(|txt| {
+        let texts: Vec<String> = txt
+          .iter()
+          .map(|bytes| {
+            // Tries to parse these bytes as Latin-1
+            bytes.iter().map(|&b| b as char).collect::<String>()
+          })
+          .collect();
+        DnsReturnRecord::TXT(texts)
+      }),
+      // TODO(magurotuna): Other record types are not supported
+      _ => todo!(),
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use trust_dns_proto::rr::rdata::mx::MX;
+  use trust_dns_proto::rr::rdata::srv::SRV;
+  use trust_dns_proto::rr::rdata::txt::TXT;
+  use trust_dns_proto::rr::record_data::RData;
+  use trust_dns_proto::rr::Name;
+
+  #[test]
+  fn rdata_to_return_record_a() {
+    let func = rdata_to_return_record(RecordType::A);
+    let rdata = RData::A(Ipv4Addr::new(127, 0, 0, 1));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::A("127.0.0.1".to_string()))
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_aaaa() {
+    let func = rdata_to_return_record(RecordType::AAAA);
+    let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::AAAA("::1".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_aname() {
+    let func = rdata_to_return_record(RecordType::ANAME);
+    let rdata = RData::ANAME(Name::new());
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::ANAME("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_cname() {
+    let func = rdata_to_return_record(RecordType::CNAME);
+    let rdata = RData::CNAME(Name::new());
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::CNAME("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_mx() {
+    let func = rdata_to_return_record(RecordType::MX);
+    let rdata = RData::MX(MX::new(10, Name::new()));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::MX {
+        preference: 10,
+        exchange: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_ptr() {
+    let func = rdata_to_return_record(RecordType::PTR);
+    let rdata = RData::PTR(Name::new());
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::PTR("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_srv() {
+    let func = rdata_to_return_record(RecordType::SRV);
+    let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::SRV {
+        priority: 1,
+        weight: 2,
+        port: 3,
+        target: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_txt() {
+    let func = rdata_to_return_record(RecordType::TXT);
+    let rdata = RData::TXT(TXT::from_bytes(vec![
+      "foo".as_bytes(),
+      "bar".as_bytes(),
+      &[0xa3],             // "£" in Latin-1
+      &[0xe3, 0x81, 0x82], // "あ" in UTF-8
+    ]));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::TXT(vec![
+        "foo".to_string(),
+        "bar".to_string(),
+        "£".to_string(),
+        "ã\u{81}\u{82}".to_string(),
+      ]))
+    );
   }
 }

@@ -92,6 +92,8 @@ chrono = "0.4.19"
 os_pipe = "0.9.2"
 test_util = { path = "../test_util" }
 tower-test = "0.4.0"
+trust-dns-server = "0.20.0"
+trust-dns-client = "0.20.0"
 
 [target.'cfg(unix)'.dev-dependencies]
 exec = "0.3.1" # Used in test_raw_tty
