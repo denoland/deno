@@ -230,7 +230,7 @@
         const byte1 = codeUnit >> 8;
         const byte2 = codeUnit & 0xFF;
         result.push(decoderError(fatal));
-        result.push(byte1 & byte2);        
+        result.push(byte1 & byte2);
         continue;
       }
       if (inRange(codeUnit, 0xD800, 0xDBFF)) {
