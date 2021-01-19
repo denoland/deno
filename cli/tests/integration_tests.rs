@@ -5367,3 +5367,279 @@ fn web_platform_tests() {
     }
   }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_resolve_dns() {
+  use std::collections::BTreeMap;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use std::net::SocketAddr;
+  use std::str::FromStr;
+  use std::sync::Arc;
+  use std::sync::RwLock;
+  use std::time::Duration;
+  use tokio::net::TcpListener;
+  use tokio::net::UdpSocket;
+  use tokio::sync::oneshot;
+  use trust_dns_client::rr::LowerName;
+  use trust_dns_client::rr::RecordType;
+  use trust_dns_client::rr::RrKey;
+  use trust_dns_server::authority::Catalog;
+  use trust_dns_server::authority::ZoneType;
+  use trust_dns_server::proto::rr::rdata::mx::MX;
+  use trust_dns_server::proto::rr::rdata::soa::SOA;
+  use trust_dns_server::proto::rr::rdata::srv::SRV;
+  use trust_dns_server::proto::rr::rdata::txt::TXT;
+  use trust_dns_server::proto::rr::record_data::RData;
+  use trust_dns_server::proto::rr::resource::Record;
+  use trust_dns_server::proto::rr::Name;
+  use trust_dns_server::proto::rr::RecordSet;
+  use trust_dns_server::store::in_memory::InMemoryAuthority;
+  use trust_dns_server::ServerFuture;
+
+  const DNS_PORT: u16 = 4553;
+
+  // Setup DNS server for testing
+  async fn run_dns_server(tx: oneshot::Sender<()>) {
+    let catalog = {
+      let records = {
+        let mut map = BTreeMap::new();
+        let lookup_name = "www.example.com".parse::<Name>().unwrap();
+        let lookup_name_lower = LowerName::new(&lookup_name);
+
+        // Inserts SOA record
+        let soa = SOA::new(
+          Name::from_str("net").unwrap(),
+          Name::from_str("example").unwrap(),
+          0,
+          i32::MAX,
+          i32::MAX,
+          i32::MAX,
+          0,
+        );
+        let rdata = RData::SOA(soa);
+        let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map
+          .insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
+
+        // Inserts A record
+        let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::A),
+          record_set,
+        );
+
+        // Inserts AAAA record
+        let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
+          record_set,
+        );
+
+        // Inserts ANAME record
+        let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
+          record_set,
+        );
+
+        // Inserts CNAME record
+        let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
+        let record =
+          Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
+          record_set,
+        );
+
+        // Inserts MX record
+        let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::MX),
+          record_set,
+        );
+
+        // Inserts PTR record
+        let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
+        let record = Record::from_rdata(
+          Name::from_str("5.6.7.8").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
+          record_set,
+        );
+
+        // Inserts SRV record
+        let rdata = RData::SRV(SRV::new(
+          0,
+          100,
+          1234,
+          Name::from_str("srv.com").unwrap(),
+        ));
+        let record = Record::from_rdata(
+          Name::from_str("_Service._TCP.example.com").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
+          record_set,
+        );
+
+        // Inserts TXT record
+        let rdata =
+          RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
+        let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
+
+        map
+      };
+
+      let authority = Box::new(Arc::new(RwLock::new(
+        InMemoryAuthority::new(
+          Name::from_str("com").unwrap(),
+          records,
+          ZoneType::Primary,
+          false,
+        )
+        .unwrap(),
+      )));
+      let mut c = Catalog::new();
+      c.upsert(Name::root().into(), authority);
+      c
+    };
+
+    let mut server_fut = ServerFuture::new(catalog);
+    let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
+    let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
+    let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
+    server_fut.register_socket(udp_socket);
+    server_fut.register_listener(tcp_listener, Duration::from_secs(2));
+
+    // Notifies that the DNS server is ready
+    tx.send(()).unwrap();
+
+    server_fut.block_until_done().await.unwrap();
+  }
+
+  let (ready_tx, ready_rx) = oneshot::channel();
+  let dns_server_fut = run_dns_server(ready_tx);
+  let handle = tokio::spawn(dns_server_fut);
+
+  // Waits for the DNS server to be ready
+  ready_rx.await.unwrap();
+
+  // Pass: `--allow-net`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Pass: `--allow-net=127.0.0.1:4553`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=127.0.0.1:4553")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Permission error: `--allow-net=deno.land`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=deno.land")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  // Permission error: no permission specified
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  handle.abort();
+}
