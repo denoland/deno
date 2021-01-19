@@ -19,6 +19,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use tokio::fs;
 
 use crate::deno_dir;
@@ -43,12 +44,12 @@ use super::utils;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
-  assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
+  assets: Arc<RwLock<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
   client: Client,
   ts_server: TsServer,
   config: Arc<Mutex<Config>>,
-  documents: Arc<Mutex<DocumentCache>>,
-  sources: Arc<Mutex<Sources>>,
+  documents: Arc<RwLock<DocumentCache>>,
+  sources: Arc<RwLock<Sources>>,
   diagnostics: Arc<Mutex<DiagnosticCollection>>,
   maybe_config_uri: Arc<Mutex<Option<Url>>>,
   maybe_import_map: Arc<Mutex<Option<ImportMap>>>,
@@ -57,9 +58,9 @@ pub struct LanguageServer {
 
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
-  pub assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
-  pub documents: DocumentCache,
-  pub sources: Arc<Mutex<Sources>>,
+  pub assets: Arc<RwLock<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
+  pub documents: Arc<RwLock<DocumentCache>>,
+  pub sources: Arc<RwLock<Sources>>,
 }
 
 impl LanguageServer {
@@ -68,7 +69,7 @@ impl LanguageServer {
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
     let location = dir.root.join("deps");
-    let sources = Arc::new(Mutex::new(Sources::new(&location)));
+    let sources = Arc::new(RwLock::new(Sources::new(&location)));
 
     LanguageServer {
       assets: Default::default(),
@@ -98,7 +99,7 @@ impl LanguageServer {
   ) -> Result<LineIndex, AnyError> {
     if specifier.as_url().scheme() == "asset" {
       let maybe_asset =
-        { self.assets.lock().unwrap().get(&specifier).cloned() };
+        { self.assets.read().unwrap().get(&specifier).cloned() };
       if let Some(maybe_asset) = maybe_asset {
         if let Some(asset) = maybe_asset {
           Ok(asset.line_index)
@@ -116,11 +117,11 @@ impl LanguageServer {
         }
       }
     } else if let Some(line_index) =
-      self.documents.lock().unwrap().line_index(&specifier)
+      self.documents.read().unwrap().line_index(&specifier)
     {
       Ok(line_index)
     } else if let Some(line_index) =
-      self.sources.lock().unwrap().get_line_index(&specifier)
+      self.sources.write().unwrap().get_line_index(&specifier)
     {
       Ok(line_index)
     } else {
@@ -135,13 +136,13 @@ impl LanguageServer {
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     if specifier.as_url().scheme() == "asset" {
-      if let Some(Some(asset)) = self.assets.lock().unwrap().get(specifier) {
+      if let Some(Some(asset)) = self.assets.read().unwrap().get(specifier) {
         Some(asset.line_index.clone())
       } else {
         None
       }
     } else {
-      self.documents.lock().unwrap().line_index(specifier)
+      self.documents.read().unwrap().line_index(specifier)
     }
   }
 
@@ -270,7 +271,7 @@ impl LanguageServer {
           );
         }
         let uri = specifier.as_url().clone();
-        let version = self.documents.lock().unwrap().version(&specifier);
+        let version = self.documents.read().unwrap().version(&specifier);
         self
           .client
           .publish_diagnostics(uri, diagnostics, version)
@@ -284,7 +285,7 @@ impl LanguageServer {
   pub fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
-      documents: self.documents.lock().unwrap().clone(),
+      documents: self.documents.clone(),
       sources: self.sources.clone(),
     }
   }
@@ -509,14 +510,14 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
-    self.documents.lock().unwrap().open(
+    self.documents.write().unwrap().open(
       specifier.clone(),
       params.text_document.version,
       params.text_document.text,
     );
     if let Err(err) = self
       .documents
-      .lock()
+      .write()
       .unwrap()
       .analyze_dependencies(&specifier, &self.maybe_import_map.lock().unwrap())
     {
@@ -531,7 +532,7 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     let specifier = utils::normalize_url(params.text_document.uri);
-    if let Err(err) = self.documents.lock().unwrap().change(
+    if let Err(err) = self.documents.write().unwrap().change(
       &specifier,
       params.text_document.version,
       params.content_changes,
@@ -540,7 +541,7 @@ impl lspower::LanguageServer for LanguageServer {
     }
     if let Err(err) = self
       .documents
-      .lock()
+      .write()
       .unwrap()
       .analyze_dependencies(&specifier, &self.maybe_import_map.lock().unwrap())
     {
@@ -561,7 +562,7 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
-    self.documents.lock().unwrap().close(&specifier);
+    self.documents.write().unwrap().close(&specifier);
 
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
@@ -664,7 +665,7 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(params.text_document.uri.clone());
     let file_text = self
       .documents
-      .lock()
+      .read()
       .unwrap()
       .content(&specifier)
       .map_err(|_| {
@@ -1033,7 +1034,7 @@ impl lspower::LanguageServer for LanguageServer {
         .into_workspace_edit(
           &params.new_name,
           |s| self.get_line_index(s),
-          |s| self.documents.lock().unwrap().version(&s),
+          |s| self.documents.read().unwrap().version(&s),
         )
         .await
         .map_err(|err| {
@@ -1106,7 +1107,7 @@ impl LanguageServer {
         error!("{}", err);
         LspError::internal_error()
       })?;
-    if self.documents.lock().unwrap().contains(&specifier) {
+    if self.documents.read().unwrap().contains(&specifier) {
       self.diagnostics.lock().unwrap().invalidate(&specifier);
     }
     self.prepare_diagnostics().await.map_err(|err| {
@@ -1123,7 +1124,7 @@ impl LanguageServer {
     let specifier = utils::normalize_url(params.text_document.uri);
     let url = specifier.as_url();
     let contents = if url.as_str() == "deno:/status.md" {
-      let documents = self.documents.lock().unwrap();
+      let documents = self.documents.read().unwrap();
       Some(format!(
         r#"# Deno Language Server Status
 
@@ -1136,7 +1137,7 @@ impl LanguageServer {
       match url.scheme() {
         "asset" => {
           let maybe_asset =
-            { self.assets.lock().unwrap().get(&specifier).cloned() };
+            { self.assets.read().unwrap().get(&specifier).cloned() };
           if let Some(maybe_asset) = maybe_asset {
             if let Some(asset) = maybe_asset {
               Some(asset.text)
@@ -1158,7 +1159,7 @@ impl LanguageServer {
           }
         }
         _ => {
-          let mut sources = self.sources.lock().unwrap();
+          let mut sources = self.sources.write().unwrap();
           if let Some(text) = sources.get_text(&specifier) {
             Some(text)
           } else {

@@ -106,7 +106,7 @@ pub async fn get_asset(
     });
     state_snapshot
       .assets
-      .lock()
+      .write()
       .unwrap()
       .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
@@ -128,7 +128,7 @@ pub async fn get_asset(
     };
     state_snapshot
       .assets
-      .lock()
+      .write()
       .unwrap()
       .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
@@ -822,7 +822,13 @@ fn cache_snapshot(
     .contains_key(&(specifier.clone().into(), version.clone().into()))
   {
     let s = ModuleSpecifier::resolve_url(&specifier)?;
-    let content = state.state_snapshot.documents.content(&s)?.unwrap();
+    let content = state
+      .state_snapshot
+      .documents
+      .read()
+      .unwrap()
+      .content(&s)?
+      .unwrap();
     state
       .snapshots
       .insert((specifier.into(), version.into()), content);
@@ -907,7 +913,13 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
 fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if state.state_snapshot.documents.contains(&specifier) {
+  if state
+    .state_snapshot
+    .documents
+    .read()
+    .unwrap()
+    .contains(&specifier)
+  {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     let content = state
       .snapshots
@@ -915,7 +927,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap();
     Ok(json!(content.encode_utf16().count()))
   } else {
-    let mut sources = state.state_snapshot.sources.lock().unwrap();
+    let mut sources = state.state_snapshot.sources.write().unwrap();
     Ok(json!(sources.get_length_utf16(&specifier).unwrap()))
   }
 }
@@ -932,7 +944,13 @@ struct GetTextArgs {
 fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: GetTextArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  let content = if state.state_snapshot.documents.contains(&specifier) {
+  let content = if state
+    .state_snapshot
+    .documents
+    .read()
+    .unwrap()
+    .contains(&specifier)
+  {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     state
       .snapshots
@@ -940,7 +958,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap()
       .clone()
   } else {
-    let mut sources = state.state_snapshot.sources.lock().unwrap();
+    let mut sources = state.state_snapshot.sources.write().unwrap();
     sources.get_text(&specifier).unwrap()
   };
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -950,16 +968,15 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
-  let mut sources = if let Ok(sources) = state.state_snapshot.sources.lock() {
+  let mut sources = if let Ok(sources) = state.state_snapshot.sources.write() {
     sources
   } else {
     return Err(custom_error("Deadlock", "deadlock locking sources"));
   };
 
-  if state.state_snapshot.documents.contains(&referrer) {
-    if let Some(dependencies) =
-      state.state_snapshot.documents.dependencies(&referrer)
-    {
+  let documents = state.state_snapshot.documents.read().unwrap();
+  if documents.contains(&referrer) {
+    if let Some(dependencies) = documents.dependencies(&referrer) {
       for specifier in &v.specifiers {
         if specifier.starts_with("asset:///") {
           resolved.push(Some((
@@ -978,7 +995,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           if let ResolvedDependency::Resolved(resolved_specifier) =
             resolved_import
           {
-            if state.state_snapshot.documents.contains(&resolved_specifier)
+            if documents.contains(&resolved_specifier)
               || sources.contains(&resolved_specifier)
             {
               let media_type = if let Some(media_type) =
@@ -1033,7 +1050,8 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 }
 
 fn script_names(state: &mut State, _args: Value) -> Result<Value, AnyError> {
-  let script_names = state.state_snapshot.documents.open_specifiers();
+  let documents = state.state_snapshot.documents.read().unwrap();
+  let script_names = documents.open_specifiers();
   Ok(json!(script_names))
 }
 
@@ -1046,10 +1064,16 @@ struct ScriptVersionArgs {
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if let Some(version) = state.state_snapshot.documents.version(&specifier) {
+  if let Some(version) = state
+    .state_snapshot
+    .documents
+    .read()
+    .unwrap()
+    .version(&specifier)
+  {
     return Ok(json!(version.to_string()));
   } else {
-    let mut sources = state.state_snapshot.sources.lock().unwrap();
+    let mut sources = state.state_snapshot.sources.write().unwrap();
     if let Some(version) = sources.get_script_version(&specifier) {
       return Ok(json!(version));
     }
@@ -1311,6 +1335,8 @@ pub fn request(
 mod tests {
   use super::*;
   use crate::lsp::documents::DocumentCache;
+  use std::sync::Arc;
+  use std::sync::RwLock;
 
   fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
     let mut documents = DocumentCache::default();
@@ -1321,7 +1347,7 @@ mod tests {
     }
     StateSnapshot {
       assets: Default::default(),
-      documents,
+      documents: Arc::new(RwLock::new(documents)),
       sources: Default::default(),
     }
   }
