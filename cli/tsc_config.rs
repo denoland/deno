@@ -64,6 +64,7 @@ impl Serialize for IgnoredCompilerOptions {
 pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
+  "alwaysStrict",
   "baseUrl",
   "declaration",
   "declarationMap",
@@ -75,6 +76,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "inlineSources",
   "module",
   "noEmitHelpers",
+  "noErrorTruncation",
   "noLib",
   "noResolve",
   "outDir",
