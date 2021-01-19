@@ -50,7 +50,7 @@ Object.defineProperty(_argv, Deno.customInspect, {
  * https://nodejs.org/api/process.html#process_process_argv
  * Read permissions are required in order to get the executable route
  * */
-export const argv: { [key: number]: string } = new Proxy(_argv, {
+export const argv: Record<string, string> = new Proxy(_argv, {
   get(target, prop) {
     if (prop === Deno.customInspect) {
       return target[Deno.customInspect];
@@ -86,7 +86,7 @@ Object.defineProperty(_env, Deno.customInspect, {
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  * */
-export const env: { [index: string]: string } = new Proxy(_env, {
+export const env: Record<string, string> = new Proxy(_env, {
   get(target, prop) {
     if (prop === Deno.customInspect) {
       return target[Deno.customInspect];
