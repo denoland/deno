@@ -7,10 +7,10 @@ ANAME
 CNAME
 ["cname.com."]
 MX
-["0 mx.com."]
+[{"preference":0,"exchange":"mx.com."}]
 PTR
 ["ptr.com."]
 SRV
-["0 100 1234 srv.com."]
+[{"priority":0,"weight":100,"port":1234,"target":"srv.com."}]
 TXT
-["foo bar"]
+[["foo","bar"]]
