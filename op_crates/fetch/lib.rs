@@ -227,6 +227,7 @@ pub async fn op_fetch_send(
 
   //debug!("Fetch response {}", url);
   let status = res.status();
+  let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
     let key_string = key.to_string();
@@ -261,6 +262,7 @@ pub async fn op_fetch_send(
     "status": status.as_u16(),
     "statusText": status.canonical_reason().unwrap_or(""),
     "headers": res_headers,
+    "url": url,
     "responseRid": rid,
   }))
 }
