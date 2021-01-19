@@ -849,7 +849,7 @@ declare namespace Deno {
 
   export interface ResolveDnsOptions {
     /** The name server to be used for lookups. 
-    * If not specified, defaults to the system configuration e.g. `/etc/resolve.conf` on Unix. */
+    * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
     nameServer?: {
       /** The IP address of the name server */
       ipAddr: string;
