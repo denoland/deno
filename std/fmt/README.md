@@ -210,7 +210,7 @@ import {
   red,
   rgb24,
   rgb8,
-} from "https://deno.land/std@0.83.0/fmt/colors.ts";
+} from "https://deno.land/std@$STD_VERSION/fmt/colors.ts";
 
 console.log(bgBlue(italic(red(bold("Hello, World!")))));
 
