@@ -990,6 +990,7 @@ async fn test_command(
       &cwd.clone(),
     );
     let paths_to_watch = paths_to_watch.clone();
+    let paths_to_watch_clone = paths_to_watch.clone();
 
     let handler = handler.clone();
     let program_state = program_state.clone();
@@ -997,7 +998,7 @@ async fn test_command(
     async move {
       let test_modules = test_modules_result?;
 
-      let mut paths_to_watch = Vec::new();
+      let mut paths_to_watch = paths_to_watch_clone;
       let mut modules_to_reload = if files_changed {
         Vec::new()
       } else {
