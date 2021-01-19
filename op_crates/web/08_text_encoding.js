@@ -205,16 +205,9 @@
     fatal = false,
     ignoreBOM = false,
   ) {
-    if (ignoreBOM) {
-      throw new TypeError("Ignoring the BOM is available only with utf-8.");
-    }
     let leadByte = null;
     let leadSurrogate = null;
-    const udc00 = 0xdc00;
-    const udfff = 0xdfff;
-    const ud800 = 0xd800;
-    const udbff = 0xdbff;
-    const res = [];
+    const result = [];
 
     for (let i = 0; i < bytes.length; i++) {
       const byte = bytes[i];
@@ -222,38 +215,38 @@
         leadByte = byte;
         continue;
       }
-      const code = be ? (leadByte << 8) + byte : (byte << 8) + leadByte;
+      const codeUnit = be ? (leadByte << 8) + byte : (byte << 8) + leadByte;
       leadByte = null;
+      if (codeUnit === 65279 && !ignoreBOM) {
+        continue;
+      }
       if (leadSurrogate !== null) {
-        if (inRange(code, udc00, udfff)) {
-          res.push(0x10000 + ((leadSurrogate - 0xd800) << 10) + code - 0xdc00);
+        if (inRange(codeUnit, 0xDC00, 0xDFFF)) {
+          result.push(leadSurrogate, codeUnit);
+          leadSurrogate = null;
           continue;
         }
-        const byte1 = code << 8;
-        const byte2 = code & 0x00ff;
-        if (be) {
-          res.push(byte1 & byte2);
-        } else {
-          res.push(decoderError(fatal));
-          res.push(byte1 & byte2);
-        }
         leadSurrogate = null;
+        const byte1 = codeUnit >> 8;
+        const byte2 = codeUnit & 0xFF;
+        result.push(decoderError(fatal));
+        result.push(byte1 & byte2);        
         continue;
       }
-      if (inRange(code, ud800, udbff)) {
-        leadSurrogate = code;
+      if (inRange(codeUnit, 0xD800, 0xDBFF)) {
+        leadSurrogate = codeUnit;
         continue;
       }
-      if (inRange(code, udc00, udfff)) {
-        res.push(decoderError(fatal));
+      if (inRange(codeUnit, 0xDC00, 0xDFFF)) {
+        result.push(decoderError(fatal));
         continue;
       }
-      res.push(code);
+      result.push(codeUnit);
     }
     if (!(leadByte === null && leadSurrogate === null)) {
-      res.push(decoderError(fatal));
+      result.push(decoderError(fatal));
     }
-    return res;
+    return result;
   }
 
   class SingleByteDecoder {
