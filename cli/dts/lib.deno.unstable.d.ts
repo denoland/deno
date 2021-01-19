@@ -897,7 +897,6 @@ declare namespace Deno {
     options?: ResolveDnsOptions,
   ): Promise<string[][]>;
 
-
   /** ** UNSTABLE**: new API, yet to be vetted.
    *
    * Performs DNS resolution against the given query, returning resolved records.
