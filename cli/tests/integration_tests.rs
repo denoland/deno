@@ -5538,28 +5538,102 @@ async fn test_resolve_dns() {
   // Waits for the DNS server to be ready
   ready_rx.await.unwrap();
 
-  let output = util::deno_cmd()
-    .current_dir(util::tests_path())
-    .env("NO_COLOR", "1")
-    .arg("run")
-    .arg("--allow-net")
-    .arg("--unstable")
-    .arg("resolve_dns.ts")
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  let err = String::from_utf8_lossy(&output.stderr);
-  let out = String::from_utf8_lossy(&output.stdout);
-  assert!(output.status.success());
-  assert!(err.starts_with("Check file"));
-
-  let expected =
-    std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+  // Pass: `--allow-net`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
       .unwrap();
-  assert_eq!(expected, out);
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Pass: `--allow-net=127.0.0.1:4553`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=127.0.0.1:4553")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Permission error: `--allow-net=deno.land`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=deno.land")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  // Permission error: no permission specified
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
 
   handle.abort();
 }
