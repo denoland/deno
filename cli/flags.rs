@@ -890,7 +890,7 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("compile"), true, false)
   .setting(AppSettings::TrailingVarArg)
     .arg(
-      script_arg(),
+      script_arg().required(true),
     )
     .arg(
       Arg::with_name("output")

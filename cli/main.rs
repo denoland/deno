@@ -1248,7 +1248,8 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       let msg = format!(
         "{}: {}",
         colors::red_bold("error"),
-        error.to_string().trim()
+        // TODO(lucacasonato): print anyhow error chain here
+        error.root_cause().to_string().trim()
       );
       eprintln!("{}", msg);
       std::process::exit(1);
