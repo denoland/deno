@@ -2320,6 +2320,7 @@ itest!(deno_test_unresolved_promise {
 });
 
 #[test]
+#[ignore]
 fn deno_test_watch() {
   let (done_tx, done_rx) = std::sync::mpsc::channel();
   std::thread::spawn(move || {
