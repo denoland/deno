@@ -299,6 +299,8 @@ async fn compile_command(
   source_file: String,
   output: Option<PathBuf>,
   args: Vec<String>,
+  target: Option<String>,
+  lite: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
@@ -311,6 +313,7 @@ async fn compile_command(
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
+  let deno_dir = &program_state.dir;
 
   let output = output.or_else(|| {
     infer_name_from_url(module_specifier.as_url()).map(PathBuf::from)
@@ -337,14 +340,20 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  tools::standalone::create_standalone_binary(
+
+  // Select base binary based on `target` and `lite` arguments
+  let original_binary =
+    tools::standalone::get_base_binary(deno_dir, target, lite).await?;
+
+  let final_bin = tools::standalone::create_standalone_binary(
+    original_binary,
     bundle_str,
     run_flags,
-    output.clone(),
-  )
-  .await?;
+  )?;
 
   info!("{} {}", colors::green("Emit"), output.display());
+
+  tools::standalone::write_standalone_binary(output.clone(), final_bin).await?;
 
   Ok(())
 }
@@ -1162,7 +1171,10 @@ fn get_subcommand(
       source_file,
       output,
       args,
-    } => compile_command(flags, source_file, output, args).boxed_local(),
+      lite,
+      target,
+    } => compile_command(flags, source_file, output, args, target, lite)
+      .boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,
@@ -1268,6 +1280,7 @@ pub fn main() {
         || err.kind == clap::ErrorKind::VersionDisplayed =>
     {
       err.write_to(&mut std::io::stdout()).unwrap();
+      std::io::stdout().write_all(b"\n").unwrap();
       std::process::exit(0);
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),

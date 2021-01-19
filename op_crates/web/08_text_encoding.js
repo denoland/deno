@@ -2272,14 +2272,16 @@
       return new Uint8Array(output);
     }
     encodeInto(input, dest) {
-      const encoder = new UTF8Encoder();
-      const inputStream = new Stream(stringToCodePoints(input));
-
       if (!(dest instanceof Uint8Array)) {
         throw new TypeError(
           "2nd argument to TextEncoder.encodeInto must be Uint8Array",
         );
       }
+      if (dest.byteLength === 0) {
+        return { read: 0, written: 0 };
+      }
+      const encoder = new UTF8Encoder();
+      const inputStream = new Stream(stringToCodePoints(input));
 
       let written = 0;
       let read = 0;

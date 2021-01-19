@@ -150,6 +150,12 @@ declare class ByteLengthQueuingStrategy
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
+  /**
+   * @deprecated This is no longer part of the Streams standard and the async
+   *             iterable should be obtained by just using the stream as an
+   *             async iterator.
+   */
+  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
   getReader(): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(
     { writable, readable }: {

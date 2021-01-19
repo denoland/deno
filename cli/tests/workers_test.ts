@@ -113,9 +113,10 @@ Deno.test({
   name: "worker globals",
   fn: async function (): Promise<void> {
     const promise = deferred();
+    const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
       new URL("workers/worker_globals.ts", import.meta.url).href,
-      { type: "module" },
+      workerOptions,
     );
     w.onmessage = (e): void => {
       assertEquals(e.data, "true, true, true");

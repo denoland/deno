@@ -1152,7 +1152,6 @@
     // 3.5.6.8 Otherwise, support BYOB Reader
     /** @type {Deferred<void>} */
     const closedPromise = reader[_closedPromise];
-    console.log("closedPromise rejected");
     closedPromise.reject(e);
     setPromiseIsHandledToTrue(closedPromise.promise);
   }
@@ -3095,6 +3094,15 @@
         Promise.reject(new TypeError("Cannot cancel a locked ReadableStream."));
       }
       return readableStreamCancel(this, reason);
+    }
+
+    /**
+     * @deprecated TODO(@kitsonk): Remove in Deno 1.8
+     * @param {ReadableStreamIteratorOptions=} options 
+     * @returns {AsyncIterableIterator<R>}
+     */
+    getIterator(options = {}) {
+      return this[Symbol.asyncIterator](options);
     }
 
     /**
