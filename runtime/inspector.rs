@@ -405,8 +405,8 @@ enum PollState {
 
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
-  v8_inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
-  sessions: RefCell<InspectorSessions>,
+  v8_inspector: Option<v8::UniqueRef<v8::inspector::V8Inspector>>,
+  sessions: Option<RefCell<InspectorSessions>>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
@@ -417,13 +417,13 @@ pub struct DenoInspector {
 impl Deref for DenoInspector {
   type Target = v8::inspector::V8Inspector;
   fn deref(&self) -> &Self::Target {
-    &self.v8_inspector
+    self.v8_inspector.as_ref().unwrap()
   }
 }
 
 impl DerefMut for DenoInspector {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.v8_inspector
+    self.v8_inspector.as_mut().unwrap()
   }
 }
 
@@ -437,7 +437,7 @@ impl Drop for DenoInspector {
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
     // dropped last.
-    take(&mut *self.sessions.borrow_mut());
+    self.sessions.take();
   }
 }
 
@@ -491,16 +491,7 @@ impl DenoInspector {
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
     // Create DenoInspector instance.
-    let mut self_ = new_box_with(|self_ptr| {
-      let v8_inspector_client =
-        v8::inspector::V8InspectorClientBase::new::<Self>();
-      let v8_inspector =
-        v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
-
-      let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
-      let flags = InspectorFlags::new();
-      let waker = InspectorWaker::new(scope.thread_safe_handle());
-
+    let mut self_ = {
       let debugger_url = if let Some(server) = server.clone() {
         let info = InspectorInfo {
           host: server.host,
@@ -517,17 +508,24 @@ impl DenoInspector {
         None
       };
 
-      Self {
-        v8_inspector_client,
-        v8_inspector,
-        sessions,
-        flags,
-        waker,
+      let mut out = Self {
+        v8_inspector_client: v8::inspector::V8InspectorClientBase::new::<Self>(
+        ),
+        v8_inspector: None,
+        sessions: None,
+        flags: InspectorFlags::new(),
+        waker: InspectorWaker::new(scope.thread_safe_handle()),
         _canary_tx: canary_tx,
         server,
         debugger_url,
-      }
-    });
+      };
+      let v8_inspector = v8::inspector::V8Inspector::create(scope, &mut out);
+      let sessions = InspectorSessions::new(&mut out, new_websocket_rx);
+
+      out.v8_inspector = Some(v8_inspector);
+      out.sessions = Some(sessions);
+      out
+    };
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
@@ -538,7 +536,7 @@ impl DenoInspector {
     // new_incoming debugger activity.
     let _ = self_.poll_sessions(None).unwrap();
 
-    self_
+    Box::new(self_)
   }
 
   fn poll_sessions(
@@ -554,7 +552,7 @@ impl DenoInspector {
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
     // when an interrupt request is honored while the inspector future is polled
     // by the task executor. We let the caller know by returning some error.
-    let mut sessions = self.sessions.try_borrow_mut()?;
+    let mut sessions = self.sessions.as_ref().unwrap().try_borrow_mut()?;
 
     self.waker.update(|w| {
       match w.poll_state {
@@ -656,7 +654,15 @@ impl DenoInspector {
   /// handshake. After that, it instructs V8 to pause at the next statement.
   pub fn wait_for_session_and_break_on_next_statement(&mut self) {
     loop {
-      match self.sessions.get_mut().established.iter_mut().next() {
+      match self
+        .sessions
+        .as_mut()
+        .unwrap()
+        .get_mut()
+        .established
+        .iter_mut()
+        .next()
+      {
         Some(session) => break session.break_on_next_statement(),
         None => {
           self.flags.get_mut().waiting_for_session = true;
