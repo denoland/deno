@@ -85,17 +85,15 @@ pub enum ResolutionResult<T> {
   Ignore,
 }
 
-async fn next_restart<F, T: Clone>(
+async fn next_restart<F, T>(
   resolver: &mut F,
   debounce: &mut Pin<&mut Debounce>,
-  initial: bool,
 ) -> (Vec<PathBuf>, Result<T, AnyError>)
 where
   F: FnMut(Option<Vec<PathBuf>>) -> FileWatcherFuture<ResolutionResult<T>>,
 {
-  let mut changed = if initial { None } else { debounce.next().await };
   loop {
-    let initial = changed.is_none();
+    let changed = debounce.next().await;
     match resolver(changed).await {
       ResolutionResult::Ignore => {
         debug!("File change ignored")
@@ -104,16 +102,13 @@ where
         paths_to_watch,
         result,
       } => {
-        if !initial {
-          info!(
-            "{} File change detected! Restarting!",
-            colors::intense_blue("Watcher"),
-          );
-        }
-        break (paths_to_watch, result);
+        info!(
+          "{} File change detected! Restarting!",
+          colors::intense_blue("Watcher"),
+        );
+        return (paths_to_watch, result);
       }
     }
-    changed = debounce.next().await;
   }
 }
 
@@ -137,7 +132,6 @@ pub async fn watch_func<F, G, T>(
 where
   F: FnMut(Option<Vec<PathBuf>>) -> FileWatcherFuture<ResolutionResult<T>>,
   G: FnMut(T) -> FileWatcherFuture<Result<(), AnyError>>,
-  T: Clone,
 {
   let debounce = Debounce::new();
   pin!(debounce);
@@ -147,47 +141,66 @@ where
   let mut paths_to_watch;
   let mut resolution_result;
 
-  let (paths, result) = next_restart(&mut resolver, &mut debounce, true).await;
-  paths_to_watch = paths;
-  resolution_result = Some(result);
+  match resolver(None).await {
+    ResolutionResult::Ignore => {
+      // The only situation where it makes sense to ignore the initial 'change'
+      // is if the command isn't supposed to do anything until something changes,
+      // e.g. a variant of `deno test` which doesn't run the entire test suite to start with,
+      // but instead does nothing until you make a change.
+      //
+      // In that case, this is probably the correct output.
+      info!(
+        "{} Waiting for file changes...",
+        colors::intense_blue("Watcher"),
+      );
+
+      let (paths, result) = next_restart(&mut resolver, &mut debounce).await;
+      paths_to_watch = paths;
+      resolution_result = result;
+    }
+    ResolutionResult::Restart {
+      paths_to_watch: paths,
+      result,
+    } => {
+      paths_to_watch = paths;
+      resolution_result = result;
+    }
+  };
 
   loop {
     let watcher = new_watcher(&paths_to_watch, &debounce)?;
 
-    if let Some(result) = resolution_result.take() {
-      match result {
-        Ok(operation_arg) => {
-          let fut = error_handler(operation(operation_arg));
-          select! {
-            (paths, result) = next_restart(&mut resolver, &mut debounce, false) => {
-              paths_to_watch = paths;
-              resolution_result = Some(result);
-              continue;
-            },
-            _ = fut => {},
-          };
+    match resolution_result {
+      Ok(operation_arg) => {
+        let fut = error_handler(operation(operation_arg));
+        select! {
+          (paths, result) = next_restart(&mut resolver, &mut debounce) => {
+            paths_to_watch = paths;
+            resolution_result = result;
+            continue;
+          },
+          _ = fut => {},
+        };
 
-          info!(
-            "{} {} finished! Restarting on file change...",
-            colors::intense_blue("Watcher"),
-            job_name,
-          );
-        }
-        Err(error) => {
-          eprintln!("{}: {}", colors::red_bold("error"), error);
-          info!(
-            "{} {} failed! Restarting on file change...",
-            colors::intense_blue("Watcher"),
-            job_name,
-          );
-        }
+        info!(
+          "{} {} finished! Restarting on file change...",
+          colors::intense_blue("Watcher"),
+          job_name,
+        );
+      }
+      Err(error) => {
+        eprintln!("{}: {}", colors::red_bold("error"), error);
+        info!(
+          "{} {} failed! Restarting on file change...",
+          colors::intense_blue("Watcher"),
+          job_name,
+        );
       }
     }
 
-    let (paths, result) =
-      next_restart(&mut resolver, &mut debounce, false).await;
+    let (paths, result) = next_restart(&mut resolver, &mut debounce).await;
     paths_to_watch = paths;
-    resolution_result = Some(result);
+    resolution_result = result;
 
     drop(watcher);
   }
