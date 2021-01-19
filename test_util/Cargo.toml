@@ -24,8 +24,6 @@ tempfile = "3.1.0"
 tokio = { version = "1.0.1", features = ["full"] }
 tokio-rustls = "0.22.0"
 tokio-tungstenite = "0.13.0"
-trust-dns-server = "0.20.0"
-trust-dns-client = "0.20.0"
 
 [target.'cfg(unix)'.dependencies]
 pty = "0.2.2"

@@ -21,7 +21,6 @@ use os_pipe::pipe;
 pub use pty;
 use regex::Regex;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -29,8 +28,6 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -39,36 +36,17 @@ use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 use std::result::Result;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
-use std::sync::RwLock;
 use std::task::Context;
 use std::task::Poll;
-use std::time::Duration;
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::net::UdpSocket;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
-use trust_dns_client::rr::LowerName;
-use trust_dns_client::rr::RecordType;
-use trust_dns_client::rr::RrKey;
-use trust_dns_server::authority::Catalog;
-use trust_dns_server::authority::ZoneType;
-use trust_dns_server::proto::rr::rdata::mx::MX;
-use trust_dns_server::proto::rr::rdata::soa::SOA;
-use trust_dns_server::proto::rr::rdata::srv::SRV;
-use trust_dns_server::proto::rr::rdata::txt::TXT;
-use trust_dns_server::proto::rr::record_data::RData;
-use trust_dns_server::proto::rr::resource::Record;
-use trust_dns_server::proto::rr::Name;
-use trust_dns_server::proto::rr::RecordSet;
-use trust_dns_server::store::in_memory::InMemoryAuthority;
-use trust_dns_server::ServerFuture;
 
 const PORT: u16 = 4545;
 const REDIRECT_PORT: u16 = 4546;
@@ -79,7 +57,6 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
-const DNS_PORT: u16 = 4553;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -702,130 +679,6 @@ async fn wrap_abs_redirect_server() {
   }
 }
 
-async fn run_dns_server() {
-  let catalog = {
-    let records = {
-      let mut map = BTreeMap::new();
-      let lookup_name = "www.example.com".parse::<Name>().unwrap();
-      let lookup_name_lower = LowerName::new(&lookup_name);
-
-      // Inserts SOA record
-      let soa = SOA::new(
-        Name::from_str("net").unwrap(),
-        Name::from_str("example").unwrap(),
-        0,
-        i32::MAX,
-        i32::MAX,
-        i32::MAX,
-        0,
-      );
-      let rdata = RData::SOA(soa);
-      let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
-
-      // Inserts A record
-      let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
-      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new(lookup_name_lower.clone(), RecordType::A),
-        record_set,
-      );
-
-      // Inserts AAAA record
-      let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
-        record_set,
-      );
-
-      // Inserts ANAME record
-      let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
-      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
-        record_set,
-      );
-
-      // Inserts CNAME record
-      let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
-      let record =
-        Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
-        record_set,
-      );
-
-      // Inserts MX record
-      let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
-      let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new(lookup_name_lower.clone(), RecordType::MX),
-        record_set,
-      );
-
-      // Inserts PTR record
-      let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
-      let record =
-        Record::from_rdata(Name::from_str("5.6.7.8").unwrap(), u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
-        record_set,
-      );
-
-      // Inserts SRV record
-      let rdata =
-        RData::SRV(SRV::new(0, 100, 1234, Name::from_str("srv.com").unwrap()));
-      let record = Record::from_rdata(
-        Name::from_str("_Service._TCP.example.com").unwrap(),
-        u32::MAX,
-        rdata,
-      );
-      let record_set = RecordSet::from(record);
-      map.insert(
-        RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
-        record_set,
-      );
-
-      // Inserts TXT record
-      let rdata =
-        RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
-      let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
-      let record_set = RecordSet::from(record);
-      map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
-
-      map
-    };
-
-    let authority = Box::new(Arc::new(RwLock::new(
-      InMemoryAuthority::new(
-        Name::from_str("com").unwrap(),
-        records,
-        ZoneType::Primary,
-        false,
-      )
-      .unwrap(),
-    )));
-    let mut c = Catalog::new();
-    c.upsert(Name::root().into(), authority);
-    c
-  };
-
-  let mut server_fut = ServerFuture::new(catalog);
-  let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
-  let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
-  let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
-  server_fut.register_socket(udp_socket);
-  server_fut.register_listener(tcp_listener, Duration::from_secs(5));
-}
-
 async fn wrap_main_server() {
   let main_server_svc =
     make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
@@ -894,8 +747,6 @@ pub async fn run_all_servers() {
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
 
-  let dns_server_fut = run_dns_server();
-
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
 
@@ -904,7 +755,6 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
-      dns_server_fut,
       another_redirect_server_fut,
       inf_redirects_server_fut,
       double_redirects_server_fut,

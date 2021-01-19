@@ -455,6 +455,8 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-test",
+ "trust-dns-client",
+ "trust-dns-server",
  "uuid",
  "walkdir",
  "winapi 0.3.9",
@@ -2920,8 +2922,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
- "trust-dns-client",
- "trust-dns-server",
 ]
 
 [[package]]

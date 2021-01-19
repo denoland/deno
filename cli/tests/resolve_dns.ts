@@ -11,11 +11,26 @@ const [a, aaaa, aname, cname, mx, ptr, srv, txt] = await Promise.all([
   Deno.resolveDns("www.example.com", "TXT", nameServer),
 ]);
 
-console.log("A:", a);
-console.log("AAAA:", aaaa);
-console.log("ANAME:", aname);
-console.log("CNAME:", cname);
-console.log("MX:", mx);
-console.log("PTR:", ptr);
-console.log("SRV:", srv);
-console.log("TXT:", txt);
+console.log("A");
+console.log(JSON.stringify(a));
+
+console.log("AAAA");
+console.log(JSON.stringify(aaaa));
+
+console.log("ANAME");
+console.log(JSON.stringify(aname));
+
+console.log("CNAME");
+console.log(JSON.stringify(cname));
+
+console.log("MX");
+console.log(JSON.stringify(mx));
+
+console.log("PTR");
+console.log(JSON.stringify(ptr));
+
+console.log("SRV");
+console.log(JSON.stringify(srv));
+
+console.log("TXT");
+console.log(JSON.stringify(txt));
