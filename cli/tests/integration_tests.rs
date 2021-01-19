@@ -5556,8 +5556,6 @@ async fn test_resolve_dns() {
   assert!(output.status.success());
   assert!(err.starts_with("Check file"));
 
-  eprintln!("{}", &out);
-
   let expected =
     std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
       .unwrap();
