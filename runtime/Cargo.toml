@@ -61,6 +61,8 @@ tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"
 webpki-roots = "0.21.0"
+trust-dns-proto = "0.20.0"
+trust-dns-resolver = { version = "0.20.0", features = ["tokio-runtime", "serde-config"] }
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "1.1.0"
