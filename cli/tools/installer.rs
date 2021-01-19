@@ -246,7 +246,7 @@ pub fn install(
   }
 
   if flags.cached_only {
-    executable_args.push("--cached_only".to_string());
+    executable_args.push("--cached-only".to_string());
   }
 
   if !flags.v8_flags.is_empty() {
