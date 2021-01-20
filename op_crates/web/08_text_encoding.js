@@ -488,6 +488,8 @@
     let offset;
     if (gb18030Ranges[pointer]) {
       offset = pointer;
+    } else if (pointer > 189000) {
+      offset = gb18030Ranges[189000];
     } else {
       offset = customBinarySearch(gb18030RangesKeys, pointer);
     }
@@ -554,7 +556,7 @@
         if (pointer !== null) {
           codePoint = indexGb18030[pointer];
         }
-        if (codePoint)  {
+        if (codePoint) {
           result.push(codePoint);
           continue;
         }
@@ -4087,7 +4089,9 @@
       }
       if (
         !decoders.has(encoding) &&
-        !["utf-16le", "utf-16be", "utf-8", "big5"].includes(encoding)
+        !["utf-16le", "utf-16be", "utf-8", "big5", "gbk", "gb18030"].includes(
+          encoding,
+        )
       ) {
         throw new RangeError(`Internal decoder ('${encoding}') not found.`);
       }
@@ -4149,6 +4153,16 @@
       if (this.#encoding === "big5") {
         const result = Big5Decoder(
           encodingIndexes.get("big5"),
+          bytes,
+          this.fatal,
+          this.ignoreBOM,
+        );
+        return String.fromCharCode.apply(null, result);
+      }
+
+      if (this.#encoding === "big5" || this.#encoding === "gb18030") {
+        const result = gb18030Decoder(
+          encodingIndexes.get("gb18030"),
           bytes,
           this.fatal,
           this.ignoreBOM,
