@@ -346,10 +346,7 @@ async fn op_shutdown(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.shutdown");
-
   let args: ShutdownArgs = serde_json::from_value(args)?;
-
   let rid = args.rid as u32;
 
   let resource = state
