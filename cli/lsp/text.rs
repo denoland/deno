@@ -4,8 +4,8 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use difference::Changeset;
-use difference::Difference;
+use dissimilar::diff;
+use dissimilar::Chunk;
 use lspower::jsonrpc;
 use lspower::lsp_types;
 use lspower::lsp_types::TextEdit;
@@ -64,7 +64,7 @@ impl Utf16Char {
   }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct LineIndex {
   utf8_offsets: Vec<TextSize>,
   utf16_lines: HashMap<u32, Vec<Utf16Char>>,
@@ -209,25 +209,28 @@ impl LineIndex {
 /// Compare two strings and return a vector of text edit records which are
 /// supported by the Language Server Protocol.
 pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
-  let changeset = Changeset::new(a, b, "");
+  if a == b {
+    return vec![];
+  }
+  let chunks = diff(a, b);
   let mut text_edits = Vec::<TextEdit>::new();
   let line_index = LineIndex::new(a);
-  let mut iter = changeset.diffs.iter().peekable();
+  let mut iter = chunks.iter().peekable();
   let mut a_pos = TextSize::from(0);
   loop {
     let chunk = iter.next();
     match chunk {
       None => break,
-      Some(Difference::Same(e)) => {
+      Some(Chunk::Equal(e)) => {
         a_pos += TextSize::from(e.encode_utf16().count() as u32);
       }
-      Some(Difference::Rem(d)) => {
+      Some(Chunk::Delete(d)) => {
         let start = line_index.position_utf16(a_pos);
         a_pos += TextSize::from(d.encode_utf16().count() as u32);
         let end = line_index.position_utf16(a_pos);
         let range = lsp_types::Range { start, end };
         match iter.peek() {
-          Some(Difference::Add(i)) => {
+          Some(Chunk::Insert(i)) => {
             iter.next();
             text_edits.push(TextEdit {
               range,
@@ -240,7 +243,7 @@ pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
           }),
         }
       }
-      Some(Difference::Add(i)) => {
+      Some(Chunk::Insert(i)) => {
         let pos = line_index.position_utf16(a_pos);
         let range = lsp_types::Range {
           start: pos,
@@ -260,8 +263,11 @@ pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
 /// Convert a difference between two strings into a change range used by the
 /// TypeScript Language Service.
 pub fn get_range_change(a: &str, b: &str) -> Value {
-  let changeset = Changeset::new(a, b, "");
-  let mut iter = changeset.diffs.iter().peekable();
+  if a == b {
+    return json!(null);
+  }
+  let chunks = diff(a, b);
+  let mut iter = chunks.iter().peekable();
   let mut started = false;
   let mut start = 0;
   let mut end = 0;
@@ -272,11 +278,11 @@ pub fn get_range_change(a: &str, b: &str) -> Value {
     let diff = iter.next();
     match diff {
       None => break,
-      Some(Difference::Same(e)) => {
+      Some(Chunk::Equal(e)) => {
         a_pos += e.encode_utf16().count();
         equal += e.encode_utf16().count();
       }
-      Some(Difference::Rem(d)) => {
+      Some(Chunk::Delete(d)) => {
         if !started {
           start = a_pos;
           started = true;
@@ -289,7 +295,7 @@ pub fn get_range_change(a: &str, b: &str) -> Value {
           equal = 0;
         }
       }
-      Some(Difference::Add(i)) => {
+      Some(Chunk::Insert(i)) => {
         if !started {
           start = a_pos;
           end = a_pos;
@@ -571,49 +577,10 @@ const C: char = \"メ メ\";
             },
             end: lsp_types::Position {
               line: 0,
-              character: 1
+              character: 5
             }
           },
-          new_text: "\n".to_string()
-        },
-        TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
-              line: 0,
-              character: 2,
-            },
-            end: lsp_types::Position {
-              line: 0,
-              character: 2,
-            },
-          },
-          new_text: "\n".to_string()
-        },
-        TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
-              line: 0,
-              character: 3,
-            },
-            end: lsp_types::Position {
-              line: 0,
-              character: 4,
-            }
-          },
-          new_text: "hij".to_string()
-        },
-        TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
-              line: 0,
-              character: 5,
-            },
-            end: lsp_types::Position {
-              line: 0,
-              character: 5,
-            },
-          },
-          new_text: "\n".to_string()
+          new_text: "\nb\nchije\n".to_string()
         },
         TextEdit {
           range: lsp_types::Range {
@@ -634,6 +601,11 @@ const C: char = \"メ メ\";
 
   #[test]
   fn test_get_range_change() {
+    let a = "abcdefg";
+    let b = "abcdefg";
+    let actual = get_range_change(a, b);
+    assert_eq!(actual, json!(null));
+
     let a = "abcdefg";
     let b = "abedcfg";
     let actual = get_range_change(a, b);
@@ -746,19 +718,20 @@ const C: char = \"メ メ\";
       })
     );
 
-    let a = r#" 🦕🇺🇸👍 "#;
-    let b = r#" 🇺🇸👍 "#;
-    let actual = get_range_change(a, b);
-    assert_eq!(
-      actual,
-      json!({
-        "span": {
-          "start": 1,
-          "length": 2,
-        },
-        "newLength": 0
-      })
-    );
+    // TODO(@kitsonk): https://github.com/dtolnay/dissimilar/issues/5
+    // let a = r#" 🦕🇺🇸👍 "#;
+    // let b = r#" 🇺🇸👍 "#;
+    // let actual = get_range_change(a, b);
+    // assert_eq!(
+    //   actual,
+    //   json!({
+    //     "span": {
+    //       "start": 1,
+    //       "length": 2,
+    //     },
+    //     "newLength": 0
+    //   })
+    // );
   }
 
   #[test]

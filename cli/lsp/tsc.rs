@@ -1192,6 +1192,7 @@ pub struct UserPreferences {
 }
 
 /// Methods that are supported by the Language Service in the compiler isolate.
+#[derive(Debug)]
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),

@@ -43,6 +43,7 @@ pub async fn cache(
 #[derive(Debug, Clone, Default)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
+  line_index: LineIndex,
   maybe_types: Option<analysis::ResolvedDependency>,
   media_type: MediaType,
   source: String,
@@ -94,7 +95,7 @@ impl Sources {
   ) -> Option<LineIndex> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(LineIndex::new(&metadata.source))
+    Some(metadata.line_index)
   }
 
   pub fn get_media_type(
@@ -134,8 +135,10 @@ impl Sources {
           } else {
             None
           };
+          let line_index = LineIndex::new(&source);
           let metadata = Metadata {
             dependencies,
+            line_index,
             maybe_types,
             media_type,
             source,
@@ -176,8 +179,10 @@ impl Sources {
           } else {
             None
           };
+          let line_index = LineIndex::new(&source);
           let metadata = Metadata {
             dependencies,
+            line_index,
             maybe_types,
             media_type,
             source,

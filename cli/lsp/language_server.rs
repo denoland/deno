@@ -142,7 +142,12 @@ impl LanguageServer {
         None
       }
     } else {
-      self.documents.read().unwrap().line_index(specifier)
+      let documents = self.documents.read().unwrap();
+      if documents.contains(specifier) {
+        documents.line_index(specifier)
+      } else {
+        self.sources.write().unwrap().get_line_index(specifier)
+      }
     }
   }
 
@@ -1181,6 +1186,7 @@ mod tests {
   use lspower::LspService;
   use std::fs;
   use std::task::Poll;
+  use std::time::Instant;
   use tower_test::mock::Spawn;
 
   enum LspResponse {
@@ -1396,18 +1402,18 @@ mod tests {
             "contents": [
               {
                 "language": "typescript",
-                "value": "const b: \"🇺🇸😃\"",
+                "value": "const b: \"😃\"",
               },
               "",
             ],
             "range": {
               "start": {
                 "line": 2,
-                "character": 15,
+                "character": 13,
               },
               "end": {
                 "line": 2,
-                "character": 16,
+                "character": 14,
               },
             }
           }),
@@ -1420,6 +1426,27 @@ mod tests {
       ("exit_notification.json", LspResponse::None),
     ]);
     harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_large_doc_change() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_large.json", LspResponse::None),
+      ("did_change_notification_large.json", LspResponse::None),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    let time = Instant::now();
+    harness.run().await;
+    assert!(
+      time.elapsed().as_millis() <= 10000,
+      "the execution time exceeded 10000ms"
+    );
   }
 
   #[tokio::test]
