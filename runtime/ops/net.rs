@@ -629,7 +629,8 @@ async fn op_dns_resolve(
 
   let results: Vec<DnsReturnRecord> = resolver
     .lookup(query, record_type, Default::default())
-    .await?
+    .await
+    .map_err(|e| generic_error(format!("{}", e)))?
     .iter()
     .filter_map(rdata_to_return_record(record_type))
     .collect();
