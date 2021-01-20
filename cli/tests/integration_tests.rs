@@ -5287,9 +5287,10 @@ fn web_platform_tests() {
   // Observation: `python3 wpt serve` hangs with the python3 from homebrew
   // but works okay with /usr/bin/python, which is python 2.7.10. Observed
   // with homebrew python 3.8.5, 3.8.7 and 3.9.1.
-  let python = match cfg!(target_os = "macos") {
-    true => "python",
-    false => "python3",
+  let python = match true {
+    _ if cfg!(target_os = "windows") => "python.exe",
+    _ if cfg!(target_os = "macos") => "python",
+    _ => "python3",
   };
 
   let mut proc = Command::new(python)
