@@ -5284,7 +5284,15 @@ fn web_platform_tests() {
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
     deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
 
-  let mut proc = Command::new("python3")
+  // Observation: `python3 wpt serve` hangs with the python3 from homebrew
+  // but works okay with /usr/bin/python, which is python 2.7.10. Observed
+  // with homebrew python 3.8.5, 3.8.7 and 3.9.1.
+  let python = match cfg!(target_os = "macos") {
+    true => "python",
+    false => "python3",
+  };
+
+  let mut proc = Command::new(python)
     .current_dir(util::wpt_path())
     .arg("wpt")
     .arg("serve")
@@ -5312,6 +5320,10 @@ fn web_platform_tests() {
       ready_8444 = true;
     }
     if line.contains("web-platform.test:9000") {
+      ready_9000 = true;
+    }
+    // WPT + python2 doesn't support HTTP/2.0.
+    if line.contains("Cannot start HTTP/2.0 server") {
       ready_9000 = true;
     }
     if ready_8000 && ready_8443 && ready_8444 && ready_9000 {
