@@ -71,7 +71,7 @@
     //   ]
     // },
     // "encodeInto",
-    "iso-2022-jp-decoder",
+    // "iso-2022-jp-decoder",
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "replacement-encodings",
     "textdecoder-byte-order-marks",
