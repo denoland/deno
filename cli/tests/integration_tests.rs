@@ -3421,15 +3421,11 @@ itest!(deno_test_branch_coverage {
   exit_code: 0,
 });
 
-// TODO(ry) Re-enable. Broke during rusty_v8 0.16.0 upgrade.
-// Probably should use temp directory for .test_coverage.
-/*
 itest!(deno_test_coverage_explicit {
   args: "test --coverage=.test_coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
   exit_code: 0,
 });
-*/
 
 itest!(deno_test_run_test_coverage {
   args: "test --allow-all --coverage --unstable test_run_test_coverage.ts",
