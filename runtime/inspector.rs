@@ -491,52 +491,47 @@ impl DenoInspector {
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
     // Create DenoInspector instance.
-    let mut self_ = {
-      let debugger_url = if let Some(server) = server.clone() {
-        let info = InspectorInfo {
-          host: server.host,
-          uuid: Uuid::new_v4(),
-          thread_name: thread::current().name().map(|n| n.to_owned()),
-          new_websocket_tx,
-          canary_rx,
-        };
-
-        let debugger_url = info.get_websocket_debugger_url();
-        server.register_inspector(info);
-        Some(debugger_url)
-      } else {
-        None
+    let debugger_url = if let Some(server) = server.clone() {
+      let info = InspectorInfo {
+        host: server.host,
+        uuid: Uuid::new_v4(),
+        thread_name: thread::current().name().map(|n| n.to_owned()),
+        new_websocket_tx,
+        canary_rx,
       };
 
-      let mut out = Self {
-        v8_inspector_client: v8::inspector::V8InspectorClientBase::new::<Self>(
-        ),
-        v8_inspector: None,
-        sessions: None,
-        flags: InspectorFlags::new(),
-        waker: InspectorWaker::new(scope.thread_safe_handle()),
-        _canary_tx: canary_tx,
-        server,
-        debugger_url,
-      };
-      let v8_inspector = v8::inspector::V8Inspector::create(scope, &mut out);
-      let sessions = InspectorSessions::new(&mut out, new_websocket_rx);
-
-      out.v8_inspector = Some(v8_inspector);
-      out.sessions = Some(sessions);
-      out
+      let debugger_url = info.get_websocket_debugger_url();
+      server.register_inspector(info);
+      Some(debugger_url)
+    } else {
+      None
     };
+
+    let mut out = Box::new(Self {
+      v8_inspector_client: v8::inspector::V8InspectorClientBase::new::<Self>(),
+      v8_inspector: None,
+      sessions: None,
+      flags: InspectorFlags::new(),
+      waker: InspectorWaker::new(scope.thread_safe_handle()),
+      _canary_tx: canary_tx,
+      server,
+      debugger_url,
+    });
+    let v8_inspector = v8::inspector::V8Inspector::create(scope, out.as_mut());
+    let sessions = InspectorSessions::new(out.as_mut(), new_websocket_rx);
+
+    out.v8_inspector = Some(v8_inspector);
+    out.sessions = Some(sessions);
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
-    self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
+    out.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
-    let _ = self_.poll_sessions(None).unwrap();
-
-    Box::new(self_)
+    let _ = out.poll_sessions(None).unwrap();
+    out
   }
 
   fn poll_sessions(
