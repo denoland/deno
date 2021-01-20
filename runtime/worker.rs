@@ -21,6 +21,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
@@ -34,7 +35,7 @@ use std::task::Poll;
 /// All `WebWorker`s created during program execution
 /// are descendants of this worker.
 pub struct MainWorker {
-  inspector: Option<Box<DenoInspector>>,
+  inspector: Option<Pin<Box<DenoInspector>>>,
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
 }

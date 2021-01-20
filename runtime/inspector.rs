@@ -482,7 +482,7 @@ impl DenoInspector {
   pub fn new(
     js_runtime: &mut deno_core::JsRuntime,
     server: Option<Arc<InspectorServer>>,
-  ) -> Box<Self> {
+  ) -> Pin<Box<Self>> {
     let context = js_runtime.global_context();
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
 
@@ -507,7 +507,7 @@ impl DenoInspector {
       None
     };
 
-    let mut out = Box::new(Self {
+    let mut out = Box::pin(Self {
       v8_inspector_client: v8::inspector::V8InspectorClientBase::new::<Self>(),
       v8_inspector: None,
       sessions: None,
@@ -517,8 +517,8 @@ impl DenoInspector {
       server,
       debugger_url,
     });
-    let v8_inspector = v8::inspector::V8Inspector::create(scope, out.as_mut());
-    let sessions = InspectorSessions::new(out.as_mut(), new_websocket_rx);
+    let v8_inspector = v8::inspector::V8Inspector::create(scope, &mut *out);
+    let sessions = InspectorSessions::new(&mut *out, new_websocket_rx);
 
     out.v8_inspector = Some(v8_inspector);
     out.sessions = Some(sessions);

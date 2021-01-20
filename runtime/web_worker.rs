@@ -25,6 +25,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use std::env;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -119,7 +120,7 @@ fn create_channels(
 /// `WebWorker`.
 pub struct WebWorker {
   id: u32,
-  inspector: Option<Box<DenoInspector>>,
+  inspector: Option<Pin<Box<DenoInspector>>>,
   // Following fields are pub because they are accessed
   // when creating a new WebWorker instance.
   pub(crate) internal_channels: WorkerChannelsInternal,
