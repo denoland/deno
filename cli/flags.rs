@@ -3417,6 +3417,9 @@ mod tests {
     #[rustfmt::skip]
     let r = flags_from_vec(svec!["deno", "run", "--location", "foo:", "mod.ts"]);
     assert!(r.is_err());
-    assert!(r.unwrap_err().to_string().contains("Expected protocol \"http\" or \"https\""));
+    assert!(r
+      .unwrap_err()
+      .to_string()
+      .contains("Expected protocol \"http\" or \"https\""));
   }
 }
