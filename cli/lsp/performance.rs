@@ -85,7 +85,7 @@ impl Performance {
     }
     averages.into_iter().map(|(k, d)| {
       let a = d.clone().into_iter().sum::<Duration>() / d.len() as u32;
-      (k.clone(), d.len(), a)
+      (k, d.len(), a)
     })
   }
 
@@ -115,7 +115,7 @@ impl Performance {
     *count += 1;
     PerformanceMark {
       name: name.to_string(),
-      count: count.clone(),
+      count: *count,
       start: Instant::now(),
     }
   }
