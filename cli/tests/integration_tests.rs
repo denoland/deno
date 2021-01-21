@@ -5284,6 +5284,12 @@ fn web_platform_tests() {
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
     deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
 
+  // The windows-2019 buildbots are too slow to finish the WPT tests within
+  // the 1 hour time limit.
+  if cfg!(target_os = "windows") && std::env::var("CI").is_ok() {
+    return;
+  }
+
   // Observation: `python3 wpt serve` hangs with the python3 from homebrew
   // but works okay with /usr/bin/python, which is python 2.7.10. Observed
   // with homebrew python 3.8.5, 3.8.7 and 3.9.1.
