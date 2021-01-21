@@ -2665,6 +2665,7 @@ itest!(_077_fetch_empty {
 itest!(_078_unload_on_exit {
   args: "run 078_unload_on_exit.ts",
   output: "078_unload_on_exit.ts.out",
+  exit_code: 1,
 });
 
 itest!(_079_location_authentication {
