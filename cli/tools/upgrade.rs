@@ -109,7 +109,7 @@ pub async fn upgrade_command(
   println!("Deno is upgrading to version {}", &install_version);
 
   let old_exe_path = std::env::current_exe()?;
-  let new_exe_path = unpack(archive_data, "deno")?;
+  let new_exe_path = unpack(archive_data, "deno", cfg!(windows))?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
@@ -177,12 +177,13 @@ async fn download_package(
 pub fn unpack(
   archive_data: Vec<u8>,
   exe_name: &str,
+  windows: bool,
 ) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
   let temp_dir = TempDir::new()?.into_path();
-  let exe_ext = if cfg!(windows) { "exe" } else { "" };
+  let exe_ext = if windows { "exe" } else { "" };
   let archive_path = temp_dir.join(exe_name).with_extension(".zip");
   let exe_path = temp_dir.join(exe_name).with_extension(exe_ext);
   assert!(!exe_path.exists());
