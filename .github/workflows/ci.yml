@@ -137,6 +137,24 @@ jobs:
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
+      - name: Setup GNU Tools (Linux)
+        uses: actions-rs/toolchain@v1
+        if: startsWith(matrix.os, 'ubuntu')
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-gnu
+          
+      - name: Setup GNU Tools (Windows)
+        uses: actions-rs/toolchain@v1
+        if: startsWith(matrix.os, 'windows')
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-gnu
+          
+      - name: Setup GNU Tools (MacOS)
+        if: startsWith(matrix.os, 'macOS')
+        run: brew install autoconf automake libtool libffi
+
       - name: Configure canary build
         if: |
           matrix.kind == 'test_release' &&

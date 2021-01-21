@@ -1,0 +1,15 @@
+Deno.resources(): { "0": "stdin", "1": "stdout", "2": "stderr" }
+Deno.resources(): { "0": "stdin", "1": "stdout", "2": "stderr", "3": "dylib" }
+something
+add_one_i8 2
+add_one_i16 2
+add_one_i32 2
+add_one_i64 2
+add_one_u8 2
+add_one_u16 2
+add_one_u32 2
+add_one_u64 2
+add_one_f32 3.5
+add_one_f64 3.14
+concat_string hello Deno
+Deno.resources(): { "0": "stdin", "1": "stdout", "2": "stderr" }

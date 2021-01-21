@@ -147,6 +147,7 @@ impl MainWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       );
+      ops::ffi::init(js_runtime);
     }
     {
       let op_state = js_runtime.op_state();

@@ -5,6 +5,7 @@ pub use dispatch_minimal::MinimalOp;
 
 pub mod crypto;
 pub mod fetch;
+pub mod ffi;
 pub mod fs;
 pub mod fs_events;
 pub mod io;
