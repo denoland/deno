@@ -2685,6 +2685,12 @@ itest!(_081_location_relative_fetch_redirect {
   http_server: true,
 });
 
+itest!(_082_prepare_stack_trace_throw {
+  args: "run 082_prepare_stack_trace_throw.js",
+  output: "082_prepare_stack_trace_throw.js.out",
+  exit_code: 1,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
