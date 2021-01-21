@@ -1085,3 +1085,23 @@ unitTest(
     assertEquals(actual, expected);
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitRequest(): Promise<void> {
+    const data = "param1=value1&param2=value2";
+    const params = new URLSearchParams(data);
+    const request = new Request("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: params,
+    });
+    const response = await fetch(request);
+    const text = await response.text();
+    assertEquals(text, data);
+    assert(
+      response.headers
+        .get("content-type")!
+        .startsWith("application/x-www-form-urlencoded"),
+    );
+  },
+);

@@ -1306,6 +1306,11 @@
 
       if (input.body) {
         body = input.body;
+      } else if (input instanceof Request && input._bodySource) {
+        if (input.bodyUsed) {
+          throw TypeError(BodyUsedError);
+        }
+        body = input._bodySource;
       }
     }
 
