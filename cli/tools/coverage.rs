@@ -1,11 +1,16 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::inspector::InspectorSession;
+use crate::module_graph::TypeLib;
+use crate::flags::Flags;
+use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_core::serde_json::json;
-use glob::Pattern;
+use deno_core::ModuleSpecifier;
+use deno_runtime::inspector::InspectorSession;
+use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
@@ -24,7 +29,6 @@ impl CoverageCollector {
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Debugger.enable", None).await?;
-
     self.session.post_message("Profiler.enable", None).await?;
 
     self
@@ -51,38 +55,10 @@ impl CoverageCollector {
 
     let script_coverages = take_coverage_result.result;
     for script_coverage in script_coverages {
-      let get_script_source_value = self
-        .session
-        .post_message(
-          "Debugger.getScriptSource",
-          Some(json!({
-              "scriptId": script_coverage.script_id,
-          })),
-        )
-        .await?;
-
-      let get_script_source_result: GetScriptSourceResult =
-        serde_json::from_value(get_script_source_value)?;
-
-      let script_source = get_script_source_result.script_source.clone();
-
-      let coverage = Coverage {
-        script_coverage,
-        script_source,
-      };
-
-      // TODO(caspervonb) Would be much better to look up the source during the reporting stage
-      // instead of storing it here.
-      // Long term, that's what we should be doing.
       let filename = format!("{}.json", Uuid::new_v4());
-      let json = serde_json::to_string(&coverage)?;
+      let json = serde_json::to_string(&script_coverage)?;
       fs::write(self.dir.join(filename), &json)?;
     }
-
-    self
-      .session
-      .post_message("Profiler.stopPreciseCoverage", None)
-      .await?;
 
     self.session.post_message("Profiler.disable", None).await?;
     self.session.post_message("Debugger.disable", None).await?;
@@ -93,7 +69,7 @@ impl CoverageCollector {
 
 // TODO(caspervonb) all of these structs can and should be made private, possibly moved to
 // inspector::protocol.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
   pub start_offset: usize,
@@ -101,7 +77,7 @@ pub struct CoverageRange {
   pub count: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverage {
   pub function_name: String,
@@ -109,7 +85,7 @@ pub struct FunctionCoverage {
   pub is_block_coverage: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptCoverage {
   pub script_id: String,
@@ -118,13 +94,6 @@ pub struct ScriptCoverage {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Coverage {
-  pub script_coverage: ScriptCoverage,
-  pub script_source: String,
-}
-
-#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TakePreciseCoverageResult {
   result: Vec<ScriptCoverage>,
@@ -152,7 +121,7 @@ impl PrettyCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
   ) {
-    let lines = script_source.lines().collect::<Vec<_>>();
+    let lines = script_source.split('\n').collect::<Vec<_>>();
 
     let mut covered_lines: Vec<usize> = Vec::new();
     let mut uncovered_lines: Vec<usize> = Vec::new();
@@ -162,27 +131,46 @@ impl PrettyCoverageReporter {
       let line_end_offset = line_start_offset + line.len();
 
       let mut count = 0;
+      // Count the hits of ranges that include the entire line which will always be at-least one
+      // as long as the code has been evaluated.
       for function in &script_coverage.functions {
         for range in &function.ranges {
           if range.start_offset <= line_start_offset
             && range.end_offset >= line_end_offset
           {
-            if range.count == 0 {
-              count = 0;
-              break;
-            }
-
             count += range.count;
           }
         }
-
-        line_start_offset = line_end_offset;
       }
+
+      // Reset the count if any block intersects with the current line has a count of
+      // zero.
+      //
+      // We check for intersection instead of inclusion here because a block may be anywhere
+      // inside a line.
+      for function in &script_coverage.functions {
+        for range in &function.ranges {
+          if range.count > 0 {
+            continue;
+          }
+
+          if (range.start_offset < line_start_offset
+            && range.end_offset > line_start_offset)
+            || (range.start_offset < line_end_offset
+              && range.end_offset > line_end_offset)
+          {
+            count = 0;
+          }
+        }
+      }
+
       if count > 0 {
         covered_lines.push(index);
       } else {
         uncovered_lines.push(index);
       }
+
+      line_start_offset += line.len() + 1;
     }
 
     if !self.quiet {
@@ -231,65 +219,108 @@ impl PrettyCoverageReporter {
   }
 }
 
-fn collect_coverages(
-  dir: &PathBuf,
-  ignore: Vec<String>,
-) -> Result<Vec<Coverage>, AnyError> {
-  let mut coverages: Vec<Coverage> = Vec::new();
+fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
+  let mut coverages: Vec<ScriptCoverage> = Vec::new();
 
   let entries = fs::read_dir(dir)?;
   for entry in entries {
     let json = fs::read_to_string(entry.unwrap().path())?;
-    let coverage: Coverage = serde_json::from_str(&json)?;
+    let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
 
-    coverages.push(coverage);
-  }
+    let existing_coverage =
+      coverages.iter_mut().find(|x| x.url == new_coverage.url);
 
-  let patterned_ignore: Vec<Pattern> =
-    ignore.iter().map(|i| Pattern::new(i).unwrap()).collect();
+    if let Some(existing_coverage) = existing_coverage {
+      for new_function in new_coverage.functions {
+        let existing_function = existing_coverage
+          .functions
+          .iter_mut()
+          .find(|x| x.function_name == new_function.function_name);
 
-  coverages = coverages
-    .into_iter()
-    .filter(|e| !e.script_coverage.url.ends_with("__anonymous__"))
-    .filter(|e| !e.script_coverage.url.ends_with("$deno$test.ts"))
-    .filter(|e| {
-      !patterned_ignore
-        .iter()
-        .any(|p| p.matches(&e.script_coverage.url))
-    })
-    .collect::<Vec<Coverage>>();
+        if let Some(existing_function) = existing_function {
+          for new_range in new_function.ranges {
+            let existing_range =
+              existing_function.ranges.iter_mut().find(|x| {
+                x.start_offset == new_range.start_offset
+                  && x.end_offset == new_range.end_offset
+              });
 
-  // TODO(caspervonb) drain_filter would make this cleaner, its nightly at the moment.
-  if coverages.len() > 1 {
-    coverages.sort_by_key(|k| k.script_coverage.url.clone());
-    for i in (1..coverages.len() - 1).rev() {
-      if coverages[i].script_coverage.url
-        == coverages[i - 1].script_coverage.url
-      {
-        let current = coverages.remove(i);
-        let previous = &mut coverages[i - 1];
-
-        for function in current.script_coverage.functions {
-          previous.script_coverage.functions.push(function);
+            if let Some(existing_range) = existing_range {
+              existing_range.count += new_range.count;
+            } else {
+              existing_function.ranges.push(new_range);
+            }
+          }
+        } else {
+          existing_coverage.functions.push(new_function);
         }
       }
+    } else {
+      coverages.push(new_coverage);
     }
   }
+
+  coverages.sort_by_key(|k| k.url.clone());
 
   Ok(coverages)
 }
 
-pub fn report_coverages(
+fn filter_coverages(
+  coverages: Vec<ScriptCoverage>,
+  _exclude: Vec<String>,
+) -> Vec<ScriptCoverage> {
+  coverages
+    .into_iter()
+    .filter(|e| {
+      if let Ok(url) = Url::parse(&e.url) {
+        if url.scheme() == "deno" {
+          return false;
+        }
+
+        if url.path().ends_with("$deno$test.ts") {
+          return false;
+        }
+
+        if url.path().ends_with("__anonymous__") {
+          return false;
+        }
+
+        true
+      } else {
+          false
+      }
+    })
+    .collect::<Vec<ScriptCoverage>>()
+}
+
+pub async fn report_coverages(
   dir: &PathBuf,
   quiet: bool,
-  ignore: Vec<String>,
+  exclude: Vec<String>,
 ) -> Result<(), AnyError> {
-  let coverages = collect_coverages(dir, ignore)?;
+  let flags = Flags::default();
+  let program_state = ProgramState::new(flags)?;
+
+  let coverages = collect_coverages(dir)?;
+  let coverages = filter_coverages(coverages, exclude);
 
   let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
-  for coverage in coverages {
-    let script_coverage = coverage.script_coverage;
-    let script_source = coverage.script_source;
+  for script_coverage in coverages {
+    let module_specifier =
+      ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+    program_state
+      .prepare_module_load(
+        module_specifier.clone(),
+        TypeLib::UnstableDenoWindow,
+        Permissions::allow_all(),
+        false,
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
+
+    let module_source = program_state.load(module_specifier.clone(), None)?;
+    let script_source = &module_source.code;
+
     coverage_reporter.visit_coverage(&script_coverage, &script_source);
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 
@@ -34,7 +34,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "PluginPermissionDescriptor",
   "ReadPermissionDescriptor",
   "RunPermissionDescriptor",
-  "ShutdownMode",
   "Signal",
   "SignalStream",
   "StartTlsOptions",
@@ -44,11 +43,10 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixListenOptions",
   "WritePermissionDescriptor",
   "applySourceMap",
-  "bundle",
-  "compile",
   "connect",
   "consoleSize",
   "createHttpClient",
+  "emit",
   "formatDiagnostics",
   "futime",
   "futimeSync",
@@ -77,7 +75,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "symlinkSync",
   "systemMemoryInfo",
   "systemCpuInfo",
-  "transpileOnly",
   "umask",
   "utime",
   "utimeSync",

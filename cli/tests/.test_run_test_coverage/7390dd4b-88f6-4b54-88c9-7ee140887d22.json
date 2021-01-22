@@ -1,0 +1,1 @@
+{"scriptId":"32","url":"deno:runtime/js/12_io.js","functions":[{"functionName":"writeSync","ranges":[{"startOffset":2171,"endOffset":2344,"count":4},{"startOffset":2275,"endOffset":2320,"count":0}],"isBlockCoverage":true}]}

@@ -3,9 +3,9 @@
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-const hextable = new TextEncoder().encode("0123456789abcdef");
+const hexTable = new TextEncoder().encode("0123456789abcdef");
 
 /**
  * ErrInvalidByte takes an invalid byte and returns an Error.
@@ -52,8 +52,8 @@ export function encode(src: Uint8Array): Uint8Array {
   const dst = new Uint8Array(encodedLen(src.length));
   for (let i = 0; i < dst.length; i++) {
     const v = src[i];
-    dst[i * 2] = hextable[v >> 4];
-    dst[i * 2 + 1] = hextable[v & 0x0f];
+    dst[i * 2] = hexTable[v >> 4];
+    dst[i * 2 + 1] = hexTable[v & 0x0f];
   }
   return dst;
 }

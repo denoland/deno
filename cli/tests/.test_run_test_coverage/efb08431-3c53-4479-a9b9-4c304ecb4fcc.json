@@ -1,0 +1,1 @@
+{"scriptId":"60","url":"file:///home/caspervonb/deno/cli/tests/test_run_test_coverage.ts","functions":[{"functionName":"","ranges":[{"startOffset":0,"endOffset":916,"count":1}],"isBlockCoverage":true},{"functionName":"","ranges":[{"startOffset":38,"endOffset":307,"count":1}],"isBlockCoverage":true}]}

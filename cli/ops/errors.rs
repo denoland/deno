@@ -1,6 +1,7 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::diagnostics::Diagnostics;
+use crate::program_state::ProgramState;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
@@ -11,6 +12,7 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_apply_source_map", op_apply_source_map);
@@ -33,13 +35,16 @@ fn op_apply_source_map(
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
-  let (orig_file_name, orig_line_number, orig_column_number) =
+  let program_state = state.borrow::<Arc<ProgramState>>().clone();
+
+  let (orig_file_name, orig_line_number, orig_column_number, _) =
     get_orig_position(
       args.file_name,
       args.line_number.into(),
       args.column_number.into(),
+      None,
       &mut mappings_map,
-      super::program_state(state),
+      program_state,
     );
 
   Ok(json!({

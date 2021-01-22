@@ -1,10 +1,10 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
-use crate::AnyError;
-use deno_fetch::reqwest;
-use deno_fetch::reqwest::Client;
+use deno_core::error::AnyError;
+use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;
 use std::fs;
 use std::path::Path;
@@ -40,9 +40,7 @@ pub async fn upgrade_command(
   let install_version = match version {
     Some(passed_version) => {
       let current_is_passed = if canary {
-        let mut passed_hash = passed_version.clone();
-        passed_hash.truncate(7);
-        crate::version::GIT_COMMIT_HASH == passed_hash
+        crate::version::GIT_COMMIT_HASH == passed_version
       } else if !crate::version::is_canary() {
         crate::version::deno() == passed_version
       } else {
@@ -111,7 +109,7 @@ pub async fn upgrade_command(
   println!("Deno is upgrading to version {}", &install_version);
 
   let old_exe_path = std::env::current_exe()?;
-  let new_exe_path = unpack(archive_data)?;
+  let new_exe_path = unpack(archive_data, "deno")?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
@@ -176,13 +174,17 @@ async fn download_package(
   }
 }
 
-fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
+pub fn unpack(
+  archive_data: Vec<u8>,
+  exe_name: &str,
+) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
   let temp_dir = TempDir::new()?.into_path();
   let exe_ext = if cfg!(windows) { "exe" } else { "" };
-  let exe_path = temp_dir.join("deno").with_extension(exe_ext);
+  let archive_path = temp_dir.join(exe_name).with_extension(".zip");
+  let exe_path = temp_dir.join(exe_name).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(&*ARCHIVE_NAME)
@@ -191,7 +193,6 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
     .unwrap();
   let unpack_status = match archive_ext {
     "zip" if cfg!(windows) => {
-      let archive_path = temp_dir.join("deno.zip");
       fs::write(&archive_path, &archive_data)?;
       Command::new("powershell.exe")
         .arg("-NoLogo")
@@ -217,7 +218,6 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
         .wait()?
     }
     "zip" => {
-      let archive_path = temp_dir.join("deno.zip");
       fs::write(&archive_path, &archive_data)?;
       Command::new("unzip")
         .current_dir(&temp_dir)

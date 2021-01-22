@@ -1,31 +1,31 @@
 const mod = function() {
-    const a = [];
-    const a1 = a;
+    const mod1 = [];
     return {
-        a
+        mod: mod1
     };
 }();
-const a = mod;
+console.log(mod);
 const mod1 = function() {
-    const b = [];
-    const b1 = b;
-    return {
-        b
-    };
-}();
-const b = mod1;
-const mod2 = function() {
     const c = [];
     const c1 = c;
     return {
-        c
+        c: c
     };
 }();
-const c = mod2;
-const mod3 = function() {
-    const mod4 = [];
+const c = mod1;
+const mod2 = function() {
+    const b = [];
+    const b1 = b;
     return {
-        mod: mod4
+        b: b
     };
 }();
-console.log(mod3);
+const b = mod2;
+const mod3 = function() {
+    const a = [];
+    const a1 = a;
+    return {
+        a: a
+    };
+}();
+const a = mod3;

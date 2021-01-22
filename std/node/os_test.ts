@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as os from "./os.ts";
 
@@ -44,6 +44,13 @@ Deno.test({
   name: "release is a string",
   fn() {
     assertEquals(typeof os.release(), "string");
+  },
+});
+
+Deno.test({
+  name: "type is a string",
+  fn() {
+    assertEquals(typeof os.type(), "string");
   },
 });
 
@@ -241,13 +248,6 @@ Deno.test({
     assertThrows(
       () => {
         os.setPriority(0);
-      },
-      Error,
-      "Not implemented",
-    );
-    assertThrows(
-      () => {
-        os.type();
       },
       Error,
       "Not implemented",

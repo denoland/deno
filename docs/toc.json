@@ -10,7 +10,6 @@
       "first_steps": "First steps",
       "command_line_interface": "Command line interface",
       "permissions": "Permissions",
-      "typescript": "Using TypeScript",
       "webassembly": "Using WebAssembly",
       "debugging_your_code": "Debugging your code"
     }
@@ -21,8 +20,8 @@
       "stability": "Stability",
       "program_lifecycle": "Program lifecycle",
       "permission_apis": "Permission APIs",
-      "compiler_apis": "Compiler APIs",
       "web_platform_apis": "Web Platform APIs",
+      "location_api": "Location API",
       "workers": "Workers"
     }
   },
@@ -33,6 +32,17 @@
       "integrity_checking": "Integrity checking",
       "proxies": "Proxies",
       "import_maps": "Import maps"
+    }
+  },
+  "typescript": {
+    "name": "Using TypeScript",
+    "children": {
+      "overview": "Overview",
+      "configuration": "Configuration",
+      "types": "Types and type declarations",
+      "migration": "Migrating to/from JavaScript",
+      "runtime": "Runtime compiler APIs",
+      "faqs": "Frequently asked questions"
     }
   },
   "standard_library": {
@@ -82,10 +92,10 @@
     "name": "Contributing",
     "children": {
       "building_from_source": "Building from source",
-      "release_schedule": "Release schedule",
       "development_tools": "Development tools",
       "style_guide": "Style guide",
-      "architecture": "Architecture"
+      "architecture": "Architecture",
+      "release_schedule": "Release schedule"
     }
   }
 }

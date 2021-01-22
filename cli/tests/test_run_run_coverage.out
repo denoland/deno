@@ -1,0 +1,29 @@
+Check [WILDCARD]/tests/$deno$test.ts
+running 1 tests
+test spawn test ... Check [WILDCARD]/tests/run_coverage.ts
+ok ([WILDCARD])
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+cover [WILDCARD]/tests/run_coverage.ts ... 100.000% (3/3)
+cover [WILDCARD]/tests/subdir/mod1.ts ... 35.714% (5/14)
+   5 | export function returnsFoo2() {
+   6 |     return returnsFoo();
+   7 | }
+   8 | export function printHello3() {
+   9 |     printHello2();
+  10 | }
+  11 | export function throwsError() {
+  12 |     throw Error("exception from mod1");
+  13 | }
+cover [WILDCARD]/tests/subdir/print_hello.ts ... 25.000% (1/4)
+   1 | export function printHello() {
+   2 |     console.log("Hello");
+   3 | }
+cover [WILDCARD]/tests/subdir/subdir2/mod2.ts ... 25.000% (2/8)
+   2 | export function returnsFoo() {
+   3 |     return "Foo";
+   4 | }
+   5 | export function printHello2() {
+   6 |     printHello();
+   7 | }

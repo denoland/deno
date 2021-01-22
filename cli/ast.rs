@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::media_type::MediaType;
 use crate::tsc_config;
@@ -354,7 +354,7 @@ impl ParsedModule {
   }
 }
 
-fn parse_with_source_map(
+pub fn parse_with_source_map(
   specifier: &str,
   source: &str,
   media_type: &MediaType,
@@ -556,6 +556,7 @@ impl swc_bundler::Hook for BundleHook {
         value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
           span,
           value: value.into(),
+          kind: ast::StrKind::Synthesized,
           has_escape: false,
         }))),
       },
@@ -610,7 +611,9 @@ mod tests {
           leading_comments: Vec::new(),
           col: 0,
           line: 1,
-          specifier: "./test.ts".into()
+          specifier: "./test.ts".into(),
+          specifier_col: 21,
+          specifier_line: 1,
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
@@ -618,7 +621,9 @@ mod tests {
           leading_comments: Vec::new(),
           col: 22,
           line: 2,
-          specifier: "./foo.ts".into()
+          specifier: "./foo.ts".into(),
+          specifier_col: 29,
+          specifier_line: 2,
         }
       ]
     );

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 pub use anyhow::anyhow;
 pub use anyhow::bail;
@@ -12,7 +12,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::io;
 
 /// A generic wrapper that can encapsulate any concrete error type.
 pub type AnyError = anyhow::Error;
@@ -39,10 +38,6 @@ pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
 
 pub fn uri_error(message: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("URIError", message)
-}
-
-pub fn last_os_error() -> AnyError {
-  io::Error::last_os_error().into()
 }
 
 pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> AnyError {
@@ -205,8 +200,6 @@ impl JsError {
           .ok();
       let stack = stack.map(|s| s.to_rust_string_lossy(scope));
 
-      // FIXME(bartlmieju): the rest of this function is CLI only
-
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
       let frames_v8: Option<v8::Local<v8::Array>> =
@@ -298,7 +291,7 @@ impl JsError {
               .unwrap();
           let is_promise_all = is_promise_all.is_true();
           let promise_index: Option<v8::Local<v8::Integer>> =
-            get_property(scope, call_site, "columnNumber")
+            get_property(scope, call_site, "promiseIndex")
               .unwrap()
               .try_into()
               .ok();
@@ -388,7 +381,6 @@ pub(crate) fn attach_handle_to_error(
   err: AnyError,
   handle: v8::Local<v8::Value>,
 ) -> AnyError {
-  // TODO(bartomieju): this is a special case...
   ErrWithV8Handle::new(scope, err, handle).into()
 }
 

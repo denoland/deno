@@ -1,5 +1,7 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// @ts-check
+/// <reference path="./compiler.d.ts" />
 // deno-lint-ignore-file no-undef
 
 // This module is the entry point for "compiler" isolate, ie. the one
@@ -11,6 +13,7 @@
 delete Object.prototype.__proto__;
 
 ((window) => {
+  /** @type {DenoCore} */
   const core = window.Deno.core;
 
   let logDebug = false;
@@ -25,9 +28,23 @@ delete Object.prototype.__proto__;
 
   function debug(...args) {
     if (logDebug) {
-      const stringifiedArgs = args.map((arg) => JSON.stringify(arg)).join(" ");
-      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
+      const stringifiedArgs = args.map((arg) =>
+        typeof arg === "string" ? arg : JSON.stringify(arg)
+      ).join(" ");
+      // adding a non-zero integer value to the end of the debug string causes
+      // the message to be printed to stderr instead of stdout, which is better
+      // aligned to the behaviour of debug messages
+      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`, 1);
     }
+  }
+
+  function error(...args) {
+    const stringifiedArgs = args.map((arg) =>
+      typeof arg === "string" || arg instanceof Error
+        ? String(arg)
+        : JSON.stringify(arg)
+    ).join(" ");
+    core.print(`ERROR ${logSource} = ${stringifiedArgs}\n`, 1);
   }
 
   class AssertionError extends Error {
@@ -86,6 +103,7 @@ delete Object.prototype.__proto__;
   /** @param {ts.Diagnostic[]} diagnostics */
   function fromTypeScriptDiagnostic(diagnostics) {
     return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
+      /** @type {any} */
       const value = fromRelatedInformation(diag);
       value.relatedInformation = ri
         ? ri.map(fromRelatedInformation)
@@ -106,7 +124,7 @@ delete Object.prototype.__proto__;
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
     // TS1208: All files must be modules when the '--isolatedModules' flag is
-    // provided.  We can ignore because we guarantuee that all files are
+    // provided.  We can ignore because we guarantee that all files are
     // modules.
     1208,
     // TS1375: 'await' expressions are only allowed at the top level of a file
@@ -122,6 +140,9 @@ delete Object.prototype.__proto__;
     // TS2691: An import path cannot end with a '.ts' extension. Consider
     // importing 'bad-module' instead.
     2691,
+    // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
+    // option to 'node', or to add aliases to the 'paths' option?
+    2792,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -148,10 +169,72 @@ delete Object.prototype.__proto__;
     target: ts.ScriptTarget.ESNext,
   };
 
+  class ScriptSnapshot {
+    /** @type {string} */
+    specifier;
+    /** @type {string} */
+    version;
+    /**
+     * @param {string} specifier
+     * @param {string} version 
+     */
+    constructor(specifier, version) {
+      this.specifier = specifier;
+      this.version = version;
+    }
+    /**
+     * @param {number} start 
+     * @param {number} end 
+     * @returns {string}
+     */
+    getText(start, end) {
+      const { specifier, version } = this;
+      debug(
+        `snapshot.getText(${start}, ${end}) specifier: ${specifier} version: ${version}`,
+      );
+      return core.jsonOpSync("op_get_text", { specifier, version, start, end });
+    }
+    /**
+     * @returns {number}
+     */
+    getLength() {
+      const { specifier, version } = this;
+      debug(`snapshot.getLength() specifier: ${specifier} version: ${version}`);
+      return core.jsonOpSync("op_get_length", { specifier, version });
+    }
+    /**
+     * @param {ScriptSnapshot} oldSnapshot
+     * @returns {ts.TextChangeRange | undefined}
+     */
+    getChangeRange(oldSnapshot) {
+      const { specifier, version } = this;
+      const { version: oldVersion } = oldSnapshot;
+      const oldLength = oldSnapshot.getLength();
+      debug(
+        `snapshot.getLength() specifier: ${specifier} oldVersion: ${oldVersion} version: ${version}`,
+      );
+      return core.jsonOpSync(
+        "op_get_change_range",
+        { specifier, oldLength, oldVersion, version },
+      );
+    }
+    dispose() {
+      const { specifier, version } = this;
+      debug(`snapshot.dispose() specifier: ${specifier} version: ${version}`);
+      core.jsonOpSync("op_dispose", { specifier, version });
+    }
+  }
+
+  /** @type {ts.CompilerOptions} */
+  let compilationSettings = {};
+
+  /** @type {ts.LanguageService} */
+  let languageService;
+
   /** An object literal of the incremental compiler host, which provides the
    * specific "bindings" to the Deno environment that tsc needs to work.
    *
-   * @type {ts.CompilerHost} */
+   * @type {ts.CompilerHost & ts.LanguageServiceHost} */
   const host = {
     fileExists(fileName) {
       debug(`host.fileExists("${fileName}")`);
@@ -231,20 +314,72 @@ delete Object.prototype.__proto__;
       debug(`host.resolveModuleNames()`);
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
-      /** @type {Array<[string, ts.Extension]>} */
+      /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = core.jsonOpSync("op_resolve", {
         specifiers,
         base,
       });
-      const r = resolved.map(([resolvedFileName, extension]) => ({
-        resolvedFileName,
-        extension,
-        isExternalLibraryImport: false,
-      }));
-      return r;
+      if (resolved) {
+        const result = resolved.map((item) => {
+          if (item) {
+            const [resolvedFileName, extension] = item;
+            return {
+              resolvedFileName,
+              extension,
+              isExternalLibraryImport: false,
+            };
+          }
+          return undefined;
+        });
+        result.length = specifiers.length;
+        return result;
+      } else {
+        return new Array(specifiers.length);
+      }
     },
     createHash(data) {
       return core.jsonOpSync("op_create_hash", { data }).hash;
+    },
+
+    // LanguageServiceHost
+    getCompilationSettings() {
+      debug("host.getCompilationSettings()");
+      return compilationSettings;
+    },
+    getScriptFileNames() {
+      debug("host.getScriptFileNames()");
+      return core.jsonOpSync("op_script_names", undefined);
+    },
+    getScriptVersion(specifier) {
+      debug(`host.getScriptVersion("${specifier}")`);
+      const sourceFile = sourceFileCache.get(specifier);
+      if (sourceFile) {
+        return sourceFile.version ?? "1";
+      }
+      return core.jsonOpSync("op_script_version", { specifier });
+    },
+    getScriptSnapshot(specifier) {
+      debug(`host.getScriptSnapshot("${specifier}")`);
+      const sourceFile = sourceFileCache.get(specifier);
+      if (sourceFile) {
+        return {
+          getText(start, end) {
+            return sourceFile.text.substring(start, end);
+          },
+          getLength() {
+            return sourceFile.text.length;
+          },
+          getChangeRange() {
+            return undefined;
+          },
+        };
+      }
+      /** @type {string | undefined} */
+      const version = core.jsonOpSync("op_script_version", { specifier });
+      if (version != null) {
+        return new ScriptSnapshot(specifier, version);
+      }
+      return undefined;
     },
   };
 
@@ -254,10 +389,13 @@ delete Object.prototype.__proto__;
 
   function performanceStart() {
     stats.length = 0;
-    statsStart = new Date();
+    statsStart = Date.now();
     ts.performance.enable();
   }
 
+  /**
+   * @param {{ program: ts.Program | ts.EmitAndSemanticDiagnosticsBuilderProgram, fileCount?: number }} options 
+   */
   function performanceProgram({ program, fileCount }) {
     if (program) {
       if ("getProgram" in program) {
@@ -286,7 +424,7 @@ delete Object.prototype.__proto__;
   }
 
   function performanceEnd() {
-    const duration = new Date() - statsStart;
+    const duration = Date.now() - statsStart;
     stats.push(["Compile time", duration]);
     return stats;
   }
@@ -308,7 +446,7 @@ delete Object.prototype.__proto__;
     debug(config);
 
     const { options, errors: configFileParsingDiagnostics } = ts
-      .convertCompilerOptionsFromJson(config, "", "tsconfig.json");
+      .convertCompilerOptionsFromJson(config, "");
     // The `allowNonTsExtensions` is a "hidden" compiler option used in VSCode
     // which is not allowed to be passed in JSON, we need it to allow special
     // URLs which Deno supports. So we need to either ignore the diagnostic, or
@@ -340,6 +478,138 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  /**
+   * @param {number} id 
+   * @param {any} data 
+   */
+  function respond(id, data = null) {
+    core.jsonOpSync("op_respond", { id, data });
+  }
+
+  /**
+   * @param {LanguageServerRequest} request 
+   */
+  function serverRequest({ id, ...request }) {
+    debug(`serverRequest()`, { id, ...request });
+    switch (request.method) {
+      case "configure": {
+        const { options, errors } = ts
+          .convertCompilerOptionsFromJson(request.compilerOptions, "");
+        Object.assign(options, { allowNonTsExtensions: true });
+        if (errors.length) {
+          debug(ts.formatDiagnostics(errors, host));
+        }
+        compilationSettings = options;
+        return respond(id, true);
+      }
+      case "getAsset": {
+        const sourceFile = host.getSourceFile(
+          request.specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        return respond(id, sourceFile && sourceFile.text);
+      }
+      case "getDiagnostics": {
+        try {
+          const diagnostics = [
+            ...languageService.getSemanticDiagnostics(request.specifier),
+            ...languageService.getSuggestionDiagnostics(request.specifier),
+            ...languageService.getSyntacticDiagnostics(request.specifier),
+          ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+          return respond(id, fromTypeScriptDiagnostic(diagnostics));
+        } catch (e) {
+          error(e);
+          return respond(id, []);
+        }
+      }
+      case "getQuickInfo": {
+        return respond(
+          id,
+          languageService.getQuickInfoAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getCompletions": {
+        return respond(
+          id,
+          languageService.getCompletionsAtPosition(
+            request.specifier,
+            request.position,
+            request.preferences,
+          ),
+        );
+      }
+      case "getDocumentHighlights": {
+        return respond(
+          id,
+          languageService.getDocumentHighlights(
+            request.specifier,
+            request.position,
+            request.filesToSearch,
+          ),
+        );
+      }
+      case "getReferences": {
+        return respond(
+          id,
+          languageService.getReferencesAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getDefinition": {
+        return respond(
+          id,
+          languageService.getDefinitionAndBoundSpan(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getImplementation": {
+        return respond(
+          id,
+          languageService.getImplementationAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "findRenameLocations": {
+        return respond(
+          id,
+          languageService.findRenameLocations(
+            request.specifier,
+            request.position,
+            request.findInStrings,
+            request.findInComments,
+            request.providePrefixAndSuffixTextForRename,
+          ),
+        );
+      }
+      default:
+        throw new TypeError(
+          // @ts-ignore exhausted case statement sets type to never
+          `Invalid request method for request: "${request.method}" (${id})`,
+        );
+    }
+  }
+
+  /** @param {{ debug: boolean; }} init */
+  function serverInit({ debug: debugFlag }) {
+    if (hasStarted) {
+      throw new Error("The language server has already been initialized.");
+    }
+    hasStarted = true;
+    languageService = ts.createLanguageService(host);
+    core.ops();
+    setLogDebug(debugFlag, "TSLS");
+    debug("serverInit()");
+  }
+
   let hasStarted = false;
 
   /** Startup the runtime environment, setting various flags.
@@ -351,7 +621,6 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     core.ops();
-    core.registerErrorClass("Error", Error);
     setLogDebug(!!debugFlag, "TS");
   }
 
@@ -391,4 +660,9 @@ delete Object.prototype.__proto__;
   // checking TypeScript.
   globalThis.startup = startup;
   globalThis.exec = exec;
+
+  // exposes the functions that are called when the compiler is used as a
+  // language service.
+  globalThis.serverInit = serverInit;
+  globalThis.serverRequest = serverRequest;
 })(this);

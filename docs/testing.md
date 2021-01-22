@@ -9,6 +9,8 @@ To define a test you need to call `Deno.test` with a name and function to be
 tested. There are two styles you can use.
 
 ```ts
+import { assertEquals } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
+
 // Simple name and function, compact form, but not configurable
 Deno.test("hello world #1", () => {
   const x = 1 + 2;

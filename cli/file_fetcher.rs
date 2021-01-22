@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::http_cache::HttpCache;
@@ -6,8 +6,9 @@ use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
-use crate::permissions::Permissions;
 use crate::text_encoding;
+use crate::version::get_user_agent;
+use deno_runtime::permissions::Permissions;
 
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -16,7 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
-use deno_fetch::reqwest;
+use deno_runtime::deno_fetch::reqwest;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -26,7 +27,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-const SUPPORTED_SCHEMES: [&str; 3] = ["http", "https", "file"];
+pub const SUPPORTED_SCHEMES: [&str; 4] = ["data", "file", "http", "https"];
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -131,7 +132,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
 /// string.
-fn get_source_from_bytes(
+pub fn get_source_from_bytes(
   bytes: Vec<u8>,
   maybe_charset: Option<String>,
 ) -> Result<String, AnyError> {
@@ -142,6 +143,41 @@ fn get_source_from_bytes(
   };
 
   Ok(source)
+}
+
+fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<(String, MediaType, String), AnyError> {
+  let url = specifier.as_url();
+  if url.scheme() != "data" {
+    return Err(custom_error(
+      "BadScheme",
+      format!("Unexpected scheme of \"{}\"", url.scheme()),
+    ));
+  }
+  let path = url.path();
+  let mut parts = path.splitn(2, ',');
+  let media_type_part =
+    percent_encoding::percent_decode_str(parts.next().unwrap())
+      .decode_utf8()?;
+  let data_part = if let Some(data) = parts.next() {
+    data
+  } else {
+    return Err(custom_error(
+      "BadUrl",
+      "The data URL is badly formed, missing a comma.",
+    ));
+  };
+  let (media_type, maybe_charset) =
+    map_content_type(specifier, Some(media_type_part.to_string()));
+  let is_base64 = media_type_part.rsplit(';').any(|p| p == "base64");
+  let bytes = if is_base64 {
+    base64::decode(data_part)?
+  } else {
+    percent_encoding::percent_decode_str(data_part).collect()
+  };
+  let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+  Ok((source, media_type, media_type_part.to_string()))
 }
 
 /// Return a validated scheme for a given module specifier.
@@ -161,7 +197,7 @@ fn get_validated_scheme(
 
 /// Resolve a media type and optionally the charset from a module specifier and
 /// the value of a content type header.
-fn map_content_type(
+pub fn map_content_type(
   specifier: &ModuleSpecifier,
   maybe_content_type: Option<String>,
 ) -> (MediaType, Option<String>) {
@@ -184,6 +220,8 @@ fn map_content_type(
       | "application/node" => {
         map_js_like_extension(specifier, MediaType::JavaScript)
       }
+      "text/jsx" => MediaType::JSX,
+      "text/tsx" => MediaType::TSX,
       "application/json" | "text/json" => MediaType::Json,
       "application/wasm" => MediaType::Wasm,
       // Handle plain and possibly webassembly
@@ -282,14 +320,14 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    maybe_ca_file: Option<&str>,
+    ca_data: Option<Vec<u8>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       allow_remote,
       cache: FileCache::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(maybe_ca_file)?,
+      http_client: create_http_client(get_user_agent(), ca_data)?,
     })
   }
 
@@ -353,6 +391,47 @@ impl FileFetcher {
     Ok(Some(file))
   }
 
+  /// Convert a data URL into a file, resulting in an error if the URL is
+  /// invalid.
+  fn fetch_data_url(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<File, AnyError> {
+    debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
+    match self.fetch_cached(specifier, 0) {
+      Ok(Some(file)) => return Ok(file),
+      Ok(None) => {}
+      Err(err) => return Err(err),
+    }
+
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "Specifier not found in cache: \"{}\", --cached-only is specified.",
+          specifier
+        ),
+      ));
+    }
+
+    let (source, media_type, content_type) =
+      get_source_from_data_url(specifier)?;
+    let local = self.http_cache.get_cache_filename(specifier.as_url());
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), content_type);
+    self
+      .http_cache
+      .set(specifier.as_url(), headers, source.as_bytes())?;
+
+    Ok(File {
+      local,
+      maybe_types: None,
+      media_type,
+      source,
+      specifier: specifier.clone(),
+    })
+  }
+
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -363,25 +442,25 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
     permissions: &Permissions,
     redirect_limit: i64,
-  ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
       return futures::future::err(custom_error("Http", "Too many redirects."))
-        .boxed_local();
+        .boxed();
     }
 
     if let Err(err) = permissions.check_specifier(specifier) {
-      return futures::future::err(err).boxed_local();
+      return futures::future::err(err).boxed();
     }
 
     if self.cache_setting.should_use(specifier) {
       match self.fetch_cached(specifier, redirect_limit) {
         Ok(Some(file)) => {
-          return futures::future::ok(file).boxed_local();
+          return futures::future::ok(file).boxed();
         }
         Ok(None) => {}
         Err(err) => {
-          return futures::future::err(err).boxed_local();
+          return futures::future::err(err).boxed();
         }
       }
     }
@@ -394,7 +473,7 @@ impl FileFetcher {
           specifier
         ),
       ))
-      .boxed_local();
+      .boxed();
     }
 
     info!("{} {}", colors::green("Download"), specifier);
@@ -435,7 +514,7 @@ impl FileFetcher {
         }
       }
     }
-    .boxed_local()
+    .boxed()
   }
 
   /// Fetch a source file and asynchronously return it.
@@ -449,26 +528,27 @@ impl FileFetcher {
     permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
       Ok(file)
-    } else {
-      let is_local = scheme == "file";
-      if is_local {
-        fetch_local(specifier)
-      } else if !self.allow_remote {
-        Err(custom_error(
-          "NoRemote",
-          format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
-        ))
-      } else {
-        let result = self.fetch_remote(specifier, permissions, 10).await;
-        // only cache remote resources, as they are the only things that would
-        // be "expensive" to fetch multiple times during an invocation, and it
-        // also allows local file sources to be changed, enabling things like
-        // dynamic import and workers to be updated while Deno is running.
-        if let Ok(file) = &result {
-          self.cache.insert(specifier.clone(), file.clone());
-        }
-        result
+    } else if scheme == "file" {
+      // we do not in memory cache files, as this would prevent files on the
+      // disk changing effecting things like workers and dynamic imports.
+      fetch_local(specifier)
+    } else if scheme == "data" {
+      let result = self.fetch_data_url(specifier);
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
       }
+      result
+    } else if !self.allow_remote {
+      Err(custom_error(
+        "NoRemote",
+        format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
+      ))
+    } else {
+      let result = self.fetch_remote(specifier, permissions, 10).await;
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
+      }
+      result
     }
   }
 
@@ -581,12 +661,46 @@ mod tests {
   }
 
   #[test]
+  fn test_get_source_from_data_url() {
+    let fixtures = vec![
+      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
+      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=?a=b&b=c", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
+      ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
+      ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
+      ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
+      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::JSX, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
+      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::TSX, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
+    ];
+
+    for (
+      url_str,
+      expected_ok,
+      expected_media_type,
+      expected_media_type_str,
+      expected,
+    ) in fixtures
+    {
+      let specifier = ModuleSpecifier::resolve_url(url_str).unwrap();
+      let actual = get_source_from_data_url(&specifier);
+      assert_eq!(actual.is_ok(), expected_ok);
+      if expected_ok {
+        let (actual, actual_media_type, actual_media_type_str) =
+          actual.unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(actual_media_type, expected_media_type);
+        assert_eq!(actual_media_type_str, expected_media_type_str);
+      }
+    }
+  }
+
+  #[test]
   fn test_get_validated_scheme() {
     let fixtures = vec![
       ("https://deno.land/x/mod.ts", true, "https"),
       ("http://deno.land/x/mod.ts", true, "http"),
       ("file:///a/b/c.ts", true, "file"),
       ("file:///C:/a/b/c.ts", true, "file"),
+      ("data:,some%20text", true, "data"),
       ("ftp://a/b/c.ts", false, ""),
       ("mailto:dino@deno.land", false, ""),
     ];
@@ -687,6 +801,18 @@ mod tests {
         "https://deno.land/x/mod",
         Some("application/node".to_string()),
         MediaType::JavaScript,
+        None,
+      ),
+      (
+        "https://deno.land/x/mod",
+        Some("text/jsx".to_string()),
+        MediaType::JSX,
+        None,
+      ),
+      (
+        "https://deno.land/x/mod",
+        Some("text/tsx".to_string()),
+        MediaType::TSX,
         None,
       ),
       (
@@ -824,6 +950,25 @@ mod tests {
     let expected = temp_dir.path().join("deps");
     let actual = file_fetcher.get_http_cache_location();
     assert_eq!(actual, expected);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_data_url() {
+    let (file_fetcher, _) = setup(CacheSetting::Use, None);
+    let specifier = ModuleSpecifier::resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+
+    let result = file_fetcher
+      .fetch(&specifier, &Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    assert_eq!(
+      file.source,
+      "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+    );
+    assert_eq!(file.media_type, MediaType::TypeScript);
+    assert_eq!(file.maybe_types, None);
+    assert_eq!(file.specifier, specifier);
   }
 
   #[tokio::test]

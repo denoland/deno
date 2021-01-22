@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formating utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
@@ -122,7 +122,7 @@ pub fn print_rules_list(json: bool) {
   }
 }
 
-fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
+pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")

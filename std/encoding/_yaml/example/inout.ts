@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import { parse, stringify } from "../../yaml.ts";
 
@@ -23,5 +23,5 @@ const string = stringify(test);
 if (Deno.inspect(test) === Deno.inspect(parse(string))) {
   console.log("In-Out as expected.");
 } else {
-  console.log("Someting went wrong.");
+  console.log("Something went wrong.");
 }

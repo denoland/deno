@@ -1,9 +1,11 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::bad_resource_id;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
+use crate::resources::ResourceTable;
+use crate::runtime::GetErrorClassFn;
 use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
@@ -33,21 +35,16 @@ pub enum Op {
 
 /// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
-  pub resource_table: crate::ResourceTable,
-  pub resource_table_2: crate::resources2::ResourceTable,
+  pub resource_table: ResourceTable,
   pub op_table: OpTable,
-  pub get_error_class_fn: crate::runtime::GetErrorClassFn,
+  pub get_error_class_fn: GetErrorClassFn,
   gotham_state: GothamState,
 }
 
-impl Default for OpState {
-  // TODO(ry) Only deno_core should be able to construct an OpState. But I don't
-  // know how to make default private. Maybe rename to
-  //   pub(crate) fn new() -> OpState
-  fn default() -> OpState {
+impl OpState {
+  pub(crate) fn new() -> OpState {
     OpState {
       resource_table: Default::default(),
-      resource_table_2: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
@@ -119,7 +116,7 @@ impl Default for OpTable {
 
 #[test]
 fn op_table() {
-  let state = Rc::new(RefCell::new(OpState::default()));
+  let state = Rc::new(RefCell::new(OpState::new()));
 
   let foo_id;
   let bar_id;
@@ -279,7 +276,11 @@ pub fn op_resources(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let serialized_resources = state.resource_table.entries();
+  let serialized_resources: HashMap<u32, String> = state
+    .resource_table
+    .names()
+    .map(|(rid, name)| (rid, name.to_string()))
+    .collect();
   Ok(json!(serialized_resources))
 }
 
@@ -300,5 +301,6 @@ pub fn op_close(
     .resource_table
     .close(rid as u32)
     .ok_or_else(bad_resource_id)?;
+
   Ok(json!({}))
 }

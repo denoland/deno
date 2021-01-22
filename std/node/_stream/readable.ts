@@ -258,7 +258,7 @@ class Readable extends Stream {
 
     //TODO(Soremwar)
     //Part of doEnd condition
-    //In  node, output/inout are a duplex Stream
+    //In  node, output/input are a duplex Stream
     // &&
     // dest !== stdout &&
     // dest !== stderr

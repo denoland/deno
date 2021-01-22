@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import { DateTimeFormatter } from "./formatter.ts";
 
@@ -28,7 +28,8 @@ enum Day {
 export function parse(dateString: string, formatString: string): Date {
   const formatter = new DateTimeFormatter(formatString);
   const parts = formatter.parseToParts(dateString);
-  return formatter.partsToDate(parts);
+  const sortParts = formatter.sortDateTimeFormatPart(parts);
+  return formatter.partsToDate(sortParts);
 }
 
 /**
@@ -84,13 +85,13 @@ export function weekOfYear(date: Date): number {
 }
 
 /**
- * Parse a date to return a IMF formated string date
+ * Parse a date to return a IMF formatted string date
  * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1
  * IMF is the time format to use when generating times in HTTP
  * headers. The time being formatted must be in UTC for Format to
  * generate the correct format.
  * @param date Date to parse
- * @return IMF date formated string
+ * @return IMF date formatted string
  */
 export function toIMF(date: Date): string {
   function dtPad(v: string, lPad = 2): string {
@@ -233,16 +234,16 @@ function calculateMonthsDifference(bigger: number, smaller: number): number {
   const smallerDate = new Date(smaller);
   const yearsDiff = biggerDate.getFullYear() - smallerDate.getFullYear();
   const monthsDiff = biggerDate.getMonth() - smallerDate.getMonth();
-  const calendarDiffrences = Math.abs(yearsDiff * 12 + monthsDiff);
+  const calendarDifferences = Math.abs(yearsDiff * 12 + monthsDiff);
   const compareResult = biggerDate > smallerDate ? 1 : -1;
   biggerDate.setMonth(
-    biggerDate.getMonth() - compareResult * calendarDiffrences,
+    biggerDate.getMonth() - compareResult * calendarDifferences,
   );
   const isLastMonthNotFull = biggerDate > smallerDate
     ? 1
     : -1 === -compareResult
     ? 1
     : 0;
-  const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
+  const months = compareResult * (calendarDifferences - isLastMonthNotFull);
   return months === 0 ? 0 : months;
 }

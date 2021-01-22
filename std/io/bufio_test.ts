@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Based on https://github.com/golang/go/blob/891682/src/bufio/bufio_test.go
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -55,7 +55,7 @@ const readMakers: ReadMaker[] = [
     fn: (r): iotest.OneByteReader => new iotest.OneByteReader(r),
   },
   { name: "half", fn: (r): iotest.HalfReader => new iotest.HalfReader(r) },
-  // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
+  // TODO(bartlomieju): { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
 

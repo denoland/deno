@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
@@ -57,6 +57,7 @@ async function serve(rid) {
 
 async function main() {
   Deno.core.ops();
+  Deno.core.registerErrorClass("Error", Error);
 
   const listenerRid = listen();
   Deno.core.print(`http_bench_json_ops listening on http://127.0.0.1:4544/\n`);

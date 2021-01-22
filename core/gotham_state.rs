@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Forked from Gotham:
 // https://github.com/gotham-rs/gotham/blob/bcbbf8923789e341b7a0e62c59909428ca4e22e2/gotham/src/state/mod.rs
 // Copyright 2017 Gotham Project Developers. MIT license.
@@ -94,6 +94,9 @@ mod tests {
     value: &'static str,
   }
 
+  type Alias1 = String;
+  type Alias2 = String;
+
   #[test]
   fn put_borrow1() {
     let mut state = GothamState::default();
@@ -164,5 +167,15 @@ mod tests {
     assert!(state.try_take::<MyStruct>().is_none());
     assert!(state.try_borrow_mut::<MyStruct>().is_none());
     assert!(state.try_borrow::<MyStruct>().is_none());
+  }
+
+  #[test]
+  fn type_alias() {
+    let mut state = GothamState::default();
+    state.put::<Alias1>("alias1".to_string());
+    state.put::<Alias2>("alias2".to_string());
+    assert_eq!(state.take::<Alias1>(), "alias2");
+    assert!(state.try_take::<Alias1>().is_none());
+    assert!(state.try_take::<Alias2>().is_none());
   }
 }

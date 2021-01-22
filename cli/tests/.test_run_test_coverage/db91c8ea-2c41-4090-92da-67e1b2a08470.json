@@ -1,0 +1,1 @@
+{"scriptId":"34","url":"deno:runtime/js/30_files.js","functions":[{"functionName":"get rid","ranges":[{"startOffset":2240,"endOffset":2273,"count":4}],"isBlockCoverage":true},{"functionName":"writeSync","ranges":[{"startOffset":2334,"endOffset":2391,"count":4}],"isBlockCoverage":true}]}
