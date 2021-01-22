@@ -326,8 +326,13 @@ impl StreamResource {
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = (*fs_file).0.as_mut().unwrap().read(buf).await?;
-      return Ok(nwritten);
+      let f = (*fs_file).0.as_mut().unwrap().try_clone().await?;
+      let mut fstd = f.into_std().await;
+      let read = tokio::task::block_in_place(move || {
+        use std::io::Read;
+        fstd.read(buf)
+      })?;
+      return Ok(read);
     } else if self.child_stdout.is_some() {
       debug_assert!(self.child_stdin.is_none());
       debug_assert!(self.child_stderr.is_none());
@@ -397,9 +402,13 @@ impl StreamResource {
       let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = (*fs_file).0.as_mut().unwrap().write(buf).await?;
-      (*fs_file).0.as_mut().unwrap().flush().await?;
-      return Ok(nwritten);
+      let f = (*fs_file).0.as_mut().unwrap().try_clone().await?;
+      let mut fstd = f.into_std().await;
+      let written = tokio::task::block_in_place(move || {
+        use std::io::Write;
+        fstd.write(buf)
+      })?;
+      return Ok(written);
     } else if self.child_stdin.is_some() {
       debug_assert!(self.child_stdout.is_none());
       debug_assert!(self.child_stderr.is_none());

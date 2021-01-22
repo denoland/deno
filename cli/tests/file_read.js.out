@@ -1,0 +1,600 @@
+Case bufferSize: 2, maxSize: 2
+READ 2
+b
+2
+2
+Case bufferSize: 4, maxSize: 2
+READ 2
+b
+2
+2
+Case bufferSize: 300, maxSize: 2
+READ 2
+b
+2
+2
+Case bufferSize: 16384, maxSize: 2
+READ 2
+b
+2
+2
+Case bufferSize: 16383, maxSize: 2
+READ 2
+b
+2
+2
+Case bufferSize: 32768, maxSize: 2
+READ 2
+b
+2
+2
+Case bufferSize: 4, maxSize: 4
+READ 4
+b
+4
+4
+Case bufferSize: 8, maxSize: 4
+READ 4
+b
+4
+4
+Case bufferSize: 300, maxSize: 4
+READ 4
+b
+4
+4
+Case bufferSize: 16384, maxSize: 4
+READ 4
+b
+4
+4
+Case bufferSize: 16383, maxSize: 4
+READ 4
+b
+4
+4
+Case bufferSize: 32768, maxSize: 4
+READ 4
+b
+4
+4
+Case bufferSize: 8, maxSize: 8
+READ 8
+b
+8
+8
+Case bufferSize: 16, maxSize: 8
+READ 8
+b
+8
+8
+Case bufferSize: 300, maxSize: 8
+READ 8
+b
+8
+8
+Case bufferSize: 16384, maxSize: 8
+READ 8
+b
+8
+8
+Case bufferSize: 16383, maxSize: 8
+READ 8
+b
+8
+8
+Case bufferSize: 32768, maxSize: 8
+READ 8
+b
+8
+8
+Case bufferSize: 16, maxSize: 16
+READ 16
+b
+16
+16
+Case bufferSize: 32, maxSize: 16
+READ 16
+b
+16
+16
+Case bufferSize: 300, maxSize: 16
+READ 16
+b
+16
+16
+Case bufferSize: 16384, maxSize: 16
+READ 16
+b
+16
+16
+Case bufferSize: 16383, maxSize: 16
+READ 16
+b
+16
+16
+Case bufferSize: 32768, maxSize: 16
+READ 16
+b
+16
+16
+Case bufferSize: 32, maxSize: 32
+READ 32
+b
+32
+32
+Case bufferSize: 64, maxSize: 32
+READ 32
+b
+32
+32
+Case bufferSize: 300, maxSize: 32
+READ 32
+b
+32
+32
+Case bufferSize: 16384, maxSize: 32
+READ 32
+b
+32
+32
+Case bufferSize: 16383, maxSize: 32
+READ 32
+b
+32
+32
+Case bufferSize: 32768, maxSize: 32
+READ 32
+b
+32
+32
+Case bufferSize: 64, maxSize: 64
+READ 64
+b
+64
+64
+Case bufferSize: 128, maxSize: 64
+READ 64
+b
+64
+64
+Case bufferSize: 300, maxSize: 64
+READ 64
+b
+64
+64
+Case bufferSize: 16384, maxSize: 64
+READ 64
+b
+64
+64
+Case bufferSize: 16383, maxSize: 64
+READ 64
+b
+64
+64
+Case bufferSize: 32768, maxSize: 64
+READ 64
+b
+64
+64
+Case bufferSize: 128, maxSize: 128
+READ 128
+b
+128
+128
+Case bufferSize: 256, maxSize: 128
+READ 128
+b
+128
+128
+Case bufferSize: 300, maxSize: 128
+READ 128
+b
+128
+128
+Case bufferSize: 16384, maxSize: 128
+READ 128
+b
+128
+128
+Case bufferSize: 16383, maxSize: 128
+READ 128
+b
+128
+128
+Case bufferSize: 32768, maxSize: 128
+READ 128
+b
+128
+128
+Case bufferSize: 256, maxSize: 256
+READ 256
+b
+256
+256
+Case bufferSize: 512, maxSize: 256
+READ 256
+b
+256
+256
+Case bufferSize: 300, maxSize: 256
+READ 256
+b
+256
+256
+Case bufferSize: 16384, maxSize: 256
+READ 256
+b
+256
+256
+Case bufferSize: 16383, maxSize: 256
+READ 256
+b
+256
+256
+Case bufferSize: 32768, maxSize: 256
+READ 256
+b
+256
+256
+Case bufferSize: 512, maxSize: 512
+READ 512
+b
+512
+512
+Case bufferSize: 1024, maxSize: 512
+READ 512
+b
+512
+512
+Case bufferSize: 300, maxSize: 512
+READ 512
+b
+512
+512
+Case bufferSize: 16384, maxSize: 512
+READ 512
+b
+512
+512
+Case bufferSize: 16383, maxSize: 512
+READ 512
+b
+512
+512
+Case bufferSize: 32768, maxSize: 512
+READ 512
+b
+512
+512
+Case bufferSize: 1024, maxSize: 1024
+READ 1024
+b
+1024
+1024
+Case bufferSize: 2048, maxSize: 1024
+READ 1024
+b
+1024
+1024
+Case bufferSize: 300, maxSize: 1024
+READ 1024
+b
+1024
+1024
+Case bufferSize: 16384, maxSize: 1024
+READ 1024
+b
+1024
+1024
+Case bufferSize: 16383, maxSize: 1024
+READ 1024
+b
+1024
+1024
+Case bufferSize: 32768, maxSize: 1024
+READ 1024
+b
+1024
+1024
+Case bufferSize: 2048, maxSize: 2048
+READ 2048
+b
+2048
+2048
+Case bufferSize: 4096, maxSize: 2048
+READ 2048
+b
+2048
+2048
+Case bufferSize: 300, maxSize: 2048
+READ 2048
+b
+2048
+2048
+Case bufferSize: 16384, maxSize: 2048
+READ 2048
+b
+2048
+2048
+Case bufferSize: 16383, maxSize: 2048
+READ 2048
+b
+2048
+2048
+Case bufferSize: 32768, maxSize: 2048
+READ 2048
+b
+2048
+2048
+Case bufferSize: 4096, maxSize: 4096
+READ 4096
+b
+4096
+4096
+Case bufferSize: 8192, maxSize: 4096
+READ 4096
+b
+4096
+4096
+Case bufferSize: 300, maxSize: 4096
+READ 4096
+b
+4096
+4096
+Case bufferSize: 16384, maxSize: 4096
+READ 4096
+b
+4096
+4096
+Case bufferSize: 16383, maxSize: 4096
+READ 4096
+b
+4096
+4096
+Case bufferSize: 32768, maxSize: 4096
+READ 4096
+b
+4096
+4096
+Case bufferSize: 8192, maxSize: 8192
+READ 8192
+b
+8192
+8192
+Case bufferSize: 16384, maxSize: 8192
+READ 8192
+b
+8192
+8192
+Case bufferSize: 300, maxSize: 8192
+READ 8192
+b
+8192
+8192
+Case bufferSize: 16384, maxSize: 8192
+READ 8192
+b
+8192
+8192
+Case bufferSize: 16383, maxSize: 8192
+READ 8192
+b
+8192
+8192
+Case bufferSize: 32768, maxSize: 8192
+READ 8192
+b
+8192
+8192
+Case bufferSize: 16384, maxSize: 16384
+READ 16384
+b
+16384
+16384
+Case bufferSize: 32768, maxSize: 16384
+READ 16384
+b
+16384
+16384
+Case bufferSize: 300, maxSize: 16384
+READ 16384
+b
+16384
+16384
+Case bufferSize: 16384, maxSize: 16384
+READ 16384
+b
+16384
+16384
+Case bufferSize: 16383, maxSize: 16384
+READ 16384
+b
+16384
+16384
+Case bufferSize: 32768, maxSize: 16384
+READ 16384
+b
+16384
+16384
+Case bufferSize: 32768, maxSize: 32768
+READ 32768
+b
+32768
+32768
+Case bufferSize: 65536, maxSize: 32768
+READ 32768
+b
+32768
+32768
+Case bufferSize: 300, maxSize: 32768
+READ 32768
+b
+32768
+32768
+Case bufferSize: 16384, maxSize: 32768
+READ 32768
+b
+32768
+32768
+Case bufferSize: 16383, maxSize: 32768
+READ 32768
+b
+32768
+32768
+Case bufferSize: 32768, maxSize: 32768
+READ 32768
+b
+32768
+32768
+Case bufferSize: 65536, maxSize: 65536
+READ 65536
+b
+65536
+65536
+Case bufferSize: 131072, maxSize: 65536
+READ 65536
+b
+65536
+65536
+Case bufferSize: 300, maxSize: 65536
+READ 65536
+b
+65536
+65536
+Case bufferSize: 16384, maxSize: 65536
+READ 65536
+b
+65536
+65536
+Case bufferSize: 16383, maxSize: 65536
+READ 65536
+b
+65536
+65536
+Case bufferSize: 32768, maxSize: 65536
+READ 65536
+b
+65536
+65536
+Case bufferSize: 131072, maxSize: 131072
+READ 131072
+b
+131072
+131072
+Case bufferSize: 262144, maxSize: 131072
+READ 131072
+b
+131072
+131072
+Case bufferSize: 300, maxSize: 131072
+READ 131072
+b
+131072
+131072
+Case bufferSize: 16384, maxSize: 131072
+READ 131072
+b
+131072
+131072
+Case bufferSize: 16383, maxSize: 131072
+READ 131072
+b
+131072
+131072
+Case bufferSize: 32768, maxSize: 131072
+READ 131072
+b
+131072
+131072
+Case bufferSize: 262144, maxSize: 262144
+READ 262144
+b
+262144
+262144
+Case bufferSize: 524288, maxSize: 262144
+READ 262144
+b
+262144
+262144
+Case bufferSize: 300, maxSize: 262144
+READ 262144
+b
+262144
+262144
+Case bufferSize: 16384, maxSize: 262144
+READ 262144
+b
+262144
+262144
+Case bufferSize: 16383, maxSize: 262144
+READ 262144
+b
+262144
+262144
+Case bufferSize: 32768, maxSize: 262144
+READ 262144
+b
+262144
+262144
+Case bufferSize: 524288, maxSize: 524288
+READ 524288
+b
+524288
+524288
+Case bufferSize: 1048576, maxSize: 524288
+READ 524288
+b
+524288
+524288
+Case bufferSize: 300, maxSize: 524288
+READ 524288
+b
+524288
+524288
+Case bufferSize: 16384, maxSize: 524288
+READ 524288
+b
+524288
+524288
+Case bufferSize: 16383, maxSize: 524288
+READ 524288
+b
+524288
+524288
+Case bufferSize: 32768, maxSize: 524288
+READ 524288
+b
+524288
+524288
+Case bufferSize: 1048576, maxSize: 1048576
+READ 1048576
+b
+1048576
+1048576
+Case bufferSize: 2097152, maxSize: 1048576
+READ 1048576
+b
+1048576
+1048576
+Case bufferSize: 300, maxSize: 1048576
+READ 1048576
+b
+1048576
+1048576
+Case bufferSize: 16384, maxSize: 1048576
+READ 1048576
+b
+1048576
+1048576
+Case bufferSize: 16383, maxSize: 1048576
+READ 1048576
+b
+1048576
+1048576
+Case bufferSize: 32768, maxSize: 1048576
+READ 1048576
+b
+1048576
+1048576

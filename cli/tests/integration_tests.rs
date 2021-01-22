@@ -3315,6 +3315,11 @@ itest!(cache_random_extension {
   http_server: true,
 });
 
+itest!(file_read {
+  args: "run --quiet --reload --allow-read --allow-write file_read.js",
+  output: "file_read.js.out",
+});
+
 // TODO(lucacasonato): reenable these tests once we figure out what is wrong with cafile tests
 // itest!(cafile_url_imports {
 //   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
