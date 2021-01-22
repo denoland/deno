@@ -8,13 +8,7 @@ import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
 import {
   decode,
-  decodedLen,
-  decodeString,
   encode,
-  encodedLen,
-  encodeToString,
-  errInvalidByte,
-  errLength,
 } from "./hex.ts";
 
 function toByte(s: string): number {
@@ -34,26 +28,15 @@ const testCases = [
 
 const errCases = [
   // encoded(hex) / error
-  ["0", errLength()],
-  ["zd4aa", errInvalidByte(toByte("z"))],
-  ["d4aaz", errInvalidByte(toByte("z"))],
-  ["30313", errLength()],
-  ["0g", errInvalidByte(new TextEncoder().encode("g")[0])],
-  ["00gg", errInvalidByte(new TextEncoder().encode("g")[0])],
-  ["0\x01", errInvalidByte(new TextEncoder().encode("\x01")[0])],
-  ["ffeed", errLength()],
+  ["0", _errLength()],
+  ["zd4aa", _errInvalidByte(toByte("z"))],
+  ["d4aaz", _errInvalidByte(toByte("z"))],
+  ["30313", _errLength()],
+  ["0g", _errInvalidByte(new TextEncoder().encode("g")[0])],
+  ["00gg", _errInvalidByte(new TextEncoder().encode("g")[0])],
+  ["0\x01", _errInvalidByte(new TextEncoder().encode("\x01")[0])],
+  ["ffeed", _errLength()],
 ];
-
-Deno.test({
-  name: "[encoding.hex] encodedLen",
-  fn(): void {
-    assertEquals(encodedLen(0), 0);
-    assertEquals(encodedLen(1), 2);
-    assertEquals(encodedLen(2), 4);
-    assertEquals(encodedLen(3), 6);
-    assertEquals(encodedLen(4), 8);
-  },
-});
 
 Deno.test({
   name: "[encoding.hex] encode",
@@ -72,26 +55,6 @@ Deno.test({
       assertEquals(dest.length, src.length * 2);
       assertEquals(new TextDecoder().decode(dest), enc);
     }
-  },
-});
-
-Deno.test({
-  name: "[encoding.hex] encodeToString",
-  fn(): void {
-    for (const [enc, dec] of testCases) {
-      assertEquals(encodeToString(new Uint8Array(dec as number[])), enc);
-    }
-  },
-});
-
-Deno.test({
-  name: "[encoding.hex] decodedLen",
-  fn(): void {
-    assertEquals(decodedLen(0), 0);
-    assertEquals(decodedLen(2), 1);
-    assertEquals(decodedLen(4), 2);
-    assertEquals(decodedLen(6), 3);
-    assertEquals(decodedLen(8), 4);
   },
 });
 
@@ -115,17 +78,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[encoding.hex] decodeString",
-  fn(): void {
-    for (const [enc, dec] of testCases) {
-      const dst = decodeString(enc as string);
-
-      assertEquals(dec, Array.from(dst));
-    }
-  },
-});
-
-Deno.test({
   name: "[encoding.hex] decode error",
   fn(): void {
     for (const [input, expectedErr] of errCases) {
@@ -138,17 +90,9 @@ Deno.test({
   },
 });
 
-Deno.test({
-  name: "[encoding.hex] decodeString error",
-  fn(): void {
-    for (const [input, expectedErr] of errCases) {
-      assertThrows(
-        (): void => {
-          decodeString(input as string);
-        },
-        Error,
-        (expectedErr as Error).message,
-      );
-    }
-  },
-});
+function _errLength() {
+  return new TypeError("odd length of hex string");
+}
+function _errInvalidByte(byte: number) {
+  new TypeError(`received invalid byte: ${new TextDecoder().decode(new Uint8Array([byte]))}`)
+}
