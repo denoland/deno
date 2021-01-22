@@ -45,3 +45,11 @@ building Go. We generally welcome direct ports of Go's code.
 Please ensure the copyright headers cite the code's origin.
 
 Follow the [style guide](https://deno.land/manual/contributing/style_guide).
+
+## Terminology
+decode/encode: is used when transferring between primitive js types.
+example- base32.decode given RFC4648 base32 string converts it to Uint8Array
+          base32.encode given Uint8Array converts it to RFC4648 base32 string representation
+parse/stringify: is for serializing objects to string and back to object
+example- Json.stringify - given an object converts it to string
+         Json.parse - given a string converts it to an object
