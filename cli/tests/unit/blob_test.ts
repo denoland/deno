@@ -2,7 +2,7 @@
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { concat } from "../../../std/bytes/mod.ts";
 
-const decoder = new TextDecoder()
+const decoder = new TextDecoder();
 
 unitTest(function blobString(): void {
   const b1 = new Blob(["Hello World"]);

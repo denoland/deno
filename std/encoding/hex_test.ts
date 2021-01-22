@@ -6,10 +6,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 
-import {
-  decode,
-  encode,
-} from "./hex.ts";
+import { decode, encode } from "./hex.ts";
 
 function toByte(s: string): number {
   return new TextEncoder().encode(s)[0];
@@ -94,5 +91,9 @@ function _errLength() {
   return new TypeError("odd length of hex string");
 }
 function _errInvalidByte(byte: number) {
-  new TypeError(`received invalid byte: ${new TextDecoder().decode(new Uint8Array([byte]))}`)
+  new TypeError(
+    `received invalid byte: ${
+      new TextDecoder().decode(new Uint8Array([byte]))
+    }`,
+  );
 }

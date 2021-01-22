@@ -16,7 +16,11 @@ function fromHexChar(byte: number): number {
   // 'A' <= byte && byte <= 'F'
   if (65 <= byte && byte <= 70) return byte - 65 + 10;
 
-  throw new TypeError(`received invalid byte: ${new TextDecoder().decode(new Uint8Array([byte]))}`)
+  throw new TypeError(
+    `received invalid byte: ${
+      new TextDecoder().decode(new Uint8Array([byte]))
+    }`,
+  );
 }
 
 /**
