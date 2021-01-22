@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { concat } from "../../../std/bytes/mod.ts";
-import { decode } from "../../../std/encoding/utf8.ts";
+
+const decoder = new TextDecoder()
 
 unitTest(function blobString(): void {
   const b1 = new Blob(["Hello World"]);
@@ -91,7 +92,7 @@ unitTest(async function blobStream(): Promise<void> {
     }
   };
   await read();
-  assertEquals(decode(bytes), "Hello World");
+  assertEquals(decoder.decode(bytes), "Hello World");
 });
 
 unitTest(async function blobArrayBuffer(): Promise<void> {
