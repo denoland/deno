@@ -87,7 +87,9 @@
     fsync: __bootstrap.fs.fsync,
     fdatasyncSync: __bootstrap.fs.fdatasyncSync,
     fdatasync: __bootstrap.fs.fdatasync,
-  };
+    symlink: __bootstrap.fs.symlink,
+    symlinkSync: __bootstrap.fs.symlinkSync,
+   };
 
   __bootstrap.denoNsUnstable = {
     signal: __bootstrap.signals.signal,
@@ -127,8 +129,6 @@
     futimeSync: __bootstrap.fs.futimeSync,
     utime: __bootstrap.fs.utime,
     utimeSync: __bootstrap.fs.utimeSync,
-    symlink: __bootstrap.fs.symlink,
-    symlinkSync: __bootstrap.fs.symlinkSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
   };
