@@ -33,6 +33,7 @@ use super::diagnostics::DiagnosticCollection;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::performance::Performance;
+use super::performance::PerformanceAverage;
 use super::sources;
 use super::sources::Sources;
 use super::text;
@@ -1308,12 +1309,16 @@ impl Inner {
   }
 
   fn get_performance(&self) -> LspResult<Option<Value>> {
-    let averages: Vec<(String, usize, u32)> = self
+    let averages: Vec<PerformanceAverage> = self
       .performance
       .lock()
       .unwrap()
       .averages()
-      .map(|(s, c, d)| (s, c, d.as_millis() as u32))
+      .map(|(n, c, d)| PerformanceAverage {
+        name: n,
+        count: c as u32,
+        average_duration: d.as_millis() as u32,
+      })
       .collect();
     Ok(Some(json!({ "averages": averages })))
   }
@@ -1797,7 +1802,7 @@ mod tests {
 
   #[derive(Deserialize)]
   struct PerformanceAverages {
-    averages: Vec<(String, u32, u32)>,
+    averages: Vec<PerformanceAverage>,
   }
   #[derive(Deserialize)]
   struct PerformanceResponse {
@@ -1838,6 +1843,7 @@ mod tests {
       (
         "performance_request.json",
         LspResponse::RequestAssert(|value| {
+          println!("{}", value);
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
           assert_eq!(resp.result.averages.len(), 9);

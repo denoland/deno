@@ -1,9 +1,19 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::time::Duration;
 use std::time::Instant;
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceAverage {
+  pub name: String,
+  pub count: u32,
+  pub average_duration: u32,
+}
 
 /// A structure which serves as a start of a measurement span.
 #[derive(Debug)]
