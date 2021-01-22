@@ -299,6 +299,8 @@ async fn compile_command(
   source_file: String,
   output: Option<PathBuf>,
   args: Vec<String>,
+  target: Option<String>,
+  lite: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
@@ -311,6 +313,7 @@ async fn compile_command(
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let program_state = ProgramState::new(flags.clone())?;
+  let deno_dir = &program_state.dir;
 
   let output = output.or_else(|| {
     infer_name_from_url(module_specifier.as_url()).map(PathBuf::from)
@@ -337,14 +340,20 @@ async fn compile_command(
     colors::green("Compile"),
     module_specifier.to_string()
   );
-  tools::standalone::create_standalone_binary(
+
+  // Select base binary based on `target` and `lite` arguments
+  let original_binary =
+    tools::standalone::get_base_binary(deno_dir, target, lite).await?;
+
+  let final_bin = tools::standalone::create_standalone_binary(
+    original_binary,
     bundle_str,
     run_flags,
-    output.clone(),
-  )
-  .await?;
+  )?;
 
   info!("{} {}", colors::green("Emit"), output.display());
+
+  tools::standalone::write_standalone_binary(output.clone(), final_bin).await?;
 
   Ok(())
 }
@@ -798,9 +807,10 @@ async fn format_command(
   args: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   check: bool,
+  ext: String,
 ) -> Result<(), AnyError> {
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(check);
+    return tools::fmt::format_stdin(check, ext);
   }
 
   tools::fmt::format(args, ignore, check, flags.watch).await?;
@@ -1162,12 +1172,16 @@ fn get_subcommand(
       source_file,
       output,
       args,
-    } => compile_command(flags, source_file, output, args).boxed_local(),
+      lite,
+      target,
+    } => compile_command(flags, source_file, output, args, target, lite)
+      .boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,
       ignore,
-    } => format_command(flags, files, ignore, check).boxed_local(),
+      ext,
+    } => format_command(flags, files, ignore, check, ext).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
@@ -1236,6 +1250,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       let msg = format!(
         "{}: {}",
         colors::red_bold("error"),
+        // TODO(lucacasonato): print anyhow error chain here
         error.to_string().trim()
       );
       eprintln!("{}", msg);
