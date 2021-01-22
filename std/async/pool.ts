@@ -59,11 +59,9 @@ export function pooledMap<T, R>(
           errors.push(result.reason);
         }
       }
-      const p = Promise.reject(
+      writer.write(Promise.reject(
         new AggregateError(errors, "Threw while mapping."),
-      );
-      p.catch(() => {});
-      writer.write(p).catch(() => {});
+      )).catch(() => {});
     }
   })();
   return res.readable[Symbol.asyncIterator]();
