@@ -177,13 +177,13 @@ async fn download_package(
 pub fn unpack(
   archive_data: Vec<u8>,
   exe_name: &str,
-  windows: bool,
+  is_windows: bool,
 ) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
   let temp_dir = TempDir::new()?.into_path();
-  let exe_ext = if windows { "exe" } else { "" };
+  let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = temp_dir.join(exe_name).with_extension(".zip");
   let exe_path = temp_dir.join(exe_name).with_extension(exe_ext);
   assert!(!exe_path.exists());
