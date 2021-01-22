@@ -1411,13 +1411,15 @@ mod tests {
     RequestAssert(V),
   }
 
+  type LspTestHarnessRequest = (&'static str, LspResponse<fn(Value)>);
+
   struct LspTestHarness {
-    requests: Vec<(&'static str, LspResponse<fn(Value)>)>,
+    requests: Vec<LspTestHarnessRequest>,
     service: Spawn<LspService>,
   }
 
   impl LspTestHarness {
-    pub fn new(requests: Vec<(&'static str, LspResponse<fn(Value)>)>) -> Self {
+    pub fn new(requests: Vec<LspTestHarnessRequest>) -> Self {
       let (service, _) = LspService::new(LanguageServer::new);
       let service = Spawn::new(service);
       Self { requests, service }
