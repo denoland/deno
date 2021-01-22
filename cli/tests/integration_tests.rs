@@ -2691,6 +2691,12 @@ itest!(_082_prepare_stack_trace_throw {
   exit_code: 1,
 });
 
+itest!(location_invalid_protocol {
+  args: "run --location file:///Users/alice/test.ts test.ts",
+  output_str: Some("error: Invalid value for '--location <HREF>': Expected protocol \"http\" or \"https\"\n"),
+  exit_code: 1,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
