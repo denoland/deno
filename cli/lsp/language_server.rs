@@ -108,11 +108,7 @@ impl Inner {
     &self,
     specifier: ModuleSpecifier,
   ) -> Result<LineIndex, AnyError> {
-    let mark = self
-          .performance
-          .lock()
-          .unwrap()
-          .mark("get_line_index");
+    let mark = self.performance.lock().unwrap().mark("get_line_index");
     let result = if specifier.as_url().scheme() == "asset" {
       let maybe_asset = self.assets.get(&specifier).cloned();
       if let Some(maybe_asset) = maybe_asset {
@@ -149,11 +145,7 @@ impl Inner {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
-    let mark = self
-          .performance
-          .lock()
-          .unwrap()
-          .mark("get_line_index_sync");
+    let mark = self.performance.lock().unwrap().mark("get_line_index_sync");
     let maybe_line_index = if specifier.as_url().scheme() == "asset" {
       if let Some(Some(asset)) = self.assets.get(specifier) {
         Some(asset.line_index.clone())
@@ -795,14 +787,15 @@ impl Inner {
     ));
     // TODO(lucacasonato): handle error correctly
     let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
-    self.performance.lock().unwrap().measure(mark);
     // TODO(lucacasonato): handle error correctly
     let maybe_quick_info: Option<tsc::QuickInfo> =
       serde_json::from_value(res).unwrap();
     if let Some(quick_info) = maybe_quick_info {
       let hover = quick_info.to_hover(&line_index);
+      self.performance.lock().unwrap().measure(mark);
       Ok(Some(hover))
     } else {
+      self.performance.lock().unwrap().measure(mark);
       Ok(None)
     }
   }
@@ -942,6 +935,7 @@ impl Inner {
       self.performance.lock().unwrap().measure(mark);
       Ok(results)
     } else {
+      self.performance.lock().unwrap().measure(mark);
       Ok(None)
     }
   }
@@ -1327,7 +1321,11 @@ impl Inner {
     &self,
     params: VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
-    let mark = self.performance.lock().unwrap().mark("cache");
+    let mark = self
+      .performance
+      .lock()
+      .unwrap()
+      .mark("virtual_text_document");
     let specifier = utils::normalize_url(params.text_document.uri);
     let url = specifier.as_url();
     let contents = if url.as_str() == "deno:/status.md" {
@@ -1843,7 +1841,6 @@ mod tests {
       (
         "performance_request.json",
         LspResponse::RequestAssert(|value| {
-          println!("{}", value);
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
           assert_eq!(resp.result.averages.len(), 9);
