@@ -1141,6 +1141,7 @@ impl Inner {
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
+      "deno/performance" => self.get_performance(),
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -1306,6 +1307,17 @@ impl Inner {
     Ok(true)
   }
 
+  fn get_performance(&self) -> LspResult<Option<Value>> {
+    let averages: Vec<(String, usize, u32)> = self
+      .performance
+      .lock()
+      .unwrap()
+      .averages()
+      .map(|(s, c, d)| (s, c, d.as_millis() as u32))
+      .collect();
+    Ok(Some(json!({ "averages": averages })))
+  }
+
   async fn virtual_text_document(
     &self,
     params: VirtualTextDocumentParams,
@@ -1384,19 +1396,25 @@ mod tests {
   use std::time::Instant;
   use tower_test::mock::Spawn;
 
-  enum LspResponse {
+  enum LspResponse<V>
+  where
+    V: FnOnce(Value) -> (),
+  {
     None,
     RequestAny,
     Request(u64, Value),
+    RequestAssert(V),
   }
 
   struct LspTestHarness {
-    requests: Vec<(&'static str, LspResponse)>,
+    requests: Vec<(&'static str, LspResponse<fn(Value) -> ()>)>,
     service: Spawn<LspService>,
   }
 
   impl LspTestHarness {
-    pub fn new(requests: Vec<(&'static str, LspResponse)>) -> Self {
+    pub fn new(
+      requests: Vec<(&'static str, LspResponse<fn(Value) -> ()>)>,
+    ) -> Self {
       let (service, _) = LspService::new(LanguageServer::new);
       let service = Spawn::new(service);
       Self { requests, service }
@@ -1424,6 +1442,10 @@ mod tests {
                 resp,
                 jsonrpc::Response::ok(jsonrpc::Id::Number(*id), value.clone())
               ),
+              _ => panic!("unexpected result: {:?}", result),
+            },
+            LspResponse::RequestAssert(assert) => match result {
+              Some(jsonrpc::Outgoing::Response(resp)) => assert(json!(resp)),
               _ => panic!("unexpected result: {:?}", result),
             },
           },
@@ -1763,6 +1785,63 @@ mod tests {
             }]
           }),
         ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[derive(Deserialize)]
+  struct PerformanceAverages {
+    averages: Vec<(String, u32, u32)>,
+  }
+  #[derive(Deserialize)]
+  struct PerformanceResponse {
+    result: PerformanceAverages,
+  }
+
+  #[tokio::test]
+  async fn test_deno_performance_request() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification.json", LspResponse::None),
+      (
+        "hover_request.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "const Deno.args: string[]"
+              },
+              "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]"
+            ],
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 17
+              },
+              "end": {
+                "line": 0,
+                "character": 21
+              }
+            }
+          }),
+        ),
+      ),
+      (
+        "performance_request.json",
+        LspResponse::RequestAssert(|value| {
+          let resp: PerformanceResponse =
+            serde_json::from_value(value).unwrap();
+          assert_eq!(resp.result.averages.len(), 9);
+        }),
       ),
       (
         "shutdown_request.json",
