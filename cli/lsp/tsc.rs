@@ -3,6 +3,7 @@
 use super::analysis::ResolvedDependency;
 use super::language_server::StateSnapshot;
 use super::text;
+use super::text::LineIndex;
 use super::utils;
 
 use crate::media_type::MediaType;
@@ -32,6 +33,7 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::thread;
+use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -80,6 +82,14 @@ impl TsServer {
   }
 }
 
+/// An lsp representation of an asset in memory, that has either been retrieved
+/// from static assets built into Rust, or static assets built into tsc.
+#[derive(Debug, Clone)]
+pub struct AssetDocument {
+  pub text: String,
+  pub line_index: LineIndex,
+}
+
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
@@ -87,28 +97,41 @@ pub async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
   state_snapshot: &StateSnapshot,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
-  if let Some(asset_text) = tsc::get_asset(&specifier_str) {
-    Ok(Some(asset_text.to_string()))
+  if let Some(text) = tsc::get_asset(&specifier_str) {
+    let maybe_asset = Some(AssetDocument {
+      line_index: LineIndex::new(text),
+      text: text.to_string(),
+    });
+    state_snapshot
+      .assets
+      .lock()
+      .unwrap()
+      .insert(specifier.clone(), maybe_asset.clone());
+    Ok(maybe_asset)
   } else {
-    {
-      let assets = state_snapshot.assets.lock().unwrap();
-      if let Some(asset) = assets.get(specifier) {
-        return Ok(asset.clone());
-      }
-    }
-    let asset: Option<String> = serde_json::from_value(
-      ts_server
-        .request(
-          state_snapshot.clone(),
-          RequestMethod::GetAsset(specifier.clone()),
-        )
-        .await?,
-    )?;
-    let mut assets = state_snapshot.assets.lock().unwrap();
-    assets.insert(specifier.clone(), asset.clone());
-    Ok(asset)
+    let res = ts_server
+      .request(
+        state_snapshot.clone(),
+        RequestMethod::GetAsset(specifier.clone()),
+      )
+      .await?;
+    let maybe_text: Option<String> = serde_json::from_value(res)?;
+    let maybe_asset = if let Some(text) = maybe_text {
+      Some(AssetDocument {
+        line_index: LineIndex::new(&text),
+        text,
+      })
+    } else {
+      None
+    };
+    state_snapshot
+      .assets
+      .lock()
+      .unwrap()
+      .insert(specifier.clone(), maybe_asset.clone());
+    Ok(maybe_asset)
   }
 }
 
@@ -342,10 +365,10 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
-  pub fn to_range(&self, line_index: &[u32]) -> lsp_types::Range {
+  pub fn to_range(&self, line_index: &LineIndex) -> lsp_types::Range {
     lsp_types::Range {
-      start: text::to_position(line_index, self.start),
-      end: text::to_position(line_index, self.start + self.length),
+      start: line_index.position_tsc(self.start.into()),
+      end: line_index.position_tsc(TextSize::from(self.start + self.length)),
     }
   }
 }
@@ -376,7 +399,7 @@ pub struct QuickInfo {
 }
 
 impl QuickInfo {
-  pub fn to_hover(&self, line_index: &[u32]) -> lsp_types::Hover {
+  pub fn to_hover(&self, line_index: &LineIndex) -> lsp_types::Hover {
     let mut contents = Vec::<lsp_types::MarkedString>::new();
     if let Some(display_string) =
       display_parts_to_string(self.display_parts.clone())
@@ -425,12 +448,12 @@ pub struct DocumentSpan {
 impl DocumentSpan {
   pub async fn to_link<F, Fut>(
     &self,
-    line_index: &[u32],
+    line_index: &LineIndex,
     index_provider: F,
   ) -> Option<lsp_types::LocationLink>
   where
     F: Fn(ModuleSpecifier) -> Fut,
-    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
+    Fut: Future<Output = Result<LineIndex, AnyError>>,
   {
     let target_specifier =
       ModuleSpecifier::resolve_url(&self.file_name).unwrap();
@@ -486,15 +509,16 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub async fn into_workspace_edit<F, Fut>(
+  pub async fn into_workspace_edit<F, Fut, V>(
     self,
-    snapshot: StateSnapshot,
-    index_provider: F,
     new_name: &str,
+    index_provider: F,
+    version_provider: V,
   ) -> Result<lsp_types::WorkspaceEdit, AnyError>
   where
     F: Fn(ModuleSpecifier) -> Fut,
-    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
+    Fut: Future<Output = Result<LineIndex, AnyError>>,
+    V: Fn(ModuleSpecifier) -> Option<i32>,
   {
     let mut text_document_edit_map: HashMap<Url, lsp_types::TextDocumentEdit> =
       HashMap::new();
@@ -510,10 +534,7 @@ impl RenameLocations {
           lsp_types::TextDocumentEdit {
             text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
-              version: snapshot
-                .doc_data
-                .get(&specifier)
-                .map_or_else(|| None, |data| data.version),
+              version: version_provider(specifier.clone()),
             },
             edits: Vec::<
               lsp_types::OneOf<
@@ -592,12 +613,12 @@ pub struct DefinitionInfoAndBoundSpan {
 impl DefinitionInfoAndBoundSpan {
   pub async fn to_definition<F, Fut>(
     &self,
-    line_index: &[u32],
+    line_index: &LineIndex,
     index_provider: F,
   ) -> Option<lsp_types::GotoDefinitionResponse>
   where
     F: Fn(ModuleSpecifier) -> Fut + Clone,
-    Fut: Future<Output = Result<Vec<u32>, AnyError>>,
+    Fut: Future<Output = Result<LineIndex, AnyError>>,
   {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp_types::LocationLink>::new();
@@ -627,7 +648,7 @@ pub struct DocumentHighlights {
 impl DocumentHighlights {
   pub fn to_highlight(
     &self,
-    line_index: &[u32],
+    line_index: &LineIndex,
   ) -> Vec<lsp_types::DocumentHighlight> {
     self
       .highlight_spans
@@ -656,7 +677,7 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
-  pub fn to_location(&self, line_index: &[u32]) -> lsp_types::Location {
+  pub fn to_location(&self, line_index: &LineIndex) -> lsp_types::Location {
     let uri =
       utils::normalize_file_name(&self.document_span.file_name).unwrap();
     lsp_types::Location {
@@ -676,7 +697,7 @@ pub struct CompletionInfo {
 impl CompletionInfo {
   pub fn into_completion_response(
     self,
-    line_index: &[u32],
+    line_index: &LineIndex,
   ) -> lsp_types::CompletionResponse {
     let items = self
       .entries
@@ -704,7 +725,7 @@ pub struct CompletionEntry {
 impl CompletionEntry {
   pub fn into_completion_item(
     self,
-    line_index: &[u32],
+    line_index: &LineIndex,
   ) -> lsp_types::CompletionItem {
     let mut item = lsp_types::CompletionItem {
       label: self.name,
@@ -801,11 +822,13 @@ fn cache_snapshot(
     .contains_key(&(specifier.clone().into(), version.clone().into()))
   {
     let s = ModuleSpecifier::resolve_url(&specifier)?;
-    let content = {
-      let file_cache = state.state_snapshot.file_cache.lock().unwrap();
-      let file_id = file_cache.lookup(&s).unwrap();
-      file_cache.get_contents(file_id)?
-    };
+    let content = state
+      .state_snapshot
+      .documents
+      .lock()
+      .unwrap()
+      .content(&s)?
+      .unwrap();
     state
       .snapshots
       .insert((specifier.into(), version.into()), content);
@@ -873,7 +896,7 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
           "start": 0,
           "length": v.old_length,
         },
-        "newLength": current.chars().count(),
+        "newLength": current.encode_utf16().count(),
       }))
     }
   } else {
@@ -890,16 +913,22 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
 fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if state.state_snapshot.doc_data.contains_key(&specifier) {
+  if state
+    .state_snapshot
+    .documents
+    .lock()
+    .unwrap()
+    .contains(&specifier)
+  {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     let content = state
       .snapshots
       .get(&(v.specifier.into(), v.version.into()))
       .unwrap();
-    Ok(json!(content.chars().count()))
+    Ok(json!(content.encode_utf16().count()))
   } else {
     let mut sources = state.state_snapshot.sources.lock().unwrap();
-    Ok(json!(sources.get_length(&specifier).unwrap()))
+    Ok(json!(sources.get_length_utf16(&specifier).unwrap()))
   }
 }
 
@@ -915,7 +944,13 @@ struct GetTextArgs {
 fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: GetTextArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  let content = if state.state_snapshot.doc_data.contains_key(&specifier) {
+  let content = if state
+    .state_snapshot
+    .documents
+    .lock()
+    .unwrap()
+    .contains(&specifier)
+  {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     state
       .snapshots
@@ -939,8 +974,9 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
     return Err(custom_error("Deadlock", "deadlock locking sources"));
   };
 
-  if let Some(doc_data) = state.state_snapshot.doc_data.get(&referrer) {
-    if let Some(dependencies) = &doc_data.dependencies {
+  let documents = state.state_snapshot.documents.lock().unwrap();
+  if documents.contains(&referrer) {
+    if let Some(dependencies) = documents.dependencies(&referrer) {
       for specifier in &v.specifiers {
         if specifier.starts_with("asset:///") {
           resolved.push(Some((
@@ -959,10 +995,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           if let ResolvedDependency::Resolved(resolved_specifier) =
             resolved_import
           {
-            if state
-              .state_snapshot
-              .doc_data
-              .contains_key(&resolved_specifier)
+            if documents.contains(&resolved_specifier)
               || sources.contains(&resolved_specifier)
             {
               let media_type = if let Some(media_type) =
@@ -1001,7 +1034,10 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   } else {
     return Err(custom_error(
       "NotFound",
-      "the referring specifier is unexpectedly missing",
+      format!(
+        "the referring ({}) specifier is unexpectedly missing",
+        referrer
+      ),
     ));
   }
 
@@ -1014,8 +1050,8 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 }
 
 fn script_names(state: &mut State, _args: Value) -> Result<Value, AnyError> {
-  let script_names: Vec<&ModuleSpecifier> =
-    state.state_snapshot.doc_data.keys().collect();
+  let documents = state.state_snapshot.documents.lock().unwrap();
+  let script_names = documents.open_specifiers();
   Ok(json!(script_names))
 }
 
@@ -1028,11 +1064,14 @@ struct ScriptVersionArgs {
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  let maybe_doc_data = state.state_snapshot.doc_data.get(&specifier);
-  if let Some(doc_data) = maybe_doc_data {
-    if let Some(version) = doc_data.version {
-      return Ok(json!(version.to_string()));
-    }
+  if let Some(version) = state
+    .state_snapshot
+    .documents
+    .lock()
+    .unwrap()
+    .version(&specifier)
+  {
+    return Ok(json!(version.to_string()));
   } else {
     let mut sources = state.state_snapshot.sources.lock().unwrap();
     if let Some(version) = sources.get_script_version(&specifier) {
@@ -1153,13 +1192,14 @@ pub struct UserPreferences {
 }
 
 /// Methods that are supported by the Language Service in the compiler isolate.
+#[derive(Debug)]
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),
   /// Retrieve the text of an assets that exists in memory in the isolate.
   GetAsset(ModuleSpecifier),
   /// Return diagnostics for given file.
-  GetDiagnostics(ModuleSpecifier),
+  GetDiagnostics(Vec<ModuleSpecifier>),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Return document highlights at position.
@@ -1189,10 +1229,10 @@ impl RequestMethod {
         "method": "getAsset",
         "specifier": specifier,
       }),
-      RequestMethod::GetDiagnostics(specifier) => json!({
+      RequestMethod::GetDiagnostics(specifiers) => json!({
         "id": id,
         "method": "getDiagnostics",
-        "specifier": specifier,
+        "specifiers": specifiers,
       }),
       RequestMethod::GetQuickInfo((specifier, position)) => json!({
         "id": id,
@@ -1294,30 +1334,21 @@ pub fn request(
 
 #[cfg(test)]
 mod tests {
-  use super::super::memory_cache::MemoryCache;
   use super::*;
-  use crate::lsp::language_server::DocumentData;
-  use std::collections::HashMap;
+  use crate::lsp::documents::DocumentCache;
   use std::sync::Arc;
   use std::sync::Mutex;
 
   fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
-    let mut doc_data = HashMap::new();
-    let mut file_cache = MemoryCache::default();
+    let mut documents = DocumentCache::default();
     for (specifier, content, version) in sources {
       let specifier = ModuleSpecifier::resolve_url(specifier)
         .expect("failed to create specifier");
-      doc_data.insert(
-        specifier.clone(),
-        DocumentData::new(specifier.clone(), version, content, None),
-      );
-      file_cache.set_contents(specifier, Some(content.as_bytes().to_vec()));
+      documents.open(specifier, version, content.to_string());
     }
-    let file_cache = Arc::new(Mutex::new(file_cache));
     StateSnapshot {
       assets: Default::default(),
-      doc_data,
-      file_cache,
+      documents: Arc::new(Mutex::new(documents)),
       sources: Default::default(),
     }
   }
@@ -1413,29 +1444,31 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(vec![specifier]),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(
       response,
-      json!([
-        {
-          "start": {
-            "line": 0,
-            "character": 0,
-          },
-          "end": {
-            "line": 0,
-            "character": 7
-          },
-          "fileName": "file:///a.ts",
-          "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the `lib` compiler option to include 'dom'.",
-          "sourceLine": "console.log(\"hello deno\");",
-          "category": 1,
-          "code": 2584
-        }
-      ])
+      json!({
+        "file:///a.ts": [
+          {
+            "start": {
+              "line": 0,
+              "character": 0,
+            },
+            "end": {
+              "line": 0,
+              "character": 7
+            },
+            "fileName": "file:///a.ts",
+            "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the `lib` compiler option to include 'dom'.",
+            "sourceLine": "console.log(\"hello deno\");",
+            "category": 1,
+            "code": 2584
+          }
+        ]
+      })
     );
   }
 
@@ -1466,11 +1499,11 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(vec![specifier]),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
-    assert_eq!(response, json!([]));
+    assert_eq!(response, json!({ "file:///a.ts": [] }));
   }
 
   #[test]
@@ -1496,28 +1529,30 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(vec![specifier]),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(
       response,
-      json!([{
-        "start": {
-          "line": 1,
-          "character": 8
-        },
-        "end": {
-          "line": 1,
-          "character": 30
-        },
-        "fileName": "file:///a.ts",
-        "messageText": "\'A\' is declared but its value is never read.",
-        "sourceLine": "        import { A } from \".\";",
-        "category": 2,
-        "code": 6133,
-        "reportsUnnecessary": true,
-      }])
+      json!({
+        "file:///a.ts": [{
+          "start": {
+            "line": 1,
+            "character": 8
+          },
+          "end": {
+            "line": 1,
+            "character": 30
+          },
+          "fileName": "file:///a.ts",
+          "messageText": "\'A\' is declared but its value is never read.",
+          "sourceLine": "        import { A } from \".\";",
+          "category": 2,
+          "code": 6133,
+          "reportsUnnecessary": true,
+        }]
+      })
     );
   }
 
@@ -1548,11 +1583,11 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(vec![specifier]),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
-    assert_eq!(response, json!([]));
+    assert_eq!(response, json!({ "file:///a.ts": [] }));
   }
 
   #[test]
@@ -1585,42 +1620,44 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(vec![specifier]),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(
       response,
-      json!([{
-        "start": {
-          "line": 1,
-          "character": 8
-        },
-        "end": {
-          "line": 6,
-          "character": 55,
-        },
-        "fileName": "file:///a.ts",
-        "messageText": "All imports in import declaration are unused.",
-        "sourceLine": "        import {",
-        "category": 2,
-        "code": 6192,
-        "reportsUnnecessary": true
-      }, {
-        "start": {
-          "line": 8,
-          "character": 29
-        },
-        "end": {
-          "line": 8,
-          "character": 29
-        },
-        "fileName": "file:///a.ts",
-        "messageText": "Expression expected.",
-        "sourceLine": "        import * as test from",
-        "category": 1,
-        "code": 1109
-      }])
+      json!({
+        "file:///a.ts": [{
+          "start": {
+            "line": 1,
+            "character": 8
+          },
+          "end": {
+            "line": 6,
+            "character": 55,
+          },
+          "fileName": "file:///a.ts",
+          "messageText": "All imports in import declaration are unused.",
+          "sourceLine": "        import {",
+          "category": 2,
+          "code": 6192,
+          "reportsUnnecessary": true
+        }, {
+          "start": {
+            "line": 8,
+            "character": 29
+          },
+          "end": {
+            "line": 8,
+            "character": 29
+          },
+          "fileName": "file:///a.ts",
+          "messageText": "Expression expected.",
+          "sourceLine": "        import * as test from",
+          "category": 1,
+          "code": 1109
+        }]
+      })
     );
   }
 
@@ -1641,11 +1678,11 @@ mod tests {
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetDiagnostics(specifier),
+      RequestMethod::GetDiagnostics(vec![specifier]),
     );
     assert!(result.is_ok());
     let response = result.unwrap();
-    assert_eq!(response, json!([]));
+    assert_eq!(response, json!({}));
   }
 
   #[test]

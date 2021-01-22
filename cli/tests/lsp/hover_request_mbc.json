@@ -1,15 +1,14 @@
 {
   "jsonrpc": "2.0",
   "id": 2,
-  "method": "textDocument/rename",
+  "method": "textDocument/hover",
   "params": {
     "textDocument": {
       "uri": "file:///a/file.ts"
     },
     "position": {
-      "line": 0,
-      "character": 4
-    },
-    "newName": "variable_modified"
+      "line": 2,
+      "character": 14
+    }
   }
 }

@@ -70,7 +70,7 @@ declare global {
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
     method: "getDiagnostics";
-    specifier: string;
+    specifiers: string[];
   }
 
   interface GetQuickInfoRequest extends BaseLanguageServerRequest {
