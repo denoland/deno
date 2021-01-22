@@ -85,7 +85,7 @@ pub async fn generate_lint_diagnostics(
   tokio::task::spawn_blocking(move || {
     let mut diagnostic_list = Vec::new();
 
-    let documents = state_snapshot.documents.read().unwrap();
+    let documents = state_snapshot.documents.lock().unwrap();
     for specifier in documents.open_specifiers() {
       let version = documents.version(specifier);
       let current_version = diagnostic_collection.get_version(specifier);
@@ -240,7 +240,7 @@ pub async fn generate_ts_diagnostics(
   let mut diagnostics = Vec::new();
   let mut specifiers = Vec::new();
   {
-    let documents = state_snapshot.documents.read().unwrap();
+    let documents = state_snapshot.documents.lock().unwrap();
     for specifier in documents.open_specifiers() {
       let version = documents.version(specifier);
       let current_version = diagnostic_collection.get_version(specifier);
@@ -256,7 +256,7 @@ pub async fn generate_ts_diagnostics(
     for (specifier_str, ts_diagnostics) in ts_diagnostic_map.iter() {
       let specifier = ModuleSpecifier::resolve_url(specifier_str)?;
       let version =
-        state_snapshot.documents.read().unwrap().version(&specifier);
+        state_snapshot.documents.lock().unwrap().version(&specifier);
       diagnostics.push((
         specifier,
         version,
@@ -274,12 +274,12 @@ pub async fn generate_dependency_diagnostics(
   tokio::task::spawn_blocking(move || {
     let mut diagnostics = Vec::new();
 
-    let mut sources = if let Ok(sources) = state_snapshot.sources.write() {
+    let mut sources = if let Ok(sources) = state_snapshot.sources.lock() {
       sources
     } else {
       return Err(custom_error("Deadlock", "deadlock locking sources"));
     };
-    let documents = state_snapshot.documents.read().unwrap();
+    let documents = state_snapshot.documents.lock().unwrap();
     for specifier in documents.open_specifiers() {
       let version = documents.version(specifier);
       let current_version = diagnostic_collection.get_version(specifier);

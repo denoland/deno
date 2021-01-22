@@ -106,7 +106,7 @@ pub async fn get_asset(
     });
     state_snapshot
       .assets
-      .write()
+      .lock()
       .unwrap()
       .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
@@ -128,7 +128,7 @@ pub async fn get_asset(
     };
     state_snapshot
       .assets
-      .write()
+      .lock()
       .unwrap()
       .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
@@ -825,7 +825,7 @@ fn cache_snapshot(
     let content = state
       .state_snapshot
       .documents
-      .read()
+      .lock()
       .unwrap()
       .content(&s)?
       .unwrap();
@@ -916,7 +916,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   if state
     .state_snapshot
     .documents
-    .read()
+    .lock()
     .unwrap()
     .contains(&specifier)
   {
@@ -927,7 +927,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap();
     Ok(json!(content.encode_utf16().count()))
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     Ok(json!(sources.get_length_utf16(&specifier).unwrap()))
   }
 }
@@ -947,7 +947,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let content = if state
     .state_snapshot
     .documents
-    .read()
+    .lock()
     .unwrap()
     .contains(&specifier)
   {
@@ -958,7 +958,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap()
       .clone()
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     sources.get_text(&specifier).unwrap()
   };
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -968,13 +968,13 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
-  let mut sources = if let Ok(sources) = state.state_snapshot.sources.write() {
+  let mut sources = if let Ok(sources) = state.state_snapshot.sources.lock() {
     sources
   } else {
     return Err(custom_error("Deadlock", "deadlock locking sources"));
   };
 
-  let documents = state.state_snapshot.documents.read().unwrap();
+  let documents = state.state_snapshot.documents.lock().unwrap();
   if documents.contains(&referrer) {
     if let Some(dependencies) = documents.dependencies(&referrer) {
       for specifier in &v.specifiers {
@@ -1050,7 +1050,7 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 }
 
 fn script_names(state: &mut State, _args: Value) -> Result<Value, AnyError> {
-  let documents = state.state_snapshot.documents.read().unwrap();
+  let documents = state.state_snapshot.documents.lock().unwrap();
   let script_names = documents.open_specifiers();
   Ok(json!(script_names))
 }
@@ -1067,13 +1067,13 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   if let Some(version) = state
     .state_snapshot
     .documents
-    .read()
+    .lock()
     .unwrap()
     .version(&specifier)
   {
     return Ok(json!(version.to_string()));
   } else {
-    let mut sources = state.state_snapshot.sources.write().unwrap();
+    let mut sources = state.state_snapshot.sources.lock().unwrap();
     if let Some(version) = sources.get_script_version(&specifier) {
       return Ok(json!(version));
     }
@@ -1337,7 +1337,7 @@ mod tests {
   use super::*;
   use crate::lsp::documents::DocumentCache;
   use std::sync::Arc;
-  use std::sync::RwLock;
+  use std::sync::Mutex;
 
   fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
     let mut documents = DocumentCache::default();
@@ -1348,7 +1348,7 @@ mod tests {
     }
     StateSnapshot {
       assets: Default::default(),
-      documents: Arc::new(RwLock::new(documents)),
+      documents: Arc::new(Mutex::new(documents)),
       sources: Default::default(),
     }
   }
