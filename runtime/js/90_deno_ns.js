@@ -89,7 +89,7 @@
     fdatasync: __bootstrap.fs.fdatasync,
     symlink: __bootstrap.fs.symlink,
     symlinkSync: __bootstrap.fs.symlinkSync,
-   };
+  };
 
   __bootstrap.denoNsUnstable = {
     signal: __bootstrap.signals.signal,

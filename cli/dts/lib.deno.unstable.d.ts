@@ -463,7 +463,7 @@ declare namespace Deno {
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.
-     * 
+     *
      * *Note* by default, only TypeScript will be type checked, just like on
      * the command line.  Use the `compilerOptions` options of `checkJs` to
      * enable type checking of JavaScript. */
@@ -503,15 +503,15 @@ declare namespace Deno {
 
   /**
    * **UNSTABLE**: new API, yet to be vetted.
-   * 
+   *
    * Similar to the command line functionality of `deno run` or `deno cache`,
    * `Deno.emit()` provides a way to provide Deno arbitrary JavaScript
    * or TypeScript and have it return JavaScript based on the options and
    * settings provided. The source code can either be provided or the modules
    * can be fetched and resolved in line with the behavior of the command line.
-   * 
+   *
    * Requires `allow-read` and/or `allow-net` if sources are not provided.
-   * 
+   *
    * @param rootSpecifier The specifier that will be used as the entry point.
    *                      If no sources are provided, then the specifier would
    *                      be the same as if you typed it on the command line for
@@ -808,7 +808,7 @@ declare namespace Deno {
     | "TXT";
 
   export interface ResolveDnsOptions {
-    /** The name server to be used for lookups. 
+    /** The name server to be used for lookups.
     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
     nameServer?: {
       /** The IP address of the name server */

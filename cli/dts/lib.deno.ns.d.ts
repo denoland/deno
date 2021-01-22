@@ -2128,6 +2128,4 @@ declare namespace Deno {
     newpath: string,
     options?: SymlinkOptions,
   ): Promise<void>;
-
-
 }
