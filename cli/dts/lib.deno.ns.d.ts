@@ -2095,8 +2095,7 @@ declare namespace Deno {
     type: "file" | "dir";
   };
 
-  /** **UNSTABLE**: This API needs a security review.
-   *
+  /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
    * The options.type parameter can be set to `file` or `dir`. This argument is only
@@ -2113,8 +2112,7 @@ declare namespace Deno {
     options?: SymlinkOptions,
   ): void;
 
-  /** **UNSTABLE**: This API needs a security review.
-   *
+  /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
    * The options.type parameter can be set to `file` or `dir`. This argument is only
