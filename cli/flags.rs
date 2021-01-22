@@ -14,7 +14,6 @@ use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
@@ -684,23 +683,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
 
-  flags.coverage_dir = if matches.is_present("coverage") {
-    if let Some(coverage_dir) = matches.value_of("coverage") {
-      Some(coverage_dir.to_string())
-    } else {
-      Some(
-        TempDir::new()
-          .unwrap()
-          .into_path()
-          .to_str()
-          .unwrap()
-          .to_string(),
-      )
-    }
-  } else {
-    None
-  };
-
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
       .values_of("script_arg")
@@ -724,6 +706,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
     no_run,
     fail_fast,
@@ -1413,14 +1396,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("coverage")
         .long("coverage")
-        .min_values(0)
-        .max_values(1)
         .require_equals(true)
         .takes_value(true)
         .requires("unstable")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage information"),
+        .help("Collect coverage profile data"),
     )
     .arg(
       Arg::with_name("files")
