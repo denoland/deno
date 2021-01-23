@@ -459,7 +459,7 @@
     189000: 65536,
   };
 
-  const gb18030RangesKeys = Object.keys(gb18030Ranges);
+  const gb18030RangesKeys = Object.keys(gb18030Ranges).map(Number);
 
   function customBinarySearch(arr, ind) {
     let l = 0;
@@ -477,32 +477,30 @@
       }
     }
   }
-
+  
   function gb18030RangesCodePoint(pointer) {
     if ((pointer > 39419 && pointer < 189000) || pointer > 1237575) {
       return null;
     }
     if (pointer === 7457) {
-      return 0xE7C7;
+      return 0xe7c7;
     }
     let offset;
     if (gb18030Ranges[pointer]) {
       offset = pointer;
     } else if (pointer > 189000) {
-      offset = gb18030Ranges[189000];
+      offset = 189000;
     } else {
-      offset = customBinarySearch(gb18030RangesKeys, pointer);
+      offset = gb18030RangesKeys[customBinarySearch(gb18030RangesKeys, pointer)];
     }
     let codePointOffset = gb18030Ranges[offset];
     return codePointOffset + pointer - offset;
   }
-
-  function gb18030Decoder(
-    indexGb18030,
-    bytes,
-    fatal = false,
-    ignoreBOM = false,
-  ) {
+  
+  function gb18030Decoder(indexGb18030, bytes, fatal = false, ignoreBOM = false) {
+    if (ignoreBOM) {
+      throw new TypeError("Ignoring the BOM is available only with utf-8.");
+    }
     const result = [];
     let first = 0x00;
     let second = 0x00;
@@ -510,31 +508,37 @@
     for (let i = 0; i < bytes.length; i++) {
       const byte = bytes[i];
       if (third !== 0x00) {
-        if (!inRange(byte, 0x30, 0x39)) {
-          result.unshift(second, third, byte);
-          result.push(decoderError(fatal));
-          continue;
+        if (inRange(byte, 0x30, 0x39)) {
+          let codePoint = gb18030RangesCodePoint(
+            (first - 0x81) * (10 * 126 * 10) +
+              (second - 0x30) * (10 * 126) +
+              (third - 0x81) * 10 +
+              byte -
+              0x30
+          );
+          if (codePoint === null) {
+            first = 0x00;
+            second = 0x00;
+            third = 0x00;
+            result.push(decoderError(fatal));
+            continue;
+          }
+          result.push(codePoint);
+        } else {
+          result.push(decoderError(fatal), second, decoderError(fatal), byte);
         }
-        let codePoint = gb18030RangesCodePoint(
-          ((first - 0x81) * (10 * 126 * 10)) + ((second - 0x30) * (10 * 126)) +
-            ((third - 0x81) * 10) + byte - 0x30,
-        );
         first = 0x00;
         second = 0x00;
         third = 0x00;
-        if (codePoint === null) {
-          result.push(decoderError(fatal));
-          continue;
-        }
-        result.push(codePoint);
+        continue;
       }
       if (second !== 0x00) {
-        if (inRange(byte, 0x81, 0xFE)) {
+        if (inRange(byte, 0x81, 0xfe)) {
           third = byte;
           continue;
         }
-        result.unshift(second, byte);
         result.push(decoderError(fatal));
+        result.push(second);
         continue;
       }
       if (first !== 0x00) {
@@ -542,28 +546,22 @@
           second = byte;
           continue;
         }
-        let lead = first;
-        let pointer = null;
+        const lead = first;
+        const offset = byte < 0x7f ? 0x40 : 0x41;
+        const pointer =
+          inRange(byte, 0x40, 0x7e) || inRange(byte, 0x80, 0xfe)
+            ? (lead - 0x81) * 190 + (byte - offset)
+            : null;
         first = 0x00;
-        let offset = 0x41;
-        if (byte < 0x7F) {
-          offset = 0x40;
-        }
-        if (inRange(byte, 0x40, 0x7E) || inRange(0x80, 0xFE)) {
-          pointer = (lead - 0x81) * 190 + (byte - offset);
-        }
-        let codePoint = null;
-        if (pointer !== null) {
-          codePoint = indexGb18030[pointer];
-        }
+        const codePoint = pointer === null ? null : indexGb18030[pointer];
         if (codePoint) {
           result.push(codePoint);
           continue;
         }
-        if (isASCIIByte(byte)) {
-          result.unshift(byte);
-        }
         result.push(decoderError(fatal));
+        if (isASCIIByte(byte)) {
+          result.push(byte);
+        }
         continue;
       }
       if (isASCIIByte(byte)) {
@@ -571,10 +569,10 @@
         continue;
       }
       if (byte === 0x80) {
-        result.push(0x20AC);
+        result.push(0x20ac);
         continue;
       }
-      if (inRange(byte, 0x81, 0xFE)) {
+      if (inRange(byte, 0x81, 0xfe)) {
         first = byte;
         continue;
       }
@@ -4167,7 +4165,7 @@
           this.fatal,
           this.ignoreBOM,
         );
-        return String.fromCharCode.apply(null, result);
+        return String.fromCodePoint.apply(null, result);
       }
 
       const decoder = decoders.get(this.#encoding)({
