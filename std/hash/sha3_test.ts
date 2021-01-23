@@ -19,7 +19,7 @@ import {
 } from "./sha3.ts";
 import * as hex from "../encoding/hex.ts";
 
-const encoder = new TextEncoder(); 
+const encoder = new TextEncoder();
 const millionAs = "a".repeat(1000000);
 
 // deno-lint-ignore camelcase
