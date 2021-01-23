@@ -477,7 +477,7 @@
       }
     }
   }
-  
+
   function gb18030RangesCodePoint(pointer) {
     if ((pointer > 39419 && pointer < 189000) || pointer > 1237575) {
       return null;
@@ -491,13 +491,19 @@
     } else if (pointer > 189000) {
       offset = 189000;
     } else {
-      offset = gb18030RangesKeys[customBinarySearch(gb18030RangesKeys, pointer)];
+      offset =
+        gb18030RangesKeys[customBinarySearch(gb18030RangesKeys, pointer)];
     }
-    let codePointOffset = gb18030Ranges[offset];
+    const codePointOffset = gb18030Ranges[offset];
     return codePointOffset + pointer - offset;
   }
-  
-  function gb18030Decoder(indexGb18030, bytes, fatal = false, ignoreBOM = false) {
+
+  function gb18030Decoder(
+    indexGb18030,
+    bytes,
+    fatal = false,
+    ignoreBOM = false,
+  ) {
     if (ignoreBOM) {
       throw new TypeError("Ignoring the BOM is available only with utf-8.");
     }
@@ -509,12 +515,12 @@
       const byte = bytes[i];
       if (third !== 0x00) {
         if (inRange(byte, 0x30, 0x39)) {
-          let codePoint = gb18030RangesCodePoint(
+          const codePoint = gb18030RangesCodePoint(
             (first - 0x81) * (10 * 126 * 10) +
               (second - 0x30) * (10 * 126) +
               (third - 0x81) * 10 +
               byte -
-              0x30
+              0x30,
           );
           if (codePoint === null) {
             first = 0x00;
@@ -548,10 +554,9 @@
         }
         const lead = first;
         const offset = byte < 0x7f ? 0x40 : 0x41;
-        const pointer =
-          inRange(byte, 0x40, 0x7e) || inRange(byte, 0x80, 0xfe)
-            ? (lead - 0x81) * 190 + (byte - offset)
-            : null;
+        const pointer = inRange(byte, 0x40, 0x7e) || inRange(byte, 0x80, 0xfe)
+          ? (lead - 0x81) * 190 + (byte - offset)
+          : null;
         first = 0x00;
         const codePoint = pointer === null ? null : indexGb18030[pointer];
         if (codePoint) {
