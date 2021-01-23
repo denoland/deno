@@ -3,6 +3,8 @@ import * as hex from "../encoding/hex.ts";
 import * as base64 from "../encoding/base64.ts";
 import { Encodings, normalizeEncoding, notImplemented } from "./_utils.ts";
 
+const decoder = new TextDecoder();
+const encoder = new TextEncoder();
 const notImplementedEncodings = [
   "ascii",
   "binary",
@@ -37,8 +39,7 @@ interface EncodingOp {
 // https://github.com/nodejs/node/blob/56dbe466fdbc598baea3bfce289bf52b97b8b8f7/lib/buffer.js#L598
 const encodingOps: { [key: string]: EncodingOp } = {
   utf8: {
-    byteLength: (string: string): number =>
-      new TextEncoder().encode(string).byteLength,
+    byteLength: (string: string): number => encoder.encode(string).byteLength,
   },
   ucs2: {
     byteLength: (string: string): number => string.length * 2,
@@ -218,9 +219,11 @@ export class Buffer extends Uint8Array {
 
     if (typeof value == "string") {
       encoding = checkEncoding(encoding, false);
-      if (encoding === "hex") return new Buffer(hex.decodeString(value).buffer);
+      if (encoding === "hex") {
+        return new Buffer(hex.decode(encoder.encode(value)).buffer);
+      }
       if (encoding === "base64") return new Buffer(base64.decode(value).buffer);
-      return new Buffer(new TextEncoder().encode(value).buffer);
+      return new Buffer(encoder.encode(value).buffer);
     }
 
     // workaround for https://github.com/microsoft/TypeScript/issues/38446
@@ -434,7 +437,7 @@ export class Buffer extends Uint8Array {
     encoding = checkEncoding(encoding);
 
     const b = this.subarray(start, end);
-    if (encoding === "hex") return hex.encodeToString(b);
+    if (encoding === "hex") return decoder.decode(hex.encode(b));
     if (encoding === "base64") return base64.encode(b.buffer);
 
     return new TextDecoder(encoding).decode(b);
@@ -447,7 +450,7 @@ export class Buffer extends Uint8Array {
    * be written. However, partially encoded characters will not be written.
    */
   write(string: string, offset = 0, length = this.length): number {
-    return new TextEncoder().encodeInto(
+    return encoder.encodeInto(
       string,
       this.subarray(offset, offset + length),
     ).written;

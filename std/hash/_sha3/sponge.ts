@@ -103,7 +103,7 @@ export class Sponge {
     const rawOutput = this.squeeze(this.#option.bitsize >> 3);
     switch (format) {
       case "hex":
-        return hex.encodeToString(rawOutput);
+        return new TextDecoder().decode(hex.encode(rawOutput));
       default:
         throw new Error("sha3: invalid output format");
     }

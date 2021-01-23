@@ -66,7 +66,7 @@ export class Hash implements Hasher {
 
     switch (format) {
       case "hex":
-        return hex.encodeToString(finalized);
+        return new TextDecoder().decode(hex.encode(finalized));
       case "base64":
         return base64.encode(finalized);
       default:

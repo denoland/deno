@@ -234,7 +234,7 @@ export class Md5 {
 
     switch (format) {
       case "hex":
-        return hex.encodeToString(new Uint8Array(hash));
+        return new TextDecoder().decode(hex.encode(new Uint8Array(hash)));
       case "base64": {
         const data = new Uint8Array(hash);
         let dataString = "";
