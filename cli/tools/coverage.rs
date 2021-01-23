@@ -307,6 +307,14 @@ fn filter_coverages(
           return false;
         }
 
+        if url.path().ends_with("test.ts") {
+          return false;
+        }
+
+        if url.path().ends_with("test.js") {
+          return false;
+        }
+
         true
       } else {
           false
