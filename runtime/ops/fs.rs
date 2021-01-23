@@ -1207,9 +1207,8 @@ fn op_symlink_sync(
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
-  let oldpath = PathBuf::from(&args.oldpath);
+  let oldpath = canonicalize_path(&PathBuf::from(&args.oldpath))?;
   let newpath = PathBuf::from(&args.newpath);
-
   state.borrow::<Permissions>().check_write(&newpath)?;
 
   debug!(
@@ -1259,7 +1258,7 @@ async fn op_symlink_async(
   super::check_unstable2(&state, "Deno.symlink");
 
   let args: SymlinkArgs = serde_json::from_value(args)?;
-  let oldpath = PathBuf::from(&args.oldpath);
+  let oldpath = canonicalize_path(&PathBuf::from(&args.oldpath))?;
   let newpath = PathBuf::from(&args.newpath);
 
   {
