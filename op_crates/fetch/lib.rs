@@ -41,6 +41,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
+use tokio::task::JoinError;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::StreamReader;
 
@@ -185,7 +186,7 @@ where
     request = request.header(name, v);
   }
 
-  let fut = request.send();
+  let fut = tokio::spawn(async move { request.send().await });
 
   let request_rid = state
     .resource_table
@@ -220,7 +221,7 @@ pub async fn op_fetch_send(
     .ok()
     .expect("multiple op_fetch_send ongoing");
 
-  let res = match request.0.await {
+  let res = match request.0.await? {
     Ok(res) => res,
     Err(e) => return Err(type_error(e.to_string())),
   };
@@ -327,9 +328,9 @@ pub async fn op_fetch_response_read(
   let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
   Ok(json!({ "read": read }))
 }
-
+type ResponseFuture = Result<Response, reqwest::Error>;
 struct FetchRequestResource(
-  Pin<Box<dyn Future<Output = Result<Response, reqwest::Error>>>>,
+  Pin<Box<dyn Future<Output = Result<ResponseFuture, JoinError>>>>,
 );
 
 impl Resource for FetchRequestResource {
