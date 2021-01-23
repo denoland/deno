@@ -1,1 +1,0 @@
-{"scriptId":"63","url":"file:///home/caspervonb/deno/cli/tests/subdir/print_hello.ts","functions":[{"functionName":"","ranges":[{"startOffset":0,"endOffset":409,"count":1}],"isBlockCoverage":true},{"functionName":"printHello","ranges":[{"startOffset":7,"endOffset":58,"count":0}],"isBlockCoverage":false}]}
