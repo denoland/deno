@@ -324,11 +324,11 @@ fn filter_coverages(
 }
 
 pub async fn report_coverages(
+  flags: Flags,
   dir: &PathBuf,
   quiet: bool,
   exclude: Vec<String>,
 ) -> Result<(), AnyError> {
-  let flags = Flags::default();
   let program_state = ProgramState::new(flags)?;
 
   let coverages = collect_coverages(dir)?;

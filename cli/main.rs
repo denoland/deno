@@ -980,13 +980,13 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 }
 
 async fn cover_command(
-  _flags: Flags,
+  flags: Flags,
   dir: String,
   quiet: bool,
   ignore: Vec<String>,
 ) -> Result<(), AnyError> {
   let dir = PathBuf::from(dir);
-  tools::coverage::report_coverages(&dir, quiet, ignore).await?;
+  tools::coverage::report_coverages(flags.clone(), &dir, quiet, ignore).await?;
 
   Ok(())
 }
