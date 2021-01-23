@@ -305,6 +305,15 @@ delete Object.prototype.__proto__;
     defineEventHandler(window, "load", null);
     defineEventHandler(window, "unload", null);
 
+    const isUnloadDispatched = Symbol.for("isUnloadDispatched");
+    // Stores the flag for checking whether unload is dispatched or not.
+    // This prevents the recursive dispatches of unload events.
+    // See https://github.com/denoland/deno/issues/9201.
+    window[isUnloadDispatched] = false;
+    window.addEventListener("unload", () => {
+      window[isUnloadDispatched] = true;
+    });
+
     runtimeStart(runtimeOptions);
     const {
       args,

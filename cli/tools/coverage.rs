@@ -1,6 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
+use crate::ast::TokenOrComment;
 use crate::colors;
+use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::flags::Flags;
 use crate::program_state::ProgramState;
@@ -15,6 +18,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
+use swc_common::Span;
 use uuid::Uuid;
 
 pub struct CoverageCollector {
@@ -121,8 +125,16 @@ impl PrettyCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
   ) {
-    let lines = script_source.split('\n').collect::<Vec<_>>();
+    let mut ignored_spans: Vec<Span> = Vec::new();
+    for item in ast::lex("", script_source, &MediaType::JavaScript) {
+      if let TokenOrComment::Token(_) = item.inner {
+        continue;
+      }
 
+      ignored_spans.push(item.span);
+    }
+
+    let lines = script_source.split('\n').collect::<Vec<_>>();
     let mut covered_lines: Vec<usize> = Vec::new();
     let mut uncovered_lines: Vec<usize> = Vec::new();
 
@@ -131,6 +143,16 @@ impl PrettyCoverageReporter {
       let line_end_offset = line_start_offset + line.len();
 
       let mut count = 0;
+      let ignore = ignored_spans.iter().any(|span| {
+        (span.lo.0 as usize) <= line_start_offset
+          && (span.hi.0 as usize) >= line_end_offset
+      });
+
+      if ignore {
+        covered_lines.push(index);
+        continue;
+      }
+
       // Count the hits of ranges that include the entire line which will always be at-least one
       // as long as the code has been evaluated.
       for function in &script_coverage.functions {
