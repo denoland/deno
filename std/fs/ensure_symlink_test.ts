@@ -142,7 +142,9 @@ Deno.test("ensureSymlinkRelativeDirectory", function (): void {
   ensureSymlinkSync(testSourceDir, linkDir);
 
   const linkDirStat = Deno.lstatSync(path.join(testDir, linkDir));
-  const testFileStat = Deno.lstatSync(path.join(testDir, linkDir, testFileName));
+  const testFileStat = Deno.lstatSync(
+    path.join(testDir, linkDir, testFileName),
+  );
   assertEquals(testFileStat.isFile, true);
   assertEquals(linkDirStat.isSymlink, true);
 
