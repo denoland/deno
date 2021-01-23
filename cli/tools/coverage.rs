@@ -3,14 +3,14 @@
 use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;
+use crate::flags::Flags;
 use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
-use crate::flags::Flags;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_core::serde_json::json;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::inspector::InspectorSession;
 use deno_runtime::permissions::Permissions;
@@ -317,7 +317,7 @@ fn filter_coverages(
 
         true
       } else {
-          false
+        false
       }
     })
     .collect::<Vec<ScriptCoverage>>()
