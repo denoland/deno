@@ -90,7 +90,6 @@ async fn accept_tcp(
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
   tcp_stream.readable().await?;
-  tcp_stream.writable().await?;
   let mut state = state.borrow_mut();
   let rid = state
     .resource_table
