@@ -129,7 +129,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     self
       .state
       .op_table
-      .register_op(name, metrics_op(Box::new(plugin_op_fn)))
+      .register_op(name, metrics_op(name.to_string(), Box::new(plugin_op_fn)))
   }
 }
 

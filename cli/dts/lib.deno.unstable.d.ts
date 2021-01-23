@@ -1341,6 +1341,24 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): Promise<void>;
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
+  }
+
+  export interface OpMetrics {
+    opsDispatched: number;
+    opsDispatchedSync: number;
+    opsDispatchedAsync: number;
+    opsDispatchedAsyncUnref: number;
+    opsCompleted: number;
+    opsCompletedSync: number;
+    opsCompletedAsync: number;
+    opsCompletedAsyncUnref: number;
+    bytesSentControl: number;
+    bytesSentData: number;
+    bytesReceived: number;
+  }
 }
 
 declare function fetch(

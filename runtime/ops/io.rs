@@ -92,8 +92,14 @@ lazy_static! {
 }
 
 pub fn init(rt: &mut JsRuntime) {
-  rt.register_op("op_read", metrics_op(minimal_op(op_read)));
-  rt.register_op("op_write", metrics_op(minimal_op(op_write)));
+  rt.register_op(
+    "op_read",
+    metrics_op("op_read".to_string(), minimal_op(op_read)),
+  );
+  rt.register_op(
+    "op_write",
+    metrics_op("op_write".to_string(), minimal_op(op_write)),
+  );
 }
 
 pub fn get_stdio() -> (
