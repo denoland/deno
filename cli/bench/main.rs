@@ -101,6 +101,27 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &["bundle", "--no-check", "std/examples/chat/server_test.ts"],
     None,
   ),
+  (
+    "cold_read_write",
+    &[
+      "run",
+      "--reload",
+      "--allow-write",
+      "--allow-read",
+      "cli/tests/parallel_read.js",
+    ],
+    None,
+  ),
+  (
+    "read_write",
+    &[
+      "run",
+      "--allow-write",
+      "--allow-read",
+      "cli/tests/parallel_read.js",
+    ],
+    None,
+  ),
 ];
 
 const RESULT_KEYS: &[&str] =

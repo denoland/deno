@@ -48,7 +48,7 @@ const textWithBufferSize = async (file, bufferSize, maxSize) => {
 
     bytesRead += read;
     if (finalBuffer === null) {
-      finalBuffer = slice;
+      finalBuffer = slice.subarray(0, read);
     } else {
       const len = finalBuffer.length;
       const subslice = slice.subarray(0, read);
@@ -85,7 +85,7 @@ for (let i = minPowTwo; i <= maxPowTwo; i *= 2) {
   data += END_MARKER;
 
   const input = encoder.encode(data);
-  await Deno.write(file.rid, input);
+  await Deno.writeAll(file, input);
   await textWithBufferSize(file, i, i);
   await textWithBufferSize(file, 2 * i, i);
   await textWithBufferSize(file, 300, i);
@@ -93,6 +93,6 @@ for (let i = minPowTwo; i <= maxPowTwo; i *= 2) {
   await textWithBufferSize(file, (1024 * 16) - 1, i);
   await textWithBufferSize(file, 1024 * 32, i);
 
-  await Deno.remove(fileName);
   await Deno.close(file.rid);
+  await Deno.remove(fileName);
 }
