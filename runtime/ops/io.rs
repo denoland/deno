@@ -331,8 +331,8 @@ impl StreamResource {
       let read = tokio::task::block_in_place(move || {
         use std::io::Read;
         let read = fstd.read(buf);
-	  tokio::fs::File::from_std(fstd);
-	  read
+        tokio::fs::File::from_std(fstd);
+        read
       })?;
       return Ok(read);
     } else if self.child_stdout.is_some() {
@@ -408,9 +408,9 @@ impl StreamResource {
       let mut fstd = f.into_std().await;
       let written = tokio::task::block_in_place(move || {
         use std::io::Write;
-          let written = fstd.write(buf);
-	  tokio::fs::File::from_std(fstd);
-	  written
+        let written = fstd.write(buf);
+        tokio::fs::File::from_std(fstd);
+        written
       })?;
       return Ok(written);
     } else if self.child_stdin.is_some() {
