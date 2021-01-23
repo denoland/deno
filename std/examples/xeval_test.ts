@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { xeval } from "./xeval.ts";
 import { StringReader } from "../io/readers.ts";
-import { decode, encode } from "../encoding/utf8.ts";
 import {
   assert,
   assertEquals,
@@ -10,6 +9,8 @@ import {
 import { dirname, fromFileUrl } from "../path/mod.ts";
 
 const moduleDir = dirname(fromFileUrl(import.meta.url));
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];
@@ -49,10 +50,10 @@ Deno.test({
       stderr: "null",
     });
     assert(p.stdin != null);
-    await p.stdin.write(encode("hello"));
+    await p.stdin.write(encoder.encode("hello"));
     p.stdin.close();
     assertEquals(await p.status(), { code: 0, success: true });
-    assertEquals(decode(await p.output()).trimEnd(), "hello");
+    assertEquals(decoder.decode(await p.output()).trimEnd(), "hello");
     p.close();
   },
 });
@@ -66,7 +67,7 @@ Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
     stderr: "piped",
   });
   assertEquals(await p.status(), { code: 1, success: false });
-  assertEquals(decode(await p.output()), "");
-  assertStringIncludes(decode(await p.stderrOutput()), "SyntaxError");
+  assertEquals(decoder.decode(await p.output()), "");
+  assertStringIncludes(decoder.decode(await p.stderrOutput()), "SyntaxError");
   p.close();
 });

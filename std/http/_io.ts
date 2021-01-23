@@ -2,9 +2,10 @@
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../_util/assert.ts";
-import { encoder } from "../encoding/utf8.ts";
 import { Response, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
+
+const encoder = new TextEncoder();
 
 export function emptyReader(): Deno.Reader {
   return {

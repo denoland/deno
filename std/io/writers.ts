@@ -1,7 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 type Writer = Deno.Writer;
 type WriterSync = Deno.WriterSync;
-import { decode, encode } from "../encoding/utf8.ts";
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 /** Writer utility for buffering string chunks */
 export class StringWriter implements Writer, WriterSync {
@@ -10,7 +12,7 @@ export class StringWriter implements Writer, WriterSync {
   private cache: string | undefined;
 
   constructor(private base: string = "") {
-    const c = encode(base);
+    const c = encoder.encode(base);
     this.chunks.push(c);
     this.byteLength += c.byteLength;
   }
@@ -36,7 +38,7 @@ export class StringWriter implements Writer, WriterSync {
       buf.set(chunk, offs);
       offs += chunk.byteLength;
     }
-    this.cache = decode(buf);
+    this.cache = decoder.decode(buf);
     return this.cache;
   }
 }

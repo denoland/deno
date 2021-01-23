@@ -4,10 +4,11 @@ import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { encoder } from "../encoding/utf8.ts";
 import { assert } from "../_util/assert.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { hasOwnProperty } from "../_util/has_own_property.ts";
+
+const encoder = new TextEncoder();
 
 /** FormFile object */
 export interface FormFile {

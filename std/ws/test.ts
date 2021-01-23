@@ -20,10 +20,12 @@ import {
   unmask,
   writeFrame,
 } from "./mod.ts";
-import { decode, encode } from "../encoding/utf8.ts";
 import { delay } from "../async/delay.ts";
 import { serve } from "../http/server.ts";
 import { deferred } from "../async/deferred.ts";
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 Deno.test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
@@ -33,7 +35,7 @@ Deno.test("[ws] read unmasked text frame", async () => {
   const frame = await readFrame(buf);
   assertEquals(frame.opcode, OpCode.TextFrame);
   assertEquals(frame.mask, undefined);
-  const actual = new TextDecoder().decode(
+  const actual = decoder.decode(
     new Deno.Buffer(frame.payload).bytes(),
   );
   assertEquals(actual, "Hello");
@@ -62,7 +64,7 @@ Deno.test("[ws] read masked text frame", async () => {
   const frame = await readFrame(buf);
   assertEquals(frame.opcode, OpCode.TextFrame);
   unmask(frame.payload, frame.mask);
-  const actual = new TextDecoder().decode(
+  const actual = decoder.decode(
     new Deno.Buffer(frame.payload).bytes(),
   );
   assertEquals(actual, "Hello");
@@ -80,13 +82,13 @@ Deno.test("[ws] read unmasked split text frames", async () => {
   assertEquals(f1.isLastFrame, false);
   assertEquals(f1.mask, undefined);
   assertEquals(f1.opcode, OpCode.TextFrame);
-  const actual1 = new TextDecoder().decode(new Deno.Buffer(f1.payload).bytes());
+  const actual1 = decoder.decode(new Deno.Buffer(f1.payload).bytes());
   assertEquals(actual1, "Hel");
 
   assertEquals(f2.isLastFrame, true);
   assertEquals(f2.mask, undefined);
   assertEquals(f2.opcode, OpCode.Continue);
-  const actual2 = new TextDecoder().decode(new Deno.Buffer(f2.payload).bytes());
+  const actual2 = decoder.decode(new Deno.Buffer(f2.payload).bytes());
   assertEquals(actual2, "lo");
 });
 
@@ -97,7 +99,7 @@ Deno.test("[ws] read unmasked ping / pong frame", async () => {
   );
   const ping = await readFrame(buf);
   assertEquals(ping.opcode, OpCode.Ping);
-  const actual1 = new TextDecoder().decode(
+  const actual1 = decoder.decode(
     new Deno.Buffer(ping.payload).bytes(),
   );
   assertEquals(actual1, "Hello");
@@ -108,7 +110,7 @@ Deno.test("[ws] read unmasked ping / pong frame", async () => {
   assertEquals(pong.opcode, OpCode.Pong);
   assert(pong.mask !== undefined);
   unmask(pong.payload, pong.mask);
-  const actual2 = new TextDecoder().decode(
+  const actual2 = decoder.decode(
     new Deno.Buffer(pong.payload).bytes(),
   );
   assertEquals(actual2, "Hello");
@@ -211,7 +213,7 @@ Deno.test("[ws] write and read masked frame", async () => {
       isLastFrame: true,
       mask,
       opcode: OpCode.TextFrame,
-      payload: encode(msg),
+      payload: encoder.encode(msg),
     },
     buf,
   );
@@ -220,12 +222,12 @@ Deno.test("[ws] write and read masked frame", async () => {
   assertEquals(frame.isLastFrame, true);
   assertEquals(frame.mask, mask);
   unmask(frame.payload, frame.mask);
-  assertEquals(frame.payload, encode(msg));
+  assertEquals(frame.payload, encoder.encode(msg));
 });
 
 Deno.test("[ws] handshake should not send search when it's empty", async () => {
   const writer = new Deno.Buffer();
-  const reader = new Deno.Buffer(encode("HTTP/1.1 400\r\n"));
+  const reader = new Deno.Buffer(encoder.encode("HTTP/1.1 400\r\n"));
 
   await assertThrowsAsync(
     async (): Promise<void> => {
@@ -248,7 +250,7 @@ Deno.test(
   "[ws] handshake should send search correctly",
   async function wsHandshakeWithSearch(): Promise<void> {
     const writer = new Deno.Buffer();
-    const reader = new Deno.Buffer(encode("HTTP/1.1 400\r\n"));
+    const reader = new Deno.Buffer(encoder.encode("HTTP/1.1 400\r\n"));
 
     await assertThrowsAsync(
       async (): Promise<void> => {
@@ -322,9 +324,9 @@ Deno.test({
     const ping = await readFrame(bufr);
     const third = await readFrame(bufr);
     assertEquals(first.opcode, OpCode.TextFrame);
-    assertEquals(decode(first.payload), "first");
+    assertEquals(decoder.decode(first.payload), "first");
     assertEquals(first.opcode, OpCode.TextFrame);
-    assertEquals(decode(second.payload), "second");
+    assertEquals(decoder.decode(second.payload), "second");
     assertEquals(ping.opcode, OpCode.Ping);
     assertEquals(third.opcode, OpCode.BinaryFrame);
     assertEquals(bytes.equals(third.payload, new Uint8Array([3])), true);
@@ -458,7 +460,7 @@ Deno.test("[ws] WebSocket should act as asyncIterator", async () => {
   }
 
   assertEquals(events.length, 3);
-  assertEquals(events[0], ["ping", encode("Hello")]);
+  assertEquals(events[0], ["ping", encoder.encode("Hello")]);
   assertEquals(events[1], "Hello");
   assertEquals(events[2], { code: 1011, reason: "42" });
 });

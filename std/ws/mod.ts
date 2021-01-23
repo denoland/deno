@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { decode, encode } from "../encoding/utf8.ts";
 import { hasOwnProperty } from "../_util/has_own_property.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
@@ -9,6 +8,9 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../async/deferred.ts";
 import { assert } from "../_util/assert.ts";
 import { concat } from "../bytes/mod.ts";
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 export enum OpCode {
   Continue = 0x0,
@@ -248,7 +250,7 @@ class WebSocketImpl implements WebSocket {
             }
             if (frames[0].opcode === OpCode.TextFrame) {
               // text
-              yield decode(concat);
+              yield decoder.decode(concat);
             } else {
               // binary
               yield concat;
@@ -260,7 +262,7 @@ class WebSocketImpl implements WebSocket {
         case OpCode.Close: {
           // [0x12, 0x34] -> 0x1234
           const code = (frame.payload[0] << 8) | frame.payload[1];
-          const reason = decode(
+          const reason = decoder.decode(
             frame.payload.subarray(2, frame.payload.length),
           );
           await this.close(code, reason);
@@ -313,7 +315,7 @@ class WebSocketImpl implements WebSocket {
     const opcode = typeof data === "string"
       ? OpCode.TextFrame
       : OpCode.BinaryFrame;
-    const payload = typeof data === "string" ? encode(data) : data;
+    const payload = typeof data === "string" ? encoder.encode(data) : data;
     const isLastFrame = true;
     const frame = {
       isLastFrame,
@@ -325,7 +327,7 @@ class WebSocketImpl implements WebSocket {
   }
 
   ping(data: WebSocketMessage = ""): Promise<void> {
-    const payload = typeof data === "string" ? encode(data) : data;
+    const payload = typeof data === "string" ? encoder.encode(data) : data;
     const frame = {
       isLastFrame: true,
       opcode: OpCode.Ping,
@@ -345,7 +347,7 @@ class WebSocketImpl implements WebSocket {
       const header = [code >>> 8, code & 0x00ff];
       let payload: Uint8Array;
       if (reason) {
-        const reasonBytes = encode(reason);
+        const reasonBytes = encoder.encode(reason);
         payload = new Uint8Array(2 + reasonBytes.byteLength);
         payload.set(header);
         payload.set(reasonBytes, 2);
@@ -484,7 +486,7 @@ export async function handshake(
   }
   headerStr += "\r\n";
 
-  await bufWriter.write(encode(headerStr));
+  await bufWriter.write(encoder.encode(headerStr));
   await bufWriter.flush();
 
   const tpReader = new TextProtoReader(bufReader);
