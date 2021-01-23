@@ -4163,7 +4163,7 @@
         return String.fromCharCode.apply(null, result);
       }
 
-      if (this.#encoding === "big5" || this.#encoding === "gb18030") {
+      if (this.#encoding === "gbk" || this.#encoding === "gb18030") {
         const result = gb18030Decoder(
           encodingIndexes.get("gb18030"),
           bytes,
