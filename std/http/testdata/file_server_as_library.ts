@@ -1,7 +1,7 @@
 import { serve } from "../server.ts";
 import { serveFile } from "../file_server.ts";
 
-const server = serve({ port: 8000 });
+const server = serve({ port: 4504 });
 
 console.log("Server running...");
 

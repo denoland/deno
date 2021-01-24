@@ -5,6 +5,7 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
+use std::io::BufReader;
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::path::PathBuf;
@@ -5249,6 +5250,32 @@ fn jsonc_to_serde(j: jsonc_parser::JsonValue) -> serde_json::Value {
   }
 }
 
+struct WPTServer(std::process::Child);
+
+impl Drop for WPTServer {
+  fn drop(&mut self) {
+    match self.0.try_wait() {
+      Ok(None) => {
+        #[cfg(target_os = "linux")]
+        {
+          println!("libc kill");
+          unsafe {
+            libc::kill(self.0.id() as i32, libc::SIGTERM);
+          }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+          println!("std kill");
+          self.0.kill().expect("killing 'wpt serve' failed");
+        }
+        let _ = self.0.wait();
+      }
+      Ok(Some(status)) => panic!("'wpt serve' exited unexpectedly {}", status),
+      Err(e) => panic!("'wpt serve' error: {}", e),
+    }
+  }
+}
+
 #[test]
 fn web_platform_tests() {
   use deno_core::serde::Deserialize;
@@ -5269,6 +5296,61 @@ fn web_platform_tests() {
   let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
     deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
+
+  // Observation: `python3 wpt serve` hangs with the python3 from homebrew
+  // but works okay with /usr/bin/python, which is python 2.7.10. Observed
+  // with homebrew python 3.8.5, 3.8.7 and 3.9.1.
+  let python = match true {
+    _ if cfg!(target_os = "windows") => "python.exe",
+    _ if cfg!(target_os = "macos") => "python",
+    _ => "python3",
+  };
+
+  eprintln!("If the wpt server fails or gets stuck, please set up your /etc/hosts file like specified in //docs/contributing/building_from_source.md.");
+
+  let mut proc = Command::new(python)
+    .current_dir(util::wpt_path())
+    .arg("wpt.py")
+    .arg("serve")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = proc.stderr.as_mut().unwrap();
+  let mut stderr = BufReader::new(stderr).lines();
+  let mut ready_8000 = false;
+  let mut ready_8443 = false;
+  let mut ready_8444 = false;
+  let mut ready_9000 = false;
+  while let Ok(line) = stderr.next().unwrap() {
+    if !line.starts_with("DEBUG:") {
+      eprintln!("{}", line);
+    }
+    if cfg!(target_os = "windows") && line.contains("Using ports") {
+      break;
+    }
+    if line.contains("web-platform.test:8000") {
+      ready_8000 = true;
+    }
+    if line.contains("web-platform.test:8443") {
+      ready_8443 = true;
+    }
+    if line.contains("web-platform.test:8444") {
+      ready_8444 = true;
+    }
+    if line.contains("web-platform.test:9000") {
+      ready_9000 = true;
+    }
+    // WPT + python2 doesn't support HTTP/2.0.
+    if line.contains("Cannot start HTTP/2.0 server") {
+      ready_9000 = true;
+    }
+    if ready_8000 && ready_8443 && ready_8444 && ready_9000 {
+      break;
+    }
+  }
+
+  let _wpt_server = WPTServer(proc);
 
   for (suite_name, includes) in config.into_iter() {
     let suite_path = util::wpt_path().join(suite_name);
@@ -5352,14 +5434,15 @@ fn web_platform_tests() {
         })
         .collect();
 
-      let mut variants: Vec<&str> = test_file_text
+      let mut variants: Vec<String> = test_file_text
         .split('\n')
         .into_iter()
         .filter_map(|t| t.strip_prefix("// META: variant="))
+        .map(|t| format!("?{}", t))
         .collect();
 
       if variants.is_empty() {
-        variants.push("");
+        variants.push("".to_string());
       }
 
       for variant in variants {
@@ -5382,11 +5465,19 @@ fn web_platform_tests() {
         let bundle = concat_bundle(files, file.path(), "".to_string());
         file.write_all(bundle.as_bytes()).unwrap();
 
+        let self_path = test_file_path.strip_prefix(util::wpt_path()).unwrap();
+
         let child = util::deno_cmd()
           .current_dir(test_file_path.parent().unwrap())
           .arg("run")
           .arg("--location")
-          .arg(&format!("http://web-platform-tests/?{}", variant))
+          .arg(&format!(
+            "http://web-platform.test:8000/{}{}",
+            self_path.to_str().unwrap(),
+            variant
+          ))
+          .arg("--cert")
+          .arg(util::wpt_path().join("tools/certs/cacert.pem"))
           .arg("-A")
           .arg(file.path())
           .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
