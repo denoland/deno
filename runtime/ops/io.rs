@@ -133,7 +133,9 @@ fn map_interrupted_err(e: AnyError) -> Result<usize, AnyError> {
   match e.downcast_ref::<std::io::Error>() {
     Some(io_error) => {
       if io_error.kind() == std::io::ErrorKind::Interrupted
-        && io_error.to_string() == Canceled::get_op_canceled_message()
+        && io_error
+          .to_string()
+          .contains(Canceled::get_op_canceled_message())
       {
         Ok(0)
       } else {
@@ -410,7 +412,12 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = unix_stream.read(buf).try_or_cancel(cancel).await?;
+      let nread = unix_stream
+        .read(buf)
+        .try_or_cancel(cancel)
+        .await
+        .map_err(AnyError::new)
+        .or_else(map_interrupted_err)?;
       return Ok(nread);
     }
 
