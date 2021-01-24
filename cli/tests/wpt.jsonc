@@ -90,16 +90,6 @@
     {
       "name": "textdecoder-labels",
       "expectFail": [
-        "chinese => GBK",
-        "csgb2312 => GBK",
-        "csiso58gb231280 => GBK",
-        "gb2312 => GBK",
-        "gb_2312 => GBK",
-        "gb_2312-80 => GBK",
-        "gbk => GBK",
-        "iso-ir-58 => GBK",
-        "x-gbk => GBK",
-        "gb18030 => gb18030",
         "cseucpkdfmtjapanese => EUC-JP",
         "euc-jp => EUC-JP",
         "x-euc-jp => EUC-JP",
@@ -132,8 +122,6 @@
     {
       "name": "textencoder-constructor-non-utf",
       "expectFail": [
-        "Encoding argument supported for decode: GBK",
-        "Encoding argument supported for decode: gb18030",
         "Encoding argument supported for decode: EUC-JP",
         "Encoding argument supported for decode: ISO-2022-JP",
         "Encoding argument supported for decode: Shift_JIS",
@@ -141,7 +129,8 @@
         "Encoding argument supported for decode: x-user-defined"
       ]
     },
-    "textencoder-utf16-surrogates"
+    "textencoder-utf16-surrogates",
+    "legacy-mb-schinese"
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "unsupported-encodings",
   ],
@@ -236,7 +225,7 @@
     "console-namespace-object-class-string",
     "console-tests-historical"
   ],
-  "WebCryptoApi": ["getRandomValues"]
+  "WebCryptoApi": ["getRandomValues"],
   "WebIDL": [
     "ecmascript-binding/es-exceptions/DOMException-constants",
     "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",

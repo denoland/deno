@@ -5306,7 +5306,9 @@ fn web_platform_tests() {
       });
 
     let testharness_path = util::wpt_path().join("resources/testharness.js");
-    let testharness_text = std::fs::read_to_string(&testharness_path).unwrap();
+    let testharness_text = std::fs::read_to_string(&testharness_path)
+      .unwrap()
+      .replace("output:true", "output:false");
     let testharnessreporter_path =
       util::tests_path().join("wpt_testharnessconsolereporter.js");
     let testharnessreporter_text =
