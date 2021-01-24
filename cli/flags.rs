@@ -1391,7 +1391,11 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .multiple(true),
     )
-    .arg(watch_arg().conflicts_with("no-run"))
+    .arg(
+      watch_arg()
+        .conflicts_with("no-run")
+        .conflicts_with("coverage"),
+    )
     .arg(script_arg().last(true))
     .about("Run tests")
     .long_about(
