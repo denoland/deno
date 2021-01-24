@@ -53,7 +53,7 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 /// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
 /// These are dereferenced, and the bundle is executed under the configuration
 /// specified by the metadata. If no magic trailer is present, this function
-/// exits with `Ok(())`.
+/// exits with `Ok(None)`.
 pub fn extract_standalone(
   args: Vec<String>,
 ) -> Result<Option<(Metadata, String)>, AnyError> {
