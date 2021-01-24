@@ -22,6 +22,7 @@
     "cli/dts/typescript.d.ts",
     "cli/tests/encoding",
     "cli/tests/inline_js_source_map*",
+    "cli/tests/badly_formatted.md",
     "cli/tsc/*typescript.js",
     "test_util/wpt",
     "gh-pages",

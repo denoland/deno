@@ -59,15 +59,7 @@
     "writable-streams/write"
   ],
   "encoding": [
-    {
-      "name": "api-basics",
-      "expectFail": [
-        // TODO(lucacasonato): enable when we support utf-16
-        "Decode sample: utf-16le",
-        "Decode sample: utf-16be",
-        "Decode sample: utf-16"
-      ]
-    },
+    "api-basics",
     "api-invalid-label",
     "api-replacement-encodings",
     "api-surrogates-utf8",
@@ -83,14 +75,7 @@
     // "iso-2022-jp-decoder",
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "replacement-encodings",
-    {
-      "name": "textdecoder-byte-order-marks",
-      "expectFail": [
-        // TODO(lucacasonato): enable when we support utf-16
-        "Byte-order marks: utf-16le",
-        "Byte-order marks: utf-16be"
-      ]
-    },
+    "textdecoder-byte-order-marks",
     {
       "name": "textdecoder-copy",
       "expectFail": [
@@ -100,37 +85,11 @@
       ]
     },
     "textdecoder-fatal-single-byte",
-    {
-      "name": "textdecoder-fatal.",
-      // TODO(lucacasonato): enable when we support utf-16
-      "expectFail": ["Fatal flag: utf-16le - truncated code unit"]
-    },
-    {
-      "name": "textdecoder-ignorebom",
-      "expectFail": [
-        // TODO(lucacasonato): enable when we support utf-16
-        "BOM is ignored if ignoreBOM option is specified: utf-16le",
-        "BOM is ignored if ignoreBOM option is specified: utf-16be"
-      ]
-    },
+    "textdecoder-fatal.",
+    "textdecoder-ignorebom",
     {
       "name": "textdecoder-labels",
       "expectFail": [
-        "chinese => GBK",
-        "csgb2312 => GBK",
-        "csiso58gb231280 => GBK",
-        "gb2312 => GBK",
-        "gb_2312 => GBK",
-        "gb_2312-80 => GBK",
-        "gbk => GBK",
-        "iso-ir-58 => GBK",
-        "x-gbk => GBK",
-        "gb18030 => gb18030",
-        "big5 => Big5",
-        "big5-hkscs => Big5",
-        "cn-big5 => Big5",
-        "csbig5 => Big5",
-        "x-x-big5 => Big5",
         "cseucpkdfmtjapanese => EUC-JP",
         "euc-jp => EUC-JP",
         "x-euc-jp => EUC-JP",
@@ -154,39 +113,24 @@
         "ksc5601 => EUC-KR",
         "ksc_5601 => EUC-KR",
         "windows-949 => EUC-KR",
-        "unicodefffe => UTF-16BE",
-        "utf-16be => UTF-16BE",
-        "csunicode => UTF-16LE",
-        "iso-10646-ucs-2 => UTF-16LE",
-        "ucs-2 => UTF-16LE",
-        "unicode => UTF-16LE",
-        "unicodefeff => UTF-16LE",
-        "utf-16 => UTF-16LE",
-        "utf-16le => UTF-16LE",
         "x-user-defined => x-user-defined"
       ]
     },
     // TODO(lucacasonato): enable when we have stream support
     // "textdecoder-streaming",
-    // TODO(lucacasonato): enable when we support utf-16
-    // "textdecoder-utf16-surrogates",
+    "textdecoder-utf16-surrogates",
     {
       "name": "textencoder-constructor-non-utf",
       "expectFail": [
-        "Encoding argument supported for decode: GBK",
-        "Encoding argument supported for decode: gb18030",
-        "Encoding argument supported for decode: Big5",
         "Encoding argument supported for decode: EUC-JP",
         "Encoding argument supported for decode: ISO-2022-JP",
         "Encoding argument supported for decode: Shift_JIS",
         "Encoding argument supported for decode: EUC-KR",
-        "Encoding argument supported for decode: UTF-16BE",
-        "Encoding argument supported for decode: UTF-16LE",
         "Encoding argument supported for decode: x-user-defined"
       ]
-    }
-    // TODO(lucacasonato): enable when we support utf-16
-    // "textencoder-utf16-surrogates",
+    },
+    "textencoder-utf16-surrogates",
+    "legacy-mb-schinese"
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "unsupported-encodings",
   ],
@@ -209,16 +153,7 @@
     "mark-errors",
     "mark-measure-return-objects",
     "mark.any",
-    {
-      "name": "measure_syntax_err",
-      "expectFail": [
-        // TODO(lucacasonato): re-enable when #9009 is fixed.
-        "self.performance.measure(\"measure\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"mark\", \"existing_mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"existing_mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception."
-      ]
-    },
+    "measure_syntax_err",
     "measure-l3",
     "structured-serialize-detail",
     "user_timing_exists"
@@ -290,7 +225,7 @@
     "console-namespace-object-class-string",
     "console-tests-historical"
   ],
-  "WebCryptoApi": ["getRandomValues"]
+  "WebCryptoApi": ["getRandomValues"],
   "WebIDL": [
     "ecmascript-binding/es-exceptions/DOMException-constants",
     "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",

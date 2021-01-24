@@ -1373,7 +1373,7 @@
         redirected,
         rid: fetchResponse.bodyRid,
         status: fetchResponse.status,
-        url,
+        url: fetchResponse.url,
       });
 
       const response = new Response(responseBody, responseInit);
@@ -1404,7 +1404,7 @@
               !redirectUrl.startsWith("http://") &&
               !redirectUrl.startsWith("https://")
             ) {
-              redirectUrl = new URL(redirectUrl, url).href;
+              redirectUrl = new URL(redirectUrl, fetchResponse.url).href;
             }
             url = redirectUrl;
             redirected = true;
