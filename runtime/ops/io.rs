@@ -3,6 +3,7 @@
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::metrics::metrics_op;
+use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
@@ -189,7 +190,11 @@ where
 {
   async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
     let mut rd = self.rd_borrow_mut().await;
-    let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
+    let nread = rd
+      .read(buf)
+      .try_or_cancel(self.cancel_handle())
+      .await
+      .map_err(|e| bad_resource(e.to_string()))?;
     Ok(nread)
   }
 
