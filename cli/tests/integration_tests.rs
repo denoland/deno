@@ -5329,13 +5329,10 @@ fn web_platform_tests() {
     if line.contains("web-platform.test:9000") {
       ready_9000 = true;
     }
-<<<<<<< HEAD
-=======
     // WPT + python2 doesn't support HTTP/2.0.
     if line.contains("Cannot start HTTP/2.0 server") {
       ready_9000 = true;
     }
->>>>>>> dd0000c3b94967cdc5f0d60efcd947c4466ecefa
     if ready_8000 && ready_8443 && ready_8444 && ready_9000 {
       break;
     }
