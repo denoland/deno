@@ -5,7 +5,6 @@
 #[macro_use]
 extern crate lazy_static;
 
-use core::mem::replace;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -21,12 +20,14 @@ use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
 use std::io;
 use std::io::Read;
 use std::io::Write;
+use std::mem::replace;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -1366,7 +1367,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StraceOutput {
   pub percent_time: f64,
   pub seconds: f64,

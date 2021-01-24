@@ -405,7 +405,7 @@ enum PollState {
 
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
-  v8_inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
+  v8_inspector: v8::UniquePtr<v8::inspector::V8Inspector>,
   sessions: RefCell<InspectorSessions>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
@@ -417,13 +417,13 @@ pub struct DenoInspector {
 impl Deref for DenoInspector {
   type Target = v8::inspector::V8Inspector;
   fn deref(&self) -> &Self::Target {
-    &self.v8_inspector
+    self.v8_inspector.as_ref().unwrap()
   }
 }
 
 impl DerefMut for DenoInspector {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.v8_inspector
+    self.v8_inspector.as_mut().unwrap()
   }
 }
 
@@ -494,8 +494,6 @@ impl DenoInspector {
     let mut self_ = new_box_with(|self_ptr| {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
-      let v8_inspector =
-        v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
 
       let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new();
@@ -519,7 +517,7 @@ impl DenoInspector {
 
       Self {
         v8_inspector_client,
-        v8_inspector,
+        v8_inspector: Default::default(),
         sessions,
         flags,
         waker,
@@ -528,6 +526,8 @@ impl DenoInspector {
         debugger_url,
       }
     });
+    self_.v8_inspector =
+      v8::inspector::V8Inspector::create(scope, &mut *self_).into();
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);

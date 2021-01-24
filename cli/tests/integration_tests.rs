@@ -512,20 +512,31 @@ fn cache_invalidation_test_no_check() {
 #[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
-  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
-  let badly_formatted_original =
+  let fixed_js = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
+  let badly_formatted_original_js =
     util::root_path().join("cli/tests/badly_formatted.mjs");
-  let badly_formatted = t.path().join("badly_formatted.js");
-  let badly_formatted_str = badly_formatted.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original, &badly_formatted)
+  let badly_formatted_original_md =
+    util::root_path().join("cli/tests/badly_formatted.md");
+  let badly_formatted_js = t.path().join("badly_formatted.js");
+  let badly_formatted_md = t.path().join("badly_formatted.md");
+  let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
+  let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
+  std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
+    .expect("Failed to copy file");
+  std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
     .expect("Failed to copy file");
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg(format!("--ignore={}", badly_formatted_str))
+    .arg(format!(
+      "--ignore={},{}",
+      badly_formatted_js_str, badly_formatted_md_str
+    ))
     .arg("--check")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
@@ -536,7 +547,8 @@ fn fmt_test() {
     .current_dir(util::root_path())
     .arg("fmt")
     .arg("--check")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
@@ -546,15 +558,19 @@ fn fmt_test() {
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
     .expect("Failed to wait for child process");
   assert!(status.success());
-  let expected = std::fs::read_to_string(fixed).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted).unwrap();
-  assert_eq!(expected, actual);
+  let expected_js = std::fs::read_to_string(fixed_js).unwrap();
+  let expected_md = std::fs::read_to_string(fixed_md).unwrap();
+  let actual_js = std::fs::read_to_string(badly_formatted_js).unwrap();
+  let actual_md = std::fs::read_to_string(badly_formatted_md).unwrap();
+  assert_eq!(expected_js, actual_js);
+  assert_eq!(expected_md, actual_md);
 }
 
 // Helper function to skip watcher output that contains "Restarting"
@@ -2652,6 +2668,23 @@ itest!(_078_unload_on_exit {
   output: "078_unload_on_exit.ts.out",
 });
 
+itest!(_079_location_authentication {
+  args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
+  output: "079_location_authentication.ts.out",
+});
+
+itest!(_080_deno_emit_permissions {
+  args: "run --unstable 080_deno_emit_permissions.ts",
+  output: "080_deno_emit_permissions.ts.out",
+  exit_code: 1,
+});
+
+itest!(_081_location_relative_fetch_redirect {
+  args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
+  output: "081_location_relative_fetch_redirect.ts.out",
+  http_server: true,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -2735,7 +2768,7 @@ itest!(fmt_quiet_check_fmt_dir {
 });
 
 itest!(fmt_check_formatted_files {
-  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md",
   output: "fmt/expected_fmt_check_formatted_files.out",
   exit_code: 0,
 });
@@ -2750,6 +2783,12 @@ itest!(fmt_stdin {
   args: "fmt -",
   input: Some("const a = 1\n"),
   output_str: Some("const a = 1;\n"),
+});
+
+itest!(fmt_stdin_markdown {
+  args: "fmt --ext=md -",
+  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n"),
+  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"),
 });
 
 itest!(fmt_stdin_check_formatted {
@@ -5245,7 +5284,22 @@ fn web_platform_tests() {
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
     deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
 
-  let mut proc = Command::new("python3")
+  // The windows-2019 buildbots are too slow to finish the WPT tests within
+  // the 1 hour time limit.
+  if cfg!(target_os = "windows") && std::env::var("CI").is_ok() {
+    return;
+  }
+
+  // Observation: `python3 wpt serve` hangs with the python3 from homebrew
+  // but works okay with /usr/bin/python, which is python 2.7.10. Observed
+  // with homebrew python 3.8.5, 3.8.7 and 3.9.1.
+  let python = match true {
+    _ if cfg!(target_os = "windows") => "python.exe",
+    _ if cfg!(target_os = "macos") => "python",
+    _ => "python3",
+  };
+
+  let mut proc = Command::new(python)
     .current_dir(util::wpt_path())
     .arg("wpt")
     .arg("serve")
@@ -5275,6 +5329,13 @@ fn web_platform_tests() {
     if line.contains("web-platform.test:9000") {
       ready_9000 = true;
     }
+<<<<<<< HEAD
+=======
+    // WPT + python2 doesn't support HTTP/2.0.
+    if line.contains("Cannot start HTTP/2.0 server") {
+      ready_9000 = true;
+    }
+>>>>>>> dd0000c3b94967cdc5f0d60efcd947c4466ecefa
     if ready_8000 && ready_8443 && ready_8444 && ready_9000 {
       break;
     }
@@ -5422,4 +5483,280 @@ fn web_platform_tests() {
       }
     }
   }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_resolve_dns() {
+  use std::collections::BTreeMap;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use std::net::SocketAddr;
+  use std::str::FromStr;
+  use std::sync::Arc;
+  use std::sync::RwLock;
+  use std::time::Duration;
+  use tokio::net::TcpListener;
+  use tokio::net::UdpSocket;
+  use tokio::sync::oneshot;
+  use trust_dns_client::rr::LowerName;
+  use trust_dns_client::rr::RecordType;
+  use trust_dns_client::rr::RrKey;
+  use trust_dns_server::authority::Catalog;
+  use trust_dns_server::authority::ZoneType;
+  use trust_dns_server::proto::rr::rdata::mx::MX;
+  use trust_dns_server::proto::rr::rdata::soa::SOA;
+  use trust_dns_server::proto::rr::rdata::srv::SRV;
+  use trust_dns_server::proto::rr::rdata::txt::TXT;
+  use trust_dns_server::proto::rr::record_data::RData;
+  use trust_dns_server::proto::rr::resource::Record;
+  use trust_dns_server::proto::rr::Name;
+  use trust_dns_server::proto::rr::RecordSet;
+  use trust_dns_server::store::in_memory::InMemoryAuthority;
+  use trust_dns_server::ServerFuture;
+
+  const DNS_PORT: u16 = 4553;
+
+  // Setup DNS server for testing
+  async fn run_dns_server(tx: oneshot::Sender<()>) {
+    let catalog = {
+      let records = {
+        let mut map = BTreeMap::new();
+        let lookup_name = "www.example.com".parse::<Name>().unwrap();
+        let lookup_name_lower = LowerName::new(&lookup_name);
+
+        // Inserts SOA record
+        let soa = SOA::new(
+          Name::from_str("net").unwrap(),
+          Name::from_str("example").unwrap(),
+          0,
+          i32::MAX,
+          i32::MAX,
+          i32::MAX,
+          0,
+        );
+        let rdata = RData::SOA(soa);
+        let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map
+          .insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
+
+        // Inserts A record
+        let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::A),
+          record_set,
+        );
+
+        // Inserts AAAA record
+        let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
+          record_set,
+        );
+
+        // Inserts ANAME record
+        let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
+          record_set,
+        );
+
+        // Inserts CNAME record
+        let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
+        let record =
+          Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
+          record_set,
+        );
+
+        // Inserts MX record
+        let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::MX),
+          record_set,
+        );
+
+        // Inserts PTR record
+        let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
+        let record = Record::from_rdata(
+          Name::from_str("5.6.7.8").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
+          record_set,
+        );
+
+        // Inserts SRV record
+        let rdata = RData::SRV(SRV::new(
+          0,
+          100,
+          1234,
+          Name::from_str("srv.com").unwrap(),
+        ));
+        let record = Record::from_rdata(
+          Name::from_str("_Service._TCP.example.com").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
+          record_set,
+        );
+
+        // Inserts TXT record
+        let rdata =
+          RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
+        let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
+
+        map
+      };
+
+      let authority = Box::new(Arc::new(RwLock::new(
+        InMemoryAuthority::new(
+          Name::from_str("com").unwrap(),
+          records,
+          ZoneType::Primary,
+          false,
+        )
+        .unwrap(),
+      )));
+      let mut c = Catalog::new();
+      c.upsert(Name::root().into(), authority);
+      c
+    };
+
+    let mut server_fut = ServerFuture::new(catalog);
+    let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
+    let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
+    let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
+    server_fut.register_socket(udp_socket);
+    server_fut.register_listener(tcp_listener, Duration::from_secs(2));
+
+    // Notifies that the DNS server is ready
+    tx.send(()).unwrap();
+
+    server_fut.block_until_done().await.unwrap();
+  }
+
+  let (ready_tx, ready_rx) = oneshot::channel();
+  let dns_server_fut = run_dns_server(ready_tx);
+  let handle = tokio::spawn(dns_server_fut);
+
+  // Waits for the DNS server to be ready
+  ready_rx.await.unwrap();
+
+  // Pass: `--allow-net`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Pass: `--allow-net=127.0.0.1:4553`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=127.0.0.1:4553")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Permission error: `--allow-net=deno.land`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=deno.land")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  // Permission error: no permission specified
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  handle.abort();
 }

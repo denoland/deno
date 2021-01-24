@@ -4,10 +4,12 @@ import {
   buildMode,
   getPrebuiltToolPath,
   getSources,
+  join,
   ROOT_PATH,
 } from "./util.js";
 
 async function dlint() {
+  const configFile = join(ROOT_PATH, ".dlint.json");
   const execPath = getPrebuiltToolPath("dlint");
   console.log("dlint");
 
@@ -49,7 +51,7 @@ async function dlint() {
   }
   for (const chunk of chunks) {
     const p = Deno.run({
-      cmd: [execPath, "run", ...chunk],
+      cmd: [execPath, "run", "--config=" + configFile, ...chunk],
     });
     const { success } = await p.status();
     if (!success) {

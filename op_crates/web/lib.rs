@@ -159,20 +159,4 @@ mod tests {
       }
     });
   }
-
-  #[test]
-  fn test_text_encoding() {
-    run_in_task(|mut cx| {
-      let mut isolate = setup();
-      isolate
-        .execute(
-          "text_encoding_test.js",
-          include_str!("text_encoding_test.js"),
-        )
-        .unwrap();
-      if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
-        unreachable!();
-      }
-    });
-  }
 }

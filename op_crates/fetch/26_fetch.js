@@ -283,7 +283,7 @@
   }
 
   function getStream(blobBytes) {
-    // TODO: Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
+    // TODO(bartlomieju): Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
     return new ReadableStream({
       type: "bytes",
       start: (controller) => {
@@ -1240,7 +1240,7 @@
     let body;
     let clientRid = null;
     let redirected = false;
-    let remRedirectCount = 20; // TODO: use a better way to handle
+    let remRedirectCount = 20; // TODO(bartlomieju): use a better way to handle
 
     if (typeof input === "string" || input instanceof URL) {
       url = typeof input === "string" ? input : input.href;
@@ -1373,7 +1373,7 @@
         redirected,
         rid: fetchResponse.bodyRid,
         status: fetchResponse.status,
-        url,
+        url: fetchResponse.url,
       });
 
       const response = new Response(responseBody, responseInit);
@@ -1404,7 +1404,7 @@
               !redirectUrl.startsWith("http://") &&
               !redirectUrl.startsWith("https://")
             ) {
-              redirectUrl = new URL(redirectUrl, url).href;
+              redirectUrl = new URL(redirectUrl, fetchResponse.url).href;
             }
             url = redirectUrl;
             redirected = true;
