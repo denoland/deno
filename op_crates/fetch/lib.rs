@@ -2,6 +2,7 @@
 
 #![deny(warnings)]
 
+use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -294,7 +295,11 @@ pub async fn op_fetch_request_write(
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  body.send(Ok(buf)).or_cancel(cancel).await??;
+  body
+    .send(Ok(buf))
+    .or_cancel(cancel)
+    .await?
+    .map_err(|e| bad_resource(e.to_string()))?;
 
   Ok(json!({}))
 }

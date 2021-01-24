@@ -155,16 +155,9 @@ where
 #[derive(Copy, Clone, Default, Debug, Eq, Hash, PartialEq)]
 pub struct Canceled;
 
-const OP_CANCELED: &str = "operation canceled";
-impl Canceled {
-  pub fn get_op_canceled_message() -> &'static str {
-    OP_CANCELED
-  }
-}
-
 impl Display for Canceled {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-    write!(f, "{}", OP_CANCELED)
+    write!(f, "operation canceled")
   }
 }
 

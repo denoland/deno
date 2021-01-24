@@ -13,7 +13,6 @@ use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Canceled;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -127,29 +126,6 @@ fn get_stdio_stream(
 
 fn no_buffer_specified() -> AnyError {
   type_error("no buffer specified")
-}
-
-// (DavidDeSimone) This function is to maintain backwards
-// compatability with older versions of Deno that would
-// not throw a 'canceled' error off of a read.
-// This is usually relevant in the cases of closing a local
-// server after writing to it locally,
-// like what is common in tests.
-fn map_interrupted_err(e: AnyError) -> Result<usize, AnyError> {
-  match e.downcast_ref::<std::io::Error>() {
-    Some(io_error) => {
-      if io_error.kind() == std::io::ErrorKind::Interrupted
-        && io_error
-          .to_string()
-          .contains(Canceled::get_op_canceled_message())
-      {
-        Ok(0)
-      } else {
-        Err(e)
-      }
-    }
-    None => Err(e),
-  }
 }
 
 #[cfg(unix)]
@@ -389,12 +365,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = client_tls_stream
-        .read(buf)
-        .try_or_cancel(cancel)
-        .await
-        .map_err(AnyError::new)
-        .or_else(map_interrupted_err)?;
+      let nread = client_tls_stream.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     } else if self.server_tls_stream.is_some() {
       let mut server_tls_stream =
@@ -402,12 +373,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = server_tls_stream
-        .read(buf)
-        .try_or_cancel(cancel)
-        .await
-        .map_err(AnyError::new)
-        .or_else(map_interrupted_err)?;
+      let nread = server_tls_stream.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     }
 
@@ -418,12 +384,7 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = unix_stream
-        .read(buf)
-        .try_or_cancel(cancel)
-        .await
-        .map_err(AnyError::new)
-        .or_else(map_interrupted_err)?;
+      let nread = unix_stream.read(buf).try_or_cancel(cancel).await?;
       return Ok(nread);
     }
 
@@ -547,10 +508,7 @@ pub fn op_read(
         let nread = if let Some(stream) =
           resource.downcast_rc::<TcpStreamResource>()
         {
-          stream
-            .read(&mut zero_copy)
-            .await
-            .or_else(map_interrupted_err)?
+          stream.read(&mut zero_copy).await?
         } else if let Some(stream) = resource.downcast_rc::<StreamResource>() {
           stream.clone().read(&mut zero_copy).await?
         } else {

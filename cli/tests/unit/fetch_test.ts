@@ -588,27 +588,29 @@ unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
 //     at Object.assertEquals (file:///C:/deno/js/testing/util.ts:29:11)
 //     at fetchPostBodyString (file
 
-function bufferServer(addr: string): Deno.Buffer {
+function bufferServer(addr: string, expectedResponseLen: number): Uint8Array {
   const [hostname, port] = addr.split(":");
   const listener = Deno.listen({
     hostname,
     port: Number(port),
   }) as Deno.Listener;
-  const buf = new Deno.Buffer();
+  const buf = new Uint8Array(expectedResponseLen);
   listener.accept().then(async (conn: Deno.Conn) => {
-    const p1 = buf.readFrom(conn);
-    const p2 = conn.write(
+    let numRead = 0;
+    while (numRead < expectedResponseLen) {
+      const subr = buf.subarray(numRead, expectedResponseLen);
+      const read = await Deno.read(conn.rid, subr);
+      if (read === null) {
+        break;
+      }
+
+      numRead += read;
+    }
+    await conn.write(
       new TextEncoder().encode(
         "HTTP/1.0 404 Not Found\r\nContent-Length: 2\r\n\r\nNF",
       ),
     );
-    // Wait for both an EOF on the read side of the socket and for the write to
-    // complete before closing it. Due to keep-alive, the EOF won't be sent
-    // until the Connection close (HTTP/1.0) response, so readFrom() can't
-    // proceed write. Conversely, if readFrom() is async, waiting for the
-    // write() to complete is not a guarantee that we've read the incoming
-    // request.
-    await Promise.all([p1, p2]);
     conn.close();
     listener.close();
   });
@@ -621,7 +623,16 @@ unitTest(
   },
   async function fetchRequest(): Promise<void> {
     const addr = "127.0.0.1:4501";
-    const buf = bufferServer(addr);
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n\r\n`,
+    ].join("");
+    const buf = bufferServer(addr, expected.length);
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
       headers: [
@@ -633,16 +644,7 @@ unitTest(
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
-    const actual = new TextDecoder().decode(buf.bytes());
-    const expected = [
-      "POST /blah HTTP/1.1\r\n",
-      "hello: World\r\n",
-      "foo: Bar\r\n",
-      "accept: */*\r\n",
-      `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
-      `host: ${addr}\r\n\r\n`,
-    ].join("");
+    const actual = new TextDecoder().decode(buf);
     assertEquals(actual, expected);
   },
 );
@@ -653,21 +655,7 @@ unitTest(
   },
   async function fetchPostBodyString(): Promise<void> {
     const addr = "127.0.0.1:4502";
-    const buf = bufferServer(addr);
     const body = "hello world";
-    const response = await fetch(`http://${addr}/blah`, {
-      method: "POST",
-      headers: [
-        ["Hello", "World"],
-        ["Foo", "Bar"],
-      ],
-      body,
-    });
-    await response.arrayBuffer();
-    assertEquals(response.status, 404);
-    assertEquals(response.headers.get("Content-Length"), "2");
-
-    const actual = new TextDecoder().decode(buf.bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
@@ -680,19 +668,8 @@ unitTest(
       `content-length: ${body.length}\r\n\r\n`,
       body,
     ].join("");
-    assertEquals(actual, expected);
-  },
-);
+    const buf = bufferServer(addr, expected.length);
 
-unitTest(
-  {
-    perms: { net: true },
-  },
-  async function fetchPostBodyTypedArray(): Promise<void> {
-    const addr = "127.0.0.1:4503";
-    const buf = bufferServer(addr);
-    const bodyStr = "hello world";
-    const body = new TextEncoder().encode(bodyStr);
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
       headers: [
@@ -705,7 +682,19 @@ unitTest(
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
-    const actual = new TextDecoder().decode(buf.bytes());
+    const actual = new TextDecoder().decode(buf);
+    assertEquals(actual, expected);
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyTypedArray(): Promise<void> {
+    const addr = "127.0.0.1:4503";
+    const bodyStr = "hello world";
+    const body = new TextEncoder().encode(bodyStr);
     const expected = [
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
@@ -717,6 +706,20 @@ unitTest(
       `content-length: ${body.byteLength}\r\n\r\n`,
       bodyStr,
     ].join("");
+    const buf = bufferServer(addr, expected.length);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode(buf);
     assertEquals(actual, expected);
   },
 );
@@ -1044,29 +1047,6 @@ unitTest(
   },
   async function fetchPostBodyReadableStream(): Promise<void> {
     const addr = "127.0.0.1:4502";
-    const buf = bufferServer(addr);
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
-    // transformer writes don't resolve until they are read, so awaiting these
-    // will cause the transformer to hang, as the suspend the transformer, it
-    // is also illogical to await for the reads, as that is the whole point of
-    // streams is to have a "queue" which gets drained...
-    writer.write(new TextEncoder().encode("hello "));
-    writer.write(new TextEncoder().encode("world"));
-    writer.close();
-    const response = await fetch(`http://${addr}/blah`, {
-      method: "POST",
-      headers: [
-        ["Hello", "World"],
-        ["Foo", "Bar"],
-      ],
-      body: stream.readable,
-    });
-    await response.arrayBuffer();
-    assertEquals(response.status, 404);
-    assertEquals(response.headers.get("Content-Length"), "2");
-
-    const actual = new TextDecoder().decode(buf.bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
@@ -1082,6 +1062,27 @@ unitTest(
       "world\r\n",
       "0\r\n\r\n",
     ].join("");
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    const buf = bufferServer(addr, expected.length);
+
+    writer.write(new TextEncoder().encode("hello "));
+    writer.write(new TextEncoder().encode("world"));
+    writer.close();
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body: stream.readable,
+    });
+
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode(buf);
     assertEquals(actual, expected);
   },
 );
