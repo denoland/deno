@@ -728,14 +728,13 @@ Deno.test({
       const resStr = new TextDecoder().decode(res.subarray(0, nread));
       assert(resStr.includes("Hello HTTPS"));
       await badConnection!
-        .catch((e: Deno.errors) => {
+        .catch((e: Error) => {
           assert(!!e);
           // To account for the case our valid connecion
           // would be so fast we would get to our finally
           // block before the bad connection resolved.
           assert(
-            e instanceof Deno.errors.InvalidData ||
-              e instanceof Deno.errors.ConnectionReset,
+            e instanceof Deno.errors.InvalidData,
           );
         });
     } finally {
