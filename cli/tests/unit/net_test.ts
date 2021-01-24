@@ -569,7 +569,12 @@ unitTest(
         }
       } catch (err) {
         assert(!!err);
-        assert(err instanceof Deno.errors.BadResource);
+        assert(
+          err instanceof Deno.errors.BadResource ||
+            // In the case that our read was still pending
+            // and was cancelled from our call to close.
+            err instanceof Deno.errors.Interrupted,
+        );
       }
 
       resolvable.resolve();
