@@ -2665,6 +2665,7 @@ itest!(_077_fetch_empty {
 itest!(_078_unload_on_exit {
   args: "run 078_unload_on_exit.ts",
   output: "078_unload_on_exit.ts.out",
+  exit_code: 1,
 });
 
 itest!(_079_location_authentication {
@@ -2682,6 +2683,12 @@ itest!(_081_location_relative_fetch_redirect {
   args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
   output: "081_location_relative_fetch_redirect.ts.out",
   http_server: true,
+});
+
+itest!(_082_prepare_stack_trace_throw {
+  args: "run 082_prepare_stack_trace_throw.js",
+  output: "082_prepare_stack_trace_throw.js.out",
+  exit_code: 1,
 });
 
 itest!(js_import_detect {

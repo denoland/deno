@@ -453,6 +453,7 @@ dependencies = [
  "tempfile",
  "termcolor",
  "test_util",
+ "text-size",
  "tokio",
  "tokio-rustls",
  "tower-test",
@@ -2947,6 +2948,12 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
 ]
+
+[[package]]
+name = "text-size"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "288cb548dbe72b652243ea797201f3d481a0609a967980fcc5b2315ea811560a"
 
 [[package]]
 name = "textwrap"
