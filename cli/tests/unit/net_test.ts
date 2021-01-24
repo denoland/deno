@@ -569,10 +569,7 @@ unitTest(
         }
       } catch (err) {
         assert(!!err);
-        assert(
-          err instanceof Deno.errors.BadResource ||
-            err instanceof Deno.errors.Interrupted,
-        );
+        assert(err instanceof Deno.errors.BadResource);
       }
 
       resolvable.resolve();
