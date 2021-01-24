@@ -13,6 +13,7 @@ use deno_core::AsyncRefCell;
 use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Canceled;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -131,7 +132,9 @@ fn no_buffer_specified() -> AnyError {
 fn map_interrupted_err(e: AnyError) -> Result<usize, AnyError> {
   match e.downcast_ref::<std::io::Error>() {
     Some(io_error) => {
-      if io_error.kind() == std::io::ErrorKind::Interrupted {
+      if io_error.kind() == std::io::ErrorKind::Interrupted
+        && io_error.to_string() == Canceled::get_op_canceled_message()
+      {
         Ok(0)
       } else {
         Err(e)

@@ -697,11 +697,12 @@ Deno.test({
     const p = iteratorReq(server);
 
     try {
+      let badConnection: Promise<Deno.Conn>;
       // Invalid certificate, connection should throw
       // but should not crash the server
       assertThrowsAsync(
         () =>
-          Deno.connectTls({
+          badConnection = Deno.connectTls({
             hostname: "localhost",
             port,
             // certFile
@@ -726,6 +727,17 @@ Deno.test({
       conn.close();
       const resStr = new TextDecoder().decode(res.subarray(0, nread));
       assert(resStr.includes("Hello HTTPS"));
+      await badConnection!
+        .catch((e: Deno.errors) => {
+          assert(!!e);
+          // To account for the case our valid connecion
+          // would be so fast we would get to our finally
+          // block before the bad connection resolved.
+          assert(
+            e instanceof Deno.errors.InvalidData ||
+              e instanceof Deno.errors.ConnectionReset,
+          );
+        });
     } finally {
       // Stops the sever and allows `p.status()` promise to resolve
       server.close();
