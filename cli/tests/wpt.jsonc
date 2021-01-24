@@ -164,16 +164,7 @@
     "mark-errors",
     "mark-measure-return-objects",
     "mark.any",
-    {
-      "name": "measure_syntax_err",
-      "expectFail": [
-        // TODO(lucacasonato): re-enable when #9009 is fixed.
-        "self.performance.measure(\"measure\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"mark\", \"existing_mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"existing_mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception."
-      ]
-    },
+    "measure_syntax_err",
     "measure-l3",
     "structured-serialize-detail",
     "user_timing_exists"
