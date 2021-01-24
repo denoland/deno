@@ -694,7 +694,13 @@ Deno.test({
       keyFile: join(testdataDir, "tls/localhost.key"),
     };
     const server = serveTLS(tlsOptions);
-    const p = iteratorReq(server);
+    const p = iteratorReq(server)
+      .catch((e: Error) => {
+        // For the case that we were reading while
+        // we closed the connection.
+        assert(!!e);
+        assert(e instanceof Deno.errors.Interrupted);
+      });
 
     try {
       let badConnection: Promise<Deno.Conn>;
