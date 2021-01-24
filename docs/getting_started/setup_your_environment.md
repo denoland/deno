@@ -58,7 +58,7 @@ and then `compinit` to generate them again.
 Example (zsh + oh-my-zsh) [recommended for zsh users] :
 
 ```shell
-mkdir $ZSH_CUSTOM/deno
+mkdir $ZSH_CUSTOM/plugins/deno
 deno completions zsh > $ZSH_CUSTOM/plugins/deno/_deno
 ```
 
