@@ -818,7 +818,7 @@ mod tests {
   }
 
   #[test]
-  fn test_check_net() {
+  fn test_check_net_with_values() {
     let perms = Permissions::from_options(&PermissionsOptions {
       allow_net: Some(svec![
         "localhost",
@@ -853,6 +853,93 @@ mod tests {
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
     ];
+
+    for (host, port, is_ok) in domain_tests {
+      assert_eq!(is_ok, perms.check_net(&(host, Some(port))).is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_only_flag() {
+    let perms = Permissions::from_options(&PermissionsOptions {
+      allow_net: Some(svec![]), // this means `--allow-net` is present without values following `=` sign
+      ..Default::default()
+    });
+
+    let domain_tests = vec![
+      ("localhost", 1234),
+      ("deno.land", 0),
+      ("deno.land", 3000),
+      ("deno.lands", 0),
+      ("deno.lands", 3000),
+      ("github.com", 3000),
+      ("github.com", 0),
+      ("github.com", 2000),
+      ("github.net", 3000),
+      ("127.0.0.1", 0),
+      ("127.0.0.1", 3000),
+      ("127.0.0.2", 0),
+      ("127.0.0.2", 3000),
+      ("172.16.0.2", 8000),
+      ("172.16.0.2", 0),
+      ("172.16.0.2", 6000),
+      ("172.16.0.1", 8000),
+      ("somedomain", 0),
+      ("192.168.0.1", 0),
+    ];
+
+    for (host, port) in domain_tests {
+      assert!(perms.check_net(&(host, Some(port))).is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_no_flag() {
+    let perms = Permissions::from_options(&PermissionsOptions {
+      allow_net: None,
+      ..Default::default()
+    });
+
+    let domain_tests = vec![
+      ("localhost", 1234),
+      ("deno.land", 0),
+      ("deno.land", 3000),
+      ("deno.lands", 0),
+      ("deno.lands", 3000),
+      ("github.com", 3000),
+      ("github.com", 0),
+      ("github.com", 2000),
+      ("github.net", 3000),
+      ("127.0.0.1", 0),
+      ("127.0.0.1", 3000),
+      ("127.0.0.2", 0),
+      ("127.0.0.2", 3000),
+      ("172.16.0.2", 8000),
+      ("172.16.0.2", 0),
+      ("172.16.0.2", 6000),
+      ("172.16.0.1", 8000),
+      ("somedomain", 0),
+      ("192.168.0.1", 0),
+    ];
+
+    for (host, port) in domain_tests {
+      assert!(!perms.check_net(&(host, Some(port))).is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_url() {
+    let perms = Permissions::from_options(&PermissionsOptions {
+      allow_net: Some(svec![
+        "localhost",
+        "deno.land",
+        "github.com:3000",
+        "127.0.0.1",
+        "172.16.0.2:8000",
+        "www.github.com:443"
+      ]),
+      ..Default::default()
+    });
 
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
@@ -893,13 +980,9 @@ mod tests {
       ("https://www.github.com:443/robots.txt", true),
     ];
 
-    for (url_str, is_ok) in url_tests.iter() {
+    for (url_str, is_ok) in url_tests {
       let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(*is_ok, perms.check_net_url(&u).is_ok());
-    }
-
-    for (hostname, port, is_ok) in domain_tests.iter() {
-      assert_eq!(*is_ok, perms.check_net(&(hostname, Some(*port))).is_ok());
+      assert_eq!(is_ok, perms.check_net_url(&u).is_ok());
     }
   }
 

@@ -1,4 +1,6 @@
 onmessage = function (): void {
-  postMessage(self.location.href);
+  postMessage(
+    `${location.href}, ${location instanceof WorkerLocation}`,
+  );
   close();
 };

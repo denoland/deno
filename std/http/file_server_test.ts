@@ -201,7 +201,7 @@ Deno.test("serveDirectory", async function (): Promise<void> {
     assert(page.includes("README.md"));
 
     // `Deno.FileInfo` is not completely compatible with Windows yet
-    // TODO: `mode` should work correctly in the future.
+    // TODO(bartlomieju): `mode` should work correctly in the future.
     // Correct this test case accordingly.
     Deno.build.os !== "windows" &&
       assert(/<td class="mode">(\s)*\([a-zA-Z-]{10}\)(\s)*<\/td>/.test(page));
@@ -335,7 +335,7 @@ Deno.test("contentType", async () => {
 Deno.test("file_server running as library", async function (): Promise<void> {
   await startFileServerAsLibrary();
   try {
-    const res = await fetch("http://localhost:8000");
+    const res = await fetch("http://localhost:4504");
     assertEquals(res.status, 200);
     const _ = await res.text();
   } finally {

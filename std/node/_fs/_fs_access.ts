@@ -4,7 +4,7 @@ import { notImplemented } from "../_utils.ts";
 
 /** Revist once https://github.com/denoland/deno/issues/4017 lands */
 
-//TODO - 'path' can also be a Buffer.  Neither of these polyfills
+// TODO(bartlomieju) 'path' can also be a Buffer.  Neither of these polyfills
 //is available yet.  See https://github.com/denoland/deno/issues/3403
 export function access(
   _path: string | URL,
@@ -14,8 +14,8 @@ export function access(
   notImplemented("Not yet available");
 }
 
-//TODO - 'path' can also be a Buffer.  Neither of these polyfills
-//is available yet.  See https://github.com/denoland/deno/issues/3403
+// TODO(bartlomieju) 'path' can also be a Buffer.  Neither of these polyfills
+// is available yet.  See https://github.com/denoland/deno/issues/3403
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function accessSync(path: string | URL, mode?: number): void {
   notImplemented("Not yet available");

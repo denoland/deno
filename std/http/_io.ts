@@ -65,7 +65,7 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
     }
     const line = await tp.readLine();
     if (line === null) throw new Deno.errors.UnexpectedEof();
-    // TODO: handle chunk extension
+    // TODO(bartlomieju): handle chunk extension
     const [chunkSizeString] = line.split(";");
     const chunkSize = parseInt(chunkSizeString, 16);
     if (Number.isNaN(chunkSize) || chunkSize < 0) {
