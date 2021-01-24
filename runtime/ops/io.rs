@@ -3,7 +3,6 @@
 use super::dispatch_minimal::minimal_op;
 use super::dispatch_minimal::MinimalOp;
 use crate::metrics::metrics_op;
-use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::resource_unavailable;
 use deno_core::error::type_error;
@@ -129,6 +128,19 @@ fn no_buffer_specified() -> AnyError {
   type_error("no buffer specified")
 }
 
+fn map_interrupted_err(e: AnyError) -> Result<usize, AnyError> {
+  match e.downcast_ref::<std::io::Error>() {
+    Some(io_error) => {
+      if io_error.kind() == std::io::ErrorKind::Interrupted {
+        Ok(0)
+      } else {
+        Err(e)
+      }
+    }
+    None => Err(e),
+  }
+}
+
 #[cfg(unix)]
 use nix::sys::termios;
 
@@ -190,11 +202,7 @@ where
 {
   async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
     let mut rd = self.rd_borrow_mut().await;
-    let nread = rd
-      .read(buf)
-      .try_or_cancel(self.cancel_handle())
-      .await
-      .map_err(|e| bad_resource(e.to_string()))?;
+    let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
     Ok(nread)
   }
 
@@ -370,7 +378,12 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = client_tls_stream.read(buf).try_or_cancel(cancel).await?;
+      let nread = client_tls_stream
+        .read(buf)
+        .try_or_cancel(cancel)
+        .await
+        .map_err(AnyError::new)
+        .or_else(map_interrupted_err)?;
       return Ok(nread);
     } else if self.server_tls_stream.is_some() {
       let mut server_tls_stream =
@@ -378,7 +391,12 @@ impl StreamResource {
           .borrow_mut()
           .await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let nread = server_tls_stream.read(buf).try_or_cancel(cancel).await?;
+      let nread = server_tls_stream
+        .read(buf)
+        .try_or_cancel(cancel)
+        .await
+        .map_err(AnyError::new)
+        .or_else(map_interrupted_err)?;
       return Ok(nread);
     }
 
@@ -513,7 +531,10 @@ pub fn op_read(
         let nread = if let Some(stream) =
           resource.downcast_rc::<TcpStreamResource>()
         {
-          stream.read(&mut zero_copy).await?
+          stream
+            .read(&mut zero_copy)
+            .await
+            .or_else(map_interrupted_err)?
         } else if let Some(stream) = resource.downcast_rc::<StreamResource>() {
           stream.clone().read(&mut zero_copy).await?
         } else {
