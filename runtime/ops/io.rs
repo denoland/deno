@@ -129,6 +129,12 @@ fn no_buffer_specified() -> AnyError {
   type_error("no buffer specified")
 }
 
+// (DavidDeSimone) This function is to maintain backwards
+// compatability with older versions of Deno that would
+// not throw a 'canceled' error off of a read.
+// This is usually relevant in the cases of closing a local
+// server after writing to it locally,
+// like what is common in tests.
 fn map_interrupted_err(e: AnyError) -> Result<usize, AnyError> {
   match e.downcast_ref::<std::io::Error>() {
     Some(io_error) => {
