@@ -38,16 +38,17 @@ pub async fn format(
 ) -> Result<(), AnyError> {
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result = collect_files(&args, &ignore, is_supported_ext_md).map(|files| {
-      if let Some(paths) = changed {
-        files
-          .into_iter()
-          .filter(|path| paths.contains(path))
-          .collect::<Vec<_>>()
-      } else {
-        files
-      }
-    });
+    let result =
+      collect_files(&args, &ignore, is_supported_ext_md).map(|files| {
+        if let Some(paths) = changed {
+          files
+            .into_iter()
+            .filter(|path| paths.contains(path))
+            .collect::<Vec<_>>()
+        } else {
+          files
+        }
+      });
     let paths_to_watch = args.clone();
     async move {
       if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
