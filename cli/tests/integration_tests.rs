@@ -5294,7 +5294,7 @@ fn web_platform_tests() {
   };
 
   eprintln!("If the wpt server fails or gets stuck, please set up your /etc/hosts file like specified in //docs/contributing/building_from_source.md.");
-  
+
   let mut proc = Command::new(python)
     .current_dir(util::wpt_path())
     .arg("wpt.py")
