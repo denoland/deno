@@ -123,15 +123,15 @@ export function getSystemErrorName(code: number): string | undefined {
  * https://nodejs.org/api/util.html#util_util_deprecate_fn_msg_code
  * @param _code This implementation of deprecate won't apply the deprecation code
  */
-export function deprecate<A extends Array<unknown>, B>(
-  this: unknown,
-  callback: (...args: A) => B,
+// deno-lint-ignore no-explicit-any
+export function deprecate<T extends (...args: any) => any>(
+  fn: T,
   msg: string,
   _code?: string,
-) {
-  return function (this: unknown, ...args: A) {
+): (...args: Parameters<T>) => ReturnType<T> {
+  return function (...args) {
     console.warn(msg);
-    return callback.apply(this, args);
+    return fn.apply(undefined, args);
   };
 }
 
