@@ -3136,11 +3136,25 @@
      * @returns {ReadableStream<T>}
      */
     pipeThrough(
-      { readable, writable },
+      transform,
       { preventClose, preventAbort, preventCancel, signal } = {},
     ) {
+      if (!isReadableStream(this)) {
+        throw new TypeError("this must be a ReadableStream");
+      }
+      const { readable } = transform;
+      if (!isReadableStream(readable)) {
+        throw new TypeError("readable must be a ReadableStream");
+      }
+      const { writable } = transform;
+      if (!isWritableStream(writable)) {
+        throw new TypeError("writable must be a WritableStream");
+      }
       if (isReadableStreamLocked(this)) {
         throw new TypeError("ReadableStream is already locked.");
+      }
+      if (signal !== undefined && !(signal instanceof AbortSignal)) {
+        throw new TypeError("signal must be an AbortSignal");
       }
       if (isWritableStreamLocked(writable)) {
         throw new TypeError("Target WritableStream is already locked.");
@@ -3148,9 +3162,9 @@
       const promise = readableStreamPipeTo(
         this,
         writable,
-        preventClose,
-        preventAbort,
-        preventCancel,
+        Boolean(preventClose),
+        Boolean(preventAbort),
+        Boolean(preventCancel),
         signal,
       );
       setPromiseIsHandledToTrue(promise);
