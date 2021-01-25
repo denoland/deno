@@ -323,7 +323,7 @@ fn filter_coverages(
               return false;
             }
 
-            if file_stem.to_str().unwrap().starts_with("test") {
+            if file_stem.to_str().unwrap().ends_with("test") {
               return false;
             }
            }
