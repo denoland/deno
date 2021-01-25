@@ -32,7 +32,6 @@ use super::diagnostics::DiagnosticCollection;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::performance::Performance;
-use super::performance::PerformanceAverage;
 use super::sources;
 use super::sources::Sources;
 use super::text;
@@ -56,15 +55,15 @@ pub struct StateSnapshot {
 struct Inner {
   assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
   client: Client,
-  ts_server: TsServer,
   config: Config,
-  documents: DocumentCache,
-  performance: Performance,
-  sources: Sources,
   diagnostics: DiagnosticCollection,
+  documents: DocumentCache,
   maybe_config_uri: Option<Url>,
   maybe_import_map: Option<ImportMap>,
   maybe_import_map_uri: Option<Url>,
+  performance: Performance,
+  sources: Sources,
+  ts_server: TsServer,
 }
 
 impl LanguageServer {
@@ -84,15 +83,15 @@ impl Inner {
     Self {
       assets: Default::default(),
       client,
-      ts_server: TsServer::new(),
       config: Default::default(),
-      documents: Default::default(),
-      performance: Default::default(),
-      sources,
       diagnostics: Default::default(),
+      documents: Default::default(),
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
+      performance: Default::default(),
+      sources,
+      ts_server: TsServer::new(),
     }
   }
 
@@ -1290,15 +1289,7 @@ impl Inner {
   }
 
   fn get_performance(&self) -> LspResult<Option<Value>> {
-    let averages: Vec<PerformanceAverage> = self
-      .performance
-      .averages()
-      .map(|(n, c, d)| PerformanceAverage {
-        name: n,
-        count: c as u32,
-        average_duration: d.as_millis() as u32,
-      })
-      .collect();
+    let averages = self.performance.averages();
     Ok(Some(json!({ "averages": averages })))
   }
 
@@ -1320,12 +1311,10 @@ impl Inner {
         self.documents.len()
       ));
       contents.push_str("\n## Performance\n\n");
-      for (name, count, duration) in self.performance.averages() {
+      for average in self.performance.averages() {
         contents.push_str(&format!(
           "  - {}: {}ms ({})\n",
-          name,
-          duration.as_millis(),
-          count
+          average.name, average.average_duration, average.count
         ));
       }
       Some(contents)
@@ -1371,6 +1360,7 @@ impl Inner {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::lsp::performance::PerformanceAverage;
   use lspower::jsonrpc;
   use lspower::ExitedError;
   use lspower::LspService;

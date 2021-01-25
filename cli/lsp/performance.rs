@@ -49,26 +49,26 @@ impl From<PerformanceMark> for PerformanceMeasure {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Performance {
   counts: Arc<Mutex<HashMap<String, u32>>>,
+  max_size: usize,
   measures: Arc<Mutex<VecDeque<PerformanceMeasure>>>,
-  size: usize,
 }
 
 impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
+      max_size: 1_000,
       measures: Default::default(),
-      size: 1_000,
     }
   }
 }
 
 impl Performance {
   /// Return the count and average duration of a measurement identified by name.
-  #[allow(unused)]
+  #[cfg(test)]
   pub fn average(&self, name: &str) -> (usize, Duration) {
     let mut items = Vec::new();
     for measure in self.measures.lock().unwrap().iter() {
@@ -80,14 +80,14 @@ impl Performance {
     let average = if len > 0 {
       items.into_iter().sum::<Duration>() / len as u32
     } else {
-      Duration::default()
+      unreachable!("unexpected empty items key");
     };
     (len, average)
   }
 
   /// Return an iterator which provides the names, count, and average duration
   /// of each measurement.
-  pub fn averages(&self) -> impl Iterator<Item = (String, usize, Duration)> {
+  pub fn averages(&self) -> Vec<PerformanceAverage> {
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
     for measure in self.measures.lock().unwrap().iter() {
       averages
@@ -95,10 +95,17 @@ impl Performance {
         .or_default()
         .push(measure.duration);
     }
-    averages.into_iter().map(|(k, d)| {
-      let a = d.clone().into_iter().sum::<Duration>() / d.len() as u32;
-      (k, d.len(), a)
-    })
+    averages
+      .into_iter()
+      .map(|(k, d)| {
+        let a = d.clone().into_iter().sum::<Duration>() / d.len() as u32;
+        PerformanceAverage {
+          name: k,
+          count: d.len() as u32,
+          average_duration: a.as_millis() as u32,
+        }
+      })
+      .collect()
   }
 
   /// Marks the start of a measurement which returns a performance mark
@@ -123,7 +130,7 @@ impl Performance {
     let measure = PerformanceMeasure::from(mark);
     let mut measures = self.measures.lock().unwrap();
     measures.push_back(measure);
-    while measures.len() > self.size {
+    while measures.len() > self.max_size {
       measures.pop_front();
     }
   }
@@ -157,9 +164,8 @@ mod tests {
     let mark2 = performance.mark("a");
     performance.measure(mark2);
     performance.measure(mark1);
-    let averages: Vec<(String, usize, Duration)> =
-      performance.averages().collect();
+    let averages = performance.averages();
     assert_eq!(averages.len(), 1);
-    assert_eq!(averages[0].1, 2);
+    assert_eq!(averages[0].count, 2);
   }
 }
