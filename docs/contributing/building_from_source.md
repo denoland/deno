@@ -119,13 +119,13 @@ cargo clean && cargo build -vv
 
 > ```shell
 > # macOS / Linux
-> cd test_utils/wpt/
+> cd test_util/wpt/
 > ./wpt make-hosts-file | sudo tee -a /etc/hosts
 > ```
 
 > ```powershell
 > # Windows (use powershell!)
-> cd test_utils/wpt/
+> cd test_util/wpt/
 > python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
 > ```
 
