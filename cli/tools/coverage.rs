@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+#![allow(unused)]
 use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;
@@ -110,22 +111,158 @@ pub struct GetScriptSourceResult {
   pub bytecode: Option<String>,
 }
 
+pub enum CoverageReporterKind {
+  Pretty,
+  Lcov,
+}
+
+fn create_reporter(
+  kind: CoverageReporterKind,
+) -> Box<dyn CoverageReporter + Send> {
+  match kind {
+    CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
+    CoverageReporterKind::Pretty => {
+      Box::new(PrettyCoverageReporter::new(false))
+    }
+  }
+}
+
+pub trait CoverageReporter {
+  fn visit_coverage(
+    &mut self,
+    script_coverage: &ScriptCoverage,
+    script_source: &str,
+  );
+
+  fn done(&mut self);
+}
+
+pub struct LcovCoverageReporter {}
+
+impl LcovCoverageReporter {
+  pub fn new() -> LcovCoverageReporter {
+    LcovCoverageReporter {}
+  }
+}
+
+impl CoverageReporter for LcovCoverageReporter {
+  fn visit_coverage(
+    &mut self,
+    script_coverage: &ScriptCoverage,
+    script_source: &str,
+  ) {
+    let lines = script_source.split('\n').collect::<Vec<_>>();
+
+    let url = Url::parse(&script_coverage.url).unwrap();
+    let file_path = url.to_file_path().unwrap();
+    println!("SF:{}", file_path.to_str().unwrap());
+
+    let mut functions_found = 0;
+    let mut functions_hit = 0;
+
+    for function in &script_coverage.functions {
+      if function.function_name.is_empty() {
+        continue;
+      }
+
+      let mut count = 0;
+      for range in &function.ranges {
+        if range.count == 0 {
+          count = 0;
+          break;
+        }
+
+        count += range.count;
+      }
+
+      functions_found += 1;
+      if count > 1 {
+        functions_hit += 1;
+      }
+
+      println!("FN:{},{}", 1, function.function_name);
+    }
+
+    let mut lines_hit = 0;
+    let mut lines_found = 0;
+    let mut line_start_offset = 0;
+    for (index, line) in lines.iter().enumerate() {
+      let line_end_offset = line_start_offset + line.len();
+
+      let mut count = 0;
+      // Count the hits of ranges that include the entire line which will always be at-least one
+      // as long as the code has been evaluated.
+      for function in &script_coverage.functions {
+        for range in &function.ranges {
+          if range.start_offset <= line_start_offset
+            && range.end_offset >= line_end_offset
+          {
+            count += range.count;
+          }
+        }
+      }
+
+      // Reset the count if any block intersects with the current line has a count of
+      // zero.
+      //
+      // We check for intersection instead of inclusion here because a block may be anywhere
+      // inside a line.
+      for function in &script_coverage.functions {
+        for range in &function.ranges {
+          if range.count > 0 {
+            continue;
+          }
+
+          if (range.start_offset < line_start_offset
+            && range.end_offset > line_start_offset)
+            || (range.start_offset < line_end_offset
+              && range.end_offset > line_end_offset)
+          {
+            count = 0;
+          }
+        }
+      }
+
+      println!("DA:{},{}", index + 1, count);
+
+      if count > 0 {
+        lines_hit += 1;
+      }
+
+      lines_found += 1;
+
+      line_start_offset += line.len() + 1;
+    }
+
+    println!("LH:{}", lines_hit);
+    println!("LF:{}", lines_found);
+    println!("end_of_record");
+  }
+
+  fn done(&mut self) {}
+}
+
 pub struct PrettyCoverageReporter {
   summary: bool,
   covered_lines: usize,
   total_lines: usize,
 }
 
-// TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
 impl PrettyCoverageReporter {
   pub fn new(summary: bool) -> PrettyCoverageReporter {
-      let covered_lines = 0;
-      let total_lines = 0;
+    let covered_lines = 0;
+    let total_lines = 0;
 
-    PrettyCoverageReporter { summary, covered_lines, total_lines }
+    PrettyCoverageReporter {
+      summary,
+      covered_lines,
+      total_lines,
+    }
   }
+}
 
-  pub fn visit_coverage(
+impl CoverageReporter for PrettyCoverageReporter {
+  fn visit_coverage(
     &mut self,
     script_coverage: &ScriptCoverage,
     script_source: &str,
@@ -248,11 +385,13 @@ impl PrettyCoverageReporter {
     }
   }
 
-  pub fn done(&self) {
+  fn done(&mut self) {
     let line_ratio = self.covered_lines as f32 / self.total_lines as f32;
     println!(
       "coverage result: lines {:.3}% ({}/{})",
-      line_ratio * 100.0, self.covered_lines, self.total_lines
+      line_ratio * 100.0,
+      self.covered_lines,
+      self.total_lines
     );
   }
 }
@@ -356,7 +495,7 @@ fn filter_coverages(
 pub async fn report_coverages(
   flags: Flags,
   dir: &PathBuf,
-  summary: bool,
+  _summary: bool,
   include: Vec<String>,
   exclude: Vec<String>,
 ) -> Result<(), AnyError> {
@@ -365,7 +504,9 @@ pub async fn report_coverages(
   let coverages = collect_coverages(dir)?;
   let coverages = filter_coverages(coverages, include, exclude);
 
-  let mut coverage_reporter = PrettyCoverageReporter::new(summary);
+  // let mut coverage_reporter = PrettyCoverageReporter::new(summary);
+  let mut coverage_reporter = LcovCoverageReporter::new();
+
   for script_coverage in coverages {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
