@@ -111,13 +111,13 @@ window.add_completion_callback((tests, harnessStatus) => {
     console.log(`\nfailures:\n`);
   }
   for (const result of failed) {
-    console.log(`        ${JSON.stringify(result.name)}`);
+    console.log(`        ${result.name}`);
   }
   if (expectedFailedButPassedCount > 0) {
     console.log(`\nexpected failures that passed:\n`);
   }
   for (const result of expectedFailedButPassed) {
-    console.log(`        ${JSON.stringify(result.name)}`);
+    console.log(`        ${result.name}`);
   }
   console.log(
     `\ntest result: ${

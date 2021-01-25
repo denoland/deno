@@ -335,7 +335,7 @@ Deno.test("contentType", async () => {
 Deno.test("file_server running as library", async function (): Promise<void> {
   await startFileServerAsLibrary();
   try {
-    const res = await fetch("http://localhost:4504");
+    const res = await fetch("http://localhost:8000");
     assertEquals(res.status, 200);
     const _ = await res.text();
   } finally {
