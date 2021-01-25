@@ -112,12 +112,17 @@ pub struct GetScriptSourceResult {
 
 pub struct PrettyCoverageReporter {
   summary: bool,
+  covered_lines: usize,
+  total_lines: usize,
 }
 
 // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
 impl PrettyCoverageReporter {
   pub fn new(summary: bool) -> PrettyCoverageReporter {
-    PrettyCoverageReporter { summary }
+      let covered_lines = 0;
+      let total_lines = 0;
+
+    PrettyCoverageReporter { summary, covered_lines, total_lines }
   }
 
   pub fn visit_coverage(
@@ -195,6 +200,9 @@ impl PrettyCoverageReporter {
       line_start_offset += line.len() + 1;
     }
 
+    self.covered_lines += covered_lines.len();
+    self.total_lines += lines.len();
+
     if !self.summary {
       print!("cover {} ... ", script_coverage.url);
 
@@ -238,6 +246,14 @@ impl PrettyCoverageReporter {
         last_line = Some(line_index);
       }
     }
+  }
+
+  pub fn done(&self) {
+    let line_ratio = self.covered_lines as f32 / self.total_lines as f32;
+    println!(
+      "coverage result: lines {:.3}% ({}/{})",
+      line_ratio * 100.0, self.covered_lines, self.total_lines
+    );
   }
 }
 
@@ -368,6 +384,8 @@ pub async fn report_coverages(
 
     coverage_reporter.visit_coverage(&script_coverage, &script_source);
   }
+
+  coverage_reporter.done();
 
   Ok(())
 }
