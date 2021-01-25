@@ -9,7 +9,6 @@ use super::tsc;
 use crate::diagnostics;
 use crate::media_type::MediaType;
 
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
@@ -265,17 +264,13 @@ pub async fn generate_ts_diagnostics(
 }
 
 pub async fn generate_dependency_diagnostics(
-  state_snapshot: StateSnapshot,
+  mut state_snapshot: StateSnapshot,
   diagnostic_collection: DiagnosticCollection,
 ) -> Result<DiagnosticVec, AnyError> {
   tokio::task::spawn_blocking(move || {
     let mut diagnostics = Vec::new();
 
-    let mut sources = if let Ok(sources) = state_snapshot.sources.lock() {
-      sources
-    } else {
-      return Err(custom_error("Deadlock", "deadlock locking sources"));
-    };
+    let sources = &mut state_snapshot.sources;
     for specifier in state_snapshot.documents.open_specifiers() {
       let version = state_snapshot.documents.version(specifier);
       let current_version = diagnostic_collection.get_version(specifier);
