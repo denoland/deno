@@ -4,6 +4,8 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -24,7 +26,7 @@ pub struct PerformanceMark {
 }
 
 /// A structure which holds the information about the measured span.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PerformanceMeasure {
   pub name: String,
   pub count: u32,
@@ -47,10 +49,10 @@ impl From<PerformanceMark> for PerformanceMeasure {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Performance {
-  counts: HashMap<String, u32>,
-  measures: VecDeque<PerformanceMeasure>,
+  counts: Arc<Mutex<HashMap<String, u32>>>,
+  measures: Arc<Mutex<VecDeque<PerformanceMeasure>>>,
   size: usize,
 }
 
@@ -69,7 +71,7 @@ impl Performance {
   #[allow(unused)]
   pub fn average(&self, name: &str) -> (usize, Duration) {
     let mut items = Vec::new();
-    for measure in &self.measures {
+    for measure in self.measures.lock().unwrap().iter() {
       if measure.name == name {
         items.push(measure.duration);
       }
@@ -87,7 +89,7 @@ impl Performance {
   /// of each measurement.
   pub fn averages(&self) -> impl Iterator<Item = (String, usize, Duration)> {
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
-    for measure in &self.measures {
+    for measure in self.measures.lock().unwrap().iter() {
       averages
         .entry(measure.name.clone())
         .or_default()
@@ -99,29 +101,13 @@ impl Performance {
     })
   }
 
-  /// Returns an iterator which provides each performance measure currently in
-  /// memory.
-  #[allow(unused)]
-  pub fn get_measures(&self) -> impl Iterator<Item = &PerformanceMeasure> {
-    self.measures.iter()
-  }
-
-  /// Returns an iterator which provides all the instances of a particular
-  /// measure identified by name that are currently in memory.
-  #[allow(unused)]
-  pub fn get_measures_by_name<'a>(
-    &'a self,
-    name: &'a str,
-  ) -> impl Iterator<Item = &'a PerformanceMeasure> {
-    self.measures.iter().filter(move |m| m.name == name)
-  }
-
   /// Marks the start of a measurement which returns a performance mark
   /// structure, which is then passed to `.measure()` to finalize the duration
   /// and add it to the internal buffer.
-  pub fn mark<S: AsRef<str>>(&mut self, name: S) -> PerformanceMark {
+  pub fn mark<S: AsRef<str>>(&self, name: S) -> PerformanceMark {
     let name = name.as_ref();
-    let count = self.counts.entry(name.to_string()).or_insert(0);
+    let mut counts = self.counts.lock().unwrap();
+    let count = counts.entry(name.to_string()).or_insert(0);
     *count += 1;
     PerformanceMark {
       name: name.to_string(),
@@ -133,11 +119,12 @@ impl Performance {
   /// A function which accepts a previously created performance mark which will
   /// be used to finalize the duration of the span being measured, and add the
   /// measurement to the internal buffer.
-  pub fn measure(&mut self, mark: PerformanceMark) {
+  pub fn measure(&self, mark: PerformanceMark) {
     let measure = PerformanceMeasure::from(mark);
-    self.measures.push_back(measure);
-    while self.measures.len() > self.size {
-      self.measures.pop_front();
+    let mut measures = self.measures.lock().unwrap();
+    measures.push_back(measure);
+    while measures.len() > self.size {
+      measures.pop_front();
     }
   }
 }
@@ -147,19 +134,8 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_measure() {
-    let mut performance = Performance::default();
-    let mark = performance.mark("a");
-    performance.measure(mark);
-    assert_eq!(performance.get_measures_by_name("a").count(), 1);
-    let measure = performance.get_measures().take(1).next().unwrap();
-    assert_eq!(measure.name, "a");
-    assert_eq!(measure.count, 1);
-  }
-
-  #[test]
   fn test_average() {
-    let mut performance = Performance::default();
+    let performance = Performance::default();
     let mark1 = performance.mark("a");
     let mark2 = performance.mark("a");
     let mark3 = performance.mark("b");
@@ -176,7 +152,7 @@ mod tests {
 
   #[test]
   fn test_averages() {
-    let mut performance = Performance::default();
+    let performance = Performance::default();
     let mark1 = performance.mark("a");
     let mark2 = performance.mark("a");
     performance.measure(mark2);

@@ -18,7 +18,6 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 use tokio::fs;
 
 use crate::deno_dir;
@@ -60,7 +59,7 @@ struct Inner {
   ts_server: TsServer,
   config: Config,
   documents: DocumentCache,
-  performance: Arc<Mutex<Performance>>,
+  performance: Performance,
   sources: Sources,
   diagnostics: DiagnosticCollection,
   maybe_config_uri: Option<Url>,
@@ -108,7 +107,7 @@ impl Inner {
     &self,
     specifier: ModuleSpecifier,
   ) -> Result<LineIndex, AnyError> {
-    let mark = self.performance.lock().unwrap().mark("get_line_index");
+    let mark = self.performance.mark("get_line_index");
     let result = if specifier.as_url().scheme() == "asset" {
       let maybe_asset = self.assets.get(&specifier).cloned();
       if let Some(maybe_asset) = maybe_asset {
@@ -135,7 +134,7 @@ impl Inner {
     } else {
       Err(anyhow!("Unable to find line index for: {}", specifier))
     };
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     result
   }
 
@@ -145,7 +144,7 @@ impl Inner {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
-    let mark = self.performance.lock().unwrap().mark("get_line_index_sync");
+    let mark = self.performance.mark("get_line_index_sync");
     let maybe_line_index = if specifier.as_url().scheme() == "asset" {
       if let Some(Some(asset)) = self.assets.get(specifier) {
         Some(asset.line_index.clone())
@@ -160,7 +159,7 @@ impl Inner {
         self.sources.get_line_index(specifier)
       }
     };
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     maybe_line_index
   }
 
@@ -175,8 +174,6 @@ impl Inner {
       if lint_enabled {
         let mark = self
           .performance
-          .lock()
-          .unwrap()
           .mark("prepare_diagnostics_lint");
         diagnostics = Some(
           diagnostics::generate_lint_diagnostics(
@@ -185,7 +182,7 @@ impl Inner {
           )
           .await,
         );
-        self.performance.lock().unwrap().measure(mark);
+        self.performance.measure(mark);
       };
       Ok::<_, AnyError>(diagnostics)
     };
@@ -195,8 +192,6 @@ impl Inner {
       if enabled {
         let mark = self
           .performance
-          .lock()
-          .unwrap()
           .mark("prepare_diagnostics_ts");
         diagnostics = Some(
           diagnostics::generate_ts_diagnostics(
@@ -206,7 +201,7 @@ impl Inner {
           )
           .await?,
         );
-        self.performance.lock().unwrap().measure(mark);
+        self.performance.measure(mark);
       };
       Ok::<_, AnyError>(diagnostics)
     };
@@ -216,8 +211,6 @@ impl Inner {
       if enabled {
         let mark = self
           .performance
-          .lock()
-          .unwrap()
           .mark("prepare_diagnostics_deps");
         diagnostics = Some(
           diagnostics::generate_dependency_diagnostics(
@@ -226,7 +219,7 @@ impl Inner {
           )
           .await?,
         );
-        self.performance.lock().unwrap().measure(mark);
+        self.performance.measure(mark);
       };
       Ok::<_, AnyError>(diagnostics)
     };
@@ -278,7 +271,7 @@ impl Inner {
   }
 
   async fn publish_diagnostics(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.lock().unwrap().mark("publish_diagnostics");
+    let mark = self.performance.mark("publish_diagnostics");
     let (maybe_changes, diagnostics_collection) = {
       let diagnostics_collection = &mut self.diagnostics;
       let maybe_changes = diagnostics_collection.take_changes();
@@ -321,7 +314,7 @@ impl Inner {
       }
     }
 
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     Ok(())
   }
 
@@ -334,7 +327,7 @@ impl Inner {
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.lock().unwrap().mark("update_import_map");
+    let mark = self.performance.mark("update_import_map");
     let (maybe_import_map, maybe_root_uri) = {
       let config = &self.config;
       (config.settings.import_map.clone(), config.root_uri.clone())
@@ -376,12 +369,12 @@ impl Inner {
     } else {
       self.maybe_import_map = None;
     }
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     Ok(())
   }
 
   async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.lock().unwrap().mark("update_tsconfig");
+    let mark = self.performance.mark("update_tsconfig");
     let mut tsconfig = TsConfig::new(json!({
       "allowJs": true,
       "experimentalDecorators": true,
@@ -447,7 +440,7 @@ impl Inner {
       .ts_server
       .request(self.snapshot(), tsc::RequestMethod::Configure(tsconfig))
       .await?;
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     Ok(())
   }
 }
@@ -548,7 +541,7 @@ impl Inner {
   }
 
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
-    let mark = self.performance.lock().unwrap().mark("did_open");
+    let mark = self.performance.mark("did_open");
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
       // be tracked in memory, as they are static assets that won't change
@@ -568,7 +561,7 @@ impl Inner {
       error!("{}", err);
     }
 
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
@@ -576,7 +569,7 @@ impl Inner {
   }
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
-    let mark = self.performance.lock().unwrap().mark("did_change");
+    let mark = self.performance.mark("did_change");
     let specifier = utils::normalize_url(params.text_document.uri);
     if let Err(err) = self.documents.change(
       &specifier,
@@ -592,7 +585,7 @@ impl Inner {
       error!("{}", err);
     }
 
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
@@ -600,7 +593,7 @@ impl Inner {
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
-    let mark = self.performance.lock().unwrap().mark("did_close");
+    let mark = self.performance.mark("did_close");
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
       // be tracked in memory, as they are static assets that won't change
@@ -614,7 +607,7 @@ impl Inner {
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
     }
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
   }
 
   async fn did_save(&self, _params: DidSaveTextDocumentParams) {
@@ -627,8 +620,6 @@ impl Inner {
   ) {
     let mark = self
       .performance
-      .lock()
-      .unwrap()
       .mark("did_change_configuration");
     let config = if self.config.client_capabilities.workspace_configuration {
       self
@@ -671,18 +662,14 @@ impl Inner {
     } else {
       error!("received empty extension settings from the client");
     }
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
   }
 
   async fn did_change_watched_files(
     &mut self,
     params: DidChangeWatchedFilesParams,
   ) {
-    let mark = self
-      .performance
-      .lock()
-      .unwrap()
-      .mark("did_change_watched_files");
+    let mark = self.performance.mark("did_change_watched_files");
     // if the current import map has changed, we need to reload it
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
       if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
@@ -705,14 +692,14 @@ impl Inner {
         }
       }
     }
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
   }
 
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let mark = self.performance.lock().unwrap().mark("formatting");
+    let mark = self.performance.mark("formatting");
     let specifier = utils::normalize_url(params.text_document.uri.clone());
     let file_text = self
       .documents
@@ -751,7 +738,7 @@ impl Inner {
     .await
     .unwrap();
 
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     if let Some(text_edits) = text_edits {
       if text_edits.is_empty() {
         Ok(None)
@@ -768,7 +755,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.lock().unwrap().mark("hover");
+    let mark = self.performance.mark("hover");
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -792,10 +779,10 @@ impl Inner {
       serde_json::from_value(res).unwrap();
     if let Some(quick_info) = maybe_quick_info {
       let hover = quick_info.to_hover(&line_index);
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(Some(hover))
     } else {
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(None)
     }
   }
@@ -807,7 +794,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.lock().unwrap().mark("document_highlight");
+    let mark = self.performance.mark("document_highlight");
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -838,10 +825,10 @@ impl Inner {
         .map(|dh| dh.to_highlight(&line_index))
         .flatten()
         .collect();
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(Some(result))
     } else {
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(None)
     }
   }
@@ -853,7 +840,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.lock().unwrap().mark("references");
+    let mark = self.performance.mark("references");
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     let line_index =
@@ -890,10 +877,10 @@ impl Inner {
         results.push(reference.to_location(&line_index));
       }
 
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(Some(results))
     } else {
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(None)
     }
   }
@@ -905,7 +892,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.lock().unwrap().mark("goto_definition");
+    let mark = self.performance.mark("goto_definition");
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -932,10 +919,10 @@ impl Inner {
       let results = definition
         .to_definition(&line_index, |s| self.get_line_index(s))
         .await;
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(results)
     } else {
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(None)
     }
   }
@@ -947,7 +934,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.lock().unwrap().mark("completion");
+    let mark = self.performance.mark("completion");
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
@@ -977,10 +964,10 @@ impl Inner {
 
     if let Some(completions) = maybe_completion_info {
       let results = completions.into_completion_response(&line_index);
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(Some(results))
     } else {
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(None)
     }
   }
@@ -992,7 +979,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.lock().unwrap().mark("goto_implementation");
+    let mark = self.performance.mark("goto_implementation");
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
@@ -1041,10 +1028,10 @@ impl Inner {
           results.push(link);
         }
       }
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(Some(GotoDefinitionResponse::Link(results)))
     } else {
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(None)
     }
   }
@@ -1056,7 +1043,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.lock().unwrap().mark("goto_implementation");
+    let mark = self.performance.mark("goto_implementation");
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
 
@@ -1112,10 +1099,10 @@ impl Inner {
           error!("Failed to get workspace edits: {:#?}", err);
           LspError::internal_error()
         })?;
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(Some(workspace_edits))
     } else {
-      self.performance.lock().unwrap().measure(mark);
+      self.performance.measure(mark);
       Ok(None)
     }
   }
@@ -1282,7 +1269,7 @@ struct VirtualTextDocumentParams {
 
 impl Inner {
   async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
-    let mark = self.performance.lock().unwrap().mark("cache");
+    let mark = self.performance.mark("cache");
     let specifier = utils::normalize_url(params.text_document.uri);
     let maybe_import_map = self.maybe_import_map.clone();
     sources::cache(specifier.clone(), maybe_import_map)
@@ -1298,15 +1285,13 @@ impl Inner {
       error!("{}", err);
       LspError::internal_error()
     })?;
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     Ok(true)
   }
 
   fn get_performance(&self) -> LspResult<Option<Value>> {
     let averages: Vec<PerformanceAverage> = self
       .performance
-      .lock()
-      .unwrap()
       .averages()
       .map(|(n, c, d)| PerformanceAverage {
         name: n,
@@ -1321,11 +1306,7 @@ impl Inner {
     &self,
     params: VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
-    let mark = self
-      .performance
-      .lock()
-      .unwrap()
-      .mark("virtual_text_document");
+    let mark = self.performance.mark("virtual_text_document");
     let specifier = utils::normalize_url(params.text_document.uri);
     let url = specifier.as_url();
     let contents = if url.as_str() == "deno:/status.md" {
@@ -1339,8 +1320,7 @@ impl Inner {
         self.documents.len()
       ));
       contents.push_str("\n## Performance\n\n");
-      for (name, count, duration) in self.performance.lock().unwrap().averages()
-      {
+      for (name, count, duration) in self.performance.averages() {
         contents.push_str(&format!(
           "  - {}: {}ms ({})\n",
           name,
@@ -1383,7 +1363,7 @@ impl Inner {
         }
       }
     };
-    self.performance.lock().unwrap().measure(mark);
+    self.performance.measure(mark);
     Ok(contents)
   }
 }
@@ -1730,6 +1710,11 @@ mod tests {
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification_large.json", LspResponse::None),
       ("did_change_notification_large.json", LspResponse::None),
+      ("did_change_notification_large_02.json", LspResponse::None),
+      ("did_change_notification_large_03.json", LspResponse::None),
+      ("hover_request_large_01.json", LspResponse::RequestAny),
+      ("hover_request_large_02.json", LspResponse::RequestAny),
+      ("hover_request_large_03.json", LspResponse::RequestAny),
       (
         "shutdown_request.json",
         LspResponse::Request(3, json!(null)),
