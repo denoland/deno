@@ -99,14 +99,6 @@ jobs:
           node-version: "14"
           check-latest: true
 
-      - name: Remove unused versions of Python
-        if: startsWith(matrix.os, 'windows')
-        run: |-
-          $env:PATH -split ";" |
-            Where-Object { Test-Path "$_\python.exe" } |
-            Select-Object -Skip 1 |
-            ForEach-Object { Move-Item "$_" "$_.disabled" }
-
       - name: Setup gcloud (unix)
         if: |
           runner.os != 'Windows' &&
