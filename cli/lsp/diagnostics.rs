@@ -85,13 +85,14 @@ pub async fn generate_lint_diagnostics(
   tokio::task::spawn_blocking(move || {
     let mut diagnostic_list = Vec::new();
 
-    let documents = state_snapshot.documents.lock().unwrap();
-    for specifier in documents.open_specifiers() {
-      let version = documents.version(specifier);
+    for specifier in state_snapshot.documents.open_specifiers() {
+      let version = state_snapshot.documents.version(specifier);
       let current_version = diagnostic_collection.get_version(specifier);
       if version != current_version {
         let media_type = MediaType::from(specifier);
-        if let Ok(Some(source_code)) = documents.content(specifier) {
+        if let Ok(Some(source_code)) =
+          state_snapshot.documents.content(specifier)
+        {
           if let Ok(references) =
             get_lint_references(specifier, &media_type, &source_code)
           {
@@ -239,14 +240,11 @@ pub async fn generate_ts_diagnostics(
 ) -> Result<DiagnosticVec, AnyError> {
   let mut diagnostics = Vec::new();
   let mut specifiers = Vec::new();
-  {
-    let documents = state_snapshot.documents.lock().unwrap();
-    for specifier in documents.open_specifiers() {
-      let version = documents.version(specifier);
-      let current_version = diagnostic_collection.get_version(specifier);
-      if version != current_version {
-        specifiers.push(specifier.clone());
-      }
+  for specifier in state_snapshot.documents.open_specifiers() {
+    let version = state_snapshot.documents.version(specifier);
+    let current_version = diagnostic_collection.get_version(specifier);
+    if version != current_version {
+      specifiers.push(specifier.clone());
     }
   }
   if !specifiers.is_empty() {
@@ -255,8 +253,7 @@ pub async fn generate_ts_diagnostics(
     let ts_diagnostic_map: TsDiagnostics = serde_json::from_value(res)?;
     for (specifier_str, ts_diagnostics) in ts_diagnostic_map.iter() {
       let specifier = ModuleSpecifier::resolve_url(specifier_str)?;
-      let version =
-        state_snapshot.documents.lock().unwrap().version(&specifier);
+      let version = state_snapshot.documents.version(&specifier);
       diagnostics.push((
         specifier,
         version,
@@ -279,13 +276,12 @@ pub async fn generate_dependency_diagnostics(
     } else {
       return Err(custom_error("Deadlock", "deadlock locking sources"));
     };
-    let documents = state_snapshot.documents.lock().unwrap();
-    for specifier in documents.open_specifiers() {
-      let version = documents.version(specifier);
+    for specifier in state_snapshot.documents.open_specifiers() {
+      let version = state_snapshot.documents.version(specifier);
       let current_version = diagnostic_collection.get_version(specifier);
       if version != current_version {
         let mut diagnostic_list = Vec::new();
-        if let Some(dependencies) = documents.dependencies(specifier) {
+        if let Some(dependencies) = state_snapshot.documents.dependencies(specifier) {
           for (_, dependency) in dependencies.iter() {
             if let (Some(code), Some(range)) = (
               &dependency.maybe_code,
@@ -306,7 +302,7 @@ pub async fn generate_dependency_diagnostics(
                   })
                 }
                 ResolvedDependency::Resolved(specifier) => {
-                  if !(documents.contains(&specifier) || sources.contains(&specifier)) {
+                  if !(state_snapshot.documents.contains(&specifier) || sources.contains(&specifier)) {
                     let is_local = specifier.as_url().scheme() == "file";
                     diagnostic_list.push(lsp_types::Diagnostic {
                       range: *range,
