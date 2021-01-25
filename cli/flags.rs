@@ -37,7 +37,8 @@ pub enum DenoSubcommand {
   Cover {
     dir: String,
     quiet: bool,
-    ignore: Vec<String>,
+    include: Vec<String>,
+    exclude: Vec<String>,
   },
   Doc {
     private: bool,
@@ -572,12 +573,22 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dir = matches.value_of("dir").map(String::from).unwrap();
   let quiet = matches.is_present("quiet");
-  let ignore = match matches.values_of("ignore") {
+  let include = match matches.values_of("include") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
 
-  flags.subcommand = DenoSubcommand::Cover { dir, quiet, ignore };
+  let exclude = match matches.values_of("exclude") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+
+  flags.subcommand = DenoSubcommand::Cover {
+    dir,
+    quiet,
+    include,
+    exclude,
+  };
 }
 
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -1087,13 +1098,22 @@ Future runs of this module will trigger no downloads or compilation unless
 fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("cover")
     .arg(
-      Arg::with_name("ignore")
-        .long("ignore")
+      Arg::with_name("include")
+        .long("include")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
         .requires("unstable")
-        .help("Ignore covering particular source files."),
+        .help("Include a particular file in the coverage report."),
+    )
+    .arg(
+      Arg::with_name("exclude")
+        .long("exclude")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .requires("unstable")
+        .help("Exclude a particular file from the coverage report."),
     )
     .arg(
       Arg::with_name("dir")

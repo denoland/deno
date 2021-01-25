@@ -289,36 +289,50 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
 
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
-  _exclude: Vec<String>,
+  include: Vec<String>,
+  exclude: Vec<String>,
 ) -> Vec<ScriptCoverage> {
+  let include_patterns = include
+    .iter()
+    .map(|i| glob::Pattern::new(i).unwrap())
+    .collect::<Vec<glob::Pattern>>();
+  let exclude_patterns = exclude
+    .iter()
+    .map(|x| glob::Pattern::new(x).unwrap())
+    .collect::<Vec<glob::Pattern>>();
+
   coverages
     .into_iter()
     .filter(|e| {
       if let Ok(url) = Url::parse(&e.url) {
-        if url.scheme() == "deno" {
-          return false;
-        }
+        if let Ok(file_path) = url.to_file_path() {
+          if include_patterns.iter().any(|p| p.matches_path(&file_path)) {
+            return true;
+          }
 
-        if url.path().ends_with("$deno$test.ts") {
-          return false;
-        }
+          if exclude_patterns.iter().any(|p| p.matches_path(&file_path)) {
+            return false;
+          }
 
-        if url.path().ends_with("__anonymous__") {
-          return false;
-        }
+          if let Some(file_stem) = file_path.file_stem() {
+            if file_stem == "__anonymous__" {
+              return false;
+            }
 
-        if url.path().ends_with("test.ts") {
-          return false;
-        }
+            if file_stem.to_str().unwrap().starts_with("$deno") {
+              return false;
+            }
 
-        if url.path().ends_with("test.js") {
-          return false;
-        }
+            if file_stem.to_str().unwrap().starts_with("test") {
+              return false;
+            }
+           }
 
-        true
-      } else {
-        false
+          return true;
+        }
       }
+
+      false
     })
     .collect::<Vec<ScriptCoverage>>()
 }
@@ -327,12 +341,13 @@ pub async fn report_coverages(
   flags: Flags,
   dir: &PathBuf,
   quiet: bool,
+  include: Vec<String>,
   exclude: Vec<String>,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags)?;
 
   let coverages = collect_coverages(dir)?;
-  let coverages = filter_coverages(coverages, exclude);
+  let coverages = filter_coverages(coverages, include, exclude);
 
   let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
   for script_coverage in coverages {
