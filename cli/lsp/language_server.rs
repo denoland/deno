@@ -58,7 +58,7 @@ pub struct LanguageServer {
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
   pub assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
-  pub documents: Arc<Mutex<DocumentCache>>,
+  pub documents: DocumentCache,
   pub sources: Arc<Mutex<Sources>>,
 }
 
@@ -289,7 +289,7 @@ impl LanguageServer {
   pub fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
-      documents: self.documents.clone(),
+      documents: self.documents.lock().unwrap().clone(),
       sources: self.sources.clone(),
     }
   }
