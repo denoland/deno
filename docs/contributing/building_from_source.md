@@ -126,7 +126,7 @@ cargo clean && cargo build -vv
 > ```powershell
 > # Windows (use powershell!)
 > cd test_utils/wpt/
-> python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
+> python3 wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
 > ```
 
 > If you use WSL, be aware that WSL may attempt to override /etc/hosts each time
