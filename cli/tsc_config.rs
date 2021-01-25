@@ -75,6 +75,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "inlineSources",
   "module",
   "noEmitHelpers",
+  "noErrorTruncation",
   "noLib",
   "noResolve",
   "outDir",

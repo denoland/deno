@@ -221,7 +221,7 @@ fn git_commit_hash() -> String {
     .output()
   {
     if output.status.success() {
-      std::str::from_utf8(&output.stdout[..7])
+      std::str::from_utf8(&output.stdout[..40])
         .unwrap()
         .to_string()
     } else {

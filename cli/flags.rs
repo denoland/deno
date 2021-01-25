@@ -29,6 +29,8 @@ pub enum DenoSubcommand {
     source_file: String,
     output: Option<PathBuf>,
     args: Vec<String>,
+    target: Option<String>,
+    lite: bool,
   },
   Completions {
     buf: Box<[u8]>,
@@ -48,6 +50,7 @@ pub enum DenoSubcommand {
     check: bool,
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
+    ext: String,
   },
   Info {
     json: bool,
@@ -398,8 +401,11 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
+  let ext = matches.value_of("ext").unwrap().to_string();
+
   flags.subcommand = DenoSubcommand::Fmt {
     check: matches.is_present("check"),
+    ext,
     files,
     ignore,
   }
@@ -447,11 +453,15 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let args = script.split_off(1);
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
+  let lite = matches.is_present("lite");
+  let target = matches.value_of("target").map(String::from);
 
   flags.subcommand = DenoSubcommand::Compile {
     source_file,
     output,
     args,
+    lite,
+    target,
   };
 }
 
@@ -804,6 +814,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(false),
     )
     .arg(
+      Arg::with_name("ext")
+        .long("ext")
+        .help("Set standard input (stdin) content type")
+        .takes_value(true)
+        .default_value("ts")
+        .possible_values(&["ts", "tsx", "js", "jsx", "md"]),
+    )
+    .arg(
       Arg::with_name("ignore")
         .long("ignore")
         .takes_value(true)
@@ -884,7 +902,7 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("compile"), true, false)
   .setting(AppSettings::TrailingVarArg)
     .arg(
-      script_arg(),
+      script_arg().required(true),
     )
     .arg(
       Arg::with_name("output")
@@ -893,11 +911,24 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("Output file (defaults to $PWD/<inferred-name>)")
         .takes_value(true)
     )
+    .arg(
+      Arg::with_name("target")
+        .long("target")
+        .help("Target OS architecture")
+        .takes_value(true)
+        .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"])
+    )
+    .arg(
+      Arg::with_name("lite")
+        .long("lite")
+        .help("Use lite runtime")
+    )
     .about("Compile the script into a self contained executable")
     .long_about(
       "Compiles the given script into a self contained executable.
-  deno compile --unstable https://deno.land/std/http/file_server.ts
+  deno compile --unstable -A https://deno.land/std/http/file_server.ts
   deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
+  deno compile --unstable --lite --target x86_64-unknown-linux-gnu -A https://deno.land/std/http/file_server.ts
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and used
@@ -911,7 +942,13 @@ The executable name is inferred by default:
     settle with the generic name.
   - If the resulting name has an '@...' suffix, strip it.
 
-Cross compiling binaries for different platforms is not currently possible.",
+This commands supports cross-compiling to different target architectures using `--target` flag.
+On the first invocation with deno will download proper binary and cache it in $DENO_DIR. The
+aarch64-apple-darwin target is not supported in canary.
+
+It is possible to use \"lite\" binaries when compiling by passing `--lite` flag; these are stripped down versions
+of the deno binary that do not contain built-in tooling (eg. formatter, linter). This feature is experimental.
+",
     )
 }
 
@@ -1438,11 +1475,11 @@ fn location_arg<'a, 'b>() -> Arg<'a, 'b> {
         return Err("Failed to parse URL".to_string());
       }
       let mut url = url.unwrap();
-      url.set_username("").unwrap();
-      url.set_password(None).unwrap();
       if !["http", "https"].contains(&url.scheme()) {
         return Err("Expected protocol \"http\" or \"https\"".to_string());
       }
+      url.set_username("").unwrap();
+      url.set_password(None).unwrap();
       Ok(())
     })
     .help("Value of 'globalThis.location' used by some web APIs")
@@ -1967,6 +2004,7 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
+          ext: "ts".to_string()
         },
         ..Flags::default()
       }
@@ -1980,6 +2018,7 @@ mod tests {
           ignore: vec![],
           check: true,
           files: vec![],
+          ext: "ts".to_string(),
         },
         ..Flags::default()
       }
@@ -1993,6 +2032,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
+          ext: "ts".to_string(),
         },
         ..Flags::default()
       }
@@ -2006,6 +2046,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
+          ext: "ts".to_string(),
         },
         watch: true,
         unstable: true,
@@ -2029,6 +2070,7 @@ mod tests {
           ignore: vec![PathBuf::from("bar.js")],
           check: true,
           files: vec![PathBuf::from("foo.ts")],
+          ext: "ts".to_string(),
         },
         watch: true,
         unstable: true,
@@ -3318,6 +3360,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "compile",
+      "--lite",
       "https://deno.land/std/examples/colors.ts"
     ]);
     assert_eq!(
@@ -3327,6 +3370,8 @@ mod tests {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: None,
           args: vec![],
+          target: None,
+          lite: true,
         },
         ..Flags::default()
       }
@@ -3344,6 +3389,8 @@ mod tests {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
+          target: None,
+          lite: false,
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
@@ -3363,5 +3410,16 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn location_with_bad_scheme() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "run", "--location", "foo:", "mod.ts"]);
+    assert!(r.is_err());
+    assert!(r
+      .unwrap_err()
+      .to_string()
+      .contains("Expected protocol \"http\" or \"https\""));
   }
 }

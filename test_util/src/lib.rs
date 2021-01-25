@@ -5,7 +5,6 @@
 #[macro_use]
 extern crate lazy_static;
 
-use core::mem::replace;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -28,6 +27,7 @@ use std::env;
 use std::io;
 use std::io::Read;
 use std::io::Write;
+use std::mem::replace;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
