@@ -3,9 +3,10 @@ import {
   dirname,
   fromFileUrl,
   join,
-} from "https://deno.land/std@0.76.0/path/mod.ts";
+} from "https://deno.land/std@0.84.0/path/mod.ts";
 export { dirname, join };
-export { existsSync } from "https://deno.land/std@0.76.0/fs/mod.ts";
+export { existsSync } from "https://deno.land/std@0.84.0/fs/mod.ts";
+export { readLines } from "https://deno.land/std@0.84.0/io/mod.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
