@@ -111,13 +111,13 @@ pub struct GetScriptSourceResult {
 }
 
 pub struct PrettyCoverageReporter {
-  quiet: bool,
+  summary: bool,
 }
 
 // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
 impl PrettyCoverageReporter {
-  pub fn new(quiet: bool) -> PrettyCoverageReporter {
-    PrettyCoverageReporter { quiet }
+  pub fn new(summary: bool) -> PrettyCoverageReporter {
+    PrettyCoverageReporter { summary }
   }
 
   pub fn visit_coverage(
@@ -195,7 +195,7 @@ impl PrettyCoverageReporter {
       line_start_offset += line.len() + 1;
     }
 
-    if !self.quiet {
+    if !self.summary {
       print!("cover {} ... ", script_coverage.url);
 
       let line_coverage_ratio = covered_lines.len() as f32 / lines.len() as f32;
@@ -326,7 +326,7 @@ fn filter_coverages(
             if file_stem.to_str().unwrap().ends_with("test") {
               return false;
             }
-           }
+          }
 
           return true;
         }
@@ -340,7 +340,7 @@ fn filter_coverages(
 pub async fn report_coverages(
   flags: Flags,
   dir: &PathBuf,
-  quiet: bool,
+  summary: bool,
   include: Vec<String>,
   exclude: Vec<String>,
 ) -> Result<(), AnyError> {
@@ -349,7 +349,7 @@ pub async fn report_coverages(
   let coverages = collect_coverages(dir)?;
   let coverages = filter_coverages(coverages, include, exclude);
 
-  let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
+  let mut coverage_reporter = PrettyCoverageReporter::new(summary);
   for script_coverage in coverages {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
