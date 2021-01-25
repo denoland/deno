@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use tokio::io::AsyncSeekExt;
 
 #[cfg(not(unix))]
 use deno_core::error::generic_error;

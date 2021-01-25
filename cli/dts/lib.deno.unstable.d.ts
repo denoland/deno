@@ -835,31 +835,91 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** **UNSTABLE**: Under consideration to remove `ShutdownMode` entirely.
-   *
-   * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
-   *
-   * See: http://man7.org/linux/man-pages/man2/shutdown.2.html */
-  export enum ShutdownMode {
-    Read = 0,
-    Write,
-    ReadWrite, // TODO(ry) panics on ReadWrite.
+  /** The type of the resource record.
+   * Only the listed types are supported currently. */
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "CNAME"
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
+
+  export interface ResolveDnsOptions {
+    /** The name server to be used for lookups. 
+    * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
+      * If not specified, defaults to 53. */
+      port?: number;
+    };
   }
 
-  /** **UNSTABLE**: Both the `how` parameter and `ShutdownMode` enum are under
-   * consideration for removal.
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
+
+  /** ** UNSTABLE**: new API, yet to be vetted.
    *
-   * Shutdown socket send and receive operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
+   * Performs DNS resolution against the given query, returning resolved records.
+   * Fails in the cases such as:
+   * - the query is in invalid format
+   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
+   * - timed out
    *
    * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 1234 },
+   * });
    * ```
+   *
+   * Requires `allow-net` permission.
    */
-  export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *

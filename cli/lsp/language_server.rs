@@ -11,6 +11,7 @@ use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
+use lspower::lsp_types::request::*;
 use lspower::lsp_types::*;
 use lspower::Client;
 use std::collections::HashMap;
@@ -22,33 +23,31 @@ use tokio::fs;
 
 use crate::deno_dir;
 use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
-use super::analysis;
 use super::capabilities;
 use super::config::Config;
 use super::diagnostics;
 use super::diagnostics::DiagnosticCollection;
 use super::diagnostics::DiagnosticSource;
-use super::memory_cache::MemoryCache;
+use super::documents::DocumentCache;
 use super::sources;
 use super::sources::Sources;
 use super::text;
-use super::text::apply_content_changes;
+use super::text::LineIndex;
 use super::tsc;
+use super::tsc::AssetDocument;
 use super::tsc::TsServer;
 use super::utils;
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
-  assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<String>>>>,
+  assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
   client: Client,
   ts_server: TsServer,
   config: Arc<Mutex<Config>>,
-  doc_data: Arc<Mutex<HashMap<ModuleSpecifier, DocumentData>>>,
-  file_cache: Arc<Mutex<MemoryCache>>,
+  documents: Arc<Mutex<DocumentCache>>,
   sources: Arc<Mutex<Sources>>,
   diagnostics: Arc<Mutex<DiagnosticCollection>>,
   maybe_config_uri: Arc<Mutex<Option<Url>>>,
@@ -58,9 +57,8 @@ pub struct LanguageServer {
 
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
-  pub assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<String>>>>,
-  pub doc_data: HashMap<ModuleSpecifier, DocumentData>,
-  pub file_cache: Arc<Mutex<MemoryCache>>,
+  pub assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
+  pub documents: Arc<Mutex<DocumentCache>>,
   pub sources: Arc<Mutex<Sources>>,
 }
 
@@ -77,8 +75,7 @@ impl LanguageServer {
       client,
       ts_server: TsServer::new(),
       config: Default::default(),
-      doc_data: Default::default(),
-      file_cache: Default::default(),
+      documents: Default::default(),
       sources,
       diagnostics: Default::default(),
       maybe_config_uri: Default::default(),
@@ -92,34 +89,65 @@ impl LanguageServer {
     config.settings.enable
   }
 
+  /// Searches assets, open documents and external sources for a line_index,
+  /// which might be performed asynchronously, hydrating in memory caches for
+  /// subsequent requests.
   pub async fn get_line_index(
     &self,
     specifier: ModuleSpecifier,
-  ) -> Result<Vec<u32>, AnyError> {
-    let line_index = if specifier.as_url().scheme() == "asset" {
-      let state_snapshot = self.snapshot();
-      if let Some(source) =
-        tsc::get_asset(&specifier, &self.ts_server, &state_snapshot).await?
-      {
-        text::index_lines(&source)
-      } else {
-        return Err(anyhow!("asset source missing: {}", specifier));
-      }
-    } else {
-      let file_cache = self.file_cache.lock().unwrap();
-      if let Some(file_id) = file_cache.lookup(&specifier) {
-        let file_text = file_cache.get_contents(file_id)?;
-        text::index_lines(&file_text)
-      } else {
-        let mut sources = self.sources.lock().unwrap();
-        if let Some(line_index) = sources.get_line_index(&specifier) {
-          line_index
+  ) -> Result<LineIndex, AnyError> {
+    if specifier.as_url().scheme() == "asset" {
+      let maybe_asset =
+        { self.assets.lock().unwrap().get(&specifier).cloned() };
+      if let Some(maybe_asset) = maybe_asset {
+        if let Some(asset) = maybe_asset {
+          Ok(asset.line_index)
         } else {
-          return Err(anyhow!("source for specifier not found: {}", specifier));
+          Err(anyhow!("asset is missing: {}", specifier))
+        }
+      } else {
+        let state_snapshot = self.snapshot();
+        if let Some(asset) =
+          tsc::get_asset(&specifier, &self.ts_server, &state_snapshot).await?
+        {
+          Ok(asset.line_index)
+        } else {
+          Err(anyhow!("asset is missing: {}", specifier))
         }
       }
-    };
-    Ok(line_index)
+    } else if let Some(line_index) =
+      self.documents.lock().unwrap().line_index(&specifier)
+    {
+      Ok(line_index)
+    } else if let Some(line_index) =
+      self.sources.lock().unwrap().get_line_index(&specifier)
+    {
+      Ok(line_index)
+    } else {
+      Err(anyhow!("Unable to find line index for: {}", specifier))
+    }
+  }
+
+  /// Only searches already cached assets and documents for a line index.  If
+  /// the line index cannot be found, `None` is returned.
+  pub fn get_line_index_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<LineIndex> {
+    if specifier.as_url().scheme() == "asset" {
+      if let Some(Some(asset)) = self.assets.lock().unwrap().get(specifier) {
+        Some(asset.line_index.clone())
+      } else {
+        None
+      }
+    } else {
+      let documents = self.documents.lock().unwrap();
+      if documents.contains(specifier) {
+        documents.line_index(specifier)
+      } else {
+        self.sources.lock().unwrap().get_line_index(specifier)
+      }
+    }
   }
 
   async fn prepare_diagnostics(&self) -> Result<(), AnyError> {
@@ -129,6 +157,7 @@ impl LanguageServer {
     };
 
     let lint = async {
+      let mut disturbed = false;
       if lint_enabled {
         let diagnostic_collection = self.diagnostics.lock().unwrap().clone();
         let diagnostics = diagnostics::generate_lint_diagnostics(
@@ -136,59 +165,50 @@ impl LanguageServer {
           diagnostic_collection,
         )
         .await;
+        disturbed = !diagnostics.is_empty();
         {
           let mut diagnostics_collection = self.diagnostics.lock().unwrap();
-          for (file_id, version, diagnostics) in diagnostics {
+          for (specifier, version, diagnostics) in diagnostics {
             diagnostics_collection.set(
-              file_id,
+              specifier,
               DiagnosticSource::Lint,
               version,
               diagnostics,
             );
           }
         }
-        self.publish_diagnostics().await?
       };
-
-      Ok::<(), AnyError>(())
+      Ok::<bool, AnyError>(disturbed)
     };
 
     let ts = async {
+      let mut disturbed = false;
       if enabled {
-        let diagnostics = {
-          let diagnostic_collection = self.diagnostics.lock().unwrap().clone();
-          match diagnostics::generate_ts_diagnostics(
-            &self.ts_server,
-            &diagnostic_collection,
-            self.snapshot(),
-          )
-          .await
-          {
-            Ok(diagnostics) => diagnostics,
-            Err(err) => {
-              error!("Error processing TypeScript diagnostics:\n{}", err);
-              vec![]
-            }
-          }
-        };
+        let diagnostics_collection = self.diagnostics.lock().unwrap().clone();
+        let diagnostics = diagnostics::generate_ts_diagnostics(
+          self.snapshot(),
+          diagnostics_collection,
+          &self.ts_server,
+        )
+        .await?;
+        disturbed = !diagnostics.is_empty();
         {
           let mut diagnostics_collection = self.diagnostics.lock().unwrap();
-          for (file_id, version, diagnostics) in diagnostics {
+          for (specifier, version, diagnostics) in diagnostics {
             diagnostics_collection.set(
-              file_id,
+              specifier,
               DiagnosticSource::TypeScript,
               version,
               diagnostics,
             );
           }
-        };
-        self.publish_diagnostics().await?
-      }
-
-      Ok::<(), AnyError>(())
+        }
+      };
+      Ok::<bool, AnyError>(disturbed)
     };
 
     let deps = async {
+      let mut disturbed = false;
       if enabled {
         let diagnostics_collection = self.diagnostics.lock().unwrap().clone();
         let diagnostics = diagnostics::generate_dependency_diagnostics(
@@ -196,27 +216,26 @@ impl LanguageServer {
           diagnostics_collection,
         )
         .await?;
+        disturbed = !diagnostics.is_empty();
         {
           let mut diagnostics_collection = self.diagnostics.lock().unwrap();
-          for (file_id, version, diagnostics) in diagnostics {
+          for (specifier, version, diagnostics) in diagnostics {
             diagnostics_collection.set(
-              file_id,
+              specifier,
               DiagnosticSource::Deno,
               version,
               diagnostics,
             );
           }
         }
-        self.publish_diagnostics().await?
       };
-
-      Ok::<(), AnyError>(())
+      Ok::<bool, AnyError>(disturbed)
     };
 
     let (lint_res, ts_res, deps_res) = tokio::join!(lint, ts, deps);
-    lint_res?;
-    ts_res?;
-    deps_res?;
+    if lint_res? || ts_res? || deps_res? {
+      self.publish_diagnostics().await?;
+    }
 
     Ok(())
   }
@@ -229,7 +248,7 @@ impl LanguageServer {
     };
     if let Some(diagnostic_changes) = maybe_changes {
       let settings = self.config.lock().unwrap().settings.clone();
-      for file_id in diagnostic_changes {
+      for specifier in diagnostic_changes {
         // TODO(@kitsonk) not totally happy with the way we collect and store
         // different types of diagnostics and offer them up to the client, we
         // do need to send "empty" vectors though when a particular feature is
@@ -237,7 +256,7 @@ impl LanguageServer {
         // diagnostics
         let mut diagnostics: Vec<Diagnostic> = if settings.lint {
           diagnostics_collection
-            .diagnostics_for(file_id, DiagnosticSource::Lint)
+            .diagnostics_for(&specifier, &DiagnosticSource::Lint)
             .cloned()
             .collect()
         } else {
@@ -246,27 +265,17 @@ impl LanguageServer {
         if self.enabled() {
           diagnostics.extend(
             diagnostics_collection
-              .diagnostics_for(file_id, DiagnosticSource::TypeScript)
+              .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
               .cloned(),
           );
           diagnostics.extend(
             diagnostics_collection
-              .diagnostics_for(file_id, DiagnosticSource::Deno)
+              .diagnostics_for(&specifier, &DiagnosticSource::Deno)
               .cloned(),
           );
         }
-        let specifier = {
-          let file_cache = self.file_cache.lock().unwrap();
-          file_cache.get_specifier(file_id).clone()
-        };
         let uri = specifier.as_url().clone();
-        let version = if let Some(doc_data) =
-          self.doc_data.lock().unwrap().get(&specifier)
-        {
-          doc_data.version
-        } else {
-          None
-        };
+        let version = self.documents.lock().unwrap().version(&specifier);
         self
           .client
           .publish_diagnostics(uri, diagnostics, version)
@@ -280,8 +289,7 @@ impl LanguageServer {
   pub fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
-      doc_data: self.doc_data.lock().unwrap().clone(),
-      file_cache: self.file_cache.clone(),
+      documents: self.documents.clone(),
       sources: self.sources.clone(),
     }
   }
@@ -506,61 +514,48 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
-    let maybe_import_map = self.maybe_import_map.lock().unwrap().clone();
-    if self
-      .doc_data
+    self.documents.lock().unwrap().open(
+      specifier.clone(),
+      params.text_document.version,
+      params.text_document.text,
+    );
+    if let Err(err) = self
+      .documents
       .lock()
       .unwrap()
-      .insert(
-        specifier.clone(),
-        DocumentData::new(
-          specifier.clone(),
-          params.text_document.version,
-          &params.text_document.text,
-          maybe_import_map,
-        ),
-      )
-      .is_some()
+      .analyze_dependencies(&specifier, &self.maybe_import_map.lock().unwrap())
     {
-      error!("duplicate DidOpenTextDocument: {}", specifier);
+      error!("{}", err);
     }
 
-    self
-      .file_cache
-      .lock()
-      .unwrap()
-      .set_contents(specifier, Some(params.text_document.text.into_bytes()));
-    // TODO(@lucacasonato): error handling
-    self.prepare_diagnostics().await.unwrap();
+    // TODO(@kitsonk): how to better lazily do this?
+    if let Err(err) = self.prepare_diagnostics().await {
+      error!("{}", err);
+    }
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     let specifier = utils::normalize_url(params.text_document.uri);
-    let mut content = {
-      let file_cache = self.file_cache.lock().unwrap();
-      let file_id = file_cache.lookup(&specifier).unwrap();
-      file_cache.get_contents(file_id).unwrap()
-    };
-    apply_content_changes(&mut content, params.content_changes);
-    {
-      let mut doc_data = self.doc_data.lock().unwrap();
-      let doc_data = doc_data.get_mut(&specifier).unwrap();
-      let maybe_import_map = self.maybe_import_map.lock().unwrap();
-      doc_data.update(
-        params.text_document.version,
-        &content,
-        &maybe_import_map,
-      );
+    if let Err(err) = self.documents.lock().unwrap().change(
+      &specifier,
+      params.text_document.version,
+      params.content_changes,
+    ) {
+      error!("{}", err);
     }
-
-    self
-      .file_cache
+    if let Err(err) = self
+      .documents
       .lock()
       .unwrap()
-      .set_contents(specifier, Some(content.into_bytes()));
+      .analyze_dependencies(&specifier, &self.maybe_import_map.lock().unwrap())
+    {
+      error!("{}", err);
+    }
 
-    // TODO(@lucacasonato): error handling
-    self.prepare_diagnostics().await.unwrap();
+    // TODO(@kitsonk): how to better lazily do this?
+    if let Err(err) = self.prepare_diagnostics().await {
+      error!("{}", err);
+    }
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -571,12 +566,12 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
-    if self.doc_data.lock().unwrap().remove(&specifier).is_none() {
-      error!("orphaned document: {}", specifier);
+    self.documents.lock().unwrap().close(&specifier);
+
+    // TODO(@kitsonk): how to better lazily do this?
+    if let Err(err) = self.prepare_diagnostics().await {
+      error!("{}", err);
     }
-    // TODO(@kitsonk) should we do garbage collection on the diagnostics?
-    // TODO(@lucacasonato): error handling
-    self.prepare_diagnostics().await.unwrap();
   }
 
   async fn did_save(&self, _params: DidSaveTextDocumentParams) {
@@ -672,12 +667,17 @@ impl lspower::LanguageServer for LanguageServer {
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let specifier = utils::normalize_url(params.text_document.uri.clone());
-    let file_text = {
-      let file_cache = self.file_cache.lock().unwrap();
-      let file_id = file_cache.lookup(&specifier).unwrap();
-      // TODO(lucacasonato): handle error properly
-      file_cache.get_contents(file_id).unwrap()
-    };
+    let file_text = self
+      .documents
+      .lock()
+      .unwrap()
+      .content(&specifier)
+      .map_err(|_| {
+        LspError::invalid_params(
+          "The specified file could not be found in memory.",
+        )
+      })?
+      .unwrap();
 
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
@@ -722,14 +722,18 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetQuickInfo((
       specifier,
-      text::to_char_pos(
-        &line_index,
-        params.text_document_position_params.position,
-      ),
+      line_index.offset_tsc(params.text_document_position_params.position)?,
     ));
     // TODO(lucacasonato): handle error correctly
     let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
@@ -737,7 +741,8 @@ impl lspower::LanguageServer for LanguageServer {
     let maybe_quick_info: Option<tsc::QuickInfo> =
       serde_json::from_value(res).unwrap();
     if let Some(quick_info) = maybe_quick_info {
-      Ok(Some(quick_info.to_hover(&line_index)))
+      let hover = quick_info.to_hover(&line_index);
+      Ok(Some(hover))
     } else {
       Ok(None)
     }
@@ -753,15 +758,19 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let files_to_search = vec![specifier.clone()];
     let req = tsc::RequestMethod::GetDocumentHighlights((
       specifier,
-      text::to_char_pos(
-        &line_index,
-        params.text_document_position_params.position,
-      ),
+      line_index.offset_tsc(params.text_document_position_params.position)?,
       files_to_search,
     ));
     // TODO(lucacasonato): handle error correctly
@@ -792,11 +801,18 @@ impl lspower::LanguageServer for LanguageServer {
     }
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
-    // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetReferences((
       specifier,
-      text::to_char_pos(&line_index, params.text_document_position.position),
+      line_index.offset_tsc(params.text_document_position.position)?,
     ));
     // TODO(lucacasonato): handle error correctly
     let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
@@ -811,7 +827,8 @@ impl lspower::LanguageServer for LanguageServer {
           continue;
         }
         let reference_specifier =
-          ModuleSpecifier::resolve_url(&reference.file_name).unwrap();
+          ModuleSpecifier::resolve_url(&reference.document_span.file_name)
+            .unwrap();
         // TODO(lucacasonato): handle error correctly
         let line_index =
           self.get_line_index(reference_specifier).await.unwrap();
@@ -834,14 +851,18 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier = utils::normalize_url(
       params.text_document_position_params.text_document.uri,
     );
-    // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetDefinition((
       specifier,
-      text::to_char_pos(
-        &line_index,
-        params.text_document_position_params.position,
-      ),
+      line_index.offset_tsc(params.text_document_position_params.position)?,
     ));
     // TODO(lucacasonato): handle error correctly
     let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
@@ -870,10 +891,18 @@ impl lspower::LanguageServer for LanguageServer {
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
-    let line_index = self.get_line_index(specifier.clone()).await.unwrap();
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
     let req = tsc::RequestMethod::GetCompletions((
       specifier,
-      text::to_char_pos(&line_index, params.text_document_position.position),
+      line_index.offset_tsc(params.text_document_position.position)?,
       tsc::UserPreferences {
         // TODO(lucacasonato): enable this. see https://github.com/denoland/deno/pull/8651
         include_completions_with_insert_text: Some(false),
@@ -893,6 +922,67 @@ impl lspower::LanguageServer for LanguageServer {
     }
   }
 
+  async fn goto_implementation(
+    &self,
+    params: GotoImplementationParams,
+  ) -> LspResult<Option<GotoImplementationResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let specifier = utils::normalize_url(
+      params.text_document_position_params.text_document.uri,
+    );
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetImplementation((
+      specifier,
+      line_index.offset_tsc(params.text_document_position_params.position)?,
+    ));
+    let res =
+      self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {:#?}", err);
+          LspError::invalid_request()
+        })?;
+
+    let maybe_implementations = serde_json::from_value::<Option<Vec<tsc::ImplementationLocation>>>(res)
+      .map_err(|err| {
+        error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {:#?}", err);
+        LspError::internal_error()
+      })?;
+
+    if let Some(implementations) = maybe_implementations {
+      let mut results = Vec::new();
+      for impl_ in implementations {
+        let document_span = impl_.document_span;
+        let impl_specifier =
+          ModuleSpecifier::resolve_url(&document_span.file_name).unwrap();
+        let impl_line_index =
+          &self.get_line_index(impl_specifier).await.unwrap();
+        if let Some(link) = document_span
+          .to_link(impl_line_index, |s| self.get_line_index(s))
+          .await
+        {
+          results.push(link);
+        }
+      }
+      Ok(Some(GotoDefinitionResponse::Link(results)))
+    } else {
+      Ok(None)
+    }
+  }
+
   async fn rename(
     &self,
     params: RenameParams,
@@ -900,36 +990,36 @@ impl lspower::LanguageServer for LanguageServer {
     if !self.enabled() {
       return Ok(None);
     }
-
-    let snapshot = self.snapshot();
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
 
     let line_index =
-      self
-        .get_line_index(specifier.clone())
-        .await
-        .map_err(|err| {
-          error!("Failed to get line_index {:#?}", err);
-          LspError::internal_error()
-        })?;
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
 
     let req = tsc::RequestMethod::FindRenameLocations((
       specifier,
-      text::to_char_pos(&line_index, params.text_document_position.position),
+      line_index.offset_tsc(params.text_document_position.position)?,
       true,
       true,
       false,
     ));
 
-    let res = self
-      .ts_server
-      .request(snapshot.clone(), req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {:#?}", err);
-        LspError::invalid_request()
-      })?;
+    let res =
+      self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {:#?}", err);
+          LspError::invalid_request()
+        })?;
 
     let maybe_locations = serde_json::from_value::<
       Option<Vec<tsc::RenameLocation>>,
@@ -942,26 +1032,22 @@ impl lspower::LanguageServer for LanguageServer {
       LspError::internal_error()
     })?;
 
-    match maybe_locations {
-      Some(locations) => {
-        let rename_locations = tsc::RenameLocations { locations };
-        let workpace_edits = rename_locations
-          .into_workspace_edit(
-            snapshot,
-            |s| self.get_line_index(s),
-            &params.new_name,
-          )
-          .await
-          .map_err(|err| {
-            error!(
-              "Failed to convert tsc::RenameLocations to WorkspaceEdit {:#?}",
-              err
-            );
-            LspError::internal_error()
-          })?;
-        Ok(Some(workpace_edits))
-      }
-      None => Ok(None),
+    if let Some(locations) = maybe_locations {
+      let rename_locations = tsc::RenameLocations { locations };
+      let workspace_edits = rename_locations
+        .into_workspace_edit(
+          &params.new_name,
+          |s| self.get_line_index(s),
+          |s| self.documents.lock().unwrap().version(&s),
+        )
+        .await
+        .map_err(|err| {
+          error!("Failed to get workspace edits: {:#?}", err);
+          LspError::internal_error()
+        })?;
+      Ok(Some(workspace_edits))
+    } else {
+      Ok(None)
     }
   }
 
@@ -1025,12 +1111,8 @@ impl LanguageServer {
         error!("{}", err);
         LspError::internal_error()
       })?;
-    {
-      let file_cache = self.file_cache.lock().unwrap();
-      if let Some(file_id) = file_cache.lookup(&specifier) {
-        let mut diagnostics_collection = self.diagnostics.lock().unwrap();
-        diagnostics_collection.invalidate(&file_id);
-      }
+    if self.documents.lock().unwrap().contains(&specifier) {
+      self.diagnostics.lock().unwrap().invalidate(&specifier);
     }
     self.prepare_diagnostics().await.map_err(|err| {
       error!("{}", err);
@@ -1046,28 +1128,38 @@ impl LanguageServer {
     let specifier = utils::normalize_url(params.text_document.uri);
     let url = specifier.as_url();
     let contents = if url.as_str() == "deno:/status.md" {
-      let file_cache = self.file_cache.lock().unwrap();
+      let documents = self.documents.lock().unwrap();
       Some(format!(
         r#"# Deno Language Server Status
 
   - Documents in memory: {}
 
   "#,
-        file_cache.len()
+        documents.len()
       ))
     } else {
       match url.scheme() {
         "asset" => {
-          let state_snapshot = self.snapshot();
-          if let Some(text) =
-            tsc::get_asset(&specifier, &self.ts_server, &state_snapshot)
-              .await
-              .map_err(|_| LspError::internal_error())?
-          {
-            Some(text)
+          let maybe_asset =
+            { self.assets.lock().unwrap().get(&specifier).cloned() };
+          if let Some(maybe_asset) = maybe_asset {
+            if let Some(asset) = maybe_asset {
+              Some(asset.text)
+            } else {
+              None
+            }
           } else {
-            error!("Missing asset: {}", specifier);
-            None
+            let state_snapshot = self.snapshot();
+            if let Some(asset) =
+              tsc::get_asset(&specifier, &self.ts_server, &state_snapshot)
+                .await
+                .map_err(|_| LspError::internal_error())?
+            {
+              Some(asset.text)
+            } else {
+              error!("Missing asset: {}", specifier);
+              None
+            }
           }
         }
         _ => {
@@ -1085,59 +1177,6 @@ impl LanguageServer {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct DocumentData {
-  pub dependencies: Option<HashMap<String, analysis::Dependency>>,
-  pub version: Option<i32>,
-  specifier: ModuleSpecifier,
-}
-
-impl DocumentData {
-  pub fn new(
-    specifier: ModuleSpecifier,
-    version: i32,
-    source: &str,
-    maybe_import_map: Option<ImportMap>,
-  ) -> Self {
-    let dependencies = if let Some((dependencies, _)) =
-      analysis::analyze_dependencies(
-        &specifier,
-        source,
-        &MediaType::from(&specifier),
-        &maybe_import_map,
-      ) {
-      Some(dependencies)
-    } else {
-      None
-    };
-    Self {
-      dependencies,
-      version: Some(version),
-      specifier,
-    }
-  }
-
-  pub fn update(
-    &mut self,
-    version: i32,
-    source: &str,
-    maybe_import_map: &Option<ImportMap>,
-  ) {
-    self.dependencies = if let Some((dependencies, _)) =
-      analysis::analyze_dependencies(
-        &self.specifier,
-        source,
-        &MediaType::from(&self.specifier),
-        maybe_import_map,
-      ) {
-      Some(dependencies)
-    } else {
-      None
-    };
-    self.version = Some(version)
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1146,6 +1185,7 @@ mod tests {
   use lspower::LspService;
   use std::fs;
   use std::task::Poll;
+  use std::time::Instant;
   use tower_test::mock::Spawn;
 
   enum LspResponse {
@@ -1345,6 +1385,69 @@ mod tests {
     ]);
     harness.run().await;
   }
+
+  #[tokio::test]
+  async fn test_hover_change_mbc() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_mbc.json", LspResponse::None),
+      ("did_change_notification_mbc.json", LspResponse::None),
+      (
+        "hover_request_mbc.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "const b: \"😃\"",
+              },
+              "",
+            ],
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 13,
+              },
+              "end": {
+                "line": 2,
+                "character": 14,
+              },
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_large_doc_change() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_large.json", LspResponse::None),
+      ("did_change_notification_large.json", LspResponse::None),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    let time = Instant::now();
+    harness.run().await;
+    assert!(
+      time.elapsed().as_millis() <= 10000,
+      "the execution time exceeded 10000ms"
+    );
+  }
+
   #[tokio::test]
   async fn test_rename() {
     let mut harness = LspTestHarness::new(vec![

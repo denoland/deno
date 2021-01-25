@@ -266,17 +266,18 @@ const tests: Array<[string, any, string]> = [
   ["%3c", "⌘".charCodeAt(0), "  ⌘"],
   ["%-3c", "⌘".charCodeAt(0), "⌘  "],
   // Runes that are not printable.
-  // {"%c", '\U00000e00', "\u0e00"}, // TODO check if \U escape exists in js
+  // {"%c", '\U00000e00', "\u0e00"},
+  // TODO(bartlomieju) check if \U escape exists in js
   //["%c", '\U0010ffff'.codePointAt(0), "\U0010ffff"],
 
   // Runes that are not valid.
   ["%c", -1, "�"],
-  // TODO surrogate half, doesn't make sense in itself, how
+  // TODO(bartomieju): surrogate half, doesn't make sense in itself, how
   // to determine in JS?
   // ["%c", 0xDC80, "�"],
   ["%c", 0x110000, "�"],
   ["%c", 0xfffffffff, "�"],
-  // TODO
+  // TODO(bartlomieju):
   // escaped characters
   // Runes that are not printable.
   // Runes that are not valid.
@@ -291,7 +292,8 @@ const tests: Array<[string, any, string]> = [
   ["%.0s", "日本語日本語", ""],
   ["%.5s", "日本語日本語", "日本語日本"],
   ["%.10s", "日本語日本語", "日本語日本語"],
-  // ["%08q", "abc", `000"abc"`], // TODO verb q
+  // ["%08q", "abc", `000"abc"`],
+  // TODO(bartlomieju): verb q
   // ["%-8q", "abc", `"abc"   `],
   //["%.5q", "abcdefghijklmnopqrstuvwxyz", `"abcde"`],
   ["%.5x", "abcdefghijklmnopqrstuvwxyz", "6162636465"],
@@ -301,7 +303,8 @@ const tests: Array<[string, any, string]> = [
   // our %x takes lower byte of string "%.1x", "日本語", "e6"],,
   ["%.1x", "日本語", "e5"],
   //["%10.1q", "日本語日本語", `       "日"`],
-  // ["%10v", null, "     <nil>"], // TODO null, undefined ...
+  // ["%10v", null, "     <nil>"],
+  // TODO(bartlomieju): null, undefined ...
   // ["%-10v", null, "<nil>     "],
 
   // integers
@@ -353,8 +356,10 @@ const tests: Array<[string, any, string]> = [
   ["%-#20.8x", 0x1234abc, "0x01234abc          "],
   ["%-#20.8X", 0x1234abc, "0X01234ABC          "],
   ["%-#20.8o", parseInt("01234", 8), "00001234            "],
-  // Test correct f.intbuf overflow checks. // TODO, lazy
-  // unicode format // TODO, decide whether unicode verb makes sense %U
+  // Test correct f.intbuf overflow checks.
+  // TODO(bartlomieju): lazy
+  // unicode format
+  // TODO(bartlomieju): decide whether unicode verb makes sense %U
 
   // floats
   ["%+.3e", 0.0, "+0.000e+00"],
@@ -490,10 +495,11 @@ const tests: Array<[string, any, string]> = [
   ["%g", 1.23456789e-3, "0.00123457"], // see above prec6 = precdef6 - (-3+1)
   //["%g", 1.23456789e20, "1.23456789e+20"],
   ["%g", 1.23456789e20, "1.23457e+20"],
-  // arrays // TODO
+  // arrays
+  // TODO(bartlomieju):
   // slice : go specific
 
-  // TODO decide how to handle deeper types, arrays, objects
+  // TODO(bartlomieju): decide how to handle deeper types, arrays, objects
   // byte arrays and slices with %b,%c,%d,%o,%U and %v
   // f.space should and f.plus should not have an effect with %v.
   // f.space and f.plus should have an effect with %d.

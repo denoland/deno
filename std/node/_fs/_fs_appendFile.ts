@@ -45,7 +45,7 @@ export function appendFile(
         : undefined;
 
       if (mode) {
-        //TODO rework once https://github.com/denoland/deno/issues/4017 completes
+        // TODO(bartlomieju) rework once https://github.com/denoland/deno/issues/4017 completes
         notImplemented("Deno does not yet support setting mode on create");
       }
       Deno.open(pathOrRid as string, getOpenOptions(flag))
@@ -98,7 +98,7 @@ export function appendFileSync(
         : undefined;
 
       if (mode) {
-        // TODO rework once https://github.com/denoland/deno/issues/4017 completes
+        // TODO(bartlomieju) rework once https://github.com/denoland/deno/issues/4017 completes
         notImplemented("Deno does not yet support setting mode on create");
       }
 

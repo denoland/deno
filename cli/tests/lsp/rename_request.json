@@ -7,8 +7,8 @@
       "uri": "file:///a/file.ts"
     },
     "position": {
-      "line": 5,
-      "character": 19
+      "line": 0,
+      "character": 4
     },
     "newName": "variable_modified"
   }

@@ -24,6 +24,12 @@
   }
 
   function exit(code = 0) {
+    // Dispatches `unload` only when it's not dispatched yet.
+    if (!window[Symbol.for("isUnloadDispatched")]) {
+      // Invokes the `unload` hooks before exiting
+      // ref: https://github.com/denoland/deno/issues/3603
+      window.dispatchEvent(new Event("unload"));
+    }
     core.jsonOpSync("op_exit", { code });
     throw new Error("Code not reachable");
   }

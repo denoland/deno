@@ -103,17 +103,6 @@ unitTest(function textDecoderErrorEncoding(): void {
   assert(didThrow);
 });
 
-unitTest(function textDecoderHandlesNotFoundInternalDecoder() {
-  let didThrow = false;
-  try {
-    new TextDecoder("gbk");
-  } catch (e) {
-    didThrow = true;
-    assert(e instanceof RangeError);
-  }
-  assert(didThrow);
-});
-
 unitTest(function textEncoder(): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();

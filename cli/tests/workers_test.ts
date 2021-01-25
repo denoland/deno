@@ -113,9 +113,10 @@ Deno.test({
   name: "worker globals",
   fn: async function (): Promise<void> {
     const promise = deferred();
+    const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
       new URL("workers/worker_globals.ts", import.meta.url).href,
-      { type: "module" },
+      workerOptions,
     );
     w.onmessage = (e): void => {
       assertEquals(e.data, "true, true, true");
@@ -648,7 +649,7 @@ Deno.test({
       new URL("subdir/worker_location.ts", import.meta.url).href;
     const w = new Worker(workerModuleHref, { type: "module" });
     w.onmessage = (e): void => {
-      assertEquals(e.data, workerModuleHref);
+      assertEquals(e.data, `${workerModuleHref}, true`);
       promise.resolve();
     };
     w.postMessage("Hello, world!");
@@ -660,8 +661,6 @@ Deno.test({
 Deno.test({
   name: "worker with relative specifier",
   fn: async function (): Promise<void> {
-    // TODO(nayeemrmn): Add `Location` and `location` to `dlint`'s globals.
-    // deno-lint-ignore no-undef
     assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
     const promise = deferred();
     const w = new Worker(

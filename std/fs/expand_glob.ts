@@ -32,7 +32,6 @@ interface SplitPath {
   winRoot?: string;
 }
 
-// TODO: Maybe make this public somewhere.
 function split(path: string): SplitPath {
   const s = SEP_PATTERN.source;
   const segments = path

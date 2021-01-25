@@ -16,7 +16,7 @@
 
   const headersData = Symbol("headers data");
 
-  // TODO: headerGuard? Investigate if it is needed
+  // TODO(bartlomieju): headerGuard? Investigate if it is needed
   // node-fetch did not implement this but it is in the spec
   function normalizeParams(name, value) {
     name = String(name).toLowerCase();

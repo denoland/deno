@@ -199,7 +199,7 @@ async fn op_run_status(
     .get::<ChildResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut child = resource.borrow_mut().await;
-  let run_status = (&mut *child).await?;
+  let run_status = child.wait().await?;
   let code = run_status.code();
 
   #[cfg(unix)]
@@ -219,23 +219,6 @@ async fn op_run_status(
   }))
 }
 
-#[cfg(not(unix))]
-const SIGINT: i32 = 2;
-#[cfg(not(unix))]
-const SIGKILL: i32 = 9;
-#[cfg(not(unix))]
-const SIGTERM: i32 = 15;
-
-#[cfg(not(unix))]
-use winapi::{
-  shared::minwindef::DWORD,
-  um::{
-    handleapi::CloseHandle,
-    processthreadsapi::{OpenProcess, TerminateProcess},
-    winnt::PROCESS_TERMINATE,
-  },
-};
-
 #[cfg(unix)]
 pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
   use nix::sys::signal::{kill as unix_kill, Signal};
@@ -248,30 +231,43 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
   use std::io::Error;
-  match signal {
-    SIGINT | SIGKILL | SIGTERM => {
-      if pid <= 0 {
-        return Err(type_error("unsupported pid"));
+  use std::io::ErrorKind::NotFound;
+  use winapi::shared::minwindef::DWORD;
+  use winapi::shared::minwindef::FALSE;
+  use winapi::shared::minwindef::TRUE;
+  use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
+  use winapi::um::errhandlingapi::GetLastError;
+  use winapi::um::handleapi::CloseHandle;
+  use winapi::um::processthreadsapi::OpenProcess;
+  use winapi::um::processthreadsapi::TerminateProcess;
+  use winapi::um::winnt::PROCESS_TERMINATE;
+
+  const SIGINT: i32 = 2;
+  const SIGKILL: i32 = 9;
+  const SIGTERM: i32 = 15;
+
+  if !matches!(signal, SIGINT | SIGKILL | SIGTERM) {
+    Err(type_error("unsupported signal"))
+  } else if pid <= 0 {
+    Err(type_error("unsupported pid"))
+  } else {
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+    if handle.is_null() {
+      let err = match unsafe { GetLastError() } {
+        ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
+        errno => Error::from_raw_os_error(errno as i32),
+      };
+      Err(err.into())
+    } else {
+      let r = unsafe { TerminateProcess(handle, 1) };
+      unsafe { CloseHandle(handle) };
+      match r {
+        FALSE => Err(Error::last_os_error().into()),
+        TRUE => Ok(()),
+        _ => unreachable!(),
       }
-      unsafe {
-        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
-        if handle.is_null() {
-          return Err(Error::last_os_error().into());
-        }
-        if TerminateProcess(handle, 1) == 0 {
-          CloseHandle(handle);
-          return Err(Error::last_os_error().into());
-        }
-        if CloseHandle(handle) == 0 {
-          return Err(Error::last_os_error().into());
-        }
-      }
-    }
-    _ => {
-      return Err(type_error("unsupported signal"));
     }
   }
-  Ok(())
 }
 
 #[derive(Deserialize)]

@@ -49,6 +49,7 @@ declare global {
     | GetReferencesRequest
     | GetDefinitionRequest
     | GetCompletionsRequest
+    | GetImplementationRequest
     | FindRenameLocationsRequest;
 
   interface BaseLanguageServerRequest {
@@ -69,7 +70,7 @@ declare global {
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
     method: "getDiagnostics";
-    specifier: string;
+    specifiers: string[];
   }
 
   interface GetQuickInfoRequest extends BaseLanguageServerRequest {
@@ -102,6 +103,12 @@ declare global {
     specifier: string;
     position: number;
     preferences: ts.UserPreferences;
+  }
+
+  interface GetImplementationRequest extends BaseLanguageServerRequest {
+    method: "getImplementation";
+    specifier: string;
+    position: number;
   }
 
   interface FindRenameLocationsRequest extends BaseLanguageServerRequest {

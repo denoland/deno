@@ -29,6 +29,7 @@ use deno_core::error::AnyError;
 
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
+use deno_core::error::get_custom_error_class;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
@@ -848,7 +849,7 @@ impl Graph {
       info!("{} {}", colors::green("Check"), specifier);
     }
 
-    let root_names = self.get_root_names(!config.get_check_js());
+    let root_names = self.get_root_names(!config.get_check_js())?;
     let maybe_tsbuildinfo = self.maybe_tsbuildinfo.clone();
     let hash_data =
       vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
@@ -975,7 +976,7 @@ impl Graph {
 
     let mut emitted_files = HashMap::new();
     if options.check {
-      let root_names = self.get_root_names(!config.get_check_js());
+      let root_names = self.get_root_names(!config.get_check_js())?;
       let hash_data =
         vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
       let graph = Arc::new(Mutex::new(self));
@@ -1329,7 +1330,7 @@ impl Graph {
   fn get_root_names(
     &self,
     include_emittable: bool,
-  ) -> Vec<(ModuleSpecifier, MediaType)> {
+  ) -> Result<Vec<(ModuleSpecifier, MediaType)>, AnyError> {
     let root_names: Vec<ModuleSpecifier> = if include_emittable {
       // in situations where there is `allowJs` with tsc, but not `checkJs`,
       // then tsc will not parse the whole module graph, meaning that any
@@ -1355,32 +1356,38 @@ impl Graph {
     } else {
       self.roots.clone()
     };
-    root_names
-      .iter()
-      .map(|ms| {
-        // if the root module has a types specifier, we should be sending that
-        // to tsc instead of the original specifier
-        let specifier = self.resolve_specifier(ms);
-        let module =
-          if let ModuleSlot::Module(module) = self.get_module(specifier) {
-            module
+    let mut root_types = vec![];
+    for ms in root_names {
+      // if the root module has a types specifier, we should be sending that
+      // to tsc instead of the original specifier
+      let specifier = self.resolve_specifier(&ms);
+      let module = match self.get_module(specifier) {
+        ModuleSlot::Module(module) => module,
+        ModuleSlot::Err(error) => {
+          // It would be great if we could just clone the error here...
+          if let Some(class) = get_custom_error_class(error) {
+            return Err(custom_error(class, error.to_string()));
           } else {
-            panic!("missing module");
-          };
-        let specifier = if let Some((_, types_specifier)) = &module.maybe_types
-        {
-          self.resolve_specifier(types_specifier)
-        } else {
-          specifier
-        };
-        (
-          // root modules can be redirects, so before we pass it to tsc we need
-          // to resolve the redirect
-          specifier.clone(),
-          self.get_media_type(specifier).unwrap(),
-        )
-      })
-      .collect()
+            panic!("unsupported ModuleSlot error");
+          }
+        }
+        _ => {
+          panic!("missing module");
+        }
+      };
+      let specifier = if let Some((_, types_specifier)) = &module.maybe_types {
+        self.resolve_specifier(types_specifier)
+      } else {
+        specifier
+      };
+      root_types.push((
+        // root modules can be redirects, so before we pass it to tsc we need
+        // to resolve the redirect
+        specifier.clone(),
+        self.get_media_type(specifier).unwrap(),
+      ));
+    }
+    Ok(root_types)
   }
 
   /// Get the source for a given module specifier.  If the module is not part
