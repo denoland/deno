@@ -5311,6 +5311,7 @@ fn web_platform_tests() {
   let mut proc = Command::new(python)
     .current_dir(util::wpt_path())
     .arg("wpt.py")
+    .arg("--py2")
     .arg("serve")
     .stderr(std::process::Stdio::piped())
     .spawn()
