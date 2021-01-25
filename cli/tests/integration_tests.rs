@@ -5297,59 +5297,24 @@ fn web_platform_tests() {
   let config: std::collections::HashMap<String, Vec<WptConfig>> =
     deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
 
-  // Observation: `python3 wpt serve` hangs with the python3 from homebrew
-  // but works okay with /usr/bin/python, which is python 2.7.10. Observed
-  // with homebrew python 3.8.5, 3.8.7 and 3.9.1.
   let python = match true {
     _ if cfg!(target_os = "windows") => "python.exe",
-    _ if cfg!(target_os = "macos") => "python",
     _ => "python3",
   };
 
   eprintln!("If the wpt server fails or gets stuck, please set up your /etc/hosts file like specified in //docs/contributing/building_from_source.md.");
+  eprintln!("On windows python.exe needs to available in your path, and needs to point to python 3. On macOS and Linux, python3 needs to be available in your path.");
 
   let mut proc = Command::new(python)
     .current_dir(util::wpt_path())
     .arg("wpt.py")
-    .arg("--py2")
     .arg("serve")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
 
-  let stderr = proc.stderr.as_mut().unwrap();
-  let mut stderr = BufReader::new(stderr).lines();
-  let mut ready_8000 = false;
-  let mut ready_8443 = false;
-  let mut ready_8444 = false;
-  let mut ready_9000 = false;
-  while let Ok(line) = stderr.next().unwrap() {
-    if !line.starts_with("DEBUG:") {
-      eprintln!("{}", line);
-    }
-    if cfg!(target_os = "windows") && line.contains("Using ports") {
-      break;
-    }
-    if line.contains("web-platform.test:8000") {
-      ready_8000 = true;
-    }
-    if line.contains("web-platform.test:8443") {
-      ready_8443 = true;
-    }
-    if line.contains("web-platform.test:8444") {
-      ready_8444 = true;
-    }
-    if line.contains("web-platform.test:9000") {
-      ready_9000 = true;
-    }
-    // WPT + python2 doesn't support HTTP/2.0.
-    if line.contains("Cannot start HTTP/2.0 server") {
-      ready_9000 = true;
-    }
-    if ready_8000 && ready_8443 && ready_8444 && ready_9000 {
-      break;
-    }
-  }
+  // Give the wpt runner time to start up.
+  std::thread::sleep(std::time::Duration::from_secs(5));
 
   let _wpt_server = WPTServer(proc);
 

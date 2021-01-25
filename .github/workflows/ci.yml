@@ -90,7 +90,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7"
+          python-version: "3.8"
           architecture: x64
 
       - name: Install Node
@@ -232,7 +232,7 @@ jobs:
       - name: Configure hosts file for WPT (windows)
         if: runner.os == 'Windows'
         working-directory: test_util/wpt/
-        run: python wpt --py2 make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
+        run: python.exe wpt --py3 make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
 
       - name: Test release
         if: matrix.kind == 'test_release'
