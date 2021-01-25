@@ -90,7 +90,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7"
+          python-version: "3.8"
           architecture: x64
 
       - name: Install Node
