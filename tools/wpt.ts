@@ -25,6 +25,7 @@ import {
   runPy,
   ManifestTestOptions,
   getExpectFailForCase,
+  autoConfig,
 } from "./wpt/utils.ts";
 import {
   red,
@@ -79,9 +80,11 @@ async function setup() {
   if (etcHostsConfigured) {
     console.log("/etc/hosts is already configured.");
   } else {
-    const autoConfigure = confirm(
-      "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?"
-    );
+    const autoConfigure =
+      autoConfig ||
+      confirm(
+        "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?"
+      );
     if (autoConfigure) {
       const proc = runPy(["wpt", "make-hosts-file"], { stdout: "piped" });
       const status = await proc.status();

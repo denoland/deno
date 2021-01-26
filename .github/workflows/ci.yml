@@ -234,23 +234,17 @@ jobs:
           cargo test --locked --doc
           cargo test --locked --all-targets
 
-      - name: Configure hosts file for WPT (unix)
-        if: runner.os != 'Windows'
-        run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
-        working-directory: test_util/wpt/
-
-      - name: Configure hosts file for WPT (windows)
-        if: runner.os == 'Windows'
-        working-directory: test_util/wpt/
-        run: python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
-
       - name: Run web platform tests (release)
         if: matrix.kind == 'test_release'
-        run: deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.js run --quiet --release
+        run: |
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.js setup --auto-config
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.js run --quiet --release
 
       - name: Run web platform tests (debug)
         if: matrix.kind == 'test_debug'
-        run: deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.js run --quiet
+        run: |
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.js setup --auto-config
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.js run --quiet
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
