@@ -15,9 +15,7 @@ export function chmod(
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
-  Deno.chmod(path, getResolvedMode(mode))
-    .then(() => callback())
-    .catch(callback);
+  Deno.chmod(path, getResolvedMode(mode)).then(() => callback(null), callback);
 }
 
 /**

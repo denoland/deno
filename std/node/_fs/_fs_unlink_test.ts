@@ -1,5 +1,6 @@
 import { assertEquals, fail } from "../../testing/asserts.ts";
 import { existsSync } from "../../fs/mod.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { unlink, unlinkSync } from "./_fs_unlink.ts";
 
 Deno.test({
@@ -12,8 +13,7 @@ Deno.test({
         resolve();
       });
     })
-      .then(() => assertEquals(existsSync(file), false))
-      .catch(() => fail())
+      .then(() => assertEquals(existsSync(file), false), () => fail())
       .finally(() => {
         if (existsSync(file)) Deno.removeSync(file);
       });
@@ -27,4 +27,13 @@ Deno.test({
     unlinkSync(file);
     assertEquals(existsSync(file), false);
   },
+});
+
+Deno.test("[std/node/fs] unlink callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_unlink.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { unlink } from ${JSON.stringify(importUrl)}`,
+    invocation: `unlink(${JSON.stringify(tempFile)}, `,
+  });
 });
