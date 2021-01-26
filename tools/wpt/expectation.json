@@ -130,7 +130,9 @@
       "Modify buffer after passing it in (SharedArrayBuffer)"
     ],
     "textdecoder-fatal-single-byte.any.js": true,
-    "textdecoder-fatal-streaming.any.js": ["Fatal flag, streaming cases"],
+    "textdecoder-fatal-streaming.any.js": [
+      "Fatal flag, streaming cases"
+    ],
     "textdecoder-fatal.any.js": true,
     "textdecoder-ignorebom.any.js": true,
     "textdecoder-labels.any.js": [
@@ -172,9 +174,11 @@
     "unsupported-encodings.any.js": false
   },
   "hr-time": {
-    "basic.any.js": ["Performance interface extends EventTarget."],
-    "idlharness.any.js": false,
-    "monotonic-clock.any.js": true
+    "monotonic-clock.any.js": true,
+    "basic.any.js": [
+      "Performance interface extends EventTarget."
+    ],
+    "idlharness.any.js": false
   },
   "streams": {
     "idlharness.any.js": false,
@@ -457,7 +461,9 @@
       "constructor": {
         "compile.any.js": true,
         "instantiate-bad-imports.any.js": false,
-        "instantiate.any.js": ["Synchronous options handling: Buffer argument"],
+        "instantiate.any.js": [
+          "Synchronous options handling: Buffer argument"
+        ],
         "multi-value.any.js": true,
         "toStringTag.any.js": true,
         "validate.any.js": true
@@ -474,14 +480,22 @@
         "constructor-bad-imports.any.js": false,
         "constructor-caching.any.js": true,
         "constructor.any.js": true,
-        "exports.any.js": ["Setting (sloppy mode)"],
+        "exports.any.js": [
+          "Setting (sloppy mode)"
+        ],
         "toString.any.js": true
       },
-      "interface.any.js": ["WebAssembly: property descriptor"],
+      "interface.any.js": [
+        "WebAssembly: property descriptor"
+      ],
       "memory": {
-        "buffer.any.js": ["Setting (sloppy mode)"],
+        "buffer.any.js": [
+          "Setting (sloppy mode)"
+        ],
         "constructor.any.js": true,
-        "grow.any.js": ["Growing shared memory does not detach old buffer"],
+        "grow.any.js": [
+          "Growing shared memory does not detach old buffer"
+        ],
         "toString.any.js": true,
         "type.tentative.any.js": false
       },
@@ -497,7 +511,9 @@
         "constructor.any.js": true,
         "get-set.any.js": true,
         "grow.any.js": true,
-        "length.any.js": ["Setting (sloppy mode)"],
+        "length.any.js": [
+          "Setting (sloppy mode)"
+        ],
         "toString.any.js": true
       }
     },

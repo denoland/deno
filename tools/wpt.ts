@@ -47,18 +47,24 @@ switch (command) {
     await run();
     break;
 
-  case "gen-expectations":
-    genExpectations();
+  case "update":
+    await update();
     break;
 
   default:
     console.log(`Possible commands:
 
+    setup
+      Validate that your environment is conigured correctly, or help you configure it.
+
     run
       Run all tests like specified in expectations.json.
 
-    gen-expectations
-      Re-generate the ./tools/wpt/expectations.json file from the test manifest.    
+    update
+      Update the expectations.json to match the current reality.
+
+More details at https://deno.land/manual@master/contributing/web_platform_tests
+
     `);
     break;
 }
@@ -161,6 +167,106 @@ async function run() {
   }
   const code = reportFinal(results);
   Deno.exit(code);
+}
+
+async function update() {
+  assert(Array.isArray(rest), "filter must be array");
+  const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest, true);
+  console.log(`Going to run ${tests.length} test files.`);
+
+  const results = await runWithTestUtil(false, async () => {
+    const results = [];
+
+    for (const test of tests) {
+      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+      const result = await runSingleTest(
+        test.url,
+        test.options,
+        json ? () => {} : createReportTestCase(test.expectation)
+      );
+      results.push({ test, result });
+      reportVariation(result, test.expectation);
+    }
+
+    return results;
+  });
+
+  if (json) {
+    await Deno.writeTextFile(json, JSON.stringify(results));
+  }
+
+  const resultTests: Record<
+    string,
+    { passed: string[]; failed: string[]; status: number }
+  > = {};
+  for (const { test, result } of results) {
+    if (!resultTests[test.sourcePath]) {
+      resultTests[test.sourcePath] = {
+        passed: [],
+        failed: [],
+        status: result.status,
+      };
+    }
+    for (const case_ of result.cases) {
+      if (case_.passed) {
+        resultTests[test.sourcePath].passed.push(case_.name);
+      } else {
+        resultTests[test.sourcePath].failed.push(case_.name);
+      }
+    }
+  }
+
+  const currentExpectation = getExpectation();
+
+  for (const path in resultTests) {
+    const { passed, failed, status } = resultTests[path];
+    let finalExpectation: boolean | string[];
+    if (failed.length == 0 && status == 0) {
+      finalExpectation = true;
+    } else if (failed.length > 0 && passed.length > 0) {
+      finalExpectation = failed;
+    } else {
+      finalExpectation = false;
+    }
+
+    function gen(
+      segments: string[],
+      currentExpectation: Expectation,
+      finalExpectation: boolean | string[]
+    ) {
+      const segment = segments.shift();
+      assert(segment, "segments array must never be empty");
+      if (segments.length > 0) {
+        if (
+          !currentExpectation[segment] ||
+          Array.isArray(currentExpectation[segment]) ||
+          typeof currentExpectation[segment] === "boolean"
+        ) {
+          currentExpectation[segment] = {};
+        }
+        gen(
+          segments,
+          currentExpectation[segment] as Expectation,
+          finalExpectation
+        );
+      } else {
+        currentExpectation[segment] = finalExpectation;
+      }
+    }
+
+    gen(path.slice(1).split("/"), currentExpectation, finalExpectation);
+  }
+
+  await Deno.writeTextFile(
+    "./tools/wpt/expectation.json",
+    JSON.stringify(currentExpectation, undefined, "  ")
+  );
+
+  reportFinal(results);
+
+  console.log(blue("Updated expectation.json to match reality."));
+
+  Deno.exit(0);
 }
 
 function reportFinal(
@@ -360,9 +466,11 @@ function createReportTestCase(expectation: boolean | string[]) {
   };
 }
 
-function discoverTestsToRun(filter?: string[]): TestToRun[] {
+function discoverTestsToRun(
+  filter?: string[],
+  expectation: Expectation | string[] | boolean = getExpectation()
+): TestToRun[] {
   const manifestFolder = getManifest().items.testharness;
-  const expectation = getExpectation();
 
   const testsToRun: TestToRun[] = [];
 
@@ -416,27 +524,4 @@ function discoverTestsToRun(filter?: string[]): TestToRun[] {
   walk(manifestFolder, expectation, "");
 
   return testsToRun;
-}
-
-function genExpectations() {
-  const enabledSuites = [
-    "/WebCryptoAPI/",
-    "/WebIDL/",
-    "/compat/",
-    "/compression/",
-    "/console/",
-    "/dom/",
-    "/encoding/",
-    "/fetch/",
-    "/hr-time/",
-    "/streams/",
-    "/url/",
-    "/user-timing/",
-    "/wasm/",
-    "/websockets/",
-    "/workers/",
-  ];
-  const expectation = generateTestExpectations(enabledSuites);
-  const expectationText = JSON.stringify(expectation, undefined, "  ");
-  Deno.writeTextFileSync("./tools/wpt/expectation.json", expectationText);
 }
