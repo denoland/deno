@@ -162,19 +162,25 @@ export function pbkdf2(
   iterations: number,
   keylen: number,
   digest: Algorithms = "sha1",
-  callback: ((err?: Error, derivedKey?: Buffer) => void),
+  callback: ((err: Error | null, derivedKey?: Buffer) => void),
 ): void {
-  try {
-    const res = pbkdf2Sync(
-      password,
-      salt,
-      iterations,
-      keylen,
-      digest,
-    );
-
-    callback(undefined, res);
-  } catch (e) {
-    callback(e);
-  }
+  setTimeout(() => {
+    let err = null, res;
+    try {
+      res = pbkdf2Sync(
+        password,
+        salt,
+        iterations,
+        keylen,
+        digest,
+      );
+    } catch (e) {
+      err = e;
+    }
+    if (err) {
+      callback(err);
+    } else {
+      callback(null, res);
+    }
+  }, 0);
 }

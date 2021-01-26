@@ -39,8 +39,9 @@ export default function randomBytes(
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
   if (typeof cb === "function") {
+    let err: Error | null = null, bytes: Buffer;
     try {
-      cb(null, generateRandomBytes(size));
+      bytes = generateRandomBytes(size);
     } catch (e) {
       //NodeJS nonsense
       //If the size is out of range it will throw sync, otherwise throw async
@@ -50,9 +51,16 @@ export default function randomBytes(
       ) {
         throw e;
       } else {
-        cb(e);
+        err = e;
       }
     }
+    setTimeout(() => {
+      if (err) {
+        cb(err);
+      } else {
+        cb(null, bytes);
+      }
+    }, 0);
   } else {
     return generateRandomBytes(size);
   }
