@@ -669,7 +669,7 @@ impl Inner {
         )
       })?
       .unwrap();
-
+    let line_index = self.documents.line_index(&specifier);
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
         file_path
@@ -685,7 +685,9 @@ impl Inner {
       // TODO(@kitsonk) this could be handled better in `cli/tools/fmt.rs` in the
       // future.
       match dprint::format_text(&file_path, &file_text, &config) {
-        Ok(new_text) => Some(text::get_edits(&file_text, &new_text)),
+        Ok(new_text) => {
+          Some(text::get_edits(&file_text, &new_text, line_index))
+        }
         Err(err) => {
           warn!("Format error: {}", err);
           None
@@ -702,6 +704,7 @@ impl Inner {
         Ok(Some(text_edits))
       }
     } else {
+      self.client.show_message(MessageType::Warning, format!("Unable to format \"{}\". Likely due to unrecoverable syntax errors in the file.", specifier)).await;
       Ok(None)
     }
   }
@@ -1513,6 +1516,81 @@ mod tests {
               },
             }
           }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_format_mbc() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_mbc_fmt.json", LspResponse::None),
+      (
+        "formatting_request_mbc_fmt.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 12
+                },
+                "end": {
+                  "line": 0,
+                  "character": 13,
+                }
+              },
+              "newText": "\""
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 21
+                },
+                "end": {
+                  "line": 0,
+                  "character": 22
+                }
+              },
+              "newText": "\";"
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 1,
+                  "character": 12,
+                },
+                "end": {
+                  "line": 1,
+                  "character": 13,
+                }
+              },
+              "newText": "\""
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 1,
+                  "character": 23,
+                },
+                "end": {
+                  "line": 1,
+                  "character": 25,
+                }
+              },
+              "newText": "\");"
+            }
+          ]),
         ),
       ),
       (

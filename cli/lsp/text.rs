@@ -181,8 +181,8 @@ impl LineIndex {
 
   /// Returns a u16 position based on a u8 offset.
   pub fn position_utf16(&self, offset: TextSize) -> lsp_types::Position {
-    let line = partition_point(&self.utf8_offsets, |&it| it <= offset) - 1;
-    let line_start_offset = self.utf8_offsets[line];
+    let line = partition_point(&self.utf16_offsets, |&it| it <= offset) - 1;
+    let line_start_offset = self.utf16_offsets[line];
     let col = offset - line_start_offset;
 
     lsp_types::Position {
@@ -208,13 +208,21 @@ impl LineIndex {
 
 /// Compare two strings and return a vector of text edit records which are
 /// supported by the Language Server Protocol.
-pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
+pub fn get_edits(
+  a: &str,
+  b: &str,
+  maybe_line_index: Option<LineIndex>,
+) -> Vec<TextEdit> {
   if a == b {
     return vec![];
   }
   let chunks = diff(a, b);
   let mut text_edits = Vec::<TextEdit>::new();
-  let line_index = LineIndex::new(a);
+  let line_index = if let Some(line_index) = maybe_line_index {
+    line_index
+  } else {
+    LineIndex::new(a)
+  };
   let mut iter = chunks.iter().peekable();
   let mut a_pos = TextSize::from(0);
   loop {
@@ -565,7 +573,7 @@ const C: char = \"メ メ\";
   fn test_get_edits() {
     let a = "abcdefg";
     let b = "a\nb\nchije\nfg\n";
-    let actual = get_edits(a, b);
+    let actual = get_edits(a, b, None);
     assert_eq!(
       actual,
       vec![
@@ -597,6 +605,44 @@ const C: char = \"メ メ\";
         },
       ]
     );
+  }
+
+  #[test]
+  fn test_get_edits_mbc() {
+    let a = "const bar = \"👍🇺🇸😃\";\nconsole.log('hello deno')\n";
+    let b = "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n";
+    let actual = get_edits(a, b, None);
+    assert_eq!(
+      actual,
+      vec![
+        TextEdit {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
+              line: 1,
+              character: 12
+            },
+            end: lsp_types::Position {
+              line: 1,
+              character: 13
+            }
+          },
+          new_text: "\"".to_string()
+        },
+        TextEdit {
+          range: lsp_types::Range {
+            start: lsp_types::Position {
+              line: 1,
+              character: 23
+            },
+            end: lsp_types::Position {
+              line: 1,
+              character: 25
+            }
+          },
+          new_text: "\");".to_string()
+        },
+      ]
+    )
   }
 
   #[test]
