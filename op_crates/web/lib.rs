@@ -1,41 +1,19 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::form_urlencoded;
+use deno_core::url::quirks;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ZeroCopyBuf;
-use idna::domain_to_ascii;
-use idna::domain_to_ascii_strict;
 use serde::Deserialize;
+use serde::Serialize;
 use std::path::PathBuf;
-
-pub fn op_domain_to_ascii(
-  _state: &mut deno_core::OpState,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct DomainToAscii {
-    domain: String,
-    be_strict: bool,
-  }
-
-  let args: DomainToAscii = serde_json::from_value(args)?;
-  if args.be_strict {
-    domain_to_ascii_strict(args.domain.as_str())
-  } else {
-    domain_to_ascii(args.domain.as_str())
-  }
-  .map_err(|err| {
-    let message = format!("Invalid IDNA encoded domain name: {:?}", err);
-    uri_error(message)
-  })
-  .map(|domain| json!(domain))
-}
 
 /// Load and execute the javascript code.
 pub fn init(isolate: &mut JsRuntime) {
@@ -77,6 +55,125 @@ pub fn init(isolate: &mut JsRuntime) {
   for (url, source_code) in files {
     isolate.execute(url, source_code).unwrap();
   }
+}
+
+/// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
+/// optional part to "set" after parsing. Return `UrlParts`.
+pub fn op_parse_url(
+  _state: &mut deno_core::OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  #[derive(Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  struct UrlParseArgs {
+    href: String,
+    base_href: Option<String>,
+    // If one of the following are present, this is a setter call. Apply the
+    // proper `Url::set_*()` method after (re)parsing `href`.
+    set_hash: Option<String>,
+    set_host: Option<String>,
+    set_hostname: Option<String>,
+    set_password: Option<String>,
+    set_pathname: Option<String>,
+    set_port: Option<String>,
+    set_protocol: Option<String>,
+    set_search: Option<String>,
+    set_username: Option<String>,
+  }
+  let args: UrlParseArgs = serde_json::from_value(args)?;
+  let base_url = match args.base_href.as_ref() {
+    Some(base_href) => Some(
+      Url::parse(base_href)
+        .map_err(|_| custom_error("TypeError", "Invalid base URL."))?,
+    ),
+    None => None,
+  };
+  let mut url = Url::options()
+    .base_url(base_url.as_ref())
+    .parse(&args.href)
+    .map_err(|_| custom_error("TypeError", "Invalid URL."))?;
+
+  if let Some(hash) = args.set_hash.as_ref() {
+    quirks::set_hash(&mut url, hash);
+  } else if let Some(host) = args.set_host.as_ref() {
+    quirks::set_host(&mut url, host).map_err(|_| uri_error("Invalid host."))?;
+  } else if let Some(hostname) = args.set_hostname.as_ref() {
+    quirks::set_hostname(&mut url, hostname)
+      .map_err(|_| uri_error("Invalid hostname."))?;
+  } else if let Some(password) = args.set_password.as_ref() {
+    quirks::set_password(&mut url, password)
+      .map_err(|_| uri_error("Invalid password."))?;
+  } else if let Some(pathname) = args.set_pathname.as_ref() {
+    quirks::set_pathname(&mut url, pathname);
+  } else if let Some(port) = args.set_port.as_ref() {
+    quirks::set_port(&mut url, port).map_err(|_| uri_error("Invalid port."))?;
+  } else if let Some(protocol) = args.set_protocol.as_ref() {
+    quirks::set_protocol(&mut url, protocol)
+      .map_err(|_| uri_error("Invalid protocol."))?;
+  } else if let Some(search) = args.set_search.as_ref() {
+    quirks::set_search(&mut url, search);
+  } else if let Some(username) = args.set_username.as_ref() {
+    quirks::set_username(&mut url, username)
+      .map_err(|_| uri_error("Invalid username."))?;
+  }
+
+  #[derive(Serialize)]
+  struct UrlParts {
+    href: String,
+    hash: String,
+    host: String,
+    hostname: String,
+    origin: String,
+    password: String,
+    pathname: String,
+    port: String,
+    protocol: String,
+    search: String,
+    username: String,
+  }
+  // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
+  // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
+  let username =
+    std::panic::catch_unwind(|| quirks::username(&url).to_string())
+      .map_err(|_| custom_error("Error", format!("Internal error when parsing \"{}\"{}, see https://github.com/servo/rust-url/issues/670.", args.href, args.base_href.map_or_else(|| "".to_string(), |b| format!(" against \"{}\"", b)))))?;
+  Ok(json!(UrlParts {
+    href: quirks::href(&url).to_string(),
+    hash: quirks::hash(&url).to_string(),
+    host: quirks::host(&url).to_string(),
+    hostname: quirks::hostname(&url).to_string(),
+    origin: quirks::origin(&url),
+    password: quirks::password(&url).to_string(),
+    pathname: quirks::pathname(&url).to_string(),
+    port: quirks::port(&url).to_string(),
+    protocol: quirks::protocol(&url).to_string(),
+    search: quirks::search(&url).to_string(),
+    username,
+  }))
+}
+
+pub fn op_parse_url_search_params(
+  _state: &mut deno_core::OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let search: String = serde_json::from_value(args)?;
+  let search_params: Vec<_> = form_urlencoded::parse(search.as_bytes())
+    .into_iter()
+    .collect();
+  Ok(json!(search_params))
+}
+
+pub fn op_stringify_url_search_params(
+  _state: &mut deno_core::OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let search_params: Vec<(String, String)> = serde_json::from_value(args)?;
+  let search = form_urlencoded::Serializer::new(String::new())
+    .extend_pairs(search_params)
+    .finish();
+  Ok(json!(search))
 }
 
 pub fn get_declaration() -> PathBuf {
