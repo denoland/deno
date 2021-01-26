@@ -113,6 +113,7 @@ pub struct GetScriptSourceResult {
 
 pub enum CoverageReporterKind {
   Pretty,
+  Summary,
   Lcov,
 }
 
@@ -121,6 +122,9 @@ fn create_reporter(
 ) -> Box<dyn CoverageReporter + Send> {
   match kind {
     CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
+    CoverageReporterKind::Summary => {
+      Box::new(PrettyCoverageReporter::new(true))
+    }
     CoverageReporterKind::Pretty => {
       Box::new(PrettyCoverageReporter::new(false))
     }
@@ -496,7 +500,7 @@ pub async fn report_coverages(
   flags: Flags,
   dir: &PathBuf,
   lcov: bool,
-  _summary: bool,
+  summary: bool,
   include: Vec<String>,
   exclude: Vec<String>,
 ) -> Result<(), AnyError> {
@@ -510,6 +514,8 @@ pub async fn report_coverages(
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov
+  } else if summary {
+    CoverageReporterKind::Summary
   } else {
     CoverageReporterKind::Pretty
   };
