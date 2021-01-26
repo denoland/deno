@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
 use deno_core::json_op_sync;
@@ -57,6 +57,7 @@ fn create_compiler_snapshot(
   let mut op_crate_libs = HashMap::new();
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
+  op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
 
   // ensure we invalidate the build properly.
   for (_, path) in op_crate_libs.iter() {
@@ -116,6 +117,15 @@ fn create_compiler_snapshot(
     "esnext.weakref",
   ];
 
+  let path_dts = cwd.join("dts");
+  // ensure we invalidate the build properly.
+  for name in libs.iter() {
+    println!(
+      "cargo:rerun-if-changed={}",
+      path_dts.join(format!("lib.{}.d.ts", name)).display()
+    );
+  }
+
   // create a copy of the vector that includes any op crate libs to be passed
   // to the JavaScript compiler to build into the snapshot
   let mut build_libs = libs.clone();
@@ -124,7 +134,6 @@ fn create_compiler_snapshot(
   }
 
   let re_asset = Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
-  let path_dts = cwd.join("dts");
   let build_specifier = "asset:///bootstrap.ts";
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -212,7 +221,7 @@ fn git_commit_hash() -> String {
     .output()
   {
     if output.status.success() {
-      std::str::from_utf8(&output.stdout[..7])
+      std::str::from_utf8(&output.stdout[..40])
         .unwrap()
         .to_string()
     } else {
@@ -244,6 +253,10 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
     deno_fetch::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
+    deno_websocket::get_declaration().display()
   );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());

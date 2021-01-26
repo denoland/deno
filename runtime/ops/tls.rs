@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::io::StreamResource;
 use super::io::TcpStreamResource;
@@ -8,6 +8,7 @@ use crate::resolve_addr::resolve_addr_sync;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -23,23 +24,50 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::From;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use tokio_rustls::{
   rustls::{
     internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys},
-    Certificate, NoClientAuth, PrivateKey, ServerConfig,
+    Certificate, NoClientAuth, PrivateKey, ServerConfig, StoresClientSessions,
   },
   TlsAcceptor,
 };
 use webpki::DNSNameRef;
+
+lazy_static::lazy_static! {
+  static ref CLIENT_SESSION_MEMORY_CACHE: Arc<ClientSessionMemoryCache> =
+    Arc::new(ClientSessionMemoryCache::default());
+}
+
+#[derive(Default)]
+struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
+
+impl StoresClientSessions for ClientSessionMemoryCache {
+  fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+    self.0.lock().unwrap().get(key).cloned()
+  }
+
+  fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
+    let mut sessions = self.0.lock().unwrap();
+    // TODO(bnoordhuis) Evict sessions LRU-style instead of arbitrarily.
+    while sessions.len() >= 1024 {
+      let key = sessions.keys().next().unwrap().clone();
+      sessions.remove(&key);
+    }
+    sessions.insert(key, value);
+    true
+  }
+}
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_start_tls", op_start_tls);
@@ -82,7 +110,7 @@ async fn op_start_tls(
     super::check_unstable2(&state, "Deno.startTls");
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
-    permissions.check_net(&domain, 0)?;
+    permissions.check_net(&(&domain, Some(0)))?;
     if let Some(path) = cert_file.clone() {
       permissions.check_read(Path::new(&path))?;
     }
@@ -101,6 +129,7 @@ async fn op_start_tls(
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
   let mut config = ClientConfig::new();
+  config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
   config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
@@ -146,7 +175,7 @@ async fn op_connect_tls(
   {
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
-    permissions.check_net(&args.hostname, args.port)?;
+    permissions.check_net(&(&args.hostname, Some(args.port)))?;
     if let Some(path) = cert_file.clone() {
       permissions.check_read(Path::new(&path))?;
     }
@@ -156,11 +185,15 @@ async fn op_connect_tls(
     domain.push_str("localhost");
   }
 
-  let addr = resolve_addr(&args.hostname, args.port).await?;
+  let addr = resolve_addr(&args.hostname, args.port)
+    .await?
+    .next()
+    .ok_or_else(|| generic_error("No resolved address found"))?;
   let tcp_stream = TcpStream::connect(&addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
   let mut config = ClientConfig::new();
+  config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
   config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
@@ -286,7 +319,7 @@ fn op_listen_tls(
   let key_file = args.key_file;
   {
     let permissions = state.borrow::<Permissions>();
-    permissions.check_net(&args.hostname, args.port)?;
+    permissions.check_net(&(&args.hostname, Some(args.port)))?;
     permissions.check_read(Path::new(&cert_file))?;
     permissions.check_read(Path::new(&key_file))?;
   }
@@ -295,8 +328,11 @@ fn op_listen_tls(
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
-  let addr = resolve_addr_sync(&args.hostname, args.port)?;
+  let addr = resolve_addr_sync(&args.hostname, args.port)?
+    .next()
+    .ok_or_else(|| generic_error("No resolved address found"))?;
   let std_listener = std::net::TcpListener::bind(&addr)?;
+  std_listener.set_nonblocking(true)?;
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let tls_listener_resource = TlsListenerResource {
@@ -335,7 +371,7 @@ async fn op_accept_tls(
     .resource_table
     .get::<TlsListenerResource>(rid)
     .ok_or_else(|| bad_resource("Listener has been closed"))?;
-  let mut listener = RcRef::map(&resource, |r| &r.listener)
+  let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);

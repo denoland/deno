@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-/** This module is browser compatible. */
+// This module is browser compatible.
 
 import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";

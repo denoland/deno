@@ -1,16 +1,16 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/** A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
- * on npm.
- *
- * ```
- * import { bgBlue, red, bold } from "https://deno.land/std/fmt/colors.ts";
- * console.log(bgBlue(red(bold("Hello world!"))));
- * ```
- *
- * This module supports `NO_COLOR` environmental variable disabling any coloring
- * if `NO_COLOR` is set.
- *
- * This module is browser compatible. */
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
+// on npm.
+//
+// ```
+// import { bgBlue, red, bold } from "https://deno.land/std/fmt/colors.ts";
+// console.log(bgBlue(red(bold("Hello world!"))));
+// ```
+//
+// This module supports `NO_COLOR` environmental variable disabling any coloring
+// if `NO_COLOR` is set.
+//
+// This module is browser compatible.
 
 const noColor = globalThis.Deno?.noColor ?? true;
 

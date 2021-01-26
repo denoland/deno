@@ -83,6 +83,11 @@ class LogRecord {
 }
 ```
 
+### Log Levels
+
+The different log levels are exported in the `LogLevels` enum type. It defaults
+to INFO if none is specified.
+
 ### Handlers
 
 Handlers are responsible for actual output of log messages. When a handler is
@@ -188,6 +193,8 @@ If you want to override default format of message you can define `formatter`
 option for handler. It can be either simple string-based format that uses
 `LogRecord` fields or more complicated function-based one that takes `LogRecord`
 as argument and outputs string.
+
+The default log format is `{levelName} {msg}`.
 
 Eg.
 

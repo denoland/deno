@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
@@ -9,6 +9,7 @@ delete Object.prototype.__proto__;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
+  const location = window.__bootstrap.location;
   const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
@@ -220,6 +221,9 @@ delete Object.prototype.__proto__;
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
+    ReadableStreamDefaultReader: util.nonEnumerable(
+      streams.ReadableStreamDefaultReader,
+    ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
     TextDecoder: util.nonEnumerable(TextDecoder),
@@ -230,6 +234,9 @@ delete Object.prototype.__proto__;
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
+    WritableStreamDefaultWriter: util.nonEnumerable(
+      streams.WritableStreamDefaultWriter,
+    ),
     atob: util.writable(atob),
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
@@ -242,7 +249,14 @@ delete Object.prototype.__proto__;
     setTimeout: util.writable(timers.setTimeout),
   };
 
+  // The console seems to be the only one that should be writable and non-enumerable
+  // thus we don't have a unique helper for it. If other properties follow the same
+  // structure, it might be worth it to define a helper in `util`
+  windowOrWorkerGlobalScope.console.enumerable = false;
+
   const mainRuntimeGlobalProperties = {
+    Location: location.locationConstructorDescriptor,
+    location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
@@ -258,13 +272,15 @@ delete Object.prototype.__proto__;
   };
 
   const workerRuntimeGlobalProperties = {
+    WorkerLocation: location.workerLocationConstructorDescriptor,
+    location: location.workerLocationDescriptor,
     WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
     DedicatedWorkerGlobalScope:
       globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),
-    // TODO: should be readonly?
+    // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
     workerMessageRecvCallback: util.nonEnumerable(workerMessageRecvCallback),
@@ -289,8 +305,29 @@ delete Object.prototype.__proto__;
     defineEventHandler(window, "load", null);
     defineEventHandler(window, "unload", null);
 
+    const isUnloadDispatched = Symbol.for("isUnloadDispatched");
+    // Stores the flag for checking whether unload is dispatched or not.
+    // This prevents the recursive dispatches of unload events.
+    // See https://github.com/denoland/deno/issues/9201.
+    window[isUnloadDispatched] = false;
+    window.addEventListener("unload", () => {
+      window[isUnloadDispatched] = true;
+    });
+
     runtimeStart(runtimeOptions);
-    const { args, noColor, pid, ppid, unstableFlag } = runtimeOptions;
+    const {
+      args,
+      location: locationHref,
+      noColor,
+      pid,
+      ppid,
+      unstableFlag,
+    } = runtimeOptions;
+
+    if (locationHref != null) {
+      location.setLocationHref(locationHref);
+      fetch.setBaseUrl(locationHref);
+    }
 
     registerErrors();
 
@@ -349,8 +386,11 @@ delete Object.prototype.__proto__;
       runtimeOptions,
       internalName ?? name,
     );
-    const { unstableFlag, pid, noColor, args } = runtimeOptions;
+    const { unstableFlag, pid, noColor, args, location: locationHref } =
+      runtimeOptions;
 
+    location.setLocationHref(locationHref);
+    fetch.setBaseUrl(locationHref);
     registerErrors();
 
     const finalDenoNs = {

@@ -1,5 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import Context, { ExitStatus } from "./snapshot_preview1.ts";
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import Context from "./snapshot_preview1.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
 import { resolvePath } from "../fs/mod.ts";
@@ -132,7 +132,15 @@ for (const pathname of tests) {
         assertEquals(status.code, options.exitCode ? +options.exitCode : 0);
 
         process.close();
-      } catch (err) {However, there is another way: you can take the patch of the
+      } catch (err) {
+        throw err;
+      } finally {
+        await Deno.remove(workdir, { recursive: true });
+      }
+    },
+  });
+}
+
 Deno.test("context_start", function () {
   assertThrows(
     () => {
@@ -174,11 +182,25 @@ Deno.test("context_start", function () {
     "export _start must be a function",
   );
 
-  try {
+  {
     const context = new Context({
       exitOnReturn: false,
     });
-    context.start({
+    const exitCode = context.start({
+      exports: {
+        _start() {
+        },
+        memory: new WebAssembly.Memory({ initial: 1 }),
+      },
+    });
+    assertEquals(exitCode, null);
+  }
+
+  {
+    const context = new Context({
+      exitOnReturn: false,
+    });
+    const exitCode = context.start({
       exports: {
         _start() {
           const exit = context.exports["proc_exit"] as CallableFunction;
@@ -187,9 +209,7 @@ Deno.test("context_start", function () {
         memory: new WebAssembly.Memory({ initial: 1 }),
       },
     });
-  } catch (err) {
-    assert(err instanceof ExitStatus);
-    assertEquals(err.code, 0);
+    assertEquals(exitCode, 0);
   }
 
   assertThrows(
@@ -208,7 +228,6 @@ Deno.test("context_start", function () {
     Error,
     "WebAssembly.Instance has already started",
   );
-<<<<<<< HEAD
 });
 
 Deno.test("context_initialize", function () {
@@ -267,64 +286,70 @@ Deno.test("context_initialize", function () {
     Error,
     "WebAssembly.Instance has already started",
   );
-=======
->>>>>>> Commit to adapt the feature to #8622 and #8710
 });
 
-Deno.test("context_initialize", function () {
-  assertThrows(
-    () => {
-      const context = new Context({});
-      context.initialize({
-        exports: {
-          _initialize() {},
-        },
-      });
-    },
-    TypeError,
-    "must provide a memory export",
-  );
+Deno.test("std_io_stdin.wasm with stdin as file", function () {
+  const stdinPath = Deno.makeTempFileSync();
+  Deno.writeTextFileSync(stdinPath, "Hello, stdin!");
 
-  assertThrows(
-    () => {
-      const context = new Context({});
-      context.initialize({
-        exports: {
-          _start() {},
-          memory: new WebAssembly.Memory({ initial: 1 }),
-        },
-      });
-    },
-    TypeError,
-    "export _start must not be a function",
-  );
+  const stdinFile = Deno.openSync(stdinPath);
 
-  assertThrows(
-    () => {
-      const context = new Context({});
-      context.initialize({
-        exports: {
-          memory: new WebAssembly.Memory({ initial: 1 }),
-        },
-      });
-    },
-    TypeError,
-    "export _initialize must be a function",
-  );
-  assertThrows(
-    () => {
-      const context = new Context({});
-      context.initialize({
-        exports: {
-          memory: new WebAssembly.Memory({ initial: 1 }),
-          _initialize() {},
-        },
-      });
-      context.initialize({
-        exports: {},
-      });
-    },
-    Error,
-    "WebAssembly.Instance has already started",
-  );
+  const context = new Context({
+    exitOnReturn: false,
+    stdin: stdinFile.rid,
+  });
+
+  const binary = Deno.readFileSync(path.join(testdir, "std_io_stdin.wasm"));
+  const module = new WebAssembly.Module(binary);
+  const instance = new WebAssembly.Instance(module, {
+    wasi_snapshot_preview1: context.exports,
+  });
+
+  context.start(instance);
+
+  stdinFile.close();
+});
+
+Deno.test("std_io_stdout.wasm with stdout as file", function () {
+  const stdoutPath = Deno.makeTempFileSync();
+  const stdoutFile = Deno.openSync(stdoutPath, { create: true, write: true });
+
+  const context = new Context({
+    exitOnReturn: false,
+    stdout: stdoutFile.rid,
+  });
+
+  const binary = Deno.readFileSync(path.join(testdir, "std_io_stdout.wasm"));
+  const module = new WebAssembly.Module(binary);
+  const instance = new WebAssembly.Instance(module, {
+    wasi_snapshot_preview1: context.exports,
+  });
+
+  context.start(instance);
+
+  stdoutFile.close();
+
+  assertEquals(Deno.readTextFileSync(stdoutPath), "Hello, stdout!");
+});
+
+Deno.test("std_io_stderr.wasm with stderr as file", function () {
+  const stderrPath = Deno.makeTempFileSync();
+  const stderrFile = Deno.openSync(stderrPath, { create: true, write: true });
+
+  const context = new Context({
+    exitOnReturn: false,
+    stderr: stderrFile.rid,
+  });
+
+  const binary = Deno.readFileSync(path.join(testdir, "std_io_stderr.wasm"));
+  const module = new WebAssembly.Module(binary);
+  const instance = new WebAssembly.Instance(module, {
+    wasi_snapshot_preview1: context.exports,
+  });
+
+  context.start(instance);
+
+  stderrFile.close();
+
+  assertEquals(Deno.readTextFileSync(stderrPath), "Hello, stderr!");
 });

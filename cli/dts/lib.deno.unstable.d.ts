@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -290,6 +290,8 @@ declare namespace Deno {
     /** Base directory to resolve non-relative module names. Defaults to
      * `undefined`. */
     baseUrl?: string;
+    /** The character set of the input files. Defaults to `"utf8"`. */
+    charset?: string;
     /** Report errors in `.js` files. Use in conjunction with `allowJs`. Defaults
      * to `false`. */
     checkJs?: boolean;
@@ -319,7 +321,7 @@ declare namespace Deno {
      * [tslib](https://www.npmjs.com/package/tslib). */
     importHelpers?: boolean;
     /** This flag controls how `import` works, there are 3 different options:
-     * 
+     *
      * - `remove`: The default behavior of dropping import statements which only
      *   reference types.
      * - `preserve`: Preserves all `import` statements whose values or types are
@@ -328,7 +330,7 @@ declare namespace Deno {
      *   but will error when a value import is only used as a type. This might
      *   be useful if you want to ensure no values are being accidentally
      *   imported, but still make side-effect imports explicit.
-     * 
+     *
      * This flag works because you can use `import type` to explicitly create an
      * `import` statement which should never be emitted into JavaScript. */
     importsNotUsedAsValues?: "remove" | "preserve" | "error";
@@ -338,9 +340,6 @@ declare namespace Deno {
     /** Emit the source alongside the source maps within a single file; requires
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
-    /** Perform additional checks to ensure that transpile only would be safe.
-     * Defaults to `true`. */
-    isolatedModules?: boolean;
     /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
      * Defaults to `"react"`. */
     jsx?: "react" | "preserve" | "react-native";
@@ -393,12 +392,17 @@ declare namespace Deno {
     /** Do not emit `"use strict"` directives in module output. Defaults to
      * `false`. */
     noImplicitUseStrict?: boolean;
+    /** Do not include the default library file (`lib.d.ts`). Defaults to
+     * `false`. */
+    noLib?: boolean;
     /** Do not add triple-slash references or module import targets to the list of
      * compiled files. Defaults to `false`. */
     noResolve?: boolean;
     /** Disable strict checking of generic signatures in function types. Defaults
      * to `false`. */
     noStrictGenericChecks?: boolean;
+    /** Include 'undefined' in index signature results. Defaults to `false`. */
+    noUncheckedIndexedAccess?: boolean;
     /** Report errors on unused locals. Defaults to `false`. */
     noUnusedLocals?: boolean;
     /** Report errors on unused parameters. Defaults to `false`. */
@@ -487,122 +491,78 @@ declare namespace Deno {
     useDefineForClassFields?: boolean;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * The results of a transpile only command, where the `source` contains the
-   * emitted source, and `map` optionally contains the source map. */
-  export interface TranspileOnlyResult {
-    source: string;
-    map?: string;
+  interface ImportMap {
+    imports: Record<string, string>;
+    scopes?: Record<string, Record<string, string>>;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Takes a set of TypeScript sources and resolves to a map where the key was
-   * the original file name provided in sources and the result contains the
-   * `source` and optionally the `map` from the transpile operation. This does no
-   * type checking and validation, it effectively "strips" the types from the
-   * file.
-   *
-   * ```ts
-   * const results =  await Deno.transpileOnly({
-   *   "foo.ts": `const foo: string = "foo";`
-   * });
-   * ```
-   *
-   * @param sources A map where the key is the filename and the value is the text
-   *                to transpile. The filename is only used in the transpile and
-   *                not resolved, for example to fill in the source name in the
-   *                source map.
-   * @param options An option object of options to send to the compiler. This is
-   *                a subset of ts.CompilerOptions which can be supported by Deno.
-   *                If unsupported option is passed then the API will throw an error.
-   */
-  export function transpileOnly(
-    sources: Record<string, string>,
-    options?: CompilerOptions,
-  ): Promise<Record<string, TranspileOnlyResult>>;
+  interface EmitOptions {
+    /** Indicate that the source code should be emitted to a single file
+     * JavaScript bundle that is an ES module (`"esm"`). */
+    bundle?: "esm";
+    /** If `true` then the sources will be typed checked, returning any
+     * diagnostic errors in the result.  If `false` type checking will be
+     * skipped.  Defaults to `true`.
+     * 
+     * *Note* by default, only TypeScript will be type checked, just like on
+     * the command line.  Use the `compilerOptions` options of `checkJs` to
+     * enable type checking of JavaScript. */
+    check?: boolean;
+    /** A set of options that are aligned to TypeScript compiler options that
+     * are supported by Deno. */
+    compilerOptions?: CompilerOptions;
+    /** An [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps)
+     * which will be applied to the imports. */
+    importMap?: ImportMap;
+    /** An absolute path to an [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps).
+     * Required to be specified if an `importMap` is specified to be able to
+     * determine resolution of relative paths. If a `importMap` is not
+     * specified, then it will assumed the file path points to an import map on
+     * disk and will be attempted to be loaded based on current runtime
+     * permissions.
+     */
+    importMapPath?: string;
+    /** A record of sources to use when doing the emit.  If provided, Deno will
+     * use these sources instead of trying to resolve the modules externally. */
+    sources?: Record<string, string>;
+  }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Takes a root module name, and optionally a record set of sources. Resolves
-   * with a compiled set of modules and possibly diagnostics if the compiler
-   * encountered any issues. If just a root name is provided, the modules
-   * will be resolved as if the root module had been passed on the command line.
-   *
-   * If sources are passed, all modules will be resolved out of this object, where
-   * the key is the module name and the value is the content. The extension of
-   * the module name will be used to determine the media type of the module.
-   *
-   * ```ts
-   * const [ maybeDiagnostics1, output1 ] = await Deno.compile("foo.ts");
-   *
-   * const [ maybeDiagnostics2, output2 ] = await Deno.compile("/foo.ts", {
-   *   "/foo.ts": `export * from "./bar.ts";`,
-   *   "/bar.ts": `export const bar = "bar";`
-   * });
-   * ```
-   *
-   * @param rootName The root name of the module which will be used as the
-   *                 "starting point". If no `sources` is specified, Deno will
-   *                 resolve the module externally as if the `rootName` had been
-   *                 specified on the command line.
-   * @param sources An optional key/value map of sources to be used when resolving
-   *                modules, where the key is the module name, and the value is
-   *                the source content. The extension of the key will determine
-   *                the media type of the file when processing. If supplied,
-   *                Deno will not attempt to resolve any modules externally.
-   * @param options An optional object of options to send to the compiler. This is
-   *                a subset of ts.CompilerOptions which can be supported by Deno.
-   */
-  export function compile(
-    rootName: string,
-    sources?: Record<string, string>,
-    options?: CompilerOptions,
-  ): Promise<[Diagnostic[] | undefined, Record<string, string>]>;
+  interface EmitResult {
+    /** Diagnostic messages returned from the type checker (`tsc`). */
+    diagnostics: Diagnostic[];
+    /** Any emitted files.  If bundled, then the JavaScript will have the
+     * key of `deno:///bundle.js` with an optional map (based on
+     * `compilerOptions`) in `deno:///bundle.js.map`. */
+    files: Record<string, string>;
+    /** An optional array of any compiler options that were ignored by Deno. */
+    ignoredOptions?: string[];
+    /** An array of internal statistics related to the emit, for diagnostic
+     * purposes. */
+    stats: Array<[string, number]>;
+  }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * `bundle()` is part the compiler API.  A full description of this functionality
-   * can be found in the [manual](https://deno.land/manual/runtime/compiler_apis#denobundle).
-   *
-   * Takes a root module name, and optionally a record set of sources. Resolves
-   * with a single JavaScript string (and bundle diagnostics if issues arise with
-   * the bundling) that is like the output of a `deno bundle` command. If just
-   * a root name is provided, the modules will be resolved as if the root module
-   * had been passed on the command line.
-   *
-   * If sources are passed, all modules will be resolved out of this object, where
-   * the key is the module name and the value is the content. The extension of the
-   * module name will be used to determine the media type of the module.
-   *
-   * ```ts
-   * // equivalent to "deno bundle foo.ts" from the command line
-   * const [ maybeDiagnostics1, output1 ] = await Deno.bundle("foo.ts");
-   *
-   * const [ maybeDiagnostics2, output2 ] = await Deno.bundle("/foo.ts", {
-   *   "/foo.ts": `export * from "./bar.ts";`,
-   *   "/bar.ts": `export const bar = "bar";`
-   * });
-   * ```
-   *
-   * @param rootName The root name of the module which will be used as the
-   *                 "starting point". If no `sources` is specified, Deno will
-   *                 resolve the module externally as if the `rootName` had been
-   *                 specified on the command line.
-   * @param sources An optional key/value map of sources to be used when resolving
-   *                modules, where the key is the module name, and the value is
-   *                the source content. The extension of the key will determine
-   *                the media type of the file when processing. If supplied,
-   *                Deno will not attempt to resolve any modules externally.
-   * @param options An optional object of options to send to the compiler. This is
-   *                a subset of ts.CompilerOptions which can be supported by Deno.
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   * 
+   * Similar to the command line functionality of `deno run` or `deno cache`,
+   * `Deno.emit()` provides a way to provide Deno arbitrary JavaScript
+   * or TypeScript and have it return JavaScript based on the options and
+   * settings provided. The source code can either be provided or the modules
+   * can be fetched and resolved in line with the behavior of the command line.
+   * 
+   * Requires `allow-read` and/or `allow-net` if sources are not provided.
+   * 
+   * @param rootSpecifier The specifier that will be used as the entry point.
+   *                      If no sources are provided, then the specifier would
+   *                      be the same as if you typed it on the command line for
+   *                      `deno run`. If sources are provided, it should match
+   *                      one of the names of the sources.
+   * @param options  A set of options to be used with the emit.
    */
-  export function bundle(
-    rootName: string,
-    sources?: Record<string, string>,
-    options?: CompilerOptions,
-  ): Promise<[Diagnostic[] | undefined, string]>;
+  export function emit(
+    rootSpecifier: string | URL,
+    options?: EmitOptions,
+  ): Promise<EmitResult>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
@@ -875,31 +835,91 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** **UNSTABLE**: Under consideration to remove `ShutdownMode` entirely.
-   *
-   * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
-   *
-   * See: http://man7.org/linux/man-pages/man2/shutdown.2.html */
-  export enum ShutdownMode {
-    Read = 0,
-    Write,
-    ReadWrite, // TODO(ry) panics on ReadWrite.
+  /** The type of the resource record.
+   * Only the listed types are supported currently. */
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "CNAME"
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
+
+  export interface ResolveDnsOptions {
+    /** The name server to be used for lookups. 
+    * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
+      * If not specified, defaults to 53. */
+      port?: number;
+    };
   }
 
-  /** **UNSTABLE**: Both the `how` parameter and `ShutdownMode` enum are under
-   * consideration for removal.
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
+
+  /** ** UNSTABLE**: new API, yet to be vetted.
    *
-   * Shutdown socket send and receive operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
+   * Performs DNS resolution against the given query, returning resolved records.
+   * Fails in the cases such as:
+   * - the query is in invalid format
+   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
+   * - timed out
    *
    * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 1234 },
+   * });
    * ```
+   *
+   * Requires `allow-net` permission.
    */
-  export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -1041,7 +1061,7 @@ declare namespace Deno {
    * identified by `pid`.
    *
    *      const p = Deno.run({
-   *        cmd: ["python", "-c", "from time import sleep; sleep(10000)"]
+   *        cmd: ["sleep", "10000"]
    *      });
    *
    *      Deno.kill(p.pid, Deno.Signal.SIGINT);
@@ -1085,13 +1105,12 @@ declare namespace Deno {
 
   export interface NetPermissionDescriptor {
     name: "net";
-    /** Optional url associated with this descriptor.
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
      *
-     * If specified: must be a valid url. Expected format: <scheme>://<host_or_ip>[:port][/path]
-     * If the scheme is unknown, callers should specify some scheme, such as x:// na:// unknown://
-     *
-     * See: https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml */
-    url?: string;
+     *      "github.com"
+     *      "deno.land:8080"
+     */
+    host?: string;
   }
 
   export interface EnvPermissionDescriptor {
@@ -1261,12 +1280,6 @@ declare namespace Deno {
    * The options used when creating a [HttpClient].
    */
   interface CreateHttpClientOptions {
-    /** A certificate authority to use when validating TLS certificates.
-     *
-     * Requires `allow-read` permission.
-     */
-    caFile?: string;
-
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;

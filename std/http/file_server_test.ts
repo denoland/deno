@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -204,7 +204,7 @@ Deno.test("serveDirectory", async function (): Promise<void> {
     assert(page.includes("README.md"));
 
     // `Deno.FileInfo` is not completely compatible with Windows yet
-    // TODO: `mode` should work correctly in the future.
+    // TODO(bartlomieju): `mode` should work correctly in the future.
     // Correct this test case accordingly.
     Deno.build.os !== "windows" &&
       assert(/<td class="mode">(\s)*\([a-zA-Z-]{10}\)(\s)*<\/td>/.test(page));

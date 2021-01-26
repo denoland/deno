@@ -17,13 +17,13 @@ jobs:
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: test_debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: bench
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
@@ -66,7 +66,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.48.0
+          rust-version: 1.49.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -112,7 +112,9 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          (github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/') &&
+          !startsWith(github.ref, 'refs/tags/std/'))
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -124,7 +126,9 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          (github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/') &&
+          !startsWith(github.ref, 'refs/tags/std/'))
         uses: google-github-actions/setup-gcloud@master
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
@@ -175,6 +179,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          zip -r denort-x86_64-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
 
       - name: Pre-release (mac)
@@ -184,6 +189,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
+          zip -r denort-x86_64-apple-darwin.zip denort
 
       - name: Pre-release (windows)
         if: |
@@ -191,8 +197,9 @@ jobs:
           matrix.kind == 'test_release'
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
 
-      - name: Upload canary (unix)
+      - name: Upload canary to dl.deno.land (unix)
         if: |
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
@@ -203,7 +210,7 @@ jobs:
           echo $(git rev-parse HEAD) > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
-      - name: Upload canary (windows)
+      - name: Upload canary to dl.deno.land (windows)
         if: |
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
@@ -254,7 +261,34 @@ jobs:
           cat /proc/cpuinfo
           cat /proc/meminfo
 
-      - name: Release stable
+      - name: Upload release to dl.deno.land (unix)
+        if: |
+          runner.os != 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/') &&
+          !startsWith(github.ref, 'refs/tags/std/')
+        run: |
+          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          echo ${GITHUB_REF#refs/*/} > release-latest.txt
+          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+
+      - name: Upload release to dl.deno.land (windows)
+        if: |
+          runner.os == 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/') &&
+          !startsWith(github.ref, 'refs/tags/std/')
+        env:
+          CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
+        shell: bash
+        run: |
+          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          echo ${GITHUB_REF#refs/*/} > release-latest.txt
+          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+
+      - name: Upload release to GitHub
         uses: softprops/action-gh-release@v1
         if: |
           matrix.kind == 'test_release' &&

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use lspower::LspService;
 use lspower::Server;
@@ -7,8 +7,8 @@ mod analysis;
 mod capabilities;
 mod config;
 mod diagnostics;
+mod documents;
 mod language_server;
-mod memory_cache;
 mod sources;
 mod text;
 mod tsc;

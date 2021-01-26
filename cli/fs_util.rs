@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
@@ -90,15 +90,28 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 
 /// Checks if the path has extension Deno supports.
 pub fn is_supported_ext(path: &Path) -> bool {
-  let lowercase_ext = path
-    .extension()
-    .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-  if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
+  if let Some(ext) = get_extension(path) {
+    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs")
   } else {
     false
   }
+}
+
+/// This function is similar to is_supported_ext but also allows .md extension.
+pub fn is_supported_ext_md(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
+  } else {
+    false
+  }
+}
+
+/// Get the extension of a file in lowercase.
+pub fn get_extension(file_path: &Path) -> Option<String> {
+  return file_path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase());
 }
 
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
@@ -205,6 +218,24 @@ mod tests {
     assert!(is_supported_ext(Path::new("foo.JSX")));
     assert!(is_supported_ext(Path::new("foo.mjs")));
     assert!(!is_supported_ext(Path::new("foo.mjsx")));
+  }
+
+  #[test]
+  fn test_is_supported_ext_md() {
+    assert!(!is_supported_ext_md(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_ext_md(Path::new("README.md")));
+    assert!(is_supported_ext_md(Path::new("readme.MD")));
+    assert!(is_supported_ext_md(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_ext_md(Path::new("cli/tests/001_hello.js")));
+    assert!(is_supported_ext_md(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext_md(Path::new("foo.jsx")));
+    assert!(is_supported_ext_md(Path::new("foo.tsx")));
+    assert!(is_supported_ext_md(Path::new("foo.TS")));
+    assert!(is_supported_ext_md(Path::new("foo.TSX")));
+    assert!(is_supported_ext_md(Path::new("foo.JS")));
+    assert!(is_supported_ext_md(Path::new("foo.JSX")));
+    assert!(is_supported_ext_md(Path::new("foo.mjs")));
+    assert!(!is_supported_ext_md(Path::new("foo.mjsx")));
   }
 
   #[test]

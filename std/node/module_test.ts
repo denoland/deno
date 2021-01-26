@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -69,4 +69,9 @@ Deno.test("requireStack", function () {
   } catch (e) {
     assertStringIncludes(e.stack, "/tests/cjs/cjs_throw.js");
   }
+});
+
+Deno.test("requireFileInSymlinkDir", () => {
+  const { C } = require("./tests/cjs/dir");
+  assertEquals(C, "C");
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const { DomIterableMixin } = window.__bootstrap.domIterable;
@@ -16,7 +16,7 @@
 
   const headersData = Symbol("headers data");
 
-  // TODO: headerGuard? Investigate if it is needed
+  // TODO(bartlomieju): headerGuard? Investigate if it is needed
   // node-fetch did not implement this but it is in the spec
   function normalizeParams(name, value) {
     name = String(name).toLowerCase();

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { isWindows } from "../_util/os.ts";
 import * as _win32 from "./path_win32.ts";
 import * as _posix from "./path_posix.ts";

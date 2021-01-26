@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::RcLike;
 use futures::future::FusedFuture;
@@ -334,7 +334,7 @@ mod internal {
 
   impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
-      self as *const _ == other as *const _
+      std::ptr::eq(self, other)
     }
   }
 
