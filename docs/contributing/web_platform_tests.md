@@ -36,12 +36,11 @@ case names).
 
 ### Updating enabled tests or expectations
 
-You can update the `./tools/wpt/expectation.json`.json file manually by changing
-the value of each of the test file entries in the JSON structure. The
-alternative and preferred option is to have the WPT runner run all, or a
-filtered subset of tests, and then automatically update the `expectation.json`
-file to match the current reality. You can do this with the `./wpt.ts update`
-command. Example:
+You can update the `./tools/wpt/expectation.json` file manually by changing the
+value of each of the test file entries in the JSON structure. The alternative
+and preferred option is to have the WPT runner run all, or a filtered subset of
+tests, and then automatically update the `expectation.json` file to match the
+current reality. You can do this with the `./wpt.ts update` command. Example:
 
 ```shell
 ./tools/wpt.ts update -- hr-time
@@ -62,7 +61,7 @@ Python 3.
 
 #### `run`
 
-Run all tests like specified in expectations.json.
+Run all tests like specified in `expectation.json`.
 
 You can specify the following flags to customize behaviour:
 
@@ -86,7 +85,7 @@ filters after a `--`:
 
 ### `update`
 
-Update the expectations.json to match the current reality.
+Update the `expectation.json` to match the current reality.
 
 You can specify the following flags to customize behaviour:
 

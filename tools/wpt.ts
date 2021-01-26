@@ -33,6 +33,7 @@ import {
   red,
   yellow,
 } from "https://deno.land/std@0.84.0/fmt/colors.ts";
+import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
 
@@ -58,10 +59,10 @@ switch (command) {
       Validate that your environment is conigured correctly, or help you configure it.
 
     run
-      Run all tests like specified in expectations.json.
+      Run all tests like specified in \`expectation.json\`.
 
     update
-      Update the expectations.json to match the current reality.
+      Update the \`expectation.json\` to match the current reality.
 
 More details at https://deno.land/manual@master/contributing/web_platform_tests
 
@@ -236,10 +237,7 @@ async function update() {
     );
   }
 
-  await Deno.writeTextFile(
-    "./tools/wpt/expectation.json",
-    JSON.stringify(currentExpectation, undefined, "  "),
-  );
+  saveExpectation(currentExpectation);
 
   reportFinal(results);
 
@@ -283,7 +281,7 @@ function reportFinal(
   const finalExpectedFailedButPassedTests: [string, TestCaseResult][] = [];
   const finalExpectedFailedButPassedFiles: string[] = [];
   for (const { test, result } of results) {
-    const { failed, failedCount, expectedFailedButPassed } = analzyeTestResult(
+    const { failed, failedCount, expectedFailedButPassed } = analyzeTestResult(
       result,
       test.expectation,
     );
@@ -340,7 +338,7 @@ function reportFinal(
   return finalFailedCount > 0 ? 1 : 0;
 }
 
-function analzyeTestResult(
+function analyzeTestResult(
   result: TestResult,
   expectation: boolean | string[],
 ): {
@@ -399,7 +397,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     expectedFailedButPassed,
     expectedFailedButPassedCount,
     expectedFailedAndFailedCount,
-  } = analzyeTestResult(result, expectation);
+  } = analyzeTestResult(result, expectation);
 
   if (failed.length > 0) {
     console.log(`\nfailures:`);

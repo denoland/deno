@@ -1,4 +1,4 @@
-import { delay, readLines } from "../util.js";
+import { delay, join, readLines, ROOT_PATH } from "../util.js";
 import { assert, ManifestTestOptions, release, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
@@ -69,7 +69,7 @@ export async function runSingleTest(
 
   const proc = Deno.run({
     cmd: [
-      `./target/${release ? "release" : "debug"}/deno`,
+      join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
       "run",
       "-A",
       "--location",
@@ -118,7 +118,9 @@ async function generateBundle(location: URL): Promise<string> {
     const src = script.getAttribute("src");
     if (src === "/resources/testharnessreport.js") {
       scriptContents.push(
-        await Deno.readTextFile("./tools/wpt/testharnessreport.js"),
+        await Deno.readTextFile(
+          join(ROOT_PATH, "./tools/wpt/testharnessreport.js"),
+        ),
       );
     } else if (src) {
       const res = await fetch(new URL(src, location));

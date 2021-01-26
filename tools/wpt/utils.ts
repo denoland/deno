@@ -1,6 +1,7 @@
 /// FLAGS
 
 import { parse } from "https://deno.land/std@0.84.0/flags/mod.ts";
+import { join, ROOT_PATH } from "../util.js";
 
 export const {
   json,
@@ -13,6 +14,8 @@ export const {
   boolean: ["quiet", "release", "no-interactive"],
   string: ["json"],
 });
+
+/// PAGE ROOT
 
 /// WPT TEST MANIFEST
 
@@ -36,16 +39,11 @@ export interface ManifestTestOptions {
   name?: string;
 }
 
+const MANIFEST_PATH = join(ROOT_PATH, "./tools/wpt/manifest.json");
+
 export async function updateManifest() {
   const proc = runPy(
-    [
-      "wpt",
-      "manifest",
-      "--tests-root",
-      ".",
-      "-p",
-      "../../tools/wpt/manifest.json",
-    ],
+    ["wpt", "manifest", "--tests-root", ".", "-p", MANIFEST_PATH],
     {},
   );
   const status = await proc.status();
@@ -53,19 +51,28 @@ export async function updateManifest() {
 }
 
 export function getManifest(): Manifest {
-  const manifestText = Deno.readTextFileSync("./tools/wpt/manifest.json");
+  const manifestText = Deno.readTextFileSync(MANIFEST_PATH);
   return JSON.parse(manifestText);
 }
 
 /// WPT TEST EXPECTATIONS
+
+const EXPECTATION_PATH = join(ROOT_PATH, "./tools/wpt/expectation.json");
 
 export interface Expectation {
   [key: string]: Expectation | boolean | string[];
 }
 
 export function getExpectation(): Expectation {
-  const expectationText = Deno.readTextFileSync("./tools/wpt/expectation.json");
+  const expectationText = Deno.readTextFileSync(EXPECTATION_PATH);
   return JSON.parse(expectationText);
+}
+
+export function saveExpectation(expectation: Expectation) {
+  Deno.writeTextFileSync(
+    EXPECTATION_PATH,
+    JSON.stringify(expectation, undefined, "  "),
+  );
 }
 
 export function generateTestExpectations(filter: string[]) {
@@ -132,7 +139,7 @@ export function runPy(
   const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
   return Deno.run({
     cmd: [cmd, ...args],
-    cwd: "./test_util/wpt/",
+    cwd: join(ROOT_PATH, "./test_util/wpt/"),
     ...options,
   });
 }
