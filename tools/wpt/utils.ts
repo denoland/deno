@@ -26,13 +26,15 @@ export interface ManifestFolder {
 }
 export type ManifestTest = [
   hash: string,
-  ...variations: ManifestTestVariation[]
+  ...variations: ManifestTestVariation[],
 ];
 export type ManifestTestVariation = [
   path: string,
-  options: ManifestTestOptions
+  options: ManifestTestOptions,
 ];
-export interface ManifestTestOptions {}
+export interface ManifestTestOptions {
+  name?: string;
+}
 
 export async function updateManifest() {
   const proc = runPy(
@@ -44,7 +46,7 @@ export async function updateManifest() {
       "-p",
       "../../tools/wpt/manifest.json",
     ],
-    {}
+    {},
   );
   const status = await proc.status();
   assert(status.success, "updating wpt manifest should succeed");
@@ -61,7 +63,7 @@ export interface Expectation {
   [key: string]: Expectation | boolean | string[];
 }
 
-export function getExpectations(): Expectation {
+export function getExpectation(): Expectation {
   const expectationText = Deno.readTextFileSync("./tools/wpt/expectation.json");
   return JSON.parse(expectationText);
 }
@@ -100,7 +102,7 @@ export function generateTestExpectations(filter: string[]) {
 
 export function getExpectFailForCase(
   expectation: boolean | string[],
-  caseName: string
+  caseName: string,
 ): boolean {
   if (typeof expectation == "boolean") {
     return !expectation;
@@ -125,7 +127,7 @@ export function assert(condition: unknown, message: string): asserts condition {
 
 export function runPy(
   args: string[],
-  options: Omit<Omit<Deno.RunOptions, "cmd">, "cwd">
+  options: Omit<Omit<Deno.RunOptions, "cmd">, "cwd">,
 ): Deno.Process {
   const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
   return Deno.run({
@@ -144,6 +146,6 @@ export async function checkPy3Available() {
     output.includes("Python 3."),
     `The ${
       Deno.build.os == "windows" ? "python.exe" : "python3"
-    } in your path is not is not Python 3.`
+    } in your path is not is not Python 3.`,
   );
 }

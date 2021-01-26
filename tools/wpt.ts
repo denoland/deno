@@ -4,35 +4,34 @@
 // This script is used to run WPT tests for Deno.
 
 import {
-  runWithTestUtil,
   runSingleTest,
+  runWithTestUtil,
   TestCaseResult,
   TestResult,
 } from "./wpt/runner.ts";
 import {
-  getExpectations as getExpectation,
-  getManifest,
-  generateTestExpectations,
-  ManifestFolder,
-  Expectation,
   assert,
+  autoConfig,
+  checkPy3Available,
+  Expectation,
+  getExpectation,
+  getExpectFailForCase,
+  getManifest,
+  json,
+  ManifestFolder,
+  ManifestTestOptions,
   ManifestTestVariation,
   quiet,
-  json,
-  updateManifest,
-  checkPy3Available,
   rest,
   runPy,
-  ManifestTestOptions,
-  getExpectFailForCase,
-  autoConfig,
+  updateManifest,
 } from "./wpt/utils.ts";
 import {
-  red,
-  green,
-  yellow,
   blue,
   bold,
+  green,
+  red,
+  yellow,
 } from "https://deno.land/std@0.84.0/fmt/colors.ts";
 
 const command = Deno.args[0];
@@ -232,32 +231,11 @@ async function update() {
       finalExpectation = false;
     }
 
-    function gen(
-      segments: string[],
-      currentExpectation: Expectation,
-      finalExpectation: boolean | string[]
-    ) {
-      const segment = segments.shift();
-      assert(segment, "segments array must never be empty");
-      if (segments.length > 0) {
-        if (
-          !currentExpectation[segment] ||
-          Array.isArray(currentExpectation[segment]) ||
-          typeof currentExpectation[segment] === "boolean"
-        ) {
-          currentExpectation[segment] = {};
-        }
-        gen(
-          segments,
-          currentExpectation[segment] as Expectation,
-          finalExpectation
-        );
-      } else {
-        currentExpectation[segment] = finalExpectation;
-      }
-    }
-
-    gen(path.slice(1).split("/"), currentExpectation, finalExpectation);
+    insertExpectation(
+      path.slice(1).split("/"),
+      currentExpectation,
+      finalExpectation
+    );
   }
 
   await Deno.writeTextFile(
@@ -270,6 +248,31 @@ async function update() {
   console.log(blue("Updated expectation.json to match reality."));
 
   Deno.exit(0);
+}
+
+function insertExpectation(
+  segments: string[],
+  currentExpectation: Expectation,
+  finalExpectation: boolean | string[]
+) {
+  const segment = segments.shift();
+  assert(segment, "segments array must never be empty");
+  if (segments.length > 0) {
+    if (
+      !currentExpectation[segment] ||
+      Array.isArray(currentExpectation[segment]) ||
+      typeof currentExpectation[segment] === "boolean"
+    ) {
+      currentExpectation[segment] = {};
+    }
+    insertExpectation(
+      segments,
+      currentExpectation[segment] as Expectation,
+      finalExpectation
+    );
+  } else {
+    currentExpectation[segment] = finalExpectation;
+  }
 }
 
 function reportFinal(

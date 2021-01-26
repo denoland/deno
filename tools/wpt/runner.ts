@@ -1,10 +1,10 @@
 import { readLines } from "../util.js";
-import { ManifestTestOptions, assert, release, runPy } from "./utils.ts";
+import { assert, ManifestTestOptions, release, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
 export async function runWithTestUtil<T>(
   verbose: boolean,
-  f: () => Promise<T>
+  f: () => Promise<T>,
 ): Promise<T> {
   const proc = runPy(["wpt", "serve"], {
     stdout: verbose ? "inherit" : "piped",
@@ -42,7 +42,7 @@ export interface TestCaseResult {
 export async function runSingleTest(
   url: URL,
   options: ManifestTestOptions,
-  reporter: (result: TestCaseResult) => void
+  reporter: (result: TestCaseResult) => void,
 ): Promise<TestResult> {
   const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
@@ -102,7 +102,7 @@ async function generateBundle(location: URL): Promise<string> {
     const src = script.getAttribute("src");
     if (src === "/resources/testharnessreport.js") {
       scriptContents.push(
-        await Deno.readTextFile("./tools/wpt/testharnessreport.js")
+        await Deno.readTextFile("./tools/wpt/testharnessreport.js"),
       );
     } else if (src) {
       const res = await fetch(new URL(src, location));
