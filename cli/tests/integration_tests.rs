@@ -13,7 +13,78 @@ use tempfile::TempDir;
 use test_util as util;
 use walkdir::WalkDir;
 
-macro_rules! itest(
+#[test]
+fn std_tests() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let status = util::deno_cmd()
+    .env("DENO_DIR", dir.path())
+    .current_dir(util::root_path())
+    .arg("test")
+    .arg("--unstable")
+    .arg("--seed=86") // Some tests rely on specific random numbers.
+    .arg("-A")
+    // .arg("-Ldebug")
+    .arg("std/")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn std_lint() {
+  let status = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
+    .arg(format!(
+      "--ignore={}",
+      util::root_path().join("std/node/tests").to_string_lossy()
+    ))
+    .arg(util::root_path().join("std"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn js_unit_tests_lint() {
+  let status = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
+    .arg(util::root_path().join("cli/tests/unit"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn js_unit_tests() {
+  let _g = util::http_server();
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--reload")
+    .arg("-A")
+    .arg("cli/tests/unit/unit_test_runner.ts")
+    .arg("--master")
+    .arg("--verbose")
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert_eq!(Some(0), status.code());
+  assert!(status.success());
+}
+
+mod integration {
+  use super::*;
+
+  macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[test]
     fn $name() {
@@ -26,46 +97,6 @@ macro_rules! itest(
     }
   }
 );
-
-mod integration {
-
-  use super::*;
-
-  #[test]
-  fn std_tests() {
-    let dir = TempDir::new().expect("tempdir fail");
-    let status = util::deno_cmd()
-      .env("DENO_DIR", dir.path())
-      .current_dir(util::root_path())
-      .arg("test")
-      .arg("--unstable")
-      .arg("--seed=86") // Some tests rely on specific random numbers.
-      .arg("-A")
-      // .arg("-Ldebug")
-      .arg("std/")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(status.success());
-  }
-
-  #[test]
-  fn std_lint() {
-    let status = util::deno_cmd()
-      .arg("lint")
-      .arg("--unstable")
-      .arg(format!(
-        "--ignore={}",
-        util::root_path().join("std/node/tests").to_string_lossy()
-      ))
-      .arg(util::root_path().join("std"))
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(status.success());
-  }
 
   #[test]
   fn help_flag() {
@@ -96,19 +127,6 @@ mod integration {
     let status = util::deno_cmd()
       .current_dir(util::root_path())
       .arg("--version")
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(status.success());
-  }
-
-  #[test]
-  fn unit_test_lint() {
-    let status = util::deno_cmd()
-      .arg("lint")
-      .arg("--unstable")
-      .arg(util::root_path().join("cli/tests/unit"))
       .spawn()
       .unwrap()
       .wait()
@@ -810,25 +828,6 @@ mod integration {
       .unwrap()
       .trim()
       .ends_with("hello, foo"));
-  }
-
-  #[test]
-  fn js_unit_tests() {
-    let _g = util::http_server();
-    let mut deno = util::deno_cmd()
-      .current_dir(util::root_path())
-      .arg("run")
-      .arg("--unstable")
-      .arg("--reload")
-      .arg("-A")
-      .arg("cli/tests/unit/unit_test_runner.ts")
-      .arg("--master")
-      .arg("--verbose")
-      .spawn()
-      .expect("failed to spawn script");
-    let status = deno.wait().expect("failed to wait for the child process");
-    assert_eq!(Some(0), status.code());
-    assert!(status.success());
   }
 
   #[test]
@@ -1597,105 +1596,6 @@ mod integration {
     drop(t);
   }
 
-  #[cfg(unix)]
-  #[test]
-  fn repl_test_pty_multiline() {
-    use std::io::Read;
-    use util::pty::fork::*;
-    let deno_exe = util::deno_exe_path();
-    let fork = Fork::from_ptmx().unwrap();
-    if let Ok(mut master) = fork.is_parent() {
-      master.write_all(b"(\n1 + 2\n)\n").unwrap();
-      master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
-      master.write_all(b"`\nfoo\n`\n").unwrap();
-      master.write_all(b"`\n\\`\n`\n").unwrap();
-      master.write_all(b"'{'\n").unwrap();
-      master.write_all(b"'('\n").unwrap();
-      master.write_all(b"'['\n").unwrap();
-      master.write_all(b"/{/'\n").unwrap();
-      master.write_all(b"/(/'\n").unwrap();
-      master.write_all(b"/[/'\n").unwrap();
-      master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
-      master.write_all(b"close();\n").unwrap();
-
-      let mut output = String::new();
-      master.read_to_string(&mut output).unwrap();
-
-      assert!(output.contains('3'));
-      assert!(output.contains("{ foo: \"foo\" }"));
-      assert!(output.contains("\"\\nfoo\\n\""));
-      assert!(output.contains("\"\\n`\\n\""));
-      assert!(output.contains("\"{\""));
-      assert!(output.contains("\"(\""));
-      assert!(output.contains("\"[\""));
-      assert!(output.contains("/{/"));
-      assert!(output.contains("/(/"));
-      assert!(output.contains("/{/"));
-      assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
-
-      fork.wait().unwrap();
-    } else {
-      std::env::set_var("NO_COLOR", "1");
-      let err = exec::Command::new(deno_exe).arg("repl").exec();
-      println!("err {}", err);
-      unreachable!()
-    }
-  }
-
-  #[cfg(unix)]
-  #[test]
-  fn repl_test_pty_unpaired_braces() {
-    use std::io::Read;
-    use util::pty::fork::*;
-    let deno_exe = util::deno_exe_path();
-    let fork = Fork::from_ptmx().unwrap();
-    if let Ok(mut master) = fork.is_parent() {
-      master.write_all(b")\n").unwrap();
-      master.write_all(b"]\n").unwrap();
-      master.write_all(b"}\n").unwrap();
-      master.write_all(b"close();\n").unwrap();
-
-      let mut output = String::new();
-      master.read_to_string(&mut output).unwrap();
-
-      assert!(output.contains("Unexpected token ')'"));
-      assert!(output.contains("Unexpected token ']'"));
-      assert!(output.contains("Unexpected token '}'"));
-
-      fork.wait().unwrap();
-    } else {
-      std::env::set_var("NO_COLOR", "1");
-      let err = exec::Command::new(deno_exe).arg("repl").exec();
-      println!("err {}", err);
-      unreachable!()
-    }
-  }
-
-  #[cfg(unix)]
-  #[test]
-  fn repl_test_pty_bad_input() {
-    use std::io::Read;
-    use util::pty::fork::*;
-    let deno_exe = util::deno_exe_path();
-    let fork = Fork::from_ptmx().unwrap();
-    if let Ok(mut master) = fork.is_parent() {
-      master.write_all(b"'\\u{1f3b5}'[0]\n").unwrap();
-      master.write_all(b"close();\n").unwrap();
-
-      let mut output = String::new();
-      master.read_to_string(&mut output).unwrap();
-
-      assert!(output.contains("Unterminated string literal"));
-
-      fork.wait().unwrap();
-    } else {
-      std::env::set_var("NO_COLOR", "1");
-      let err = exec::Command::new(deno_exe).arg("repl").exec();
-      println!("err {}", err);
-      unreachable!()
-    }
-  }
-
   #[test]
   #[ignore]
   fn run_watch_with_import_map_and_relative_paths() {
@@ -1757,350 +1657,454 @@ mod integration {
     temp_directory.close().unwrap();
   }
 
-  #[test]
-  fn repl_test_console_log() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["console.log('hello')", "'world'"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("hello\nundefined\n\"world\"\n"));
-    assert!(err.is_empty());
-  }
+  mod repl {
+    use super::*;
 
-  #[test]
-  fn repl_test_object_literal() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["{}", "{ foo: 'bar' }"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("{}\n{ foo: \"bar\" }\n"));
-    assert!(err.is_empty());
-  }
+    #[cfg(unix)]
+    #[test]
+    fn pty_multiline() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b"(\n1 + 2\n)\n").unwrap();
+        master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
+        master.write_all(b"`\nfoo\n`\n").unwrap();
+        master.write_all(b"`\n\\`\n`\n").unwrap();
+        master.write_all(b"'{'\n").unwrap();
+        master.write_all(b"'('\n").unwrap();
+        master.write_all(b"'['\n").unwrap();
+        master.write_all(b"/{/'\n").unwrap();
+        master.write_all(b"/(/'\n").unwrap();
+        master.write_all(b"/[/'\n").unwrap();
+        master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
 
-  #[test]
-  fn repl_test_block_expression() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["{};", "{\"\"}"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("undefined\n\"\"\n"));
-    assert!(err.is_empty());
-  }
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
 
-  #[test]
-  fn repl_test_await_resolve() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["await Promise.resolve('done')"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("\"done\"\n"));
-    assert!(err.is_empty());
-  }
+        assert!(output.contains('3'));
+        assert!(output.contains("{ foo: \"foo\" }"));
+        assert!(output.contains("\"\\nfoo\\n\""));
+        assert!(output.contains("\"\\n`\\n\""));
+        assert!(output.contains("\"{\""));
+        assert!(output.contains("\"(\""));
+        assert!(output.contains("\"[\""));
+        assert!(output.contains("/{/"));
+        assert!(output.contains("/(/"));
+        assert!(output.contains("/{/"));
+        assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
 
-  #[test]
-  fn repl_test_await_timeout() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["await new Promise((r) => setTimeout(r, 0, 'done'))"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("\"done\"\n"));
-    assert!(err.is_empty());
-  }
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
 
-  #[test]
-  fn repl_test_let_redeclaration() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["let foo = 0;", "foo", "let foo = 1;", "foo"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("undefined\n0\nundefined\n1\n"));
-    assert!(err.is_empty());
-  }
+    #[cfg(unix)]
+    #[test]
+    fn pty_unpaired_braces() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b")\n").unwrap();
+        master.write_all(b"]\n").unwrap();
+        master.write_all(b"}\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
 
-  #[test]
-  fn repl_cwd() {
-    let (_out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["Deno.cwd()"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(err.is_empty());
-  }
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
 
-  #[test]
-  fn repl_test_eof() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["1 + 2"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("3\n"));
-    assert!(err.is_empty());
-  }
+        assert!(output.contains("Unexpected token ')'"));
+        assert!(output.contains("Unexpected token ']'"));
+        assert!(output.contains("Unexpected token '}'"));
 
-  #[test]
-  fn repl_test_strict() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec![
-        "let a = {};",
-        "Object.preventExtensions(a);",
-        "a.c = 1;",
-      ]),
-      None,
-      false,
-    );
-    assert!(out.contains(
-      "Uncaught TypeError: Cannot add property c, object is not extensible"
-    ));
-    assert!(err.is_empty());
-  }
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
 
-  #[test]
-  fn repl_test_close_command() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["close()", "'ignored'"]),
-      None,
-      false,
-    );
+    #[cfg(unix)]
+    #[test]
+    fn pty_bad_input() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b"'\\u{1f3b5}'[0]\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
 
-    assert!(!out.contains("ignored"));
-    assert!(err.is_empty());
-  }
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
 
-  #[test]
-  fn repl_test_function() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["Deno.writeFileSync"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("[Function: writeFileSync]\n"));
-    assert!(err.is_empty());
-  }
+        assert!(output.contains("Unterminated string literal"));
 
-  #[test]
-  #[ignore]
-  fn repl_test_multiline() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["(\n1 + 2\n)"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("3\n"));
-    assert!(err.is_empty());
-  }
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
 
-  #[test]
-  fn repl_test_import() {
-    let (out, _) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["import('./subdir/auto_print_hello.ts')"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.contains("hello!\n"));
-  }
-
-  #[test]
-  fn repl_test_eval_unterminated() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["eval('{')"]),
-      None,
-      false,
-    );
-    assert!(out.contains("Unexpected end of input"));
-    assert!(err.is_empty());
-  }
-
-  #[test]
-  fn repl_test_unpaired_braces() {
-    for right_brace in &[")", "]", "}"] {
+    #[test]
+    fn console_log() {
       let (out, err) = util::run_and_collect_output(
         true,
         "repl",
-        Some(vec![right_brace]),
+        Some(vec!["console.log('hello')", "'world'"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("hello\nundefined\n\"world\"\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn object_literal() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["{}", "{ foo: 'bar' }"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("{}\n{ foo: \"bar\" }\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn block_expression() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["{};", "{\"\"}"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\n\"\"\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn await_resolve() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["await Promise.resolve('done')"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("\"done\"\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn await_timeout() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["await new Promise((r) => setTimeout(r, 0, 'done'))"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("\"done\"\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn let_redeclaration() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["let foo = 0;", "foo", "let foo = 1;", "foo"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\n0\nundefined\n1\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn repl_cwd() {
+      let (_out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["Deno.cwd()"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn eof() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["1 + 2"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("3\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn strict() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "let a = {};",
+          "Object.preventExtensions(a);",
+          "a.c = 1;",
+        ]),
         None,
         false,
       );
-      assert!(out.contains("Unexpected token"));
+      assert!(out.contains(
+        "Uncaught TypeError: Cannot add property c, object is not extensible"
+      ));
       assert!(err.is_empty());
     }
-  }
 
-  #[test]
-  fn repl_test_reference_error() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["not_a_variable"]),
-      None,
-      false,
-    );
-    assert!(out.contains("not_a_variable is not defined"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    fn close_command() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["close()", "'ignored'"]),
+        None,
+        false,
+      );
 
-  #[test]
-  fn repl_test_syntax_error() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["syntax error"]),
-      None,
-      false,
-    );
-    assert!(out.contains("Unexpected identifier"));
-    assert!(err.is_empty());
-  }
+      assert!(!out.contains("ignored"));
+      assert!(err.is_empty());
+    }
 
-  #[test]
-  fn repl_test_type_error() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["console()"]),
-      None,
-      false,
-    );
-    assert!(out.contains("console is not a function"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    fn function() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["Deno.writeFileSync"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("[Function: writeFileSync]\n"));
+      assert!(err.is_empty());
+    }
 
-  #[test]
-  fn repl_test_variable() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["var a = 123;", "a"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("undefined\n123\n"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    #[ignore]
+    fn multiline() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["(\n1 + 2\n)"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("3\n"));
+      assert!(err.is_empty());
+    }
 
-  #[test]
-  fn repl_test_lexical_scoped_variable() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["let a = 123;", "a"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("undefined\n123\n"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    fn import() {
+      let (out, _) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["import('./subdir/auto_print_hello.ts')"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.contains("hello!\n"));
+    }
 
-  #[test]
-  fn repl_test_missing_deno_dir() {
-    use std::fs::{read_dir, remove_dir_all};
-    const DENO_DIR: &str = "nonexistent";
-    let test_deno_dir =
-      util::root_path().join("cli").join("tests").join(DENO_DIR);
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["1"]),
-      Some(vec![
-        ("DENO_DIR".to_owned(), DENO_DIR.to_owned()),
-        ("NO_COLOR".to_owned(), "1".to_owned()),
-      ]),
-      false,
-    );
-    assert!(read_dir(&test_deno_dir).is_ok());
-    remove_dir_all(&test_deno_dir).unwrap();
-    assert!(out.ends_with("1\n"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    fn eval_unterminated() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["eval('{')"]),
+        None,
+        false,
+      );
+      assert!(out.contains("Unexpected end of input"));
+      assert!(err.is_empty());
+    }
 
-  #[test]
-  fn repl_test_save_last_eval() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["1", "_"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("1\n1\n"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    fn unpaired_braces() {
+      for right_brace in &[")", "]", "}"] {
+        let (out, err) = util::run_and_collect_output(
+          true,
+          "repl",
+          Some(vec![right_brace]),
+          None,
+          false,
+        );
+        assert!(out.contains("Unexpected token"));
+        assert!(err.is_empty());
+      }
+    }
 
-  #[test]
-  fn repl_test_save_last_thrown() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["throw 1", "_error"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out.ends_with("Uncaught 1\n1\n"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    fn reference_error() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["not_a_variable"]),
+        None,
+        false,
+      );
+      assert!(out.contains("not_a_variable is not defined"));
+      assert!(err.is_empty());
+    }
 
-  #[test]
-  fn repl_test_assign_underscore() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["_ = 1", "2", "_"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    assert!(out
-      .ends_with("Last evaluation result is no longer saved to _.\n1\n2\n1\n"));
-    assert!(err.is_empty());
-  }
+    #[test]
+    fn syntax_error() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["syntax error"]),
+        None,
+        false,
+      );
+      assert!(out.contains("Unexpected identifier"));
+      assert!(err.is_empty());
+    }
 
-  #[test]
-  fn repl_test_assign_underscore_error() {
-    let (out, err) = util::run_and_collect_output(
-      true,
-      "repl",
-      Some(vec!["_error = 1", "throw 2", "_error"]),
-      Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
-      false,
-    );
-    println!("{}", out);
-    assert!(out.ends_with(
-      "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"
-    ));
-    assert!(err.is_empty());
+    #[test]
+    fn type_error() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["console()"]),
+        None,
+        false,
+      );
+      assert!(out.contains("console is not a function"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn variable() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["var a = 123;", "a"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\n123\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn lexical_scoped_variable() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["let a = 123;", "a"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\n123\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn missing_deno_dir() {
+      use std::fs::{read_dir, remove_dir_all};
+      const DENO_DIR: &str = "nonexistent";
+      let test_deno_dir =
+        util::root_path().join("cli").join("tests").join(DENO_DIR);
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["1"]),
+        Some(vec![
+          ("DENO_DIR".to_owned(), DENO_DIR.to_owned()),
+          ("NO_COLOR".to_owned(), "1".to_owned()),
+        ]),
+        false,
+      );
+      assert!(read_dir(&test_deno_dir).is_ok());
+      remove_dir_all(&test_deno_dir).unwrap();
+      assert!(out.ends_with("1\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn save_last_eval() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["1", "_"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("1\n1\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn save_last_thrown() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["throw 1", "_error"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("Uncaught 1\n1\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn assign_underscore() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["_ = 1", "2", "_"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with(
+        "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
+      ));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn assign_underscore_error() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["_error = 1", "throw 2", "_error"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      println!("{}", out);
+      assert!(out.ends_with(
+        "Last thrown error is no longer saved to _error.\n1\nUncaught 2\n1\n"
+      ));
+      assert!(err.is_empty());
+    }
   }
 
   #[test]
