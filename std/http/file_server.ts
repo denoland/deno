@@ -1,9 +1,9 @@
 #!/usr/bin/env -S deno run --allow-net --allow-read
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This program serves files in the current directory over HTTP.
-// TODO Stream responses instead of reading them into memory.
-// TODO Add tests like these:
+// TODO(bartlomieju): Stream responses instead of reading them into memory.
+// TODO(bartlomieju): Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 import { extname, posix } from "../path/mod.ts";
@@ -142,7 +142,7 @@ export async function serveFile(
   };
 }
 
-// TODO: simplify this after deno.stat and deno.readDir are fixed
+// TODO(bartlomieju): simplify this after deno.stat and deno.readDir are fixed
 async function serveDir(
   req: ServerRequest,
   dirPath: string,

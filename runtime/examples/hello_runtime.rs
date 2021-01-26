@@ -1,4 +1,4 @@
-// Copyright 2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
@@ -26,7 +26,7 @@ async fn main() -> Result<(), AnyError> {
     args: vec![],
     debug_flag: false,
     unstable: false,
-    ca_filepath: None,
+    ca_data: None,
     user_agent: "hello_runtime".to_string(),
     seed: None,
     js_error_create_fn: None,
@@ -39,6 +39,7 @@ async fn main() -> Result<(), AnyError> {
     ts_version: "x".to_string(),
     no_color: false,
     get_error_class_fn: Some(&get_error_class_name),
+    location: None,
   };
 
   let js_path =

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
@@ -14,9 +14,7 @@ export function chown(
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
-  Deno.chown(path, uid, gid)
-    .then(() => callback())
-    .catch(callback);
+  Deno.chown(path, uid, gid).then(() => callback(null), callback);
 }
 
 /**

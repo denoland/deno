@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
@@ -15,9 +15,7 @@ export function chmod(
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
-  Deno.chmod(path, getResolvedMode(mode))
-    .then(() => callback())
-    .catch(callback);
+  Deno.chmod(path, getResolvedMode(mode)).then(() => callback(null), callback);
 }
 
 /**

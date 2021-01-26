@@ -1,8 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
   const { cloneValue, illegalConstructorKey } = window.__bootstrap.webUtil;
+  const { requiredArguments } = window.__bootstrap.webUtil;
 
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
@@ -21,7 +22,10 @@
     if (typeof mark === "string") {
       const entry = findMostRecent(mark, "mark");
       if (!entry) {
-        throw new SyntaxError(`Cannot find mark: "${mark}".`);
+        throw new DOMException(
+          `Cannot find mark: "${mark}".`,
+          "SyntaxError",
+        );
       }
       return entry.startTime;
     }
@@ -42,9 +46,7 @@
     );
   }
 
-  function now() {
-    return opNow();
-  }
+  const now = opNow;
 
   class PerformanceEntry {
     #name = "";
@@ -99,6 +101,8 @@
   }
 
   class PerformanceMark extends PerformanceEntry {
+    [Symbol.toStringTag] = "PerformanceMark";
+
     #detail = null;
 
     get detail() {
@@ -111,8 +115,24 @@
 
     constructor(
       name,
-      { detail = null, startTime = now() } = {},
+      options = {},
     ) {
+      requiredArguments("PerformanceMark", arguments.length, 1);
+
+      // ensure options is object-ish, or null-ish
+      switch (typeof options) {
+        case "object": // includes null
+        case "function":
+        case "undefined": {
+          break;
+        }
+        default: {
+          throw new TypeError("Invalid options");
+        }
+      }
+
+      const { detail = null, startTime = now() } = options ?? {};
+
       super(name, "mark", startTime, 0, illegalConstructorKey);
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
@@ -140,6 +160,8 @@
   }
 
   class PerformanceMeasure extends PerformanceEntry {
+    [Symbol.toStringTag] = "PerformanceMeasure";
+
     #detail = null;
 
     get detail() {

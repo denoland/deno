@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -7,9 +7,50 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-function waitForMs(ms: number): Promise<number> {
+function waitForMs(ms: number): Promise<void> {
   return new Promise((resolve): number => setTimeout(resolve, ms));
 }
+
+unitTest(async function functionParameterBindingSuccess(): Promise<void> {
+  const promise = deferred();
+  let count = 0;
+
+  const nullProto = (newCount: number): void => {
+    count = newCount;
+    promise.resolve();
+  };
+
+  Reflect.setPrototypeOf(nullProto, null);
+
+  setTimeout(nullProto, 500, 1);
+  await promise;
+  // count should be reassigned
+  assertEquals(count, 1);
+});
+
+unitTest(async function stringifyAndEvalNonFunctions(): Promise<void> {
+  // eval can only access global scope
+  const global = globalThis as unknown as {
+    globalPromise: ReturnType<typeof deferred>;
+    globalCount: number;
+  };
+  global.globalPromise = deferred();
+  global.globalCount = 0;
+
+  const notAFunction =
+    "globalThis.globalCount++; globalThis.globalPromise.resolve();" as unknown as () =>
+      void;
+
+  setTimeout(notAFunction, 500);
+
+  await global.globalPromise;
+
+  // count should be incremented
+  assertEquals(global.globalCount, 1);
+
+  Reflect.deleteProperty(global, "globalPromise");
+  Reflect.deleteProperty(global, "globalCount");
+});
 
 unitTest(async function timeoutSuccess(): Promise<void> {
   const promise = deferred();

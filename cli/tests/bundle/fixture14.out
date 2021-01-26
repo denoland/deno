@@ -6,26 +6,26 @@ const mod = function() {
 }();
 console.log(mod);
 const mod1 = function() {
-    const a = [];
-    const a1 = a;
+    const c = [];
+    const c1 = c;
     return {
-        a
+        c: c
     };
 }();
-const a = mod1;
+const c = mod1;
 const mod2 = function() {
     const b = [];
     const b1 = b;
     return {
-        b
+        b: b
     };
 }();
 const b = mod2;
 const mod3 = function() {
-    const c = [];
-    const c1 = c;
+    const a = [];
+    const a1 = a;
     return {
-        c
+        a: a
     };
 }();
-const c = mod3;
+const a = mod3;

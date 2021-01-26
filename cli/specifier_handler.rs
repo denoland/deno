@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::Location;
 use crate::deno_dir::DenoDir;
@@ -305,7 +305,7 @@ impl SpecifierHandler for FetchHandler {
           }
         })?;
       let url = source_file.specifier.as_url();
-      let is_remote = url.scheme() != "file";
+      let is_remote = !(url.scheme() == "file" || url.scheme() == "data");
       let filename = disk_cache.get_cache_filename_with_extension(url, "meta");
       let maybe_version = if let Some(filename) = filename {
         if let Ok(bytes) = disk_cache.get(&filename) {

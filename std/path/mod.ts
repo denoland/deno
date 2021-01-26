@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported mostly from https://github.com/browserify/path-browserify/
-/** This module is browser compatible. */
+// This module is browser compatible.
 
 import { isWindows } from "../_util/os.ts";
 import * as _win32 from "./win32.ts";

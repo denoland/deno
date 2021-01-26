@@ -2,8 +2,8 @@ const mod = function() {
     const a = "a";
     const a1 = a;
     return {
-        a
+        a: a
     };
 }();
 const a = mod;
-export { a };
+export { mod as a };

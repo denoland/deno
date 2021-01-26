@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::bad_resource_id;
 use crate::error::type_error;
@@ -41,11 +41,8 @@ pub struct OpState {
   gotham_state: GothamState,
 }
 
-impl Default for OpState {
-  // TODO(ry) Only deno_core should be able to construct an OpState. But I don't
-  // know how to make default private. Maybe rename to
-  //   pub(crate) fn new() -> OpState
-  fn default() -> OpState {
+impl OpState {
+  pub(crate) fn new() -> OpState {
     OpState {
       resource_table: Default::default(),
       op_table: OpTable::default(),
@@ -119,7 +116,7 @@ impl Default for OpTable {
 
 #[test]
 fn op_table() {
-  let state = Rc::new(RefCell::new(OpState::default()));
+  let state = Rc::new(RefCell::new(OpState::new()));
 
   let foo_id;
   let bar_id;

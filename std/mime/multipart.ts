@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { equals, indexOf, lastIndexOf, startsWith } from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
@@ -354,7 +354,7 @@ export class MultipartReader {
         }
       }
     }
-    return multipatFormData(fileMap, valueMap);
+    return multipartFormData(fileMap, valueMap);
   }
 
   private currentPart: PartReader | undefined;
@@ -418,7 +418,7 @@ export class MultipartReader {
   }
 }
 
-function multipatFormData(
+function multipartFormData(
   fileMap: Map<string, FormFile | FormFile[]>,
   valueMap: Map<string, string>,
 ): MultipartFormData {

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
@@ -39,10 +39,9 @@ export function mkdir(
   Deno.mkdir(path, { recursive, mode })
     .then(() => {
       if (typeof callback === "function") {
-        callback();
+        callback(null);
       }
-    })
-    .catch((err) => {
+    }, (err) => {
       if (typeof callback === "function") {
         callback(err);
       }
