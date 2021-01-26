@@ -8,7 +8,7 @@
     "piping/flow-control",
     // "piping/general",
     "piping/multiple-propagation",
-    // "piping/pipe-through",
+    "piping/pipe-through",
     "piping/then-interception",
     // "piping/throwing-options",
     // "piping/transform-streams",
@@ -90,16 +90,6 @@
     {
       "name": "textdecoder-labels",
       "expectFail": [
-        "chinese => GBK",
-        "csgb2312 => GBK",
-        "csiso58gb231280 => GBK",
-        "gb2312 => GBK",
-        "gb_2312 => GBK",
-        "gb_2312-80 => GBK",
-        "gbk => GBK",
-        "iso-ir-58 => GBK",
-        "x-gbk => GBK",
-        "gb18030 => gb18030",
         "cseucpkdfmtjapanese => EUC-JP",
         "euc-jp => EUC-JP",
         "x-euc-jp => EUC-JP",
@@ -132,8 +122,6 @@
     {
       "name": "textencoder-constructor-non-utf",
       "expectFail": [
-        "Encoding argument supported for decode: GBK",
-        "Encoding argument supported for decode: gb18030",
         "Encoding argument supported for decode: EUC-JP",
         "Encoding argument supported for decode: ISO-2022-JP",
         "Encoding argument supported for decode: Shift_JIS",
@@ -141,12 +129,17 @@
         "Encoding argument supported for decode: x-user-defined"
       ]
     },
-    "textencoder-utf16-surrogates"
+    "textencoder-utf16-surrogates",
+    "legacy-mb-schinese"
     // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
     // "unsupported-encodings",
   ],
-  "dom": ["abort/event"],
-  "hr-time": ["monotonic-clock"],
+  "dom": [
+    "abort/event"
+  ],
+  "hr-time": [
+    "monotonic-clock"
+  ],
   "html": [
     "webappapis/microtask-queuing/queue-microtask-exceptions.any",
     "webappapis/microtask-queuing/queue-microtask.any",
@@ -164,16 +157,7 @@
     "mark-errors",
     "mark-measure-return-objects",
     "mark.any",
-    {
-      "name": "measure_syntax_err",
-      "expectFail": [
-        // TODO(lucacasonato): re-enable when #9009 is fixed.
-        "self.performance.measure(\"measure\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"mark\", \"existing_mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"existing_mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception.",
-        "self.performance.measure(\"measure\", \"mark\", \"mark\"), where \"mark\" is a non-existent mark, throws a SyntaxError exception."
-      ]
-    },
+    "measure_syntax_err",
     "measure-l3",
     "structured-serialize-detail",
     "user_timing_exists"
@@ -203,7 +187,6 @@
     "webapi/status",
     "webapi/create_multiple_memory",
     "create_multiple_memory"
-
     //FAILING TESTS
     // "jsapi/constructor/instantiate-bad-imports",
     // "jsapi/constructor/instantiate",
@@ -245,7 +228,9 @@
     "console-namespace-object-class-string",
     "console-tests-historical"
   ],
-  "WebCryptoApi": ["getRandomValues"]
+  "WebCryptoApi": [
+    "getRandomValues"
+  ],
   "WebIDL": [
     "ecmascript-binding/es-exceptions/DOMException-constants",
     "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",

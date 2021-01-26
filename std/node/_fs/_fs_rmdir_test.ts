@@ -3,6 +3,7 @@ import { rmdir, rmdirSync } from "./_fs_rmdir.ts";
 import { closeSync } from "./_fs_close.ts";
 import { existsSync } from "../../fs/mod.ts";
 import { join } from "../../path/mod.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 
 Deno.test({
   name: "ASYNC: removing empty folder",
@@ -14,8 +15,7 @@ Deno.test({
         resolve();
       });
     })
-      .then(() => assertEquals(existsSync(dir), false))
-      .catch(() => fail())
+      .then(() => assertEquals(existsSync(dir), false), () => fail())
       .finally(() => {
         if (existsSync(dir)) Deno.removeSync(dir);
       });
@@ -58,8 +58,7 @@ Deno.test({
         resolve();
       });
     })
-      .then(() => assertEquals(existsSync(dir), false))
-      .catch(() => fail())
+      .then(() => assertEquals(existsSync(dir), false), () => fail())
       .finally(() => {
         if (existsSync(dir)) Deno.removeSync(dir, { recursive: true });
         const rAfter = Deno.resources();
@@ -85,4 +84,17 @@ Deno.test({
     closeRes(rBefore, rAfter);
   },
   ignore: Deno.build.os === "windows",
+});
+
+Deno.test("[std/node/fs] rmdir callback isn't called twice if error is thrown", async () => {
+  // The correct behaviour is not to catch any errors thrown,
+  // but that means there'll be an uncaught error and the test will fail.
+  // So the only way to test this is to spawn a subprocess, and succeed if it has a non-zero exit code.
+  // (assertThrowsAsync won't work because there's no way to catch the error.)
+  const tempDir = await Deno.makeTempDir();
+  const importUrl = new URL("./_fs_rmdir.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { rmdir } from ${JSON.stringify(importUrl)}`,
+    invocation: `rmdir(${JSON.stringify(tempDir)}, `,
+  });
 });

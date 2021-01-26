@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, fail } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import Dir from "./_fs_dir.ts";
 import type Dirent from "./_fs_dirent.ts";
 
@@ -164,4 +165,36 @@ Deno.test({
       Deno.removeSync(testDir, { recursive: true });
     }
   },
+});
+
+Deno.test("[std/node/fs] Dir.close callback isn't called twice if error is thrown", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const importUrl = new URL("./_fs_dir.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `
+    import Dir from ${JSON.stringify(importUrl)};
+
+    const dir = new Dir(${JSON.stringify(tempDir)});
+    `,
+    invocation: "dir.close(",
+    async cleanup() {
+      await Deno.remove(tempDir);
+    },
+  });
+});
+
+Deno.test("[std/node/fs] Dir.read callback isn't called twice if error is thrown", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const importUrl = new URL("./_fs_dir.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `
+    import Dir from ${JSON.stringify(importUrl)};
+
+    const dir = new Dir(${JSON.stringify(tempDir)});
+    `,
+    invocation: "dir.read(",
+    async cleanup() {
+      await Deno.remove(tempDir);
+    },
+  });
 });

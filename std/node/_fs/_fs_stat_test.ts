@@ -1,3 +1,4 @@
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { BigIntStats, stat, Stats, statSync } from "./_fs_stat.ts";
 import { assertEquals, fail } from "../../testing/asserts.ts";
 
@@ -68,8 +69,7 @@ Deno.test({
         resolve(stat);
       });
     })
-      .then((stat) => assertStats(stat, Deno.statSync(file)))
-      .catch(() => fail())
+      .then((stat) => assertStats(stat, Deno.statSync(file)), () => fail())
       .finally(() => Deno.removeSync(file));
   },
 });
@@ -92,8 +92,10 @@ Deno.test({
         resolve(stat);
       });
     })
-      .then((stat) => assertStatsBigInt(stat, Deno.statSync(file)))
-      .catch(() => fail())
+      .then(
+        (stat) => assertStatsBigInt(stat, Deno.statSync(file)),
+        () => fail(),
+      )
       .finally(() => Deno.removeSync(file));
   },
 });
@@ -104,4 +106,16 @@ Deno.test({
     const file = Deno.makeTempFileSync();
     assertStatsBigInt(statSync(file, { bigint: true }), Deno.statSync(file));
   },
+});
+
+Deno.test("[std/node/fs] stat callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_stat.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { stat } from ${JSON.stringify(importUrl)}`,
+    invocation: `stat(${JSON.stringify(tempFile)}, `,
+    async cleanup() {
+      await Deno.remove(tempFile);
+    },
+  });
 });

@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertThrows, fail } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { close, closeSync } from "./_fs_close.ts";
 
 Deno.test({
@@ -17,8 +18,7 @@ Deno.test({
     })
       .then(() => {
         assert(!Deno.resources()[file.rid]);
-      })
-      .catch(() => {
+      }, () => {
         fail("No error expected");
       })
       .finally(async () => {
@@ -77,4 +77,20 @@ Deno.test({
   fn() {
     assertThrows(() => closeSync(-1));
   },
+});
+
+Deno.test("[std/node/fs] close callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_close.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `
+    import { close } from ${JSON.stringify(importUrl)};
+
+    const file = await Deno.open(${JSON.stringify(tempFile)});
+    `,
+    invocation: "close(file.rid, ",
+    async cleanup() {
+      await Deno.remove(tempFile);
+    },
+  });
 });
