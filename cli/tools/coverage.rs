@@ -243,7 +243,7 @@ impl PrettyCoverageReporter {
           .iter()
           .map(|i| {
             source_map
-              .lookup_token(*i as u32, 0)
+              .lookup_token(*i as u32, 16)
               .unwrap()
               .get_src_line() as usize
           })
