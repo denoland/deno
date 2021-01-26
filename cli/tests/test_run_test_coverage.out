@@ -1,6 +1,6 @@
-Check [WILDCARD]/$deno$test.ts
+Check [WILDCARD]/tests/$deno$test.ts
 running 1 tests
-test spawn test ... Check [WILDCARD]/$deno$test.ts
+test spawn test ... Check [WILDCARD]/tests/$deno$test.ts
 running 1 tests
 test returnsFooSuccess ... ok ([WILDCARD])
 
@@ -10,23 +10,24 @@ ok ([WILDCARD])
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
-cover [WILDCARD]/subdir/mod1.ts ... 35.714% (5/14)
-   2 | export function returnsHi() {
-   3 |     return "Hi";
-   4 | }
+cover [WILDCARD]/tests/subdir/mod1.ts ... 35.714% (5/14)
+   3 | export function returnsHi(): string {
+   4 |   return "Hi";
+   5 | }
 -----|-----
-   8 | export function printHello3() {
-   9 |     printHello2();
-  10 | }
-  11 | export function throwsError() {
-  12 |     throw Error("exception from mod1");
+  11 | export function printHello3(): void {
+  12 |   printHello2();
   13 | }
-cover [WILDCARD]/subdir/print_hello.ts ... 25.000% (1/4)
-   1 | export function printHello() {
-   2 |     console.log("Hello");
+-----|-----
+  15 | export function throwsError(): void {
+  16 |   throw Error("exception from mod1");
+  17 | }
+cover [WILDCARD]/tests/subdir/print_hello.ts ... 25.000% (1/4)
+   1 | export function printHello(): void {
+   2 |   console.log("Hello");
    3 | }
-cover [WILDCARD]/subdir/subdir2/mod2.ts ... 62.500% (5/8)
-   5 | export function printHello2() {
-   6 |     printHello();
-   7 | }
-cover [WILDCARD]/test_coverage.ts ... 100.000% (5/5)
+cover [WILDCARD]/tests/subdir/subdir2/mod2.ts ... 62.500% (5/8)
+   7 | export function printHello2(): void {
+   8 |   printHello();
+   9 | }
+cover [WILDCARD]/tests/test_coverage.ts ... 100.000% (5/5)
