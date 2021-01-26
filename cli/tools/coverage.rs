@@ -233,7 +233,7 @@ impl PrettyCoverageReporter {
 
       let output_lines =
         if let Some(original_source) = maybe_original_source.as_ref() {
-          original_source.split("\n").collect::<Vec<_>>()
+          original_source.split('\n').collect::<Vec<_>>()
         } else {
           lines
         };
@@ -249,7 +249,7 @@ impl PrettyCoverageReporter {
           })
           .collect::<Vec<usize>>();
 
-        indices.sort();
+        indices.sort_unstable();
         indices.dedup();
 
         indices
