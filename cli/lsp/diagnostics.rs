@@ -218,7 +218,7 @@ fn ts_json_to_diagnostics(
           ),
           tags: match d.code {
             // These are codes that indicate the variable is unused.
-            6133 | 6192 | 6196 => {
+            2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 7027 | 7028 => {
               Some(vec![lsp_types::DiagnosticTag::Unnecessary])
             }
             _ => None,
