@@ -3761,844 +3761,853 @@ console.log("finish");
     assert_eq!(output.stderr, b"");
   }
 
-  #[test]
-  fn test_permissions_with_allow() {
-    for permission in &util::PERMISSION_VARIANTS {
-      let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
-        .arg("run")
-        .arg(format!("--allow-{0}", permission))
-        .arg("permission_test.ts")
-        .arg(format!("{0}Required", permission))
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-      assert!(status.success());
-    }
-  }
+  mod permissions {
+    use super::*;
 
-  #[test]
-  fn test_permissions_without_allow() {
-    for permission in &util::PERMISSION_VARIANTS {
+    #[test]
+    fn with_allow() {
+      for permission in &util::PERMISSION_VARIANTS {
+        let status = util::deno_cmd()
+          .current_dir(&util::tests_path())
+          .arg("run")
+          .arg(format!("--allow-{0}", permission))
+          .arg("permission_test.ts")
+          .arg(format!("{0}Required", permission))
+          .spawn()
+          .unwrap()
+          .wait()
+          .unwrap();
+        assert!(status.success());
+      }
+    }
+
+    #[test]
+    fn without_allow() {
+      for permission in &util::PERMISSION_VARIANTS {
+        let (_, err) = util::run_and_collect_output(
+          false,
+          &format!("run permission_test.ts {0}Required", permission),
+          None,
+          None,
+          false,
+        );
+        assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+      }
+    }
+
+    #[test]
+    fn rw_inside_project_dir() {
+      const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+      for permission in &PERMISSION_VARIANTS {
+        let status = util::deno_cmd()
+          .current_dir(&util::tests_path())
+          .arg("run")
+          .arg(format!(
+            "--allow-{0}={1}",
+            permission,
+            util::root_path().into_os_string().into_string().unwrap()
+          ))
+          .arg("complex_permissions_test.ts")
+          .arg(permission)
+          .arg("complex_permissions_test.ts")
+          .spawn()
+          .unwrap()
+          .wait()
+          .unwrap();
+        assert!(status.success());
+      }
+    }
+
+    #[test]
+    fn rw_outside_test_dir() {
+      const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+      for permission in &PERMISSION_VARIANTS {
+        let (_, err) = util::run_and_collect_output(
+          false,
+          &format!(
+            "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+            permission,
+            util::root_path()
+              .join("cli")
+              .join("tests")
+              .into_os_string()
+              .into_string()
+              .unwrap(),
+            util::root_path()
+              .join("Cargo.toml")
+              .into_os_string()
+              .into_string()
+              .unwrap(),
+          ),
+          None,
+          None,
+          false,
+        );
+        assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+      }
+    }
+
+    #[test]
+    fn rw_inside_test_dir() {
+      const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+      for permission in &PERMISSION_VARIANTS {
+        let status = util::deno_cmd()
+          .current_dir(&util::tests_path())
+          .arg("run")
+          .arg(format!(
+            "--allow-{0}={1}",
+            permission,
+            util::root_path()
+              .join("cli")
+              .join("tests")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ))
+          .arg("complex_permissions_test.ts")
+          .arg(permission)
+          .arg("complex_permissions_test.ts")
+          .spawn()
+          .unwrap()
+          .wait()
+          .unwrap();
+        assert!(status.success());
+      }
+    }
+
+    #[test]
+    fn rw_outside_test_and_js_dir() {
+      const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+      let test_dir = util::root_path()
+        .join("cli")
+        .join("tests")
+        .into_os_string()
+        .into_string()
+        .unwrap();
+      let js_dir = util::root_path()
+        .join("js")
+        .into_os_string()
+        .into_string()
+        .unwrap();
+      for permission in &PERMISSION_VARIANTS {
+        let (_, err) = util::run_and_collect_output(
+          false,
+          &format!(
+            "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
+            permission,
+            test_dir,
+            js_dir,
+            util::root_path()
+              .join("Cargo.toml")
+              .into_os_string()
+              .into_string()
+              .unwrap(),
+          ),
+          None,
+          None,
+          false,
+        );
+        assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+      }
+    }
+
+    #[test]
+    fn rw_inside_test_and_js_dir() {
+      const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+      let test_dir = util::root_path()
+        .join("cli")
+        .join("tests")
+        .into_os_string()
+        .into_string()
+        .unwrap();
+      let js_dir = util::root_path()
+        .join("js")
+        .into_os_string()
+        .into_string()
+        .unwrap();
+      for permission in &PERMISSION_VARIANTS {
+        let status = util::deno_cmd()
+          .current_dir(&util::tests_path())
+          .arg("run")
+          .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
+          .arg("complex_permissions_test.ts")
+          .arg(permission)
+          .arg("complex_permissions_test.ts")
+          .spawn()
+          .unwrap()
+          .wait()
+          .unwrap();
+        assert!(status.success());
+      }
+    }
+
+    #[test]
+    fn rw_relative() {
+      const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+      for permission in &PERMISSION_VARIANTS {
+        let status = util::deno_cmd()
+          .current_dir(&util::tests_path())
+          .arg("run")
+          .arg(format!("--allow-{0}=.", permission))
+          .arg("complex_permissions_test.ts")
+          .arg(permission)
+          .arg("complex_permissions_test.ts")
+          .spawn()
+          .unwrap()
+          .wait()
+          .unwrap();
+        assert!(status.success());
+      }
+    }
+
+    #[test]
+    fn rw_no_prefix() {
+      const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+      for permission in &PERMISSION_VARIANTS {
+        let status = util::deno_cmd()
+          .current_dir(&util::tests_path())
+          .arg("run")
+          .arg(format!("--allow-{0}=tls/../", permission))
+          .arg("complex_permissions_test.ts")
+          .arg(permission)
+          .arg("complex_permissions_test.ts")
+          .spawn()
+          .unwrap()
+          .wait()
+          .unwrap();
+        assert!(status.success());
+      }
+    }
+
+    #[test]
+    fn net_fetch_allow_localhost_4545() {
       let (_, err) = util::run_and_collect_output(
-        false,
-        &format!("run permission_test.ts {0}Required", permission),
-        None,
-        None,
-        false,
-      );
-      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-    }
-  }
-
-  #[test]
-  fn test_permissions_rw_inside_project_dir() {
-    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    for permission in &PERMISSION_VARIANTS {
-      let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
-        .arg("run")
-        .arg(format!(
-          "--allow-{0}={1}",
-          permission,
-          util::root_path().into_os_string().into_string().unwrap()
-        ))
-        .arg("complex_permissions_test.ts")
-        .arg(permission)
-        .arg("complex_permissions_test.ts")
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-      assert!(status.success());
-    }
-  }
-
-  #[test]
-  fn test_permissions_rw_outside_test_dir() {
-    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    for permission in &PERMISSION_VARIANTS {
-      let (_, err) = util::run_and_collect_output(
-        false,
-        &format!(
-          "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
-          permission,
-          util::root_path()
-            .join("cli")
-            .join("tests")
-            .into_os_string()
-            .into_string()
-            .unwrap(),
-          util::root_path()
-            .join("Cargo.toml")
-            .into_os_string()
-            .into_string()
-            .unwrap(),
-        ),
-        None,
-        None,
-        false,
-      );
-      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-    }
-  }
-
-  #[test]
-  fn test_permissions_rw_inside_test_dir() {
-    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    for permission in &PERMISSION_VARIANTS {
-      let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
-        .arg("run")
-        .arg(format!(
-          "--allow-{0}={1}",
-          permission,
-          util::root_path()
-            .join("cli")
-            .join("tests")
-            .into_os_string()
-            .into_string()
-            .unwrap()
-        ))
-        .arg("complex_permissions_test.ts")
-        .arg(permission)
-        .arg("complex_permissions_test.ts")
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-      assert!(status.success());
-    }
-  }
-
-  #[test]
-  fn test_permissions_rw_outside_test_and_js_dir() {
-    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::root_path()
-      .join("cli")
-      .join("tests")
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    let js_dir = util::root_path()
-      .join("js")
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    for permission in &PERMISSION_VARIANTS {
-      let (_, err) = util::run_and_collect_output(
-        false,
-        &format!(
-          "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
-          permission,
-          test_dir,
-          js_dir,
-          util::root_path()
-            .join("Cargo.toml")
-            .into_os_string()
-            .into_string()
-            .unwrap(),
-        ),
-        None,
-        None,
-        false,
-      );
-      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-    }
-  }
-
-  #[test]
-  fn test_permissions_rw_inside_test_and_js_dir() {
-    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::root_path()
-      .join("cli")
-      .join("tests")
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    let js_dir = util::root_path()
-      .join("js")
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    for permission in &PERMISSION_VARIANTS {
-      let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
-        .arg("run")
-        .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
-        .arg("complex_permissions_test.ts")
-        .arg(permission)
-        .arg("complex_permissions_test.ts")
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-      assert!(status.success());
-    }
-  }
-
-  #[test]
-  fn test_permissions_rw_relative() {
-    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    for permission in &PERMISSION_VARIANTS {
-      let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
-        .arg("run")
-        .arg(format!("--allow-{0}=.", permission))
-        .arg("complex_permissions_test.ts")
-        .arg(permission)
-        .arg("complex_permissions_test.ts")
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-      assert!(status.success());
-    }
-  }
-
-  #[test]
-  fn test_permissions_rw_no_prefix() {
-    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    for permission in &PERMISSION_VARIANTS {
-      let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
-        .arg("run")
-        .arg(format!("--allow-{0}=tls/../", permission))
-        .arg("complex_permissions_test.ts")
-        .arg(permission)
-        .arg("complex_permissions_test.ts")
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-      assert!(status.success());
-    }
-  }
-
-  #[test]
-  fn test_permissions_net_fetch_allow_localhost_4545() {
-    let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
 			None,
       None,
       true,
 		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_fetch_allow_deno_land() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_fetch_allow_deno_land() {
+      let (_, err) = util::run_and_collect_output(
     false,
 			"run --allow-net=deno.land complex_permissions_test.ts netFetch http://localhost:4545/",
 			None,
 			None,
 			true,
 		);
-    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_fetch_localhost_4545_fail() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_fetch_localhost_4545_fail() {
+      let (_, err) = util::run_and_collect_output(
     false,
 			"run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4546/",
 			None,
 			None,
 			true,
 		);
-    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_fetch_localhost() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_fetch_localhost() {
+      let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=localhost complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
 			None,
 			None,
 			true,
 		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_connect_allow_localhost_ip_4555() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_connect_allow_localhost_ip_4555() {
+      let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4545",
 			None,
 			None,
 			true,
 		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_connect_allow_deno_land() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_connect_allow_deno_land() {
+      let (_, err) = util::run_and_collect_output(
     false,
 			"run --allow-net=deno.land complex_permissions_test.ts netConnect 127.0.0.1:4546",
 			None,
 			None,
 			true,
 		);
-    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_connect_allow_localhost_ip_4545_fail() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_connect_allow_localhost_ip_4545_fail() {
+      let (_, err) = util::run_and_collect_output(
     false,
 			"run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4546",
 			None,
 			None,
 			true,
 		);
-    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_connect_allow_localhost_ip() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_connect_allow_localhost_ip() {
+      let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=127.0.0.1 complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
 			None,
 			None,
 			true,
 		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_listen_allow_localhost_4555() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_listen_allow_localhost_4555() {
+      let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=localhost:4558 complex_permissions_test.ts netListen localhost:4558",
 			None,
 			None,
 			false,
 		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_listen_allow_deno_land() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_listen_allow_deno_land() {
+      let (_, err) = util::run_and_collect_output(
     false,
 			"run --allow-net=deno.land complex_permissions_test.ts netListen localhost:4545",
 			None,
 			None,
 			false,
 		);
-    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_listen_allow_localhost_4555_fail() {
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_listen_allow_localhost_4555_fail() {
+      let (_, err) = util::run_and_collect_output(
     false,
 			"run --allow-net=localhost:4555 complex_permissions_test.ts netListen localhost:4556",
 			None,
 			None,
 			false,
 		);
-    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
-  }
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
 
-  #[test]
-  fn test_permissions_net_listen_allow_localhost() {
-    // Port 4600 is chosen to not colide with those used by
-    // target/debug/test_server
-    let (_, err) = util::run_and_collect_output(
+    #[test]
+    fn net_listen_allow_localhost() {
+      // Port 4600 is chosen to not colide with those used by
+      // target/debug/test_server
+      let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
 			None,
 			None,
       false,
 		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+      assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
   }
 
-  fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
-    use std::sync::atomic::{AtomicU16, Ordering};
-    static PORT: AtomicU16 = AtomicU16::new(9229);
-    let port = PORT.fetch_add(1, Ordering::Relaxed);
-    format!("{}=127.0.0.1:{}", flag_prefix, port)
-  }
+  mod inspector {
+    use super::*;
 
-  fn extract_ws_url_from_stderr(
-    stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-  ) -> url::Url {
-    let stderr_first_line = stderr_lines.next().unwrap();
-    assert!(stderr_first_line.starts_with("Debugger listening on "));
-    let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
-    assert_eq!(v.len(), 1);
-    let ws_url_index = v[0].0;
-    let ws_url = &stderr_first_line[ws_url_index..];
-    url::Url::parse(ws_url).unwrap()
-  }
-
-  #[tokio::test]
-  async fn inspector_connect() {
-    let script = util::tests_path().join("inspector1.js");
-    let mut child = util::deno_cmd()
-      .arg("run")
-      .arg(inspect_flag_with_unique_port("--inspect"))
-      .arg(script)
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
-
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
-
-    // We use tokio_tungstenite as a websocket client because warp (which is
-    // a dependency of Deno) uses it.
-    let (_socket, response) = tokio_tungstenite::connect_async(ws_url)
-      .await
-      .expect("Can't connect");
-    assert_eq!("101 Switching Protocols", response.status().to_string());
-    child.kill().unwrap();
-    child.wait().unwrap();
-  }
-
-  enum TestStep {
-    StdOut(&'static str),
-    StdErr(&'static str),
-    WsRecv(&'static str),
-    WsSend(&'static str),
-  }
-
-  #[tokio::test]
-  async fn inspector_break_on_first_line() {
-    let script = util::tests_path().join("inspector2.js");
-    let mut child = util::deno_cmd()
-      .arg("run")
-      .arg(inspect_flag_with_unique_port("--inspect-brk"))
-      .arg(script)
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
-
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
-
-    let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-      .await
-      .expect("Can't connect");
-    assert_eq!(response.status(), 101); // Switching protocols.
-
-    let (mut socket_tx, socket_rx) = socket.split();
-    let mut socket_rx =
-      socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
-        let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-        futures::future::ready(pass)
-      });
-
-    let stdout = child.stdout.as_mut().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
-    use TestStep::*;
-    let test_steps = vec![
-      WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
-      WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
-      WsRecv(
-        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-      ),
-      WsRecv(r#"{"id":1,"result":{}}"#),
-      WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
-      WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
-      WsRecv(r#"{"id":3,"result":{}}"#),
-      WsRecv(r#"{"method":"Debugger.paused","#),
-      WsSend(
-        r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
-      ),
-      WsRecv(r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#),
-      StdOut("hello from the inspector"),
-      WsSend(r#"{"id":5,"method":"Debugger.resume"}"#),
-      WsRecv(r#"{"id":5,"result":{}}"#),
-      StdOut("hello from the script"),
-    ];
-
-    for step in test_steps {
-      match step {
-        StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
-        WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
-        WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
-        _ => unreachable!(),
-      }
+    fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
+      use std::sync::atomic::{AtomicU16, Ordering};
+      static PORT: AtomicU16 = AtomicU16::new(9229);
+      let port = PORT.fetch_add(1, Ordering::Relaxed);
+      format!("{}=127.0.0.1:{}", flag_prefix, port)
     }
 
-    child.kill().unwrap();
-    child.wait().unwrap();
-  }
+    fn extract_ws_url_from_stderr(
+      stderr_lines: &mut impl std::iter::Iterator<Item = String>,
+    ) -> url::Url {
+      let stderr_first_line = stderr_lines.next().unwrap();
+      assert!(stderr_first_line.starts_with("Debugger listening on "));
+      let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
+      assert_eq!(v.len(), 1);
+      let ws_url_index = v[0].0;
+      let ws_url = &stderr_first_line[ws_url_index..];
+      url::Url::parse(ws_url).unwrap()
+    }
 
-  #[tokio::test]
-  async fn inspector_pause() {
-    let script = util::tests_path().join("inspector1.js");
-    let mut child = util::deno_cmd()
-      .arg("run")
-      .arg(inspect_flag_with_unique_port("--inspect"))
-      .arg(script)
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
+    #[tokio::test]
+    async fn inspector_connect() {
+      let script = util::tests_path().join("inspector1.js");
+      let mut child = util::deno_cmd()
+        .arg("run")
+        .arg(inspect_flag_with_unique_port("--inspect"))
+        .arg(script)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-    // We use tokio_tungstenite as a websocket client because warp (which is
-    // a dependency of Deno) uses it.
-    let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)
-      .await
-      .expect("Can't connect");
+      // We use tokio_tungstenite as a websocket client because warp (which is
+      // a dependency of Deno) uses it.
+      let (_socket, response) = tokio_tungstenite::connect_async(ws_url)
+        .await
+        .expect("Can't connect");
+      assert_eq!("101 Switching Protocols", response.status().to_string());
+      child.kill().unwrap();
+      child.wait().unwrap();
+    }
 
-    /// Returns the next websocket message as a string ignoring
-    /// Debugger.scriptParsed messages.
-    async fn ws_read_msg(
-      socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
-    ) -> String {
-      use deno_core::futures::stream::StreamExt;
-      while let Some(msg) = socket.next().await {
-        let msg = msg.unwrap().to_string();
-        // FIXME(bartlomieju): fails because there's a file loaded
-        // called 150_errors.js
-        // assert!(!msg.contains("error"));
-        if !msg.contains("Debugger.scriptParsed") {
-          return msg;
+    enum TestStep {
+      StdOut(&'static str),
+      StdErr(&'static str),
+      WsRecv(&'static str),
+      WsSend(&'static str),
+    }
+
+    #[tokio::test]
+    async fn inspector_break_on_first_line() {
+      let script = util::tests_path().join("inspector2.js");
+      let mut child = util::deno_cmd()
+        .arg("run")
+        .arg(inspect_flag_with_unique_port("--inspect-brk"))
+        .arg(script)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+      let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+        .await
+        .expect("Can't connect");
+      assert_eq!(response.status(), 101); // Switching protocols.
+
+      let (mut socket_tx, socket_rx) = socket.split();
+      let mut socket_rx =
+        socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+          let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+          futures::future::ready(pass)
+        });
+
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut stdout_lines =
+        std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
+      use TestStep::*;
+      let test_steps = vec![
+        WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+        WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+        WsRecv(
+          r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+        ),
+        WsRecv(r#"{"id":1,"result":{}}"#),
+        WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+        WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+        WsRecv(r#"{"id":3,"result":{}}"#),
+        WsRecv(r#"{"method":"Debugger.paused","#),
+        WsSend(
+          r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+        ),
+        WsRecv(r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#),
+        StdOut("hello from the inspector"),
+        WsSend(r#"{"id":5,"method":"Debugger.resume"}"#),
+        WsRecv(r#"{"id":5,"result":{}}"#),
+        StdOut("hello from the script"),
+      ];
+
+      for step in test_steps {
+        match step {
+          StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
+          WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+          WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+          _ => unreachable!(),
         }
       }
-      unreachable!()
+
+      child.kill().unwrap();
+      child.wait().unwrap();
     }
 
-    socket
-      .send(r#"{"id":6,"method":"Debugger.enable"}"#.into())
-      .await
-      .unwrap();
+    #[tokio::test]
+    async fn inspector_pause() {
+      let script = util::tests_path().join("inspector1.js");
+      let mut child = util::deno_cmd()
+        .arg("run")
+        .arg(inspect_flag_with_unique_port("--inspect"))
+        .arg(script)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
 
-    let msg = ws_read_msg(&mut socket).await;
-    println!("response msg 1 {}", msg);
-    assert!(msg.starts_with(r#"{"id":6,"result":{"debuggerId":"#));
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-    socket
-      .send(r#"{"id":31,"method":"Debugger.pause"}"#.into())
-      .await
-      .unwrap();
+      // We use tokio_tungstenite as a websocket client because warp (which is
+      // a dependency of Deno) uses it.
+      let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)
+        .await
+        .expect("Can't connect");
 
-    let msg = ws_read_msg(&mut socket).await;
-    println!("response msg 2 {}", msg);
-    assert_eq!(msg, r#"{"id":31,"result":{}}"#);
-
-    child.kill().unwrap();
-  }
-
-  #[tokio::test]
-  async fn inspector_port_collision() {
-    // Skip this test on WSL, which allows multiple processes to listen on the
-    // same port, rather than making `bind()` fail with `EADDRINUSE`.
-    if cfg!(target_os = "linux")
-      && std::env::var_os("WSL_DISTRO_NAME").is_some()
-    {
-      return;
-    }
-
-    let script = util::tests_path().join("inspector1.js");
-    let inspect_flag = inspect_flag_with_unique_port("--inspect");
-
-    let mut child1 = util::deno_cmd()
-      .arg("run")
-      .arg(&inspect_flag)
-      .arg(script.clone())
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
-
-    let stderr_1 = child1.stderr.as_mut().unwrap();
-    let mut stderr_1_lines = std::io::BufReader::new(stderr_1)
-      .lines()
-      .map(|r| r.unwrap());
-    let _ = extract_ws_url_from_stderr(&mut stderr_1_lines);
-
-    let mut child2 = util::deno_cmd()
-      .arg("run")
-      .arg(&inspect_flag)
-      .arg(script)
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
-
-    let stderr_2 = child2.stderr.as_mut().unwrap();
-    let stderr_2_error_message = std::io::BufReader::new(stderr_2)
-      .lines()
-      .map(|r| r.unwrap())
-      .inspect(|line| assert!(!line.contains("Debugger listening")))
-      .find(|line| line.contains("Cannot start inspector server"));
-    assert!(stderr_2_error_message.is_some());
-
-    child1.kill().unwrap();
-    child1.wait().unwrap();
-    child2.wait().unwrap();
-  }
-
-  #[tokio::test]
-  async fn inspector_does_not_hang() {
-    let script = util::tests_path().join("inspector3.js");
-    let mut child = util::deno_cmd()
-      .arg("run")
-      .arg(inspect_flag_with_unique_port("--inspect-brk"))
-      .env("NO_COLOR", "1")
-      .arg(script)
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
-
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
-
-    let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-      .await
-      .expect("Can't connect");
-    assert_eq!(response.status(), 101); // Switching protocols.
-
-    let (mut socket_tx, socket_rx) = socket.split();
-    let mut socket_rx =
-      socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
-        let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-        futures::future::ready(pass)
-      });
-
-    let stdout = child.stdout.as_mut().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
-    use TestStep::*;
-    let test_steps = vec![
-      WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
-      WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
-      WsRecv(
-        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-      ),
-      WsRecv(r#"{"id":1,"result":{}}"#),
-      WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
-      WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
-      WsRecv(r#"{"id":3,"result":{}}"#),
-      WsRecv(r#"{"method":"Debugger.paused","#),
-      WsSend(r#"{"id":4,"method":"Debugger.resume"}"#),
-      WsRecv(r#"{"id":4,"result":{}}"#),
-      WsRecv(r#"{"method":"Debugger.resumed","params":{}}"#),
-    ];
-
-    for step in test_steps {
-      match step {
-        WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
-        WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
-        _ => unreachable!(),
+      /// Returns the next websocket message as a string ignoring
+      /// Debugger.scriptParsed messages.
+      async fn ws_read_msg(
+        socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+      ) -> String {
+        use deno_core::futures::stream::StreamExt;
+        while let Some(msg) = socket.next().await {
+          let msg = msg.unwrap().to_string();
+          // FIXME(bartlomieju): fails because there's a file loaded
+          // called 150_errors.js
+          // assert!(!msg.contains("error"));
+          if !msg.contains("Debugger.scriptParsed") {
+            return msg;
+          }
+        }
+        unreachable!()
       }
+
+      socket
+        .send(r#"{"id":6,"method":"Debugger.enable"}"#.into())
+        .await
+        .unwrap();
+
+      let msg = ws_read_msg(&mut socket).await;
+      println!("response msg 1 {}", msg);
+      assert!(msg.starts_with(r#"{"id":6,"result":{"debuggerId":"#));
+
+      socket
+        .send(r#"{"id":31,"method":"Debugger.pause"}"#.into())
+        .await
+        .unwrap();
+
+      let msg = ws_read_msg(&mut socket).await;
+      println!("response msg 2 {}", msg);
+      assert_eq!(msg, r#"{"id":31,"result":{}}"#);
+
+      child.kill().unwrap();
     }
 
-    for i in 0..128u32 {
-      let request_id = i + 10;
-      // Expect the number {i} on stdout.
-      let s = i.to_string();
-      assert_eq!(stdout_lines.next().unwrap(), s);
-      // Expect hitting the `debugger` statement.
-      let s = r#"{"method":"Debugger.paused","#;
-      assert!(socket_rx.next().await.unwrap().starts_with(s));
-      // Send the 'Debugger.resume' request.
-      let s = format!(r#"{{"id":{},"method":"Debugger.resume"}}"#, request_id);
-      socket_tx.send(s.into()).await.unwrap();
-      // Expect confirmation of the 'Debugger.resume' request.
-      let s = format!(r#"{{"id":{},"result":{{}}}}"#, request_id);
-      assert_eq!(socket_rx.next().await.unwrap(), s);
-      let s = r#"{"method":"Debugger.resumed","params":{}}"#;
-      assert_eq!(socket_rx.next().await.unwrap(), s);
-    }
-
-    // Check that we can gracefully close the websocket connection.
-    socket_tx.close().await.unwrap();
-    socket_rx.for_each(|_| async {}).await;
-
-    assert_eq!(&stdout_lines.next().unwrap(), "done");
-    assert!(child.wait().unwrap().success());
-  }
-
-  #[tokio::test]
-  async fn inspector_without_brk_runs_code() {
-    let script = util::tests_path().join("inspector4.js");
-    let mut child = util::deno_cmd()
-      .arg("run")
-      .arg(inspect_flag_with_unique_port("--inspect"))
-      .arg(script)
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
-
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let _ = extract_ws_url_from_stderr(&mut stderr_lines);
-
-    // Check that inspector actually runs code without waiting for inspector
-    // connection.
-    let stdout = child.stdout.as_mut().unwrap();
-    let mut stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-    let stdout_first_line = stdout_lines.next().unwrap();
-    assert_eq!(stdout_first_line, "hello");
-
-    child.kill().unwrap();
-    child.wait().unwrap();
-  }
-
-  #[tokio::test]
-  async fn inspector_runtime_evaluate_does_not_crash() {
-    let mut child = util::deno_cmd()
-      .arg("repl")
-      .arg(inspect_flag_with_unique_port("--inspect"))
-      .stdin(std::process::Stdio::piped())
-      .stdout(std::process::Stdio::piped())
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
-
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines = std::io::BufReader::new(stderr)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| s.as_str() != "Debugger session started.");
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
-
-    let (socket, response) = tokio_tungstenite::connect_async(ws_url)
-      .await
-      .expect("Can't connect");
-    assert_eq!(response.status(), 101); // Switching protocols.
-
-    let (mut socket_tx, socket_rx) = socket.split();
-    let mut socket_rx =
-      socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
-        let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-        futures::future::ready(pass)
-      });
-
-    let stdin = child.stdin.take().unwrap();
-
-    let stdout = child.stdout.as_mut().unwrap();
-    let mut stdout_lines = std::io::BufReader::new(stdout)
-      .lines()
-      .map(|r| r.unwrap())
-      .filter(|s| !s.starts_with("Deno "));
-
-    use TestStep::*;
-    let test_steps = vec![
-      WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
-      WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
-      WsRecv(
-        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-      ),
-      WsRecv(r#"{"id":1,"result":{}}"#),
-      WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
-      WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
-      WsRecv(r#"{"id":3,"result":{}}"#),
-      StdOut("exit using ctrl+d or close()"),
-      WsSend(
-        r#"{"id":4,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
-      ),
-      WsRecv(r#"{"id":4,"result":{}}"#),
-      WsSend(
-        r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-      ),
-      WsRecv(r#"{"id":5,"result":{"result":{"type":"string","value":""#),
-      WsSend(
-        r#"{"id":6,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-      ),
-      WsRecv(r#"{"id":6,"result":{"result":{"type":"undefined"}}}"#),
-      StdErr("done"),
-    ];
-
-    for step in test_steps {
-      match step {
-        StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
-        StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
-        WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
-        WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+    #[tokio::test]
+    async fn inspector_port_collision() {
+      // Skip this test on WSL, which allows multiple processes to listen on the
+      // same port, rather than making `bind()` fail with `EADDRINUSE`.
+      if cfg!(target_os = "linux")
+        && std::env::var_os("WSL_DISTRO_NAME").is_some()
+      {
+        return;
       }
+
+      let script = util::tests_path().join("inspector1.js");
+      let inspect_flag = inspect_flag_with_unique_port("--inspect");
+
+      let mut child1 = util::deno_cmd()
+        .arg("run")
+        .arg(&inspect_flag)
+        .arg(script.clone())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let stderr_1 = child1.stderr.as_mut().unwrap();
+      let mut stderr_1_lines = std::io::BufReader::new(stderr_1)
+        .lines()
+        .map(|r| r.unwrap());
+      let _ = extract_ws_url_from_stderr(&mut stderr_1_lines);
+
+      let mut child2 = util::deno_cmd()
+        .arg("run")
+        .arg(&inspect_flag)
+        .arg(script)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let stderr_2 = child2.stderr.as_mut().unwrap();
+      let stderr_2_error_message = std::io::BufReader::new(stderr_2)
+        .lines()
+        .map(|r| r.unwrap())
+        .inspect(|line| assert!(!line.contains("Debugger listening")))
+        .find(|line| line.contains("Cannot start inspector server"));
+      assert!(stderr_2_error_message.is_some());
+
+      child1.kill().unwrap();
+      child1.wait().unwrap();
+      child2.wait().unwrap();
     }
 
-    drop(stdin);
-    child.wait().unwrap();
-  }
+    #[tokio::test]
+    async fn inspector_does_not_hang() {
+      let script = util::tests_path().join("inspector3.js");
+      let mut child = util::deno_cmd()
+        .arg("run")
+        .arg(inspect_flag_with_unique_port("--inspect-brk"))
+        .env("NO_COLOR", "1")
+        .arg(script)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
 
-  #[tokio::test]
-  async fn inspector_json() {
-    let script = util::tests_path().join("inspector1.js");
-    let mut child = util::deno_cmd()
-      .arg("run")
-      .arg(inspect_flag_with_unique_port("--inspect"))
-      .arg(script)
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
-    let mut url = ws_url.clone();
-    let _ = url.set_scheme("http");
-    url.set_path("/json");
-    let resp = reqwest::get(url).await.unwrap();
-    assert_eq!(resp.status(), reqwest::StatusCode::OK);
-    let endpoint_list: Vec<deno_core::serde_json::Value> =
-      serde_json::from_str(&resp.text().await.unwrap()).unwrap();
-    let matching_endpoint = endpoint_list
-      .iter()
-      .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
-    assert!(matching_endpoint.is_some());
-    child.kill().unwrap();
-  }
+      let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+        .await
+        .expect("Can't connect");
+      assert_eq!(response.status(), 101); // Switching protocols.
 
-  #[tokio::test]
-  async fn inspector_json_list() {
-    let script = util::tests_path().join("inspector1.js");
-    let mut child = util::deno_cmd()
-      .arg("run")
-      .arg(inspect_flag_with_unique_port("--inspect"))
-      .arg(script)
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap();
+      let (mut socket_tx, socket_rx) = socket.split();
+      let mut socket_rx =
+        socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+          let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+          futures::future::ready(pass)
+        });
 
-    let stderr = child.stderr.as_mut().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-    let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
-    let mut url = ws_url.clone();
-    let _ = url.set_scheme("http");
-    url.set_path("/json/list");
-    let resp = reqwest::get(url).await.unwrap();
-    assert_eq!(resp.status(), reqwest::StatusCode::OK);
-    let endpoint_list: Vec<deno_core::serde_json::Value> =
-      serde_json::from_str(&resp.text().await.unwrap()).unwrap();
-    let matching_endpoint = endpoint_list
-      .iter()
-      .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
-    assert!(matching_endpoint.is_some());
-    child.kill().unwrap();
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut stdout_lines =
+        std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
+      use TestStep::*;
+      let test_steps = vec![
+        WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+        WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+        WsRecv(
+          r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+        ),
+        WsRecv(r#"{"id":1,"result":{}}"#),
+        WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+        WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+        WsRecv(r#"{"id":3,"result":{}}"#),
+        WsRecv(r#"{"method":"Debugger.paused","#),
+        WsSend(r#"{"id":4,"method":"Debugger.resume"}"#),
+        WsRecv(r#"{"id":4,"result":{}}"#),
+        WsRecv(r#"{"method":"Debugger.resumed","params":{}}"#),
+      ];
+
+      for step in test_steps {
+        match step {
+          WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+          WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+          _ => unreachable!(),
+        }
+      }
+
+      for i in 0..128u32 {
+        let request_id = i + 10;
+        // Expect the number {i} on stdout.
+        let s = i.to_string();
+        assert_eq!(stdout_lines.next().unwrap(), s);
+        // Expect hitting the `debugger` statement.
+        let s = r#"{"method":"Debugger.paused","#;
+        assert!(socket_rx.next().await.unwrap().starts_with(s));
+        // Send the 'Debugger.resume' request.
+        let s =
+          format!(r#"{{"id":{},"method":"Debugger.resume"}}"#, request_id);
+        socket_tx.send(s.into()).await.unwrap();
+        // Expect confirmation of the 'Debugger.resume' request.
+        let s = format!(r#"{{"id":{},"result":{{}}}}"#, request_id);
+        assert_eq!(socket_rx.next().await.unwrap(), s);
+        let s = r#"{"method":"Debugger.resumed","params":{}}"#;
+        assert_eq!(socket_rx.next().await.unwrap(), s);
+      }
+
+      // Check that we can gracefully close the websocket connection.
+      socket_tx.close().await.unwrap();
+      socket_rx.for_each(|_| async {}).await;
+
+      assert_eq!(&stdout_lines.next().unwrap(), "done");
+      assert!(child.wait().unwrap().success());
+    }
+
+    #[tokio::test]
+    async fn inspector_without_brk_runs_code() {
+      let script = util::tests_path().join("inspector4.js");
+      let mut child = util::deno_cmd()
+        .arg("run")
+        .arg(inspect_flag_with_unique_port("--inspect"))
+        .arg(script)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let _ = extract_ws_url_from_stderr(&mut stderr_lines);
+
+      // Check that inspector actually runs code without waiting for inspector
+      // connection.
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut stdout_lines =
+        std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+      let stdout_first_line = stdout_lines.next().unwrap();
+      assert_eq!(stdout_first_line, "hello");
+
+      child.kill().unwrap();
+      child.wait().unwrap();
+    }
+
+    #[tokio::test]
+    async fn inspector_runtime_evaluate_does_not_crash() {
+      let mut child = util::deno_cmd()
+        .arg("repl")
+        .arg(inspect_flag_with_unique_port("--inspect"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines = std::io::BufReader::new(stderr)
+        .lines()
+        .map(|r| r.unwrap())
+        .filter(|s| s.as_str() != "Debugger session started.");
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+      let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+        .await
+        .expect("Can't connect");
+      assert_eq!(response.status(), 101); // Switching protocols.
+
+      let (mut socket_tx, socket_rx) = socket.split();
+      let mut socket_rx =
+        socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+          let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+          futures::future::ready(pass)
+        });
+
+      let stdin = child.stdin.take().unwrap();
+
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut stdout_lines = std::io::BufReader::new(stdout)
+        .lines()
+        .map(|r| r.unwrap())
+        .filter(|s| !s.starts_with("Deno "));
+
+      use TestStep::*;
+      let test_steps = vec![
+        WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+        WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+        WsRecv(
+          r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+        ),
+        WsRecv(r#"{"id":1,"result":{}}"#),
+        WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+        WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+        WsRecv(r#"{"id":3,"result":{}}"#),
+        StdOut("exit using ctrl+d or close()"),
+        WsSend(
+          r#"{"id":4,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
+        ),
+        WsRecv(r#"{"id":4,"result":{}}"#),
+        WsSend(
+          r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
+        ),
+        WsRecv(r#"{"id":5,"result":{"result":{"type":"string","value":""#),
+        WsSend(
+          r#"{"id":6,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
+        ),
+        WsRecv(r#"{"id":6,"result":{"result":{"type":"undefined"}}}"#),
+        StdErr("done"),
+      ];
+
+      for step in test_steps {
+        match step {
+          StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
+          StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
+          WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+          WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+        }
+      }
+
+      drop(stdin);
+      child.wait().unwrap();
+    }
+
+    #[tokio::test]
+    async fn inspector_json() {
+      let script = util::tests_path().join("inspector1.js");
+      let mut child = util::deno_cmd()
+        .arg("run")
+        .arg(inspect_flag_with_unique_port("--inspect"))
+        .arg(script)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+      let mut url = ws_url.clone();
+      let _ = url.set_scheme("http");
+      url.set_path("/json");
+      let resp = reqwest::get(url).await.unwrap();
+      assert_eq!(resp.status(), reqwest::StatusCode::OK);
+      let endpoint_list: Vec<deno_core::serde_json::Value> =
+        serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+      let matching_endpoint = endpoint_list
+        .iter()
+        .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+      assert!(matching_endpoint.is_some());
+      child.kill().unwrap();
+    }
+
+    #[tokio::test]
+    async fn inspector_json_list() {
+      let script = util::tests_path().join("inspector1.js");
+      let mut child = util::deno_cmd()
+        .arg("run")
+        .arg(inspect_flag_with_unique_port("--inspect"))
+        .arg(script)
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+      let mut url = ws_url.clone();
+      let _ = url.set_scheme("http");
+      url.set_path("/json/list");
+      let resp = reqwest::get(url).await.unwrap();
+      assert_eq!(resp.status(), reqwest::StatusCode::OK);
+      let endpoint_list: Vec<deno_core::serde_json::Value> =
+        serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+      let matching_endpoint = endpoint_list
+        .iter()
+        .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+      assert!(matching_endpoint.is_some());
+      child.kill().unwrap();
+    }
   }
 
   #[test]
