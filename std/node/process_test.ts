@@ -3,7 +3,6 @@
 
 import "./global.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
-import { resolvePath } from "../fs/mod.ts";
 import { stripColor } from "../fmt/colors.ts";
 import * as path from "../path/mod.ts";
 import { delay } from "../async/delay.ts";
@@ -102,6 +101,7 @@ Deno.test({
       cmd: [
         Deno.execPath(),
         "run",
+        "--unstable",
         "./process_exit_test.ts",
       ],
       cwd,
