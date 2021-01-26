@@ -21,7 +21,7 @@ where
   F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
   R: Future<Output = Result<Value, AnyError>> + 'static,
 {
-  rt.register_op(name, metrics_op(name.to_string(), json_op_async(op_fn)));
+  rt.register_op(name, metrics_op(name, json_op_async(op_fn)));
 }
 
 pub fn reg_json_sync<F>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
@@ -29,5 +29,5 @@ where
   F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
     + 'static,
 {
-  rt.register_op(name, metrics_op(name.to_string(), json_op_sync(op_fn)));
+  rt.register_op(name, metrics_op(name, json_op_sync(op_fn)));
 }
