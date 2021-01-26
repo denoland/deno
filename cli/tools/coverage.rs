@@ -249,10 +249,10 @@ impl PrettyCoverageReporter {
           })
           .collect::<Vec<usize>>();
 
-          indices.sort();
-          indices.dedup();
+        indices.sort();
+        indices.dedup();
 
-          indices
+        indices
       } else {
         uncovered_lines
       };
