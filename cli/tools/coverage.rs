@@ -238,19 +238,29 @@ impl PrettyCoverageReporter {
           lines
         };
 
+      let output_indices = if let Some(source_map) = maybe_source_map {
+        let mut indices = uncovered_lines
+          .iter()
+          .map(|i| {
+            source_map
+              .lookup_token(*i as u32, 0)
+              .unwrap()
+              .get_src_line() as usize
+          })
+          .collect::<Vec<usize>>();
+
+          indices.sort();
+          indices.dedup();
+
+          indices
+      } else {
+        uncovered_lines
+      };
+
       let mut last_line = None;
-      for line_index in uncovered_lines {
+      for line_index in output_indices {
         const WIDTH: usize = 4;
         const SEPERATOR: &str = "|";
-
-        let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-          source_map
-            .lookup_token(line_index as u32, 0)
-            .unwrap()
-            .get_src_line() as usize
-        } else {
-          line_index
-        };
 
         // Put a horizontal separator between disjoint runs of lines
         if let Some(last_line) = last_line {
