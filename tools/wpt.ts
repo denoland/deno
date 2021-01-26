@@ -79,24 +79,22 @@ async function setup() {
   if (etcHostsConfigured) {
     console.log("/etc/hosts is already configured.");
   } else {
-    const autoConfigure =
-      autoConfig ||
+    const autoConfigure = autoConfig ||
       confirm(
-        "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?"
+        "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?",
       );
     if (autoConfigure) {
       const proc = runPy(["wpt", "make-hosts-file"], { stdout: "piped" });
       const status = await proc.status();
       assert(status.success, "wpt make-hosts-file should not fail");
       const entries = new TextDecoder().decode(await proc.output());
-      const hostsPath =
-        Deno.build.os == "windows"
-          ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
-          : "/etc/hosts";
+      const hostsPath = Deno.build.os == "windows"
+        ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
+        : "/etc/hosts";
       const file = await Deno.open(hostsPath, { append: true }).catch((err) => {
         if (err instanceof Deno.errors.PermissionDenied) {
           throw new Error(
-            `Failed to open ${hostsPath} (permission error). Please run this command again with sudo, or configure the entries manually.`
+            `Failed to open ${hostsPath} (permission error). Please run this command again with sudo, or configure the entries manually.`,
           );
         } else {
           throw err;
@@ -105,8 +103,8 @@ async function setup() {
       await Deno.writeAll(
         file,
         new TextEncoder().encode(
-          "\n\n# Configured for Web Platform Tests (Deno)\n" + entries
-        )
+          "\n\n# Configured for Web Platform Tests (Deno)\n" + entries,
+        ),
       );
       console.log("Updated /etc/hosts");
     } else {
@@ -116,7 +114,7 @@ async function setup() {
         console.log("");
         console.log("    cd test_util/wpt/");
         console.log(
-          "    python.exe wpt make-hosts-file | Out-File $env:SystemRoot\\System32\\drivers\\etc\\hosts -Encoding ascii -Append"
+          "    python.exe wpt make-hosts-file | Out-File $env:SystemRoot\\System32\\drivers\\etc\\hosts -Encoding ascii -Append",
         );
         console.log("");
       } else {
@@ -124,7 +122,7 @@ async function setup() {
         console.log("");
         console.log("    cd test_util/wpt/");
         console.log(
-          "    python3 ./wpt make-hosts-file | sudo tee -a /etc/hosts"
+          "    python3 ./wpt make-hosts-file | sudo tee -a /etc/hosts",
         );
         console.log("");
       }
@@ -155,7 +153,7 @@ async function run() {
       const result = await runSingleTest(
         test.url,
         test.options,
-        json ? () => {} : createReportTestCase(test.expectation)
+        json ? () => {} : createReportTestCase(test.expectation),
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -184,7 +182,7 @@ async function update() {
       const result = await runSingleTest(
         test.url,
         test.options,
-        json ? () => {} : createReportTestCase(test.expectation)
+        json ? () => {} : createReportTestCase(test.expectation),
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -234,13 +232,13 @@ async function update() {
     insertExpectation(
       path.slice(1).split("/"),
       currentExpectation,
-      finalExpectation
+      finalExpectation,
     );
   }
 
   await Deno.writeTextFile(
     "./tools/wpt/expectation.json",
-    JSON.stringify(currentExpectation, undefined, "  ")
+    JSON.stringify(currentExpectation, undefined, "  "),
   );
 
   reportFinal(results);
@@ -253,7 +251,7 @@ async function update() {
 function insertExpectation(
   segments: string[],
   currentExpectation: Expectation,
-  finalExpectation: boolean | string[]
+  finalExpectation: boolean | string[],
 ) {
   const segment = segments.shift();
   assert(segment, "segments array must never be empty");
@@ -268,7 +266,7 @@ function insertExpectation(
     insertExpectation(
       segments,
       currentExpectation[segment] as Expectation,
-      finalExpectation
+      finalExpectation,
     );
   } else {
     currentExpectation[segment] = finalExpectation;
@@ -276,7 +274,7 @@ function insertExpectation(
 }
 
 function reportFinal(
-  results: { test: TestToRun; result: TestResult }[]
+  results: { test: TestToRun; result: TestResult }[],
 ): number {
   const finalTotalCount = results.length;
   let finalFailedCount = 0;
@@ -287,7 +285,7 @@ function reportFinal(
   for (const { test, result } of results) {
     const { failed, failedCount, expectedFailedButPassed } = analzyeTestResult(
       result,
-      test.expectation
+      test.expectation,
     );
     if (result.status !== 0) {
       if (test.expectation === false) {
@@ -315,7 +313,7 @@ function reportFinal(
   }
   for (const result of finalFailed) {
     console.log(
-      `        ${JSON.stringify(`${result[0]} - ${result[1].name}`)}`
+      `        ${JSON.stringify(`${result[0]} - ${result[1].name}`)}`,
     );
   }
   if (finalExpectedFailedButPassedTests.length > 0) {
@@ -323,7 +321,7 @@ function reportFinal(
   }
   for (const result of finalExpectedFailedButPassedTests) {
     console.log(
-      `        ${JSON.stringify(`${result[0]} - ${result[1].name}`)}`
+      `        ${JSON.stringify(`${result[0]} - ${result[1].name}`)}`,
     );
   }
   if (finalExpectedFailedButPassedFiles.length > 0) {
@@ -336,7 +334,7 @@ function reportFinal(
   console.log(
     `\nfinal result: ${
       finalFailedCount > 0 ? red("failed") : green("ok")
-    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`
+    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`,
   );
 
   return finalFailedCount > 0 ? 1 : 0;
@@ -344,7 +342,7 @@ function reportFinal(
 
 function analzyeTestResult(
   result: TestResult,
-  expectation: boolean | string[]
+  expectation: boolean | string[],
 ): {
   failed: TestCaseResult[];
   failedCount: number;
@@ -355,15 +353,15 @@ function analzyeTestResult(
   expectedFailedAndFailedCount: number;
 } {
   const failed = result.cases.filter(
-    (t) => !getExpectFailForCase(expectation, t.name) && !t.passed
+    (t) => !getExpectFailForCase(expectation, t.name) && !t.passed,
   );
   const expectedFailedButPassed = result.cases.filter(
-    (t) => getExpectFailForCase(expectation, t.name) && t.passed
+    (t) => getExpectFailForCase(expectation, t.name) && t.passed,
   );
   const expectedFailedButPassedCount = expectedFailedButPassed.length;
   const failedCount = failed.length + expectedFailedButPassedCount;
   const expectedFailedAndFailedCount = result.cases.filter(
-    (t) => getExpectFailForCase(expectation, t.name) && !t.passed
+    (t) => getExpectFailForCase(expectation, t.name) && !t.passed,
   ).length;
   const totalCount = result.cases.length;
   const passedCount = totalCount - failedCount - expectedFailedAndFailedCount;
@@ -388,7 +386,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. runner failed during test\n`
+      }. runner failed during test\n`,
     );
     return;
   }
@@ -425,7 +423,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   console.log(
     `\nfile result: ${
       failedCount > 0 ? red("failed") : green("ok")
-    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount}\n`
+    }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount}\n`,
   );
 }
 
@@ -474,7 +472,7 @@ function createReportTestCase(expectation: boolean | string[]) {
 
 function discoverTestsToRun(
   filter?: string[],
-  expectation: Expectation | string[] | boolean = getExpectation()
+  expectation: Expectation | string[] | boolean = getExpectation(),
 ): TestToRun[] {
   const manifestFolder = getManifest().items.testharness;
 
@@ -483,23 +481,22 @@ function discoverTestsToRun(
   function walk(
     parentFolder: ManifestFolder,
     parentExpectation: Expectation | string[] | boolean,
-    prefix: string
+    prefix: string,
   ) {
     for (const key in parentFolder) {
       const sourcePath = `${prefix}/${key}`;
       const entry = parentFolder[key];
-      const expectation =
-        Array.isArray(parentExpectation) ||
-        typeof parentExpectation == "boolean"
-          ? parentExpectation
-          : parentExpectation[key];
+      const expectation = Array.isArray(parentExpectation) ||
+          typeof parentExpectation == "boolean"
+        ? parentExpectation
+        : parentExpectation[key];
 
       if (expectation === undefined) continue;
 
       if (Array.isArray(entry)) {
         assert(
           Array.isArray(expectation) || typeof expectation == "boolean",
-          "test entry must not have a folder expectation"
+          "test entry must not have a folder expectation",
         );
         if (
           filter &&
@@ -508,9 +505,11 @@ function discoverTestsToRun(
           continue;
         }
 
-        for (const [path, options] of entry.slice(
-          1
-        ) as ManifestTestVariation[]) {
+        for (
+          const [path, options] of entry.slice(
+            1,
+          ) as ManifestTestVariation[]
+        ) {
           if (!path) continue;
           const url = new URL(path, "http://web-platform.test:8000");
           if (!url.pathname.endsWith(".any.html")) continue;
