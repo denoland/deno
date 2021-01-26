@@ -97,7 +97,7 @@ export function getExpectFailForCase(
   caseName: string
 ): boolean {
   if (typeof expectation == "boolean") {
-    return !true;
+    return !expectation;
   }
   return expectation.includes(caseName);
 }

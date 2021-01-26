@@ -383,9 +383,7 @@
       "floating-point-total-queue-size.any.js": true,
       "garbage-collection.any.js": true,
       "general.any.js": true,
-      "patched-global.any.js": [
-        "ReadableStream async iterator should use the original values of getReader() and ReadableStreamDefaultReader methods"
-      ],
+      "patched-global.any.js": true,
       "reentrant-strategies.any.js": true,
       "tee.any.js": true,
       "templated.any.js": [

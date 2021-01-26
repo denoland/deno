@@ -223,7 +223,7 @@ async function update() {
     let finalExpectation: boolean | string[];
     if (failed.length == 0 && status == 0) {
       finalExpectation = true;
-    } else if (failed.length > 0 && passed.length > 0) {
+    } else if (failed.length > 0 && passed.length > 0 && status == 0) {
       finalExpectation = failed;
     } else {
       finalExpectation = false;
