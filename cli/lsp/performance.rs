@@ -69,7 +69,7 @@ impl Default for Performance {
 impl Performance {
   /// Return the count and average duration of a measurement identified by name.
   #[cfg(test)]
-  pub fn average(&self, name: &str) -> (usize, Duration) {
+  pub fn average(&self, name: &str) -> Option<(usize, Duration)> {
     let mut items = Vec::new();
     for measure in self.measures.lock().unwrap().iter() {
       if measure.name == name {
@@ -77,12 +77,13 @@ impl Performance {
       }
     }
     let len = items.len();
-    let average = if len > 0 {
-      items.into_iter().sum::<Duration>() / len as u32
+
+    if len > 0 {
+      let average = items.into_iter().sum::<Duration>() / len as u32;
+      Some((len, average))
     } else {
-      unreachable!("unexpected empty items key");
-    };
-    (len, average)
+      None
+    }
   }
 
   /// Return an iterator which provides the names, count, and average duration
@@ -149,12 +150,11 @@ mod tests {
     performance.measure(mark2);
     performance.measure(mark1);
     performance.measure(mark3);
-    let (count, _) = performance.average("a");
+    let (count, _) = performance.average("a").expect("should have had value");
     assert_eq!(count, 2);
-    let (count, _) = performance.average("b");
+    let (count, _) = performance.average("b").expect("should have had value");
     assert_eq!(count, 1);
-    let (count, _) = performance.average("c");
-    assert_eq!(count, 0);
+    assert!(performance.average("c").is_none());
   }
 
   #[test]
