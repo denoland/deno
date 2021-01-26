@@ -1540,7 +1540,7 @@ mod tests {
     let time = Instant::now();
     harness.run().await;
     assert!(
-      time.elapsed().as_millis() <= 10000,
+      time.elapsed().as_millis() <= 15000,
       "the execution time exceeded 10000ms"
     );
   }
