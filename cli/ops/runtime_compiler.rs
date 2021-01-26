@@ -12,6 +12,7 @@ use crate::specifier_handler::SpecifierHandler;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::error::JsError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -111,7 +112,13 @@ async fn op_emit(
       debug,
       maybe_user_config: args.compiler_options,
     })
-    .map_err(|e| generic_error(format!("{}", e)))?;
+    .map_err(|e| {
+      if e.is::<JsError>() {
+        generic_error(format!("{}", e))
+      } else {
+        e
+      }
+    })?;
 
   Ok(json!({
     "diagnostics": result_info.diagnostics,
