@@ -6,6 +6,7 @@ use crate::colors;
 use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
+use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -15,6 +16,7 @@ use deno_runtime::inspector::InspectorSession;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Serialize;
+use sourcemap::SourceMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -130,7 +132,15 @@ impl PrettyCoverageReporter {
     &mut self,
     script_coverage: &ScriptCoverage,
     script_source: &str,
+    maybe_source_map: Option<Vec<u8>>,
+    maybe_original_source: Option<String>,
   ) {
+    let maybe_source_map = if let Some(source_map) = maybe_source_map {
+      Some(SourceMap::from_slice(&source_map).unwrap())
+    } else {
+      None
+    };
+
     let mut ignored_spans: Vec<Span> = Vec::new();
     for item in ast::lex("", script_source, &MediaType::JavaScript) {
       if let TokenOrComment::Token(_) = item.inner {
@@ -221,10 +231,26 @@ impl PrettyCoverageReporter {
         println!("{}", colors::red(&line_coverage));
       }
 
+      let output_lines =
+        if let Some(original_source) = maybe_original_source.as_ref() {
+          original_source.split("\n").collect::<Vec<_>>()
+        } else {
+          lines
+        };
+
       let mut last_line = None;
       for line_index in uncovered_lines {
         const WIDTH: usize = 4;
         const SEPERATOR: &str = "|";
+
+        let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
+          source_map
+            .lookup_token(line_index as u32, 0)
+            .unwrap()
+            .get_src_line() as usize
+        } else {
+          line_index
+        };
 
         // Put a horizontal separator between disjoint runs of lines
         if let Some(last_line) = last_line {
@@ -238,7 +264,7 @@ impl PrettyCoverageReporter {
           "{:width$} {} {}",
           line_index + 1,
           colors::gray(SEPERATOR),
-          colors::red(&lines[line_index]),
+          colors::red(&output_lines[line_index]),
           width = WIDTH
         );
 
@@ -354,7 +380,18 @@ pub async fn report_coverages(
     let module_source = program_state.load(module_specifier.clone(), None)?;
     let script_source = &module_source.code;
 
-    coverage_reporter.visit_coverage(&script_coverage, &script_source);
+    let maybe_source_map = program_state.get_source_map(&script_coverage.url);
+    let maybe_cached_source = program_state
+      .file_fetcher
+      .get_source(&module_specifier)
+      .map(|f| f.source);
+
+    coverage_reporter.visit_coverage(
+      &script_coverage,
+      &script_source,
+      maybe_source_map,
+      maybe_cached_source,
+    );
   }
 
   Ok(())
