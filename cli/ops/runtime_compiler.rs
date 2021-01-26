@@ -94,19 +94,24 @@ async fn op_emit(
   let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
   let root_specifier =
     ModuleSpecifier::resolve_url_or_path(&args.root_specifier)?;
-  builder.add(&root_specifier, is_dynamic).await?;
+  builder
+    .add(&root_specifier, is_dynamic)
+    .await
+    .map_err(|e| generic_error(format!("{}", e)))?;
   let bundle_type = match args.bundle {
     Some(RuntimeBundleType::Esm) => BundleType::Esm,
     _ => BundleType::None,
   };
   let graph = builder.get_graph();
   let debug = program_state.flags.log_level == Some(log::Level::Debug);
-  let (files, result_info) = graph.emit(EmitOptions {
-    bundle_type,
-    check: args.check.unwrap_or(true),
-    debug,
-    maybe_user_config: args.compiler_options,
-  })?;
+  let (files, result_info) = graph
+    .emit(EmitOptions {
+      bundle_type,
+      check: args.check.unwrap_or(true),
+      debug,
+      maybe_user_config: args.compiler_options,
+    })
+    .map_err(|e| generic_error(format!("{}", e)))?;
 
   Ok(json!({
     "diagnostics": result_info.diagnostics,

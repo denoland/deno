@@ -292,3 +292,23 @@ Deno.test({
     assert(diagnostics[0].messageText.includes("This import is never used"));
   },
 });
+
+Deno.test({
+  name: "Deno.emit() - some custom scheme specifiers do not panic",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.emit("custom://a.ts", {
+        sources: {
+          "custom://a.ts": `export const a: string = 'a';`,
+        },
+      });
+    });
+    await assertThrowsAsync(async () => {
+      await Deno.emit("custom://a//a.ts", {
+        sources: {
+          "custom://a//a.ts": `export const a: string = 'a';`,
+        },
+      });
+    });
+  },
+});
