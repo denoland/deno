@@ -2652,11 +2652,11 @@ console.log("finish");
   });
 
   itest!(lock_write_fetch {
-  args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
-  output: "lock_write_fetch.ts.out",
-  exit_code: 0,
-});
+    args:
+      "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+    output: "lock_write_fetch.ts.out",
+    exit_code: 0,
+  });
 
   itest!(lock_check_ok {
   args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
