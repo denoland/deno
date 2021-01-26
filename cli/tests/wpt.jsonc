@@ -1,0 +1,250 @@
+{
+  "streams": [
+    // "piping/abort",
+    // "piping/close-propagation-backward",
+    // "piping/close-propagation-forward",
+    // "piping/error-propagation-backward",
+    // "piping/error-propagation-forward",
+    "piping/flow-control",
+    // "piping/general",
+    "piping/multiple-propagation",
+    "piping/pipe-through",
+    "piping/then-interception",
+    // "piping/throwing-options",
+    // "piping/transform-streams",
+    "queuing-strategies.any",
+    // "readable-byte-streams",
+    // "readable-streams/async-iterator",
+    // "readable-streams/bad-strategies",
+    // "readable-streams/bad-underlying-source",
+    // "readable-streams/cancel",
+    // "readable-streams/constructor",
+    "readable-streams/count-queuing-strategy-integration",
+    "readable-streams/default-reader",
+    "readable-streams/floating-point-total-queue-size",
+    "readable-streams/garbage-collection",
+    "readable-streams/general",
+    {
+      "name": "readable-streams/patched-global",
+      "expectFail": [
+        "ReadableStream async iterator should use the original values of getReader() and ReadableStreamDefaultReader methods"
+      ]
+    },
+    "readable-streams/reentrant-strategies",
+    "readable-streams/tee",
+    // "readable-streams/templated",
+    "transform-streams/backpressure",
+    "transform-streams/errors",
+    "transform-streams/flush",
+    "transform-streams/general",
+    "transform-streams/lipfuzz",
+    // "transform-streams/patched-global",
+    "transform-streams/properties",
+    "transform-streams/reentrant-strategies",
+    "transform-streams/strategies",
+    // "transform-streams/terminate",
+    // "writable-streams/aborting",
+    // "writable-streams/bad-strategies",
+    "writable-streams/bad-underlying-sinks",
+    "writable-streams/byte-length-queuing-strategy",
+    // "writable-streams/close",
+    // "writable-streams/constructor",
+    "writable-streams/count-queuing-strategy",
+    "writable-streams/error",
+    "writable-streams/floating-point-total-queue-size",
+    "writable-streams/general",
+    "writable-streams/properties",
+    "writable-streams/reentrant-strategy",
+    "writable-streams/start",
+    "writable-streams/write"
+  ],
+  "encoding": [
+    "api-basics",
+    "api-invalid-label",
+    "api-replacement-encodings",
+    "api-surrogates-utf8",
+    // TODO(lucacasonato): enable encodeInto. We have a bug in implementaiton.
+    // {
+    //   "name": "encodeInto",
+    //   "expectFail": [
+    //     "encodeInto() and a detached output buffer"
+    //   ]
+    // },
+    // "encodeInto",
+    // TODO(lucacasonato): enable when we support iso-2022-jp
+    // "iso-2022-jp-decoder",
+    // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
+    // "replacement-encodings",
+    "textdecoder-byte-order-marks",
+    {
+      "name": "textdecoder-copy",
+      "expectFail": [
+        // TODO(lucacasonato): enable when we have stream support
+        "Modify buffer after passing it in (ArrayBuffer)",
+        "Modify buffer after passing it in (SharedArrayBuffer)"
+      ]
+    },
+    "textdecoder-fatal-single-byte",
+    "textdecoder-fatal.",
+    "textdecoder-ignorebom",
+    {
+      "name": "textdecoder-labels",
+      "expectFail": [
+        "cseucpkdfmtjapanese => EUC-JP",
+        "euc-jp => EUC-JP",
+        "x-euc-jp => EUC-JP",
+        "csiso2022jp => ISO-2022-JP",
+        "iso-2022-jp => ISO-2022-JP",
+        "csshiftjis => Shift_JIS",
+        "ms932 => Shift_JIS",
+        "ms_kanji => Shift_JIS",
+        "shift-jis => Shift_JIS",
+        "shift_jis => Shift_JIS",
+        "sjis => Shift_JIS",
+        "windows-31j => Shift_JIS",
+        "x-sjis => Shift_JIS",
+        "cseuckr => EUC-KR",
+        "csksc56011987 => EUC-KR",
+        "euc-kr => EUC-KR",
+        "iso-ir-149 => EUC-KR",
+        "korean => EUC-KR",
+        "ks_c_5601-1987 => EUC-KR",
+        "ks_c_5601-1989 => EUC-KR",
+        "ksc5601 => EUC-KR",
+        "ksc_5601 => EUC-KR",
+        "windows-949 => EUC-KR",
+        "x-user-defined => x-user-defined"
+      ]
+    },
+    // TODO(lucacasonato): enable when we have stream support
+    // "textdecoder-streaming",
+    "textdecoder-utf16-surrogates",
+    {
+      "name": "textencoder-constructor-non-utf",
+      "expectFail": [
+        "Encoding argument supported for decode: EUC-JP",
+        "Encoding argument supported for decode: ISO-2022-JP",
+        "Encoding argument supported for decode: Shift_JIS",
+        "Encoding argument supported for decode: EUC-KR",
+        "Encoding argument supported for decode: x-user-defined"
+      ]
+    },
+    "textencoder-utf16-surrogates",
+    "legacy-mb-schinese"
+    // TODO(lucacasonato): uses XMLHttpRequest unnecessarily. should be fixed upstream before enabling
+    // "unsupported-encodings",
+  ],
+  "dom": [
+    "abort/event"
+  ],
+  "hr-time": [
+    "monotonic-clock"
+  ],
+  "html": [
+    "webappapis/microtask-queuing/queue-microtask-exceptions.any",
+    "webappapis/microtask-queuing/queue-microtask.any",
+    "webappapis/timers"
+  ],
+  "user-timing": [
+    "clear_all_marks",
+    "clear_all_measures",
+    "clear_non_existent_mark",
+    "clear_non_existent_measure",
+    "clear_one_mark",
+    "clear_one_measure",
+    "entry_type",
+    "mark-entry-constructor",
+    "mark-errors",
+    "mark-measure-return-objects",
+    "mark.any",
+    "measure_syntax_err",
+    "measure-l3",
+    "structured-serialize-detail",
+    "user_timing_exists"
+  ],
+  "wasm": [
+    "jsapi/constructor/compile",
+    "jsapi/constructor/multi-value",
+    "jsapi/constructor/toStringTag",
+    "jsapi/constructor/validate",
+    "jsapi/global/constructor",
+    "jsapi/global/toString",
+    "jsapi/global/value-get-set",
+    "jsapi/global/valueOf",
+    "jsapi/instance/toString",
+    "jsapi/instance/constructor-caching",
+    "jsapi/memory/toString",
+    "jsapi/module/constructor",
+    "jsapi/module/customSections",
+    "jsapi/module/exports",
+    "jsapi/module/imports",
+    "jsapi/module/toString",
+    "jsapi/table/get-set",
+    "jsapi/table/toString",
+    "webapi/body",
+    "webapi/invalid-args",
+    "webapi/rejected-arg",
+    "webapi/status",
+    "webapi/create_multiple_memory",
+    "create_multiple_memory"
+    //FAILING TESTS
+    // "jsapi/constructor/instantiate-bad-imports",
+    // "jsapi/constructor/instantiate",
+    // "jsapi/global/type",
+    // "jsapi/instance/constructor-bad-imports",
+    // "jsapi/instance/constructor",
+    // "jsapi/instance/exports",
+    // "jsapi/memory/buffer",
+    // "jsapi/memory/constructor-shared",
+    // "jsapi/memory/constructor-types",
+    // "jsapi/memory/constructor",
+    // "jsapi/memory/grow",
+    // "jsapi/memory/type",
+    // "jsapi/table/constructor-types",
+    // "jsapi/table/constructor",
+    // "jsapi/table/grow-reftypes",
+    // "jsapi/table/grow",
+    // "jsapi/table/length",
+    // "jsapi/idlharness",
+    // "jsapi/instance",
+    // "jsapi/prototypes",
+    // "serialization/arraybuffer/transfer"
+    // "serialization/module/nested-worker-success",
+    // "serialization/module/serialization-via-idb",
+    // "serialization/module/serialization-via-notifications-api",
+    // "webapi/abort",
+    // "webapi/contenttype",
+    // "webapi/empty-body",
+    // "webapi/historical",
+    // "webapi/idlharness",
+    // "webapi/instantiateStreaming-bad-imports",
+    // "webapi/instantiateStreaming",
+    // "webapi/invalid-code",
+    // "webapi/origin",
+  ],
+  "console": [
+    "console-is-a-namespace",
+    "console-label-conversion",
+    "console-namespace-object-class-string",
+    "console-tests-historical"
+  ],
+  "WebCryptoApi": [
+    "getRandomValues"
+  ],
+  "WebIDL": [
+    "ecmascript-binding/es-exceptions/DOMException-constants",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-and-prototype",
+    "ecmascript-binding/es-exceptions/DOMException-constructor-behavior",
+    {
+      "name": "ecmascript-binding/es-exceptions/DOMException-custom-bindings",
+      "expectFail": [
+        // TODO(kt3k): Enable this test.
+        // We can pass this test by using Object.setPrototypeOf(...) instead of
+        // class...extends, but that causes a problem in printing of uncaught
+        // DOMException. We might need to modify how to print uncaught error in
+        // `//core/error.rs`.
+        "does not inherit from Error: class-side"
+      ]
+    }
+  ]
+}

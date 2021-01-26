@@ -2,7 +2,7 @@
 // https://github.com/golang/crypto/blob/master/sha3/keccakf.go
 // Copyright 2011 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 const KECCAK_ROUNDS = 24;
 const KECCAK_RC: number[] = [

@@ -17,7 +17,7 @@ type openFlags =
   | "w+"
   | "wx+";
 
-type openCallback = (err: Error | undefined, fd: number) => void;
+type openCallback = (err: Error | null, fd: number) => void;
 
 function convertFlagAndModeToOptions(
   flag?: openFlags,
@@ -61,20 +61,26 @@ export function open(
 
   if (["ax", "ax+", "wx", "wx+"].includes(flags || "") && existsSync(path)) {
     const err = new Error(`EEXIST: file already exists, open '${path}'`);
-    callback(err, 0);
+    (callback as (err: Error) => void)(err);
   } else {
     if (flags === "as" || flags === "as+") {
+      let err: Error | null = null, res: number;
       try {
-        const res = openSync(path, flags, mode);
-        callback(undefined, res);
+        res = openSync(path, flags, mode);
       } catch (error) {
-        callback(error, error);
+        err = error;
+      }
+      if (err) {
+        (callback as (err: Error) => void)(err);
+      } else {
+        callback(null, res!);
       }
       return;
     }
-    Deno.open(path, convertFlagAndModeToOptions(flags, mode))
-      .then((file) => callback(undefined, file.rid))
-      .catch((err) => callback(err, err));
+    Deno.open(path, convertFlagAndModeToOptions(flags, mode)).then(
+      (file) => callback(null, file.rid),
+      (err) => (callback as (err: Error) => void)(err),
+    );
   }
 }
 

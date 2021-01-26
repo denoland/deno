@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::inspector::DenoInspector;
@@ -130,6 +130,7 @@ pub struct WebWorker {
   terminate_rx: mpsc::Receiver<()>,
   handle: WebWorkerHandle,
   pub use_deno_namespace: bool,
+  pub main_module: ModuleSpecifier,
 }
 
 pub struct WebWorkerOptions {
@@ -137,7 +138,7 @@ pub struct WebWorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
-  pub ca_filepath: Option<String>,
+  pub ca_data: Option<Vec<u8>>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -197,6 +198,7 @@ impl WebWorker {
       terminate_rx,
       handle,
       use_deno_namespace: options.use_deno_namespace,
+      main_module: main_module.clone(),
     };
 
     {
@@ -219,7 +221,7 @@ impl WebWorker {
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
-        options.ca_filepath.as_deref(),
+        options.ca_data.clone(),
       );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
@@ -237,8 +239,8 @@ impl WebWorker {
       ops::io::init(js_runtime);
       ops::websocket::init(
         js_runtime,
-        options.ca_filepath.as_deref(),
         options.user_agent.clone(),
+        options.ca_data.clone(),
       );
 
       if options.use_deno_namespace {
@@ -286,6 +288,7 @@ impl WebWorker {
       "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
+      "location": self.main_module,
     });
 
     let runtime_options_str =
@@ -427,7 +430,7 @@ pub fn run_web_worker(
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
-  let mut rt = create_basic_runtime();
+  let rt = create_basic_runtime();
 
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
@@ -483,7 +486,7 @@ mod tests {
       apply_source_maps: false,
       debug_flag: false,
       unstable: false,
-      ca_filepath: None,
+      ca_data: None,
       user_agent: "x".to_string(),
       seed: None,
       module_loader,

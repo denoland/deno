@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { fromFileUrl } from "../path.ts";
 
 type ExitsCallback = (exists: boolean) => void;
@@ -10,11 +10,7 @@ type ExitsCallback = (exists: boolean) => void;
  */
 export function exists(path: string | URL, callback: ExitsCallback): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
-  Deno.lstat(path)
-    .then(() => {
-      callback(true);
-    })
-    .catch(() => callback(false));
+  Deno.lstat(path).then(() => callback(true), () => callback(false));
 }
 
 /**

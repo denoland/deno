@@ -1,5 +1,6 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, fail } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { chown, chownSync } from "./_fs_chown.ts";
 
 // chown is difficult to test.  Best we can do is set the existing user id/group
@@ -24,8 +25,7 @@ Deno.test({
         const newGroupId: number | null = Deno.lstatSync(tempFile).gid;
         assertEquals(newUserId, originalUserId);
         assertEquals(newGroupId, originalGroupId);
-      })
-      .catch(() => {
+      }, () => {
         fail();
       })
       .finally(() => {
@@ -48,5 +48,22 @@ Deno.test({
     assertEquals(newUserId, originalUserId);
     assertEquals(newGroupId, originalGroupId);
     Deno.removeSync(tempFile);
+  },
+});
+
+Deno.test({
+  name: "[std/node/fs] chown callback isn't called twice if error is thrown",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const tempFile = await Deno.makeTempFile();
+    const { uid, gid } = await Deno.lstat(tempFile);
+    const importUrl = new URL("./_fs_chown.ts", import.meta.url);
+    await assertCallbackErrorUncaught({
+      prelude: `import { chown } from ${JSON.stringify(importUrl)}`,
+      invocation: `chown(${JSON.stringify(tempFile)}, ${uid}, ${gid}, `,
+      async cleanup() {
+        await Deno.remove(tempFile);
+      },
+    });
   },
 });

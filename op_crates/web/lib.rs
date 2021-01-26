@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -61,6 +61,10 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("08_text_encoding.js"),
     ),
     ("deno:op_crates/web/11_url.js", include_str!("11_url.js")),
+    (
+      "deno:op_crates/web/12_location.js",
+      include_str!("12_location.js"),
+    ),
     (
       "deno:op_crates/web/21_filereader.js",
       include_str!("21_filereader.js"),
@@ -149,22 +153,6 @@ mod tests {
       let mut isolate = setup();
       isolate
         .execute("event_target_test.js", include_str!("event_target_test.js"))
-        .unwrap();
-      if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
-        unreachable!();
-      }
-    });
-  }
-
-  #[test]
-  fn test_text_encoding() {
-    run_in_task(|mut cx| {
-      let mut isolate = setup();
-      isolate
-        .execute(
-          "text_encoding_test.js",
-          include_str!("text_encoding_test.js"),
-        )
         .unwrap();
       if let Poll::Ready(Err(_)) = isolate.poll_event_loop(&mut cx) {
         unreachable!();

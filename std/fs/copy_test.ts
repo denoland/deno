@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -328,7 +328,7 @@ testCopySync(
 
     assert(destStatInfo.atime instanceof Date);
     assert(destStatInfo.mtime instanceof Date);
-    // TODO: Activate test when https://github.com/denoland/deno/issues/2411
+    // TODO(bartlomieju): Activate test when https://github.com/denoland/deno/issues/2411
     // is fixed
     // assertEquals(destStatInfo.atime, srcStatInfo.atime);
     // assertEquals(destStatInfo.mtime, srcStatInfo.mtime);

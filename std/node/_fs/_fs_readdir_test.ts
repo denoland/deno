@@ -1,4 +1,5 @@
 import { assertEquals, assertNotEquals, fail } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { readdir, readdirSync } from "./_fs_readdir.ts";
 import { join } from "../../path/mod.ts";
 
@@ -12,8 +13,7 @@ Deno.test({
         resolve(files);
       });
     })
-      .then((files) => assertEquals(files, []))
-      .catch(() => fail())
+      .then((files) => assertEquals(files, []), () => fail())
       .finally(() => Deno.removeSync(dir));
   },
 });
@@ -40,10 +40,14 @@ Deno.test({
         resolve(files);
       });
     })
-      .then((files) =>
-        assertEqualsArrayAnyOrder(files, ["file1.txt", "some_dir", "file2.txt"])
+      .then(
+        (files) =>
+          assertEqualsArrayAnyOrder(
+            files,
+            ["file1.txt", "some_dir", "file2.txt"],
+          ),
+        () => fail(),
       )
-      .catch(() => fail())
       .finally(() => Deno.removeSync(dir, { recursive: true }));
   },
 });
@@ -68,4 +72,20 @@ Deno.test({
       ["file1.txt", "some_dir", "file2.txt"],
     );
   },
+});
+
+Deno.test("[std/node/fs] readdir callback isn't called twice if error is thrown", async () => {
+  // The correct behaviour is not to catch any errors thrown,
+  // but that means there'll be an uncaught error and the test will fail.
+  // So the only way to test this is to spawn a subprocess, and succeed if it has a non-zero exit code.
+  // (assertThrowsAsync won't work because there's no way to catch the error.)
+  const tempDir = await Deno.makeTempDir();
+  const importUrl = new URL("./_fs_readdir.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { readdir } from ${JSON.stringify(importUrl)}`,
+    invocation: `readdir(${JSON.stringify(tempDir)}, `,
+    async cleanup() {
+      await Deno.remove(tempDir);
+    },
+  });
 });

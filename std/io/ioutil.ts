@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import type { BufReader } from "./bufio.ts";
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;

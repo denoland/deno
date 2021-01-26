@@ -77,7 +77,7 @@ function getPathFromURLWin(url: URL): string {
   pathname = pathname.replace(forwardSlashRegEx, "\\");
   pathname = decodeURIComponent(pathname);
   if (hostname !== "") {
-    //TODO add support for punycode encodings
+    // TODO(bartlomieju): add support for punycode encodings
     return `\\\\${hostname}${pathname}`;
   } else {
     // Otherwise, it's a local path that requires a drive letter

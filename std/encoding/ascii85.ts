@@ -1,5 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/** This module is browser compatible. */
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible.
 
 export type Ascii85Standard = "Adobe" | "btoa" | "RFC 1924" | "Z85";
 /**

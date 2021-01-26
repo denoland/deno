@@ -2,12 +2,13 @@ const b = "b";
 console.log(b);
 const mod = function() {
     const c = "c";
+    const c1 = c;
     class C {
     }
     const __default = C;
-    const c1 = c;
+    const __default1 = C;
     return {
-        c,
+        c: c,
         default: C
     };
 }();

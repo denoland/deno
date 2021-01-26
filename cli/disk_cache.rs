@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util;
 use crate::http_cache::url_to_filename;
@@ -67,9 +67,12 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
-      "http" | "https" => out = url_to_filename(url),
+      "http" | "https" | "data" => out = url_to_filename(url),
       "file" => {
-        let path = url.to_file_path().unwrap();
+        let path = match url.to_file_path() {
+          Ok(path) => path,
+          Err(_) => return None,
+        };
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
@@ -276,6 +279,30 @@ mod tests {
         ),
         Some(PathBuf::from(test_case.2))
       )
+    }
+  }
+
+  #[test]
+  fn test_get_cache_filename_invalid_urls() {
+    let cache_location = if cfg!(target_os = "windows") {
+      PathBuf::from(r"C:\deno_dir\")
+    } else {
+      PathBuf::from("/deno_dir/")
+    };
+
+    let cache = DiskCache::new(&cache_location);
+
+    let mut test_cases = vec!["unknown://localhost/test.ts"];
+
+    if cfg!(target_os = "windows") {
+      test_cases.push("file://");
+      test_cases.push("file:///");
+    }
+
+    for test_case in &test_cases {
+      let cache_filename =
+        cache.get_cache_filename(&Url::parse(test_case).unwrap());
+      assert_eq!(cache_filename, None);
     }
   }
 }
