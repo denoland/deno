@@ -81,10 +81,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
   super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
-  rt.register_op(
-    "op_now",
-    metrics_op("op_now".to_string(), minimal_op(op_now)),
-  );
+  rt.register_op("op_now", metrics_op("op_now", minimal_op(op_now)));
   super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 

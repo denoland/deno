@@ -3,7 +3,7 @@ use serde::Serialize;
 
 #[derive(Default, Debug)]
 pub struct RuntimeMetrics {
-  pub ops: HashMap<String, OpMetrics>,
+  pub ops: HashMap<&'static str, OpMetrics>,
 }
 
 impl RuntimeMetrics {
@@ -109,7 +109,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn metrics_op(name: String, op_fn: Box<OpFn>) -> Box<OpFn> {
+pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
   Box::new(move |op_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
     // TODOs:
     // * The 'bytes' metrics seem pretty useless, especially now that the
@@ -124,17 +124,14 @@ pub fn metrics_op(name: String, op_fn: Box<OpFn>) -> Box<OpFn> {
     let op = (op_fn)(op_state.clone(), bufs);
 
     let op_state_ = op_state.clone();
-    let name_ = name.clone();
     let mut s = op_state.borrow_mut();
     let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
 
-    let metrics = if let Some(metrics) = runtime_metrics.ops.get_mut(&name) {
+    let metrics = if let Some(metrics) = runtime_metrics.ops.get_mut(name) {
       metrics
     } else {
-      runtime_metrics
-        .ops
-        .insert(name.clone(), OpMetrics::default());
-      runtime_metrics.ops.get_mut(&name).unwrap()
+      runtime_metrics.ops.insert(name, OpMetrics::default());
+      runtime_metrics.ops.get_mut(name).unwrap()
     };
 
     use deno_core::futures::future::FutureExt;
@@ -150,7 +147,7 @@ pub fn metrics_op(name: String, op_fn: Box<OpFn>) -> Box<OpFn> {
           .inspect(move |buf| {
             let mut s = op_state_.borrow_mut();
             let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
-            let metrics = runtime_metrics.ops.get_mut(&name_).unwrap();
+            let metrics = runtime_metrics.ops.get_mut(name).unwrap();
             metrics.op_completed_async(buf.len());
           })
           .boxed_local();
@@ -162,7 +159,7 @@ pub fn metrics_op(name: String, op_fn: Box<OpFn>) -> Box<OpFn> {
           .inspect(move |buf| {
             let mut s = op_state_.borrow_mut();
             let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
-            let metrics = runtime_metrics.ops.get_mut(&name_).unwrap();
+            let metrics = runtime_metrics.ops.get_mut(name).unwrap();
             metrics.op_completed_async_unref(buf.len());
           })
           .boxed_local();
