@@ -1247,13 +1247,19 @@ export default class Context {
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = resolvePath(oldEntry.path!, textDecoder.decode(oldData));
+        const oldPath = resolvePath(
+          oldEntry.path!,
+          textDecoder.decode(oldData),
+        );
         const newData = new Uint8Array(
           this.#memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolvePath(newEntry.path!, textDecoder.decode(newData));
+        const newPath = resolvePath(
+          newEntry.path!,
+          textDecoder.decode(newData),
+        );
 
         Deno.linkSync(oldPath, newPath);
 
@@ -1286,7 +1292,10 @@ export default class Context {
           pathOffset,
           pathLength,
         );
-        const resolvedPath = resolvePath(entry.path!, textDecoder.decode(pathData));
+        const resolvedPath = resolvePath(
+          entry.path!,
+          textDecoder.decode(pathData),
+        );
 
         if (relative(entry.path, resolvedPath).startsWith("..")) {
           return ERRNO_NOTCAPABLE;
@@ -1431,7 +1440,10 @@ export default class Context {
           pathOffset,
           pathLength,
         );
-        const path = resolvePath(entry.path!, new TextDecoder().decode(pathData));
+        const path = resolvePath(
+          entry.path!,
+          new TextDecoder().decode(pathData),
+        );
 
         const link = Deno.readLinkSync(path);
         const linkData = new TextEncoder().encode(link);
@@ -1498,13 +1510,19 @@ export default class Context {
           oldPathOffset,
           oldPathLength,
         );
-        const oldPath = resolvePath(oldEntry.path!, textDecoder.decode(oldData));
+        const oldPath = resolvePath(
+          oldEntry.path!,
+          textDecoder.decode(oldData),
+        );
         const newData = new Uint8Array(
           this.#memory.buffer,
           newPathOffset,
           newPathLength,
         );
-        const newPath = resolvePath(newEntry.path!, textDecoder.decode(newData));
+        const newPath = resolvePath(
+          newEntry.path!,
+          textDecoder.decode(newData),
+        );
 
         Deno.renameSync(oldPath, newPath);
 
