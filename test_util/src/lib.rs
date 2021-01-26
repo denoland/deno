@@ -1559,6 +1559,70 @@ mod tests {
   }
 
   #[test]
+  fn test_pattern_match() {
+    // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+
+    let wildcard = "[BAR]";
+    assert!(pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+    assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+    let multiline_pattern = "[BAR]
+  foo:
+  [BAR]baz[BAR]";
+
+    fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+      // If there is leading text add a newline so it's on it's own line
+      let head = match leading_text {
+        Some(v) => format!("{}\n", v),
+        None => "".to_string(),
+      };
+      format!(
+        "{}foo:
+  quuz {} corge
+  grault",
+        head, input
+      )
+    }
+
+    // Validate multi-line string builder
+    assert_eq!(
+      "QUUX=qux
+  foo:
+  quuz BAZ corge
+  grault",
+      multi_line_builder("BAZ", Some("QUUX=qux"))
+    );
+
+    // Correct input & leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Correct input & no leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", None),
+      wildcard
+    ));
+
+    // Incorrect input & leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Incorrect input & no leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", None),
+      wildcard
+    ));
+  }
+
+  #[test]
   fn max_mem_parse() {
     const TEXT: &str = include_str!("./testdata/time.out");
     let size = parse_max_mem(TEXT);
