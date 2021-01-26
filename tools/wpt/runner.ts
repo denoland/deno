@@ -1,4 +1,4 @@
-import { readLines } from "../util.js";
+import { delay, readLines } from "../util.js";
 import { assert, ManifestTestOptions, release, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
@@ -11,7 +11,23 @@ export async function runWithTestUtil<T>(
     stderr: verbose ? "inherit" : "piped",
   });
 
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  const start = performance.now();
+  while (true) {
+    await delay(1000);
+    try {
+      const req = await fetch("http://localhost:8000/");
+      await req.body?.cancel();
+      if (req.status == 200) {
+        break;
+      }
+    } catch (err) {
+      // do nothing if this fails
+    }
+    const passedTime = performance.now() - start;
+    if (passedTime > 15000) {
+      throw new Error("Timed out while trying to start wpt test util.");
+    }
+  }
 
   if (verbose) console.log(`Started wpt test util.`);
 

@@ -7,6 +7,7 @@ import {
 export { dirname, join };
 export { existsSync } from "https://deno.land/std@0.84.0/fs/mod.ts";
 export { readLines } from "https://deno.land/std@0.84.0/io/mod.ts";
+export { delay } from "https://deno.land/std@0.84.0/async/delay.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
