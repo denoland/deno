@@ -171,9 +171,7 @@ impl Inner {
     let lint = async {
       let mut diagnostics = None;
       if lint_enabled {
-        let mark = self
-          .performance
-          .mark("prepare_diagnostics_lint");
+        let mark = self.performance.mark("prepare_diagnostics_lint");
         diagnostics = Some(
           diagnostics::generate_lint_diagnostics(
             self.snapshot(),
@@ -189,9 +187,7 @@ impl Inner {
     let ts = async {
       let mut diagnostics = None;
       if enabled {
-        let mark = self
-          .performance
-          .mark("prepare_diagnostics_ts");
+        let mark = self.performance.mark("prepare_diagnostics_ts");
         diagnostics = Some(
           diagnostics::generate_ts_diagnostics(
             self.snapshot(),
@@ -208,9 +204,7 @@ impl Inner {
     let deps = async {
       let mut diagnostics = None;
       if enabled {
-        let mark = self
-          .performance
-          .mark("prepare_diagnostics_deps");
+        let mark = self.performance.mark("prepare_diagnostics_deps");
         diagnostics = Some(
           diagnostics::generate_dependency_diagnostics(
             self.snapshot(),
@@ -617,9 +611,7 @@ impl Inner {
     &mut self,
     params: DidChangeConfigurationParams,
   ) {
-    let mark = self
-      .performance
-      .mark("did_change_configuration");
+    let mark = self.performance.mark("did_change_configuration");
     let config = if self.config.client_capabilities.workspace_configuration {
       self
         .client
