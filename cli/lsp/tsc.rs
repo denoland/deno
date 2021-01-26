@@ -96,7 +96,7 @@ pub struct AssetDocument {
 pub async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
-  state_snapshot: &StateSnapshot,
+  state_snapshot: &mut StateSnapshot,
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
@@ -106,8 +106,6 @@ pub async fn get_asset(
     });
     state_snapshot
       .assets
-      .lock()
-      .unwrap()
       .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
   } else {
@@ -128,8 +126,6 @@ pub async fn get_asset(
     };
     state_snapshot
       .assets
-      .lock()
-      .unwrap()
       .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
   }
@@ -915,7 +911,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap();
     Ok(json!(content.encode_utf16().count()))
   } else {
-    let mut sources = state.state_snapshot.sources.lock().unwrap();
+    let sources = &state.state_snapshot.sources;
     Ok(json!(sources.get_length_utf16(&specifier).unwrap()))
   }
 }
@@ -940,7 +936,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap()
       .clone()
   } else {
-    let mut sources = state.state_snapshot.sources.lock().unwrap();
+    let sources = &state.state_snapshot.sources;
     sources.get_text(&specifier).unwrap()
   };
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -950,11 +946,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
-  let mut sources = if let Ok(sources) = state.state_snapshot.sources.lock() {
-    sources
-  } else {
-    return Err(custom_error("Deadlock", "deadlock locking sources"));
-  };
+  let sources = &state.state_snapshot.sources;
 
   if state.state_snapshot.documents.contains(&referrer) {
     if let Some(dependencies) =
@@ -1048,7 +1040,7 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   if let Some(version) = state.state_snapshot.documents.version(&specifier) {
     return Ok(json!(version.to_string()));
   } else {
-    let mut sources = state.state_snapshot.sources.lock().unwrap();
+    let sources = &state.state_snapshot.sources;
     if let Some(version) = sources.get_script_version(&specifier) {
       return Ok(json!(version));
     }
