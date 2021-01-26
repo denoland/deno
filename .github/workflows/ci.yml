@@ -237,13 +237,13 @@ jobs:
       - name: Run web platform tests (release)
         if: matrix.kind == 'test_release'
         run: |
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup --auto-config
+          sudo deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup --auto-config
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release
 
       - name: Run web platform tests (debug)
         if: matrix.kind == 'test_debug'
         run: |
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup --auto-config
+          sudo deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup --auto-config
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet
 
       - name: Run Benchmarks
