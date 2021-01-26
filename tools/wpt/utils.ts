@@ -92,6 +92,16 @@ export function generateTestExpectations(filter: string[]) {
   return walk(manifest.items.testharness, "");
 }
 
+export function getExpectFailForCase(
+  expectation: boolean | string[],
+  caseName: string
+): boolean {
+  if (typeof expectation == "boolean") {
+    return !true;
+  }
+  return expectation.includes(caseName);
+}
+
 /// UTILS
 
 class AssertionError extends Error {

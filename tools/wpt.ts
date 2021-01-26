@@ -23,6 +23,8 @@ import {
   checkPy3Available,
   rest,
   runPy,
+  ManifestTestOptions,
+  getExpectFailForCase,
 } from "./wpt/utils.ts";
 import {
   red,
@@ -39,8 +41,8 @@ switch (command) {
     await checkPy3Available();
     await updateManifest();
     await setup();
-
     break;
+
   case "run":
     await run();
     break;
@@ -125,8 +127,10 @@ async function setup() {
 }
 
 interface TestToRun {
+  sourcePath: string;
   path: string;
-  variations: ManifestTestVariation[];
+  url: URL;
+  options: ManifestTestOptions;
   expectation: boolean | string[];
 }
 
@@ -139,20 +143,14 @@ async function run() {
     const results = [];
 
     for (const test of tests) {
-      for (const variation of test.variations) {
-        const [path, options] = variation;
-        const url = new URL(path, "http://web-platform.test:8000");
-        console.log(`${blue("-".repeat(40))}\n${bold(path)}\n`);
-        const result = await runSingleTest(
-          path,
-          url,
-          options,
-          test.expectation,
-          json ? () => {} : reportTestCase
-        );
-        results.push(result);
-        reportVariation(result);
-      }
+      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+      const result = await runSingleTest(
+        test.url,
+        test.options,
+        json ? () => {} : createReportTestCase(test.expectation)
+      );
+      results.push({ test, result });
+      reportVariation(result, test.expectation);
     }
 
     return results;
@@ -165,31 +163,34 @@ async function run() {
   Deno.exit(code);
 }
 
-function reportFinal(results: TestResult[]): number {
+function reportFinal(
+  results: { test: TestToRun; result: TestResult }[]
+): number {
   const finalTotalCount = results.length;
   let finalFailedCount = 0;
   const finalFailed: [string, TestCaseResult][] = [];
   let finalExpectedFailedAndFailedCount = 0;
   const finalExpectedFailedButPassedTests: [string, TestCaseResult][] = [];
   const finalExpectedFailedButPassedFiles: string[] = [];
-  for (const result of results) {
+  for (const { test, result } of results) {
     const { failed, failedCount, expectedFailedButPassed } = analzyeTestResult(
-      result
+      result,
+      test.expectation
     );
     if (result.status !== 0) {
-      if (result.expectFail) {
+      if (test.expectation === false) {
         finalExpectedFailedAndFailedCount += 1;
       } else {
         finalFailedCount += 1;
-        finalExpectedFailedButPassedFiles.push(result.path);
+        finalExpectedFailedButPassedFiles.push(test.path);
       }
     } else if (failedCount > 0) {
       finalFailedCount += 1;
-      for (const test of failed) {
-        finalFailed.push([result.path, test]);
+      for (const case_ of failed) {
+        finalFailed.push([test.path, case_]);
       }
-      for (const test of expectedFailedButPassed) {
-        finalExpectedFailedButPassedTests.push([result.path, test]);
+      for (const case_ of expectedFailedButPassed) {
+        finalExpectedFailedButPassedTests.push([test.path, case_]);
       }
     }
   }
@@ -230,7 +231,8 @@ function reportFinal(results: TestResult[]): number {
 }
 
 function analzyeTestResult(
-  result: TestResult
+  result: TestResult,
+  expectation: boolean | string[]
 ): {
   failed: TestCaseResult[];
   failedCount: number;
@@ -240,14 +242,16 @@ function analzyeTestResult(
   expectedFailedButPassedCount: number;
   expectedFailedAndFailedCount: number;
 } {
-  const failed = result.cases.filter((t) => !t.expectFail && !t.passed);
+  const failed = result.cases.filter(
+    (t) => !getExpectFailForCase(expectation, t.name) && !t.passed
+  );
   const expectedFailedButPassed = result.cases.filter(
-    (t) => t.expectFail && t.passed
+    (t) => getExpectFailForCase(expectation, t.name) && t.passed
   );
   const expectedFailedButPassedCount = expectedFailedButPassed.length;
   const failedCount = failed.length + expectedFailedButPassedCount;
   const expectedFailedAndFailedCount = result.cases.filter(
-    (t) => t.expectFail && !t.passed
+    (t) => getExpectFailForCase(expectation, t.name) && !t.passed
   ).length;
   const totalCount = result.cases.length;
   const passedCount = totalCount - failedCount - expectedFailedAndFailedCount;
@@ -263,14 +267,15 @@ function analzyeTestResult(
   };
 }
 
-function reportVariation(result: TestResult) {
+function reportVariation(result: TestResult, expectation: boolean | string[]) {
   if (result.status !== 0) {
     console.log(`test stderr:`);
     Deno.writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
+    const expectFail = expectation === false;
     console.log(
       `\nfile result: ${
-        result.expectFail ? yellow("failed (expected)") : red("failed")
+        expectFail ? yellow("failed (expected)") : red("failed")
       }. runner failed during test\n`
     );
     return;
@@ -284,7 +289,7 @@ function reportVariation(result: TestResult) {
     expectedFailedButPassed,
     expectedFailedButPassedCount,
     expectedFailedAndFailedCount,
-  } = analzyeTestResult(result);
+  } = analzyeTestResult(result, expectation);
 
   if (failed.length > 0) {
     console.log(`\nfailures:`);
@@ -312,44 +317,47 @@ function reportVariation(result: TestResult) {
   );
 }
 
-function reportTestCase({ name, status, expectFail }: TestCaseResult) {
-  let simpleMessage = `test ${name} ... `;
-  switch (status) {
-    case 0:
-      if (expectFail) {
-        simpleMessage += red("ok (expected fail)");
-      } else {
-        simpleMessage += green("ok");
-        if (quiet) {
-          // don't print `ok` tests if --quiet is enabled
-          return;
+function createReportTestCase(expectation: boolean | string[]) {
+  return function reportTestCase({ name, status }: TestCaseResult) {
+    const expectFail = getExpectFailForCase(expectation, name);
+    let simpleMessage = `test ${name} ... `;
+    switch (status) {
+      case 0:
+        if (expectFail) {
+          simpleMessage += red("ok (expected fail)");
+        } else {
+          simpleMessage += green("ok");
+          if (quiet) {
+            // don't print `ok` tests if --quiet is enabled
+            return;
+          }
         }
-      }
-      break;
-    case 1:
-      if (expectFail) {
-        simpleMessage += yellow("failed (expected)");
-      } else {
-        simpleMessage += red("failed");
-      }
-      break;
-    case 2:
-      if (expectFail) {
-        simpleMessage += yellow("failed (expected)");
-      } else {
-        simpleMessage += red("failed (timeout)");
-      }
-      break;
-    case 3:
-      if (expectFail) {
-        simpleMessage += yellow("failed (expected)");
-      } else {
-        simpleMessage += red("failed (incomplete)");
-      }
-      break;
-  }
+        break;
+      case 1:
+        if (expectFail) {
+          simpleMessage += yellow("failed (expected)");
+        } else {
+          simpleMessage += red("failed");
+        }
+        break;
+      case 2:
+        if (expectFail) {
+          simpleMessage += yellow("failed (expected)");
+        } else {
+          simpleMessage += red("failed (timeout)");
+        }
+        break;
+      case 3:
+        if (expectFail) {
+          simpleMessage += yellow("failed (expected)");
+        } else {
+          simpleMessage += red("failed (incomplete)");
+        }
+        break;
+    }
 
-  console.log(simpleMessage);
+    console.log(simpleMessage);
+  };
 }
 
 function discoverTestsToRun(filter?: string[]): TestToRun[] {
@@ -364,7 +372,7 @@ function discoverTestsToRun(filter?: string[]): TestToRun[] {
     prefix: string
   ) {
     for (const key in parentFolder) {
-      const path = `${prefix}/${key}`;
+      const sourcePath = `${prefix}/${key}`;
       const entry = parentFolder[key];
       const expectation =
         Array.isArray(parentExpectation) ||
@@ -381,29 +389,27 @@ function discoverTestsToRun(filter?: string[]): TestToRun[] {
         );
         if (
           filter &&
-          !filter.find(
-            (filter) =>
-              path.startsWith(filter) || path.substring(1).startsWith(filter)
-          )
+          !filter.find((filter) => sourcePath.substring(1).startsWith(filter))
         ) {
           continue;
         }
-        const variations = (entry.slice(1) as ManifestTestVariation[]).filter(
-          ([path]) => {
-            if (!path) return false;
-            return path.endsWith(".any.html");
-          }
-        );
 
-        if (variations.length == 0) continue;
-
-        testsToRun.push({
-          path,
-          variations,
-          expectation,
-        });
+        for (const [path, options] of entry.slice(
+          1
+        ) as ManifestTestVariation[]) {
+          if (!path) continue;
+          const url = new URL(path, "http://web-platform.test:8000");
+          if (!url.pathname.endsWith(".any.html")) continue;
+          testsToRun.push({
+            sourcePath,
+            path: url.pathname + url.search,
+            url,
+            options,
+            expectation,
+          });
+        }
       } else {
-        walk(entry, expectation, path);
+        walk(entry, expectation, sourcePath);
       }
     }
   }

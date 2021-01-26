@@ -26,11 +26,9 @@ export async function runWithTestUtil<T>(
 }
 
 export interface TestResult {
-  path: string;
   cases: TestCaseResult[];
   status: number;
   stderr: string;
-  expectFail: boolean;
 }
 
 export interface TestCaseResult {
@@ -39,17 +37,14 @@ export interface TestCaseResult {
   status: number;
   message: string | null;
   stack: string | null;
-  expectFail: boolean;
 }
 
 export async function runSingleTest(
-  path: string,
-  location: URL,
+  url: URL,
   options: ManifestTestOptions,
-  expectation: boolean | string[],
   reporter: (result: TestCaseResult) => void
 ): Promise<TestResult> {
-  const bundle = await generateBundle(location);
+  const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
     prefix: "wpt-bundle-",
     suffix: ".js",
@@ -62,7 +57,7 @@ export async function runSingleTest(
       "run",
       "-A",
       "--location",
-      location.toString(),
+      url.toString(),
       tempFile,
       "[]",
     ],
@@ -80,10 +75,7 @@ export async function runSingleTest(
   for await (const line of lines) {
     if (line.startsWith("{")) {
       const data = JSON.parse(line);
-      const expectFail = Array.isArray(expectation)
-        ? expectation.includes(data.name)
-        : !expectation;
-      const result = { ...data, passed: data.status == 0, expectFail };
+      const result = { ...data, passed: data.status == 0 };
       cases.push(result);
       reporter(result);
     } else {
@@ -93,11 +85,9 @@ export async function runSingleTest(
 
   const { code } = await proc.status();
   return {
-    path,
     status: code,
     cases,
     stderr,
-    expectFail: expectation === false,
   };
 }
 
