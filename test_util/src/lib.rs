@@ -1567,8 +1567,8 @@ mod tests {
     assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
 
     let multiline_pattern = "[BAR]
-  foo:
-  [BAR]baz[BAR]";
+foo:
+[BAR]baz[BAR]";
 
     fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
       // If there is leading text add a newline so it's on it's own line
@@ -1578,8 +1578,8 @@ mod tests {
       };
       format!(
         "{}foo:
-  quuz {} corge
-  grault",
+quuz {} corge
+grault",
         head, input
       )
     }
@@ -1587,9 +1587,9 @@ mod tests {
     // Validate multi-line string builder
     assert_eq!(
       "QUUX=qux
-  foo:
-  quuz BAZ corge
-  grault",
+foo:
+quuz BAZ corge
+grault",
       multi_line_builder("BAZ", Some("QUUX=qux"))
     );
 
