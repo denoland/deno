@@ -21,6 +21,8 @@ import {
   json,
   updateManifest,
   checkPy3Available,
+  rest,
+  runPy,
 } from "./wpt/utils.ts";
 import {
   red,
@@ -29,7 +31,6 @@ import {
   blue,
   bold,
 } from "https://deno.land/std@0.84.0/fmt/colors.ts";
-import { runPy } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
 
@@ -66,6 +67,7 @@ async function setup() {
   // const etcHostsConfigured = records[0] == "127.0.0.1";
   const hostsFile = await Deno.readTextFile("/etc/hosts");
   const etcHostsConfigured = hostsFile.includes("web-platform.test");
+
   if (etcHostsConfigured) {
     console.log("/etc/hosts is already configured.");
   } else {
@@ -129,7 +131,8 @@ interface TestToRun {
 }
 
 async function run() {
-  const tests = discoverTestsToRun();
+  assert(Array.isArray(rest), "filter must be array");
+  const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest);
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
@@ -138,20 +141,17 @@ async function run() {
     for (const test of tests) {
       for (const variation of test.variations) {
         const [path, options] = variation;
-        if (!path) continue;
         const url = new URL(path, "http://web-platform.test:8000");
-        if (url.pathname.endsWith(".any.html")) {
-          console.log(`${blue("-".repeat(40))}\n${bold(path)}\n`);
-          const result = await runSingleTest(
-            path,
-            url,
-            options,
-            test.expectation,
-            json ? () => {} : reportTestCase
-          );
-          results.push(result);
-          reportVariation(result);
-        }
+        console.log(`${blue("-".repeat(40))}\n${bold(path)}\n`);
+        const result = await runSingleTest(
+          path,
+          url,
+          options,
+          test.expectation,
+          json ? () => {} : reportTestCase
+        );
+        results.push(result);
+        reportVariation(result);
       }
     }
 
@@ -352,7 +352,7 @@ function reportTestCase({ name, status, expectFail }: TestCaseResult) {
   console.log(simpleMessage);
 }
 
-function discoverTestsToRun(): TestToRun[] {
+function discoverTestsToRun(filter?: string[]): TestToRun[] {
   const manifestFolder = getManifest().items.testharness;
   const expectation = getExpectation();
 
@@ -379,9 +379,27 @@ function discoverTestsToRun(): TestToRun[] {
           Array.isArray(expectation) || typeof expectation == "boolean",
           "test entry must not have a folder expectation"
         );
+        if (
+          filter &&
+          !filter.find(
+            (filter) =>
+              path.startsWith(filter) || path.substring(1).startsWith(filter)
+          )
+        ) {
+          continue;
+        }
+        const variations = (entry.slice(1) as ManifestTestVariation[]).filter(
+          ([path]) => {
+            if (!path) return false;
+            return path.endsWith(".any.html");
+          }
+        );
+
+        if (variations.length == 0) continue;
+
         testsToRun.push({
           path,
-          variations: entry.slice(1) as ManifestTestVariation[],
+          variations,
           expectation,
         });
       } else {

@@ -2,7 +2,8 @@
 
 import { parse } from "https://deno.land/std@0.84.0/flags/mod.ts";
 
-export const { json, quiet, release } = parse(Deno.args, {
+export const { json, quiet, release, ["--"]: rest } = parse(Deno.args, {
+  "--": true,
   boolean: ["quiet", "release"],
   string: ["json"],
 });

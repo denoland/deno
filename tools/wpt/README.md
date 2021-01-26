@@ -5,7 +5,7 @@ Deno uses a custom test runner for Web Platform Tests.
 To run all web platform tests, run the following command:
 
 ```shell
-deno run --unstable --allow-write --allow-read --allow-net --allow-run ./tools/wpt.js run --quiet
+deno run --unstable --allow-write --allow-read --allow-net --allow-run ./tools/wpt.ts run
 ```
 
 You can specify the following flags to customize behaviour:
@@ -19,6 +19,12 @@ You can specify the following flags to customize behaviour:
 
 --json=<file>
     Output the test results to the JSON file specified.
+```
+
+You can also filter which test files to run by specifying filters:
+
+```shell
+./tools/wpt.ts run -- streams/piping/general hr-time
 ```
 
 ## FAQ
