@@ -1,5 +1,5 @@
 [WILDCARD]
-function returnsHi() {
+function returnsHi1() {
     return "Hi";
 }
 function returnsFoo() {
@@ -11,21 +11,17 @@ function printHello() {
 function printHello2() {
     printHello();
 }
-function returnsFoo2() {
+function returnsFoo21() {
     return returnsFoo();
 }
-function printHello3() {
+function printHello31() {
     printHello2();
 }
-function throwsError() {
+function throwsError1() {
     throw Error("exception from mod1");
 }
-const returnsHi1 = returnsHi;
-const returnsFoo21 = returnsFoo2;
-const printHello31 = printHello3;
-const throwsError1 = throwsError;
-export { returnsHi as returnsHi };
-export { returnsFoo2 as returnsFoo2 };
-export { printHello3 as printHello3 };
-export { throwsError as throwsError };
+export { returnsHi1 as returnsHi };
+export { returnsFoo21 as returnsFoo2 };
+export { printHello31 as printHello3 };
+export { throwsError1 as throwsError };
 
