@@ -3478,6 +3478,12 @@ itest!(deno_test_coverage {
   exit_code: 0,
 });
 
+itest!(deno_test_complex_coverage {
+  args: "test --coverage --unstable test_complex_coverage.ts",
+  output: "test_complex_coverage.out",
+  exit_code: 0,
+});
+
 itest!(deno_test_comment_coverage {
   args: "test --coverage --unstable test_comment_coverage.ts",
   output: "test_comment_coverage.out",

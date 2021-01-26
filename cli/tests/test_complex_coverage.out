@@ -1,0 +1,18 @@
+Check [WILDCARD]/tests/$deno$test.ts
+running 1 tests
+test complex ... ok ([WILDCARD])
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+cover file:///home/caspervonb/deno/cli/tests/subdir/complex.ts ... 50.000% (10/20)
+  25 | export function unused(
+  26 |   foo: string,
+  27 |   bar: string,
+  28 |   baz: string,
+-----|-----
+  30 |   return complex(
+  31 |     foo,
+  32 |     bar,
+  33 |     baz,
+  34 |   );
+  35 | }
