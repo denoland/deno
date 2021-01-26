@@ -495,6 +495,7 @@ fn filter_coverages(
 pub async fn report_coverages(
   flags: Flags,
   dir: &PathBuf,
+  lcov: bool,
   _summary: bool,
   include: Vec<String>,
   exclude: Vec<String>,
@@ -506,6 +507,14 @@ pub async fn report_coverages(
 
   // let mut coverage_reporter = PrettyCoverageReporter::new(summary);
   let mut coverage_reporter = LcovCoverageReporter::new();
+
+  let reporter_kind = if lcov {
+    CoverageReporterKind::Lcov
+  } else {
+    CoverageReporterKind::Pretty
+  };
+
+  let mut reporter = create_reporter(reporter_kind);
 
   for script_coverage in coverages {
     let module_specifier =
@@ -523,10 +532,10 @@ pub async fn report_coverages(
     let module_source = program_state.load(module_specifier.clone(), None)?;
     let script_source = &module_source.code;
 
-    coverage_reporter.visit_coverage(&script_coverage, &script_source);
+    reporter.visit_coverage(&script_coverage, &script_source);
   }
 
-  coverage_reporter.done();
+  reporter.done();
 
   Ok(())
 }

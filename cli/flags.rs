@@ -37,6 +37,7 @@ pub enum DenoSubcommand {
   Cover {
     dir: String,
     summary: bool,
+    lcov: bool,
     include: Vec<String>,
     exclude: Vec<String>,
   },
@@ -572,6 +573,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dir = matches.value_of("dir").map(String::from).unwrap();
+  let lcov = matches.is_present("lcov");
   let summary = matches.is_present("summary");
   let include = match matches.values_of("include") {
     Some(f) => f.map(String::from).collect(),
@@ -585,6 +587,7 @@ fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.subcommand = DenoSubcommand::Cover {
     dir,
+    lcov,
     summary,
     include,
     exclude,
@@ -1097,6 +1100,12 @@ Future runs of this module will trigger no downloads or compilation unless
 
 fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("cover")
+    .arg(
+      Arg::with_name("lcov")
+        .long("lcov")
+        .requires("unstable")
+        .help("Print a lcov compatible tracefile."),
+    )
     .arg(
       Arg::with_name("summary")
         .long("summary")

@@ -982,6 +982,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 async fn cover_command(
   flags: Flags,
   dir: String,
+  lcov: bool,
   summary: bool,
   include: Vec<String>,
   exclude: Vec<String>,
@@ -990,6 +991,7 @@ async fn cover_command(
   tools::coverage::report_coverages(
     flags.clone(),
     &dir,
+    lcov,
     summary,
     include,
     exclude,
@@ -1182,10 +1184,13 @@ fn get_subcommand(
       .boxed_local(),
     DenoSubcommand::Cover {
       dir,
+      lcov,
       summary,
       include,
       exclude,
-    } => cover_command(flags, dir, summary, include, exclude).boxed_local(),
+    } => {
+      cover_command(flags, dir, lcov, summary, include, exclude).boxed_local()
+    }
     DenoSubcommand::Fmt {
       check,
       files,
