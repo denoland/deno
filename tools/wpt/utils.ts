@@ -27,6 +27,22 @@ export type ManifestTestVariation = [
 ];
 export interface ManifestTestOptions {}
 
+export async function updateManifest() {
+  const proc = runPy(
+    [
+      "wpt",
+      "manifest",
+      "--tests-root",
+      ".",
+      "-p",
+      "../../tools/wpt/manifest.json",
+    ],
+    {}
+  );
+  const status = await proc.status();
+  assert(status.success, "updating wpt manifest should succeed");
+}
+
 export function getManifest(): Manifest {
   const manifestText = Deno.readTextFileSync("./tools/wpt/manifest.json");
   return JSON.parse(manifestText);
@@ -88,4 +104,29 @@ export function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new AssertionError(message);
   }
+}
+
+export function runPy(
+  args: string[],
+  options: Omit<Omit<Deno.RunOptions, "cmd">, "cwd">
+): Deno.Process {
+  const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
+  return Deno.run({
+    cmd: [cmd, ...args],
+    cwd: "./test_util/wpt/",
+    ...options,
+  });
+}
+
+export async function checkPy3Available() {
+  const proc = runPy(["--version"], { stdout: "piped" });
+  const status = await proc.status();
+  assert(status.success, "failed to run python --version");
+  const output = new TextDecoder().decode(await proc.output());
+  assert(
+    output.includes("Python 3."),
+    `The ${
+      Deno.build.os == "windows" ? "python.exe" : "python3"
+    } in your path is not is not Python 3.`
+  );
 }

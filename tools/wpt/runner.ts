@@ -1,14 +1,12 @@
 import { readLines } from "../util.js";
-import { ManifestTestOptions, assert, release } from "./utils.ts";
+import { ManifestTestOptions, assert, release, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
 export async function runWithTestUtil<T>(
   verbose: boolean,
   f: () => Promise<T>
 ): Promise<T> {
-  const proc = Deno.run({
-    cmd: ["python3", "wpt", "serve"],
-    cwd: "./test_util/wpt",
+  const proc = runPy(["wpt", "serve"], {
     stdout: verbose ? "inherit" : "piped",
     stderr: verbose ? "inherit" : "piped",
   });

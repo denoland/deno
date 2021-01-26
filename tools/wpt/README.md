@@ -29,6 +29,4 @@ You can specify the following flags to customize behaviour:
 cd test_util/wpt/
 # Update the repo
 git checkout origin/master
-# Update the test manifest
-./wpt manifest --tests-root . -p ../../tools/wpt/manifest.json
 ```

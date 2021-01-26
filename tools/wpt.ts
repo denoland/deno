@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-run
+#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
@@ -19,6 +19,8 @@ import {
   ManifestTestVariation,
   quiet,
   json,
+  updateManifest,
+  checkPy3Available,
 } from "./wpt/utils.ts";
 import {
   red,
@@ -27,10 +29,17 @@ import {
   blue,
   bold,
 } from "https://deno.land/std@0.84.0/fmt/colors.ts";
+import { runPy } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
 
 switch (command) {
+  case "setup":
+    await checkPy3Available();
+    await updateManifest();
+    await setup();
+
+    break;
   case "run":
     await run();
     break;
@@ -49,6 +58,68 @@ switch (command) {
       Re-generate the ./tools/wpt/expectations.json file from the test manifest.    
     `);
     break;
+}
+
+async function setup() {
+  // TODO(lucacsonato): use this when 1.7.1 is released.
+  // const records = await Deno.resolveDns("web-platform.test", "A");
+  // const etcHostsConfigured = records[0] == "127.0.0.1";
+  const hostsFile = await Deno.readTextFile("/etc/hosts");
+  const etcHostsConfigured = hostsFile.includes("web-platform.test");
+  if (etcHostsConfigured) {
+    console.log("/etc/hosts is already configured.");
+  } else {
+    const autoConfigure = confirm(
+      "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?"
+    );
+    if (autoConfigure) {
+      const proc = runPy(["wpt", "make-hosts-file"], { stdout: "piped" });
+      const status = await proc.status();
+      assert(status.success, "wpt make-hosts-file should not fail");
+      const entries = new TextDecoder().decode(await proc.output());
+      const hostsPath =
+        Deno.build.os == "windows"
+          ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
+          : "/etc/hosts";
+      const file = await Deno.open(hostsPath, { append: true }).catch((err) => {
+        if (err instanceof Deno.errors.PermissionDenied) {
+          throw new Error(
+            `Failed to open ${hostsPath} (permission error). Please run this command again with sudo, or configure the entries manually.`
+          );
+        } else {
+          throw err;
+        }
+      });
+      await Deno.writeAll(
+        file,
+        new TextEncoder().encode(
+          "\n\n# Configured for Web Platform Tests (Deno)\n" + entries
+        )
+      );
+      console.log("Updated /etc/hosts");
+    } else {
+      console.log("Please configure the /etc/hosts entries manually.");
+      if (Deno.build.os == "windows") {
+        console.log("To do this run the following command in PowerShell:");
+        console.log("");
+        console.log("    cd test_util/wpt/");
+        console.log(
+          "    python.exe wpt make-hosts-file | Out-File $env:SystemRoot\\System32\\drivers\\etc\\hosts -Encoding ascii -Append"
+        );
+        console.log("");
+      } else {
+        console.log("To do this run the following command in your shell:");
+        console.log("");
+        console.log("    cd test_util/wpt/");
+        console.log(
+          "    python3 ./wpt make-hosts-file | sudo tee -a /etc/hosts"
+        );
+        console.log("");
+      }
+    }
+  }
+
+  console.log(green("Setup complete!"));
 }
 
 interface TestToRun {
