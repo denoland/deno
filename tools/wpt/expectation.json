@@ -618,5 +618,20 @@
         ]
       }
     }
+  },
+  "fetch": {
+    "api": {
+      "request": {
+        "request-init-002.any.js": [
+          "Initialize Request's body with \"[object Object]\", application/octet-binary",
+          "Initialize Request's body with \"[object FormData]\", multipart/form-data",
+          "Initialize Request's body with \"This is a USVString\", text/plain;charset=UTF-8",
+          "Initialize Request's body with \"hi!\", text/plain;charset=UTF-8",
+          "Initialize Request's body with \"name=value\", application/x-www-form-urlencoded;charset=UTF-8"
+        ],
+        "request-init-stream.any.js": false,
+        "request-structure.any.js": false
+      }
+    }
   }
 }
