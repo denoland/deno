@@ -12,6 +12,7 @@ import {
 import {
   assert,
   autoConfig,
+  cargoBuild,
   checkPy3Available,
   Expectation,
   getExpectation,
@@ -45,10 +46,12 @@ switch (command) {
     break;
 
   case "run":
+    await cargoBuild();
     await run();
     break;
 
   case "update":
+    await cargoBuild();
     await update();
     break;
 

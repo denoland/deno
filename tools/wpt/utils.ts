@@ -156,3 +156,13 @@ export async function checkPy3Available() {
     } in your path is not is not Python 3.`,
   );
 }
+
+export async function cargoBuild() {
+  const proc = Deno.run({
+    cmd: ["cargo", "build", ...(release ? ["--release"] : [])],
+    cwd: ROOT_PATH,
+  });
+  const status = await proc.status();
+  proc.close();
+  assert(status.success, "cargo build failed");
+}
