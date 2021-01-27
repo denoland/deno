@@ -10,7 +10,7 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
-use crate::fs_util::{collect_files, get_extension, is_supported_ext_md};
+use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -37,7 +37,7 @@ pub async fn format(
 ) -> Result<(), AnyError> {
   let target_file_resolver = || {
     // collect the files that are to be formatted
-    collect_files(&args, &ignore, is_supported_ext_md)
+    collect_files(&args, &ignore, is_supported_ext_fmt)
   };
   let operation = |paths: Vec<PathBuf>| {
     let config = get_typescript_config();
@@ -101,6 +101,14 @@ fn format_markdown(
   )
 }
 
+/// Formats JSON and JSONC using the rules provided by .deno()
+/// of configuration builder of https://github.com/dprint/dprint-plugin-json.
+/// See https://git.io/Jt4ht for configuration.
+fn format_json(file_text: &str) -> Result<String, String> {
+  let json_config = get_json_config();
+  dprint_plugin_json::format_text(&file_text, &json_config)
+}
+
 async fn check_source_files(
   config: dprint_plugin_typescript::configuration::Configuration,
   paths: Vec<PathBuf>,
@@ -120,6 +128,8 @@ async fn check_source_files(
       let ext = get_extension(&file_path).unwrap_or_else(String::new);
       let r = if ext == "md" {
         format_markdown(&file_text, config.clone())
+      } else if matches!(ext.as_str(), "json" | "jsonc") {
+        format_json(&file_text)
       } else {
         dprint_plugin_typescript::format_text(&file_path, &file_text, &config)
       };
@@ -179,6 +189,8 @@ async fn format_source_files(
       let ext = get_extension(&file_path).unwrap_or_else(String::new);
       let r = if ext == "md" {
         format_markdown(&file_contents.text, config.clone())
+      } else if matches!(ext.as_str(), "json" | "jsonc") {
+        format_json(&file_contents.text)
       } else {
         dprint_plugin_typescript::format_text(
           &file_path,
@@ -240,6 +252,8 @@ pub fn format_stdin(check: bool, ext: String) -> Result<(), AnyError> {
   let config = get_typescript_config();
   let r = if ext.as_str() == "md" {
     format_markdown(&source, config)
+  } else if matches!(ext.as_str(), "json" | "jsonc") {
+    format_json(&source)
   } else {
     // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
     dprint_plugin_typescript::format_text(
@@ -288,6 +302,12 @@ fn get_markdown_config() -> dprint_plugin_markdown::configuration::Configuration
     .ignore_directive("deno-fmt-ignore")
     .ignore_start_directive("deno-fmt-ignore-start")
     .ignore_end_directive("deno-fmt-ignore-end")
+    .build()
+}
+
+fn get_json_config() -> dprint_plugin_json::configuration::Configuration {
+  dprint_plugin_json::configuration::ConfigurationBuilder::new()
+    .deno()
     .build()
 }
 
