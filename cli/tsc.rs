@@ -287,10 +287,10 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     state.maybe_tsbuildinfo.clone()
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
-  } else if &v.specifier == "deno:///none.d.ts" {
+  } else if &v.specifier == "deno:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
-    media_type = MediaType::TypeScript;
-    Some("declare var a: any;\nexport = a;\n".to_string())
+    media_type = MediaType::Dts;
+    Some("declare const __: any;\nexport = __;\n".to_string())
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
     let maybe_source = get_asset(&name).map(|s| s.to_string());
@@ -383,7 +383,10 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         // the source file in the graph, so we will return a fake module to
         // make tsc happy.
         Err(_) => {
-          resolved.push(("deno:///none.d.ts".to_string(), ".d.ts".to_string()));
+          resolved.push((
+            "deno:///missing_dependency.d.ts".to_string(),
+            ".d.ts".to_string(),
+          ));
         }
       }
     }
@@ -816,7 +819,10 @@ mod tests {
       &mut state,
       json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./bad.ts" ]}),
     ).expect("should have not errored");
-    assert_eq!(actual, json!([["deno:///none.d.ts", ".d.ts"]]));
+    assert_eq!(
+      actual,
+      json!([["deno:///missing_dependency.d.ts", ".d.ts"]])
+    );
   }
 
   #[tokio::test]
