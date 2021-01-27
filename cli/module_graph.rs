@@ -1471,7 +1471,7 @@ impl Graph {
           true
         }
       } else {
-        false
+        true
       }
     })
   }

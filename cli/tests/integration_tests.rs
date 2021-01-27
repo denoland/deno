@@ -6,12 +6,9 @@ use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::io::{BufRead, Write};
-use std::path::Path;
-use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
-use walkdir::WalkDir;
 
 #[test]
 fn std_tests() {
@@ -893,6 +890,38 @@ mod integration {
     assert!(stderr_output.contains("TS2345"));
     assert!(!output.status.success());
     assert!(stdout_output.is_empty());
+  }
+
+  #[test]
+  fn ts_no_recheck_on_redirect() {
+    let deno_dir = util::new_deno_dir();
+    let e = util::deno_exe_path();
+
+    let redirect_ts =
+      util::root_path().join("cli/tests/017_import_redirect.ts");
+    assert!(redirect_ts.is_file());
+    let mut cmd = Command::new(e.clone());
+    cmd.env("DENO_DIR", deno_dir.path());
+    let mut initial = cmd
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg(redirect_ts.clone())
+      .spawn()
+      .expect("failed to span script");
+    let status_initial =
+      initial.wait().expect("failed to wait for child process");
+    assert!(status_initial.success());
+
+    let mut cmd = Command::new(e);
+    cmd.env("DENO_DIR", deno_dir.path());
+    let output = cmd
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg(redirect_ts)
+      .output()
+      .expect("failed to spawn script");
+
+    assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
   }
 
   #[test]
@@ -5216,164 +5245,6 @@ console.log("finish");
         Value::Object(map)
       }
       JsonValue::String(str) => Value::String(str),
-    }
-  }
-
-  #[test]
-  fn web_platform_tests() {
-    use deno_core::serde::Deserialize;
-
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum WptConfig {
-      Simple(String),
-      #[serde(rename_all = "camelCase")]
-      Options {
-        name: String,
-        expect_fail: Vec<String>,
-      },
-    }
-
-    let text =
-      std::fs::read_to_string(util::tests_path().join("wpt.jsonc")).unwrap();
-    let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
-    let config: std::collections::HashMap<String, Vec<WptConfig>> =
-      deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
-
-    for (suite_name, includes) in config.into_iter() {
-      let suite_path = util::wpt_path().join(suite_name);
-      let dir = WalkDir::new(&suite_path)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file())
-        .filter(|f| {
-          let filename = f.file_name().to_str().unwrap();
-          filename.ends_with(".any.js")
-            || filename.ends_with(".window.js")
-            || filename.ends_with(".worker.js")
-        })
-        .filter_map(|f| {
-          let path = f
-            .path()
-            .strip_prefix(&suite_path)
-            .unwrap()
-            .to_str()
-            .unwrap();
-          for cfg in &includes {
-            match cfg {
-              WptConfig::Simple(name) if path.starts_with(name) => {
-                return Some((f.path().to_owned(), vec![]))
-              }
-              WptConfig::Options { name, expect_fail }
-                if path.starts_with(name) =>
-              {
-                return Some((f.path().to_owned(), expect_fail.to_vec()))
-              }
-              _ => {}
-            }
-          }
-          None
-        });
-
-      let testharness_path = util::wpt_path().join("resources/testharness.js");
-      let testharness_text = std::fs::read_to_string(&testharness_path)
-        .unwrap()
-        .replace("output:true", "output:false");
-      let testharnessreporter_path =
-        util::tests_path().join("wpt_testharnessconsolereporter.js");
-      let testharnessreporter_text =
-        std::fs::read_to_string(&testharnessreporter_path).unwrap();
-
-      for (test_file_path, expect_fail) in dir {
-        let test_file_text = std::fs::read_to_string(&test_file_path).unwrap();
-        let imports: Vec<(PathBuf, String)> = test_file_text
-          .split('\n')
-          .into_iter()
-          .filter_map(|t| {
-            // Hack: we don't implement `importScripts()`, and instead capture the
-            // parameter in source code; see `concat_bundle()` for more details.
-            if let Some(rest_import_scripts) =
-              t.strip_prefix("importScripts(\"")
-            {
-              if let Some(import_path) =
-                rest_import_scripts.strip_suffix("\");")
-              {
-                // The code in `testharness.js` silences the test outputs.
-                if import_path != "/resources/testharness.js" {
-                  return Some(import_path);
-                }
-              }
-            }
-            t.strip_prefix("// META: script=")
-          })
-          .map(|s| {
-            let s = if s == "/resources/WebIDLParser.js" {
-              "/resources/webidl2/lib/webidl2.js"
-            } else {
-              s
-            };
-            if s.starts_with('/') {
-              util::wpt_path().join(format!(".{}", s))
-            } else {
-              test_file_path.parent().unwrap().join(s)
-            }
-          })
-          .map(|path| {
-            let text = std::fs::read_to_string(&path).unwrap();
-            (path, text)
-          })
-          .collect();
-
-        let mut variants: Vec<&str> = test_file_text
-          .split('\n')
-          .into_iter()
-          .filter_map(|t| t.strip_prefix("// META: variant="))
-          .collect();
-
-        if variants.is_empty() {
-          variants.push("");
-        }
-
-        for variant in variants {
-          let mut files = Vec::with_capacity(3 + imports.len());
-          files.push((testharness_path.clone(), testharness_text.clone()));
-          files.push((
-            testharnessreporter_path.clone(),
-            testharnessreporter_text.clone(),
-          ));
-          files.extend(imports.clone());
-          files.push((test_file_path.clone(), test_file_text.clone()));
-
-          let mut file = tempfile::Builder::new()
-            .prefix("wpt-bundle-")
-            .suffix(".js")
-            .rand_bytes(5)
-            .tempfile()
-            .unwrap();
-
-          let bundle = concat_bundle(files, file.path(), "".to_string());
-          file.write_all(bundle.as_bytes()).unwrap();
-
-          let child = util::deno_cmd()
-            .current_dir(test_file_path.parent().unwrap())
-            .arg("run")
-            .arg("--location")
-            .arg(&format!("http://web-platform-tests/?{}", variant))
-            .arg("-A")
-            .arg(file.path())
-            .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
-            .arg("--quiet")
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-
-          let output = child.wait_with_output().unwrap();
-          if !output.status.success() {
-            file.keep().unwrap();
-          }
-          assert!(output.status.success());
-        }
-      }
     }
   }
 
