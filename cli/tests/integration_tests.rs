@@ -979,7 +979,7 @@ fn ts_no_recheck_on_redirect() {
   let output = cmd
     .current_dir(util::root_path())
     .arg("run")
-    .arg(redirect_ts.clone())
+    .arg(redirect_ts)
     .output()
     .expect("failed to spawn script");
 
