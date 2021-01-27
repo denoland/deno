@@ -119,4 +119,4 @@ git rebase origin/master
 git push denoland
 ```
 
-All contributors will need to rerun `./tools/setup.ts` after this.
+All contributors will need to rerun `./tools/wpt.ts setup` after this.
