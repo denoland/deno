@@ -614,8 +614,10 @@ pub enum BundleType {
   /// Return the emitted contents of the program as a single "flattened" ES
   /// module.
   Esm,
-  // TODO(@kitsonk) once available in swc
-  // Iife,
+  /// Return the emitted contents of the program as a single script that
+  /// executes the program using an immediately invoked function execution
+  /// (IIFE).
+  Iife,
   /// Do not bundle the emit, instead returning each of the modules that are
   /// part of the program as individual files.
   None,
@@ -780,7 +782,8 @@ impl Graph {
     let maybe_ignored_options =
       ts_config.merge_tsconfig(options.maybe_config_path)?;
 
-    let s = self.emit_bundle(&root_specifier, &ts_config.into())?;
+    let s =
+      self.emit_bundle(&root_specifier, &ts_config.into(), &BundleType::Esm)?;
     let stats = Stats(vec![
       ("Files".to_string(), self.modules.len() as u32),
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
@@ -951,7 +954,7 @@ impl Graph {
       "target": "esnext",
     }));
     let opts = match options.bundle_type {
-      BundleType::Esm => json!({
+      BundleType::Esm | BundleType::Iife => json!({
         "noEmit": true,
       }),
       BundleType::None => json!({
@@ -992,7 +995,7 @@ impl Graph {
 
       let graph = graph.lock().unwrap();
       match options.bundle_type {
-        BundleType::Esm => {
+        BundleType::Esm | BundleType::Iife => {
           assert!(
             response.emitted_files.is_empty(),
             "No files should have been emitted from tsc."
@@ -1003,7 +1006,11 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &graph.roots[0];
-          let s = graph.emit_bundle(specifier, &config.into())?;
+          let s = graph.emit_bundle(
+            specifier,
+            &config.into(),
+            &options.bundle_type,
+          )?;
           emitted_files.insert("deno:///bundle.js".to_string(), s);
         }
         BundleType::None => {
@@ -1044,14 +1051,18 @@ impl Graph {
       let start = Instant::now();
       let mut emit_count = 0_u32;
       match options.bundle_type {
-        BundleType::Esm => {
+        BundleType::Esm | BundleType::Iife => {
           assert_eq!(
             self.roots.len(),
             1,
             "Only a single root module supported."
           );
           let specifier = &self.roots[0];
-          let s = self.emit_bundle(specifier, &config.into())?;
+          let s = self.emit_bundle(
+            specifier,
+            &config.into(),
+            &options.bundle_type,
+          )?;
           emit_count += 1;
           emitted_files.insert("deno:///bundle.js".to_string(), s);
         }
@@ -1104,6 +1115,7 @@ impl Graph {
     &self,
     specifier: &ModuleSpecifier,
     emit_options: &ast::EmitOptions,
+    bundle_type: &BundleType,
   ) -> Result<String, AnyError> {
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
@@ -1111,12 +1123,20 @@ impl Graph {
     let globals = swc_common::Globals::new();
     let loader = BundleLoader::new(self, emit_options, &globals, cm.clone());
     let hook = Box::new(BundleHook);
+    let module = match bundle_type {
+      BundleType::Esm => swc_bundler::ModuleType::Es,
+      BundleType::Iife => swc_bundler::ModuleType::Iife,
+      _ => unreachable!("invalid bundle type"),
+    };
     let bundler = swc_bundler::Bundler::new(
       &globals,
       cm.clone(),
       loader,
       self,
-      swc_bundler::Config::default(),
+      swc_bundler::Config {
+        module,
+        ..Default::default()
+      },
       hook,
     );
     let mut entries = HashMap::new();
