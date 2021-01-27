@@ -164,6 +164,27 @@
           },
           enumerable: true,
         },
+        [Symbol.for("Deno.customInspect")]: {
+          value: function () {
+            const keys = [
+              "hash",
+              "host",
+              "hostname",
+              "href",
+              "origin",
+              "pathname",
+              "port",
+              "protocol",
+              "search",
+            ];
+            const objectString = keys
+              .map((key) => `${key}: "${this[key] || ""}"`)
+              .join(", ");
+            // TODO(nayeemrmn): It would be good if `Deno.inspect()` were
+            // available here, so we had automatic wrapping, indents etc.
+            return `Location { ancestorOrigins: { length: 0 }, ${objectString} }`;
+          },
+        },
       });
     }
   }
@@ -304,6 +325,27 @@
     [Symbol.toStringTag]: {
       value: "WorkerLocation",
       configurable: true,
+    },
+    [Symbol.for("Deno.customInspect")]: {
+      value: function () {
+        const keys = [
+          "hash",
+          "host",
+          "hostname",
+          "href",
+          "origin",
+          "pathname",
+          "port",
+          "protocol",
+          "search",
+        ];
+        const objectString = keys
+          .map((key) => `${key}: "${this[key] || ""}"`)
+          .join(", ");
+        // TODO(nayeemrmn): It would be good if `Deno.inspect()` were
+        // available here, so we had automatic wrapping and indents etc.
+        return `Location { ${objectString} }`;
+      },
     },
   });
 

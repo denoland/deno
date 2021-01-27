@@ -538,6 +538,8 @@
       const objectString = keys
         .map((key) => `${key}: "${this[key] || ""}"`)
         .join(", ");
+      // TODO(nayeemrmn): It would be good if `Deno.inspect()` were
+      // available here, so we had automatic wrapping and indents etc.
       return `URL { ${objectString} }`;
     }
 
