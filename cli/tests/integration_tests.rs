@@ -956,6 +956,37 @@ fn ts_dependency_recompilation() {
 }
 
 #[test]
+fn ts_no_recheck_on_redirect() {
+  let deno_dir = util::new_deno_dir();
+  let e = util::deno_exe_path();
+
+  let redirect_ts = util::root_path().join("cli/tests/017_import_redirect.ts");
+  assert!(redirect_ts.is_file());
+  let mut cmd = Command::new(e.clone());
+  cmd.env("DENO_DIR", deno_dir.path());
+  let mut initial = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts.clone())
+    .spawn()
+    .expect("failed to span script");
+  let status_initial =
+    initial.wait().expect("failed to wait for child process");
+  assert!(status_initial.success());
+
+  let mut cmd = Command::new(e);
+  cmd.env("DENO_DIR", deno_dir.path());
+  let output = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts.clone())
+    .output()
+    .expect("failed to spawn script");
+
+  assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
+}
+
+#[test]
 fn ts_reload() {
   let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
   assert!(hello_ts.is_file());
