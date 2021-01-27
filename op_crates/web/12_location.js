@@ -166,23 +166,23 @@
         },
         [Symbol.for("Deno.customInspect")]: {
           value: function () {
-            const keys = [
-              "hash",
-              "host",
-              "hostname",
-              "href",
-              "origin",
-              "pathname",
-              "port",
-              "protocol",
-              "search",
-            ];
-            const objectString = keys
-              .map((key) => `${key}: "${this[key] || ""}"`)
-              .join(", ");
-            // TODO(nayeemrmn): It would be good if `Deno.inspect()` were
-            // available here, so we had automatic wrapping, indents etc.
-            return `Location { ancestorOrigins: { length: 0 }, ${objectString} }`;
+            const object = {
+              hash: this.hash,
+              host: this.host,
+              hostname: this.hostname,
+              href: this.href,
+              origin: this.origin,
+              pathname: this.pathname,
+              port: this.port,
+              protocol: this.protocol,
+              search: this.search,
+            };
+            if (typeof globalThis?.Deno?.inspect == "function") {
+              return `Location ${Deno.inspect(object)}`;
+            }
+            return `Location { ${
+              Object.entries(object).map(([k, v]) => `${k}: ${v}`).join(", ")
+            } }`;
           },
         },
       });
@@ -328,23 +328,23 @@
     },
     [Symbol.for("Deno.customInspect")]: {
       value: function () {
-        const keys = [
-          "hash",
-          "host",
-          "hostname",
-          "href",
-          "origin",
-          "pathname",
-          "port",
-          "protocol",
-          "search",
-        ];
-        const objectString = keys
-          .map((key) => `${key}: "${this[key] || ""}"`)
-          .join(", ");
-        // TODO(nayeemrmn): It would be good if `Deno.inspect()` were
-        // available here, so we had automatic wrapping and indents etc.
-        return `Location { ${objectString} }`;
+        const object = {
+          hash: this.hash,
+          host: this.host,
+          hostname: this.hostname,
+          href: this.href,
+          origin: this.origin,
+          pathname: this.pathname,
+          port: this.port,
+          protocol: this.protocol,
+          search: this.search,
+        };
+        if (typeof globalThis?.Deno?.inspect == "function") {
+          return `WorkerLocation ${Deno.inspect(object)}`;
+        }
+        return `WorkerLocation { ${
+          Object.entries(object).map(([k, v]) => `${k}: ${v}`).join(", ")
+        } }`;
       },
     },
   });
