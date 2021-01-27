@@ -9,6 +9,7 @@ mod config;
 mod diagnostics;
 mod documents;
 mod language_server;
+mod performance;
 mod sources;
 mod text;
 mod tsc;
