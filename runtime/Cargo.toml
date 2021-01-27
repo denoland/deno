@@ -39,7 +39,7 @@ atty = "0.2.14"
 dlopen = "0.1.8"
 encoding_rs = "0.8.26"
 env_logger = "0.8.2"
-filetime = "0.2.13"
+filetime = "0.2.14"
 http = "0.2.3"
 hyper = { version = "0.14.2", features = ["server"] }
 indexmap = "1.6.1"
@@ -52,11 +52,11 @@ regex = "1.4.3"
 ring = "0.16.19"
 rustyline = { version = "7.1.0", default-features = false }
 rustyline-derive = "0.4.0"
-serde = { version = "1.0.116", features = ["derive"] }
+serde = { version = "1.0.121", features = ["derive"] }
 shell-escape = "0.1.5"
 sys-info = "0.7.0"
 termcolor = "1.1.2"
-tokio = { version = "1.0.1", features = ["full"] }
+tokio = { version = "1.1.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"

@@ -1,0 +1,2 @@
+error: Cannot resolve module "[WILDCARD]cli/tests/does_not_exist.js" from "[WILDCARD]cli/tests/error_missing_module_named_import.ts".
+    at [WILDCARD]cli/tests/error_missing_module_named_import.ts:1:0
