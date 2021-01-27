@@ -2976,6 +2976,12 @@ itest!(error_025_tab_indent {
   exit_code: 1,
 });
 
+itest!(error_missing_module_named_import {
+  args: "run --reload error_missing_module_named_import.ts",
+  output: "error_missing_module_named_import.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_no_check {
   args: "run --reload --no-check error_no_check.ts",
   output: "error_no_check.ts.out",
