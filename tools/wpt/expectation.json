@@ -606,5 +606,17 @@
       "rejected-arg.any.js": true,
       "status.any.js": true
     }
+  },
+  "WebIDL": {
+    "ecmascript-binding": {
+      "es-exceptions": {
+        "DOMException-constants.any.js": true,
+        "DOMException-constructor-and-prototype.any.js": true,
+        "DOMException-constructor-behavior.any.js": true,
+        "DOMException-custom-bindings.any.js": [
+          "does not inherit from Error: class-side"
+        ]
+      }
+    }
   }
 }
