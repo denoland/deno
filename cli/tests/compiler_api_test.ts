@@ -293,17 +293,13 @@ Deno.test({
   },
 });
 
-// See https://github.com/denoland/deno/issues/9277
 Deno.test({
-  name: "Deno.emit() - invalid specifier does not panic",
+  name: "Deno.emit() - Unknown media type does not panic",
   async fn() {
     await assertThrowsAsync(async () => {
-      // The below specifier is parsed as:
-      // scheme=custom, host=a.ts, pathname=(empty)
-      // and because the pathname is empty, this specifier is invalid.
-      await Deno.emit("custom://a.ts", {
+      await Deno.emit("https://example.com/foo", {
         sources: {
-          "custom://a.ts": `let foo: string = "foo";`,
+          "https://example.com/foo": `let foo: string = "foo";`,
         },
       });
     });
