@@ -17,11 +17,11 @@ use std::sync::Mutex;
 use serde::Deserialize;
 use serde::Serialize;
 
-use deno_core::error::AnyError;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
-use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use deno_core::url;
+use deno_core::ModuleSpecifier;
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
