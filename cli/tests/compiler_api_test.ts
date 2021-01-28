@@ -292,3 +292,20 @@ Deno.test({
     assert(diagnostics[0].messageText.includes("This import is never used"));
   },
 });
+
+// See https://github.com/denoland/deno/issues/9277
+Deno.test({
+  name: "Deno.emit() - invalid specifier does not panic",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      // The below specifier is parsed as:
+      // scheme=custom, host=a.ts, pathname=(empty)
+      // and because the pathname is empty, this specifier is invalid.
+      await Deno.emit("custom://a.ts", {
+        sources: {
+          "custom://a.ts": `let foo: string = "foo";`,
+        },
+      });
+    });
+  },
+});
