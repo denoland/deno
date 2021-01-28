@@ -239,6 +239,10 @@ impl PrettyCoverageReporter {
         };
 
       let output_indices = if let Some(source_map) = maybe_source_map.as_ref() {
+        // The compiled executable source lines have to be mapped to all the original source lines that they
+        // came from; this happens in a couple of emit scenarios, the most common example being function
+        // declarations where the compiled JavaScript code only takes a line but the original
+        // TypeScript source spans 10 lines.
         let mut indices = uncovered_lines
           .iter()
           .map(|i| {
