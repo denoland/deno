@@ -248,17 +248,15 @@ impl PrettyCoverageReporter {
       let hit_lines = line_counts
         .iter()
         .filter(|(_, count)| *count != 0)
-        .map(|(index, _)| *index)
-        .collect::<Vec<usize>>();
+        .map(|(index, _)| *index);
 
       let missed_lines = line_counts
         .iter()
         .filter(|(_, count)| *count == 0)
-        .map(|(index, _)| *index)
-        .collect::<Vec<usize>>();
+        .map(|(index, _)| *index);
 
       let lines_found = line_counts.len();
-      let lines_hit = hit_lines.len();
+      let lines_hit = hit_lines.count();
       let line_ratio = lines_hit as f32 / lines_found as f32;
 
       let line_coverage =
