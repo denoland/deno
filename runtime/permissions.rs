@@ -1,14 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
-use crate::fs_util::resolve_from_cwd;
-use deno_core::error::custom_error;
-use deno_core::error::uri_error;
-use deno_core::error::AnyError;
-use deno_core::url;
-use deno_core::ModuleSpecifier;
-use serde::Deserialize;
-use serde::Serialize;
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt;
@@ -22,6 +13,18 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::Mutex;
+
+use serde::Deserialize;
+use serde::Serialize;
+
+use deno_core::error::AnyError;
+use deno_core::error::custom_error;
+use deno_core::error::uri_error;
+use deno_core::ModuleSpecifier;
+use deno_core::url;
+
+use crate::colors;
+use crate::fs_util::resolve_from_cwd;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
@@ -594,11 +597,9 @@ impl Permissions {
         self.read.granted_list.insert(resolved_path);
         Ok(())
       }
-      Ok(PromptResult::AllowOnce) => {
-        Ok(())
-      }
+      Ok(PromptResult::AllowOnce) => Ok(()),
       Ok(_) => unreachable!(),
-      Err(e) => Err(e)
+      Err(e) => Err(e),
     }
   }
 
@@ -619,11 +620,9 @@ impl Permissions {
         self.read.granted_list.insert(resolved_path);
         Ok(())
       }
-      Ok(PromptResult::AllowOnce) => {
-        Ok(())
-      }
+      Ok(PromptResult::AllowOnce) => Ok(()),
       Ok(_) => unreachable!(),
-      Err(e) => Err(e)
+      Err(e) => Err(e),
     }
   }
 
@@ -638,11 +637,9 @@ impl Permissions {
         self.write.granted_list.insert(resolved_path);
         Ok(())
       }
-      Ok(PromptResult::AllowOnce) => {
-        Ok(())
-      }
+      Ok(PromptResult::AllowOnce) => Ok(()),
       Ok(_) => unreachable!(),
-      Err(e) => Err(e)
+      Err(e) => Err(e),
     }
   }
 
@@ -659,11 +656,9 @@ impl Permissions {
         self.net.granted_list.insert(format_host(host));
         Ok(())
       }
-      Ok(PromptResult::AllowOnce) => {
-        Ok(())
-      }
+      Ok(PromptResult::AllowOnce) => Ok(()),
       Ok(_) => unreachable!(),
-      Err(e) => Err(e)
+      Err(e) => Err(e),
     }
   }
 
@@ -687,11 +682,9 @@ impl Permissions {
         self.net.granted_list.insert(display_host); // TODO
         Ok(())
       }
-      Ok(PromptResult::AllowOnce) => {
-        Ok(())
-      }
+      Ok(PromptResult::AllowOnce) => Ok(()),
       Ok(_) => unreachable!(),
-      Err(e) => Err(e)
+      Err(e) => Err(e),
     }
   }
 
@@ -909,8 +902,9 @@ fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::serde_json;
+
+  use super::*;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -1251,7 +1245,7 @@ mod tests {
       "prompt": false
     }
     "#;
-    let mut perms0 = Permissions {
+    let perms0 = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Granted,
         ..Default::default()
@@ -1277,7 +1271,7 @@ mod tests {
 
   #[test]
   fn test_query() {
-    let mut perms1 = Permissions {
+    let perms1 = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Granted,
         ..Default::default()
@@ -1296,7 +1290,7 @@ mod tests {
       hrtime: PermissionState::Granted,
       prompt: false,
     };
-    let mut perms2 = Permissions {
+    let perms2 = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
         granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),

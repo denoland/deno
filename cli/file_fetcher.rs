@@ -1,14 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
-use crate::http_cache::HttpCache;
-use crate::http_util::create_http_client;
-use crate::http_util::fetch_once;
-use crate::http_util::FetchOnceResult;
-use crate::media_type::MediaType;
-use crate::text_encoding;
-use crate::version::get_user_agent;
-use deno_runtime::permissions::Permissions;
+use std::collections::HashMap;
+use std::fs;
+use std::future::Future;
+use std::io::Read;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -18,14 +17,16 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
-use std::collections::HashMap;
-use std::fs;
-use std::future::Future;
-use std::io::Read;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::Mutex;
+use deno_runtime::permissions::Permissions;
+
+use crate::colors;
+use crate::http_cache::HttpCache;
+use crate::http_util::create_http_client;
+use crate::http_util::fetch_once;
+use crate::http_util::FetchOnceResult;
+use crate::media_type::MediaType;
+use crate::text_encoding;
+use crate::version::get_user_agent;
 
 pub const SUPPORTED_SCHEMES: [&str; 4] = ["data", "file", "http", "https"];
 
@@ -440,7 +441,7 @@ impl FileFetcher {
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
     redirect_limit: i64,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
@@ -484,7 +485,7 @@ impl FileFetcher {
       _ => None,
     };
     let specifier = specifier.clone();
-    let permissions = permissions.clone();
+    let mut permissions = permissions.clone();
     let http_client = self.http_client.clone();
     // A single pass of fetch either yields code or yields a redirect.
     async move {
@@ -499,7 +500,11 @@ impl FileFetcher {
             .set(specifier.as_url(), headers, &[])?;
           let redirect_specifier = ModuleSpecifier::from(redirect_url);
           file_fetcher
-            .fetch_remote(&redirect_specifier, &permissions, redirect_limit - 1)
+            .fetch_remote(
+              &redirect_specifier,
+              &mut permissions,
+              redirect_limit - 1,
+            )
             .await
         }
         FetchOnceResult::Code(bytes, headers) => {
@@ -521,7 +526,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
@@ -583,10 +588,13 @@ impl FileFetcher {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use deno_core::error::get_custom_error_class;
   use std::rc::Rc;
+
   use tempfile::TempDir;
+
+  use deno_core::error::get_custom_error_class;
+
+  use super::*;
 
   fn setup(
     cache_setting: CacheSetting,
@@ -615,7 +623,7 @@ mod tests {
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, &Permissions::allow_all())
+      .fetch(specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
@@ -627,7 +635,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_ok());
     let (_, headers) = file_fetcher.http_cache.get(specifier.as_url()).unwrap();
@@ -910,7 +918,7 @@ mod tests {
     file_fetcher.insert_cached(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -927,7 +935,7 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -958,7 +966,7 @@ mod tests {
     let specifier = ModuleSpecifier::resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -983,7 +991,7 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1005,7 +1013,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1027,7 +1035,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1048,7 +1056,7 @@ mod tests {
     )
     .expect("setup failed");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1082,7 +1090,7 @@ mod tests {
       .get_cache_filename(specifier.as_url());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1101,7 +1109,7 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1138,7 +1146,7 @@ mod tests {
       .get_cache_filename(redirected_specifier.as_url());
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1196,7 +1204,7 @@ mod tests {
       .get_cache_filename(redirected_02_specifier.as_url());
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1268,7 +1276,7 @@ mod tests {
       .get_cache_filename(redirected_specifier.as_url());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1287,7 +1295,7 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&redirected_specifier, &Permissions::allow_all())
+      .fetch(&redirected_specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1314,12 +1322,12 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 2)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_err());
 
@@ -1350,7 +1358,7 @@ mod tests {
       .get_cache_filename(redirected_specifier.as_url());
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1399,7 +1407,7 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1434,7 +1442,7 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1442,12 +1450,12 @@ mod tests {
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/cli/tests/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1466,7 +1474,7 @@ mod tests {
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1475,7 +1483,7 @@ mod tests {
     fs::write(fixture_path, r#"console.log("goodbye deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();

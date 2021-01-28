@@ -1,9 +1,26 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::io::TcpStreamResource;
-use crate::permissions::Permissions;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::net::SocketAddr;
+#[cfg(unix)]
+use std::path::Path;
+use std::rc::Rc;
+
+use serde::Deserialize;
+use serde::Serialize;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
+use tokio::net::UdpSocket;
+use trust_dns_proto::rr::record_data::RData;
+use trust_dns_proto::rr::record_type::RecordType;
+use trust_dns_resolver::config::NameServerConfigGroup;
+use trust_dns_resolver::config::ResolverConfig;
+use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::system_conf;
+use trust_dns_resolver::AsyncResolver;
+
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -21,30 +38,16 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
-use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::net::SocketAddr;
-use std::rc::Rc;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
-use tokio::net::TcpStream;
-use tokio::net::UdpSocket;
-use trust_dns_proto::rr::record_data::RData;
-use trust_dns_proto::rr::record_type::RecordType;
-use trust_dns_resolver::config::NameServerConfigGroup;
-use trust_dns_resolver::config::ResolverConfig;
-use trust_dns_resolver::config::ResolverOpts;
-use trust_dns_resolver::system_conf;
-use trust_dns_resolver::AsyncResolver;
+
+#[cfg(unix)]
+use crate::ops::io::StreamResource;
+use crate::ops::io::TcpStreamResource;
+use crate::permissions::Permissions;
+use crate::resolve_addr::resolve_addr;
+use crate::resolve_addr::resolve_addr_sync;
 
 #[cfg(unix)]
 use super::net_unix;
-#[cfg(unix)]
-use crate::ops::io::StreamResource;
-#[cfg(unix)]
-use std::path::Path;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_accept", op_accept);
@@ -309,8 +312,12 @@ async fn op_connect(
       super::check_unstable2(&state, "Deno.connect");
       {
         let mut state_ = state.borrow_mut();
-        state_.borrow_mut::<Permissions>().check_read(&address_path)?;
-        state_.borrow_mut::<Permissions>().check_write(&address_path)?;
+        state_
+          .borrow_mut::<Permissions>()
+          .check_read(&address_path)?;
+        state_
+          .borrow_mut::<Permissions>()
+          .check_write(&address_path)?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
@@ -473,7 +480,9 @@ fn op_listen(
         if transport == "udp" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        state.borrow_mut::<Permissions>().check_net(&(&args.hostname, Some(args.port)))?;
+        state
+          .borrow_mut::<Permissions>()
+          .check_net(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
@@ -613,8 +622,8 @@ async fn op_dns_resolve(
   };
 
   {
-    let s = state.borrow();
-    let perm = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let perm = s.borrow_mut::<Permissions>();
 
     // Checks permission against the name servers which will be actually queried.
     for ns in config.name_servers() {
@@ -689,14 +698,16 @@ fn rdata_to_return_record(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
+
   use trust_dns_proto::rr::rdata::mx::MX;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
   use trust_dns_proto::rr::record_data::RData;
   use trust_dns_proto::rr::Name;
+
+  use super::*;
 
   #[test]
   fn rdata_to_return_record_a() {

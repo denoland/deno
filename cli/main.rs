@@ -7,6 +7,51 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+use std::env;
+use std::io::Read;
+use std::io::Write;
+use std::iter::once;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use deno_doc as doc;
+use deno_doc::parser::DocFileLoader;
+use log::Level;
+use log::LevelFilter;
+
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::futures::future::FutureExt;
+use deno_core::futures::Future;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::v8_set_flags;
+use deno_core::ModuleSpecifier;
+use deno_runtime::ops::worker_host::CreateWebWorkerCb;
+use deno_runtime::permissions::Permissions;
+use deno_runtime::web_worker::WebWorker;
+use deno_runtime::web_worker::WebWorkerOptions;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::worker::WorkerOptions;
+
+use crate::file_fetcher::File;
+use crate::file_fetcher::FileFetcher;
+use crate::file_watcher::ModuleResolutionResult;
+use crate::flags::DenoSubcommand;
+use crate::flags::Flags;
+use crate::fmt_errors::PrettyJsError;
+use crate::import_map::ImportMap;
+use crate::media_type::MediaType;
+use crate::module_loader::CliModuleLoader;
+use crate::program_state::exit_unstable;
+use crate::program_state::ProgramState;
+use crate::source_maps::apply_source_map;
+use crate::specifier_handler::FetchHandler;
+use crate::tools::installer::infer_name_from_url;
+
 mod ast;
 mod checksum;
 mod colors;
@@ -41,48 +86,6 @@ mod tools;
 mod tsc;
 mod tsc_config;
 mod version;
-
-use crate::file_fetcher::File;
-use crate::file_fetcher::FileFetcher;
-use crate::file_watcher::ModuleResolutionResult;
-use crate::flags::DenoSubcommand;
-use crate::flags::Flags;
-use crate::fmt_errors::PrettyJsError;
-use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
-use crate::module_loader::CliModuleLoader;
-use crate::program_state::exit_unstable;
-use crate::program_state::ProgramState;
-use crate::source_maps::apply_source_map;
-use crate::specifier_handler::FetchHandler;
-use crate::tools::installer::infer_name_from_url;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::futures::future::FutureExt;
-use deno_core::futures::Future;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::v8_set_flags;
-use deno_core::ModuleSpecifier;
-use deno_doc as doc;
-use deno_doc::parser::DocFileLoader;
-use deno_runtime::ops::worker_host::CreateWebWorkerCb;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::web_worker::WebWorker;
-use deno_runtime::web_worker::WebWorkerOptions;
-use deno_runtime::worker::MainWorker;
-use deno_runtime::worker::WorkerOptions;
-use log::Level;
-use log::LevelFilter;
-use std::env;
-use std::io::Read;
-use std::io::Write;
-use std::iter::once;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -720,7 +723,7 @@ impl DocFileLoader for DocLoader {
       .expect("Expected valid specifier");
     async move {
       let source_file = fetcher
-        .fetch(&specifier, &Permissions::allow_all())
+        .fetch(&specifier, &mut Permissions::allow_all())
         .await
         .map_err(|e| {
           doc::DocError::Io(std::io::Error::new(

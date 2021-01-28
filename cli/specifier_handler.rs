@@ -1,12 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::Location;
-use crate::deno_dir::DenoDir;
-use crate::disk_cache::DiskCache;
-use crate::file_fetcher::FileFetcher;
-use crate::media_type::MediaType;
-use crate::program_state::ProgramState;
-use deno_runtime::permissions::Permissions;
+use std::collections::HashMap;
+use std::env;
+use std::fmt;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -15,14 +17,14 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
-use serde::Deserialize;
-use serde::Serialize;
-use std::collections::HashMap;
-use std::env;
-use std::fmt;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::Arc;
+use deno_runtime::permissions::Permissions;
+
+use crate::ast::Location;
+use crate::deno_dir::DenoDir;
+use crate::disk_cache::DiskCache;
+use crate::file_fetcher::FileFetcher;
+use crate::media_type::MediaType;
+use crate::program_state::ProgramState;
 
 pub type DependencyMap = HashMap<String, Dependency>;
 pub type FetchFuture = Pin<
@@ -256,7 +258,7 @@ impl SpecifierHandler for FetchHandler {
     // When the module graph fetches dynamic modules, the set of dynamic
     // permissions need to be applied.  Other static imports have all
     // permissions.
-    let permissions = if is_dynamic {
+    let mut permissions = if is_dynamic {
       self.runtime_permissions.clone()
     } else {
       Permissions::allow_all()
@@ -266,7 +268,7 @@ impl SpecifierHandler for FetchHandler {
 
     async move {
       let source_file = file_fetcher
-        .fetch(&requested_specifier, &permissions)
+        .fetch(&requested_specifier, &mut permissions)
         .await
         .map_err(|err| {
           let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {
@@ -565,10 +567,12 @@ impl SpecifierHandler for MemoryHandler {
 
 #[cfg(test)]
 pub mod tests {
-  use super::*;
+  use tempfile::TempDir;
+
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
-  use tempfile::TempDir;
+
+  use super::*;
 
   macro_rules! map (
     { $($key:expr => $value:expr),+ } => {

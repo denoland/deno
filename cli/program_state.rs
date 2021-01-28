@@ -1,5 +1,21 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
+use std::env;
+use std::fs::read;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use deno_core::error::anyhow;
+use deno_core::error::get_custom_error_class;
+use deno_core::error::AnyError;
+use deno_core::error::Context;
+use deno_core::url::Url;
+use deno_core::ModuleSource;
+use deno_core::ModuleSpecifier;
+use deno_runtime::inspector::InspectorServer;
+use deno_runtime::permissions::Permissions;
+
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
@@ -14,21 +30,6 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
-use deno_runtime::inspector::InspectorServer;
-use deno_runtime::permissions::Permissions;
-
-use deno_core::error::anyhow;
-use deno_core::error::get_custom_error_class;
-use deno_core::error::AnyError;
-use deno_core::error::Context;
-use deno_core::url::Url;
-use deno_core::ModuleSource;
-use deno_core::ModuleSpecifier;
-use std::collections::HashMap;
-use std::env;
-use std::fs::read;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 pub fn exit_unstable(api_name: &str) {
   eprintln!(
@@ -138,7 +139,7 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     lib: TypeLib,
-    runtime_permissions: Permissions,
+    mut runtime_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
