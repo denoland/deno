@@ -238,15 +238,18 @@ impl PrettyCoverageReporter {
           lines
         };
 
-      let output_indices = if let Some(source_map) = maybe_source_map {
+      let output_indices = if let Some(source_map) = maybe_source_map.as_ref() {
         let mut indices = uncovered_lines
           .iter()
           .map(|i| {
+            let line = *i as u32;
+
             source_map
-              .lookup_token(*i as u32, 16)
-              .unwrap()
-              .get_src_line() as usize
+              .tokens()
+              .filter(move |token| token.get_dst_line() == line.clone())
+              .map(|token| token.get_src_line() as usize)
           })
+          .flatten()
           .collect::<Vec<usize>>();
 
         indices.sort_unstable();
