@@ -1006,5 +1006,23 @@
     "urlsearchparams-set.any.js": true,
     "urlsearchparams-sort.any.js": true,
     "urlsearchparams-stringifier.any.js": true
+  },
+  "fetch": {
+    "api": {
+      "request": {
+        "request-structure.any.js": [
+          "Check destination attribute",
+          "Check referrer attribute",
+          "Check referrerPolicy attribute",
+          "Check mode attribute",
+          "Check credentials attribute",
+          "Check cache attribute",
+          "Check redirect attribute",
+          "Check integrity attribute",
+          "Check isReloadNavigation attribute",
+          "Check isHistoryNavigation attribute"
+        ]
+      }
+    }
   }
 }
