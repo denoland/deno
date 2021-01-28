@@ -8,6 +8,7 @@ use crate::flags::Flags;
 use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
+use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -17,6 +18,7 @@ use deno_runtime::inspector::InspectorSession;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Serialize;
+use sourcemap::SourceMap;
 use std::fs;
 use std::path::PathBuf;
 use swc_common::Span;
@@ -136,6 +138,8 @@ pub trait CoverageReporter {
     &mut self,
     script_coverage: &ScriptCoverage,
     script_source: &str,
+    maybe_source_map: Option<Vec<u8>>,
+    maybe_original_source: Option<String>,
   );
 
   fn done(&mut self);
@@ -154,11 +158,20 @@ impl CoverageReporter for LcovCoverageReporter {
     &mut self,
     script_coverage: &ScriptCoverage,
     script_source: &str,
+    maybe_source_map: Option<Vec<u8>>,
+    maybe_original_source: Option<String>,
   ) {
-    let lines = script_source.split('\n').collect::<Vec<_>>();
+    let maybe_source_map = if let Some(source_map) = maybe_source_map {
+      Some(SourceMap::from_slice(&source_map).unwrap())
+    } else {
+      None
+    };
+
+    let source_lines = script_source.split('\n').collect::<Vec<_>>();
 
     let url = Url::parse(&script_coverage.url).unwrap();
     let file_path = url.to_file_path().unwrap();
+
     println!("SF:{}", file_path.to_str().unwrap());
 
     let mut functions_found = 0;
@@ -193,7 +206,7 @@ impl CoverageReporter for LcovCoverageReporter {
     for (index, line) in lines.iter().enumerate() {
       let line_end_offset = line_start_offset + line.len();
 
-      let mut count = 0;
+      let mut count = 1;
       // Count the hits of ranges that include the entire line which will always be at-least one
       // as long as the code has been evaluated.
       for function in &script_coverage.functions {
@@ -227,7 +240,18 @@ impl CoverageReporter for LcovCoverageReporter {
         }
       }
 
-      println!("DA:{},{}", index + 1, count);
+      let number = if let Some(source_map) = maybe_source_map.as_ref() {
+        source_map
+          .lookup_token(index as u32, lines[index].len() as u32)
+          .map_or_else(
+            || index + 1,
+            |token| (token.get_src_line() + 1) as usize,
+          )
+      } else {
+        index + 1
+      };
+
+      println!("DA:{},{}", number, count);
 
       if count > 0 {
         lines_hit += 1;
@@ -270,6 +294,8 @@ impl CoverageReporter for PrettyCoverageReporter {
     &mut self,
     script_coverage: &ScriptCoverage,
     script_source: &str,
+    maybe_source_map: Option<Vec<u8>>,
+    maybe_original_source: Option<String>,
   ) {
     let mut ignored_spans: Vec<Span> = Vec::new();
     for item in ast::lex("", script_source, &MediaType::JavaScript) {
@@ -538,7 +564,18 @@ pub async fn report_coverages(
     let module_source = program_state.load(module_specifier.clone(), None)?;
     let script_source = &module_source.code;
 
-    reporter.visit_coverage(&script_coverage, &script_source);
+    let maybe_source_map = program_state.get_source_map(&script_coverage.url);
+    let maybe_cached_source = program_state
+      .file_fetcher
+      .get_source(&module_specifier)
+      .map(|f| f.source);
+
+    reporter.visit_coverage(
+      &script_coverage,
+      &script_source,
+      maybe_source_map,
+      maybe_cached_source,
+    );
   }
 
   reporter.done();
