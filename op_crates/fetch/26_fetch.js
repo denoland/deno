@@ -1,5 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// @ts-check
+/// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../web/internal.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="./internal.d.ts" />
+/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference lib="esnext" />
+
 ((window) => {
   const core = window.Deno.core;
 
@@ -20,9 +29,13 @@
 
   const MAX_SIZE = 2 ** 32 - 2;
 
-  // `off` is the offset into `dst` where it will at which to begin writing values
-  // from `src`.
-  // Returns the number of bytes copied.
+  /**
+   * @param {Uint8Array} src 
+   * @param {Uint8Array} dst 
+   * @param {number} off the offset into `dst` where it will at which to begin writing values from `src`
+   * 
+   * @returns {number} number of bytes copied
+   */
   function copyBytes(src, dst, off = 0) {
     const r = dst.byteLength - off;
     if (src.byteLength > r) {
@@ -33,9 +46,11 @@
   }
 
   class Buffer {
-    #buf = null; // contents are the bytes buf[off : len(buf)]
+    /** @type {Uint8Array} */
+    #buf; // contents are the bytes buf[off : len(buf)]
     #off = 0; // read at buf[off], write at buf[buf.byteLength]
 
+    /** @param {ArrayBuffer} [ab] */
     constructor(ab) {
       if (ab == null) {
         this.#buf = new Uint8Array(0);
@@ -45,28 +60,47 @@
       this.#buf = new Uint8Array(ab);
     }
 
+    /**
+     * @returns {Uint8Array}
+     */
     bytes(options = { copy: true }) {
       if (options.copy === false) return this.#buf.subarray(this.#off);
       return this.#buf.slice(this.#off);
     }
 
+    /**
+     * @returns {boolean}
+     */
     empty() {
       return this.#buf.byteLength <= this.#off;
     }
 
+    /**
+     * @returns {number}
+     */
     get length() {
       return this.#buf.byteLength - this.#off;
     }
 
+    /**
+     * @returns {number}
+     */
     get capacity() {
       return this.#buf.buffer.byteLength;
     }
 
+    /**
+     * @returns {void}
+     */
     reset() {
       this.#reslice(0);
       this.#off = 0;
     }
 
+    /**
+     * @param {number} n
+     * @returns {number}
+     */
     #tryGrowByReslice = (n) => {
       const l = this.#buf.byteLength;
       if (n <= this.capacity - l) {
@@ -76,6 +110,10 @@
       return -1;
     };
 
+    /**
+     * @param {number} len
+     * @returns {void}
+     */
     #reslice = (len) => {
       if (!(len <= this.#buf.buffer.byteLength)) {
         throw new Error("assert");
@@ -83,16 +121,28 @@
       this.#buf = new Uint8Array(this.#buf.buffer, 0, len);
     };
 
+    /**
+     * @param {Uint8Array} p
+     * @returns {number}
+     */
     writeSync(p) {
       const m = this.#grow(p.byteLength);
       return copyBytes(p, this.#buf, m);
     }
 
+    /**
+     * @param {Uint8Array} p
+     * @returns {Promise<number>}
+     */
     write(p) {
       const n = this.writeSync(p);
       return Promise.resolve(n);
     }
 
+    /** 
+     * @param {number} n
+     * @returns {number}
+     */
     #grow = (n) => {
       const m = this.length;
       // If buffer is empty, reset to recover space.
@@ -125,6 +175,10 @@
       return m;
     };
 
+    /** 
+     * @param {number} n
+     * @returns {void}
+     */
     grow(n) {
       if (n < 0) {
         throw Error("Buffer.grow: negative count");
@@ -134,15 +188,29 @@
     }
   }
 
+  /** 
+   * @param {unknown} x
+   * @returns {x is ArrayBufferView}
+   */
   function isTypedArray(x) {
     return ArrayBuffer.isView(x) && !(x instanceof DataView);
   }
 
+  /** 
+   * @param {string} s
+   * @param {string} value
+   * @returns {boolean}
+   */
   function hasHeaderValueOf(s, value) {
     return new RegExp(`^${value}(?:[\\s;]|$)`).test(s);
   }
 
+  /**
+   * @param {string} value
+   * @returns {Map<string, string>}
+   */
   function getHeaderValueParams(value) {
+    /** @type {Map<string, string>} */
     const params = new Map();
     // Forced to do so for some Map constructor param mismatch
     value
@@ -163,6 +231,10 @@
   const dataSymbol = Symbol("data");
   const bytesSymbol = Symbol("bytes");
 
+  /**
+   * @param {string} str
+   * @returns {boolean}
+   */
   function containsOnlyASCII(str) {
     if (typeof str !== "string") {
       return false;
@@ -171,6 +243,10 @@
     return /^[\x00-\x7F]*$/.test(str);
   }
 
+  /**
+   * @param {string} s
+   * @returns {string}
+   */
   function convertLineEndingsToNative(s) {
     const nativeLineEnd = build.os == "windows" ? "\r\n" : "\n";
 
@@ -207,6 +283,11 @@
     return result;
   }
 
+  /**
+   * @param {string} s
+   * @param {number} position
+   * @returns {{ collected: string, newPosition: number }}
+   */
   function collectSequenceNotCRLF(
     s,
     position,
@@ -220,10 +301,16 @@
     return { collected: s.slice(start, position), newPosition: position };
   }
 
+  /**
+   * @param {BlobPart[]} blobParts 
+   * @param {boolean} doNormalizeLineEndingsToNative
+   * @returns {Uint8Array[]}
+   */
   function toUint8Arrays(
     blobParts,
     doNormalizeLineEndingsToNative,
   ) {
+    /** @type {Uint8Array[]} */
     const ret = [];
     const enc = new TextEncoder();
     for (const element of blobParts) {
@@ -259,6 +346,11 @@
     return ret;
   }
 
+  /**
+   * @param {BlobPart[]} blobParts 
+   * @param {BlobPropertyBag} options
+   * @returns {Uint8Array}
+   */
   function processBlobParts(
     blobParts,
     options,
@@ -282,10 +374,15 @@
     return bytes;
   }
 
+  /**
+   * @param {Uint8Array} blobBytes 
+   */
   function getStream(blobBytes) {
     // TODO(bartlomieju): Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
+    /** @type {ReadableStream<Uint8Array>} */
     return new ReadableStream({
       type: "bytes",
+      /** @param {ReadableStreamDefaultController} controller */
       start: (controller) => {
         controller.enqueue(blobBytes);
         controller.close();
@@ -293,6 +390,7 @@
     });
   }
 
+  /** @param {ReadableStreamReader<Uint8Array>} reader */
   async function readBytes(
     reader,
   ) {
@@ -321,6 +419,16 @@
   // const blobBytesWeakMap = new WeakMap();
 
   class Blob {
+    /** @type {number} */
+    size = 0;
+    /** @type {string} */
+    type = "";
+
+    /**
+     * 
+     * @param {BlobPart[]} blobParts 
+     * @param {BlobPropertyBag | undefined} options 
+     */
     constructor(blobParts, options) {
       if (arguments.length === 0) {
         this[bytesSymbol] = new Uint8Array();
@@ -351,28 +459,48 @@
       this.type = normalizedType;
     }
 
+    /**
+     * @param {number} start 
+     * @param {number} end 
+     * @param {string} contentType 
+     * @returns {Blob}
+     */
     slice(start, end, contentType) {
       return new Blob([this[bytesSymbol].slice(start, end)], {
         type: contentType || this.type,
       });
     }
 
+    /**
+     * @returns {ReadableStream<Uint8Array>}
+     */
     stream() {
       return getStream(this[bytesSymbol]);
     }
 
+    /**
+     * @returns {Promise<string>}
+     */
     async text() {
       const reader = getStream(this[bytesSymbol]).getReader();
       const decoder = new TextDecoder();
       return decoder.decode(await readBytes(reader));
     }
 
+    /**
+     * @returns {Promise<ArrayBuffer>}
+     */
     arrayBuffer() {
       return readBytes(getStream(this[bytesSymbol]).getReader());
     }
   }
 
   class DomFile extends Blob {
+    /**
+     * @param {globalThis.BlobPart[]} fileBits 
+     * @param {string} fileName 
+     * @param {FilePropertyBag | undefined} options 
+     */
     constructor(
       fileBits,
       fileName,
@@ -390,6 +518,11 @@
     }
   }
 
+  /**
+   * @param {Blob | string} value 
+   * @param {string | undefined} filename
+   * @returns {FormDataEntryValue}
+   */
   function parseFormDataValue(value, filename) {
     if (value instanceof DomFile) {
       return new DomFile([value], filename || value.name, {
@@ -406,14 +539,25 @@
   }
 
   class FormDataBase {
+    /** @type {[name: string, entry: FormDataEntryValue][]} */
     [dataSymbol] = [];
 
+    /**
+     * @param {string} name 
+     * @param {string | Blob} value 
+     * @param {string} [filename] 
+     * @returns {void}
+     */
     append(name, value, filename) {
       requiredArguments("FormData.append", arguments.length, 2);
       name = String(name);
       this[dataSymbol].push([name, parseFormDataValue(value, filename)]);
     }
 
+    /**
+     * @param {string} name 
+     * @returns {void}
+     */
     delete(name) {
       requiredArguments("FormData.delete", arguments.length, 1);
       name = String(name);
@@ -427,6 +571,10 @@
       }
     }
 
+    /**
+     * @param {string} name 
+     * @returns {FormDataEntryValue[]}
+     */
     getAll(name) {
       requiredArguments("FormData.getAll", arguments.length, 1);
       name = String(name);
@@ -440,6 +588,10 @@
       return values;
     }
 
+    /**
+     * @param {string} name 
+     * @returns {FormDataEntryValue | null}
+     */
     get(name) {
       requiredArguments("FormData.get", arguments.length, 1);
       name = String(name);
@@ -452,12 +604,22 @@
       return null;
     }
 
+    /**
+     * @param {string} name 
+     * @returns {boolean}
+     */
     has(name) {
       requiredArguments("FormData.has", arguments.length, 1);
       name = String(name);
       return this[dataSymbol].some((entry) => entry[0] === name);
     }
 
+    /**
+     * @param {string} name 
+     * @param {string | Blob} value 
+     * @param {string} [filename] 
+     * @returns {void}
+     */
     set(name, value, filename) {
       requiredArguments("FormData.set", arguments.length, 2);
       name = String(name);
@@ -493,16 +655,26 @@
   class FormData extends DomIterableMixin(FormDataBase, dataSymbol) {}
 
   class MultipartBuilder {
+    /**
+     * @param {FormData} formData 
+     * @param {string} [boundary] 
+     */
     constructor(formData, boundary) {
       this.formData = formData;
       this.boundary = boundary ?? this.#createBoundary();
       this.writer = new Buffer();
     }
 
+    /** 
+     * @returns {string}
+     */
     getContentType() {
       return `multipart/form-data; boundary=${this.boundary}`;
     }
 
+    /** 
+     * @returns {Uint8Array}
+     */
     getBody() {
       for (const [fieldName, fieldValue] of this.formData.entries()) {
         if (fieldValue instanceof DomFile) {
@@ -524,6 +696,10 @@
       );
     };
 
+    /** 
+     * @param {[string, string][]} headers
+     * @returns {void}
+     */
     #writeHeaders = (headers) => {
       let buf = this.writer.empty() ? "" : "\r\n";
 
@@ -533,15 +709,21 @@
       }
       buf += `\r\n`;
 
-      // FIXME(Bartlomieju): this should use `writeSync()`
-      this.writer.write(encoder.encode(buf));
+      this.writer.writeSync(encoder.encode(buf));
     };
 
+    /** 
+     * @param {string} field
+     * @param {string} filename
+     * @param {string} [type]
+     * @returns {void}
+     */
     #writeFileHeaders = (
       field,
       filename,
       type,
     ) => {
+      /** @type {[string, string][]} */
       const headers = [
         [
           "Content-Disposition",
@@ -552,16 +734,31 @@
       return this.#writeHeaders(headers);
     };
 
+    /**
+     * @param {string} field
+     * @returns {void}
+     */
     #writeFieldHeaders = (field) => {
+      /** @type {[string, string][]} */
       const headers = [["Content-Disposition", `form-data; name="${field}"`]];
       return this.#writeHeaders(headers);
     };
 
+    /**
+     * @param {string} field
+     * @param {string} value
+     * @returns {void}
+     */
     #writeField = (field, value) => {
       this.#writeFieldHeaders(field);
       this.writer.writeSync(encoder.encode(value));
     };
 
+    /**
+     * @param {string} field
+     * @param {DomFile} value
+     * @returns {void}
+     */
     #writeFile = (field, value) => {
       this.#writeFileHeaders(field, value.name, value.type);
       this.writer.writeSync(value[bytesSymbol]);
@@ -569,6 +766,10 @@
   }
 
   class MultipartParser {
+    /**
+     * @param {Uint8Array} body 
+     * @param {string | undefined} boundary 
+     */
     constructor(body, boundary) {
       if (!boundary) {
         throw new TypeError("multipart/form-data must provide a boundary");
@@ -579,6 +780,10 @@
       this.boundaryChars = encoder.encode(this.boundary);
     }
 
+    /**
+     * @param {string} headersText
+     * @returns {{ headers: Headers, disposition: Map<string, string> }}
+     */
     #parseHeaders = (headersText) => {
       const headers = new Headers();
       const rawHeaders = headersText.split("\r\n");
@@ -600,6 +805,9 @@
       };
     };
 
+    /**
+     * @returns {FormData}
+     */
     parse() {
       const formData = new FormData();
       let headerText = "";
@@ -674,7 +882,11 @@
     }
   }
 
-  function validateBodyType(owner, bodySource) {
+  /**
+   * @param {string} name 
+   * @param {BodyInit | null} bodySource 
+   */
+  function validateBodyType(name, bodySource) {
     if (isTypedArray(bodySource)) {
       return true;
     } else if (bodySource instanceof ArrayBuffer) {
@@ -690,11 +902,15 @@
     } else if (!bodySource) {
       return true; // null body is fine
     }
-    throw new Error(
-      `Bad ${owner.constructor.name} body type: ${bodySource.constructor.name}`,
+    throw new TypeError(
+      `Bad ${name} body type: ${bodySource.constructor.name}`,
     );
   }
 
+  /**
+   * @param {ReadableStreamReader<Uint8Array>} stream 
+   * @param {number} [size] 
+   */
   async function bufferFromStream(
     stream,
     size,
@@ -728,6 +944,9 @@
     return buffer.bytes().buffer;
   }
 
+  /**
+   * @param {Exclude<BodyInit, ReadableStream> | null} bodySource 
+   */
   function bodyToArrayBuffer(bodySource) {
     if (isTypedArray(bodySource)) {
       return bodySource.buffer;
@@ -736,10 +955,6 @@
     } else if (typeof bodySource === "string") {
       const enc = new TextEncoder();
       return enc.encode(bodySource).buffer;
-    } else if (bodySource instanceof ReadableStream) {
-      throw new Error(
-        `Can't convert stream to ArrayBuffer (try bufferFromStream)`,
-      );
     } else if (
       bodySource instanceof FormData ||
       bodySource instanceof URLSearchParams
@@ -757,44 +972,70 @@
   const BodyUsedError =
     "Failed to execute 'clone' on 'Body': body is already used";
 
+  const teeBody = Symbol("Body#tee");
+
   class Body {
     #contentType = "";
-    #size = undefined;
+    #size;
+    /** @type {BodyInit | null} */
+    #bodySource;
+    /** @type {ReadableStream<Uint8Array> | null} */
+    #stream = null;
 
-    constructor(_bodySource, meta) {
-      validateBodyType(this, _bodySource);
-      this._bodySource = _bodySource;
+    /**
+     * @param {BodyInit| null} bodySource 
+     * @param {{contentType: string, size?: number}} meta 
+     */
+    constructor(bodySource, meta) {
+      validateBodyType(this.constructor.name, bodySource);
+      this.#bodySource = bodySource;
       this.#contentType = meta.contentType;
       this.#size = meta.size;
-      this._stream = null;
     }
 
     get body() {
-      if (this._stream) {
-        return this._stream;
-      }
+      if (!this.#stream) {
+        if (!this.#bodySource) {
+          return null;
+        } else if (this.#bodySource instanceof ReadableStream) {
+          this.#stream = this.#bodySource;
+        } else {
+          const buf = bodyToArrayBuffer(this.#bodySource);
+          if (!(buf instanceof ArrayBuffer)) {
+            throw new Error(
+              `Expected ArrayBuffer from body`,
+            );
+          }
 
-      if (!this._bodySource) {
-        return null;
-      } else if (this._bodySource instanceof ReadableStream) {
-        this._stream = this._bodySource;
-      } else {
-        const buf = bodyToArrayBuffer(this._bodySource);
-        if (!(buf instanceof ArrayBuffer)) {
-          throw new Error(
-            `Expected ArrayBuffer from body`,
-          );
+          this.#stream = new ReadableStream({
+            /**
+             * @param {ReadableStreamDefaultController<Uint8Array>} controller 
+             */
+            start(controller) {
+              controller.enqueue(new Uint8Array(buf));
+              controller.close();
+            },
+          });
         }
-
-        this._stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new Uint8Array(buf));
-            controller.close();
-          },
-        });
       }
 
-      return this._stream;
+      return this.#stream;
+    }
+
+    /** @returns {BodyInit | null} */
+    [teeBody]() {
+      if (this.#stream || this.#bodySource instanceof ReadableStream) {
+        const body = this.body;
+        if (body) {
+          const [stream1, stream2] = body.tee();
+          this.#stream = stream1;
+          return stream2;
+        } else {
+          return null;
+        }
+      }
+
+      return this.#bodySource;
     }
 
     get bodyUsed() {
@@ -804,6 +1045,11 @@
       return false;
     }
 
+    set bodyUsed(_) {
+      // this is a noop per spec
+    }
+
+    /** @returns {Promise<Blob>} */
     async blob() {
       return new Blob([await this.arrayBuffer()], {
         type: this.#contentType,
@@ -811,6 +1057,7 @@
     }
 
     // ref: https://fetch.spec.whatwg.org/#body-mixin
+    /** @returns {Promise<FormData>} */
     async formData() {
       const formData = new FormData();
       if (hasHeaderValueOf(this.#contentType, "multipart/form-data")) {
@@ -835,12 +1082,15 @@
             .forEach((bytes) => {
               if (bytes) {
                 const split = bytes.split("=");
-                const name = split.shift().replace(/\+/g, " ");
-                const value = split.join("=").replace(/\+/g, " ");
-                formData.append(
-                  decodeURIComponent(name),
-                  decodeURIComponent(value),
-                );
+                if (split.length >= 2) {
+                  // @ts-expect-error this is safe because of the above check
+                  const name = split.shift().replace(/\+/g, " ");
+                  const value = split.join("=").replace(/\+/g, " ");
+                  formData.append(
+                    decodeURIComponent(name),
+                    decodeURIComponent(value),
+                  );
+                }
               }
             });
         } catch (e) {
@@ -852,9 +1102,10 @@
       }
     }
 
+    /** @returns {Promise<string>} */
     async text() {
-      if (typeof this._bodySource === "string") {
-        return this._bodySource;
+      if (typeof this.#bodySource === "string") {
+        return this.#bodySource;
       }
 
       const ab = await this.arrayBuffer();
@@ -862,28 +1113,35 @@
       return decoder.decode(ab);
     }
 
+    /** @returns {Promise<any>} */
     async json() {
       const raw = await this.text();
       return JSON.parse(raw);
     }
 
+    /** @returns {Promise<ArrayBuffer>} */
     arrayBuffer() {
-      if (this._bodySource instanceof ReadableStream) {
-        return bufferFromStream(this._bodySource.getReader(), this.#size);
+      if (this.#bodySource instanceof ReadableStream) {
+        const body = this.body;
+        if (!body) throw new TypeError("Unreachable state (no body)");
+        return bufferFromStream(body.getReader(), this.#size);
       }
-      return Promise.resolve(bodyToArrayBuffer(this._bodySource));
+      return Promise.resolve(bodyToArrayBuffer(this.#bodySource));
     }
   }
 
+  /**
+   * @param {Deno.CreateHttpClientOptions} options
+   * @returns {HttpClient}
+   */
   function createHttpClient(options) {
-    return new HttpClient(opCreateHttpClient(options));
-  }
-
-  function opCreateHttpClient(args) {
-    return core.jsonOpSync("op_create_http_client", args);
+    return new HttpClient(core.jsonOpSync("op_create_http_client", options));
   }
 
   class HttpClient {
+    /**
+     * @param {number} rid 
+     */
     constructor(rid) {
       this.rid = rid;
     }
@@ -892,6 +1150,11 @@
     }
   }
 
+  /**
+   * @param {{ headers: [string,string][], method: string, url: string, baseUrl: string | null, clientRid: number | null, hasBody: boolean }} args 
+   * @param {Uint8Array | null} body 
+   * @returns {{requestRid: number, requestBodyRid: number | null}}
+   */
   function opFetch(args, body) {
     let zeroCopy;
     if (body != null) {
@@ -900,10 +1163,19 @@
     return core.jsonOpSync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
   }
 
+  /**
+   * @param {{rid: number}} args
+   * @returns {Promise<{status: number, statusText: string, headers: Record<string,string[]>, url: string, responseRid: number}>}
+   */
   function opFetchSend(args) {
     return core.jsonOpAsync("op_fetch_send", args);
   }
 
+  /**
+   * @param {{rid: number}} args 
+   * @param {Uint8Array} body 
+   * @returns {Promise<void>}
+   */
   function opFetchRequestWrite(args, body) {
     const zeroCopy = new Uint8Array(
       body.buffer,
@@ -916,12 +1188,20 @@
   const NULL_BODY_STATUS = [101, 204, 205, 304];
   const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
+  /**
+   * @param {string} s
+   * @returns {string}
+   */
   function byteUpperCase(s) {
     return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
       return c.toUpperCase();
     });
   }
 
+  /**
+   * @param {string} m
+   * @returns {string}
+   */
   function normalizeMethod(m) {
     const u = byteUpperCase(m);
     if (
@@ -938,6 +1218,20 @@
   }
 
   class Request extends Body {
+    /** @type {string} */
+    #method = "GET";
+    /** @type {string} */
+    #url = "";
+    /** @type {Headers} */
+    #headers;
+    /** @type {"include" | "omit" | "same-origin" | undefined} */
+    #credentials = "omit";
+
+    /**
+     * @param {RequestInfo} input 
+     * @param {RequestInit} init 
+     */
+    // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init) {
       if (arguments.length < 1) {
         throw TypeError("Not enough arguments");
@@ -952,11 +1246,11 @@
       // prefer body from init
       if (init.body) {
         b = init.body;
-      } else if (input instanceof Request && input._bodySource) {
+      } else if (input instanceof Request) {
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
         }
-        b = input._bodySource;
+        b = input[teeBody]();
       } else if (typeof input === "object" && "body" in input && input.body) {
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
@@ -967,7 +1261,6 @@
       }
 
       let headers;
-
       // prefer headers from init
       if (init.headers) {
         headers = new Headers(init.headers);
@@ -979,35 +1272,25 @@
 
       const contentType = headers.get("content-type") || "";
       super(b, { contentType });
-      this.headers = headers;
-
-      // readonly attribute ByteString method;
-      this.method = "GET";
-
-      // readonly attribute USVString url;
-      this.url = "";
-
-      // readonly attribute RequestCredentials credentials;
-      this.credentials = "omit";
+      this.#headers = headers;
 
       if (input instanceof Request) {
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
         }
-        this.method = input.method;
-        this.url = input.url;
-        this.headers = new Headers(input.headers);
-        this.credentials = input.credentials;
-        this._stream = input._stream;
+        this.#method = input.method;
+        this.#url = input.url;
+        this.#headers = new Headers(input.headers);
+        this.#credentials = input.credentials;
       } else {
         const baseUrl = getLocationHref();
-        this.url = baseUrl != null
+        this.#url = baseUrl != null
           ? new URL(String(input), baseUrl).href
           : new URL(String(input)).href;
       }
 
       if (init && "method" in init && init.method) {
-        this.method = normalizeMethod(init.method);
+        this.#method = normalizeMethod(init.method);
       }
 
       if (
@@ -1031,25 +1314,55 @@
         headersList.push(header);
       }
 
-      let body2 = this._bodySource;
-
-      if (this._bodySource instanceof ReadableStream) {
-        const tees = this._bodySource.tee();
-        this._stream = this._bodySource = tees[0];
-        body2 = tees[1];
-      }
+      const body = this[teeBody]();
 
       return new Request(this.url, {
-        body: body2,
+        body,
         method: this.method,
         headers: new Headers(headersList),
         credentials: this.credentials,
       });
     }
+
+    get method() {
+      return this.#method;
+    }
+
+    set method(_) {
+      // can not set method
+    }
+
+    get url() {
+      return this.#url;
+    }
+
+    set url(_) {
+      // can not set url
+    }
+
+    get headers() {
+      return this.#headers;
+    }
+
+    set headers(_) {
+      // can not set headers
+    }
+
+    get credentials() {
+      return this.#credentials;
+    }
+
+    set credentials(_) {
+      // can not set credentials
+    }
   }
 
   const responseData = new WeakMap();
   class Response extends Body {
+    /** 
+     * @param {BodyInit | null} body 
+     * @param {ResponseInit} [init]
+     */
     constructor(body = null, init) {
       init = init ?? {};
 
@@ -1161,22 +1474,20 @@
         headersList.push(header);
       }
 
-      let resBody = this._bodySource;
+      const body = this[teeBody]();
 
-      if (this._bodySource instanceof ReadableStream) {
-        const tees = this._bodySource.tee();
-        this._stream = this._bodySource = tees[0];
-        resBody = tees[1];
-      }
-
-      return new Response(resBody, {
+      return new Response(body, {
         status: this.status,
         statusText: this.statusText,
         headers: new Headers(headersList),
       });
     }
 
-    static redirect(url, status) {
+    /**
+     * @param {string } url 
+     * @param {number} status
+     */
+    static redirect(url, status = 302) {
       if (![301, 302, 303, 307, 308].includes(status)) {
         throw new RangeError(
           "The redirection status must be one of 301, 302, 303, 307 and 308.",
@@ -1185,18 +1496,29 @@
       return new Response(null, {
         status,
         statusText: "",
-        headers: [["Location", typeof url === "string" ? url : url.toString()]],
+        headers: [["Location", String(url)]],
       });
     }
   }
 
+  /** @type {string | null} */
   let baseUrl = null;
 
+  /** @param {string} href */
   function setBaseUrl(href) {
     baseUrl = href;
   }
 
+  /**
+   * @param {string} url 
+   * @param {string} method 
+   * @param {Headers} headers 
+   * @param {ReadableStream<Uint8Array> | ArrayBufferView | undefined} body 
+   * @param {number | null} clientRid
+   * @returns {Promise<{status: number, statusText: string, headers: Record<string,string[]>, url: string, responseRid: number}>}
+   */
   async function sendFetchReq(url, method, headers, body, clientRid) {
+    /** @type {[string, string][]} */
     let headerArray = [];
     if (headers) {
       headerArray = Array.from(headers.entries());
@@ -1211,16 +1533,22 @@
         clientRid,
         hasBody: !!body,
       },
-      body instanceof Uint8Array ? body : undefined,
+      body instanceof Uint8Array ? body : null,
     );
     if (requestBodyRid) {
+      if (!(body instanceof ReadableStream)) {
+        throw new TypeError("Unreachable state (body is not ReadableStream).");
+      }
       const writer = new WritableStream({
+        /**
+         * @param {Uint8Array} chunk 
+         * @param {WritableStreamDefaultController} controller 
+         */
         async write(chunk, controller) {
           try {
             await opFetchRequestWrite({ rid: requestBodyRid }, chunk);
           } catch (err) {
             controller.error(err);
-            controller.close();
           }
         },
         close() {
@@ -1233,7 +1561,13 @@
     return await opFetchSend({ rid: requestRid });
   }
 
+  /**
+   * @param {Request | URL | string} input 
+   * @param {RequestInit & {client: Deno.HttpClient}} [init] 
+   * @returns {Promise<Response>}
+   */
   async function fetch(input, init) {
+    /** @type {string | null} */
     let url;
     let method = null;
     let headers = null;
@@ -1312,18 +1646,18 @@
     let responseBody;
     let responseInit = {};
     while (remRedirectCount) {
-      const fetchResponse = await sendFetchReq(
+      const fetchResp = await sendFetchReq(
         url,
-        method,
-        headers,
+        method ?? "GET",
+        headers ?? new Headers(),
         body,
         clientRid,
       );
-      const rid = fetchResponse.responseRid;
+      const rid = fetchResp.responseRid;
 
       if (
-        NULL_BODY_STATUS.includes(fetchResponse.status) ||
-        REDIRECT_STATUS.includes(fetchResponse.status)
+        NULL_BODY_STATUS.includes(fetchResp.status) ||
+        REDIRECT_STATUS.includes(fetchResp.status)
       ) {
         // We won't use body of received response, so close it now
         // otherwise it will be kept in resource table.
@@ -1332,6 +1666,7 @@
       } else {
         responseBody = new ReadableStream({
           type: "bytes",
+          /** @param {ReadableStreamDefaultController<Uint8Array>} controller */
           async pull(controller) {
             try {
               const chunk = new Uint8Array(16 * 1024 + 256);
@@ -1365,20 +1700,20 @@
 
       responseInit = {
         status: 200,
-        statusText: fetchResponse.statusText,
-        headers: fetchResponse.headers,
+        statusText: fetchResp.statusText,
+        headers: fetchResp.headers,
       };
 
       responseData.set(responseInit, {
         redirected,
-        rid: fetchResponse.bodyRid,
-        status: fetchResponse.status,
-        url: fetchResponse.url,
+        rid: fetchResp.responseRid,
+        status: fetchResp.status,
+        url: fetchResp.url,
       });
 
       const response = new Response(responseBody, responseInit);
 
-      if (REDIRECT_STATUS.includes(fetchResponse.status)) {
+      if (REDIRECT_STATUS.includes(fetchResp.status)) {
         // We're in a redirect status
         switch ((init && init.redirect) || "follow") {
           case "error":
@@ -1396,6 +1731,7 @@
           case "follow":
           // fallthrough
           default: {
+            /** @type {string | null} */
             let redirectUrl = response.headers.get("Location");
             if (redirectUrl == null) {
               return response; // Unspecified
@@ -1404,7 +1740,7 @@
               !redirectUrl.startsWith("http://") &&
               !redirectUrl.startsWith("https://")
             ) {
-              redirectUrl = new URL(redirectUrl, fetchResponse.url).href;
+              redirectUrl = new URL(redirectUrl, fetchResp.url).href;
             }
             url = redirectUrl;
             redirected = true;
@@ -1427,7 +1763,7 @@
 
   window.__bootstrap.fetch = {
     Blob,
-    DomFile,
+    File: DomFile,
     FormData,
     setBaseUrl,
     fetch,
