@@ -141,8 +141,8 @@
 
     /** 
      * @param {number} n
-    * @returns {number}
-      */
+     * @returns {number}
+     */
     #grow = (n) => {
       const m = this.length;
       // If buffer is empty, reset to recover space.
@@ -177,8 +177,8 @@
 
     /** 
      * @param {number} n
-    * @returns {void}
-    */
+     * @returns {void}
+     */
     grow(n) {
       if (n < 0) {
         throw Error("Buffer.grow: negative count");
@@ -497,7 +497,6 @@
 
   class DomFile extends Blob {
     /**
-     * 
      * @param {globalThis.BlobPart[]} fileBits 
      * @param {string} fileName 
      * @param {FilePropertyBag | undefined} options 
@@ -657,7 +656,6 @@
 
   class MultipartBuilder {
     /**
-     * 
      * @param {FormData} formData 
      * @param {string} [boundary] 
      */
@@ -910,7 +908,6 @@
   }
 
   /**
-   * 
    * @param {ReadableStreamReader<Uint8Array>} stream 
    * @param {number} [size] 
    */
@@ -986,7 +983,6 @@
     #stream = null;
 
     /**
-     * 
      * @param {BodyInit| null} bodySource 
      * @param {{contentType: string, size?: number}} meta 
      */
@@ -1013,8 +1009,8 @@
 
           this.#stream = new ReadableStream({
             /**
-           * @param {ReadableStreamDefaultController<Uint8Array>} controller 
-           */
+             * @param {ReadableStreamDefaultController<Uint8Array>} controller 
+             */
             start(controller) {
               controller.enqueue(new Uint8Array(buf));
               controller.close();
@@ -1514,7 +1510,6 @@
   }
 
   /**
-   * 
    * @param {string} url 
    * @param {string} method 
    * @param {Headers} headers 
@@ -1546,10 +1541,9 @@
       }
       const writer = new WritableStream({
         /**
-       * 
-       * @param {Uint8Array} chunk 
-       * @param {WritableStreamDefaultController} controller 
-       */
+         * @param {Uint8Array} chunk 
+         * @param {WritableStreamDefaultController} controller 
+         */
         async write(chunk, controller) {
           try {
             await opFetchRequestWrite({ rid: requestBodyRid }, chunk);
