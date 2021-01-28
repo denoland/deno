@@ -27,7 +27,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
-use lspower::lsp_types;
+use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
@@ -313,9 +313,9 @@ pub enum ScriptElementKind {
   String,
 }
 
-impl From<ScriptElementKind> for lsp_types::CompletionItemKind {
+impl From<ScriptElementKind> for lsp::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
-    use lspower::lsp_types::CompletionItemKind;
+    use lspower::lsp::CompletionItemKind;
 
     match kind {
       ScriptElementKind::PrimitiveType | ScriptElementKind::Keyword => {
@@ -361,8 +361,8 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
-  pub fn to_range(&self, line_index: &LineIndex) -> lsp_types::Range {
-    lsp_types::Range {
+  pub fn to_range(&self, line_index: &LineIndex) -> lsp::Range {
+    lsp::Range {
       start: line_index.position_tsc(self.start.into()),
       end: line_index.position_tsc(TextSize::from(self.start + self.length)),
     }
@@ -395,12 +395,12 @@ pub struct QuickInfo {
 }
 
 impl QuickInfo {
-  pub fn to_hover(&self, line_index: &LineIndex) -> lsp_types::Hover {
-    let mut contents = Vec::<lsp_types::MarkedString>::new();
+  pub fn to_hover(&self, line_index: &LineIndex) -> lsp::Hover {
+    let mut contents = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) =
       display_parts_to_string(self.display_parts.clone())
     {
-      contents.push(lsp_types::MarkedString::from_language_code(
+      contents.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
@@ -408,7 +408,7 @@ impl QuickInfo {
     if let Some(documentation) =
       display_parts_to_string(self.documentation.clone())
     {
-      contents.push(lsp_types::MarkedString::from_markdown(documentation));
+      contents.push(lsp::MarkedString::from_markdown(documentation));
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
@@ -417,14 +417,14 @@ impl QuickInfo {
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
-        contents.push(lsp_types::MarkedString::from_markdown(format!(
+        contents.push(lsp::MarkedString::from_markdown(format!(
           "\n\n{}",
           tags_preview
         )));
       }
     }
-    lsp_types::Hover {
-      contents: lsp_types::HoverContents::Array(contents),
+    lsp::Hover {
+      contents: lsp::HoverContents::Array(contents),
       range: Some(self.text_span.to_range(line_index)),
     }
   }
@@ -446,7 +446,7 @@ impl DocumentSpan {
     &self,
     line_index: &LineIndex,
     index_provider: F,
-  ) -> Option<lsp_types::LocationLink>
+  ) -> Option<lsp::LocationLink>
   where
     F: Fn(ModuleSpecifier) -> Fut,
     Fut: Future<Output = Result<LineIndex, AnyError>>,
@@ -467,7 +467,7 @@ impl DocumentSpan {
             self.text_span.to_range(&target_line_index),
           )
         };
-      let link = lsp_types::LocationLink {
+      let link = lsp::LocationLink {
         origin_selection_range: Some(self.text_span.to_range(line_index)),
         target_uri,
         target_range,
@@ -510,13 +510,13 @@ impl RenameLocations {
     new_name: &str,
     index_provider: F,
     version_provider: V,
-  ) -> Result<lsp_types::WorkspaceEdit, AnyError>
+  ) -> Result<lsp::WorkspaceEdit, AnyError>
   where
     F: Fn(ModuleSpecifier) -> Fut,
     Fut: Future<Output = Result<LineIndex, AnyError>>,
     V: Fn(ModuleSpecifier) -> Option<i32>,
   {
-    let mut text_document_edit_map: HashMap<Url, lsp_types::TextDocumentEdit> =
+    let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
       let uri = utils::normalize_file_name(&location.document_span.file_name)?;
@@ -527,38 +527,32 @@ impl RenameLocations {
       if text_document_edit_map.get(&uri).is_none() {
         text_document_edit_map.insert(
           uri.clone(),
-          lsp_types::TextDocumentEdit {
-            text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
+          lsp::TextDocumentEdit {
+            text_document: lsp::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
               version: version_provider(specifier.clone()),
             },
-            edits: Vec::<
-              lsp_types::OneOf<
-                lsp_types::TextEdit,
-                lsp_types::AnnotatedTextEdit,
-              >,
-            >::new(),
+            edits:
+              Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
           },
         );
       }
 
       // push TextEdit for ensured `TextDocumentEdit.edits`.
       let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
-      document_edit
-        .edits
-        .push(lsp_types::OneOf::Left(lsp_types::TextEdit {
-          range: location
-            .document_span
-            .text_span
-            .to_range(&index_provider(specifier.clone()).await?),
-          new_text: new_name.to_string(),
-        }));
+      document_edit.edits.push(lsp::OneOf::Left(lsp::TextEdit {
+        range: location
+          .document_span
+          .text_span
+          .to_range(&index_provider(specifier.clone()).await?),
+        new_text: new_name.to_string(),
+      }));
     }
 
-    Ok(lsp_types::WorkspaceEdit {
+    Ok(lsp::WorkspaceEdit {
       change_annotations: None,
       changes: None,
-      document_changes: Some(lsp_types::DocumentChanges::Edits(
+      document_changes: Some(lsp::DocumentChanges::Edits(
         text_document_edit_map.values().cloned().collect(),
       )),
     })
@@ -611,13 +605,13 @@ impl DefinitionInfoAndBoundSpan {
     &self,
     line_index: &LineIndex,
     index_provider: F,
-  ) -> Option<lsp_types::GotoDefinitionResponse>
+  ) -> Option<lsp::GotoDefinitionResponse>
   where
     F: Fn(ModuleSpecifier) -> Fut + Clone,
     Fut: Future<Output = Result<LineIndex, AnyError>>,
   {
     if let Some(definitions) = &self.definitions {
-      let mut location_links = Vec::<lsp_types::LocationLink>::new();
+      let mut location_links = Vec::<lsp::LocationLink>::new();
       for di in definitions {
         if let Some(link) = di
           .document_span
@@ -627,7 +621,7 @@ impl DefinitionInfoAndBoundSpan {
           location_links.push(link);
         }
       }
-      Some(lsp_types::GotoDefinitionResponse::Link(location_links))
+      Some(lsp::GotoDefinitionResponse::Link(location_links))
     } else {
       None
     }
@@ -645,17 +639,17 @@ impl DocumentHighlights {
   pub fn to_highlight(
     &self,
     line_index: &LineIndex,
-  ) -> Vec<lsp_types::DocumentHighlight> {
+  ) -> Vec<lsp::DocumentHighlight> {
     self
       .highlight_spans
       .iter()
-      .map(|hs| lsp_types::DocumentHighlight {
+      .map(|hs| lsp::DocumentHighlight {
         range: hs.text_span.to_range(line_index),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
-            Some(lsp_types::DocumentHighlightKind::Write)
+            Some(lsp::DocumentHighlightKind::Write)
           }
-          _ => Some(lsp_types::DocumentHighlightKind::Read),
+          _ => Some(lsp::DocumentHighlightKind::Read),
         },
       })
       .collect()
@@ -673,10 +667,10 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
-  pub fn to_location(&self, line_index: &LineIndex) -> lsp_types::Location {
+  pub fn to_location(&self, line_index: &LineIndex) -> lsp::Location {
     let uri =
       utils::normalize_file_name(&self.document_span.file_name).unwrap();
-    lsp_types::Location {
+    lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
@@ -694,13 +688,13 @@ impl CompletionInfo {
   pub fn into_completion_response(
     self,
     line_index: &LineIndex,
-  ) -> lsp_types::CompletionResponse {
+  ) -> lsp::CompletionResponse {
     let items = self
       .entries
       .into_iter()
       .map(|entry| entry.into_completion_item(line_index))
       .collect();
-    lsp_types::CompletionResponse::Array(items)
+    lsp::CompletionResponse::Array(items)
   }
 }
 
@@ -722,8 +716,8 @@ impl CompletionEntry {
   pub fn into_completion_item(
     self,
     line_index: &LineIndex,
-  ) -> lsp_types::CompletionItem {
-    let mut item = lsp_types::CompletionItem {
+  ) -> lsp::CompletionItem {
+    let mut item = lsp::CompletionItem {
       label: self.name,
       kind: Some(self.kind.into()),
       sort_text: Some(self.sort_text.clone()),
@@ -742,15 +736,15 @@ impl CompletionEntry {
     }
 
     match item.kind {
-      Some(lsp_types::CompletionItemKind::Function)
-      | Some(lsp_types::CompletionItemKind::Method) => {
-        item.insert_text_format = Some(lsp_types::InsertTextFormat::Snippet);
+      Some(lsp::CompletionItemKind::Function)
+      | Some(lsp::CompletionItemKind::Method) => {
+        item.insert_text_format = Some(lsp::InsertTextFormat::Snippet);
       }
       _ => {}
     }
 
     let mut insert_text = self.insert_text;
-    let replacement_range: Option<lsp_types::Range> =
+    let replacement_range: Option<lsp::Range> =
       self.replacement_span.map(|span| span.to_range(line_index));
 
     // TODO(lucacasonato): port other special cases from https://github.com/theia-ide/typescript-language-server/blob/fdf28313833cd6216d00eb4e04dc7f00f4c04f09/server/src/completion.ts#L49-L55
@@ -769,8 +763,8 @@ impl CompletionEntry {
 
     if let Some(insert_text) = insert_text {
       if let Some(replacement_range) = replacement_range {
-        item.text_edit = Some(lsp_types::CompletionTextEdit::Edit(
-          lsp_types::TextEdit::new(replacement_range, insert_text),
+        item.text_edit = Some(lsp::CompletionTextEdit::Edit(
+          lsp::TextEdit::new(replacement_range, insert_text),
         ));
       } else {
         item.insert_text = Some(insert_text);
@@ -1574,7 +1568,7 @@ mod tests {
           Router,
           Status,
         } from "https://deno.land/x/oak@v6.3.2/mod.ts";
-        
+
         import * as test from
       "#,
         1,

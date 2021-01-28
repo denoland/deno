@@ -10,7 +10,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
-use lspower::lsp_types::TextDocumentContentChangeEvent;
+use lspower::lsp::TextDocumentContentChangeEvent;
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -226,7 +226,7 @@ impl DocumentCache {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use lspower::lsp_types;
+  use lspower::lsp;
 
   #[test]
   fn test_document_cache_contains() {
@@ -256,13 +256,13 @@ mod tests {
       .change(
         &specifier,
         2,
-        vec![lsp_types::TextDocumentContentChangeEvent {
-          range: Some(lsp_types::Range {
-            start: lsp_types::Position {
+        vec![lsp::TextDocumentContentChangeEvent {
+          range: Some(lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 19,
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 20,
             },
@@ -291,13 +291,13 @@ mod tests {
       .change(
         &specifier,
         2,
-        vec![lsp_types::TextDocumentContentChangeEvent {
-          range: Some(lsp_types::Range {
-            start: lsp_types::Position {
+        vec![lsp::TextDocumentContentChangeEvent {
+          range: Some(lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 19,
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 21,
             },
