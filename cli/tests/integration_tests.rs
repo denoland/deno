@@ -3104,6 +3104,11 @@ itest!(runtime_decorators {
   output: "runtime_decorators.ts.out",
 });
 
+itest!(lib_dom_asynciterable {
+  args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
+  output: "lib_dom_asynciterable.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
