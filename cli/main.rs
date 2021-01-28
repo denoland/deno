@@ -757,10 +757,7 @@ async fn doc_command(
       local: PathBuf::from("./$deno$doc.ts"),
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: format!(
-        "export * from '{}';",
-        module_specifier.to_string().replace("'", "\\'")
-      ),
+      source: format!("export * from \"{}\";", module_specifier),
       specifier: root_specifier.clone(),
     };
 
