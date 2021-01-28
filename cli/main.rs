@@ -781,7 +781,10 @@ async fn doc_command(
 
     let doc_parser = doc::DocParser::new(Box::new(graph), private);
     doc_parser
-      .parse_with_reexports(root_specifier.as_str(), ast::get_syntax(&MediaType::TypeScript))
+      .parse_with_reexports(
+        root_specifier.as_str(),
+        ast::get_syntax(&MediaType::TypeScript),
+      )
       .await
   };
 
