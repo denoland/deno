@@ -55,7 +55,7 @@ right after a `wpt.ts update` should always pass.
 
 #### `setup`
 
-Validate that your environment is conigured correctly, or help you configure it.
+Validate that your environment is configured correctly, or help you configure it.
 
 This will check that the python3 (or `python.exe` on Windows) is actually
 Python 3.

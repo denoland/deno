@@ -59,7 +59,7 @@ switch (command) {
     console.log(`Possible commands:
 
     setup
-      Validate that your environment is conigured correctly, or help you configure it.
+      Validate that your environment is configured correctly, or help you configure it.
 
     run
       Run all tests like specified in \`expectation.json\`.
