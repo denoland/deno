@@ -7,6 +7,10 @@ If you are looking for the documentation proper, skip to:
 
     "printf: prints formatted output"
 
+and
+
+    "Colors"
+
 below.
 
 ## Discussion
@@ -189,6 +193,47 @@ Incorrect verb:
 Too few arguments:
 
     S("%d") %!(MISSING 'd')"
+
+# Colors
+
+Adds functions used for displaying colored text.
+
+## Usage
+
+```typescript
+import {
+  bgBlue,
+  bgRgb24,
+  bgRgb8,
+  bold,
+  italic,
+  red,
+  rgb24,
+  rgb8,
+} from "https://deno.land/std@$STD_VERSION/fmt/colors.ts";
+
+console.log(bgBlue(italic(red(bold("Hello, World!")))));
+
+// also supports 8bit colors
+
+console.log(rgb8("Hello, World!", 42));
+
+console.log(bgRgb8("Hello, World!", 42));
+
+// and 24bit rgb
+
+console.log(rgb24("Hello, World!", {
+  r: 41,
+  g: 42,
+  b: 43,
+}));
+
+console.log(bgRgb24("Hello, World!", {
+  r: 41,
+  g: 42,
+  b: 43,
+}));
+```
 
 [1]: https://pubs.opengroup.org/onlinepubs/009695399/functions/fprintf.html
 [2]: https://golang.org/pkg/fmt/

@@ -1,6 +1,6 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/** This module is browser compatible. Do not rely on good formatting of values
- * for AssertionError messages in browsers. */
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// This module is browser compatible. Do not rely on good formatting of values
+// for AssertionError messages in browsers.
 
 import { bold, gray, green, red, stripColor, white } from "../fmt/colors.ts";
 import { diff, DiffResult, DiffType } from "./_diff.ts";

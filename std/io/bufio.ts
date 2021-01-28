@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Based on https://github.com/golang/go/blob/891682/src/bufio/bufio.go
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -7,7 +7,7 @@
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 type WriterSync = Deno.WriterSync;
-import { copyBytes } from "../bytes/mod.ts";
+import { copy } from "../bytes/mod.ts";
 import { assert } from "../_util/assert.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
@@ -150,7 +150,7 @@ export class BufReader implements Reader {
     }
 
     // copy as much as we can
-    const copied = copyBytes(this.buf.subarray(this.r, this.w), p, 0);
+    const copied = copy(this.buf.subarray(this.r, this.w), p, 0);
     this.r += copied;
     // this.lastByte = this.buf[this.r - 1];
     // this.lastCharSize = -1;
@@ -502,7 +502,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
           throw e;
         }
       } else {
-        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+        numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
         this.usedBufferBytes += numBytesWritten;
         await this.flush();
       }
@@ -510,7 +510,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
       data = data.subarray(numBytesWritten);
     }
 
-    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+    numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
     this.usedBufferBytes += numBytesWritten;
     totalBytesWritten += numBytesWritten;
     return totalBytesWritten;
@@ -595,7 +595,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
           throw e;
         }
       } else {
-        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+        numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
         this.usedBufferBytes += numBytesWritten;
         this.flush();
       }
@@ -603,7 +603,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
       data = data.subarray(numBytesWritten);
     }
 
-    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+    numBytesWritten = copy(data, this.buf, this.usedBufferBytes);
     this.usedBufferBytes += numBytesWritten;
     totalBytesWritten += numBytesWritten;
     return totalBytesWritten;
@@ -706,5 +706,13 @@ export async function* readStringDelim(
 export async function* readLines(
   reader: Reader,
 ): AsyncIterableIterator<string> {
-  yield* readStringDelim(reader, "\n");
+  for await (let chunk of readStringDelim(reader, "\n")) {
+    // Finding a CR at the end of the line is evidence of a
+    // "\r\n" at the end of the line. The "\r" part should be
+    // removed too.
+    if (chunk.endsWith("\r")) {
+      chunk = chunk.slice(0, -1);
+    }
+    yield chunk;
+  }
 }

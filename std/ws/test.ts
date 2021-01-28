@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import {
   assert,
@@ -327,7 +327,7 @@ Deno.test({
     assertEquals(decode(second.payload), "second");
     assertEquals(ping.opcode, OpCode.Ping);
     assertEquals(third.opcode, OpCode.BinaryFrame);
-    assertEquals(bytes.equal(third.payload, new Uint8Array([3])), true);
+    assertEquals(bytes.equals(third.payload, new Uint8Array([3])), true);
   },
 });
 

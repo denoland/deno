@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   CallbackResult,
   ReceiverResult,
@@ -511,6 +511,28 @@ export class DateTimeFormatter {
     return parts;
   }
 
+  /** sort & filter dateTimeFormatPart */
+  sortDateTimeFormatPart(parts: DateTimeFormatPart[]): DateTimeFormatPart[] {
+    let result: DateTimeFormatPart[] = [];
+    const typeArray = [
+      "year",
+      "month",
+      "day",
+      "hour",
+      "minute",
+      "second",
+      "fractionalSecond",
+    ];
+    for (const type of typeArray) {
+      const current = parts.findIndex((el) => el.type === type);
+      if (current !== -1) {
+        result = result.concat(parts.splice(current, 1));
+      }
+    }
+    result = result.concat(parts);
+    return result;
+  }
+
   partsToDate(parts: DateTimeFormatPart[]): Date {
     const date = new Date();
     const utc = parts.find(
@@ -566,6 +588,7 @@ export class DateTimeFormatter {
 
   parse(string: string): Date {
     const parts = this.parseToParts(string);
-    return this.partsToDate(parts);
+    const sortParts = this.sortDateTimeFormatPart(parts);
+    return this.partsToDate(sortParts);
   }
 }

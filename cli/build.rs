@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
 use deno_core::json_op_sync;
@@ -13,14 +13,13 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
+// TODO(bartlomieju): this module contains a lot of duplicated
+// logic with `runtime/build.rs`, factor out to `deno_core`.
 fn create_snapshot(
   mut js_runtime: JsRuntime,
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
-  deno_web::init(&mut js_runtime);
-  deno_fetch::init(&mut js_runtime);
-  deno_crypto::init(&mut js_runtime);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -43,14 +42,6 @@ fn create_snapshot(
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
-fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let js_runtime = JsRuntime::new(RuntimeOptions {
-    will_snapshot: true,
-    ..Default::default()
-  });
-  create_snapshot(js_runtime, snapshot_path, files);
-}
-
 #[derive(Debug, Deserialize)]
 struct LoadArgs {
   /// The fully qualified specifier that should be loaded.
@@ -66,6 +57,7 @@ fn create_compiler_snapshot(
   let mut op_crate_libs = HashMap::new();
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
+  op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
 
   // ensure we invalidate the build properly.
   for (_, path) in op_crate_libs.iter() {
@@ -125,6 +117,15 @@ fn create_compiler_snapshot(
     "esnext.weakref",
   ];
 
+  let path_dts = cwd.join("dts");
+  // ensure we invalidate the build properly.
+  for name in libs.iter() {
+    println!(
+      "cargo:rerun-if-changed={}",
+      path_dts.join(format!("lib.{}.d.ts", name)).display()
+    );
+  }
+
   // create a copy of the vector that includes any op crate libs to be passed
   // to the JavaScript compiler to build into the snapshot
   let mut build_libs = libs.clone();
@@ -133,7 +134,6 @@ fn create_compiler_snapshot(
   }
 
   let re_asset = Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
-  let path_dts = cwd.join("dts");
   let build_specifier = "asset:///bootstrap.ts";
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -221,7 +221,7 @@ fn git_commit_hash() -> String {
     .output()
   {
     if output.status.success() {
-      std::str::from_utf8(&output.stdout[..7])
+      std::str::from_utf8(&output.stdout[..40])
         .unwrap()
         .to_string()
     } else {
@@ -236,8 +236,8 @@ fn git_commit_hash() -> String {
 }
 
 fn main() {
-  // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
-  if env::var_os("RUSTDOCFLAGS").is_some() {
+  // Skip building from docs.rs.
+  if env::var_os("DOCS_RS").is_some() {
     return;
   }
 
@@ -254,23 +254,22 @@ fn main() {
     "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
     deno_fetch::get_declaration().display()
   );
+  println!(
+    "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
+    deno_websocket::get_declaration().display()
+  );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
-  println!(
-    "cargo:rustc-env=DENO_CANARY={}",
-    env::var("DENO_CANARY").unwrap_or_default()
-  );
+  if let Ok(c) = env::var("DENO_CANARY") {
+    println!("cargo:rustc-env=DENO_CANARY={}", c);
+  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-
-  let js_files = get_js_files("rt");
-  create_runtime_snapshot(&runtime_snapshot_path, js_files);
 
   let js_files = get_js_files("tsc");
   create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);

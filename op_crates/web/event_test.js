@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 function assert(cond) {
   if (!cond) {
     throw Error("assert");
@@ -106,6 +106,25 @@ function eventIsTrustedGetterName() {
     assert(e.message.includes("not a constructor"));
   }
 }
+function eventAbortSignal() {
+  let count = 0;
+  function handler() {
+    count++;
+  }
+  const et = new EventTarget();
+  const controller = new AbortController();
+  et.addEventListener("test", handler, { signal: controller.signal });
+  et.dispatchEvent(new Event("test"));
+  assert(count === 1);
+  et.dispatchEvent(new Event("test"));
+  assert(count === 2);
+  controller.abort();
+  et.dispatchEvent(new Event("test"));
+  assert(count === 2);
+  et.addEventListener("test", handler, { signal: controller.signal });
+  et.dispatchEvent(new Event("test"));
+  assert(count === 2);
+}
 function main() {
   eventInitializedWithType();
   eventInitializedWithTypeAndDict();
@@ -116,6 +135,7 @@ function main() {
   eventInitializedWithNonStringType();
   eventIsTrusted();
   eventIsTrustedGetterName();
+  eventAbortSignal();
 }
 
 main();

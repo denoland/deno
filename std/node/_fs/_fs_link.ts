@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
@@ -16,9 +16,7 @@ export function link(
     : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
-  Deno.link(existingPath, newPath)
-    .then(() => callback())
-    .catch(callback);
+  Deno.link(existingPath, newPath).then(() => callback(null), callback);
 }
 
 /**

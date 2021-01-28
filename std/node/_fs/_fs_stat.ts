@@ -234,11 +234,11 @@ export function CFISBIS(fileInfo: Deno.FileInfo, bigInt: boolean) {
 }
 
 export type statCallbackBigInt = (
-  err: Error | undefined,
+  err: Error | null,
   stat: BigIntStats,
 ) => void;
 
-export type statCallback = (err: Error | undefined, stat: Stats) => void;
+export type statCallback = (err: Error | null, stat: Stats) => void;
 
 export function stat(path: string | URL, callback: statCallback): void;
 export function stat(
@@ -260,8 +260,7 @@ export function stat(
     (typeof optionsOrCallback === "function"
       ? optionsOrCallback
       : maybeCallback) as (
-        err: Error | undefined,
-        stat: BigIntStats | Stats,
+        ...args: [Error] | [null, BigIntStats | Stats]
       ) => void;
   const options = typeof optionsOrCallback === "object"
     ? optionsOrCallback
@@ -269,9 +268,10 @@ export function stat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.stat(path)
-    .then((stat) => callback(undefined, CFISBIS(stat, options.bigint)))
-    .catch((err) => callback(err, err));
+  Deno.stat(path).then(
+    (stat) => callback(null, CFISBIS(stat, options.bigint)),
+    (err) => callback(err),
+  );
 }
 
 export function statSync(path: string | URL): Stats;

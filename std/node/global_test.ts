@@ -2,11 +2,12 @@ import "./global.ts";
 import { assert, assertStrictEquals } from "../testing/asserts.ts";
 import { Buffer as BufferModule } from "./buffer.ts";
 import processModule from "./process.ts";
+import timers from "./timers.ts";
 
 // Definitions for this are quite delicate
 // This ensures modifications to the global namespace don't break on TypeScript
 
-// TODO
+// TODO(bartlomieju):
 // Deno lint marks globals defined by this module as undefined
 // probably gonna change in the future
 
@@ -49,4 +50,22 @@ Deno.test("process is correctly defined", () => {
   assert(globalThis.process.arch);
   assertStrictEquals(window.process, processModule);
   assert(window.process.arch);
+});
+
+Deno.test("setImmediate is correctly defined", () => {
+  // deno-lint-ignore no-undef
+  assertStrictEquals(setImmediate, timers.setImmediate);
+  // deno-lint-ignore no-undef
+  assertStrictEquals(global.setImmediate, timers.setImmediate);
+  assertStrictEquals(globalThis.setImmediate, timers.setImmediate);
+  assertStrictEquals(window.setImmediate, timers.setImmediate);
+});
+
+Deno.test("clearImmediate is correctly defined", () => {
+  // deno-lint-ignore no-undef
+  assertStrictEquals(clearImmediate, timers.clearImmediate);
+  // deno-lint-ignore no-undef
+  assertStrictEquals(global.clearImmediate, timers.clearImmediate);
+  assertStrictEquals(globalThis.clearImmediate, timers.clearImmediate);
+  assertStrictEquals(window.clearImmediate, timers.clearImmediate);
 });

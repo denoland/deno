@@ -1,8 +1,66 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "./_utils.ts";
+import EventEmitter from "./events.ts";
+import { fromFileUrl } from "../path/mod.ts";
+
+const notImplementedEvents = [
+  "beforeExit",
+  "disconnect",
+  "message",
+  "multipleResolves",
+  "rejectionHandled",
+  "SIGBREAK",
+  "SIGBUS",
+  "SIGFPE",
+  "SIGHUP",
+  "SIGILL",
+  "SIGINT",
+  "SIGSEGV",
+  "SIGTERM",
+  "SIGWINCH",
+  "uncaughtException",
+  "uncaughtExceptionMonitor",
+  "unhandledRejection",
+  "warning",
+];
 
 /** https://nodejs.org/api/process.html#process_process_arch */
 export const arch = Deno.build.arch;
+
+function getArguments() {
+  return [Deno.execPath(), fromFileUrl(Deno.mainModule), ...Deno.args];
+}
+
+//deno-lint-ignore ban-ts-comment
+//@ts-ignore
+const _argv: {
+  [Deno.customInspect]: () => string;
+  [key: number]: string;
+} = [];
+
+Object.defineProperty(_argv, Deno.customInspect, {
+  enumerable: false,
+  configurable: false,
+  get: function () {
+    return getArguments();
+  },
+});
+
+/**
+ * https://nodejs.org/api/process.html#process_process_argv
+ * Read permissions are required in order to get the executable route
+ * */
+export const argv: Record<string, string> = new Proxy(_argv, {
+  get(target, prop) {
+    if (prop === Deno.customInspect) {
+      return target[Deno.customInspect];
+    }
+    return getArguments()[prop as number];
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getArguments());
+  },
+});
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
 export const chdir = Deno.chdir;
@@ -10,23 +68,42 @@ export const chdir = Deno.chdir;
 /** https://nodejs.org/api/process.html#process_process_cwd */
 export const cwd = Deno.cwd;
 
+//deno-lint-ignore ban-ts-comment
+//@ts-ignore
+const _env: {
+  [Deno.customInspect]: () => string;
+} = {};
+
+Object.defineProperty(_env, Deno.customInspect, {
+  enumerable: false,
+  configurable: false,
+  get: function () {
+    return Deno.env.toObject();
+  },
+});
+
+/**
+ * https://nodejs.org/api/process.html#process_process_env
+ * Requires env permissions
+ * */
+export const env: Record<string, string> = new Proxy(_env, {
+  get(target, prop) {
+    if (prop === Deno.customInspect) {
+      return target[Deno.customInspect];
+    }
+    return Deno.env.get(String(prop));
+  },
+  ownKeys() {
+    return Reflect.ownKeys(Deno.env.toObject());
+  },
+  set(_target, prop, value) {
+    Deno.env.set(String(prop), String(value));
+    return value;
+  },
+});
+
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = Deno.exit;
-
-/** https://nodejs.org/api/process.html#process_process_pid */
-export const pid = Deno.pid;
-
-/** https://nodejs.org/api/process.html#process_process_platform */
-export const platform = Deno.build.os === "windows" ? "win32" : Deno.build.os;
-
-/** https://nodejs.org/api/process.html#process_process_version */
-export const version = `v${Deno.version.deno}`;
-
-/** https://nodejs.org/api/process.html#process_process_versions */
-export const versions = {
-  node: Deno.version.deno,
-  ...Deno.version,
-};
 
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
 export function nextTick(this: unknown, cb: () => void): void;
@@ -47,17 +124,103 @@ export function nextTick<T extends Array<unknown>>(
   }
 }
 
-/** https://nodejs.org/api/process.html#process_process */
-// @deprecated `import { process } from 'process'` for backwards compatibility with old deno versions
-export const process = {
-  arch,
-  chdir,
-  cwd,
-  exit,
-  pid,
-  platform,
-  version,
-  versions,
+/** https://nodejs.org/api/process.html#process_process_pid */
+export const pid = Deno.pid;
+
+/** https://nodejs.org/api/process.html#process_process_platform */
+export const platform = Deno.build.os === "windows" ? "win32" : Deno.build.os;
+
+/** https://nodejs.org/api/process.html#process_process_version */
+export const version = `v${Deno.version.deno}`;
+
+/** https://nodejs.org/api/process.html#process_process_versions */
+export const versions = {
+  node: Deno.version.deno,
+  ...Deno.version,
+};
+
+class Process extends EventEmitter {
+  constructor() {
+    super();
+
+    //This causes the exit event to be binded to the unload event
+    window.addEventListener("unload", () => {
+      //TODO(Soremwar)
+      //Get the exit code from the unload event
+      super.emit("exit", 0);
+    });
+  }
+
+  /** https://nodejs.org/api/process.html#process_process_arch */
+  arch = arch;
+
+  /**
+   * https://nodejs.org/api/process.html#process_process_argv
+   * Read permissions are required in order to get the executable route
+   * */
+  argv = argv;
+
+  /** https://nodejs.org/api/process.html#process_process_chdir_directory */
+  chdir = chdir;
+
+  /** https://nodejs.org/api/process.html#process_process_cwd */
+  cwd = cwd;
+
+  /** https://nodejs.org/api/process.html#process_process_exit_code */
+  exit = exit;
+
+  /**
+   * https://nodejs.org/api/process.html#process_process_env
+   * Requires env permissions
+   * */
+  env = env;
+
+  /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
+  nextTick = nextTick;
+
+  /** https://nodejs.org/api/process.html#process_process_events */
+  //deno-lint-ignore ban-types
+  on(event: typeof notImplementedEvents[number], listener: Function): never;
+  on(event: "exit", listener: (code: number) => void): this;
+  //deno-lint-ignore no-explicit-any
+  on(event: string, listener: (...args: any[]) => void): this {
+    if (notImplementedEvents.includes(event)) {
+      notImplemented();
+    }
+
+    super.on(event, listener);
+
+    return this;
+  }
+
+  /** https://nodejs.org/api/process.html#process_process_pid */
+  pid = pid;
+
+  /** https://nodejs.org/api/process.html#process_process_platform */
+  platform = platform;
+
+  removeAllListeners(_event: string): never {
+    notImplemented();
+  }
+
+  removeListener(
+    event: typeof notImplementedEvents[number],
+    //deno-lint-ignore ban-types
+    listener: Function,
+  ): never;
+  removeListener(event: "exit", listener: (code: number) => void): this;
+  //deno-lint-ignore no-explicit-any
+  removeListener(event: string, listener: (...args: any[]) => void): this {
+    if (notImplementedEvents.includes(event)) {
+      notImplemented();
+    }
+
+    super.removeListener("exit", listener);
+
+    return this;
+  }
+
+  /** https://nodejs.org/api/process.html#process_process_stderr */
   get stderr() {
     return {
       fd: Deno.stderr.rid,
@@ -79,7 +242,9 @@ export const process = {
         notImplemented();
       },
     };
-  },
+  }
+
+  /** https://nodejs.org/api/process.html#process_process_stdin */
   get stdin() {
     return {
       fd: Deno.stdin.rid,
@@ -96,7 +261,9 @@ export const process = {
         notImplemented();
       },
     };
-  },
+  }
+
+  /** https://nodejs.org/api/process.html#process_process_stdout */
   get stdout() {
     return {
       fd: Deno.stdout.rid,
@@ -118,49 +285,17 @@ export const process = {
         notImplemented();
       },
     };
-  },
+  }
 
-  /** https://nodejs.org/api/process.html#process_process_events */
-  // on is not exported by node, it is only available within process:
-  // node --input-type=module -e "import { on } from 'process'; console.log(on)"
-  // deno-lint-ignore ban-types
-  on(_event: string, _callback: Function): void {
-    // TODO(rsp): to be implemented
-    notImplemented();
-  },
+  /** https://nodejs.org/api/process.html#process_process_version */
+  version = version;
 
-  /** https://nodejs.org/api/process.html#process_process_argv */
-  get argv(): string[] {
-    // Getter delegates --allow-env and --allow-read until request
-    // Getter also allows the export Proxy instance to function as intended
-    return [Deno.execPath(), ...Deno.args];
-  },
+  /** https://nodejs.org/api/process.html#process_process_versions */
+  versions = versions;
+}
 
-  /** https://nodejs.org/api/process.html#process_process_env */
-  get env(): { [index: string]: string } {
-    // Getter delegates --allow-env and --allow-read until request
-    // Getter also allows the export Proxy instance to function as intended
-    return Deno.env.toObject();
-  },
-  nextTick,
-};
-
-/**
- * https://nodejs.org/api/process.html#process_process_argv
- * @example `import { argv } from './std/node/process.ts'; console.log(argv)`
- */
-// Proxy delegates --allow-env and --allow-read to request time, even for exports
-export const argv = new Proxy(process.argv, {});
-
-/**
- * https://nodejs.org/api/process.html#process_process_env
- * @example `import { env } from './std/node/process.ts'; console.log(env)`
- */
-// Proxy delegates --allow-env and --allow-read to request time, even for exports
-export const env = new Proxy(process.env, {});
-
-// import process from './std/node/process.ts'
-export default process;
+/** https://nodejs.org/api/process.html#process_process */
+const process = new Process();
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
@@ -168,3 +303,16 @@ Object.defineProperty(process, Symbol.toStringTag, {
   configurable: false,
   value: "process",
 });
+
+export const removeListener = process.removeListener;
+export const removeAllListeners = process.removeAllListeners;
+export const stderr = process.stderr;
+export const stdin = process.stdin;
+export const stdout = process.stdout;
+
+export default process;
+
+//TODO(Soremwar)
+//Remove on 1.0
+//Kept for backwars compatibility with std
+export { process };

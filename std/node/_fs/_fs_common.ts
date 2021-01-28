@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   BinaryEncodings,
   Encodings,
@@ -6,7 +6,7 @@ import {
   TextEncodings,
 } from "../_utils.ts";
 
-export type CallbackWithError = (err?: Error | null) => void;
+export type CallbackWithError = (err: Error | null) => void;
 
 export interface FileOptions {
   encoding?: Encodings;

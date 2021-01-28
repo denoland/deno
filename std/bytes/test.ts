@@ -1,62 +1,108 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import {
   concat,
   contains,
-  copyBytes,
-  equal,
-  findIndex,
-  findLastIndex,
-  hasPrefix,
-  hasSuffix,
+  copy,
+  endsWith,
+  equals,
+  indexOf,
+  lastIndexOf,
   repeat,
+  startsWith,
 } from "./mod.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { decode, encode } from "../encoding/utf8.ts";
 
-Deno.test("[bytes] findIndex1", () => {
-  const i = findIndex(
+Deno.test("[bytes] indexOf1", () => {
+  const i = indexOf(
     new Uint8Array([1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 3]),
     new Uint8Array([0, 1, 2]),
   );
   assertEquals(i, 2);
 });
 
-Deno.test("[bytes] findIndex2", () => {
-  const i = findIndex(new Uint8Array([0, 0, 1]), new Uint8Array([0, 1]));
+Deno.test("[bytes] indexOf2", () => {
+  const i = indexOf(new Uint8Array([0, 0, 1]), new Uint8Array([0, 1]));
   assertEquals(i, 1);
 });
 
-Deno.test("[bytes] findIndex3", () => {
-  const i = findIndex(encode("Deno"), encode("D"));
+Deno.test("[bytes] indexOf3", () => {
+  const i = indexOf(encode("Deno"), encode("D"));
   assertEquals(i, 0);
 });
 
-Deno.test("[bytes] findLastIndex1", () => {
-  const i = findLastIndex(
+Deno.test("[bytes] indexOf4", () => {
+  const i = indexOf(new Uint8Array(), new Uint8Array([0, 1]));
+  assertEquals(i, -1);
+});
+
+Deno.test("[bytes] indexOf with start index", () => {
+  const i = indexOf(
+    new Uint8Array([0, 1, 2, 0, 1, 2]),
+    new Uint8Array([0, 1]),
+    1,
+  );
+  assertEquals(i, 3);
+});
+
+Deno.test("[bytes] indexOf with start index 2", () => {
+  const i = indexOf(
+    new Uint8Array([0, 1, 2, 0, 1, 2]),
+    new Uint8Array([0, 1]),
+    7,
+  );
+  assertEquals(i, -1);
+});
+
+Deno.test("[bytes] lastIndexOf1", () => {
+  const i = lastIndexOf(
     new Uint8Array([0, 1, 2, 0, 1, 2, 0, 1, 3]),
     new Uint8Array([0, 1, 2]),
   );
   assertEquals(i, 3);
 });
 
-Deno.test("[bytes] findLastIndex2", () => {
-  const i = findLastIndex(new Uint8Array([0, 1, 1]), new Uint8Array([0, 1]));
+Deno.test("[bytes] lastIndexOf2", () => {
+  const i = lastIndexOf(new Uint8Array([0, 1, 1]), new Uint8Array([0, 1]));
   assertEquals(i, 0);
 });
 
-Deno.test("[bytes] equal", () => {
-  const v = equal(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 3]));
+Deno.test("[bytes] lastIndexOf3", () => {
+  const i = lastIndexOf(new Uint8Array(), new Uint8Array([0, 1]));
+  assertEquals(i, -1);
+});
+
+Deno.test("[bytes] lastIndexOf with start index", () => {
+  const i = lastIndexOf(
+    new Uint8Array([0, 1, 2, 0, 1, 2]),
+    new Uint8Array([0, 1]),
+    2,
+  );
+  assertEquals(i, 0);
+});
+
+Deno.test("[bytes] lastIndexOf with start index 2", () => {
+  const i = lastIndexOf(
+    new Uint8Array([0, 1, 2, 0, 1, 2]),
+    new Uint8Array([0, 1]),
+    -1,
+  );
+  assertEquals(i, -1);
+});
+
+Deno.test("[bytes] equals", () => {
+  const v = equals(new Uint8Array([0, 1, 2, 3]), new Uint8Array([0, 1, 2, 3]));
   assertEquals(v, true);
 });
 
-Deno.test("[bytes] hasPrefix", () => {
-  const v = hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1]));
+Deno.test("[bytes] startsWith", () => {
+  const v = startsWith(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1]));
   assertEquals(v, true);
 });
 
-Deno.test("[bytes] hasSuffix", () => {
-  const v = hasSuffix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2]));
+Deno.test("[bytes] endsWith", () => {
+  const v = endsWith(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2]));
   assertEquals(v, true);
 });
 
@@ -111,7 +157,20 @@ Deno.test("[bytes] concat empty arrays", () => {
   assert(u2 !== joined);
 });
 
-Deno.test("[bytes] contain", () => {
+Deno.test("[bytes] concat multiple arrays", () => {
+  const u1 = encode("Hello ");
+  const u2 = encode("W");
+  const u3 = encode("o");
+  const u4 = encode("r");
+  const u5 = encode("l");
+  const u6 = encode("d");
+  const joined = concat(u1, u2, u3, u4, u5, u6);
+  assertEquals(decode(joined), "Hello World");
+  assert(u1 !== joined);
+  assert(u2 !== joined);
+});
+
+Deno.test("[bytes] contains", () => {
   const source = encode("deno.land");
   const pattern = encode("deno");
   assert(contains(source, pattern));
@@ -119,36 +178,36 @@ Deno.test("[bytes] contain", () => {
   assert(contains(new Uint8Array([0, 1, 2, 3]), new Uint8Array([2, 3])));
 });
 
-Deno.test("[io/tuil] copyBytes", function (): void {
+Deno.test("[bytes] copy", function (): void {
   const dst = new Uint8Array(4);
 
   dst.fill(0);
   let src = Uint8Array.of(1, 2);
-  let len = copyBytes(src, dst, 0);
+  let len = copy(src, dst, 0);
   assert(len === 2);
   assertEquals(dst, Uint8Array.of(1, 2, 0, 0));
 
   dst.fill(0);
   src = Uint8Array.of(1, 2);
-  len = copyBytes(src, dst, 1);
+  len = copy(src, dst, 1);
   assert(len === 2);
   assertEquals(dst, Uint8Array.of(0, 1, 2, 0));
 
   dst.fill(0);
   src = Uint8Array.of(1, 2, 3, 4, 5);
-  len = copyBytes(src, dst);
+  len = copy(src, dst);
   assert(len === 4);
   assertEquals(dst, Uint8Array.of(1, 2, 3, 4));
 
   dst.fill(0);
   src = Uint8Array.of(1, 2);
-  len = copyBytes(src, dst, 100);
+  len = copy(src, dst, 100);
   assert(len === 0);
   assertEquals(dst, Uint8Array.of(0, 0, 0, 0));
 
   dst.fill(0);
   src = Uint8Array.of(3, 4);
-  len = copyBytes(src, dst, -2);
+  len = copy(src, dst, -2);
   assert(len === 2);
   assertEquals(dst, Uint8Array.of(3, 4, 0, 0));
 });

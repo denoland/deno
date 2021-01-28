@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --reload --allow-run
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
   colors,
@@ -97,6 +97,7 @@ function spawnWorkerRunner(
     Deno.execPath(),
     "run",
     "--unstable", // TODO(ry) be able to test stable vs unstable
+    "--location=http://js-unit-tests/foo/bar",
     "-A",
     "cli/tests/unit/unit_test_runner.ts",
     "--worker",

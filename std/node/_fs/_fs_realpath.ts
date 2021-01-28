@@ -12,9 +12,10 @@ export function realpath(
   if (!callback) {
     throw new Error("No callback function supplied");
   }
-  Deno.realPath(path)
-    .then((path) => callback!(null, path))
-    .catch((err) => callback!(err));
+  Deno.realPath(path).then(
+    (path) => callback!(null, path),
+    (err) => callback!(err),
+  );
 }
 
 export function realpathSync(path: string): string {

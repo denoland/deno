@@ -1,5 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import { equals, indexOf, lastIndexOf, startsWith } from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
 import { extname } from "../path/mod.ts";
@@ -101,7 +101,7 @@ export function scanUntilBoundary(
 ): number | null {
   if (total === 0) {
     // At beginning of body, allow dashBoundary.
-    if (hasPrefix(buf, dashBoundary)) {
+    if (startsWith(buf, dashBoundary)) {
       switch (matchAfterPrefix(buf, dashBoundary, eof)) {
         case -1:
           return dashBoundary.length;
@@ -111,13 +111,13 @@ export function scanUntilBoundary(
           return null;
       }
     }
-    if (hasPrefix(dashBoundary, buf)) {
+    if (startsWith(dashBoundary, buf)) {
       return 0;
     }
   }
 
   // Search for "\n--boundary".
-  const i = findIndex(buf, newLineDashBoundary);
+  const i = indexOf(buf, newLineDashBoundary);
   if (i >= 0) {
     switch (matchAfterPrefix(buf.slice(i), newLineDashBoundary, eof)) {
       case -1:
@@ -128,15 +128,15 @@ export function scanUntilBoundary(
         return i > 0 ? i : null;
     }
   }
-  if (hasPrefix(newLineDashBoundary, buf)) {
+  if (startsWith(newLineDashBoundary, buf)) {
     return 0;
   }
 
   // Otherwise, anything up to the final \n is not part of the boundary and so
   // must be part of the body. Also, if the section from the final \n onward is
   // not a prefix of the boundary, it too must be part of the body.
-  const j = findLastIndex(buf, newLineDashBoundary.slice(0, 1));
-  if (j >= 0 && hasPrefix(newLineDashBoundary, buf.slice(j))) {
+  const j = lastIndexOf(buf, newLineDashBoundary.slice(0, 1));
+  if (j >= 0 && startsWith(newLineDashBoundary, buf.slice(j))) {
     return j;
   }
 
@@ -354,7 +354,7 @@ export class MultipartReader {
         }
       }
     }
-    return multipatFormData(fileMap, valueMap);
+    return multipartFormData(fileMap, valueMap);
   }
 
   private currentPart: PartReader | undefined;
@@ -364,7 +364,7 @@ export class MultipartReader {
     if (this.currentPart) {
       this.currentPart.close();
     }
-    if (equal(this.dashBoundary, encoder.encode("--"))) {
+    if (equals(this.dashBoundary, encoder.encode("--"))) {
       throw new Error("boundary is empty");
     }
     let expectNewPart = false;
@@ -393,7 +393,7 @@ export class MultipartReader {
       if (this.partsRead === 0) {
         continue;
       }
-      if (equal(line, this.newLine)) {
+      if (equals(line, this.newLine)) {
         expectNewPart = true;
         continue;
       }
@@ -402,23 +402,23 @@ export class MultipartReader {
   }
 
   private isFinalBoundary(line: Uint8Array): boolean {
-    if (!hasPrefix(line, this.dashBoundaryDash)) {
+    if (!startsWith(line, this.dashBoundaryDash)) {
       return false;
     }
     const rest = line.slice(this.dashBoundaryDash.length, line.length);
-    return rest.length === 0 || equal(skipLWSPChar(rest), this.newLine);
+    return rest.length === 0 || equals(skipLWSPChar(rest), this.newLine);
   }
 
   private isBoundaryDelimiterLine(line: Uint8Array): boolean {
-    if (!hasPrefix(line, this.dashBoundary)) {
+    if (!startsWith(line, this.dashBoundary)) {
       return false;
     }
     const rest = line.slice(this.dashBoundary.length);
-    return equal(skipLWSPChar(rest), this.newLine);
+    return equals(skipLWSPChar(rest), this.newLine);
   }
 }
 
-function multipatFormData(
+function multipartFormData(
   fileMap: Map<string, FormFile | FormFile[]>,
   valueMap: Map<string, string>,
 ): MultipartFormData {

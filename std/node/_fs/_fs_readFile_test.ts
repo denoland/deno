@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { readFile, readFileSync } from "./_fs_readFile.ts";
 import * as path from "../../path/mod.ts";
 import { assert, assertEquals } from "../../testing/asserts.ts";
@@ -102,4 +103,16 @@ Deno.test("readFileEncodeAsString", function () {
   const data = readFileSync(testData, "utf8");
   assertEquals(typeof data, "string");
   assertEquals(data as string, "hello world");
+});
+
+Deno.test("[std/node/fs] readFile callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_readFile.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { readFile } from ${JSON.stringify(importUrl)}`,
+    invocation: `readFile(${JSON.stringify(tempFile)}, `,
+    async cleanup() {
+      await Deno.remove(tempFile);
+    },
+  });
 });

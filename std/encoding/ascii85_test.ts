@@ -1,9 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { Ascii85Standard, decode, encode } from "./ascii85.ts";
 type TestCases = Partial<{ [index in Ascii85Standard]: string[][] }>;
 const utf8encoder = new TextEncoder();
-const testCasesNoDelimeter: TestCases = {
+const testCasesNoDelimiter: TestCases = {
   Adobe: [
     ["test", "FCfN8"],
     ["ascii85", "@<5pmBfIs"],
@@ -76,7 +76,7 @@ const testCasesNoDelimeter: TestCases = {
     ["    ", "arR^H"],
   ],
 };
-const testCasesDelimeter: TestCases = {
+const testCasesDelimiter: TestCases = {
   Adobe: [
     ["test", "<~FCfN8~>"],
     ["ascii85", "<~@<5pmBfIs~>"],
@@ -116,7 +116,7 @@ const testCasesDelimeter: TestCases = {
   ],
 };
 
-for (const [standard, tests] of Object.entries(testCasesNoDelimeter)) {
+for (const [standard, tests] of Object.entries(testCasesNoDelimiter)) {
   if (tests === undefined) continue;
   Deno.test({
     name: `[encoding/ascii85] encode ${standard}`,
@@ -144,10 +144,10 @@ for (const [standard, tests] of Object.entries(testCasesNoDelimeter)) {
     },
   });
 }
-for (const [standard, tests] of Object.entries(testCasesDelimeter)) {
+for (const [standard, tests] of Object.entries(testCasesDelimiter)) {
   if (tests === undefined) continue;
   Deno.test({
-    name: `[encoding/ascii85] encode ${standard} with delimeter`,
+    name: `[encoding/ascii85] encode ${standard} with delimiter`,
     fn(): void {
       for (const [bin, b85] of tests) {
         assertEquals(
@@ -162,7 +162,7 @@ for (const [standard, tests] of Object.entries(testCasesDelimeter)) {
   });
 
   Deno.test({
-    name: `[encoding/ascii85] decode ${standard} with delimeter`,
+    name: `[encoding/ascii85] decode ${standard} with delimiter`,
     fn(): void {
       for (const [bin, b85] of tests) {
         assertEquals(

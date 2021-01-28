@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -69,7 +69,7 @@ export function readFile(
       }
       const buffer = maybeDecode(data, encoding);
       (cb as BinaryCallback)(null, buffer);
-    }).catch((err) => cb && cb(err));
+    }, (err) => cb && cb(err));
   }
 }
 

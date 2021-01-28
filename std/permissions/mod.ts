@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 const { PermissionDenied } = Deno.errors;
 
@@ -14,8 +14,8 @@ function getPermissionString(descriptors: Deno.PermissionDescriptor[]): string {
                 ? `--allow-${pd.name}=${pd.path}`
                 : `--allow-${pd.name}`;
             case "net":
-              return pd.url
-                ? `--allow-${pd.name}=${pd.url}`
+              return pd.host
+                ? `--allow-${pd.name}=${pd.host}`
                 : `--allow-${pd.name}`;
             default:
               return `--allow-${pd.name}`;

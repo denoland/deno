@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { Response, ServerRequest } from "./server.ts";
 import { deleteCookie, getCookies, setCookie } from "./cookie.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
@@ -60,6 +60,44 @@ Deno.test({
         },
         Error,
         'Invalid cookie name: "' + name + '".',
+      );
+    });
+  },
+});
+
+Deno.test({
+  name: "Cookie Value Validation",
+  fn(): void {
+    const res: Response = {};
+    const tokens = [
+      "1f\tWa",
+      "\t",
+      "1f Wa",
+      "1f;Wa",
+      '"1fWa',
+      "1f\\Wa",
+      '1f"Wa',
+      '"',
+      "1fWa\u0005",
+      "1f\u0091Wa",
+    ];
+    res.headers = new Headers();
+    tokens.forEach((value) => {
+      assertThrows(
+        (): void => {
+          setCookie(
+            res,
+            {
+              name: "Space",
+              value,
+              httpOnly: true,
+              secure: true,
+              maxAge: 3,
+            },
+          );
+        },
+        Error,
+        "RFC2616 cookie 'Space'",
       );
     });
   },

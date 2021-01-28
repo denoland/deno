@@ -1,15 +1,15 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;
-use crate::inspector::InspectorSession;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
-use crate::worker::MainWorker;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_runtime::inspector::InspectorSession;
+use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -28,6 +28,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use swc_ecmascript::parser::token::{Token, Word};
+use tokio::pin;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -238,6 +239,8 @@ impl Highlighter for LineHighlighter {
                   colors::gray(&line[span]).to_string()
                 } else if ident == *"Infinity" || ident == *"NaN" {
                   colors::yellow(&line[span]).to_string()
+                } else if ident == *"async" || ident == *"of" {
+                  colors::cyan(&line[span]).to_string()
                 } else {
                   line[span].to_string()
                 }
@@ -275,7 +278,7 @@ async fn post_message_and_poll(
         // A zero delay is long enough to yield the thread in order to prevent the loop from
         // running hot for messages that are taking longer to resolve like for example an
         // evaluation of top level await.
-        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
       }
     }
   }
@@ -302,8 +305,10 @@ async fn read_line_and_poll(
 
     // Because an inspector websocket client may choose to connect at anytime when we have an
     // inspector server we need to keep polling the worker to pick up new connections.
-    let mut timeout =
-      tokio::time::delay_for(tokio::time::Duration::from_millis(100));
+    // TODO(piscisaureus): the above comment is a red herring; figure out if/why
+    // the event loop isn't woken by a waker when a websocket client connects.
+    let timeout = tokio::time::sleep(tokio::time::Duration::from_millis(100));
+    pin!(timeout);
 
     tokio::select! {
       result = &mut line => {
@@ -312,7 +317,7 @@ async fn read_line_and_poll(
       _ = worker.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }
-      _ = &mut timeout => {
+      _ = timeout => {
         poll_worker = true
       }
     }
@@ -449,7 +454,7 @@ pub async fn run(
 
   inject_prelude(&mut worker, &mut session, context_id).await?;
 
-  while !is_closing(&mut worker, &mut session, context_id).await? {
+  loop {
     let line = read_line_and_poll(
       &mut worker,
       &mut session,
@@ -503,6 +508,12 @@ pub async fn run(
           } else {
             evaluate_response
           };
+
+        // We check for close and break here instead of making it a loop condition to get
+        // consistent behavior in when the user evaluates a call to close().
+        if is_closing(&mut worker, &mut session, context_id).await? {
+          break;
+        }
 
         let evaluate_result = evaluate_response.get("result").unwrap();
         let evaluate_exception_details =

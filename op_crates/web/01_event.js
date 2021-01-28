@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -40,6 +40,13 @@
     value,
   ) {
     event.currentTarget = value;
+  }
+
+  function setIsTrusted(event, value) {
+    const data = eventData.get(event);
+    if (data) {
+      data.isTrusted = value;
+    }
   }
 
   function setDispatched(event, value) {
@@ -661,7 +668,7 @@
       setRelatedTarget(eventImpl, null);
     }
 
-    // TODO: invoke activation targets if HTML nodes will be implemented
+    // TODO(bartlomieju): invoke activation targets if HTML nodes will be implemented
     // if (activationTarget !== null) {
     //   if (!eventImpl.defaultPrevented) {
     //     activationTarget._activationBehavior();
@@ -693,7 +700,7 @@
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
 
-      let capture, once, passive;
+      let capture, once, passive, signal;
       if (typeof listener.options === "boolean") {
         capture = listener.options;
         once = false;
@@ -895,7 +902,19 @@
           return;
         }
       }
-
+      if (options?.signal) {
+        const signal = options?.signal;
+        if (signal.aborted) {
+          // If signal is not null and its aborted flag is set, then return.
+          return;
+        } else {
+          // If listener’s signal is not null, then add the following abort
+          // abort steps to it: Remove an event listener.
+          signal.addEventListener("abort", () => {
+            this.removeEventListener(type, callback, options);
+          });
+        }
+      }
       listeners[type].push({ callback, options });
     }
 
@@ -1172,5 +1191,8 @@
   window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.eventTarget = {
     setEventTargetData,
+  };
+  window.__bootstrap.event = {
+    setIsTrusted,
   };
 })(this);

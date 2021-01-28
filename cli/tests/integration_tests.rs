@@ -1,16 +1,32 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::futures;
 use deno_core::futures::prelude::*;
+use deno_core::serde_json;
 use deno_core::url;
+use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
 
+macro_rules! itest(
+  ($name:ident {$( $key:ident: $value:expr,)*})  => {
+    #[test]
+    fn $name() {
+      (util::CheckOutputIntegrationTest {
+        $(
+          $key: $value,
+         )*
+        .. Default::default()
+      }).run()
+    }
+  }
+);
+
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let std_config = util::root_path().join("std/tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
     .current_dir(util::root_path())
@@ -18,8 +34,6 @@ fn std_tests() {
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
-    .arg("--config")
-    .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
     .arg("std/")
     .spawn()
@@ -39,6 +53,42 @@ fn std_lint() {
       util::root_path().join("std/node/tests").to_string_lossy()
     ))
     .arg(util::root_path().join("std"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn help_flag() {
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("--help")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn version_short_flag() {
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("-V")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn version_long_flag() {
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("--version")
     .spawn()
     .unwrap()
     .wait()
@@ -98,7 +148,6 @@ fn eval_p() {
 }
 
 #[test]
-
 fn run_from_stdin() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
@@ -212,6 +261,39 @@ pub fn test_raw_tty() {
       .arg("--quiet")
       .arg("--no-check")
       .arg("cli/tests/raw_mode.ts")
+      .exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[cfg(unix)]
+#[test]
+pub fn test_raw_tty_cbreak() {
+  use std::io::{Read, Write};
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let root_path = util::root_path();
+  let fork = Fork::from_ptmx().unwrap();
+
+  if let Ok(mut master) = fork.is_parent() {
+    let mut obytes: [u8; 100] = [0; 100];
+    let mut nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "S");
+    master.write_all(&[3]).unwrap(); // send SIGINT
+    master.flush().unwrap();
+    nread = master.read(&mut obytes).unwrap();
+    assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "A");
+    fork.wait().unwrap();
+  } else {
+    // Keep echo enabled such that 'C^' would be printed in non-raw mode.
+    std::env::set_current_dir(root_path).unwrap();
+    let err = exec::Command::new(deno_exe)
+      .arg("run")
+      .arg("--unstable")
+      .arg("--quiet")
+      .arg("--no-check")
+      .arg("cli/tests/raw_mode_cbreak.ts")
       .exec();
     println!("err {}", err);
     unreachable!()
@@ -426,20 +508,31 @@ fn cache_invalidation_test_no_check() {
 #[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
-  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
-  let badly_formatted_original =
+  let fixed_js = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
+  let badly_formatted_original_js =
     util::root_path().join("cli/tests/badly_formatted.mjs");
-  let badly_formatted = t.path().join("badly_formatted.js");
-  let badly_formatted_str = badly_formatted.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original, &badly_formatted)
+  let badly_formatted_original_md =
+    util::root_path().join("cli/tests/badly_formatted.md");
+  let badly_formatted_js = t.path().join("badly_formatted.js");
+  let badly_formatted_md = t.path().join("badly_formatted.md");
+  let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
+  let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
+  std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
+    .expect("Failed to copy file");
+  std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
     .expect("Failed to copy file");
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg(format!("--ignore={}", badly_formatted_str))
+    .arg(format!(
+      "--ignore={},{}",
+      badly_formatted_js_str, badly_formatted_md_str
+    ))
     .arg("--check")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
@@ -450,7 +543,8 @@ fn fmt_test() {
     .current_dir(util::root_path())
     .arg("fmt")
     .arg("--check")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
@@ -460,15 +554,19 @@ fn fmt_test() {
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
     .expect("Failed to wait for child process");
   assert!(status.success());
-  let expected = std::fs::read_to_string(fixed).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted).unwrap();
-  assert_eq!(expected, actual);
+  let expected_js = std::fs::read_to_string(fixed_js).unwrap();
+  let expected_md = std::fs::read_to_string(fixed_md).unwrap();
+  let actual_js = std::fs::read_to_string(badly_formatted_js).unwrap();
+  let actual_md = std::fs::read_to_string(badly_formatted_md).unwrap();
+  assert_eq!(expected_js, actual_js);
+  assert_eq!(expected_md, actual_md);
 }
 
 // Helper function to skip watcher output that contains "Restarting"
@@ -485,6 +583,7 @@ fn skip_restarting_line(
 }
 
 #[test]
+#[ignore]
 fn fmt_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
@@ -626,6 +725,35 @@ fn upgrade_with_version_in_tmpdir() {
   )
   .unwrap();
   assert!(upgraded_deno_version.contains("0.42.0"));
+  let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  // TODO(ry) assert!(mtime1 < mtime2);
+}
+
+// Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
+#[test]
+#[ignore]
+fn upgrade_with_canary_in_tmpdir() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--canary")
+    .arg("--version")
+    .arg("e6685f0f01b8a11a5eaff020f5babcfde76b3038")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  let upgraded_deno_version = String::from_utf8(
+    Command::new(&exe_path).arg("-V").output().unwrap().stdout,
+  )
+  .unwrap();
+  assert!(upgraded_deno_version.contains("e6685f0"));
   let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
 }
@@ -825,6 +953,37 @@ fn ts_dependency_recompilation() {
 }
 
 #[test]
+fn ts_no_recheck_on_redirect() {
+  let deno_dir = util::new_deno_dir();
+  let e = util::deno_exe_path();
+
+  let redirect_ts = util::root_path().join("cli/tests/017_import_redirect.ts");
+  assert!(redirect_ts.is_file());
+  let mut cmd = Command::new(e.clone());
+  cmd.env("DENO_DIR", deno_dir.path());
+  let mut initial = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts.clone())
+    .spawn()
+    .expect("failed to span script");
+  let status_initial =
+    initial.wait().expect("failed to wait for child process");
+  assert!(status_initial.success());
+
+  let mut cmd = Command::new(e);
+  cmd.env("DENO_DIR", deno_dir.path());
+  let output = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts)
+    .output()
+    .expect("failed to spawn script");
+
+  assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
+}
+
+#[test]
 fn ts_reload() {
   let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
   assert!(hello_ts.is_file());
@@ -849,10 +1008,10 @@ fn ts_reload() {
     .output()
     .expect("failed to spawn script");
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
+  assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
     .trim()
-    .contains("\"host.writeFile(\\\"deno://002_hello.js\\\")\""));
+    .contains("host.writeFile(\"deno://002_hello.js\")"));
 }
 
 #[test]
@@ -1167,7 +1326,7 @@ fn bundle_import_map_no_check() {
     .current_dir(util::root_path())
     .arg("bundle")
     .arg("--no-check")
-    .arg("--importmap")
+    .arg("--import-map")
     .arg(import_map_path)
     .arg("--unstable")
     .arg(import)
@@ -1203,6 +1362,7 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
+#[ignore]
 fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
@@ -1272,6 +1432,7 @@ fn bundle_js_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
+#[ignore]
 fn bundle_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1371,6 +1532,7 @@ fn wait_for_process_finished(
 }
 
 #[test]
+#[ignore]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1453,6 +1615,21 @@ fn run_watch() {
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
 
+  // Update the content of the imported file with invalid syntax
+  std::fs::write(&another_file, "syntax error ^^").expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stderr_lines.next().unwrap().contains("error:"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
+  // Modify the imported file and make sure that restarting occurs
+  std::fs::write(&another_file, "export const foo = 'modified!';")
+    .expect("error writing file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert!(stdout_lines.next().unwrap().contains("modified!"));
+  wait_for_process_finished("Process", &mut stderr_lines);
+
   // the watcher process is still alive
   assert!(child.try_wait().unwrap().is_none());
 
@@ -1462,6 +1639,7 @@ fn run_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
+#[ignore]
 fn run_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1579,8 +1757,34 @@ fn repl_test_pty_unpaired_braces() {
   }
 }
 
+#[cfg(unix)]
 #[test]
-fn run_watch_with_importmap_and_relative_paths() {
+fn repl_test_pty_bad_input() {
+  use std::io::Read;
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b"'\\u{1f3b5}'[0]\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unterminated string literal"));
+
+    fork.wait().unwrap();
+  } else {
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[test]
+#[ignore]
+fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
     filename: &'static str,
@@ -1613,7 +1817,7 @@ fn run_watch_with_importmap_and_relative_paths() {
     .arg("run")
     .arg("--unstable")
     .arg("--watch")
-    .arg("--importmap")
+    .arg("--import-map")
     .arg(&import_map_path)
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
@@ -2002,36 +2206,10 @@ fn deno_test_no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
-macro_rules! itest(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
-
-// Unfortunately #[ignore] doesn't work with itest!
-#[allow(unused)]
-macro_rules! itest_ignore(
-  ($name:ident {$( $key:ident: $value:expr,)*})  => {
-    #[ignore]
-    #[test]
-    fn $name() {
-      (util::CheckOutputIntegrationTest {
-        $(
-          $key: $value,
-         )*
-        .. Default::default()
-      }).run()
-    }
-  }
-);
+itest!(stdout_write_all {
+  args: "run --quiet stdout_write_all.ts",
+  output: "stdout_write_all.out",
+});
 
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
@@ -2224,6 +2402,8 @@ fn workers() {
     .current_dir(util::tests_path())
     .arg("test")
     .arg("--reload")
+    .arg("--location")
+    .arg("http://127.0.0.1:4545/cli/tests/")
     .arg("--allow-net")
     .arg("--allow-read")
     .arg("--unstable")
@@ -2465,6 +2645,23 @@ itest!(_067_test_no_run_type_error {
   exit_code: 1,
 });
 
+itest!(_070_location {
+  args: "run --location https://foo/bar?baz#bat 070_location.ts",
+  output: "070_location.ts.out",
+});
+
+itest!(_071_location_unset {
+  args: "run 071_location_unset.ts",
+  output: "071_location_unset.ts.out",
+  exit_code: 1,
+});
+
+itest!(_072_location_relative_fetch {
+  args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
+  output: "072_location_relative_fetch.ts.out",
+  http_server: true,
+});
+
 itest!(_073_worker_error {
   args: "run -A 073_worker_error.ts",
   output: "073_worker_error.ts.out",
@@ -2485,6 +2682,41 @@ itest!(_075_import_local_query_hash {
 itest!(_076_info_json_deps_order {
   args: "info --unstable --json 076_info_json_deps_order.ts",
   output: "076_info_json_deps_order.out",
+});
+
+itest!(_077_fetch_empty {
+  args: "run -A 077_fetch_empty.ts",
+  output: "077_fetch_empty.ts.out",
+  exit_code: 1,
+});
+
+itest!(_078_unload_on_exit {
+  args: "run 078_unload_on_exit.ts",
+  output: "078_unload_on_exit.ts.out",
+  exit_code: 1,
+});
+
+itest!(_079_location_authentication {
+  args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
+  output: "079_location_authentication.ts.out",
+});
+
+itest!(_080_deno_emit_permissions {
+  args: "run --unstable 080_deno_emit_permissions.ts",
+  output: "080_deno_emit_permissions.ts.out",
+  exit_code: 1,
+});
+
+itest!(_081_location_relative_fetch_redirect {
+  args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
+  output: "081_location_relative_fetch_redirect.ts.out",
+  http_server: true,
+});
+
+itest!(_082_prepare_stack_trace_throw {
+  args: "run 082_prepare_stack_trace_throw.js",
+  output: "082_prepare_stack_trace_throw.js.out",
+  exit_code: 1,
 });
 
 itest!(js_import_detect {
@@ -2570,7 +2802,7 @@ itest!(fmt_quiet_check_fmt_dir {
 });
 
 itest!(fmt_check_formatted_files {
-  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md",
   output: "fmt/expected_fmt_check_formatted_files.out",
   exit_code: 0,
 });
@@ -2587,6 +2819,12 @@ itest!(fmt_stdin {
   output_str: Some("const a = 1;\n"),
 });
 
+itest!(fmt_stdin_markdown {
+  args: "fmt --ext=md -",
+  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n"),
+  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"),
+});
+
 itest!(fmt_stdin_check_formatted {
   args: "fmt --check -",
   input: Some("const a = 1;\n"),
@@ -2597,11 +2835,6 @@ itest!(fmt_stdin_check_not_formatted {
   args: "fmt --check -",
   input: Some("const a = 1\n"),
   output_str: Some("Not formatted stdin\n"),
-});
-
-itest!(circular1 {
-  args: "run --reload circular1.js",
-  output: "circular1.js.out",
 });
 
 itest!(config {
@@ -2771,6 +3004,12 @@ itest!(error_025_tab_indent {
   exit_code: 1,
 });
 
+itest!(error_missing_module_named_import {
+  args: "run --reload error_missing_module_named_import.ts",
+  output: "error_missing_module_named_import.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_no_check {
   args: "run --reload --no-check error_no_check.ts",
   output: "error_no_check.ts.out",
@@ -2858,6 +3097,11 @@ itest!(no_check {
 itest!(no_check_decorators {
   args: "run --quiet --reload --no-check no_check_decorators.ts",
   output: "no_check_decorators.ts.out",
+});
+
+itest!(runtime_decorators {
+  args: "run --quiet --reload --no-check runtime_decorators.ts",
+  output: "runtime_decorators.ts.out",
 });
 
 itest!(lib_ref {
@@ -3105,31 +3349,32 @@ itest!(cache_random_extension {
   http_server: true,
 });
 
-itest!(cafile_url_imports {
-  args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
-  output: "cafile_url_imports.ts.out",
-  http_server: true,
-});
+// TODO(lucacasonato): reenable these tests once we figure out what is wrong with cafile tests
+// itest!(cafile_url_imports {
+//   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
+//   output: "cafile_url_imports.ts.out",
+//   http_server: true,
+// });
 
-itest!(cafile_ts_fetch {
-  args:
-    "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
-  output: "cafile_ts_fetch.ts.out",
-  http_server: true,
-});
+// itest!(cafile_ts_fetch {
+//   args:
+//     "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
+//   output: "cafile_ts_fetch.ts.out",
+//   http_server: true,
+// });
 
-itest!(cafile_eval {
-  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
-  output: "cafile_ts_fetch.ts.out",
-  http_server: true,
-});
+// itest!(cafile_eval {
+//   args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+//   output: "cafile_ts_fetch.ts.out",
+//   http_server: true,
+// });
 
-itest!(cafile_info {
-  args:
-    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
-  output: "cafile_info.ts.out",
-  http_server: true,
-});
+// itest!(cafile_info {
+//   args:
+//     "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+//   output: "cafile_info.ts.out",
+//   http_server: true,
+// });
 
 itest!(disallow_http_from_https_js {
   args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
@@ -3153,6 +3398,11 @@ itest!(dynamic_import_conditional {
 itest!(tsx_imports {
   args: "run --reload tsx_imports.ts",
   output: "tsx_imports.ts.out",
+});
+
+itest!(fix_dynamic_import_errors {
+  args: "run --reload fix_dynamic_import_errors.js",
+  output: "fix_dynamic_import_errors.js.out",
 });
 
 itest!(fix_emittable_skipped {
@@ -3225,6 +3475,42 @@ itest!(redirect_cache {
 itest!(deno_test_coverage {
   args: "test --coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_comment_coverage {
+  args: "test --coverage --unstable test_comment_coverage.ts",
+  output: "test_comment_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_branch_coverage {
+  args: "test --coverage --unstable test_branch_coverage.ts",
+  output: "test_branch_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_coverage_explicit {
+  args: "test --coverage=.test_coverage --unstable test_coverage.ts",
+  output: "test_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_run_test_coverage {
+  args: "test --allow-all --coverage --unstable test_run_test_coverage.ts",
+  output: "test_run_test_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_run_run_coverage {
+  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts",
+  output: "test_run_run_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_run_combined_coverage {
+  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts test_run_test_coverage.ts",
+  output: "test_run_combined_coverage.out",
   exit_code: 0,
 });
 
@@ -3321,10 +3607,49 @@ itest!(deno_doc_types_header_direct {
   output: "doc/types_header.out",
 });
 
+itest!(import_data_url_error_stack {
+  args: "run --quiet --reload import_data_url_error_stack.ts",
+  output: "import_data_url_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_import_relative {
+  args: "run --quiet --reload import_data_url_import_relative.ts",
+  output: "import_data_url_import_relative.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_imports {
+  args: "run --quiet --reload import_data_url_imports.ts",
+  output: "import_data_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(import_data_url_jsx {
+  args: "run --quiet --reload import_data_url_jsx.ts",
+  output: "import_data_url_jsx.ts.out",
+});
+
+itest!(import_data_url {
+  args: "run --quiet --reload import_data_url.ts",
+  output: "import_data_url.ts.out",
+});
+
+itest!(import_dynamic_data_url {
+  args: "run --quiet --reload import_dynamic_data_url.ts",
+  output: "import_dynamic_data_url.ts.out",
+});
+
 itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
+});
+
+itest!(info_missing_module {
+  args: "info error_009_missing_js_module.js",
+  output: "info_missing_module.out",
+  exit_code: 1,
 });
 
 itest!(info_recursive_modules {
@@ -3349,7 +3674,60 @@ itest!(local_sources_not_cached_in_memory {
   output: "no_mem_cache.js.out",
 });
 
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line is not remapped because no inline source contents are included in
+// the sourcemap and the file is not present in the dependency graph.
+itest!(inline_js_source_map_2 {
+  args: "run --quiet inline_js_source_map_2.js",
+  output: "inline_js_source_map_2.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line remapped using th inline source contents that are included in the
+// inline source map.
+itest!(inline_js_source_map_2_with_inline_contents {
+  args: "run --quiet inline_js_source_map_2_with_inline_contents.js",
+  output: "inline_js_source_map_2_with_inline_contents.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, and is loaded into the module
+// graph because of a direct import statement (inline_js_source_map.ts). The
+// source map was generated from an earlier version of this file, where the throw
+// was not commented out. The source line is remapped using source contents that
+// from the module graph.
+itest!(inline_js_source_map_with_contents_from_graph {
+  args: "run --quiet inline_js_source_map_with_contents_from_graph.js",
+  output: "inline_js_source_map_with_contents_from_graph.js.out",
+  exit_code: 1,
+  http_server: true,
+});
+
 #[test]
+fn no_validate_asm() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_validate_asm.js")
+    .stderr(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+  assert!(output.stdout.is_empty());
+}
+
+#[test]
+#[ignore]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
@@ -3370,6 +3748,7 @@ fn cafile_env_fetch() {
 }
 
 #[test]
+#[ignore]
 fn cafile_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
@@ -3393,6 +3772,7 @@ fn cafile_fetch() {
 }
 
 #[test]
+#[ignore]
 fn cafile_install_remote_module() {
   let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
@@ -3414,6 +3794,8 @@ fn cafile_install_remote_module() {
     .arg("https://localhost:5545/cli/tests/echo.ts")
     .output()
     .expect("Failed to spawn script");
+  println!("{}", std::str::from_utf8(&install_output.stdout).unwrap());
+  eprintln!("{}", std::str::from_utf8(&install_output.stderr).unwrap());
   assert!(install_output.status.success());
 
   let mut echo_test_path = bin_dir.join("echo_test");
@@ -3433,6 +3815,7 @@ fn cafile_install_remote_module() {
 }
 
 #[test]
+#[ignore]
 fn cafile_bundle_remote_exports() {
   let _g = util::http_server();
 
@@ -4259,6 +4642,64 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   child.wait().unwrap();
 }
 
+#[tokio::test]
+async fn inspector_json() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_json_list() {
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut url = ws_url.clone();
+  let _ = url.set_scheme("http");
+  url.set_path("/json/list");
+  let resp = reqwest::get(url).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
+  let endpoint_list: Vec<deno_core::serde_json::Value> =
+    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+  let matching_endpoint = endpoint_list
+    .iter()
+    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
+  assert!(matching_endpoint.is_some());
+  child.kill().unwrap();
+}
+
 #[test]
 fn websocket() {
   let _g = util::http_server();
@@ -4486,4 +4927,567 @@ fn fmt_ignore_unexplicit_files() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stderr, b"Checked 0 file\n");
+}
+
+#[test]
+fn compile() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./std/examples/welcome.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+}
+
+#[test]
+fn standalone_args() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
+    .arg("a")
+    .arg("b")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .arg("foo")
+    .arg("--bar")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"a\nb\nfoo\n--bar\n--unstable\n");
+}
+
+#[test]
+fn standalone_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("error.exe")
+  } else {
+    dir.path().join("error")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_error.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.stdout, b"");
+  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:2:11)\n    at foo (file://$deno$/bundle.js:5:5)\n    at file://$deno$/bundle.js:7:1\n";
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_eq!(stderr, expected_stderr);
+}
+
+#[test]
+fn standalone_no_module_load() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("hello.exe")
+  } else {
+    dir.path().join("hello")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_import.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.stdout, b"start\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("Self-contained binaries don't support module loading"));
+}
+
+#[test]
+fn compile_with_directory_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  std::fs::create_dir(&exe).expect("cannot create directory");
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: {:?} is a directory.\n", &exe);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(&expected_stderr));
+}
+
+#[test]
+fn compile_with_conflict_file_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  std::fs::write(&exe, b"SHOULD NOT BE OVERWRITTEN")
+    .expect("cannot create file");
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: cannot overwrite {:?}.\n", &exe);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  dbg!(&stderr);
+  assert!(stderr.contains(&expected_stderr));
+  assert!(std::fs::read(&exe)
+    .expect("cannot read file")
+    .eq(b"SHOULD NOT BE OVERWRITTEN"));
+}
+
+#[test]
+fn compile_and_overwrite_file() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("args.exe")
+  } else {
+    dir.path().join("args")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(&exe.exists());
+
+  let recompile_output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/028_args.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(recompile_output.status.success());
+}
+
+#[test]
+fn standalone_runtime_flags() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("flags.exe")
+  } else {
+    dir.path().join("flags")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--seed")
+    .arg("1")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./cli/tests/standalone_runtime_flags.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout_str = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
+  let stderr_str = String::from_utf8(output.stderr).unwrap();
+  assert!(util::strip_ansi_codes(&stderr_str)
+    .contains("PermissionDenied: write access"));
+}
+
+#[test]
+fn denort_direct_use_error() {
+  let status = Command::new(util::denort_exe_path())
+    .current_dir(util::root_path())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_resolve_dns() {
+  use std::collections::BTreeMap;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use std::net::SocketAddr;
+  use std::str::FromStr;
+  use std::sync::Arc;
+  use std::sync::RwLock;
+  use std::time::Duration;
+  use tokio::net::TcpListener;
+  use tokio::net::UdpSocket;
+  use tokio::sync::oneshot;
+  use trust_dns_client::rr::LowerName;
+  use trust_dns_client::rr::RecordType;
+  use trust_dns_client::rr::RrKey;
+  use trust_dns_server::authority::Catalog;
+  use trust_dns_server::authority::ZoneType;
+  use trust_dns_server::proto::rr::rdata::mx::MX;
+  use trust_dns_server::proto::rr::rdata::soa::SOA;
+  use trust_dns_server::proto::rr::rdata::srv::SRV;
+  use trust_dns_server::proto::rr::rdata::txt::TXT;
+  use trust_dns_server::proto::rr::record_data::RData;
+  use trust_dns_server::proto::rr::resource::Record;
+  use trust_dns_server::proto::rr::Name;
+  use trust_dns_server::proto::rr::RecordSet;
+  use trust_dns_server::store::in_memory::InMemoryAuthority;
+  use trust_dns_server::ServerFuture;
+
+  const DNS_PORT: u16 = 4553;
+
+  // Setup DNS server for testing
+  async fn run_dns_server(tx: oneshot::Sender<()>) {
+    let catalog = {
+      let records = {
+        let mut map = BTreeMap::new();
+        let lookup_name = "www.example.com".parse::<Name>().unwrap();
+        let lookup_name_lower = LowerName::new(&lookup_name);
+
+        // Inserts SOA record
+        let soa = SOA::new(
+          Name::from_str("net").unwrap(),
+          Name::from_str("example").unwrap(),
+          0,
+          i32::MAX,
+          i32::MAX,
+          i32::MAX,
+          0,
+        );
+        let rdata = RData::SOA(soa);
+        let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map
+          .insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
+
+        // Inserts A record
+        let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::A),
+          record_set,
+        );
+
+        // Inserts AAAA record
+        let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
+          record_set,
+        );
+
+        // Inserts ANAME record
+        let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
+          record_set,
+        );
+
+        // Inserts CNAME record
+        let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
+        let record =
+          Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
+          record_set,
+        );
+
+        // Inserts MX record
+        let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::MX),
+          record_set,
+        );
+
+        // Inserts PTR record
+        let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
+        let record = Record::from_rdata(
+          Name::from_str("5.6.7.8").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
+          record_set,
+        );
+
+        // Inserts SRV record
+        let rdata = RData::SRV(SRV::new(
+          0,
+          100,
+          1234,
+          Name::from_str("srv.com").unwrap(),
+        ));
+        let record = Record::from_rdata(
+          Name::from_str("_Service._TCP.example.com").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
+          record_set,
+        );
+
+        // Inserts TXT record
+        let rdata =
+          RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
+        let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
+
+        map
+      };
+
+      let authority = Box::new(Arc::new(RwLock::new(
+        InMemoryAuthority::new(
+          Name::from_str("com").unwrap(),
+          records,
+          ZoneType::Primary,
+          false,
+        )
+        .unwrap(),
+      )));
+      let mut c = Catalog::new();
+      c.upsert(Name::root().into(), authority);
+      c
+    };
+
+    let mut server_fut = ServerFuture::new(catalog);
+    let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
+    let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
+    let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
+    server_fut.register_socket(udp_socket);
+    server_fut.register_listener(tcp_listener, Duration::from_secs(2));
+
+    // Notifies that the DNS server is ready
+    tx.send(()).unwrap();
+
+    server_fut.block_until_done().await.unwrap();
+  }
+
+  let (ready_tx, ready_rx) = oneshot::channel();
+  let dns_server_fut = run_dns_server(ready_tx);
+  let handle = tokio::spawn(dns_server_fut);
+
+  // Waits for the DNS server to be ready
+  ready_rx.await.unwrap();
+
+  // Pass: `--allow-net`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Pass: `--allow-net=127.0.0.1:4553`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=127.0.0.1:4553")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Permission error: `--allow-net=deno.land`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=deno.land")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  // Permission error: no permission specified
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  handle.abort();
 }

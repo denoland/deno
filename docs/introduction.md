@@ -5,7 +5,7 @@ developer experience.
 
 It's built on V8, Rust, and Tokio.
 
-## Feature Highlights
+## Feature highlights
 
 - Secure by default. No file, network, or environment access (unless explicitly
   enabled).
@@ -31,21 +31,22 @@ Deno explicitly takes on the role of both runtime and package manager. It uses a
 standard browser-compatible protocol for loading modules: URLs.
 
 Among other things, Deno is a great replacement for utility scripts that may
-have been historically written with bash or python.
+have been historically written with Bash or Python.
 
 ## Goals
 
 - Only ship a single executable (`deno`).
-- Provide Secure Defaults.
+- Provide secure defaults.
   - Unless specifically allowed, scripts can't access files, the environment, or
     the network.
-- Browser compatible: The subset of Deno programs which are written completely
-  in JavaScript and do not use the global `Deno` namespace (or feature test for
-  it), ought to also be able to be run in a modern web browser without change.
-- Provide built-in tooling like unit testing, code formatting, and linting to
-  improve developer experience.
-- Does not leak V8 concepts into user land.
-- Be able to serve HTTP efficiently.
+- Be browser-compatible.
+  - The subset of Deno programs which are written completely in JavaScript and
+    do not use the global `Deno` namespace (or feature test for it), ought to
+    also be able to be run in a modern web browser without change.
+- Provide built-in tooling to improve developer experience.
+  - E.g. unit testing, code formatting, and linting.
+- Not leak V8 concepts into user land.
+- Serve HTTP efficiently.
 
 ## Comparison to Node.js
 

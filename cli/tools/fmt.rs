@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -10,13 +10,12 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
-use crate::fs_util::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, get_extension, is_supported_ext_md};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -38,11 +37,10 @@ pub async fn format(
 ) -> Result<(), AnyError> {
   let target_file_resolver = || {
     // collect the files that are to be formatted
-    collect_files(&args, &ignore, is_supported_ext)
+    collect_files(&args, &ignore, is_supported_ext_md)
   };
-
   let operation = |paths: Vec<PathBuf>| {
-    let config = get_config();
+    let config = get_typescript_config();
     async move {
       if check {
         check_source_files(config, paths).await?;
@@ -63,8 +61,48 @@ pub async fn format(
   Ok(())
 }
 
+/// Formats markdown (using https://github.com/dprint/dprint-plugin-markdown) and its code blocks
+/// (ts/tsx, js/jsx).
+fn format_markdown(
+  file_text: &str,
+  ts_config: dprint_plugin_typescript::configuration::Configuration,
+) -> Result<String, String> {
+  let md_config = get_markdown_config();
+  dprint_plugin_markdown::format_text(
+    &file_text,
+    &md_config,
+    Box::new(move |tag, text, line_width| {
+      let tag = tag.to_lowercase();
+      if matches!(
+        tag.as_str(),
+        "ts" | "tsx" | "js" | "jsx" | "javascript" | "typescript"
+      ) {
+        // It's important to tell dprint proper file extension, otherwise
+        // it might parse the file twice.
+        let extension = match tag.as_str() {
+          "javascript" => "js",
+          "typescript" => "ts",
+          rest => rest,
+        };
+        let fake_filename =
+          PathBuf::from(format!("deno_fmt_stdin.{}", extension));
+
+        let mut codeblock_config = ts_config.clone();
+        codeblock_config.line_width = line_width;
+        dprint_plugin_typescript::format_text(
+          &fake_filename,
+          &text,
+          &codeblock_config,
+        )
+      } else {
+        Ok(text.to_string())
+      }
+    }),
+  )
+}
+
 async fn check_source_files(
-  config: dprint::configuration::Configuration,
+  config: dprint_plugin_typescript::configuration::Configuration,
   paths: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
@@ -79,7 +117,12 @@ async fn check_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
-      let r = dprint::format_text(&file_path, &file_text, &config);
+      let ext = get_extension(&file_path).unwrap_or_else(String::new);
+      let r = if ext == "md" {
+        format_markdown(&file_text, config.clone())
+      } else {
+        dprint_plugin_typescript::format_text(&file_path, &file_text, &config)
+      };
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_text {
@@ -120,7 +163,7 @@ async fn check_source_files(
 }
 
 async fn format_source_files(
-  config: dprint::configuration::Configuration,
+  config: dprint_plugin_typescript::configuration::Configuration,
   paths: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
@@ -133,7 +176,16 @@ async fn format_source_files(
     move |file_path| {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
-      let r = dprint::format_text(&file_path, &file_contents.text, &config);
+      let ext = get_extension(&file_path).unwrap_or_else(String::new);
+      let r = if ext == "md" {
+        format_markdown(&file_contents.text, config.clone())
+      } else {
+        dprint_plugin_typescript::format_text(
+          &file_path,
+          &file_contents.text,
+          &config,
+        )
+      };
       match r {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
@@ -178,17 +230,25 @@ async fn format_source_files(
 }
 
 /// Format stdin and write result to stdout.
-/// Treats input as TypeScript.
+/// Treats input as TypeScript or as set by `--ext` flag.
 /// Compatible with `--check` flag.
-pub fn format_stdin(check: bool) -> Result<(), AnyError> {
+pub fn format_stdin(check: bool, ext: String) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
-  let config = get_config();
-
-  // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
-  match dprint::format_text(&PathBuf::from("_stdin.ts"), &source, &config) {
+  let config = get_typescript_config();
+  let r = if ext.as_str() == "md" {
+    format_markdown(&source, config)
+  } else {
+    // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
+    dprint_plugin_typescript::format_text(
+      &PathBuf::from("_stdin.ts"),
+      &source,
+      &config,
+    )
+  };
+  match r {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {
@@ -213,9 +273,22 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-fn get_config() -> dprint::configuration::Configuration {
-  use dprint::configuration::*;
-  ConfigurationBuilder::new().deno().build()
+fn get_typescript_config(
+) -> dprint_plugin_typescript::configuration::Configuration {
+  dprint_plugin_typescript::configuration::ConfigurationBuilder::new()
+    .deno()
+    .build()
+}
+
+fn get_markdown_config() -> dprint_plugin_markdown::configuration::Configuration
+{
+  dprint_plugin_markdown::configuration::ConfigurationBuilder::new()
+    // Matches `.dprintrc.json` in the repository
+    .text_wrap(dprint_plugin_markdown::configuration::TextWrap::Always)
+    .ignore_directive("deno-fmt-ignore")
+    .ignore_start_directive("deno-fmt-ignore-start")
+    .ignore_end_directive("deno-fmt-ignore-end")
+    .build()
 }
 
 struct FileContents {
