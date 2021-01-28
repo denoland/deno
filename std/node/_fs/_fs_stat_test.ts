@@ -49,15 +49,15 @@ export function assertStatsBigInt(
   assertEquals(actual.mtime?.getTime(), expected.mtime?.getTime());
   assertEquals(actual.birthtime?.getTime(), expected.birthtime?.getTime());
   assertEquals(
-    actual.atimeMs ? Number(actual.atimeMs) : undefined,
+    actual.atimeMs === null ? undefined : Number(actual.atimeMs),
     expected.atime?.getTime(),
   );
   assertEquals(
-    actual.mtimeMs ? Number(actual.mtimeMs) : undefined,
+    actual.mtimeMs === null ? undefined : Number(actual.mtimeMs),
     expected.mtime?.getTime(),
   );
   assertEquals(
-    actual.birthtimeMs ? Number(actual.birthtimeMs) : undefined,
+    actual.birthtimeMs === null ? undefined : Number(actual.birthtimeMs),
     expected.birthtime?.getTime(),
   );
   assertEquals(actual.atimeNs === null, actual.atime === null);
