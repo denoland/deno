@@ -13,12 +13,12 @@ export interface Complex {
 export function complex(
   foo: string,
   bar: string,
-  baz: string
+  baz: string,
 ): Complex {
   return {
     foo,
     bar,
-    baz
+    baz,
   };
 }
 
