@@ -3600,11 +3600,13 @@ itest!(deno_doc_types_ref {
 itest!(deno_doc_types_header {
   args: "doc --reload doc/types_header.ts",
   output: "doc/types_header.out",
+  http_server: true,
 });
 
 itest!(deno_doc_types_header_direct {
   args: "doc --reload http://127.0.0.1:4545/xTypeScriptTypes.js",
   output: "doc/types_header.out",
+  http_server: true,
 });
 
 itest!(import_data_url_error_stack {

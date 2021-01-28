@@ -779,15 +779,9 @@ async fn doc_command(
     builder.add(&root_specifier, false).await?;
     let graph = builder.get_graph();
 
-    // Don't actually document the dummy file itself, since `deno_doc` only supports reexports one level deep right now.
-    let file_name = graph
-      .resolve(module_specifier.as_str(), &root_specifier, true)
-      .unwrap()
-      .to_string();
-
     let doc_parser = doc::DocParser::new(Box::new(graph), private);
     doc_parser
-      .parse_with_reexports(&file_name, ast::get_syntax(&MediaType::TypeScript))
+      .parse_with_reexports(root_specifier.as_str(), ast::get_syntax(&MediaType::TypeScript))
       .await
   };
 
