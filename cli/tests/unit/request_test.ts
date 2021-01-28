@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {  assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
@@ -10,14 +10,13 @@ unitTest(async function fromInit(): Promise<void> {
     },
   });
 
-  // deno-lint-ignore no-explicit-any
   assertEquals("ahoyhoy", await req.text());
   assertEquals(req.url, "http://foo/");
   assertEquals(req.headers.get("test-header"), "value");
 });
 
 unitTest(async function fromRequest(): Promise<void> {
-  const r = new Request("http://foo/", {body: "ahoyhoy"});
+  const r = new Request("http://foo/", { body: "ahoyhoy" });
   r.headers.set("test-header", "value");
 
   const req = new Request(r);
