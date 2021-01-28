@@ -461,7 +461,7 @@ declare class URLSearchParams {
   toString(): string;
 }
 
-/** The URL interface represents an object providing static methods used for creating object URLs. */
+/** The URL interface represents an object providing static methods used for creating object URLs. */
 declare class URL {
   constructor(url: string, base?: string | URL);
   createObjectURL(object: any): string;

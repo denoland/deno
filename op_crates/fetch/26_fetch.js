@@ -1231,7 +1231,7 @@
      * @param {RequestInfo} input 
      * @param {RequestInit} init 
      */
-    // @ts-expect-error
+    // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init) {
       if (arguments.length < 1) {
         throw TypeError("Not enough arguments");
