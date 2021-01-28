@@ -182,18 +182,8 @@ impl CoverageReporter for LcovCoverageReporter {
         continue;
       }
 
-      let mut count = 0;
-      for range in &function.ranges {
-        if range.count == 0 {
-          count = 0;
-          break;
-        }
-
-        count += range.count;
-      }
-
       functions_found += 1;
-      if count > 1 {
+      if function.ranges[0].count > 1 {
         functions_hit += 1;
       }
 
