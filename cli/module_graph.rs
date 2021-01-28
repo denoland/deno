@@ -791,6 +791,7 @@ impl Graph {
 
   /// Type check the module graph, corresponding to the options provided.
   pub fn check(self, options: CheckOptions) -> Result<ResultInfo, AnyError> {
+    self.validate()?;
     let mut config = TsConfig::new(json!({
       "allowJs": true,
       // TODO(@kitsonk) is this really needed?
@@ -1691,6 +1692,53 @@ impl Graph {
       maybe_ignored_options,
       stats,
     })
+  }
+
+  /// Validate that the module graph is "valid" in that there are not module
+  /// slots that have errorred that should be available to be able to statically
+  /// analyze.  In certain situations, we can spin up tsc with an "invalid"
+  /// graph.
+  fn validate(&self) -> Result<(), AnyError> {
+    fn validate_module<F>(
+      specifier: &ModuleSpecifier,
+      seen: &mut HashSet<ModuleSpecifier>,
+      get_module: &F,
+    ) -> Result<(), AnyError>
+    where
+      F: Fn(&ModuleSpecifier) -> ModuleSlot,
+    {
+      if seen.contains(specifier) {
+        return Ok(());
+      }
+      seen.insert(specifier.clone());
+      match get_module(specifier) {
+        ModuleSlot::Err(err) => Err(anyhow!(err.to_string())),
+        ModuleSlot::Module(module) => {
+          for (_, dep) in module.dependencies.iter() {
+            // a dynamic import should be skipped, because while it might not
+            // be available to statically analyze, it might be available at
+            // runtime.
+            if !dep.is_dynamic {
+              if let Some(code_specifier) = &dep.maybe_code {
+                validate_module(code_specifier, seen, get_module)?;
+              }
+              if let Some(type_specifier) = &dep.maybe_type {
+                validate_module(type_specifier, seen, get_module)?;
+              }
+            }
+          }
+          Ok(())
+        },
+        ModuleSlot::None => Err(custom_error("NotFound", format!("The specifier \"{}\" is unexpectedly not in the module graph.", specifier))),
+        ModuleSlot::Pending => Err(custom_error("InvalidState", format!("The specifier \"{}\" is in an unexpected state in the module graph.", specifier))),
+      }
+    }
+
+    let mut seen = HashSet::new();
+    for specifier in &self.roots {
+      validate_module(specifier, &mut seen, &|s| self.get_module(s).clone())?;
+    }
+    Ok(())
   }
 }
 
