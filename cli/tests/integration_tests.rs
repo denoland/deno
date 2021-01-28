@@ -2406,10 +2406,10 @@ console.log("finish");
   });
 
   itest!(_033_import_map {
-  args:
-    "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
-  output: "033_import_map.out",
-});
+    args:
+      "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+    output: "033_import_map.out",
+  });
 
   itest!(_034_onload {
     args: "run --quiet --reload 034_onload/main.ts",
@@ -2417,18 +2417,18 @@ console.log("finish");
   });
 
   itest!(_035_cached_only_flag {
-  args:
-    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
-  output: "035_cached_only_flag.out",
-  exit_code: 1,
-  http_server: true,
-});
+    args:
+      "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    output: "035_cached_only_flag.out",
+    exit_code: 1,
+    http_server: true,
+  });
 
   itest!(_036_import_map_fetch {
-  args:
-    "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
-  output: "036_import_map_fetch.out",
-});
+    args:
+      "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+    output: "036_import_map_fetch.out",
+  });
 
   itest!(_037_fetch_multiple {
     args: "cache --reload fetch/test.ts fetch/other.ts",
@@ -2470,10 +2470,10 @@ console.log("finish");
   });
 
   itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
-  output: "045_proxy_test.ts.out",
-  http_server: true,
-});
+    args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
+    output: "045_proxy_test.ts.out",
+    http_server: true,
+  });
 
   itest!(_046_tsx {
     args: "run --quiet --reload 046_jsx_test.tsx",
@@ -2498,12 +2498,12 @@ console.log("finish");
   });
 
   itest!(_052_no_remote_flag {
-  args:
-    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
-  output: "052_no_remote_flag.out",
-  exit_code: 1,
-  http_server: true,
-});
+    args:
+      "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    output: "052_no_remote_flag.out",
+    exit_code: 1,
+    http_server: true,
+  });
 
   itest!(_054_info_local_imports {
     args: "info --quiet 005_more_imports.ts",
@@ -2518,10 +2518,10 @@ console.log("finish");
   });
 
   itest!(_056_make_temp_file_write_perm {
-  args:
-    "run --quiet --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
-  output: "056_make_temp_file_write_perm.out",
-});
+    args:
+      "run --quiet --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
+    output: "056_make_temp_file_write_perm.out",
+  });
 
   itest!(_058_tasks_microtasks_close {
     args: "run --quiet 058_tasks_microtasks_close.ts",
@@ -2571,10 +2571,10 @@ console.log("finish");
   });
 
   itest!(_065_import_map_info {
-  args:
-    "info --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
-  output: "065_import_map_info.out",
-});
+    args:
+      "info --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+    output: "065_import_map_info.out",
+  });
 
   #[cfg(unix)]
   #[test]
@@ -2605,10 +2605,10 @@ console.log("finish");
   });
 
   itest!(_072_location_relative_fetch {
-  args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
-  output: "072_location_relative_fetch.ts.out",
-  http_server: true,
-});
+    args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
+    output: "072_location_relative_fetch.ts.out",
+    http_server: true,
+  });
 
   itest!(_073_worker_error {
     args: "run -A 073_worker_error.ts",
@@ -2657,10 +2657,10 @@ console.log("finish");
   });
 
   itest!(_081_location_relative_fetch_redirect {
-  args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
-  output: "081_location_relative_fetch_redirect.ts.out",
-  http_server: true,
-});
+    args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
+    output: "081_location_relative_fetch_redirect.ts.out",
+    http_server: true,
+  });
 
   itest!(_082_prepare_stack_trace_throw {
     args: "run 082_prepare_stack_trace_throw.js",
@@ -2689,10 +2689,10 @@ console.log("finish");
   });
 
   itest!(lock_check_ok {
-  args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
-  output: "003_relative_import.ts.out",
-  http_server: true,
-});
+    args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
+    output: "003_relative_import.ts.out",
+    http_server: true,
+  });
 
   itest!(lock_check_ok2 {
     args: "run --lock=lock_check_ok2.json 019_media_types.ts",
@@ -2701,18 +2701,18 @@ console.log("finish");
   });
 
   itest!(lock_dynamic_imports {
-  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
-  output: "lock_dynamic_imports.out",
-  exit_code: 10,
-  http_server: true,
-});
+    args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
+    output: "lock_dynamic_imports.out",
+    exit_code: 10,
+    http_server: true,
+  });
 
   itest!(lock_check_err {
-  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
-  output: "lock_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
+    args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
+    output: "lock_check_err.out",
+    exit_code: 10,
+    http_server: true,
+  });
 
   itest!(lock_check_err2 {
     args: "run --lock=lock_check_err2.json 019_media_types.ts",
@@ -2722,11 +2722,11 @@ console.log("finish");
   });
 
   itest!(lock_check_err_with_bundle {
-  args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/cli/tests/subdir/mod1.ts",
-  output: "lock_check_err_with_bundle.out",
-  exit_code: 10,
-  http_server: true,
-});
+    args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/cli/tests/subdir/mod1.ts",
+    output: "lock_check_err_with_bundle.out",
+    exit_code: 10,
+    http_server: true,
+  });
 
   itest!(async_error {
     exit_code: 1,
@@ -2988,18 +2988,18 @@ console.log("finish");
   });
 
   itest!(error_local_static_import_from_remote_ts {
-  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
-  exit_code: 1,
-  http_server: true,
-  output: "error_local_static_import_from_remote.ts.out",
-});
+    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
+    exit_code: 1,
+    http_server: true,
+    output: "error_local_static_import_from_remote.ts.out",
+  });
 
   itest!(error_local_static_import_from_remote_js {
-  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
-  exit_code: 1,
-  http_server: true,
-  output: "error_local_static_import_from_remote.js.out",
-});
+    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
+    exit_code: 1,
+    http_server: true,
+    output: "error_local_static_import_from_remote.js.out",
+  });
 
   itest!(error_worker_permissions_local {
     args: "run --reload error_worker_permissions_local.ts",
@@ -3331,18 +3331,18 @@ console.log("finish");
   // });
 
   itest!(disallow_http_from_https_js {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
-  output: "disallow_http_from_https_js.out",
-  http_server: true,
-  exit_code: 1,
-});
+    args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+    output: "disallow_http_from_https_js.out",
+    http_server: true,
+    exit_code: 1,
+  });
 
   itest!(disallow_http_from_https_ts {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
-  output: "disallow_http_from_https_ts.out",
-  http_server: true,
-  exit_code: 1,
-});
+    args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+    output: "disallow_http_from_https_ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
 
   itest!(dynamic_import_conditional {
     args: "run --quiet --reload dynamic_import_conditional.js",
@@ -3464,10 +3464,10 @@ console.log("finish");
   });
 
   itest!(deno_test_run_combined_coverage {
-  args: "test --allow-all --coverage --unstable test_run_run_coverage.ts test_run_test_coverage.ts",
-  output: "test_run_combined_coverage.out",
-  exit_code: 0,
-});
+    args: "test --allow-all --coverage --unstable test_run_run_coverage.ts test_run_test_coverage.ts",
+    output: "test_run_combined_coverage.out",
+    exit_code: 0,
+  });
 
   itest!(deno_lint {
     args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
@@ -3482,11 +3482,11 @@ console.log("finish");
   });
 
   itest!(deno_lint_json {
-  args:
-    "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
-  output: "lint/expected_json.out",
-  exit_code: 1,
-});
+    args:
+      "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+    output: "lint/expected_json.out",
+    exit_code: 1,
+  });
 
   itest!(deno_lint_ignore {
     args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
