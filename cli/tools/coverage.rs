@@ -242,11 +242,9 @@ impl PrettyCoverageReporter {
         let mut indices = uncovered_lines
           .iter()
           .map(|i| {
-            let line = *i as u32;
-
             source_map
               .tokens()
-              .filter(move |token| token.get_dst_line() == line.clone())
+              .filter(move |token| token.get_dst_line() as usize == *i)
               .map(|token| token.get_src_line() as usize)
           })
           .flatten()
