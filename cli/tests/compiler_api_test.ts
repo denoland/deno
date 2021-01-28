@@ -189,7 +189,7 @@ Deno.test({
     assert(!ignoredOptions);
     assertEquals(stats.length, 12);
     assertEquals(Object.keys(files), ["deno:///bundle.js"]);
-    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
   },
 });
 
@@ -227,7 +227,7 @@ Deno.test({
     assert(!ignoredOptions);
     assertEquals(stats.length, 12);
     assertEquals(Object.keys(files), ["deno:///bundle.js"]);
-    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
   },
 });
 

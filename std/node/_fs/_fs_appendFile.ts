@@ -35,7 +35,7 @@ export function appendFile(
   new Promise((resolve, reject) => {
     if (typeof pathOrRid === "number") {
       rid = pathOrRid;
-      Deno.write(rid, buffer).then(resolve).catch(reject);
+      Deno.write(rid, buffer).then(resolve, reject);
     } else {
       const mode: number | undefined = isFileOptions(options)
         ? options.mode
@@ -45,7 +45,7 @@ export function appendFile(
         : undefined;
 
       if (mode) {
-        //TODO rework once https://github.com/denoland/deno/issues/4017 completes
+        // TODO(bartlomieju) rework once https://github.com/denoland/deno/issues/4017 completes
         notImplemented("Deno does not yet support setting mode on create");
       }
       Deno.open(pathOrRid as string, getOpenOptions(flag))
@@ -53,15 +53,13 @@ export function appendFile(
           rid = openedFileRid;
           return Deno.write(openedFileRid, buffer);
         })
-        .then(resolve)
-        .catch(reject);
+        .then(resolve, reject);
     }
   })
     .then(() => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
-      callbackFn();
-    })
-    .catch((err) => {
+      callbackFn(null);
+    }, (err) => {
       closeRidIfNecessary(typeof pathOrRid === "string", rid);
       callbackFn(err);
     });
@@ -100,7 +98,7 @@ export function appendFileSync(
         : undefined;
 
       if (mode) {
-        // TODO rework once https://github.com/denoland/deno/issues/4017 completes
+        // TODO(bartlomieju) rework once https://github.com/denoland/deno/issues/4017 completes
         notImplemented("Deno does not yet support setting mode on create");
       }
 

@@ -511,15 +511,23 @@ delete Object.prototype.__proto__;
       }
       case "getDiagnostics": {
         try {
-          const diagnostics = [
-            ...languageService.getSemanticDiagnostics(request.specifier),
-            ...languageService.getSuggestionDiagnostics(request.specifier),
-            ...languageService.getSyntacticDiagnostics(request.specifier),
-          ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-          return respond(id, fromTypeScriptDiagnostic(diagnostics));
+          /** @type {Record<string, any[]>} */
+          const diagnosticMap = {};
+          for (const specifier of request.specifiers) {
+            diagnosticMap[specifier] = fromTypeScriptDiagnostic([
+              ...languageService.getSemanticDiagnostics(specifier),
+              ...languageService.getSuggestionDiagnostics(specifier),
+              ...languageService.getSyntacticDiagnostics(specifier),
+            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
+          }
+          return respond(id, diagnosticMap);
         } catch (e) {
-          error(e);
-          return respond(id, []);
+          if ("stack" in e) {
+            error(e.stack);
+          } else {
+            error(e);
+          }
+          return respond(id, {});
         }
       }
       case "getQuickInfo": {

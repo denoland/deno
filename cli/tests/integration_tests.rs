@@ -6,12 +6,9 @@ use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::io::{BufRead, Write};
-use std::path::Path;
-use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
-use walkdir::WalkDir;
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
@@ -511,20 +508,31 @@ fn cache_invalidation_test_no_check() {
 #[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
-  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
-  let badly_formatted_original =
+  let fixed_js = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
+  let badly_formatted_original_js =
     util::root_path().join("cli/tests/badly_formatted.mjs");
-  let badly_formatted = t.path().join("badly_formatted.js");
-  let badly_formatted_str = badly_formatted.to_str().unwrap();
-  std::fs::copy(&badly_formatted_original, &badly_formatted)
+  let badly_formatted_original_md =
+    util::root_path().join("cli/tests/badly_formatted.md");
+  let badly_formatted_js = t.path().join("badly_formatted.js");
+  let badly_formatted_md = t.path().join("badly_formatted.md");
+  let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
+  let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
+  std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
+    .expect("Failed to copy file");
+  std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
     .expect("Failed to copy file");
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg(format!("--ignore={}", badly_formatted_str))
+    .arg(format!(
+      "--ignore={},{}",
+      badly_formatted_js_str, badly_formatted_md_str
+    ))
     .arg("--check")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
@@ -535,7 +543,8 @@ fn fmt_test() {
     .current_dir(util::root_path())
     .arg("fmt")
     .arg("--check")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
@@ -545,15 +554,19 @@ fn fmt_test() {
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
-    .arg(badly_formatted_str)
+    .arg(badly_formatted_js_str)
+    .arg(badly_formatted_md_str)
     .spawn()
     .expect("Failed to spawn script")
     .wait()
     .expect("Failed to wait for child process");
   assert!(status.success());
-  let expected = std::fs::read_to_string(fixed).unwrap();
-  let actual = std::fs::read_to_string(badly_formatted).unwrap();
-  assert_eq!(expected, actual);
+  let expected_js = std::fs::read_to_string(fixed_js).unwrap();
+  let expected_md = std::fs::read_to_string(fixed_md).unwrap();
+  let actual_js = std::fs::read_to_string(badly_formatted_js).unwrap();
+  let actual_md = std::fs::read_to_string(badly_formatted_md).unwrap();
+  assert_eq!(expected_js, actual_js);
+  assert_eq!(expected_md, actual_md);
 }
 
 // Helper function to skip watcher output that contains "Restarting"
@@ -937,6 +950,37 @@ fn ts_dependency_recompilation() {
   assert!(stderr_output.contains("TS2345"));
   assert!(!output.status.success());
   assert!(stdout_output.is_empty());
+}
+
+#[test]
+fn ts_no_recheck_on_redirect() {
+  let deno_dir = util::new_deno_dir();
+  let e = util::deno_exe_path();
+
+  let redirect_ts = util::root_path().join("cli/tests/017_import_redirect.ts");
+  assert!(redirect_ts.is_file());
+  let mut cmd = Command::new(e.clone());
+  cmd.env("DENO_DIR", deno_dir.path());
+  let mut initial = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts.clone())
+    .spawn()
+    .expect("failed to span script");
+  let status_initial =
+    initial.wait().expect("failed to wait for child process");
+  assert!(status_initial.success());
+
+  let mut cmd = Command::new(e);
+  cmd.env("DENO_DIR", deno_dir.path());
+  let output = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts)
+    .output()
+    .expect("failed to spawn script");
+
+  assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
 }
 
 #[test]
@@ -2649,6 +2693,30 @@ itest!(_077_fetch_empty {
 itest!(_078_unload_on_exit {
   args: "run 078_unload_on_exit.ts",
   output: "078_unload_on_exit.ts.out",
+  exit_code: 1,
+});
+
+itest!(_079_location_authentication {
+  args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
+  output: "079_location_authentication.ts.out",
+});
+
+itest!(_080_deno_emit_permissions {
+  args: "run --unstable 080_deno_emit_permissions.ts",
+  output: "080_deno_emit_permissions.ts.out",
+  exit_code: 1,
+});
+
+itest!(_081_location_relative_fetch_redirect {
+  args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
+  output: "081_location_relative_fetch_redirect.ts.out",
+  http_server: true,
+});
+
+itest!(_082_prepare_stack_trace_throw {
+  args: "run 082_prepare_stack_trace_throw.js",
+  output: "082_prepare_stack_trace_throw.js.out",
+  exit_code: 1,
 });
 
 #[cfg(unix)]
@@ -2744,7 +2812,7 @@ itest!(fmt_quiet_check_fmt_dir {
 });
 
 itest!(fmt_check_formatted_files {
-  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md",
   output: "fmt/expected_fmt_check_formatted_files.out",
   exit_code: 0,
 });
@@ -2759,6 +2827,12 @@ itest!(fmt_stdin {
   args: "fmt -",
   input: Some("const a = 1\n"),
   output_str: Some("const a = 1;\n"),
+});
+
+itest!(fmt_stdin_markdown {
+  args: "fmt --ext=md -",
+  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n"),
+  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"),
 });
 
 itest!(fmt_stdin_check_formatted {
@@ -3405,6 +3479,12 @@ itest!(redirect_cache {
 itest!(deno_test_coverage {
   args: "test --coverage --unstable test_coverage.ts",
   output: "test_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_comment_coverage {
+  args: "test --coverage --unstable test_comment_coverage.ts",
+  output: "test_comment_coverage.out",
   exit_code: 0,
 });
 
@@ -5120,243 +5200,278 @@ fn denort_direct_use_error() {
   assert!(!status.success());
 }
 
-fn concat_bundle(
-  files: Vec<(PathBuf, String)>,
-  bundle_path: &Path,
-  init: String,
-) -> String {
-  let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
-
-  let mut bundle = init.clone();
-  let mut bundle_line_count = init.lines().count() as u32;
-  let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
-
-  // In classic workers, `importScripts()` performs an actual import.
-  // However, we don't implement that function in Deno as we want to enforce
-  // the use of ES6 modules.
-  // To work around this, we:
-  // 1. Define `importScripts()` as a no-op (code below)
-  // 2. Capture its parameter from the source code and add it to the list of
-  // files to concatenate. (see `web_platform_tests()`)
-  bundle.push_str("function importScripts() {}\n");
-  bundle_line_count += 1;
-
-  for (path, text) in files {
-    let path = std::fs::canonicalize(path).unwrap();
-    let url = url::Url::from_file_path(path).unwrap().to_string();
-    let src_id = source_map.add_source(&url);
-    source_map.set_source_contents(src_id, Some(&text));
-
-    for (line_index, line) in text.lines().enumerate() {
-      bundle.push_str(line);
-      bundle.push('\n');
-      source_map.add_raw(
-        bundle_line_count,
-        0,
-        line_index as u32,
-        0,
-        Some(src_id),
-        None,
-      );
-
-      bundle_line_count += 1;
-    }
-    bundle.push('\n');
-    bundle_line_count += 1;
-  }
-
-  let mut source_map_buf: Vec<u8> = vec![];
-  source_map
-    .into_sourcemap()
-    .to_writer(&mut source_map_buf)
-    .unwrap();
-
-  bundle.push_str("//# sourceMappingURL=data:application/json;base64,");
-  let encoded_map = base64::encode(source_map_buf);
-  bundle.push_str(&encoded_map);
-
-  bundle
-}
-
-// TODO(lucacasonato): DRY with tsc_config.rs
-/// Convert a jsonc libraries `JsonValue` to a serde `Value`.
-fn jsonc_to_serde(j: jsonc_parser::JsonValue) -> serde_json::Value {
-  use jsonc_parser::JsonValue;
-  use serde_json::Value;
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_resolve_dns() {
+  use std::collections::BTreeMap;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use std::net::SocketAddr;
   use std::str::FromStr;
-  match j {
-    JsonValue::Array(arr) => {
-      let vec = arr.into_iter().map(jsonc_to_serde).collect();
-      Value::Array(vec)
-    }
-    JsonValue::Boolean(bool) => Value::Bool(bool),
-    JsonValue::Null => Value::Null,
-    JsonValue::Number(num) => {
-      let number =
-        serde_json::Number::from_str(&num).expect("could not parse number");
-      Value::Number(number)
-    }
-    JsonValue::Object(obj) => {
-      let mut map = serde_json::map::Map::new();
-      for (key, json_value) in obj.into_iter() {
-        map.insert(key, jsonc_to_serde(json_value));
-      }
-      Value::Object(map)
-    }
-    JsonValue::String(str) => Value::String(str),
-  }
-}
+  use std::sync::Arc;
+  use std::sync::RwLock;
+  use std::time::Duration;
+  use tokio::net::TcpListener;
+  use tokio::net::UdpSocket;
+  use tokio::sync::oneshot;
+  use trust_dns_client::rr::LowerName;
+  use trust_dns_client::rr::RecordType;
+  use trust_dns_client::rr::RrKey;
+  use trust_dns_server::authority::Catalog;
+  use trust_dns_server::authority::ZoneType;
+  use trust_dns_server::proto::rr::rdata::mx::MX;
+  use trust_dns_server::proto::rr::rdata::soa::SOA;
+  use trust_dns_server::proto::rr::rdata::srv::SRV;
+  use trust_dns_server::proto::rr::rdata::txt::TXT;
+  use trust_dns_server::proto::rr::record_data::RData;
+  use trust_dns_server::proto::rr::resource::Record;
+  use trust_dns_server::proto::rr::Name;
+  use trust_dns_server::proto::rr::RecordSet;
+  use trust_dns_server::store::in_memory::InMemoryAuthority;
+  use trust_dns_server::ServerFuture;
 
-#[test]
-fn web_platform_tests() {
-  use deno_core::serde::Deserialize;
+  const DNS_PORT: u16 = 4553;
 
-  #[derive(Deserialize)]
-  #[serde(untagged)]
-  enum WptConfig {
-    Simple(String),
-    #[serde(rename_all = "camelCase")]
-    Options {
-      name: String,
-      expect_fail: Vec<String>,
-    },
-  }
+  // Setup DNS server for testing
+  async fn run_dns_server(tx: oneshot::Sender<()>) {
+    let catalog = {
+      let records = {
+        let mut map = BTreeMap::new();
+        let lookup_name = "www.example.com".parse::<Name>().unwrap();
+        let lookup_name_lower = LowerName::new(&lookup_name);
 
-  let text =
-    std::fs::read_to_string(util::tests_path().join("wpt.jsonc")).unwrap();
-  let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
-  let config: std::collections::HashMap<String, Vec<WptConfig>> =
-    deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
+        // Inserts SOA record
+        let soa = SOA::new(
+          Name::from_str("net").unwrap(),
+          Name::from_str("example").unwrap(),
+          0,
+          i32::MAX,
+          i32::MAX,
+          i32::MAX,
+          0,
+        );
+        let rdata = RData::SOA(soa);
+        let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map
+          .insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
 
-  for (suite_name, includes) in config.into_iter() {
-    let suite_path = util::wpt_path().join(suite_name);
-    let dir = WalkDir::new(&suite_path)
-      .into_iter()
-      .filter_map(Result::ok)
-      .filter(|e| e.file_type().is_file())
-      .filter(|f| {
-        let filename = f.file_name().to_str().unwrap();
-        filename.ends_with(".any.js")
-          || filename.ends_with(".window.js")
-          || filename.ends_with(".worker.js")
-      })
-      .filter_map(|f| {
-        let path = f
-          .path()
-          .strip_prefix(&suite_path)
-          .unwrap()
-          .to_str()
-          .unwrap();
-        for cfg in &includes {
-          match cfg {
-            WptConfig::Simple(name) if path.starts_with(name) => {
-              return Some((f.path().to_owned(), vec![]))
-            }
-            WptConfig::Options { name, expect_fail }
-              if path.starts_with(name) =>
-            {
-              return Some((f.path().to_owned(), expect_fail.to_vec()))
-            }
-            _ => {}
-          }
-        }
-        None
-      });
+        // Inserts A record
+        let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::A),
+          record_set,
+        );
 
-    let testharness_path = util::wpt_path().join("resources/testharness.js");
-    let testharness_text = std::fs::read_to_string(&testharness_path).unwrap();
-    let testharnessreporter_path =
-      util::tests_path().join("wpt_testharnessconsolereporter.js");
-    let testharnessreporter_text =
-      std::fs::read_to_string(&testharnessreporter_path).unwrap();
+        // Inserts AAAA record
+        let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
+          record_set,
+        );
 
-    for (test_file_path, expect_fail) in dir {
-      let test_file_text = std::fs::read_to_string(&test_file_path).unwrap();
-      let imports: Vec<(PathBuf, String)> = test_file_text
-        .split('\n')
-        .into_iter()
-        .filter_map(|t| {
-          // Hack: we don't implement `importScripts()`, and instead capture the
-          // parameter in source code; see `concat_bundle()` for more details.
-          if let Some(rest_import_scripts) = t.strip_prefix("importScripts(\"")
-          {
-            if let Some(import_path) = rest_import_scripts.strip_suffix("\");")
-            {
-              // The code in `testharness.js` silences the test outputs.
-              if import_path != "/resources/testharness.js" {
-                return Some(import_path);
-              }
-            }
-          }
-          t.strip_prefix("// META: script=")
-        })
-        .map(|s| {
-          let s = if s == "/resources/WebIDLParser.js" {
-            "/resources/webidl2/lib/webidl2.js"
-          } else {
-            s
-          };
-          if s.starts_with('/') {
-            util::wpt_path().join(format!(".{}", s))
-          } else {
-            test_file_path.parent().unwrap().join(s)
-          }
-        })
-        .map(|path| {
-          let text = std::fs::read_to_string(&path).unwrap();
-          (path, text)
-        })
-        .collect();
+        // Inserts ANAME record
+        let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
+          record_set,
+        );
 
-      let mut variants: Vec<&str> = test_file_text
-        .split('\n')
-        .into_iter()
-        .filter_map(|t| t.strip_prefix("// META: variant="))
-        .collect();
+        // Inserts CNAME record
+        let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
+        let record =
+          Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
+          record_set,
+        );
 
-      if variants.is_empty() {
-        variants.push("");
-      }
+        // Inserts MX record
+        let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
+        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::MX),
+          record_set,
+        );
 
-      for variant in variants {
-        let mut files = Vec::with_capacity(3 + imports.len());
-        files.push((testharness_path.clone(), testharness_text.clone()));
-        files.push((
-          testharnessreporter_path.clone(),
-          testharnessreporter_text.clone(),
+        // Inserts PTR record
+        let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
+        let record = Record::from_rdata(
+          Name::from_str("5.6.7.8").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
+          record_set,
+        );
+
+        // Inserts SRV record
+        let rdata = RData::SRV(SRV::new(
+          0,
+          100,
+          1234,
+          Name::from_str("srv.com").unwrap(),
         ));
-        files.extend(imports.clone());
-        files.push((test_file_path.clone(), test_file_text.clone()));
+        let record = Record::from_rdata(
+          Name::from_str("_Service._TCP.example.com").unwrap(),
+          u32::MAX,
+          rdata,
+        );
+        let record_set = RecordSet::from(record);
+        map.insert(
+          RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
+          record_set,
+        );
 
-        let mut file = tempfile::Builder::new()
-          .prefix("wpt-bundle-")
-          .suffix(".js")
-          .rand_bytes(5)
-          .tempfile()
-          .unwrap();
+        // Inserts TXT record
+        let rdata =
+          RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
+        let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
+        let record_set = RecordSet::from(record);
+        map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
 
-        let bundle = concat_bundle(files, file.path(), "".to_string());
-        file.write_all(bundle.as_bytes()).unwrap();
+        map
+      };
 
-        let child = util::deno_cmd()
-          .current_dir(test_file_path.parent().unwrap())
-          .arg("run")
-          .arg("--location")
-          .arg(&format!("http://web-platform-tests/?{}", variant))
-          .arg("-A")
-          .arg(file.path())
-          .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
-          .arg("--quiet")
-          .stdin(std::process::Stdio::piped())
-          .spawn()
-          .unwrap();
+      let authority = Box::new(Arc::new(RwLock::new(
+        InMemoryAuthority::new(
+          Name::from_str("com").unwrap(),
+          records,
+          ZoneType::Primary,
+          false,
+        )
+        .unwrap(),
+      )));
+      let mut c = Catalog::new();
+      c.upsert(Name::root().into(), authority);
+      c
+    };
 
-        let output = child.wait_with_output().unwrap();
-        if !output.status.success() {
-          file.keep().unwrap();
-        }
-        assert!(output.status.success());
-      }
-    }
+    let mut server_fut = ServerFuture::new(catalog);
+    let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
+    let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
+    let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
+    server_fut.register_socket(udp_socket);
+    server_fut.register_listener(tcp_listener, Duration::from_secs(2));
+
+    // Notifies that the DNS server is ready
+    tx.send(()).unwrap();
+
+    server_fut.block_until_done().await.unwrap();
   }
+
+  let (ready_tx, ready_rx) = oneshot::channel();
+  let dns_server_fut = run_dns_server(ready_tx);
+  let handle = tokio::spawn(dns_server_fut);
+
+  // Waits for the DNS server to be ready
+  ready_rx.await.unwrap();
+
+  // Pass: `--allow-net`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Pass: `--allow-net=127.0.0.1:4553`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=127.0.0.1:4553")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Permission error: `--allow-net=deno.land`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--allow-net=deno.land")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  // Permission error: no permission specified
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--unstable")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  handle.abort();
 }

@@ -69,7 +69,7 @@ export function readFile(
       }
       const buffer = maybeDecode(data, encoding);
       (cb as BinaryCallback)(null, buffer);
-    }).catch((err) => cb && cb(err));
+    }, (err) => cb && cb(err));
   }
 }
 

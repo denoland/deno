@@ -27,8 +27,7 @@ export function lstat(
     (typeof optionsOrCallback === "function"
       ? optionsOrCallback
       : maybeCallback) as (
-        err: Error | undefined,
-        stat: BigIntStats | Stats,
+        ...args: [Error] | [null, BigIntStats | Stats]
       ) => void;
   const options = typeof optionsOrCallback === "object"
     ? optionsOrCallback
@@ -36,9 +35,10 @@ export function lstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.lstat(path)
-    .then((stat) => callback(undefined, CFISBIS(stat, options.bigint)))
-    .catch((err) => callback(err, err));
+  Deno.lstat(path).then(
+    (stat) => callback(null, CFISBIS(stat, options.bigint)),
+    (err) => callback(err),
+  );
 }
 
 export function lstatSync(path: string | URL): Stats;

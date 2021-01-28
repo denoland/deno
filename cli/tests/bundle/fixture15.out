@@ -1,5 +1,4 @@
-function getIndex(c) {
+function getIndex1(c) {
     return "\x00\r\n\x85\u2028\u2029".indexOf(c);
 }
-const getIndex1 = getIndex;
-export { getIndex as getIndex };
+export { getIndex1 as getIndex };

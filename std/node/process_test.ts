@@ -1,54 +1,28 @@
 // deno-lint-ignore-file no-undef
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
-import * as path from "../path/mod.ts";
-import * as all from "./process.ts";
-import { argv, env } from "./process.ts";
-import { delay } from "../async/delay.ts";
 import "./global.ts";
-
-// NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
-// (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
-
-Deno.test({
-  name: "process exports are as they should be",
-  fn() {
-    // * should be the same as process, default, and globalThis.process
-    // without the export aliases, and with properties that are not standalone
-    const allKeys = new Set<string>(Object.keys(all));
-    // without { process } for deno b/c
-    allKeys.delete("process");
-    // without esm default
-    allKeys.delete("default");
-    // with on, stdin, stderr, and stdout, which is not exported via *
-    allKeys.add("on");
-    allKeys.add("stdin");
-    allKeys.add("stderr");
-    allKeys.add("stdout");
-    const allStr = Array.from(allKeys).sort().join(" ");
-    assertEquals(Object.keys(all.default).sort().join(" "), allStr);
-    assertEquals(Object.keys(all.process).sort().join(" "), allStr);
-    assertEquals(Object.keys(process).sort().join(" "), allStr);
-  },
-});
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
+import { stripColor } from "../fmt/colors.ts";
+import * as path from "../path/mod.ts";
+import { delay } from "../async/delay.ts";
+import { env } from "./process.ts";
 
 Deno.test({
   name: "process.cwd and process.chdir success",
   fn() {
     assertEquals(process.cwd(), Deno.cwd());
 
-    const currentDir = Deno.cwd(); // to unchange current directory after this test
+    const currentDir = Deno.cwd();
 
-    const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
-    process.chdir(path.resolve(moduleDir, ".."));
+    const tempDir = Deno.makeTempDirSync();
+    process.chdir(tempDir);
+    assertEquals(
+      Deno.realPathSync(process.cwd()),
+      Deno.realPathSync(tempDir),
+    );
 
-    assert(process.cwd().match(/\Wstd$/));
-    process.chdir("node");
-    assert(process.cwd().match(/\Wnode$/));
-    process.chdir("..");
-    assert(process.cwd().match(/\Wstd$/));
-    process.chdir(currentDir); // to unchange current directory after this test
+    process.chdir(currentDir);
   },
 });
 
@@ -104,7 +78,7 @@ Deno.test({
 
 Deno.test({
   name: "process.on",
-  fn() {
+  async fn() {
     assertEquals(typeof process.on, "function");
     assertThrows(
       () => {
@@ -113,6 +87,33 @@ Deno.test({
       Error,
       "implemented",
     );
+
+    let triggered = false;
+    process.on("exit", () => {
+      triggered = true;
+    });
+    process.emit("exit");
+    assert(triggered);
+
+    const cwd = path.dirname(path.fromFileUrl(import.meta.url));
+
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "run",
+        "./process_exit_test.ts",
+      ],
+      cwd,
+      stdout: "piped",
+    });
+
+    const decoder = new TextDecoder();
+    const rawOutput = await p.output();
+    assertEquals(
+      stripColor(decoder.decode(rawOutput).trim()),
+      "1\n2",
+    );
+    p.close();
   },
 });
 
@@ -120,20 +121,27 @@ Deno.test({
   name: "process.argv",
   fn() {
     assert(Array.isArray(process.argv));
-    assert(Array.isArray(argv));
     assert(
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
       "deno included in the file name of argv[0]",
     );
-    // we cannot test for anything else (we see test runner arguments here)
+    assertEquals(
+      process.argv[1],
+      path.fromFileUrl(Deno.mainModule),
+    );
   },
 });
 
 Deno.test({
   name: "process.env",
   fn() {
-    assertEquals(typeof process.env.PATH, "string");
-    assertEquals(typeof env.PATH, "string");
+    Deno.env.set("HELLO", "WORLD");
+
+    assertEquals(typeof (process.env.HELLO), "string");
+    assertEquals(process.env.HELLO, "WORLD");
+
+    assertEquals(typeof env.HELLO, "string");
+    assertEquals(env.HELLO, "WORLD");
   },
 });
 

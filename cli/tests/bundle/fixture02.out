@@ -2,9 +2,9 @@ const b = "b";
 console.log(b);
 const mod = function() {
     const c = "c";
+    const c1 = c;
     class C {
     }
-    const c1 = c;
     const __default = C;
     const __default1 = C;
     return {

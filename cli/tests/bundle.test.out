@@ -1,31 +1,27 @@
 [WILDCARD]
-function returnsHi() {
-    return "Hi";
+function printHello() {
+    console.log("Hello");
 }
 function returnsFoo() {
     return "Foo";
 }
-function printHello() {
-    console.log("Hello");
-}
 function printHello2() {
     printHello();
 }
-function returnsFoo2() {
+function returnsHi1() {
+    return "Hi";
+}
+export { returnsHi1 as returnsHi };
+function returnsFoo21() {
     return returnsFoo();
 }
-function printHello3() {
+export { returnsFoo21 as returnsFoo2 };
+function printHello31() {
     printHello2();
 }
-function throwsError() {
+export { printHello31 as printHello3 };
+function throwsError1() {
     throw Error("exception from mod1");
 }
-const returnsHi1 = returnsHi;
-const returnsFoo21 = returnsFoo2;
-const printHello31 = printHello3;
-const throwsError1 = throwsError;
-export { returnsHi as returnsHi };
-export { returnsFoo2 as returnsFoo2 };
-export { printHello3 as printHello3 };
-export { throwsError as throwsError };
+export { throwsError1 as throwsError };
 

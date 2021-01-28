@@ -199,8 +199,8 @@ finishing test case.`;
 
   exposeForTest("reportToConsole", reportToConsole);
 
-  // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
-  // TODO: implements PromiseLike<RunTestsEndResult>
+  // TODO(bartlomieju): already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
+  // TODO(bartlomieju): implements PromiseLike<RunTestsEndResult>
   class TestRunner {
     #usedOnly = false;
 

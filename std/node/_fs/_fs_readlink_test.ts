@@ -1,4 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { readlink, readlinkSync } from "./_fs_readlink.ts";
 import { assert, assertEquals } from "../../testing/asserts.ts";
 import * as path from "../path.ts";
@@ -63,4 +64,12 @@ Deno.test({
     assert(data instanceof Uint8Array);
     assertEquals(new TextDecoder().decode(data as Uint8Array), oldname);
   },
+});
+
+Deno.test("[std/node/fs] readlink callback isn't called twice if error is thrown", async () => {
+  const importUrl = new URL("./_fs_readlink.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { readlink } from ${JSON.stringify(importUrl)}`,
+    invocation: `readlink(${JSON.stringify(newname)}, `,
+  });
 });

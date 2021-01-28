@@ -27,8 +27,7 @@ export function rmdir(
   if (!callback) throw new Error("No callback function supplied");
 
   Deno.remove(path, { recursive: options?.recursive })
-    .then((_) => callback())
-    .catch(callback);
+    .then((_) => callback(), callback);
 }
 
 export function rmdirSync(path: string | URL, options?: rmdirOptions) {

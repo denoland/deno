@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "../../testing/asserts.ts";
+import * as path from "../../path/mod.ts";
+import { assert, assertEquals, fail } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { link, linkSync } from "./_fs_link.ts";
-import { assert } from "../../testing/asserts.ts";
 
 Deno.test({
   name: "ASYNC: hard linking files works as expected",
@@ -16,8 +17,7 @@ Deno.test({
     })
       .then(() => {
         assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
-      })
-      .catch(() => {
+      }, () => {
         fail("Expected to succeed");
       })
       .finally(() => {
@@ -39,8 +39,7 @@ Deno.test({
     })
       .then(() => {
         fail("Expected to succeed");
-      })
-      .catch((err) => {
+      }, (err) => {
         assert(err);
         failed = true;
       });
@@ -59,4 +58,20 @@ Deno.test({
     Deno.removeSync(tempFile);
     Deno.removeSync(linkedFile);
   },
+});
+
+Deno.test("[std/node/fs] link callback isn't called twice if error is thrown", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const tempFile = path.join(tempDir, "file.txt");
+  const linkFile = path.join(tempDir, "link.txt");
+  await Deno.writeTextFile(tempFile, "hello world");
+  const importUrl = new URL("./_fs_link.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { link } from ${JSON.stringify(importUrl)}`,
+    invocation: `link(${JSON.stringify(tempFile)}, 
+                      ${JSON.stringify(linkFile)}, `,
+    async cleanup() {
+      await Deno.remove(tempDir, { recursive: true });
+    },
+  });
 });

@@ -117,6 +117,15 @@ fn create_compiler_snapshot(
     "esnext.weakref",
   ];
 
+  let path_dts = cwd.join("dts");
+  // ensure we invalidate the build properly.
+  for name in libs.iter() {
+    println!(
+      "cargo:rerun-if-changed={}",
+      path_dts.join(format!("lib.{}.d.ts", name)).display()
+    );
+  }
+
   // create a copy of the vector that includes any op crate libs to be passed
   // to the JavaScript compiler to build into the snapshot
   let mut build_libs = libs.clone();
@@ -125,7 +134,6 @@ fn create_compiler_snapshot(
   }
 
   let re_asset = Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
-  let path_dts = cwd.join("dts");
   let build_specifier = "asset:///bootstrap.ts";
 
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -213,7 +221,7 @@ fn git_commit_hash() -> String {
     .output()
   {
     if output.status.success() {
-      std::str::from_utf8(&output.stdout[..7])
+      std::str::from_utf8(&output.stdout[..40])
         .unwrap()
         .to_string()
     } else {
