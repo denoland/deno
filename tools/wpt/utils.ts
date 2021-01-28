@@ -7,6 +7,7 @@ export const {
   json,
   quiet,
   release,
+  rebuild,
   ["--"]: rest,
   ["auto-config"]: autoConfig,
 } = parse(Deno.args, {
@@ -43,7 +44,15 @@ const MANIFEST_PATH = join(ROOT_PATH, "./tools/wpt/manifest.json");
 
 export async function updateManifest() {
   const proc = runPy(
-    ["wpt", "manifest", "--tests-root", ".", "-p", MANIFEST_PATH],
+    [
+      "wpt",
+      "manifest",
+      "--tests-root",
+      ".",
+      "-p",
+      MANIFEST_PATH,
+      ...(rebuild ? ["--rebuild"] : []),
+    ],
     {},
   );
   const status = await proc.status();
