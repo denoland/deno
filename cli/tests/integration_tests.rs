@@ -2358,7 +2358,6 @@ itest!(deno_test_unresolved_promise {
 });
 
 #[test]
-#[ignore]
 fn deno_test_watch() {
   let (done_tx, done_rx) = std::sync::mpsc::channel();
   std::thread::spawn(move || {
@@ -2500,7 +2499,7 @@ fn deno_test_watch() {
     drop(t);
     done_tx.send(()).unwrap();
   });
-  done_rx.recv_timeout(Duration::from_secs(60)).expect(
+  done_rx.recv_timeout(Duration::from_secs(600)).expect(
     r"The watcher test timed out. 
 This probably means the watcher failed to restart when it should've
 and then the test just blocked waiting for a restart that never happened.",
