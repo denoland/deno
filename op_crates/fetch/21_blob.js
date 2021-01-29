@@ -138,6 +138,9 @@
     /** @type {string} */
     #type;
 
+    /** @type {Uint8Array} */
+    [_byteSequence];
+
     /** 
      * @param {BlobPart[]} [blobParts]
      * @param {BlobPropertyBag} [options]
@@ -184,8 +187,7 @@
       const type = options.type?.toString() ?? "";
 
       /** @type {Uint8Array} */
-      const bytes = processBlobParts(parts, endings);
-      this[_byteSequence] = bytes;
+      this[_byteSequence] = processBlobParts(parts, endings);
       this.#type = normalizeType(type);
     }
 
