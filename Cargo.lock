@@ -62,6 +62,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33954243bd79057c2de7338850b85983a44588021f8a5fee574a8888c6de4344"
 
 [[package]]
+name = "arrayvec"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
+
+[[package]]
 name = "ast_node"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1351,6 +1357,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
+name = "lexical-core"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db65c6da02e61f55dae90a0ae427b2a5f6b3e8db09f58d10efab23af92592616"
+dependencies = [
+ "arrayvec",
+ "bitflags",
+ "cfg-if 0.1.10",
+ "ryu",
+ "static_assertions",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1406,10 +1425,11 @@ dependencies = [
 
 [[package]]
 name = "lspower"
-version = "0.3.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cd189e0e81aa75b043a77f2861b6379042590e69c6e2c434a45ed412be8224d"
+checksum = "25b4cf901e2445b5f2e80bd380e0085f166692ee794953268af18f61cfad2e10"
 dependencies = [
+ "anyhow",
  "async-trait",
  "auto_impl",
  "bytes",
@@ -1421,6 +1441,7 @@ dependencies = [
  "nom",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tokio-util",
  "tower-service",
@@ -1428,9 +1449,9 @@ dependencies = [
 
 [[package]]
 name = "lspower-macros"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10b77a3b4fcd1a014a7a7a1043a5c3646068abfc75b46a9f2c4ab813d53f7c3c"
+checksum = "7d52f49eb53fa09a33715797d47bf4f9adbe69216ea03e1e4c3d56133b2d872c"
 dependencies = [
  "heck",
  "proc-macro2 1.0.24",
@@ -1589,6 +1610,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab6f70b46d6325aa300f1c7bb3d470127dfc27806d8ea6bf294ee0ce643ce2b1"
 dependencies = [
  "bitvec",
+ "lexical-core",
  "memchr",
  "version_check",
 ]
@@ -2457,6 +2479,12 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "string_cache"

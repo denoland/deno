@@ -6,7 +6,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use lspower::jsonrpc::Error as LSPError;
 use lspower::jsonrpc::Result as LSPResult;
-use lspower::lsp_types;
+use lspower::lsp;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
@@ -46,7 +46,7 @@ impl Config {
   #[allow(clippy::redundant_closure_call)]
   pub fn update_capabilities(
     &mut self,
-    capabilities: &lsp_types::ClientCapabilities,
+    capabilities: &lsp::ClientCapabilities,
   ) {
     if let Some(experimental) = &capabilities.experimental {
       let get_bool =
