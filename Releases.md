@@ -31,7 +31,8 @@ https://github.com/denoland/deno_install
 - fix(lsp): handle mbc properly when formatting (#9273)
 - fix(lsp): reduce deadlocks with in memory documents (#9259)
 - fix(op_crates/fetch): fix ReadableStream.pipeThrough() (#9265)
-- fix(op_crates/web): adding gb18030 and GBK encodings (#9242)
+- fix(op_crates/web): Improve customInspect for Location (#9290)
+- fix(op_crates/web): Add gb18030 and GBK encodings (#9242)
 - chore: new typescript WPT runner (#9269)
 
 Changes in std version 0.85.0:
