@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-//! This module provides file formating utilities using
+//! This module provides file formatting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 //!
 //! At the moment it is only consumed using CLI but in

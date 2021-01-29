@@ -10,11 +10,7 @@ type ExitsCallback = (exists: boolean) => void;
  */
 export function exists(path: string | URL, callback: ExitsCallback): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
-  Deno.lstat(path)
-    .then(() => {
-      callback(true);
-    })
-    .catch(() => callback(false));
+  Deno.lstat(path).then(() => callback(true), () => callback(false));
 }
 
 /**

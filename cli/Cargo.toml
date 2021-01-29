@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.7.0"
+version = "1.7.1"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -24,40 +24,40 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.77.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.20.0" }
-deno_web = { path = "../op_crates/web", version = "0.28.0" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.3.0" }
+deno_core = { path = "../core", version = "0.77.1" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.20.1" }
+deno_web = { path = "../op_crates/web", version = "0.28.1" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.3.1" }
 regex = "1.4.3"
-serde = { version = "1.0.116", features = ["derive"] }
+serde = { version = "1.0.121", features = ["derive"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.77.0" }
-deno_doc = "0.1.20"
-deno_lint = "0.2.16"
-deno_runtime = { path = "../runtime", version = "0.7.0" }
+deno_core = { path = "../core", version = "0.77.1" }
+deno_doc = "0.1.21"
+deno_lint = "0.2.17"
+deno_runtime = { path = "../runtime", version = "0.7.1" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
 byteorder = "1.4.2"
 clap = "2.33.3"
 dissimilar = "1.0.2"
-dprint-plugin-typescript = "0.38.3"
+dprint-plugin-typescript = "0.38.5"
 dprint-plugin-markdown = "0.5.1"
 encoding_rs = "0.8.26"
 env_logger = "0.8.2"
-filetime = "0.2.13"
+filetime = "0.2.14"
 http = "0.2.3"
 indexmap = "1.6.1"
 jsonc-parser = "0.15.1"
 lazy_static = "1.4.0"
 libc = "0.2.82"
 log = { version = "0.4.13", features = ["serde"] }
-lspower = "0.3.0"
+lspower = "0.6.0"
 notify = "5.0.0-pre.4"
 percent-encoding = "2.1.0"
 pin-project = "1.0.4"
@@ -66,16 +66,16 @@ ring = "0.16.19"
 rustyline = { version = "7.1.0", default-features = false }
 rustyline-derive = "0.4.0"
 semver-parser = "0.10.2"
-serde = { version = "1.0.116", features = ["derive"] }
+serde = { version = "1.0.121", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_bundler = "0.19.2"
-swc_common = { version = "0.10.8", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.17.1", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
-tempfile = "3.1.0"
+swc_bundler = "0.20.4"
+swc_common = { version = "0.10.9", features = ["sourcemap"] }
+swc_ecmascript = { version = "0.18.4", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
+tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"
-tokio = { version = "1.0.1", features = ["full"] }
+tokio = { version = "1.1.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 walkdir = "2.3.1"

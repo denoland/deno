@@ -2,6 +2,7 @@
 import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { appendFile, appendFileSync } from "./_fs_appendFile.ts";
 import { fromFileUrl } from "../path.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 
 const decoder = new TextDecoder("utf-8");
 
@@ -78,8 +79,7 @@ Deno.test({
       .then(async () => {
         const data = await Deno.readFile(tempFile);
         assertEquals(decoder.decode(data), "hello world");
-      })
-      .catch(() => {
+      }, () => {
         fail("No error expected");
       })
       .finally(async () => {
@@ -103,8 +103,7 @@ Deno.test({
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
         assertEquals(decoder.decode(data), "hello world");
-      })
-      .catch((err) => {
+      }, (err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {
@@ -128,8 +127,7 @@ Deno.test({
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile(fromFileUrl(fileURL));
         assertEquals(decoder.decode(data), "hello world");
-      })
-      .catch((err) => {
+      }, (err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {
@@ -152,8 +150,7 @@ Deno.test({
     })
       .then(() => {
         fail("Expected error to be thrown");
-      })
-      .catch(() => {
+      }, () => {
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
       })
       .finally(async () => {
@@ -235,12 +232,23 @@ Deno.test({
         assertEquals(Deno.resources(), openResourcesBeforeAppend);
         const data = await Deno.readFile("_fs_appendFile_test_file.txt");
         assertEquals(data, testData);
-      })
-      .catch((err) => {
+      }, (err) => {
         fail("No error was expected: " + err);
       })
       .finally(async () => {
         await Deno.remove("_fs_appendFile_test_file.txt");
       });
   },
+});
+
+Deno.test("[std/node/fs] appendFile callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_appendFile.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { appendFile } from ${JSON.stringify(importUrl)}`,
+    invocation: `appendFile(${JSON.stringify(tempFile)}, "hello world", `,
+    async cleanup() {
+      await Deno.remove(tempFile);
+    },
+  });
 });

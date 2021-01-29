@@ -143,10 +143,10 @@
       } = options;
 
       // TODO(Soremwar)
-      // `deno: true` is kept for backwards compatibility with the previous worker
-      // options implementation. Remove for 2.0
+      // `deno: boolean` is kept for backwards compatibility with the previous
+      // worker options implementation. Remove for 2.0
       let workerDenoAttributes;
-      if (deno === true) {
+      if (typeof deno == "boolean") {
         workerDenoAttributes = {
           // Change this to enable the Deno namespace by default
           namespace: deno,

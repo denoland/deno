@@ -164,6 +164,27 @@
           },
           enumerable: true,
         },
+        [Symbol.for("Deno.customInspect")]: {
+          value: function () {
+            const object = {
+              hash: this.hash,
+              host: this.host,
+              hostname: this.hostname,
+              href: this.href,
+              origin: this.origin,
+              pathname: this.pathname,
+              port: this.port,
+              protocol: this.protocol,
+              search: this.search,
+            };
+            if (typeof globalThis?.Deno?.inspect == "function") {
+              return `Location ${Deno.inspect(object)}`;
+            }
+            return `Location { ${
+              Object.entries(object).map(([k, v]) => `${k}: ${v}`).join(", ")
+            } }`;
+          },
+        },
       });
     }
   }
@@ -304,6 +325,27 @@
     [Symbol.toStringTag]: {
       value: "WorkerLocation",
       configurable: true,
+    },
+    [Symbol.for("Deno.customInspect")]: {
+      value: function () {
+        const object = {
+          hash: this.hash,
+          host: this.host,
+          hostname: this.hostname,
+          href: this.href,
+          origin: this.origin,
+          pathname: this.pathname,
+          port: this.port,
+          protocol: this.protocol,
+          search: this.search,
+        };
+        if (typeof globalThis?.Deno?.inspect == "function") {
+          return `WorkerLocation ${Deno.inspect(object)}`;
+        }
+        return `WorkerLocation { ${
+          Object.entries(object).map(([k, v]) => `${k}: ${v}`).join(", ")
+        } }`;
+      },
     },
   });
 

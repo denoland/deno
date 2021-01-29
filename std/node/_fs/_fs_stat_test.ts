@@ -1,3 +1,4 @@
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { BigIntStats, stat, Stats, statSync } from "./_fs_stat.ts";
 import { assertEquals, fail } from "../../testing/asserts.ts";
 
@@ -16,9 +17,9 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.atime?.getTime(), expected.atime?.getTime());
   assertEquals(actual.mtime?.getTime(), expected.mtime?.getTime());
   assertEquals(actual.birthtime?.getTime(), expected.birthtime?.getTime());
-  assertEquals(actual.atimeMs, expected.atime?.getTime());
-  assertEquals(actual.mtimeMs, expected.mtime?.getTime());
-  assertEquals(actual.birthtimeMs, expected.birthtime?.getTime());
+  assertEquals(actual.atimeMs ?? undefined, expected.atime?.getTime());
+  assertEquals(actual.mtimeMs ?? undefined, expected.mtime?.getTime());
+  assertEquals(actual.birthtimeMs ?? undefined, expected.birthtime?.getTime());
   assertEquals(actual.isFile(), expected.isFile);
   assertEquals(actual.isDirectory(), expected.isDirectory);
   assertEquals(actual.isSymbolicLink(), expected.isSymlink);
@@ -47,9 +48,18 @@ export function assertStatsBigInt(
   assertEquals(actual.atime?.getTime(), expected.atime?.getTime());
   assertEquals(actual.mtime?.getTime(), expected.mtime?.getTime());
   assertEquals(actual.birthtime?.getTime(), expected.birthtime?.getTime());
-  assertEquals(Number(actual.atimeMs), expected.atime?.getTime());
-  assertEquals(Number(actual.mtimeMs), expected.mtime?.getTime());
-  assertEquals(Number(actual.birthtimeMs), expected.birthtime?.getTime());
+  assertEquals(
+    actual.atimeMs === null ? undefined : Number(actual.atimeMs),
+    expected.atime?.getTime(),
+  );
+  assertEquals(
+    actual.mtimeMs === null ? undefined : Number(actual.mtimeMs),
+    expected.mtime?.getTime(),
+  );
+  assertEquals(
+    actual.birthtimeMs === null ? undefined : Number(actual.birthtimeMs),
+    expected.birthtime?.getTime(),
+  );
   assertEquals(actual.atimeNs === null, actual.atime === null);
   assertEquals(actual.mtimeNs === null, actual.mtime === null);
   assertEquals(actual.birthtimeNs === null, actual.birthtime === null);
@@ -68,8 +78,7 @@ Deno.test({
         resolve(stat);
       });
     })
-      .then((stat) => assertStats(stat, Deno.statSync(file)))
-      .catch(() => fail())
+      .then((stat) => assertStats(stat, Deno.statSync(file)), () => fail())
       .finally(() => Deno.removeSync(file));
   },
 });
@@ -92,8 +101,10 @@ Deno.test({
         resolve(stat);
       });
     })
-      .then((stat) => assertStatsBigInt(stat, Deno.statSync(file)))
-      .catch(() => fail())
+      .then(
+        (stat) => assertStatsBigInt(stat, Deno.statSync(file)),
+        () => fail(),
+      )
       .finally(() => Deno.removeSync(file));
   },
 });
@@ -104,4 +115,16 @@ Deno.test({
     const file = Deno.makeTempFileSync();
     assertStatsBigInt(statSync(file, { bigint: true }), Deno.statSync(file));
   },
+});
+
+Deno.test("[std/node/fs] stat callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_stat.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { stat } from ${JSON.stringify(importUrl)}`,
+    invocation: `stat(${JSON.stringify(tempFile)}, `,
+    async cleanup() {
+      await Deno.remove(tempFile);
+    },
+  });
 });

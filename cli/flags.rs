@@ -793,7 +793,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
     .about("Format source files")
     .long_about(
-      "Auto-format JavaScript/TypeScript source code.
+      "Auto-format JavaScript, TypeScript and Markdown files.
   deno fmt
   deno fmt myfile1.ts myfile2.ts
   deno fmt --check
@@ -941,7 +941,7 @@ The executable name is inferred by default:
     and the path has no parent, take the file name of the parent path. Otherwise
     settle with the generic name.
   - If the resulting name has an '@...' suffix, strip it.
-  
+
 This commands supports cross-compiling to different target architectures using `--target` flag.
 On the first invocation with deno will download proper binary and cache it in $DENO_DIR. The
 aarch64-apple-darwin target is not supported in canary.
@@ -1475,11 +1475,11 @@ fn location_arg<'a, 'b>() -> Arg<'a, 'b> {
         return Err("Failed to parse URL".to_string());
       }
       let mut url = url.unwrap();
-      url.set_username("").unwrap();
-      url.set_password(None).unwrap();
       if !["http", "https"].contains(&url.scheme()) {
         return Err("Expected protocol \"http\" or \"https\"".to_string());
       }
+      url.set_username("").unwrap();
+      url.set_password(None).unwrap();
       Ok(())
     })
     .help("Value of 'globalThis.location' used by some web APIs")
@@ -3410,5 +3410,16 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn location_with_bad_scheme() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "run", "--location", "foo:", "mod.ts"]);
+    assert!(r.is_err());
+    assert!(r
+      .unwrap_err()
+      .to_string()
+      .contains("Expected protocol \"http\" or \"https\""));
   }
 }

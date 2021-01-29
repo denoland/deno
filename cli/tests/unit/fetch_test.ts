@@ -108,10 +108,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.bodyUsed, false);
-  assertThrows((): void => {
-    // deno-lint-ignore no-explicit-any
-    (response as any).bodyUsed = true;
-  });
+  // deno-lint-ignore no-explicit-any
+  (response as any).bodyUsed = true;
+  assertEquals(response.bodyUsed, false);
   await response.blob();
   assertEquals(response.bodyUsed, true);
 });

@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::serde_json::{self, Value};
 use serde::Serialize;
 use std::time::SystemTime;
@@ -512,36 +513,4 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-#[derive(Debug)]
-enum Error {
-  Io(std::io::Error),
-  Serde(serde_json::error::Error),
-  FromUtf8(std::string::FromUtf8Error),
-  Walkdir(walkdir::Error),
-}
-
-impl From<std::io::Error> for Error {
-  fn from(ioe: std::io::Error) -> Self {
-    Error::Io(ioe)
-  }
-}
-
-impl From<serde_json::error::Error> for Error {
-  fn from(sje: serde_json::error::Error) -> Self {
-    Error::Serde(sje)
-  }
-}
-
-impl From<std::string::FromUtf8Error> for Error {
-  fn from(fue: std::string::FromUtf8Error) -> Self {
-    Error::FromUtf8(fue)
-  }
-}
-
-impl From<walkdir::Error> for Error {
-  fn from(wde: walkdir::Error) -> Self {
-    Error::Walkdir(wde)
-  }
-}
-
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, AnyError>;
