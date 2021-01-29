@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_websocket"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2018"
 description = "Implementation of WebSocket API for Deno"
 authors = ["the Deno authors"]
@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.77.0", path = "../../core" }
+deno_core = { version = "0.77.1", path = "../../core" }
 http = "0.2.3"
 serde = { version = "1.0.121", features = ["derive"] }
 tokio = { version = "1.1.0", features = ["full"] }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.20.0"
+version = "0.20.1"
 edition = "2018"
 description = "provides fetch Web API to deno_core"
 authors = ["the Deno authors"]
@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 bytes = "1.0.1"
-deno_core = { version = "0.77.0", path = "../../core" }
+deno_core = { version = "0.77.1", path = "../../core" }
 reqwest = { version = "0.11.0", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.121", features = ["derive"] }
 tokio = { version = "1.1.0", features = ["full"] }

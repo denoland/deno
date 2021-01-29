@@ -390,7 +390,7 @@ checksum = "993a608597367c6377b258c25d7120740f00ed23a2252b729b1932dd7866f908"
 
 [[package]]
 name = "deno"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -452,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.77.0"
+version = "0.77.1"
 dependencies = [
  "anyhow",
  "futures",
@@ -471,7 +471,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "bytes",
  "deno_core",
@@ -526,7 +526,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "atty",
  "deno_core",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "deno_core",
  "futures",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "deno_core",
  "http",
