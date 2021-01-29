@@ -17,15 +17,53 @@ pub struct ClientCapabilities {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CodeLensSettings {
+  #[serde(default)]
+  pub references: bool,
+  #[serde(default)]
+  pub references_all_functions: bool,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
+  pub code_lens: Option<CodeLensSettings>,
 
   #[serde(default)]
   pub lint: bool,
   #[serde(default)]
   pub unstable: bool,
+}
+
+impl WorkspaceSettings {
+  /// Determine if any code lenses are enabled at all.  This allows short
+  /// circuiting when there are no code lenses enabled.
+  pub fn enabled_code_lens(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      code_lens.references
+    } else {
+      false
+    }
+  }
+
+  pub fn enabled_code_lens_references(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      code_lens.references
+    } else {
+      false
+    }
+  }
+
+  pub fn enabled_code_lens_references_all_functions(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      code_lens.references_all_functions
+    } else {
+      false
+    }
+  }
 }
 
 #[derive(Debug, Clone, Default)]

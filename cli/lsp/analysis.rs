@@ -9,6 +9,10 @@ use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
 use deno_core::error::AnyError;
+use deno_core::serde::de;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
+use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
 use lspower::lsp;
@@ -247,6 +251,30 @@ pub fn analyze_dependencies(
   } else {
     None
   }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum CodeLensSource {
+  #[serde(rename = "references")]
+  References,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeLensData {
+  pub source: CodeLensSource,
+  #[serde(deserialize_with = "as_module_specifier")]
+  pub specifier: ModuleSpecifier,
+}
+
+fn as_module_specifier<'de, D>(
+  deserializer: D,
+) -> Result<ModuleSpecifier, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let url_str: String = Deserialize::deserialize(deserializer)?;
+  ModuleSpecifier::resolve_url(&url_str).map_err(de::Error::custom)
 }
 
 #[cfg(test)]
