@@ -9,7 +9,7 @@ import { assert } from "../_util/assert.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { hasOwnProperty } from "../_util/has_own_property.ts";
 
-/** FormFile object */
+/** The structure that each form file should match. */
 export interface FormFile {
   /** filename  */
   filename: string;
@@ -19,19 +19,19 @@ export interface FormFile {
   size: number;
   /** in-memory content of file. Either content or tempfile is set  */
   content?: Uint8Array;
-  /** temporal file path.
+  /** 
+   * temporal file path.
    * Set if file size is bigger than specified max-memory size at reading form
-   * */
+   */
   tempfile?: string;
 }
 
-/** Type guard for FormFile */
-// deno-lint-ignore no-explicit-any
-export function isFormFile(x: any): x is FormFile {
+/** Type guard for FormFile. */
+export function isFormFile(x: unknown): x is FormFile {
   return hasOwnProperty(x, "filename") && hasOwnProperty(x, "type");
 }
 
-function randomBoundary(): string {
+function randomBoundary() {
   let boundary = "--------------------------";
   for (let i = 0; i < 24; i++) {
     boundary += Math.floor(Math.random() * 16).toString(16);
@@ -63,31 +63,30 @@ export function matchAfterPrefix(
   if (buf.length === prefix.length) {
     return eof ? 1 : 0;
   }
-  const c = buf[prefix.length];
-  if (
-    c === " ".charCodeAt(0) ||
-    c === "\t".charCodeAt(0) ||
-    c === "\r".charCodeAt(0) ||
-    c === "\n".charCodeAt(0) ||
-    c === "-".charCodeAt(0)
-  ) {
-    return 1;
+
+  switch (buf[prefix.length]) {
+    case " ".charCodeAt(0):
+    case "\t".charCodeAt(0):
+    case "\r".charCodeAt(0):
+    case "\n".charCodeAt(0):
+    case "-".charCodeAt(0):
+      return 1;
   }
+
   return -1;
 }
 
 /**
- * Scans `buf` to identify how much of it can be safely returned as part of the
- * `PartReader` body.
+ * Scans `buf` to identify how much of it can be safely returned as part of the `PartReader` body.
  *
- * @param buf - The buffer to search for boundaries.
- * @param dashBoundary - Is "--boundary".
- * @param newLineDashBoundary - Is "\r\n--boundary" or "\n--boundary", depending
+ * @param buf The buffer to search for boundaries.
+ * @param dashBoundary Is "--boundary".
+ * @param newLineDashBoundary Is "\r\n--boundary" or "\n--boundary", depending
  * on what mode we are in. The comments below (and the name) assume
  * "\n--boundary", but either is accepted.
- * @param total - The number of bytes read out so far. If total == 0, then a
+ * @param total The number of bytes read out so far. If total == 0, then a
  * leading "--boundary" is recognized.
- * @param eof - Whether `buf` contains the final bytes in the stream before EOF.
+ * @param eof Whether `buf` contains the final bytes in the stream before EOF.
  * If `eof` is false, more bytes are expected to follow.
  * @returns The number of data bytes from buf that can be returned as part of
  * the `PartReader` body.
@@ -98,7 +97,7 @@ export function scanUntilBoundary(
   newLineDashBoundary: Uint8Array,
   total: number,
   eof: boolean,
-): number | null {
+) {
   if (total === 0) {
     // At beginning of body, allow dashBoundary.
     if (startsWith(buf, dashBoundary)) {
@@ -111,6 +110,7 @@ export function scanUntilBoundary(
           return null;
       }
     }
+
     if (startsWith(dashBoundary, buf)) {
       return 0;
     }
@@ -128,6 +128,7 @@ export function scanUntilBoundary(
         return i > 0 ? i : null;
     }
   }
+
   if (startsWith(newLineDashBoundary, buf)) {
     return 0;
   }
@@ -149,7 +150,7 @@ class PartReader implements Deno.Reader, Deno.Closer {
 
   constructor(private mr: MultipartReader, public readonly headers: Headers) {}
 
-  async read(p: Uint8Array): Promise<number | null> {
+  async read(p: Uint8Array) {
     const br = this.mr.bufReader;
 
     // Read into buffer until we identify some data to return,
@@ -189,22 +190,22 @@ class PartReader implements Deno.Reader, Deno.Closer {
     return nread;
   }
 
-  close(): void {}
+  close() {}
 
   private contentDisposition!: string;
-  private contentDispositionParams!: { [key: string]: string };
+  private contentDispositionParams!: Record<string, string>;
 
-  private getContentDispositionParams(): { [key: string]: string } {
+  private getContentDispositionParams(): Record<string, string> {
     if (this.contentDispositionParams) return this.contentDispositionParams;
     const cd = this.headers.get("content-disposition");
-    const params: { [key: string]: string } = {};
-    assert(cd != null, "content-disposition must be set");
+    const params: Record<string, string> = {};
+    assert(cd !== null, "content-disposition must be set");
     const comps = decodeURI(cd).split(";");
     this.contentDisposition = comps[0];
     comps
       .slice(1)
-      .map((v: string): string => v.trim())
-      .map((kv: string): void => {
+      .map((v) => v.trim())
+      .forEach((kv) => {
         const [k, v] = kv.split("=");
         if (v) {
           const s = v.charAt(0);
@@ -219,20 +220,20 @@ class PartReader implements Deno.Reader, Deno.Closer {
     return (this.contentDispositionParams = params);
   }
 
-  get fileName(): string {
-    return this.getContentDispositionParams()["filename"];
+  get fileName() {
+    return this.getContentDispositionParams().filename;
   }
 
-  get formName(): string {
-    const p = this.getContentDispositionParams();
+  get formName() {
+    const { name } = this.getContentDispositionParams();
     if (this.contentDisposition === "form-data") {
-      return p["name"];
+      return name;
     }
     return "";
   }
 }
 
-function skipLWSPChar(u: Uint8Array): Uint8Array {
+function skipLWSPChar(u: Uint8Array) {
   const ret = new Uint8Array(u.length);
   const sp = " ".charCodeAt(0);
   const ht = "\t".charCodeAt(0);
@@ -248,11 +249,9 @@ export interface MultipartFormData {
   file(key: string): FormFile | FormFile[] | undefined;
   value(key: string): string | undefined;
   entries(): IterableIterator<
-    [string, string | FormFile | FormFile[] | undefined]
+    [string, string | ReturnType<MultipartFormData["file"]>]
   >;
-  [Symbol.iterator](): IterableIterator<
-    [string, string | FormFile | FormFile[] | undefined]
-  >;
+  [Symbol.iterator](): ReturnType<MultipartFormData["entries"]>;
   /** Remove all tempfiles */
   removeAll(): Promise<void>;
 }
@@ -276,7 +275,7 @@ export class MultipartReader {
    * null value means parsing or writing to file was failed in some reason.
    * @param maxMemory maximum memory size to store file in memory. bytes. @default 10485760 (10MB)
    *  */
-  async readForm(maxMemory = 10 << 20): Promise<MultipartFormData> {
+  async readForm(maxMemory = 10 << 20) {
     const fileMap = new Map<string, FormFile | FormFile[]>();
     const valueMap = new Map<string, string>();
     let maxValueBytes = maxMemory + (10 << 20);
@@ -305,7 +304,7 @@ export class MultipartReader {
       let formFile: FormFile | FormFile[] | undefined;
       const n = await copyN(p, buf, maxValueBytes);
       const contentType = p.headers.get("content-type");
-      assert(contentType != null, "content-type must be set");
+      assert(contentType !== null, "content-type must be set");
       if (n > maxMemory) {
         // too big, write to disk and flush buffer
         const ext = extname(p.fileName);
@@ -401,7 +400,7 @@ export class MultipartReader {
     }
   }
 
-  private isFinalBoundary(line: Uint8Array): boolean {
+  private isFinalBoundary(line: Uint8Array) {
     if (!startsWith(line, this.dashBoundaryDash)) {
       return false;
     }
@@ -409,7 +408,7 @@ export class MultipartReader {
     return rest.length === 0 || equals(skipLWSPChar(rest), this.newLine);
   }
 
-  private isBoundaryDelimiterLine(line: Uint8Array): boolean {
+  private isBoundaryDelimiterLine(line: Uint8Array) {
     if (!startsWith(line, this.dashBoundary)) {
       return false;
     }
@@ -422,20 +421,22 @@ function multipartFormData(
   fileMap: Map<string, FormFile | FormFile[]>,
   valueMap: Map<string, string>,
 ): MultipartFormData {
-  function file(key: string): FormFile | FormFile[] | undefined {
+  function file(key: string) {
     return fileMap.get(key);
   }
-  function value(key: string): string | undefined {
+
+  function value(key: string) {
     return valueMap.get(key);
   }
+
   function* entries(): IterableIterator<
     [string, string | FormFile | FormFile[] | undefined]
   > {
     yield* fileMap;
     yield* valueMap;
   }
-  async function removeAll(): Promise<void> {
-    const promises: Array<Promise<void>> = [];
+  async function removeAll() {
+    const promises: Promise<void>[] = [];
     for (const val of fileMap.values()) {
       if (Array.isArray(val)) {
         for (const subVal of val) {
@@ -449,16 +450,13 @@ function multipartFormData(
     }
     await Promise.all(promises);
   }
+
   return {
     file,
     value,
     entries,
     removeAll,
-    [Symbol.iterator](): IterableIterator<
-      [string, string | FormFile | FormFile[] | undefined]
-    > {
-      return entries();
-    },
+    [Symbol.iterator]: entries,
   };
 }
 
@@ -486,11 +484,11 @@ class PartWriter implements Deno.Writer {
     this.partHeader = buf;
   }
 
-  close(): void {
+  close() {
     this.closed = true;
   }
 
-  async write(p: Uint8Array): Promise<number> {
+  async write(p: Uint8Array) {
     if (this.closed) {
       throw new Error("part is closed");
     }
@@ -502,7 +500,7 @@ class PartWriter implements Deno.Writer {
   }
 }
 
-function checkBoundary(b: string): string {
+function checkBoundary(b: string) {
   if (b.length < 1 || b.length > 70) {
     throw new Error(`invalid boundary length: ${b.length}`);
   }
@@ -520,7 +518,7 @@ function checkBoundary(b: string): string {
 export class MultipartWriter {
   private readonly _boundary: string;
 
-  get boundary(): string {
+  get boundary() {
     return this._boundary;
   }
 
@@ -529,7 +527,7 @@ export class MultipartWriter {
   private isClosed = false;
 
   constructor(private readonly writer: Deno.Writer, boundary?: string) {
-    if (boundary !== void 0) {
+    if (boundary !== undefined) {
       this._boundary = checkBoundary(boundary);
     } else {
       this._boundary = randomBoundary();
@@ -537,11 +535,11 @@ export class MultipartWriter {
     this.bufWriter = new BufWriter(writer);
   }
 
-  formDataContentType(): string {
+  formDataContentType() {
     return `multipart/form-data; boundary=${this.boundary}`;
   }
 
-  private createPart(headers: Headers): Deno.Writer {
+  private createPart(headers: Headers) {
     if (this.isClosed) {
       throw new Error("multipart: writer is closed");
     }
@@ -558,7 +556,7 @@ export class MultipartWriter {
     return part;
   }
 
-  createFormFile(field: string, filename: string): Deno.Writer {
+  createFormFile(field: string, filename: string) {
     const h = new Headers();
     h.set(
       "Content-Disposition",
@@ -568,15 +566,15 @@ export class MultipartWriter {
     return this.createPart(h);
   }
 
-  createFormField(field: string): Deno.Writer {
+  createFormField(field: string) {
     const h = new Headers();
     h.set("Content-Disposition", `form-data; name="${field}"`);
     h.set("Content-Type", "application/octet-stream");
     return this.createPart(h);
   }
 
-  async writeField(field: string, value: string): Promise<void> {
-    const f = await this.createFormField(field);
+  async writeField(field: string, value: string) {
+    const f = this.createFormField(field);
     await f.write(encoder.encode(value));
   }
 
@@ -584,23 +582,23 @@ export class MultipartWriter {
     field: string,
     filename: string,
     file: Deno.Reader,
-  ): Promise<void> {
-    const f = await this.createFormFile(field, filename);
+  ) {
+    const f = this.createFormFile(field, filename);
     await Deno.copy(file, f);
   }
 
-  private flush(): Promise<void> {
+  private flush() {
     return this.bufWriter.flush();
   }
 
-  /** Close writer. No additional data can be written to stream */
-  async close(): Promise<void> {
+  /** Close writer. No additional data can be written to stream. */
+  async close() {
     if (this.isClosed) {
       throw new Error("multipart: writer is closed");
     }
     if (this.lastPart) {
       this.lastPart.close();
-      this.lastPart = void 0;
+      this.lastPart = undefined;
     }
     await this.writer.write(encoder.encode(`\r\n--${this.boundary}--\r\n`));
     await this.flush();
