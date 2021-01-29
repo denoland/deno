@@ -190,70 +190,97 @@ impl CoverageReporter for LcovCoverageReporter {
       println!("FN:{},{}", 1, function.function_name);
     }
 
-    let mut lines_hit = 0;
-    let mut lines_found = 0;
-    let mut line_start_offset = 0;
-    for (index, line) in lines.iter().enumerate() {
-      let line_end_offset = line_start_offset + line.len();
+    let lines = script_source.split('\n').collect::<Vec<_>>();
 
-      let mut count = 1;
-      // Count the hits of ranges that include the entire line which will always be at-least one
-      // as long as the code has been evaluated.
-      for function in &script_coverage.functions {
-        for range in &function.ranges {
-          if range.start_offset <= line_start_offset
-            && range.end_offset >= line_end_offset
-          {
-            count += range.count;
+    let line_offsets = {
+      let mut offsets: Vec<(usize, usize)> = Vec::new();
+      let mut index = 0;
+
+      for line in &lines {
+        offsets.push((index, index + line.len() + 1));
+        index += line.len() + 1;
+      }
+
+      offsets
+    };
+
+    let line_counts = line_offsets
+      .iter()
+      .map(|(line_start_offset, line_end_offset)| {
+        let mut count = 0;
+
+        // Count the hits of ranges that include the entire line which will always be at-least one
+        // as long as the code has been evaluated.
+        for function in &script_coverage.functions {
+          for range in &function.ranges {
+            if range.start_offset <= *line_start_offset
+              && range.end_offset >= *line_end_offset
+            {
+              count += range.count;
+            }
           }
         }
-      }
 
-      // Reset the count if any block intersects with the current line has a count of
-      // zero.
-      //
-      // We check for intersection instead of inclusion here because a block may be anywhere
-      // inside a line.
-      for function in &script_coverage.functions {
-        for range in &function.ranges {
-          if range.count > 0 {
-            continue;
-          }
+        // Reset the count if any block intersects with the current line has a count of
+        // zero.
+        //
+        // We check for intersection instead of inclusion here because a block may be anywhere
+        // inside a line.
+        for function in &script_coverage.functions {
+          for range in &function.ranges {
+            if range.count > 0 {
+              continue;
+            }
 
-          if (range.start_offset < line_start_offset
-            && range.end_offset > line_start_offset)
-            || (range.start_offset < line_end_offset
-              && range.end_offset > line_end_offset)
-          {
-            count = 0;
+            if (range.start_offset < *line_start_offset
+              && range.end_offset > *line_start_offset)
+              || (range.start_offset < *line_end_offset
+                && range.end_offset > *line_end_offset)
+            {
+              count = 0;
+            }
           }
         }
-      }
 
-      let number = if let Some(source_map) = maybe_source_map.as_ref() {
-        source_map
-          .lookup_token(index as u32, lines[index].len() as u32)
-          .map_or_else(
-            || index + 1,
-            |token| (token.get_src_line() + 1) as usize,
-          )
-      } else {
-        index + 1
-      };
+        count
+      })
+      .collect::<Vec<(usize)>>();
 
-      println!("DA:{},{}", number, count);
+    let found_lines = if let Some(source_map) = maybe_source_map.as_ref() {
+      let mut found_lines = line_counts
+        .iter()
+        .enumerate()
+        .map(|(index, count)| {
+          source_map
+            .tokens()
+            .filter(move |token| token.get_dst_line() as usize == index)
+            .map(move |token| (token.get_src_line() as usize, *count))
+        })
+        .flatten()
+        .collect::<Vec<(usize, usize)>>();
 
-      if count > 0 {
-        lines_hit += 1;
-      }
+      found_lines.sort_unstable_by_key(|(index, _)| *index);
+      found_lines.dedup_by_key(|(index, _)| *index);
+      found_lines
+    } else {
+      line_counts
+        .iter()
+        .enumerate()
+        .map(|(index, count)| (index, *count))
+        .collect::<Vec<(usize, usize)>>()
+    };
 
-      lines_found += 1;
-
-      line_start_offset += line.len() + 1;
+    for (index, count) in &found_lines {
+      println!("DA:{},{}", index + 1, count);
     }
 
+    let lines_hit = found_lines.iter().filter(|(_, count)| *count != 0).count();
+
     println!("LH:{}", lines_hit);
+
+    let lines_found = found_lines.len();
     println!("LF:{}", lines_found);
+
     println!("end_of_record");
   }
 
