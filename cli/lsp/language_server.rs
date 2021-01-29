@@ -915,8 +915,11 @@ impl Inner {
     });
 
     self.performance.measure(mark);
-    #[allow(unstable_features)]
-    Ok(Some(cl.take()))
+    Ok(Some(
+      Rc::try_unwrap(cl)
+        .map_err(|_| LspError::internal_error())?
+        .into_inner(),
+    ))
   }
 
   async fn code_lens_resolve(
@@ -2006,6 +2009,108 @@ mod tests {
                 "newText": "variable_modified"
               }]
             }]
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_code_lens_request() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_cl_references.json",
+        LspResponse::None,
+      ),
+      (
+        "code_lens_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 6,
+                },
+                "end": {
+                  "line": 0,
+                  "character": 7,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              },
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 1,
+                  "character": 2,
+                },
+                "end": {
+                  "line": 1,
+                  "character": 3,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              }
+            }
+          ]),
+        ),
+      ),
+      (
+        "code_lens_resolve_request.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 6,
+              },
+              "end": {
+                "line": 0,
+                "character": 7,
+              }
+            },
+            "command": {
+              "title": "1 reference",
+              "command": "deno.showReferences",
+              "arguments": [
+                "file:///a/file.ts",
+                {
+                  "line": 0,
+                  "character": 6,
+                },
+                [
+                  {
+                    "uri": "file:///a/file.ts",
+                    "range": {
+                      "start": {
+                        "line": 12,
+                        "character": 14,
+                      },
+                      "end": {
+                        "line": 12,
+                        "character": 15,
+                      }
+                    }
+                  }
+                ],
+              ]
+            }
           }),
         ),
       ),
