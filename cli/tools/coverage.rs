@@ -167,31 +167,46 @@ impl CoverageReporter for LcovCoverageReporter {
       None
     };
 
-    let source_lines = script_source.split('\n').collect::<Vec<_>>();
-
     let url = Url::parse(&script_coverage.url).unwrap();
     let file_path = url.to_file_path().unwrap();
-
     println!("SF:{}", file_path.to_str().unwrap());
 
     let mut functions_found = 0;
-    let mut functions_hit = 0;
-
     for function in &script_coverage.functions {
       if function.function_name.is_empty() {
         continue;
       }
 
-      functions_found += 1;
-      if function.ranges[0].count > 1 {
-        functions_hit += 1;
-      }
+      let source_line = script_source[0..function.ranges[0].start_offset]
+        .split('\n')
+        .count();
+      let function_name = &function.function_name;
 
-      println!("FN:{},{}", 1, function.function_name);
+      println!("FN:{},{}", source_line, function_name);
+
+      functions_found += 1;
     }
 
-    let lines = script_source.split('\n').collect::<Vec<_>>();
+    let mut functions_hit = 0;
+    for function in &script_coverage.functions {
+      if function.function_name.is_empty() {
+        continue;
+      }
 
+      let execution_count = function.ranges[0].count;
+      let function_name = &function.function_name;
+
+      println!("FNDA:{},{}", execution_count, function_name);
+
+      if execution_count != 0 {
+        functions_hit += 1;
+      }
+    }
+
+    println!("FNF: {}", functions_found);
+    println!("FNH: {}", functions_hit);
+
+    let lines = script_source.split('\n').collect::<Vec<_>>();
     let line_offsets = {
       let mut offsets: Vec<(usize, usize)> = Vec::new();
       let mut index = 0;
