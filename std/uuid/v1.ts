@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { bytesToUuid } from "./_common.ts";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Validates the UUID v1.
@@ -36,7 +37,7 @@ export interface V1Options {
 export function generate(
   options?: V1Options | null,
   buf?: number[],
-  offset?: number
+  offset?: number,
 ): string | number[] {
   let i = (buf && offset) || 0;
   const b = buf ?? [];
@@ -46,8 +47,7 @@ export function generate(
 
   if (node === undefined || clockseq === undefined) {
     // deno-lint-ignore no-explicit-any
-    const seedBytes: any =
-      options.random ??
+    const seedBytes: any = options.random ??
       options.rng ??
       crypto.getRandomValues(new Uint8Array(16));
 
