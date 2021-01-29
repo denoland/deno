@@ -9,6 +9,7 @@ gclient_config.py_entries
 /gh-pages/
 /target/
 /std/hash/_wasm/target
+/tools/wpt/manifest.json
 
 # Files that help ensure VSCode can work but we don't want checked into the
 # repo

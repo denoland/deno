@@ -7,7 +7,7 @@ import {
 } from "../_errors.ts";
 
 export type mkdtempCallback = (
-  err: Error | undefined,
+  err: Error | null,
   directory?: string,
 ) => void;
 
@@ -35,7 +35,7 @@ export function mkdtemp(
     { recursive: false, mode: 0o700 },
     (err: Error | null | undefined) => {
       if (err) callback(err);
-      else callback(undefined, decode(path, encoding));
+      else callback(null, decode(path, encoding));
     },
   );
 }

@@ -795,7 +795,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
     .about("Format source files")
     .long_about(
-      "Auto-format JavaScript/TypeScript source code.
+      "Auto-format JavaScript, TypeScript and Markdown files.
   deno fmt
   deno fmt myfile1.ts myfile2.ts
   deno fmt --check

@@ -16,8 +16,8 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.77.0", path = "../../core" }
 http = "0.2.3"
-serde = { version = "1.0.116", features = ["derive"] }
-tokio = { version = "1.0.1", features = ["full"] }
+serde = { version = "1.0.121", features = ["derive"] }
+tokio = { version = "1.1.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 tokio-tungstenite = "0.13.0"
 webpki = "0.21.4"

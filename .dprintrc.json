@@ -31,7 +31,9 @@
     "std/node_modules",
     "std/hash/_wasm",
     "target",
-    "third_party"
+    "third_party",
+    "tools/wpt/expectation.json",
+    "tools/wpt/manifest.json"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.33.0.wasm",

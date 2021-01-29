@@ -11,13 +11,12 @@ type readDirOptions = {
   withFileTypes?: boolean;
 };
 
-type readDirCallback = (err: Error | undefined, files: string[]) => void;
+type readDirCallback = (err: Error | null, files: string[]) => void;
 
-type readDirCallbackDirent = (err: Error | undefined, files: Dirent[]) => void;
+type readDirCallbackDirent = (err: Error | null, files: Dirent[]) => void;
 
 type readDirBoth = (
-  err: Error | undefined,
-  files: string[] | Dirent[] | Array<string | Dirent>,
+  ...args: [Error] | [null, string[] | Dirent[] | Array<string | Dirent>]
 ) => void;
 
 export function readdir(
@@ -62,7 +61,7 @@ export function readdir(
     asyncIterableToCallback(Deno.readDir(path), (val, done) => {
       if (typeof path !== "string") return;
       if (done) {
-        callback(undefined, result);
+        callback(null, result);
         return;
       }
       if (options?.withFileTypes) {
@@ -70,7 +69,7 @@ export function readdir(
       } else result.push(decode(val.name));
     });
   } catch (error) {
-    callback(error, result);
+    callback(error);
   }
 }
 

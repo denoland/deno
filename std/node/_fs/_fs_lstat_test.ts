@@ -1,5 +1,6 @@
 import { lstat, lstatSync } from "./_fs_lstat.ts";
 import { fail } from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
 import type { BigIntStats, Stats } from "./_fs_stat.ts";
 
@@ -15,8 +16,7 @@ Deno.test({
     })
       .then((stat) => {
         assertStats(stat, Deno.lstatSync(file));
-      })
-      .catch(() => fail())
+      }, () => fail())
       .finally(() => {
         Deno.removeSync(file);
       });
@@ -41,8 +41,10 @@ Deno.test({
         resolve(stat);
       });
     })
-      .then((stat) => assertStatsBigInt(stat, Deno.lstatSync(file)))
-      .catch(() => fail())
+      .then(
+        (stat) => assertStatsBigInt(stat, Deno.lstatSync(file)),
+        () => fail(),
+      )
       .finally(() => Deno.removeSync(file));
   },
 });
@@ -53,4 +55,16 @@ Deno.test({
     const file = Deno.makeTempFileSync();
     assertStatsBigInt(lstatSync(file, { bigint: true }), Deno.lstatSync(file));
   },
+});
+
+Deno.test("[std/node/fs] lstat callback isn't called twice if error is thrown", async () => {
+  const tempFile = await Deno.makeTempFile();
+  const importUrl = new URL("./_fs_lstat.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { lstat } from ${JSON.stringify(importUrl)}`,
+    invocation: `lstat(${JSON.stringify(tempFile)}, `,
+    async cleanup() {
+      await Deno.remove(tempFile);
+    },
+  });
 });
