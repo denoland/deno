@@ -1,16 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { bytesToUuid } from "./_common.ts";
 
-const UUID_RE = new RegExp(
-  "^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-  "i",
-);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-1[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * Validates the UUID v1
- * @param id UUID value
+ * Validates the UUID v1.
+ * @param id UUID value.
  */
-export function validate(id: string): boolean {
+export function validate(id: string) {
   return UUID_RE.test(id);
 }
 
@@ -20,39 +17,41 @@ let _clockseq: number;
 let _lastMSecs = 0;
 let _lastNSecs = 0;
 
-type V1Options = {
+/** The options used for generating a v1 UUID. */
+export interface V1Options {
   node?: number[];
   clockseq?: number;
   msecs?: number;
   nsecs?: number;
   random?: number[];
   rng?: () => number[];
-};
+}
 
 /**
- * Generates a RFC4122 v1 UUID (time-based)
- * @param options Can use RFC time sequence values as overwrites
- * @param buf Can allow the UUID to be written in byte-form starting at the offset
- * @param offset Index to start writing on the UUID bytes in buffer
+ * Generates a RFC4122 v1 UUID (time-based).
+ * @param options Can use RFC time sequence values as overwrites.
+ * @param buf Can allow the UUID to be written in byte-form starting at the offset.
+ * @param offset Index to start writing on the UUID bytes in buffer.
  */
 export function generate(
   options?: V1Options | null,
   buf?: number[],
-  offset?: number,
+  offset?: number
 ): string | number[] {
   let i = (buf && offset) || 0;
-  const b = buf || [];
+  const b = buf ?? [];
 
-  options = options || {};
-  let node = options.node || _nodeId;
-  let clockseq = options.clockseq !== undefined ? options.clockseq : _clockseq;
+  options ??= {};
+  let { node = _nodeId, clockseq = _clockseq } = options;
 
-  if (node == null || clockseq == null) {
+  if (node === undefined || clockseq === undefined) {
     // deno-lint-ignore no-explicit-any
-    const seedBytes: any = options.random ||
-      options.rng ||
+    const seedBytes: any =
+      options.random ??
+      options.rng ??
       crypto.getRandomValues(new Uint8Array(16));
-    if (node == null) {
+
+    if (node === undefined) {
       node = _nodeId = [
         seedBytes[0] | 0x01,
         seedBytes[1],
@@ -62,15 +61,13 @@ export function generate(
         seedBytes[5],
       ];
     }
-    if (clockseq == null) {
+
+    if (clockseq === undefined) {
       clockseq = _clockseq = ((seedBytes[6] << 8) | seedBytes[7]) & 0x3fff;
     }
   }
-  let msecs = options.msecs !== undefined
-    ? options.msecs
-    : new Date().getTime();
 
-  let nsecs = options.nsecs !== undefined ? options.nsecs : _lastNSecs + 1;
+  let { msecs = new Date().getTime(), nsecs = _lastNSecs + 1 } = options;
 
   const dt = msecs - _lastMSecs + (nsecs - _lastNSecs) / 10000;
 
@@ -82,7 +79,7 @@ export function generate(
     nsecs = 0;
   }
 
-  if (nsecs >= 10000) {
+  if (nsecs > 10000) {
     throw new Error("Can't create more than 10M uuids/sec");
   }
 
@@ -113,5 +110,5 @@ export function generate(
     b[i + n] = node[n];
   }
 
-  return buf ? buf : bytesToUuid(b);
+  return buf ?? bytesToUuid(b);
 }
