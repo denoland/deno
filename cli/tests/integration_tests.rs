@@ -583,7 +583,6 @@ fn skip_restarting_line(
 }
 
 #[test]
-#[ignore]
 fn fmt_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
@@ -1362,7 +1361,6 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
-#[ignore]
 fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
@@ -1432,7 +1430,6 @@ fn bundle_js_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-#[ignore]
 fn bundle_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1532,7 +1529,6 @@ fn wait_for_process_finished(
 }
 
 #[test]
-#[ignore]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1639,7 +1635,6 @@ fn run_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-#[ignore]
 fn run_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1783,7 +1778,6 @@ fn repl_test_pty_bad_input() {
 }
 
 #[test]
-#[ignore]
 fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
