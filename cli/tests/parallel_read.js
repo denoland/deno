@@ -1,6 +1,9 @@
 const dataSize = 1024 * 1024 * 8;
 const fileName = await Deno.makeTempFile();
-const file = await Deno.open(fileName, { read: true, write: true });
+const file = await Deno.open(
+  fileName,
+  { read: true, write: true, readMightBlock: true, writeMightBlock: true },
+);
 const dataBuf = new Uint8Array(dataSize);
 dataBuf.fill(65);
 await Deno.writeAll(file, dataBuf);

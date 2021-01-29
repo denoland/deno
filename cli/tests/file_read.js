@@ -72,7 +72,10 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 for (let i = minPowTwo; i <= maxPowTwo; i *= 2) {
   const fileName = await Deno.makeTempFile();
-  const file = await Deno.open(fileName, { read: true, write: true });
+  const file = await Deno.open(
+    fileName,
+    { read: true, write: true, readMightBlock: true, writeMightBlock: true },
+  );
   let data = "";
   for (let j = 0; j < i - 1; ++j) {
     if (j > 1 && (j & (j - 1)) === 0) {

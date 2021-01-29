@@ -408,10 +408,36 @@ impl Resource for UnixStreamResource {
   }
 }
 
+#[derive(Debug)]
+pub enum FsAccessPattern {
+  Normal,
+  MightBlock,
+}
+
+#[derive(Debug)]
+pub struct FsReadWriteBehavior {
+  pub read: FsAccessPattern,
+  pub write: FsAccessPattern,
+}
+
+impl Default for FsReadWriteBehavior {
+  fn default() -> Self {
+    FsReadWriteBehavior {
+      read: FsAccessPattern::Normal,
+      write: FsAccessPattern::Normal,
+    }
+  }
+}
+
+type FsFileWrapper = (
+  Option<tokio::fs::File>,
+  Option<FileMetadata>,
+  FsReadWriteBehavior,
+);
+
 #[derive(Debug, Default)]
 pub struct StdFileResource {
-  pub fs_file:
-    Option<AsyncRefCell<(Option<tokio::fs::File>, Option<FileMetadata>)>>,
+  pub fs_file: Option<AsyncRefCell<FsFileWrapper>>,
   cancel: CancelHandle,
   name: String,
 }
@@ -422,17 +448,22 @@ impl StdFileResource {
       fs_file: Some(AsyncRefCell::new((
         Some(fs_file),
         Some(FileMetadata::default()),
+        Default::default(),
       ))),
       name: name.to_string(),
       ..Default::default()
     }
   }
 
-  pub fn fs_file(fs_file: tokio::fs::File) -> Self {
+  pub fn fs_file(
+    fs_file: tokio::fs::File,
+    behavior: FsReadWriteBehavior,
+  ) -> Self {
     Self {
       fs_file: Some(AsyncRefCell::new((
         Some(fs_file),
         Some(FileMetadata::default()),
+        behavior,
       ))),
       name: "fsFile".to_string(),
       ..Default::default()
@@ -444,8 +475,22 @@ impl StdFileResource {
       let mut fs_file = RcRef::map(&*self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().read(buf).await?;
-      return Ok(nwritten);
+      let behavior = &fs_file.2;
+      let nread = match behavior.read {
+        FsAccessPattern::Normal => {
+          fs_file.0.as_mut().unwrap().read(buf).await?
+        }
+        FsAccessPattern::MightBlock => {
+          let f = fs_file.0.as_mut().unwrap().try_clone().await?;
+          let mut fstd = f.into_std().await;
+          tokio::task::block_in_place(move || {
+            let read = fstd.read(buf);
+            tokio::fs::File::from_std(fstd);
+            read
+          })?
+        }
+      };
+      return Ok(nread);
     } else {
       Err(resource_unavailable())
     }
@@ -456,8 +501,24 @@ impl StdFileResource {
       let mut fs_file = RcRef::map(&*self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().write(buf).await?;
-      fs_file.0.as_mut().unwrap().flush().await?;
+      let behavior = &fs_file.2;
+      let nwritten = match behavior.write {
+        FsAccessPattern::Normal => {
+          let written = fs_file.0.as_mut().unwrap().write(buf).await?;
+          fs_file.0.as_mut().unwrap().flush().await?;
+          written
+        }
+        FsAccessPattern::MightBlock => {
+          let f = fs_file.0.as_mut().unwrap().try_clone().await?;
+          let mut fstd = f.into_std().await;
+          tokio::task::block_in_place(move || {
+            let written = fstd.write(buf);
+            tokio::fs::File::from_std(fstd);
+            written
+          })?
+        }
+      };
+
       return Ok(nwritten);
     } else {
       Err(resource_unavailable())

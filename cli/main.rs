@@ -36,7 +36,6 @@ mod source_maps;
 mod specifier_handler;
 mod standalone;
 mod text_encoding;
-mod tokio_util;
 mod tools;
 mod tsc;
 mod tsc_config;
@@ -68,6 +67,7 @@ use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -1266,7 +1266,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
     Ok(Some((metadata, bundle))) => {
-      tokio_util::run_basic(standalone::run(bundle, metadata))
+      tokio_util::run_multi(standalone::run(bundle, metadata))
     }
     Ok(None) => Ok(()),
     Err(err) => Err(err),
@@ -1293,5 +1293,5 @@ pub fn main() {
   }
   init_logger(flags.log_level);
 
-  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
+  unwrap_or_exit(tokio_util::run_multi(get_subcommand(flags)));
 }

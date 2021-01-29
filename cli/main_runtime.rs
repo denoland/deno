@@ -7,11 +7,11 @@ extern crate lazy_static;
 
 mod colors;
 mod standalone;
-mod tokio_util;
 mod version;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_runtime::tokio_util;
 use std::env;
 
 pub fn main() {
@@ -28,5 +28,5 @@ pub fn main() {
 fn run(args: Vec<String>) -> Result<(), AnyError> {
   let (metadata, bundle) = standalone::extract_standalone(args)?
     .ok_or_else(|| anyhow!("This executable is used internally by 'deno compile', it is not meant to be invoked directly."))?;
-  tokio_util::run_basic(standalone::run(bundle, metadata))
+  tokio_util::run_multi(standalone::run(bundle, metadata))
 }

@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::StdFileResource;
+use super::io::{FsAccessPattern, FsReadWriteBehavior};
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
@@ -134,12 +135,14 @@ struct OpenOptions {
   truncate: bool,
   append: bool,
   create_new: bool,
+  read_might_block: bool,
+  write_might_block: bool,
 }
 
 fn open_helper(
   state: &mut OpState,
   args: Value,
-) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
+) -> Result<(PathBuf, std::fs::OpenOptions, FsReadWriteBehavior), AnyError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
@@ -168,6 +171,25 @@ fn open_helper(
     permissions.check_write(&path)?;
   }
 
+  let read_mode;
+  let write_mode;
+  if options.read_might_block {
+    read_mode = FsAccessPattern::MightBlock;
+  } else {
+    read_mode = FsAccessPattern::Normal;
+  }
+
+  if options.write_might_block {
+    write_mode = FsAccessPattern::MightBlock;
+  } else {
+    write_mode = FsAccessPattern::Normal;
+  }
+
+  let behavior = FsReadWriteBehavior {
+    read: read_mode,
+    write: write_mode,
+  };
+
   open_options
     .read(options.read)
     .create(options.create)
@@ -176,7 +198,7 @@ fn open_helper(
     .append(options.append)
     .create_new(options.create_new);
 
-  Ok((path, open_options))
+  Ok((path, open_options, behavior))
 }
 
 fn op_open_sync(
@@ -184,10 +206,10 @@ fn op_open_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let (path, open_options) = open_helper(state, args)?;
+  let (path, open_options, _) = open_helper(state, args)?;
   let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
-  let resource = StdFileResource::fs_file(tokio_file);
+  let resource = StdFileResource::fs_file(tokio_file, Default::default());
   let rid = state.resource_table.add(resource);
   Ok(json!(rid))
 }
@@ -197,11 +219,12 @@ async fn op_open_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
+  let (path, open_options, behavior) =
+    open_helper(&mut state.borrow_mut(), args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(path)
     .await?;
-  let resource = StdFileResource::fs_file(tokio_file);
+  let resource = StdFileResource::fs_file(tokio_file, behavior);
   let rid = state.borrow_mut().resource_table.add(resource);
   Ok(json!(rid))
 }
