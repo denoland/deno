@@ -206,7 +206,7 @@
       const O = this;
       /** @type {number} */
       let relativeStart;
-      if (start == undefined) {
+      if (start === undefined) {
         relativeStart = 0;
       } else {
         start = Number(start);
@@ -218,7 +218,7 @@
       }
       /** @type {number} */
       let relativeEnd;
-      if (end == undefined) {
+      if (end === undefined) {
         relativeEnd = O.size;
       } else {
         end = Number(end);
