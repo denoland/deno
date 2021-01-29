@@ -915,6 +915,7 @@ impl Inner {
     });
 
     self.performance.measure(mark);
+    #[allow(unstable_features)]
     Ok(Some(cl.take()))
   }
 
