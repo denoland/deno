@@ -292,3 +292,16 @@ Deno.test({
     assert(diagnostics[0].messageText.includes("This import is never used"));
   },
 });
+
+Deno.test({
+  name: "Deno.emit() - Unknown media type does not panic",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.emit("https://example.com/foo", {
+        sources: {
+          "https://example.com/foo": `let foo: string = "foo";`,
+        },
+      });
+    });
+  },
+});
