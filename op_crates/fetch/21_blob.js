@@ -178,8 +178,8 @@
           `Failed to construct 'Blob'. options is not an object.`,
         );
       }
-      const endings = options?.endings?.toString() ?? "transparent";
-      const type = options?.type?.toString() ?? "";
+      const endings = options.endings?.toString() ?? "transparent";
+      const type = options.type?.toString() ?? "";
 
       /** @type {Uint8Array} */
       const bytes = processBlobParts(parts, endings);
