@@ -10,7 +10,8 @@
 /// <reference lib="esnext" />
 
 ((window) => {
-  // TODO(lucacasonato): fix this
+  // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
+  // host os.
   const isWindows = false;
 
   /**
@@ -79,7 +80,7 @@
   }
 
   const utf8Encoder = new TextEncoder();
-  const utf8Decoder = new TextDecoder("utf8");
+  const utf8Decoder = new TextDecoder();
 
   /** @typedef {BufferSource | Blob | string} BlobPart */
 
