@@ -327,16 +327,3 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
-
-      - name: Publish
-        if: |
-          startsWith(matrix.os, 'ubuntu') &&
-          matrix.kind == 'test_release' &&
-          github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          cd cli
-          cargo publish
