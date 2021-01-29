@@ -20,6 +20,8 @@
    * @returns {{result: string, position: number}}
    */
   function collectCodepointsNotCRLF(input, position) {
+    // See https://w3c.github.io/FileAPI/#convert-line-endings-to-native and
+    // https://infra.spec.whatwg.org/#collect-a-sequence-of-code-points
     const start = position;
     for (
       let c = input.charAt(position);
