@@ -22,7 +22,7 @@
     const start = position;
     for (
       let c = input.charAt(position);
-      position < input.length && !(c == "\r" || c == "\n");
+      position < input.length && !(c === "\r" || c === "\n");
       c = input.charAt(++position)
     );
     return { result: input.slice(start, position), position };
@@ -39,13 +39,13 @@
 
     while (position < s.length) {
       const codePoint = s.charAt(position);
-      if (codePoint == "\r") {
+      if (codePoint === "\r") {
         result += nativeLineEnding;
         position++;
-        if (position < s.length && s.charAt(position) == "\n") {
+        if (position < s.length && s.charAt(position) === "\n") {
           position++;
         }
-      } else if (codePoint == "\n") {
+      } else if (codePoint === "\n") {
         position++;
         result += nativeLineEnding;
       }
@@ -84,7 +84,7 @@
   /** @typedef {BufferSource | Blob | string} BlobPart */
 
   /** 
-     * @param {(BlobPart)[]} parts
+     * @param {BlobPart[]} parts
      * @param {string} endings
      * @returns {Uint8Array}
      */
@@ -104,7 +104,7 @@
         bytesArrays.push(
           new Uint8Array(element[_byteSequence].buffer.slice(0)),
         );
-      } else if (typeof element == "string") {
+      } else if (typeof element === "string") {
         let s = element;
         if (endings == "native") {
           s = convertLineEndingsToNative(s);
@@ -169,10 +169,10 @@
         }
       }
 
-      if (!options || typeof options == "function") {
+      if (!options || typeof options === "function") {
         options = {};
       }
-      if (typeof options != "object") {
+      if (typeof options !== "object") {
         throw new TypeError(
           `Failed to construct 'Blob'. options is not an object.`,
         );
@@ -247,7 +247,7 @@
       const bytes = this[_byteSequence];
       const stream = new ReadableStream({
         type: "bytes",
-        /** @param {ReadableStreamDefaultController<Uint8Array>} controller */
+        /** @param {ReadableByteStreamController} controller */
         start(controller) {
           const chunk = new Uint8Array(bytes.buffer.slice(0));
           if (chunk.byteLength > 0) controller.enqueue(chunk);
