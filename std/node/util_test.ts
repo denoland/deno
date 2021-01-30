@@ -240,7 +240,7 @@ Deno.test("[util] deprecate", () => {
 
   const testFn1 = util.deprecate(testFunction.bind(expected), message);
 
-  assertEquals(expected, testFn1());
+  assertEquals(testFn1(), expected);
   assertEquals(output, message);
 
   console.warn = warn;
