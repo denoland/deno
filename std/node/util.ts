@@ -135,6 +135,131 @@ export function deprecate<T extends (...args: any) => any>(
   };
 }
 
+function circularRemover(): (key: string, value: unknown) => unknown {
+  const seen = new WeakSet();
+  return (_key, value) => {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) {
+        return;
+      }
+      seen.add(value);
+    }
+    return value;
+  };
+}
+
+function formatString(str: string) {
+  return `"${str.replace(/\\/, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function thingToString(
+  thing: unknown,
+  maxDepth?: number,
+  depth = 1,
+): string {
+  let result = "";
+  if (typeof thing === "bigint") {
+    return thing + "n";
+  }
+  if (
+    typeof thing === "undefined" || typeof thing === "number" ||
+    typeof thing === "boolean" || typeof thing === "symbol" || thing === null
+  ) {
+    return String(thing);
+  }
+  if (typeof thing === "function") {
+    return `[Function ${thing.name || "(anonymous)"}]`;
+  }
+  if (typeof thing === "string") {
+    return formatString(thing);
+  }
+  if (Array.isArray(thing)) {
+    if (depth === maxDepth) {
+      return "[Array]";
+    }
+    result += "[";
+    const en = Object.entries(thing);
+    for (let i = 0; i < en.length; i++) {
+      const [key, value] = en[i];
+      if (isNaN(Number(key))) {
+        result += `${key}: `;
+      }
+      result += thingToString(value, maxDepth, depth + 1);
+      if (i !== en.length - 1) {
+        result += ", ";
+      }
+    }
+    result += "]";
+    return result;
+  }
+  if (depth === maxDepth) {
+    return "[Object]";
+  }
+  const en = Object.entries(thing as Record<string, unknown>);
+  result += "{ ";
+  for (let i = 0; i < en.length; i++) {
+    const [key, value] = en[i];
+    result += `${key}: ${thingToString(value, maxDepth, depth + 1)}`;
+    if (i !== en.length - 1) {
+      result += ", ";
+    }
+  }
+  result += " }";
+  return result;
+}
+
+function toReplace(specifier: string, value: unknown): string {
+  if (specifier === "%s") {
+    return thingToString(value, 2);
+  }
+  if (specifier === "%d") {
+    if (typeof value === "bigint") {
+      return value + "n";
+    }
+    return Number(value).toString();
+  }
+  if (specifier === "%i") {
+    if (typeof value === "bigint") {
+      return value + "n";
+    }
+    return parseInt(value as string).toString();
+  }
+  if (specifier === "%f") {
+    return parseFloat(value as string).toString();
+  }
+  if (specifier === "%j") {
+    return JSON.stringify(value, circularRemover());
+  }
+  if (specifier === "%o" || specifier === "%O") {
+    return thingToString(value);
+  }
+  if (specifier === "%c") {
+    return "";
+  }
+  return "";
+}
+
+export function format(input: string, ...args: unknown[]) {
+  const replacement: [number, string][] = [];
+  const regex = /%(s|d|i|f|j|o|O|c)/g;
+  let i = 0;
+  let arr: RegExpExecArray | null = null;
+  while ((arr = regex.exec(input)) !== null && i < args.length) {
+    replacement.push([arr["index"], toReplace(arr[0], args[i])]);
+    i++;
+  }
+  let result = "";
+  let last = 0;
+  for (let i = 0; i < replacement.length; i++) {
+    const item = replacement[i];
+    result += input.slice(last, item[0]);
+    result += item[1];
+    last = item[0] + 2;
+  }
+  result += input.slice(last);
+  return result;
+}
+
 import { _TextDecoder, _TextEncoder } from "./_utils.ts";
 
 /** The global TextDecoder */

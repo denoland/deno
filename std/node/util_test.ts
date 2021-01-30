@@ -245,3 +245,55 @@ Deno.test("[util] deprecate", () => {
 
   console.warn = warn;
 });
+
+Deno.test("[util] format", () => {
+  assertEquals(util.format("%c %j %d"), "%c %j %d");
+  assertEquals(util.format("%c", "color: red;"), "");
+
+  assertEquals(util.format("%d", 10), "10");
+  assertEquals(util.format("%d", 10n), "10n");
+  assertEquals(util.format("%d", "hello world"), "NaN");
+
+  assertEquals(util.format("%i", 10), "10");
+  assertEquals(util.format("%i", 10.123), "10");
+  assertEquals(util.format("%i", 10n), "10n");
+  assertEquals(util.format("%i", "hello world"), "NaN");
+
+  assertEquals(util.format("%f", 10), "10");
+  assertEquals(util.format("%f", 10.123), "10.123");
+  assertEquals(util.format("%f", 10n), "10");
+  assertEquals(util.format("%f", "hello world"), "NaN");
+
+  assertEquals(
+    util.format("%j", { hi: "hello" }),
+    JSON.stringify({ hi: "hello" }),
+  );
+  // deno-lint-ignore no-explicit-any
+  const a: any = {};
+  a.a = a;
+  assertEquals(util.format("%j", a), "{}");
+
+  const testData = Object.assign([
+    10,
+    "hi",
+    null,
+    undefined,
+    NaN,
+    Infinity,
+    { hello: "world" },
+    [10, 11],
+  ], { hi: "hello" });
+  const expected =
+    '[10, "hi", null, undefined, NaN, Infinity, { hello: "world" }, [10, 11], hi: "hello"]';
+  assertEquals(util.format("%o", testData), expected);
+  assertEquals(util.format("%O", testData), expected);
+
+  const expected2 =
+    '[10, "hi", null, undefined, NaN, Infinity, [Object], [Array], hi: "hello"]';
+  assertEquals(util.format("%s", testData), expected2);
+
+  assertEquals(
+    util.format("%o %O %i", testData, testData, 10),
+    `${expected} ${expected} 10`,
+  );
+});
