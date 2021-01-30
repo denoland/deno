@@ -141,7 +141,7 @@
     /** @type {Uint8Array} */
     [_byteSequence];
 
-    /** 
+    /**
      * @param {BlobPart[]} [blobParts]
      * @param {BlobPropertyBag} [options]
      */
