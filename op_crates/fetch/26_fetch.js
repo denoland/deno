@@ -21,7 +21,7 @@
     window.__bootstrap.streams;
   const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { Headers } = window.__bootstrap.headers;
-  const { Blob, _byteSequence } = window.__bootstrap.file;
+  const { Blob, _byteSequence, File } = window.__bootstrap.file;
 
   const MAX_SIZE = 2 ** 32 - 2;
 
