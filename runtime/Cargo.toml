@@ -56,7 +56,7 @@ serde = { version = "1.0.121", features = ["derive"] }
 shell-escape = "0.1.5"
 sys-info = "0.7.0"
 termcolor = "1.1.2"
-tokio = { version = "1.1.0", features = ["full"] }
+tokio = { version = "1.1.1", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"
