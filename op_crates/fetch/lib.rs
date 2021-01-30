@@ -2,7 +2,6 @@
 
 #![deny(warnings)]
 
-use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -294,11 +293,7 @@ pub async fn op_fetch_request_write(
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  body
-    .send(Ok(buf))
-    .or_cancel(cancel)
-    .await?
-    .map_err(|e| bad_resource(e.to_string()))?;
+  body.send(Ok(buf)).or_cancel(cancel).await??;
 
   Ok(json!({}))
 }
@@ -332,8 +327,10 @@ pub async fn op_fetch_response_read(
   let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
   Ok(json!({ "read": read }))
 }
-type ResponseFuture = Result<Response, reqwest::Error>;
-struct FetchRequestResource(Pin<Box<dyn Future<Output = ResponseFuture>>>);
+
+struct FetchRequestResource(
+  Pin<Box<dyn Future<Output = Result<Response, reqwest::Error>>>>,
+);
 
 impl Resource for FetchRequestResource {
   fn name(&self) -> Cow<str> {
