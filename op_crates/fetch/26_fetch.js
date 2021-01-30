@@ -21,11 +21,7 @@
     window.__bootstrap.streams;
   const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { Headers } = window.__bootstrap.headers;
-
-  // FIXME(bartlomieju): stubbed out, needed in blob
-  const build = {
-    os: "",
-  };
+  const { Blob, _byteSequence } = window.__bootstrap.blob;
 
   const MAX_SIZE = 2 ** 32 - 2;
 
@@ -229,271 +225,6 @@
   const LF = "\n".charCodeAt(0);
 
   const dataSymbol = Symbol("data");
-  const bytesSymbol = Symbol("bytes");
-
-  /**
-   * @param {string} str
-   * @returns {boolean}
-   */
-  function containsOnlyASCII(str) {
-    if (typeof str !== "string") {
-      return false;
-    }
-    // deno-lint-ignore no-control-regex
-    return /^[\x00-\x7F]*$/.test(str);
-  }
-
-  /**
-   * @param {string} s
-   * @returns {string}
-   */
-  function convertLineEndingsToNative(s) {
-    const nativeLineEnd = build.os == "windows" ? "\r\n" : "\n";
-
-    let position = 0;
-
-    let collectionResult = collectSequenceNotCRLF(s, position);
-
-    let token = collectionResult.collected;
-    position = collectionResult.newPosition;
-
-    let result = token;
-
-    while (position < s.length) {
-      const c = s.charAt(position);
-      if (c == "\r") {
-        result += nativeLineEnd;
-        position++;
-        if (position < s.length && s.charAt(position) == "\n") {
-          position++;
-        }
-      } else if (c == "\n") {
-        position++;
-        result += nativeLineEnd;
-      }
-
-      collectionResult = collectSequenceNotCRLF(s, position);
-
-      token = collectionResult.collected;
-      position = collectionResult.newPosition;
-
-      result += token;
-    }
-
-    return result;
-  }
-
-  /**
-   * @param {string} s
-   * @param {number} position
-   * @returns {{ collected: string, newPosition: number }}
-   */
-  function collectSequenceNotCRLF(
-    s,
-    position,
-  ) {
-    const start = position;
-    for (
-      let c = s.charAt(position);
-      position < s.length && !(c == "\r" || c == "\n");
-      c = s.charAt(++position)
-    );
-    return { collected: s.slice(start, position), newPosition: position };
-  }
-
-  /**
-   * @param {BlobPart[]} blobParts 
-   * @param {boolean} doNormalizeLineEndingsToNative
-   * @returns {Uint8Array[]}
-   */
-  function toUint8Arrays(
-    blobParts,
-    doNormalizeLineEndingsToNative,
-  ) {
-    /** @type {Uint8Array[]} */
-    const ret = [];
-    const enc = new TextEncoder();
-    for (const element of blobParts) {
-      if (typeof element === "string") {
-        let str = element;
-        if (doNormalizeLineEndingsToNative) {
-          str = convertLineEndingsToNative(element);
-        }
-        ret.push(enc.encode(str));
-        // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      } else if (element instanceof Blob) {
-        ret.push(element[bytesSymbol]);
-      } else if (element instanceof Uint8Array) {
-        ret.push(element);
-      } else if (element instanceof Uint16Array) {
-        const uint8 = new Uint8Array(element.buffer);
-        ret.push(uint8);
-      } else if (element instanceof Uint32Array) {
-        const uint8 = new Uint8Array(element.buffer);
-        ret.push(uint8);
-      } else if (ArrayBuffer.isView(element)) {
-        // Convert view to Uint8Array.
-        const uint8 = new Uint8Array(element.buffer);
-        ret.push(uint8);
-      } else if (element instanceof ArrayBuffer) {
-        // Create a new Uint8Array view for the given ArrayBuffer.
-        const uint8 = new Uint8Array(element);
-        ret.push(uint8);
-      } else {
-        ret.push(enc.encode(String(element)));
-      }
-    }
-    return ret;
-  }
-
-  /**
-   * @param {BlobPart[]} blobParts 
-   * @param {BlobPropertyBag} options
-   * @returns {Uint8Array}
-   */
-  function processBlobParts(
-    blobParts,
-    options,
-  ) {
-    const normalizeLineEndingsToNative = options.ending === "native";
-    // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
-    // pre compute size of the array buffer and do some sort of static allocation
-    // instead of dynamic allocation.
-    const uint8Arrays = toUint8Arrays(blobParts, normalizeLineEndingsToNative);
-    const byteLength = uint8Arrays
-      .map((u8) => u8.byteLength)
-      .reduce((a, b) => a + b, 0);
-    const ab = new ArrayBuffer(byteLength);
-    const bytes = new Uint8Array(ab);
-    let courser = 0;
-    for (const u8 of uint8Arrays) {
-      bytes.set(u8, courser);
-      courser += u8.byteLength;
-    }
-
-    return bytes;
-  }
-
-  /**
-   * @param {Uint8Array} blobBytes 
-   */
-  function getStream(blobBytes) {
-    // TODO(bartlomieju): Align to spec https://fetch.spec.whatwg.org/#concept-construct-readablestream
-    /** @type {ReadableStream<Uint8Array>} */
-    return new ReadableStream({
-      type: "bytes",
-      /** @param {ReadableStreamDefaultController} controller */
-      start: (controller) => {
-        controller.enqueue(blobBytes);
-        controller.close();
-      },
-    });
-  }
-
-  /** @param {ReadableStreamReader<Uint8Array>} reader */
-  async function readBytes(
-    reader,
-  ) {
-    const chunks = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (!done && value instanceof Uint8Array) {
-        chunks.push(value);
-      } else if (done) {
-        const size = chunks.reduce((p, i) => p + i.byteLength, 0);
-        const bytes = new Uint8Array(size);
-        let offs = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, offs);
-          offs += chunk.byteLength;
-        }
-        return bytes.buffer;
-      } else {
-        throw new TypeError("Invalid reader result.");
-      }
-    }
-  }
-
-  // A WeakMap holding blob to byte array mapping.
-  // Ensures it does not impact garbage collection.
-  // const blobBytesWeakMap = new WeakMap();
-
-  class Blob {
-    /** @type {number} */
-    size = 0;
-    /** @type {string} */
-    type = "";
-
-    /**
-     * 
-     * @param {BlobPart[]} blobParts 
-     * @param {BlobPropertyBag | undefined} options 
-     */
-    constructor(blobParts, options) {
-      if (arguments.length === 0) {
-        this[bytesSymbol] = new Uint8Array();
-        return;
-      }
-
-      const { ending = "transparent", type = "" } = options ?? {};
-      // Normalize options.type.
-      let normalizedType = type;
-      if (!containsOnlyASCII(type)) {
-        normalizedType = "";
-      } else {
-        if (type.length) {
-          for (let i = 0; i < type.length; ++i) {
-            const char = type[i];
-            if (char < "\u0020" || char > "\u007E") {
-              normalizedType = "";
-              break;
-            }
-          }
-          normalizedType = type.toLowerCase();
-        }
-      }
-      const bytes = processBlobParts(blobParts, { ending, type });
-      // Set Blob object's properties.
-      this[bytesSymbol] = bytes;
-      this.size = bytes.byteLength;
-      this.type = normalizedType;
-    }
-
-    /**
-     * @param {number} start 
-     * @param {number} end 
-     * @param {string} contentType 
-     * @returns {Blob}
-     */
-    slice(start, end, contentType) {
-      return new Blob([this[bytesSymbol].slice(start, end)], {
-        type: contentType || this.type,
-      });
-    }
-
-    /**
-     * @returns {ReadableStream<Uint8Array>}
-     */
-    stream() {
-      return getStream(this[bytesSymbol]);
-    }
-
-    /**
-     * @returns {Promise<string>}
-     */
-    async text() {
-      const reader = getStream(this[bytesSymbol]).getReader();
-      const decoder = new TextDecoder();
-      return decoder.decode(await readBytes(reader));
-    }
-
-    /**
-     * @returns {Promise<ArrayBuffer>}
-     */
-    arrayBuffer() {
-      return readBytes(getStream(this[bytesSymbol]).getReader());
-    }
-  }
 
   class DomFile extends Blob {
     /**
@@ -761,7 +492,7 @@
      */
     #writeFile = (field, value) => {
       this.#writeFileHeaders(field, value.name, value.type);
-      this.writer.writeSync(value[bytesSymbol]);
+      this.writer.writeSync(value[_byteSequence]);
     };
   }
 
@@ -1607,7 +1338,7 @@
             body = new TextEncoder().encode(init.body.toString());
             contentType = "application/x-www-form-urlencoded;charset=UTF-8";
           } else if (init.body instanceof Blob) {
-            body = init.body[bytesSymbol];
+            body = init.body[_byteSequence];
             contentType = init.body.type;
           } else if (init.body instanceof FormData) {
             let boundary;
@@ -1762,7 +1493,6 @@
   }
 
   window.__bootstrap.fetch = {
-    Blob,
     File: DomFile,
     FormData,
     setBaseUrl,
