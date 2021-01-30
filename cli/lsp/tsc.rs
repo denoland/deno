@@ -843,8 +843,8 @@ impl SignatureHelpItems {
         .into_iter()
         .map(|item| item.into_signature_information())
         .collect(),
-      active_parameter: Some(self.selected_item_index),
-      active_signature: Some(self.argument_index),
+      active_parameter: Some(self.argument_index),
+      active_signature: Some(self.selected_item_index),
     }
   }
 }
