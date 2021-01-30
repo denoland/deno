@@ -873,7 +873,7 @@
       nonUniqueCustomInspect in value &&
       typeof value[nonUniqueCustomInspect] === "function"
     ) {
-      return String(value[nonUniqueCustomInspect]());
+      return String(value[nonUniqueCustomInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);
