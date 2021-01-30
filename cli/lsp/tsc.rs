@@ -394,20 +394,16 @@ pub struct QuickInfo {
 impl QuickInfo {
   pub fn to_hover(&self, line_index: &LineIndex) -> lsp::Hover {
     let mut contents = Vec::<lsp::MarkedString>::new();
-    if let Some(display_string) = self
-      .display_parts
-      .clone()
-      .map(display_parts_to_string)
+    if let Some(display_string) =
+      self.display_parts.clone().map(display_parts_to_string)
     {
       contents.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
     }
-    if let Some(documentation) = self
-      .documentation
-      .clone()
-      .map(display_parts_to_string)
+    if let Some(documentation) =
+      self.documentation.clone().map(display_parts_to_string)
     {
       contents.push(lsp::MarkedString::from_markdown(documentation));
     }
