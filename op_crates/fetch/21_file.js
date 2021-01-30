@@ -287,8 +287,57 @@
     }
   }
 
-  window.__bootstrap.blob = {
+  const _name = Symbol("[[Name]]");
+  const _lastModfied = Symbol("[[LastModified]]");
+
+  class File extends Blob {
+    /** @type {string} */
+    [_name];
+    /** @type {number} */
+    [_lastModfied];
+
+    /**
+     * @param {BlobPart[]} fileBits 
+     * @param {string} fileName 
+     * @param {FilePropertyBag} [options] 
+     */
+    constructor(fileBits, fileName, options) {
+      if (fileBits === undefined) {
+        throw new TypeError(
+          "Failed to construct 'File'. 2 arguments required, but first not specified.",
+        );
+      }
+      if (fileName === undefined) {
+        throw new TypeError(
+          "Failed to construct 'File'. 2 arguments required, but second not specified.",
+        );
+      }
+      super(fileBits, { endings: options?.endings, type: options?.type });
+      /** @type {string} */
+      this[_name] = String(fileName).replaceAll("/", ":");
+      if (options?.lastModified === undefined) {
+        /** @type {number} */
+        this[_lastModfied] = new Date().getTime();
+      } else {
+        /** @type {number} */
+        this[_lastModfied] = Number(options.lastModified);
+      }
+    }
+
+    /** @returns {string} */
+    get name() {
+      return this[_name];
+    }
+
+    /** @returns {number} */
+    get lastModified() {
+      return this[_lastModfied];
+    }
+  }
+
+  window.__bootstrap.file = {
     Blob,
     _byteSequence,
+    File,
   };
 })(this);
