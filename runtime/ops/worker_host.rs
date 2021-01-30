@@ -1,29 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::resolve_fs_allowlist;
-use crate::permissions::PermissionState;
-use crate::permissions::Permissions;
-use crate::permissions::UnaryPermission;
-use crate::web_worker::run_web_worker;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WorkerEvent;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
-use deno_core::futures::channel::mpsc;
-use deno_core::serde::de;
-use deno_core::serde::de::SeqAccess;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Deserializer;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::BufVec;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -33,6 +9,32 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread::JoinHandle;
+
+use deno_core::BufVec;
+use deno_core::error::AnyError;
+use deno_core::error::custom_error;
+use deno_core::error::generic_error;
+use deno_core::error::JsError;
+use deno_core::futures::channel::mpsc;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::serde::de;
+use deno_core::serde::de::SeqAccess;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::ZeroCopyBuf;
+
+use crate::permissions::Permissions;
+use crate::permissions::PermissionState;
+use crate::permissions::resolve_fs_allowlist;
+use crate::permissions::UnaryPermission;
+use crate::web_worker::run_web_worker;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WorkerEvent;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
@@ -143,13 +145,13 @@ fn merge_net_permissions(
   };
 
   let new_permissions = incoming.unwrap();
-  match &target.global_state {
+  match &target.state {
     PermissionState::Granted => Ok(UnaryPermission::<String> {
-      global_state: new_permissions.global_state,
+      state: new_permissions.state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
     }),
-    PermissionState::Prompt => match new_permissions.global_state {
+    PermissionState::Prompt => match new_permissions.state {
       //Throw
       PermissionState::Granted => Err(custom_error(
         "PermissionDenied",
@@ -162,7 +164,7 @@ fn merge_net_permissions(
           &new_permissions.granted_list,
         ) {
           Ok(UnaryPermission::<String> {
-            global_state: new_permissions.global_state,
+            state: new_permissions.state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
           })
@@ -175,14 +177,14 @@ fn merge_net_permissions(
       }
       //Copy
       PermissionState::Denied => Ok(UnaryPermission::<String> {
-        global_state: new_permissions.global_state,
+        state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
       }),
     },
-    PermissionState::Denied => match new_permissions.global_state {
+    PermissionState::Denied => match new_permissions.state {
       PermissionState::Denied => Ok(UnaryPermission::<String> {
-        global_state: new_permissions.global_state,
+        state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
       }),
@@ -228,13 +230,13 @@ fn merge_read_write_permissions(
   };
 
   let new_permissions = incoming.unwrap();
-  match &target.global_state {
+  match &target.state {
     PermissionState::Granted => Ok(UnaryPermission::<PathBuf> {
-      global_state: new_permissions.global_state,
+      state: new_permissions.state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
     }),
-    PermissionState::Prompt => match new_permissions.global_state {
+    PermissionState::Prompt => match new_permissions.state {
       //Throw
       PermissionState::Granted => Err(custom_error(
         "PermissionDenied",
@@ -253,7 +255,7 @@ fn merge_read_write_permissions(
           ),
         } {
           Ok(UnaryPermission::<PathBuf> {
-            global_state: new_permissions.global_state,
+            state: new_permissions.state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
           })
@@ -266,14 +268,14 @@ fn merge_read_write_permissions(
       }
       //Copy
       PermissionState::Denied => Ok(UnaryPermission::<PathBuf> {
-        global_state: new_permissions.global_state,
+        state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
       }),
     },
-    PermissionState::Denied => match new_permissions.global_state {
+    PermissionState::Denied => match new_permissions.state {
       PermissionState::Denied => Ok(UnaryPermission::<PathBuf> {
-        global_state: new_permissions.global_state,
+        state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
       }),
@@ -414,7 +416,7 @@ where
   let allowed: HashSet<String> = value.paths.into_iter().collect();
 
   Ok(Some(UnaryPermission::<String> {
-    global_state: value.global_state,
+    state: value.global_state,
     granted_list: allowed,
     ..Default::default()
   }))
@@ -433,7 +435,7 @@ where
     value.paths.into_iter().map(PathBuf::from).collect();
 
   Ok(Some(UnaryPermission::<PathBuf> {
-    global_state: value.global_state,
+    state: value.global_state,
     granted_list: resolve_fs_allowlist(&Some(paths)),
     ..Default::default()
   }))
