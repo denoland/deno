@@ -15,7 +15,7 @@ const UUID_RE =
  * Validates the UUID v5.
  * @param id UUID value.
  */
-export function validate(id: string) {
+export function validate(id: string): boolean {
   return UUID_RE.test(id);
 }
 
