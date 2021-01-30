@@ -132,16 +132,12 @@ pub async fn get_asset(
   }
 }
 
-fn display_parts_to_string(
-  maybe_parts: Option<Vec<SymbolDisplayPart>>,
-) -> Option<String> {
-  maybe_parts.map(|parts| {
-    parts
-      .into_iter()
-      .map(|p| p.text)
-      .collect::<Vec<String>>()
-      .join("")
-  })
+fn display_parts_to_string(parts: Vec<SymbolDisplayPart>) -> String {
+  parts
+    .into_iter()
+    .map(|p| p.text)
+    .collect::<Vec<String>>()
+    .join("")
 }
 
 fn get_tag_body_text(tag: &JSDocTagInfo) -> Option<String> {
@@ -398,16 +394,20 @@ pub struct QuickInfo {
 impl QuickInfo {
   pub fn to_hover(&self, line_index: &LineIndex) -> lsp::Hover {
     let mut contents = Vec::<lsp::MarkedString>::new();
-    if let Some(display_string) =
-      display_parts_to_string(self.display_parts.clone())
+    if let Some(display_string) = self
+      .display_parts
+      .clone()
+      .map(display_parts_to_string)
     {
       contents.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
     }
-    if let Some(documentation) =
-      display_parts_to_string(self.documentation.clone())
+    if let Some(documentation) = self
+      .documentation
+      .clone()
+      .map(display_parts_to_string)
     {
       contents.push(lsp::MarkedString::from_markdown(documentation));
     }
@@ -829,6 +829,91 @@ impl CompletionEntry {
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpItems {
+  items: Vec<SignatureHelpItem>,
+  applicable_span: TextSpan,
+  selected_item_index: u32,
+  argument_index: u32,
+  argument_count: u32,
+}
+
+impl SignatureHelpItems {
+  pub fn into_signature_help(self) -> lsp::SignatureHelp {
+    lsp::SignatureHelp {
+      signatures: self
+        .items
+        .into_iter()
+        .map(|item| item.into_signature_information())
+        .collect(),
+      active_parameter: Some(self.selected_item_index),
+      active_signature: Some(self.argument_index),
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpItem {
+  is_variadic: bool,
+  prefix_display_parts: Vec<SymbolDisplayPart>,
+  suffix_display_parts: Vec<SymbolDisplayPart>,
+  separator_display_parts: Vec<SymbolDisplayPart>,
+  parameters: Vec<SignatureHelpParameter>,
+  documentation: Vec<SymbolDisplayPart>,
+  tags: Vec<JSDocTagInfo>,
+}
+
+impl SignatureHelpItem {
+  pub fn into_signature_information(self) -> lsp::SignatureInformation {
+    let prefix_text = display_parts_to_string(self.prefix_display_parts);
+    let params_text = self
+      .parameters
+      .iter()
+      .map(|param| display_parts_to_string(param.display_parts.clone()))
+      .collect::<Vec<String>>()
+      .join(", ");
+    let suffix_text = display_parts_to_string(self.suffix_display_parts);
+    lsp::SignatureInformation {
+      label: prefix_text + &params_text + &suffix_text,
+      documentation: Some(lsp::Documentation::String(display_parts_to_string(
+        self.documentation,
+      ))),
+      parameters: Some(
+        self
+          .parameters
+          .into_iter()
+          .map(|param| param.into_parameter_information())
+          .collect(),
+      ),
+      active_parameter: None,
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpParameter {
+  name: String,
+  documentation: Vec<SymbolDisplayPart>,
+  display_parts: Vec<SymbolDisplayPart>,
+  is_optional: bool,
+}
+
+impl SignatureHelpParameter {
+  pub fn into_parameter_information(self) -> lsp::ParameterInformation {
+    lsp::ParameterInformation {
+      label: lsp::ParameterLabel::Simple(display_parts_to_string(
+        self.display_parts,
+      )),
+      documentation: Some(lsp::Documentation::String(display_parts_to_string(
+        self.documentation,
+      ))),
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
   id: usize,
@@ -1206,6 +1291,21 @@ pub struct UserPreferences {
   pub provide_refactor_not_applicable_reason: Option<bool>,
 }
 
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpItemsOptions {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trigger_reason: Option<SignatureHelpTriggerReason>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpTriggerReason {
+  pub kind: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trigger_character: Option<String>,
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 #[derive(Debug)]
 pub enum RequestMethod {
@@ -1231,6 +1331,8 @@ pub enum RequestMethod {
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Get document references for a specific position.
   GetReferences((ModuleSpecifier, u32)),
+  /// Get signature help items for a specific position.
+  GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
 }
 
 impl RequestMethod {
@@ -1317,6 +1419,15 @@ impl RequestMethod {
         "specifier": specifier,
         "position": position,
       }),
+      RequestMethod::GetSignatureHelpItems((specifier, position, options)) => {
+        json!({
+          "id": id,
+          "method": "getSignatureHelpItems",
+          "specifier": specifier,
+          "position": position,
+          "options": options,
+        })
+      },
     }
   }
 }

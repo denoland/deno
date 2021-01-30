@@ -638,6 +638,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getSignatureHelpItems": {
+        return respond(
+          id,
+          languageService.getSignatureHelpItems(
+            request.specifier,
+            request.position,
+            request.options,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never

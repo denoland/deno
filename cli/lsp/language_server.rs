@@ -1378,6 +1378,73 @@ impl Inner {
       }
     }
   }
+
+  async fn signature_help(
+    &self,
+    params: SignatureHelpParams,
+  ) -> LspResult<Option<SignatureHelp>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("signature_help");
+    let specifier = utils::normalize_url(
+      params.text_document_position_params.text_document.uri,
+    );
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+    let options = if let Some(context) = params.context {
+      let trigger_kind = match context.trigger_kind {
+        SignatureHelpTriggerKind::Invoked => "invoked",
+        SignatureHelpTriggerKind::TriggerCharacter => "characterTyped",
+        SignatureHelpTriggerKind::ContentChange => "retrigger",
+      };
+      tsc::SignatureHelpItemsOptions {
+        trigger_reason: Some(tsc::SignatureHelpTriggerReason {
+          kind: trigger_kind.to_string(),
+          trigger_character: context.trigger_character,
+        }),
+      }
+    } else {
+      tsc::SignatureHelpItemsOptions {
+        trigger_reason: None,
+      }
+    };
+    let req = tsc::RequestMethod::GetSignatureHelpItems((
+      specifier,
+      line_index.offset_tsc(params.text_document_position_params.position)?,
+      options,
+    ));
+    let res =
+      self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {:#?}", err);
+          LspError::invalid_request()
+        })?;
+    let maybe_signature_help_items = serde_json::from_value::<Option<tsc::SignatureHelpItems>>(res)
+      .map_err(|err| {
+        error!("Failed to deserialize tsserver response to Vec<SignatureHelpItems> {:#?}", err);
+        LspError::internal_error()
+      })?;
+
+    if let Some(signature_help_items) = maybe_signature_help_items {
+      let signature_help = signature_help_items.into_signature_help();
+      self.performance.measure(mark);
+      Ok(Some(signature_help))
+    } else {
+      self.performance.measure(mark);
+      Ok(None)
+    }
+  }
 }
 
 #[lspower::async_trait]
@@ -1497,6 +1564,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
     self.0.lock().await.request_else(method, params).await
+  }
+
+  async fn signature_help(
+    &self,
+    params: SignatureHelpParams,
+  ) -> LspResult<Option<SignatureHelp>> {
+    self.0.lock().await.signature_help(params).await
   }
 }
 
@@ -2109,6 +2183,80 @@ mod tests {
                 ],
               ]
             }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_signature_help() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "signature_help_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "signature_help_request_01.json",
+        LspResponse::Request(
+          1,
+          json!({
+            "signatures": [
+              {
+                "label": "add(a: number, b: number): number",
+                "documentation": "Adds two numbers.",
+                "parameters": [
+                  {
+                    "label": "a: number",
+                    "documentation": "This is a first number."
+                  },
+                  {
+                    "label": "b: number",
+                    "documentation": "This is a second number."
+                  }
+                ]
+              }
+            ],
+            "activeSignature": 0,
+            "activeParameter": 0
+          }),
+        ),
+      ),
+      (
+        "signature_help_did_change_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "signature_help_request_02.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "signatures": [
+              {
+                "label": "add(a: number, b: number): number",
+                "documentation": "Adds two numbers.",
+                "parameters": [
+                  {
+                    "label": "a: number",
+                    "documentation": "This is a first number."
+                  },
+                  {
+                    "label": "b: number",
+                    "documentation": "This is a second number."
+                  }
+                ]
+              }
+            ],
+            "activeSignature": 0,
+            "activeParameter": 1
           }),
         ),
       ),
