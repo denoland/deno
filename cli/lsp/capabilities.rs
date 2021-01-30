@@ -55,7 +55,7 @@ pub fn server_capabilities(
         "(".to_string(),
         "<".to_string(),
       ]),
-      retrigger_characters: Some(vec![",".to_string()]),
+      retrigger_characters: None,
       work_done_progress_options: WorkDoneProgressOptions {
         work_done_progress: None,
       },
