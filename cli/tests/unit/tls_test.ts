@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertStrictEquals,
   assertThrows,
   assertThrowsAsync,
   deferred,
@@ -179,6 +180,149 @@ unitTest(
     conn.close();
     listener.close();
     await resolvable;
+  },
+);
+
+async function tlsPair(port: number): Promise<[Deno.Conn, Deno.Conn]> {
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    port,
+    certFile: "cli/tests/tls/localhost.crt",
+    keyFile: "cli/tests/tls/localhost.key",
+  });
+
+  const acceptPromise = listener.accept();
+  const connectPromise = Deno.connectTls({
+    hostname: "localhost",
+    port,
+    certFile: "cli/tests/tls/RootCA.pem",
+  });
+  const connections = await Promise.all([acceptPromise, connectPromise]);
+
+  listener.close();
+
+  return connections;
+}
+
+async function sendCloseWrite(conn: Deno.Conn): Promise<void> {
+  const buf = new Uint8Array(1024);
+  let n: number | null;
+
+  // Send 1.
+  n = await conn.write(new Uint8Array([1]));
+  assertStrictEquals(n, 1);
+
+  // Send EOF.
+  await conn.closeWrite();
+
+  // Receive 2.
+  n = await conn.read(buf);
+  assertStrictEquals(n, 1);
+  assertStrictEquals(buf[0], 2);
+
+  conn.close();
+}
+
+async function receiveCloseWrite(conn: Deno.Conn): Promise<void> {
+  const buf = new Uint8Array(1024);
+  let n: number | null;
+
+  // Receive 1.
+  n = await conn.read(buf);
+  assertStrictEquals(n, 1);
+  assertStrictEquals(buf[0], 1);
+
+  // Receive EOF.
+  n = await conn.read(buf);
+  assertStrictEquals(n, null);
+
+  // Send 2.
+  n = await conn.write(new Uint8Array([2]));
+  assertStrictEquals(n, 1);
+
+  conn.close();
+}
+
+async function sendAlotReceiveNothing(conn: Deno.Conn): Promise<void> {
+  // Start receive op.
+  const readBuf = new Uint8Array(1024);
+  const readPromise = conn.read(readBuf);
+
+  // Send 1 MB of data.
+  const writeBuf = new Uint8Array(1 << 20);
+  writeBuf.fill(42);
+  await conn.write(writeBuf);
+
+  // Send EOF.
+  await conn.closeWrite();
+
+  // Close the connection.
+  conn.close();
+
+  // Read op should be canceled.
+  await assertThrowsAsync(
+    async () => await readPromise,
+    Deno.errors.Interrupted,
+  );
+}
+
+async function receiveAlotSendNothing(conn: Deno.Conn): Promise<void> {
+  const readBuf = new Uint8Array(1024);
+  let n: number | null;
+
+  // Receive 1 MB of data.
+  for (let nread = 0; nread < 1 << 20; nread += n!) {
+    n = await conn.read(readBuf);
+    assertStrictEquals(typeof n, "number");
+    assert(n! > 0);
+    assertStrictEquals(readBuf[0], 42);
+  }
+
+  // Close the connection, without sending anything at all.
+  conn.close();
+}
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function tlsServerStreamHalfClose(): Promise<void> {
+    const [serverConn, clientConn] = await tlsPair(3501);
+    await Promise.all([
+      sendCloseWrite(serverConn),
+      receiveCloseWrite(clientConn),
+    ]);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function tlsClientStreamHalfClose(): Promise<void> {
+    const [serverConn, clientConn] = await tlsPair(3502);
+    await Promise.all([
+      sendCloseWrite(clientConn),
+      receiveCloseWrite(serverConn),
+    ]);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function tlsServerStreamCancelRead(): Promise<void> {
+    const [serverConn, clientConn] = await tlsPair(3503);
+    await Promise.all([
+      sendAlotReceiveNothing(serverConn),
+      receiveAlotSendNothing(clientConn),
+    ]);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function tlsClientStreamCancelRead(): Promise<void> {
+    const [serverConn, clientConn] = await tlsPair(3504);
+    await Promise.all([
+      sendAlotReceiveNothing(clientConn),
+      receiveAlotSendNothing(serverConn),
+    ]);
   },
 );
 

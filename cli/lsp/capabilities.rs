@@ -5,17 +5,17 @@
 ///! language server, which helps determine what messages are sent from the
 ///! client.
 ///!
-use lspower::lsp_types::ClientCapabilities;
-use lspower::lsp_types::CompletionOptions;
-use lspower::lsp_types::HoverProviderCapability;
-use lspower::lsp_types::ImplementationProviderCapability;
-use lspower::lsp_types::OneOf;
-use lspower::lsp_types::SaveOptions;
-use lspower::lsp_types::ServerCapabilities;
-use lspower::lsp_types::TextDocumentSyncCapability;
-use lspower::lsp_types::TextDocumentSyncKind;
-use lspower::lsp_types::TextDocumentSyncOptions;
-use lspower::lsp_types::WorkDoneProgressOptions;
+use lspower::lsp::ClientCapabilities;
+use lspower::lsp::CompletionOptions;
+use lspower::lsp::HoverProviderCapability;
+use lspower::lsp::ImplementationProviderCapability;
+use lspower::lsp::OneOf;
+use lspower::lsp::SaveOptions;
+use lspower::lsp::ServerCapabilities;
+use lspower::lsp::TextDocumentSyncCapability;
+use lspower::lsp::TextDocumentSyncKind;
+use lspower::lsp::TextDocumentSyncOptions;
+use lspower::lsp::WorkDoneProgressOptions;
 
 pub fn server_capabilities(
   _client_capabilities: &ClientCapabilities,
@@ -70,7 +70,6 @@ pub fn server_capabilities(
     color_provider: None,
     execute_command_provider: None,
     call_hierarchy_provider: None,
-    semantic_highlighting: None,
     semantic_tokens_provider: None,
     workspace: None,
     experimental: None,
