@@ -273,7 +273,7 @@ export class SMTPClientImpl implements SMTPClient {
           try {
             // deno-lint-ignore no-unreachable
             await this.quit();
-          // deno-lint-ignore no-unsafe-finally
+            // deno-lint-ignore no-unsafe-finally
           } finally {
             throw err;
           }
