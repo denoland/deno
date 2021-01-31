@@ -421,14 +421,11 @@ async fn cache_test() {
   assert!(output.status.success());
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
-  // TODO(ry) Is there some way to check that the file was actually cached in
-  // DENO_DIR?
 
-  check_cache(module_url, std::path::PathBuf::from(deno_dir.path())).await;
+  check_cached_file(module_url, std::path::PathBuf::from(deno_dir.path())).await;
 }
 
-async fn check_cache(module_url: url::Url, deno_dir: std::path::PathBuf) {
-  // Check from DENO_DIR/deps/{scheme}/{host}
+async fn check_cached_file(module_url: url::Url, deno_dir: std::path::PathBuf) {
   let mut cached = false;
   let mut host = String::from(module_url.host_str().unwrap());
   if let Some(port) = module_url.port() {
@@ -458,6 +455,7 @@ async fn check_cache(module_url: url::Url, deno_dir: std::path::PathBuf) {
 
           assert_eq!(module_original, module_cached);
           cached = true;
+          break;
         }
       }
     }
