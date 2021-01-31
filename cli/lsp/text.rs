@@ -7,8 +7,8 @@ use deno_core::serde_json::Value;
 use dissimilar::diff;
 use dissimilar::Chunk;
 use lspower::jsonrpc;
-use lspower::lsp_types;
-use lspower::lsp_types::TextEdit;
+use lspower::lsp;
+use lspower::lsp::TextEdit;
 use std::collections::HashMap;
 use std::ops::Bound;
 use std::ops::RangeBounds;
@@ -123,7 +123,7 @@ impl LineIndex {
   /// Convert a u16 based range to a u8 TextRange.
   pub fn get_text_range(
     &self,
-    range: lsp_types::Range,
+    range: lsp::Range,
   ) -> Result<TextRange, AnyError> {
     let start = self.offset(range.start)?;
     let end = self.offset(range.end)?;
@@ -131,10 +131,7 @@ impl LineIndex {
   }
 
   /// Return a u8 offset based on a u16 position.
-  pub fn offset(
-    &self,
-    position: lsp_types::Position,
-  ) -> Result<TextSize, AnyError> {
+  pub fn offset(&self, position: lsp::Position) -> Result<TextSize, AnyError> {
     let col = self.utf16_to_utf8_col(position.line, position.character);
     if let Some(line_offset) = self.utf8_offsets.get(position.line as usize) {
       Ok(line_offset + col)
@@ -145,10 +142,7 @@ impl LineIndex {
 
   /// Convert an lsp Position into a tsc/TypeScript "position", which is really
   /// an u16 byte offset from the start of the string represented as an u32.
-  pub fn offset_tsc(
-    &self,
-    position: lsp_types::Position,
-  ) -> jsonrpc::Result<u32> {
+  pub fn offset_tsc(&self, position: lsp::Position) -> jsonrpc::Result<u32> {
     self
       .offset_utf16(position)
       .map(|ts| ts.into())
@@ -157,7 +151,7 @@ impl LineIndex {
 
   fn offset_utf16(
     &self,
-    position: lsp_types::Position,
+    position: lsp::Position,
   ) -> Result<TextSize, AnyError> {
     if let Some(line_offset) = self.utf16_offsets.get(position.line as usize) {
       Ok(line_offset + TextSize::from(position.character))
@@ -168,24 +162,24 @@ impl LineIndex {
 
   /// Returns a u16 position based on a u16 offset, which TypeScript offsets are
   /// returned as u16.
-  pub fn position_tsc(&self, offset: TextSize) -> lsp_types::Position {
+  pub fn position_tsc(&self, offset: TextSize) -> lsp::Position {
     let line = partition_point(&self.utf16_offsets, |&it| it <= offset) - 1;
     let line_start_offset = self.utf16_offsets[line];
     let col = offset - line_start_offset;
 
-    lsp_types::Position {
+    lsp::Position {
       line: line as u32,
       character: col.into(),
     }
   }
 
   /// Returns a u16 position based on a u8 offset.
-  pub fn position_utf16(&self, offset: TextSize) -> lsp_types::Position {
-    let line = partition_point(&self.utf8_offsets, |&it| it <= offset) - 1;
-    let line_start_offset = self.utf8_offsets[line];
+  pub fn position_utf16(&self, offset: TextSize) -> lsp::Position {
+    let line = partition_point(&self.utf16_offsets, |&it| it <= offset) - 1;
+    let line_start_offset = self.utf16_offsets[line];
     let col = offset - line_start_offset;
 
-    lsp_types::Position {
+    lsp::Position {
       line: line as u32,
       character: col.into(),
     }
@@ -208,13 +202,21 @@ impl LineIndex {
 
 /// Compare two strings and return a vector of text edit records which are
 /// supported by the Language Server Protocol.
-pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
+pub fn get_edits(
+  a: &str,
+  b: &str,
+  maybe_line_index: Option<LineIndex>,
+) -> Vec<TextEdit> {
   if a == b {
     return vec![];
   }
   let chunks = diff(a, b);
   let mut text_edits = Vec::<TextEdit>::new();
-  let line_index = LineIndex::new(a);
+  let line_index = if let Some(line_index) = maybe_line_index {
+    line_index
+  } else {
+    LineIndex::new(a)
+  };
   let mut iter = chunks.iter().peekable();
   let mut a_pos = TextSize::from(0);
   loop {
@@ -228,7 +230,7 @@ pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
         let start = line_index.position_utf16(a_pos);
         a_pos += TextSize::from(d.encode_utf16().count() as u32);
         let end = line_index.position_utf16(a_pos);
-        let range = lsp_types::Range { start, end };
+        let range = lsp::Range { start, end };
         match iter.peek() {
           Some(Chunk::Insert(i)) => {
             iter.next();
@@ -245,7 +247,7 @@ pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
       }
       Some(Chunk::Insert(i)) => {
         let pos = line_index.position_utf16(a_pos);
-        let range = lsp_types::Range {
+        let range = lsp::Range {
           start: pos,
           end: pos,
         };
@@ -376,63 +378,63 @@ mod tests {
     let index = LineIndex::new(text);
     assert_eq!(
       index.position_utf16(0.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 0,
         character: 0
       }
     );
     assert_eq!(
       index.position_utf16(1.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 0,
         character: 1
       }
     );
     assert_eq!(
       index.position_utf16(5.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 0,
         character: 5
       }
     );
     assert_eq!(
       index.position_utf16(6.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 0
       }
     );
     assert_eq!(
       index.position_utf16(7.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 1
       }
     );
     assert_eq!(
       index.position_utf16(8.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 2
       }
     );
     assert_eq!(
       index.position_utf16(10.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 4
       }
     );
     assert_eq!(
       index.position_utf16(11.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 5
       }
     );
     assert_eq!(
       index.position_utf16(12.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 6
       }
@@ -442,35 +444,35 @@ mod tests {
     let index = LineIndex::new(text);
     assert_eq!(
       index.position_utf16(0.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 0,
         character: 0
       }
     );
     assert_eq!(
       index.position_utf16(1.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 0
       }
     );
     assert_eq!(
       index.position_utf16(2.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 1
       }
     );
     assert_eq!(
       index.position_utf16(6.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 1,
         character: 5
       }
     );
     assert_eq!(
       index.position_utf16(7.into()),
-      lsp_types::Position {
+      lsp::Position {
         line: 2,
         character: 0
       }
@@ -565,17 +567,17 @@ const C: char = \"メ メ\";
   fn test_get_edits() {
     let a = "abcdefg";
     let b = "a\nb\nchije\nfg\n";
-    let actual = get_edits(a, b);
+    let actual = get_edits(a, b, None);
     assert_eq!(
       actual,
       vec![
         TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
+          range: lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 1
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 5
             }
@@ -583,12 +585,12 @@ const C: char = \"メ メ\";
           new_text: "\nb\nchije\n".to_string()
         },
         TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
+          range: lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 7
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 7
             }
@@ -597,6 +599,44 @@ const C: char = \"メ メ\";
         },
       ]
     );
+  }
+
+  #[test]
+  fn test_get_edits_mbc() {
+    let a = "const bar = \"👍🇺🇸😃\";\nconsole.log('hello deno')\n";
+    let b = "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n";
+    let actual = get_edits(a, b, None);
+    assert_eq!(
+      actual,
+      vec![
+        TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 12
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 13
+            }
+          },
+          new_text: "\"".to_string()
+        },
+        TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 23
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 25
+            }
+          },
+          new_text: "\");".to_string()
+        },
+      ]
+    )
   }
 
   #[test]

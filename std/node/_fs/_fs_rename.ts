@@ -10,9 +10,7 @@ export function rename(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.rename(oldPath, newPath)
-    .then((_) => callback())
-    .catch(callback);
+  Deno.rename(oldPath, newPath).then((_) => callback(), callback);
 }
 
 export function renameSync(oldPath: string | URL, newPath: string | URL) {

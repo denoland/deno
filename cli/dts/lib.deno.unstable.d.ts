@@ -1365,3 +1365,81 @@ declare function fetch(
   input: Request | URL | string,
   init?: RequestInit & { client: Deno.HttpClient },
 ): Promise<Response>;
+
+declare interface WorkerOptions {
+  /** UNSTABLE: New API.
+   *
+   * Set deno.namespace to `true` to make `Deno` namespace and all of its
+   * methods available to the worker environment. Defaults to `false`.
+   *
+   * Configure deno.permissions options to change the level of access the worker will
+   * have. By default it will inherit the permissions of its parent thread. The permissions
+   * of a worker can't be extended beyond its parent's permissions reach.
+   * - "inherit" will take the permissions of the thread the worker is created in
+   * - You can disable/enable permissions all together by passing a boolean
+   * - You can provide a list of routes relative to the file the worker
+   *   is created in to limit the access of the worker (read/write permissions only)
+   *
+   * Example:
+   *
+   * ```ts
+   * // mod.ts
+   * const worker = new Worker(
+   *   new URL("deno_worker.ts", import.meta.url).href, {
+   *     type: "module",
+   *     deno: {
+   *       namespace: true,
+   *       permissions: {
+   *         read: true,
+   *       },
+   *     },
+   *   }
+   * );
+   * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
+   *
+   * // deno_worker.ts
+   *
+   *
+   * self.onmessage = async function (e) {
+   *     const { cmd, fileName } = e.data;
+   *     if (cmd !== "readFile") {
+   *         throw new Error("Invalid command");
+   *     }
+   *     const buf = await Deno.readFile(fileName);
+   *     const fileContents = new TextDecoder().decode(buf);
+   *     console.log(fileContents);
+   * }
+   *
+   * // $ cat log.txt
+   * // hello world
+   * // hello world 2
+   *
+   * // $ deno run --allow-read mod.ts
+   * // hello world
+   * // hello world2
+   * ```
+   */
+  // TODO(Soremwar)
+  // `deno: boolean` is kept for backwards compatibility with the previous
+  // worker options implementation. Remove for 2.0.
+  deno?: boolean | {
+    namespace?: boolean;
+    /** Set to `"none"` to disable all the permissions in the worker. */
+    permissions?: "inherit" | "none" | {
+      env?: "inherit" | boolean;
+      hrtime?: "inherit" | boolean;
+      /** The format of the net access list must be `hostname[:port]`
+       * in order to be resolved.
+       *
+       * ```
+       * net: ["https://deno.land", "localhost:8080"],
+       * ```
+       * */
+      net?: "inherit" | boolean | string[];
+      plugin?: "inherit" | boolean;
+      read?: "inherit" | boolean | Array<string | URL>;
+      run?: "inherit" | boolean;
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
+  };
+}

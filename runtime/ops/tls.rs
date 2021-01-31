@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::io::StreamResource;
 use super::io::TcpStreamResource;
+use super::io::TlsClientStreamResource;
+use super::io::TlsServerStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -148,7 +149,7 @@ async fn op_start_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(StreamResource::client_tls_stream(tls_stream))
+      .add(TlsClientStreamResource::from(tls_stream))
   };
   Ok(json!({
       "rid": rid,
@@ -210,7 +211,7 @@ async fn op_connect_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(StreamResource::client_tls_stream(tls_stream))
+      .add(TlsClientStreamResource::from(tls_stream))
   };
   Ok(json!({
       "rid": rid,
@@ -402,7 +403,7 @@ async fn op_accept_tls(
     let mut state_ = state.borrow_mut();
     state_
       .resource_table
-      .add(StreamResource::server_tls_stream(tls_stream))
+      .add(TlsServerStreamResource::from(tls_stream))
   };
 
   Ok(json!({

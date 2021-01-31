@@ -72,7 +72,7 @@
     }
 
     closeWrite() {
-      shutdown(this.rid);
+      return shutdown(this.rid);
     }
   }
 
