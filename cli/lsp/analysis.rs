@@ -9,9 +9,7 @@ use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
 use deno_core::error::AnyError;
-use deno_core::serde::de;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
