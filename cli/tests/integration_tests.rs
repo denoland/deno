@@ -989,7 +989,7 @@ fn ts_reload() {
   let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::root_path())
     .arg("cache")
-    .arg(hello_ts.clone())
+    .arg(&hello_ts)
     .spawn()
     .expect("failed to spawn script");
   let status_initial =
@@ -1002,15 +1002,20 @@ fn ts_reload() {
     .arg("--reload")
     .arg("-L")
     .arg("debug")
-    .arg(hello_ts)
+    .arg(&hello_ts)
     .output()
     .expect("failed to spawn script");
 
   // check the output of the the bundle program.
+  let output_path = hello_ts.canonicalize().unwrap();
+  let clean_output_path = output_path.to_str().unwrap().replace("\"", "");
   assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
     .trim()
-    .contains("host.writeFile(\"deno://002_hello.js\")"));
+    .contains(&format!(
+      "host.getSourceFile(\"file://{}\", Latest)",
+      clean_output_path
+    )));
 }
 
 #[test]
