@@ -2,10 +2,12 @@
 use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
-use std::io::{BufRead, Write};
+use std::fs;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -402,8 +404,8 @@ fn deno_dir_test() {
   remove_dir_all(deno_dir.path()).unwrap();
 }
 
-#[test]
-fn cache_test() {
+#[tokio::test]
+async fn cache_test() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
@@ -421,6 +423,49 @@ fn cache_test() {
   assert_eq!(out, "");
   // TODO(ry) Is there some way to check that the file was actually cached in
   // DENO_DIR?
+
+  check_cache(module_url, std::path::PathBuf::from(deno_dir.path())).await;
+}
+
+async fn check_cache(module_url: url::Url, deno_dir: std::path::PathBuf) {
+  // Check from DENO_DIR/deps/{scheme}/{host}
+  let mut cached = false;
+  let mut host = String::from(module_url.host_str().unwrap());
+  if let Some(port) = module_url.port() {
+    host.push_str(format!("_PORT{}", port).as_str());
+  }
+
+  let deps_path = deno_dir.join("deps").join(module_url.scheme()).join(host);
+  for entry in fs::read_dir(deps_path).unwrap() {
+    let entry = entry.unwrap();
+    let path = entry.path();
+
+    if Some(std::ffi::OsStr::new("json")) == path.extension() {
+      let file = fs::File::open(&path).unwrap();
+      let reader = BufReader::new(file);
+
+      let metadata: Value = serde_json::from_reader(reader).unwrap();
+      if let Value::String(url) = &metadata["url"] {
+        if &module_url.to_string() == url {
+          let module_original =
+            reqwest::get(url).await.unwrap().text().await.unwrap();
+          let mut module_cached = String::new();
+
+          let module_cached_path =
+            path.to_str().unwrap().replace(".metadata.json", "");
+          let mut module_file = fs::File::open(&module_cached_path).unwrap();
+          module_file.read_to_string(&mut module_cached).unwrap();
+
+          assert_eq!(module_original, module_cached);
+          cached = true;
+        }
+      }
+    }
+
+    // TODO(yos1p) Ideally this should also check for dependencies
+  }
+
+  assert!(cached);
 }
 
 #[test]
@@ -4648,7 +4693,7 @@ async fn inspector_json() {
   url.set_path("/json");
   let resp = reqwest::get(url).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list: Vec<deno_core::serde_json::Value> =
+  let endpoint_list: Vec<Value> =
     serde_json::from_str(&resp.text().await.unwrap()).unwrap();
   let matching_endpoint = endpoint_list
     .iter()
