@@ -3,7 +3,12 @@ import {
   pbkdf2,
   pbkdf2Sync,
 } from "./pbkdf2.ts";
-import { assert, assertEquals } from "../../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "../../testing/asserts.ts";
+import { assertCallbackErrorUncaught } from "../_utils.ts";
 
 type Pbkdf2Fixture = {
   key: string | Float64Array | Int32Array | Uint8Array;
@@ -410,5 +415,13 @@ Deno.test("pbkdf2Sync hashes data correctly", () => {
         results[algorithm as Algorithms],
       );
     }
+  });
+});
+
+Deno.test("[std/node/crypto] pbkdf2 callback isn't called twice if error is thrown", async () => {
+  const importUrl = new URL("./pbkdf2.ts", import.meta.url);
+  await assertCallbackErrorUncaught({
+    prelude: `import { pbkdf2 } from ${JSON.stringify(importUrl)}`,
+    invocation: 'pbkdf2("password", "salt", 1, 32, "sha1", ',
   });
 });

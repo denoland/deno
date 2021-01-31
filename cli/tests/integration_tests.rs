@@ -6,12 +6,9 @@ use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::io::{BufRead, Write};
-use std::path::Path;
-use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
-use walkdir::WalkDir;
 
 macro_rules! itest(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
@@ -586,7 +583,6 @@ fn skip_restarting_line(
 }
 
 #[test]
-#[ignore]
 fn fmt_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
@@ -953,6 +949,37 @@ fn ts_dependency_recompilation() {
   assert!(stderr_output.contains("TS2345"));
   assert!(!output.status.success());
   assert!(stdout_output.is_empty());
+}
+
+#[test]
+fn ts_no_recheck_on_redirect() {
+  let deno_dir = util::new_deno_dir();
+  let e = util::deno_exe_path();
+
+  let redirect_ts = util::root_path().join("cli/tests/017_import_redirect.ts");
+  assert!(redirect_ts.is_file());
+  let mut cmd = Command::new(e.clone());
+  cmd.env("DENO_DIR", deno_dir.path());
+  let mut initial = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts.clone())
+    .spawn()
+    .expect("failed to span script");
+  let status_initial =
+    initial.wait().expect("failed to wait for child process");
+  assert!(status_initial.success());
+
+  let mut cmd = Command::new(e);
+  cmd.env("DENO_DIR", deno_dir.path());
+  let output = cmd
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(redirect_ts)
+    .output()
+    .expect("failed to spawn script");
+
+  assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
 }
 
 #[test]
@@ -1334,7 +1361,6 @@ fn bundle_import_map_no_check() {
 }
 
 #[test]
-#[ignore]
 fn bundle_js_watch() {
   use std::path::PathBuf;
   // Test strategy extends this of test bundle_js by adding watcher
@@ -1404,7 +1430,6 @@ fn bundle_js_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-#[ignore]
 fn bundle_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1504,7 +1529,6 @@ fn wait_for_process_finished(
 }
 
 #[test]
-#[ignore]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1611,7 +1635,6 @@ fn run_watch() {
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
-#[ignore]
 fn run_watch_not_exit() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -1755,7 +1778,6 @@ fn repl_test_pty_bad_input() {
 }
 
 #[test]
-#[ignore]
 fn run_watch_with_import_map_and_relative_paths() {
   fn create_relative_tmp_file(
     directory: &TempDir,
@@ -2707,6 +2729,7 @@ itest!(lock_write_fetch {
   args:
     "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
   output: "lock_write_fetch.ts.out",
+  http_server: true,
   exit_code: 0,
 });
 
@@ -2976,6 +2999,12 @@ itest!(error_025_tab_indent {
   exit_code: 1,
 });
 
+itest!(error_missing_module_named_import {
+  args: "run --reload error_missing_module_named_import.ts",
+  output: "error_missing_module_named_import.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_no_check {
   args: "run --reload --no-check error_no_check.ts",
   output: "error_no_check.ts.out",
@@ -3068,6 +3097,11 @@ itest!(no_check_decorators {
 itest!(runtime_decorators {
   args: "run --quiet --reload --no-check runtime_decorators.ts",
   output: "runtime_decorators.ts.out",
+});
+
+itest!(lib_dom_asynciterable {
+  args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
+  output: "lib_dom_asynciterable.ts.out",
 });
 
 itest!(lib_ref {
@@ -3441,6 +3475,12 @@ itest!(redirect_cache {
 itest!(deno_test_coverage {
   args: "run --unstable test_coverage.ts",
   output: "test_coverage.out",
+  exit_code: 0,
+});
+
+itest!(deno_test_complex_coverage {
+  args: "test --coverage --unstable test_complex_coverage.ts",
+  output: "test_complex_coverage.out",
   exit_code: 0,
 });
 
@@ -5160,247 +5200,6 @@ fn denort_direct_use_error() {
     .wait()
     .unwrap();
   assert!(!status.success());
-}
-
-fn concat_bundle(
-  files: Vec<(PathBuf, String)>,
-  bundle_path: &Path,
-  init: String,
-) -> String {
-  let bundle_url = url::Url::from_file_path(bundle_path).unwrap().to_string();
-
-  let mut bundle = init.clone();
-  let mut bundle_line_count = init.lines().count() as u32;
-  let mut source_map = sourcemap::SourceMapBuilder::new(Some(&bundle_url));
-
-  // In classic workers, `importScripts()` performs an actual import.
-  // However, we don't implement that function in Deno as we want to enforce
-  // the use of ES6 modules.
-  // To work around this, we:
-  // 1. Define `importScripts()` as a no-op (code below)
-  // 2. Capture its parameter from the source code and add it to the list of
-  // files to concatenate. (see `web_platform_tests()`)
-  bundle.push_str("function importScripts() {}\n");
-  bundle_line_count += 1;
-
-  for (path, text) in files {
-    let path = std::fs::canonicalize(path).unwrap();
-    let url = url::Url::from_file_path(path).unwrap().to_string();
-    let src_id = source_map.add_source(&url);
-    source_map.set_source_contents(src_id, Some(&text));
-
-    for (line_index, line) in text.lines().enumerate() {
-      bundle.push_str(line);
-      bundle.push('\n');
-      source_map.add_raw(
-        bundle_line_count,
-        0,
-        line_index as u32,
-        0,
-        Some(src_id),
-        None,
-      );
-
-      bundle_line_count += 1;
-    }
-    bundle.push('\n');
-    bundle_line_count += 1;
-  }
-
-  let mut source_map_buf: Vec<u8> = vec![];
-  source_map
-    .into_sourcemap()
-    .to_writer(&mut source_map_buf)
-    .unwrap();
-
-  bundle.push_str("//# sourceMappingURL=data:application/json;base64,");
-  let encoded_map = base64::encode(source_map_buf);
-  bundle.push_str(&encoded_map);
-
-  bundle
-}
-
-// TODO(lucacasonato): DRY with tsc_config.rs
-/// Convert a jsonc libraries `JsonValue` to a serde `Value`.
-fn jsonc_to_serde(j: jsonc_parser::JsonValue) -> serde_json::Value {
-  use jsonc_parser::JsonValue;
-  use serde_json::Value;
-  use std::str::FromStr;
-  match j {
-    JsonValue::Array(arr) => {
-      let vec = arr.into_iter().map(jsonc_to_serde).collect();
-      Value::Array(vec)
-    }
-    JsonValue::Boolean(bool) => Value::Bool(bool),
-    JsonValue::Null => Value::Null,
-    JsonValue::Number(num) => {
-      let number =
-        serde_json::Number::from_str(&num).expect("could not parse number");
-      Value::Number(number)
-    }
-    JsonValue::Object(obj) => {
-      let mut map = serde_json::map::Map::new();
-      for (key, json_value) in obj.into_iter() {
-        map.insert(key, jsonc_to_serde(json_value));
-      }
-      Value::Object(map)
-    }
-    JsonValue::String(str) => Value::String(str),
-  }
-}
-
-#[test]
-fn web_platform_tests() {
-  use deno_core::serde::Deserialize;
-
-  #[derive(Deserialize)]
-  #[serde(untagged)]
-  enum WptConfig {
-    Simple(String),
-    #[serde(rename_all = "camelCase")]
-    Options {
-      name: String,
-      expect_fail: Vec<String>,
-    },
-  }
-
-  let text =
-    std::fs::read_to_string(util::tests_path().join("wpt.jsonc")).unwrap();
-  let jsonc = jsonc_parser::parse_to_value(&text).unwrap().unwrap();
-  let config: std::collections::HashMap<String, Vec<WptConfig>> =
-    deno_core::serde_json::from_value(jsonc_to_serde(jsonc)).unwrap();
-
-  for (suite_name, includes) in config.into_iter() {
-    let suite_path = util::wpt_path().join(suite_name);
-    let dir = WalkDir::new(&suite_path)
-      .into_iter()
-      .filter_map(Result::ok)
-      .filter(|e| e.file_type().is_file())
-      .filter(|f| {
-        let filename = f.file_name().to_str().unwrap();
-        filename.ends_with(".any.js")
-          || filename.ends_with(".window.js")
-          || filename.ends_with(".worker.js")
-      })
-      .filter_map(|f| {
-        let path = f
-          .path()
-          .strip_prefix(&suite_path)
-          .unwrap()
-          .to_str()
-          .unwrap();
-        for cfg in &includes {
-          match cfg {
-            WptConfig::Simple(name) if path.starts_with(name) => {
-              return Some((f.path().to_owned(), vec![]))
-            }
-            WptConfig::Options { name, expect_fail }
-              if path.starts_with(name) =>
-            {
-              return Some((f.path().to_owned(), expect_fail.to_vec()))
-            }
-            _ => {}
-          }
-        }
-        None
-      });
-
-    let testharness_path = util::wpt_path().join("resources/testharness.js");
-    let testharness_text = std::fs::read_to_string(&testharness_path).unwrap();
-    let testharnessreporter_path =
-      util::tests_path().join("wpt_testharnessconsolereporter.js");
-    let testharnessreporter_text =
-      std::fs::read_to_string(&testharnessreporter_path).unwrap();
-
-    for (test_file_path, expect_fail) in dir {
-      let test_file_text = std::fs::read_to_string(&test_file_path).unwrap();
-      let imports: Vec<(PathBuf, String)> = test_file_text
-        .split('\n')
-        .into_iter()
-        .filter_map(|t| {
-          // Hack: we don't implement `importScripts()`, and instead capture the
-          // parameter in source code; see `concat_bundle()` for more details.
-          if let Some(rest_import_scripts) = t.strip_prefix("importScripts(\"")
-          {
-            if let Some(import_path) = rest_import_scripts.strip_suffix("\");")
-            {
-              // The code in `testharness.js` silences the test outputs.
-              if import_path != "/resources/testharness.js" {
-                return Some(import_path);
-              }
-            }
-          }
-          t.strip_prefix("// META: script=")
-        })
-        .map(|s| {
-          let s = if s == "/resources/WebIDLParser.js" {
-            "/resources/webidl2/lib/webidl2.js"
-          } else {
-            s
-          };
-          if s.starts_with('/') {
-            util::wpt_path().join(format!(".{}", s))
-          } else {
-            test_file_path.parent().unwrap().join(s)
-          }
-        })
-        .map(|path| {
-          let text = std::fs::read_to_string(&path).unwrap();
-          (path, text)
-        })
-        .collect();
-
-      let mut variants: Vec<&str> = test_file_text
-        .split('\n')
-        .into_iter()
-        .filter_map(|t| t.strip_prefix("// META: variant="))
-        .collect();
-
-      if variants.is_empty() {
-        variants.push("");
-      }
-
-      for variant in variants {
-        let mut files = Vec::with_capacity(3 + imports.len());
-        files.push((testharness_path.clone(), testharness_text.clone()));
-        files.push((
-          testharnessreporter_path.clone(),
-          testharnessreporter_text.clone(),
-        ));
-        files.extend(imports.clone());
-        files.push((test_file_path.clone(), test_file_text.clone()));
-
-        let mut file = tempfile::Builder::new()
-          .prefix("wpt-bundle-")
-          .suffix(".js")
-          .rand_bytes(5)
-          .tempfile()
-          .unwrap();
-
-        let bundle = concat_bundle(files, file.path(), "".to_string());
-        file.write_all(bundle.as_bytes()).unwrap();
-
-        let child = util::deno_cmd()
-          .current_dir(test_file_path.parent().unwrap())
-          .arg("run")
-          .arg("--location")
-          .arg(&format!("http://web-platform-tests/?{}", variant))
-          .arg("-A")
-          .arg(file.path())
-          .arg(deno_core::serde_json::to_string(&expect_fail).unwrap())
-          .arg("--quiet")
-          .stdin(std::process::Stdio::piped())
-          .spawn()
-          .unwrap();
-
-        let output = child.wait_with_output().unwrap();
-        if !output.status.success() {
-          file.keep().unwrap();
-        }
-        assert!(output.status.success());
-      }
-    }
-  }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

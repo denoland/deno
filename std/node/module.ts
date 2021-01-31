@@ -1021,7 +1021,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
 
 // Object.prototype and ObjectProtoype refer to our 'primordials' versions
 // and are not identical to the versions on the global object.
-const PublicObjectPrototype = window.Object.prototype;
+const PublicObjectPrototype = globalThis.Object.prototype;
 
 // deno-lint-ignore no-explicit-any
 function getExportsForCircularRequire(module: Module): any {

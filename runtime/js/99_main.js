@@ -27,6 +27,7 @@ delete Object.prototype.__proto__;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
   const webSocket = window.__bootstrap.webSocket;
+  const blob = window.__bootstrap.blob;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
   const denoNs = window.__bootstrap.denoNs;
@@ -197,7 +198,7 @@ delete Object.prototype.__proto__;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
-    Blob: util.nonEnumerable(fetch.Blob),
+    Blob: util.nonEnumerable(blob.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       streams.ByteLengthQueuingStrategy,
     ),
@@ -210,7 +211,7 @@ delete Object.prototype.__proto__;
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
-    File: util.nonEnumerable(fetch.DomFile),
+    File: util.nonEnumerable(fetch.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
     FormData: util.nonEnumerable(fetch.FormData),
     Headers: util.nonEnumerable(headers.Headers),

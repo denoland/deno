@@ -102,7 +102,7 @@ Deno.test("[ws] read unmasked ping / pong frame", async () => {
   );
   assertEquals(actual1, "Hello");
   // deno-fmt-ignore
-  const pongFrame= [0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58]
+  const pongFrame = [0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58]
   const buf2 = new BufReader(new Deno.Buffer(new Uint8Array(pongFrame)));
   const pong = await readFrame(buf2);
   assertEquals(pong.opcode, OpCode.Pong);
@@ -283,7 +283,7 @@ Deno.test("[ws] ws.close() should use 1000 as close code", async () => {
 function dummyConn(r: Deno.Reader, w: Deno.Writer): Deno.Conn {
   return {
     rid: -1,
-    closeWrite: (): void => {},
+    closeWrite: (): Promise<void> => Promise.resolve(),
     read: (x: Uint8Array): Promise<number | null> => r.read(x),
     write: (x: Uint8Array): Promise<number> => w.write(x),
     close: (): void => {},
