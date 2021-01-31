@@ -263,18 +263,7 @@ pub enum CodeLensSource {
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensData {
   pub source: CodeLensSource,
-  #[serde(deserialize_with = "as_module_specifier")]
   pub specifier: ModuleSpecifier,
-}
-
-fn as_module_specifier<'de, D>(
-  deserializer: D,
-) -> Result<ModuleSpecifier, D::Error>
-where
-  D: Deserializer<'de>,
-{
-  let url_str: String = Deserialize::deserialize(deserializer)?;
-  ModuleSpecifier::resolve_url(&url_str).map_err(de::Error::custom)
 }
 
 #[cfg(test)]

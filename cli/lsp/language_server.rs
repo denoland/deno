@@ -312,14 +312,13 @@ impl Inner {
       (maybe_changes, diagnostics_collection.clone())
     };
     if let Some(diagnostic_changes) = maybe_changes {
-      let settings = self.config.settings.clone();
       for specifier in diagnostic_changes {
         // TODO(@kitsonk) not totally happy with the way we collect and store
         // different types of diagnostics and offer them up to the client, we
         // do need to send "empty" vectors though when a particular feature is
         // disabled, otherwise the client will not clear down previous
         // diagnostics
-        let mut diagnostics: Vec<Diagnostic> = if settings.lint {
+        let mut diagnostics: Vec<Diagnostic> = if self.config.settings.lint {
           diagnostics_collection
             .diagnostics_for(&specifier, &DiagnosticSource::Lint)
             .cloned()
@@ -836,6 +835,9 @@ impl Inner {
         LspError::invalid_request()
       })?;
 
+    // because we have to use this as a mutable in a closure, the compiler
+    // can't be sure when the vector will be mutated, and so a RefCell is
+    // required to "protect" the vector.
     let cl = Rc::new(RefCell::new(Vec::new()));
     navigation_tree.walk(&|i, mp| {
       let mut code_lenses = cl.borrow_mut();
@@ -915,11 +917,7 @@ impl Inner {
     });
 
     self.performance.measure(mark);
-    Ok(Some(
-      Rc::try_unwrap(cl)
-        .map_err(|_| LspError::internal_error())?
-        .into_inner(),
-    ))
+    Ok(Some(Rc::try_unwrap(cl).unwrap().into_inner()))
   }
 
   async fn code_lens_resolve(
