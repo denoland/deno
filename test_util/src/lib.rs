@@ -1105,6 +1105,14 @@ pub fn deno_cmd() -> Command {
   c
 }
 
+pub fn deno_cmd_with_deno_dir(deno_dir: &std::path::Path) -> Command {
+  let e = deno_exe_path();
+  assert!(e.exists());
+  let mut c = Command::new(e);
+  c.env("DENO_DIR", deno_dir);
+  c
+}
+
 pub fn run_powershell_script_file(
   script_file_path: &str,
   args: Vec<&str>,

@@ -986,7 +986,9 @@ fn ts_no_recheck_on_redirect() {
 fn ts_reload() {
   let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
   assert!(hello_ts.is_file());
-  let mut initial = util::deno_cmd()
+
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::root_path())
     .arg("cache")
     .arg("--reload")
@@ -997,7 +999,7 @@ fn ts_reload() {
     initial.wait().expect("failed to wait for child process");
   assert!(status_initial.success());
 
-  let output = util::deno_cmd()
+  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::root_path())
     .arg("cache")
     .arg("--reload")
@@ -1006,6 +1008,7 @@ fn ts_reload() {
     .arg(hello_ts)
     .output()
     .expect("failed to spawn script");
+
   // check the output of the the bundle program.
   assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
