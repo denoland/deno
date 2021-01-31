@@ -2,7 +2,6 @@
 use deno_core::futures;
 use deno_core::futures::prelude::*;
 use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
@@ -442,8 +441,9 @@ async fn check_cached_file(module_url: url::Url, deno_dir: std::path::PathBuf) {
       let file = fs::File::open(&path).unwrap();
       let reader = BufReader::new(file);
 
-      let metadata: Value = serde_json::from_reader(reader).unwrap();
-      if let Value::String(url) = &metadata["url"] {
+      let metadata: serde_json::Value =
+        serde_json::from_reader(reader).unwrap();
+      if let serde_json::Value::String(url) = &metadata["url"] {
         if &module_url.to_string() == url {
           let module_original =
             reqwest::get(url).await.unwrap().text().await.unwrap();
@@ -4692,7 +4692,7 @@ async fn inspector_json() {
   url.set_path("/json");
   let resp = reqwest::get(url).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list: Vec<Value> =
+  let endpoint_list: Vec<serde_json::Value> =
     serde_json::from_str(&resp.text().await.unwrap()).unwrap();
   let matching_endpoint = endpoint_list
     .iter()
