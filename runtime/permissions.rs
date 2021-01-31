@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
-use std::env::current_dir;
 use std::fmt;
 use std::hash::Hash;
 #[cfg(not(test))]
@@ -100,104 +99,16 @@ impl UnaryPermission<ReadPermission> {
 
   pub fn request(&mut self, path: &Option<&Path>) -> PermissionState {
     if let Some(path) = path {
-      let (resolved_path, display_path) = self.resolved_and_display_path(path); // TODO
+      let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(&Some(&resolved_path));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!(
-          "Deno requests write access to \"{}\"",
-          display_path.display()
-        )) {
+        if permission_prompt(&format!("Deno requests write access to \"{}\"", display_path.display())) {
           self.granted_list.retain(|path| !path.starts_with(&resolved_path));
-          self.granted_list.insert(resolved_path);
+          self.granted_list.insert(ReadPermission(resolved_path));
           return PermissionState::Granted;
         } else {
           self.denied_list.retain(|path| !resolved_path.starts_with(path));
-          self.denied_list.insert(resolved_path);
-          self.state = PermissionState::Denied;
-          return PermissionState::Denied;
-        }
-      }
-      state
-    } else {
-      let state = self.query_write(&None);
-      if state == PermissionState::Prompt {
-        if permission_prompt("Deno requests write access") {
-          self.granted_list.clear();
-          self.state = PermissionState::Granted;
-          return PermissionState::Granted;
-        } else {
-          self.state = PermissionState::Denied;
-          return PermissionState::Denied;
-        }
-      }
-      state
-    }
-  }
-
-  pub fn revoke(&mut self, path: &Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let path = resolve_from_cwd(path).unwrap();
-      self.granted_list.retain(|path_| !path_.starts_with(&path));
-    } else {
-      self.granted_list.clear();
-      if self.state == PermissionState::Granted {
-        self.state = PermissionState::Prompt;
-      }
-    }
-    self.query(path)
-  }
-
-  pub fn check(&self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = self.resolved_and_display_path(path);
-    self.query(&Some(&resolved_path)).check(&format!("read \"{}\"", display_path.display()), &self.name)
-  }
-
-  /// As `check()`, but permission error messages will anonymize the path
-  /// by replacing it with the given `display`.
-  pub fn check_blind(&self, path: &Path, display: &str) -> Result<(), AnyError> {
-    let resolved_path = resolve_from_cwd(path).unwrap();
-    self.query(&Some(&resolved_path)).check(&format!("read <{}>", display), &self.name)
-  }
-}
-
-#[derive(Clone, Eq, Hash)]
-struct WritePermission(PathBuf);
-
-impl UnaryPermission<WritePermission> {
-  pub fn query(&self, path: &Option<&Path>) -> PermissionState {
-    let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    if self.state == PermissionState::Denied && match path.as_ref() {
-      None => true,
-      Some(path) => check_path_blocklist(path, &self.denied_list.0),
-    }
-    {
-      return PermissionState::Denied;
-    }
-    if self.state == PermissionState::Granted || match path.as_ref() {
-      None => false,
-      Some(path) => check_path_allowlist(path, &self.granted_list.0),
-    }
-    {
-      return PermissionState::Granted;
-    }
-    PermissionState::Prompt
-  }
-
-  pub fn request(&mut self, path: &Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let (resolved_path, display_path) = self.resolved_and_display_path(path); // TODO
-      let state = self.query(&Some(&resolved_path));
-      if state == PermissionState::Prompt {
-        if permission_prompt(&format!(
-          "Deno requests write access to \"{}\"",
-          display_path.display()
-        )) {
-          self.granted_list.retain(|path| !path.starts_with(&resolved_path));
-          self.granted_list.insert(resolved_path);
-          return PermissionState::Granted;
-        } else {
-          self.denied_list.retain(|path| !resolved_path.starts_with(path));
-          self.denied_list.insert(resolved_path);
+          self.denied_list.insert(ReadPermission(resolved_path));
           self.state = PermissionState::Denied;
           return PermissionState::Denied;
         }
@@ -233,7 +144,92 @@ impl UnaryPermission<WritePermission> {
   }
 
   pub fn check(&self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = self.resolved_and_display_path(path);
+    let (resolved_path, display_path) = resolved_and_display_path(path);
+    self.query(&Some(&resolved_path)).check(&format!("read \"{}\"", display_path.display()), &self.name)
+  }
+
+  /// As `check()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  pub fn check_blind(&self, path: &Path, display: &str) -> Result<(), AnyError> {
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    self.query(&Some(&resolved_path)).check(&format!("read <{}>", display), &self.name)
+  }
+}
+
+#[derive(Clone, Eq, Hash)]
+struct WritePermission(PathBuf);
+
+impl UnaryPermission<WritePermission> {
+  pub fn query(&self, path: &Option<&Path>) -> PermissionState {
+    let path = path.map(|p| resolve_from_cwd(p).unwrap());
+    if self.state == PermissionState::Denied && match path.as_ref() {
+      None => true,
+      Some(path) => check_path_blocklist(path, &self.denied_list),
+    }
+    {
+      return PermissionState::Denied;
+    }
+    if self.state == PermissionState::Granted || match path.as_ref() {
+      None => false,
+      Some(path) => check_path_allowlist(path, &self.granted_list),
+    }
+    {
+      return PermissionState::Granted;
+    }
+    PermissionState::Prompt
+  }
+
+  pub fn request(&mut self, path: &Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path);
+      let state = self.query(&Some(&resolved_path));
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!(
+          "Deno requests write access to \"{}\"",
+          display_path.display()
+        )) {
+          self.granted_list.retain(|path| !path.starts_with(&resolved_path));
+          self.granted_list.insert(WritePermission(resolved_path));
+          return PermissionState::Granted;
+        } else {
+          self.denied_list.retain(|path| !resolved_path.starts_with(path));
+          self.denied_list.insert(WritePermission(resolved_path));
+          self.state = PermissionState::Denied;
+          return PermissionState::Denied;
+        }
+      }
+      state
+    } else {
+      let state = self.query_write(&None);
+      if state == PermissionState::Prompt {
+        if permission_prompt("Deno requests write access") {
+          self.granted_list.clear();
+          self.state = PermissionState::Granted;
+          return PermissionState::Granted;
+        } else {
+          self.state = PermissionState::Denied;
+          return PermissionState::Denied;
+        }
+      }
+      state
+    }
+  }
+
+  pub fn revoke(&mut self, path: &Option<&Path>) -> PermissionState {
+    if let Some(path) = path {
+      let path = resolve_from_cwd(path).unwrap();
+      self.granted_list.retain(|path_| !path_.0.starts_with(&path));
+    } else {
+      self.granted_list.clear();
+      if self.state == PermissionState::Granted {
+        self.state = PermissionState::Prompt;
+      }
+    }
+    self.query(path)
+  }
+
+  pub fn check(&self, path: &Path) -> Result<(), AnyError> {
+    let (resolved_path, display_path) = resolved_and_display_path(path);
     self.query(&Some(&resolved_path)).check(&format!("write to \"{}\"", display_path.display()), &self.name)
   }
 }
@@ -245,14 +241,14 @@ impl UnaryPermission<NetPermission> {
   pub fn query<T: AsRef<str>>(&self, host: &Option<&(T, Option<u16>)>) -> PermissionState {
     if self.state == PermissionState::Denied && match host.as_ref() {
       None => true,
-      Some(host) => check_host_blocklist(host, &self.denied_list.0),
+      Some(host) => check_host_blocklist(host, &self.denied_list),
     }
     {
       return PermissionState::Denied;
     }
     if self.state == PermissionState::Granted || match host.as_ref() {
       None => false,
-      Some(host) => check_host_allowlist(host, &self.granted_list.0),
+      Some(host) => check_host_allowlist(host, &self.granted_list),
     }
     {
       return PermissionState::Granted;
@@ -383,7 +379,7 @@ pub struct PermissionsOptions {
   pub allow_write: Option<Vec<PathBuf>>,
 }
 
-fn binary_permission_from_flag_bool(flag: bool, name: &str, description: &str) -> BooleanPermission {
+fn boolean_permission_from_flag_bool(flag: bool, name: &str, description: &str) -> BooleanPermission {
   BooleanPermission {
     name: name.to_string(),
     description: description.to_string(),
@@ -446,19 +442,19 @@ impl Permissions {
   }
 
   fn new_env(state: bool) -> BooleanPermission {
-    binary_permission_from_flag_bool(state, "env", "environment variables")
+    boolean_permission_from_flag_bool(state, "env", "environment variables")
   }
 
   fn new_run(state: bool) -> BooleanPermission {
-    binary_permission_from_flag_bool(state, "run", "run a subprocess")
+    boolean_permission_from_flag_bool(state, "run", "run a subprocess")
   }
 
   fn new_plugin(state: bool) -> BooleanPermission {
-    binary_permission_from_flag_bool(state, "plugin", "")
+    boolean_permission_from_flag_bool(state, "plugin", "open a plugin")
   }
 
   fn new_hrtime(state: bool) -> BooleanPermission {
-    binary_permission_from_flag_bool(state, "hrtime", "high precision time")
+    boolean_permission_from_flag_bool(state, "hrtime", "high precision time")
   }
 
   pub fn from_options(opts: &PermissionsOptions) -> Self {
@@ -485,21 +481,6 @@ impl Permissions {
     }
   }
 
-  /// Arbitrary helper. Resolves the path from CWD, and also gets a path that
-  /// can be displayed without leaking the CWD when not allowed.
-  fn resolved_and_display_path(&self, path: &Path) -> (PathBuf, PathBuf) {
-    let resolved_path = resolve_from_cwd(path).unwrap();
-    let display_path = if path.is_absolute() {
-      path.to_path_buf()
-    } else {
-      match self.read.query(&Some(&current_dir().unwrap())).check("", "") {
-        Ok(_) => resolved_path.clone(),
-        Err(_) => path.to_path_buf(),
-      }
-    };
-    (resolved_path, display_path)
-  }
-
   /// A helper function that determines if the module specifier is a local or
   /// remote, and performs a read or net check for the specifier.
   pub fn check_specifier(&self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
@@ -516,29 +497,21 @@ impl Permissions {
       _ => self.net.check_url(url),
     }
   }
-
-  pub fn check_plugin(&self, path: &Path) -> Result<(), AnyError> {
-    let (_, display_path) = self.resolved_and_display_path(path);
-    self.plugin.state.check(
-      &format!("access to open a plugin: {}", display_path.display()),
-      "--allow-plugin",
-    )
-  }
 }
 
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
-    Permissions::check_net_url(self, url)
+    self.net.check_url(url)
   }
 
-  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
-    Permissions::check_read(self, p)
+  fn check_read(&self, path: &PathBuf) -> Result<(), AnyError> {
+    self.read.check(path)
   }
 }
 
 impl deno_websocket::WebSocketPermissions for Permissions {
   fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
-    Permissions::check_net_url(self, url)
+    self.net.check_url(url)
   }
 }
 
@@ -579,24 +552,24 @@ fn check_path_blocklist(path: &Path, blocklist: &HashSet<PathBuf>) -> bool {
 
 fn check_host_allowlist<T: AsRef<str>>(
   host: &(T, Option<u16>),
-  allowlist: &HashSet<String>,
+  allowlist: &HashSet<NetPermission>,
 ) -> bool {
   let (hostname, port) = host;
-  allowlist.contains(hostname.as_ref())
-    || (port.is_some() && allowlist.contains(&format_host(host)))
+  allowlist.contains(&NetPermission(hostname.to_string()))
+    || (port.is_some() && allowlist.contains(&NetPermission(format_host(host))))
 }
 
 fn check_host_blocklist<T: AsRef<str>>(
   host: &(T, Option<u16>),
-  blocklist: &HashSet<String>,
+  blocklist: &HashSet<NetPermission>,
 ) -> bool {
   let (hostname, port) = host;
   match port {
     None => blocklist.iter().any(|host| {
-      host == hostname.as_ref()
-        || host.starts_with(&format!("{}:", hostname.as_ref()))
+      host.0 == hostname.as_ref()
+        || host.0.starts_with(&format!("{}:", hostname.as_ref()))
     }),
-    Some(_) => blocklist.contains(&format_host(host)),
+    Some(_) => blocklist.contains(&NetPermission(format_host(host))),
   }
 }
 
@@ -606,6 +579,14 @@ fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
     None => hostname.as_ref().to_string(),
     Some(port) => format!("{}:{}", hostname.as_ref(), port),
   }
+}
+
+/// Arbitrary helper. Resolves the path from CWD, and also gets a path that
+/// can be displayed without leaking the CWD when not allowed.
+fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
+  let resolved_path = resolve_from_cwd(path).unwrap();
+  let display_path = path.to_path_buf();
+  (resolved_path, display_path)
 }
 
 /// Shows the permission prompt and returns the answer according to the user input.
