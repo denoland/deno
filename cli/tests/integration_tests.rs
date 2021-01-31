@@ -6,7 +6,7 @@ use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -426,45 +426,32 @@ async fn cache_test() {
 }
 
 async fn check_cached_file(module_url: url::Url, deno_dir: std::path::PathBuf) {
-  let mut cached = false;
-  let mut host = String::from(module_url.host_str().unwrap());
-  if let Some(port) = module_url.port() {
-    host.push_str(format!("_PORT{}", port).as_str());
-  }
+  let prg = util::deno_exe_path();
+  let output = Command::new(prg)
+    .env("DENO_DIR", deno_dir)
+    .env("NO_COLOR", "1")
+    .current_dir(util::root_path())
+    .arg("info")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
 
-  let deps_path = deno_dir.join("deps").join(module_url.scheme()).join(host);
-  for entry in fs::read_dir(deps_path).unwrap() {
-    let entry = entry.unwrap();
-    let path = entry.path();
+  let str_output = std::str::from_utf8(&output.stdout).unwrap();
+  let max = str_output.find("type").unwrap();
+  let cached_file = std::path::PathBuf::from(&str_output[7..max].trim());
+  assert!(cached_file.is_file());
 
-    if Some(std::ffi::OsStr::new("json")) == path.extension() {
-      let file = fs::File::open(&path).unwrap();
-      let reader = BufReader::new(file);
+  let module_original = reqwest::get(module_url)
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  let mut module_cached = String::new();
+  let mut module_file = fs::File::open(cached_file).unwrap();
+  module_file.read_to_string(&mut module_cached).unwrap();
 
-      let metadata: serde_json::Value =
-        serde_json::from_reader(reader).unwrap();
-      if let serde_json::Value::String(url) = &metadata["url"] {
-        if &module_url.to_string() == url {
-          let module_original =
-            reqwest::get(url).await.unwrap().text().await.unwrap();
-          let mut module_cached = String::new();
-
-          let module_cached_path =
-            path.to_str().unwrap().replace(".metadata.json", "");
-          let mut module_file = fs::File::open(&module_cached_path).unwrap();
-          module_file.read_to_string(&mut module_cached).unwrap();
-
-          assert_eq!(module_original, module_cached);
-          cached = true;
-          break;
-        }
-      }
-    }
-
-    // TODO(yos1p) Ideally this should also check for dependencies
-  }
-
-  assert!(cached);
+  assert_eq!(module_original, module_cached);
 }
 
 #[test]
