@@ -136,7 +136,9 @@ Deno.test("[smtp] authPlain", () => {
   }
 });
 
-function noop(): void {}
+function noop(): Promise<void> {
+  return Promise.resolve();
+}
 
 function createFakeConn(r: Deno.Reader, w: Deno.Writer): Deno.Conn {
   return {
@@ -911,6 +913,7 @@ QUIT
 });
 
 Deno.test({
+  // TODO(uki00a) Enable this test case.
   ignore: true,
   name: "[smtp] tls client",
   fn: async () => {
@@ -959,8 +962,8 @@ async function serverHandle(conn: Deno.Conn): Promise<void> {
         break;
       case "STARTTLS":
         await send("220 Go ahead");
-        // TODO Add `certFile` to `SendMailOptions`
-        conn = await Deno.startTls(conn);
+        // TODO(uki00a) How do we test `STARTTLS` command?
+        // conn = await Deno.startTls(conn);
         try {
           await serverHandleTls(conn);
         } finally {
@@ -1005,7 +1008,7 @@ async function serverHandleTls(conn: Deno.Conn): Promise<void> {
 
 function createSmtpSender(conn: Deno.Conn): (msg: string) => Promise<void> {
   async function send(f: string): Promise<void> {
-    conn.write(encode(f + "\r\n"));
+    await conn.write(encode(f + "\r\n"));
   }
   return send;
 }

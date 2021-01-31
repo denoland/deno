@@ -158,7 +158,6 @@ export class TextProtoReader {
   }
 
   async readResponse(expectCode: number): Promise<Response> {
-    // deno-lint-ignore prefer-const
     let [code, continued, message] = await this.readCodeLine(expectCode);
     while (continued) {
       const line = await this.readLine();
