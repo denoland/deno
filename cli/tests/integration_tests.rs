@@ -529,6 +529,8 @@ mod integration {
   }
 
   mod file_watcher {
+    use super::*;
+
     // Helper function to skip watcher output that contains "Restarting"
     // phrase.
     fn skip_restarting_line(
