@@ -1185,9 +1185,7 @@ fn get_subcommand(
       lcov,
       include,
       exclude,
-    } => {
-      cover_command(flags, dir, lcov, include, exclude).boxed_local()
-    }
+    } => cover_command(flags, dir, lcov, include, exclude).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

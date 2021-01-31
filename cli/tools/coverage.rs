@@ -123,9 +123,7 @@ fn create_reporter(
 ) -> Box<dyn CoverageReporter + Send> {
   match kind {
     CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
-    CoverageReporterKind::Pretty => {
-      Box::new(PrettyCoverageReporter::new())
-    }
+    CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
   }
 }
 
@@ -180,13 +178,13 @@ impl CoverageReporter for LcovCoverageReporter {
         .count();
 
       let line_number = if let Some(source_map) = maybe_source_map.as_ref() {
-          source_map
-              .tokens()
-              .find(|token| token.get_dst_line() as usize == source_line)
-              .map(|token| token.get_src_line() as usize)
-              .unwrap_or(0)
+        source_map
+          .tokens()
+          .find(|token| token.get_dst_line() as usize == source_line)
+          .map(|token| token.get_src_line() as usize)
+          .unwrap_or(0)
       } else {
-          source_line
+        source_line
       };
 
       let function_name = &function.function_name;
@@ -214,6 +212,41 @@ impl CoverageReporter for LcovCoverageReporter {
 
     println!("FNF: {}", functions_found);
     println!("FNH: {}", functions_hit);
+
+    let mut branches_found = 0;
+    let mut branches_hit = 0;
+    for (block_number, function) in script_coverage.functions.iter().enumerate()
+    {
+      for (branch_number, range) in function.ranges[1..].iter().enumerate() {
+        let source_line =
+          script_source[0..range.start_offset].split('\n').count();
+
+        let line_number = if let Some(source_map) = maybe_source_map.as_ref() {
+          source_map
+            .tokens()
+            .find(|token| token.get_dst_line() as usize == source_line)
+            .map(|token| token.get_src_line() as usize)
+            .unwrap_or(0)
+        } else {
+          source_line
+        };
+
+        let taken = range.count;
+
+        println!(
+          "BRDA:{},{},{},{}",
+          line_number, block_number, branch_number, taken
+        );
+
+        branches_found += 1;
+        if range.count > 0 {
+          branches_hit += 1;
+        }
+      }
+    }
+
+    println!("BRF:{}", branches_found);
+    println!("BRH:{}", branches_hit);
 
     let lines = script_source.split('\n').collect::<Vec<_>>();
     let line_offsets = {
@@ -311,8 +344,7 @@ impl CoverageReporter for LcovCoverageReporter {
   fn done(&mut self) {}
 }
 
-pub struct PrettyCoverageReporter {
-}
+pub struct PrettyCoverageReporter {}
 
 impl PrettyCoverageReporter {
   pub fn new() -> PrettyCoverageReporter {
@@ -438,60 +470,59 @@ impl CoverageReporter for PrettyCoverageReporter {
     // TODO self.covered_lines += covered_lines.len();
     // TODO self.total_lines += lines.len();
 
-      print!("cover {} ... ", script_coverage.url);
+    print!("cover {} ... ", script_coverage.url);
 
-      let hit_lines = line_counts
-        .iter()
-        .filter(|(_, count)| *count != 0)
-        .map(|(index, _)| *index);
+    let hit_lines = line_counts
+      .iter()
+      .filter(|(_, count)| *count != 0)
+      .map(|(index, _)| *index);
 
-      let missed_lines = line_counts
-        .iter()
-        .filter(|(_, count)| *count == 0)
-        .map(|(index, _)| *index);
+    let missed_lines = line_counts
+      .iter()
+      .filter(|(_, count)| *count == 0)
+      .map(|(index, _)| *index);
 
-      let lines_found = line_counts.len();
-      let lines_hit = hit_lines.count();
-      let line_ratio = lines_hit as f32 / lines_found as f32;
+    let lines_found = line_counts.len();
+    let lines_hit = hit_lines.count();
+    let line_ratio = lines_hit as f32 / lines_found as f32;
 
-      let line_coverage =
-        format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found,);
+    let line_coverage =
+      format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found,);
 
-      if line_ratio >= 0.9 {
-        println!("{}", colors::green(&line_coverage));
-      } else if line_ratio >= 0.75 {
-        println!("{}", colors::yellow(&line_coverage));
-      } else {
-        println!("{}", colors::red(&line_coverage));
+    if line_ratio >= 0.9 {
+      println!("{}", colors::green(&line_coverage));
+    } else if line_ratio >= 0.75 {
+      println!("{}", colors::yellow(&line_coverage));
+    } else {
+      println!("{}", colors::red(&line_coverage));
+    }
+
+    let mut last_line = None;
+    for line_index in missed_lines {
+      const WIDTH: usize = 4;
+      const SEPERATOR: &str = "|";
+
+      // Put a horizontal separator between disjoint runs of lines
+      if let Some(last_line) = last_line {
+        if last_line + 1 != line_index {
+          let dash = colors::gray(&"-".repeat(WIDTH + 1));
+          println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
+        }
       }
 
-      let mut last_line = None;
-      for line_index in missed_lines {
-        const WIDTH: usize = 4;
-        const SEPERATOR: &str = "|";
+      println!(
+        "{:width$} {} {}",
+        line_index + 1,
+        colors::gray(SEPERATOR),
+        colors::red(&lines[line_index]),
+        width = WIDTH
+      );
 
-        // Put a horizontal separator between disjoint runs of lines
-        if let Some(last_line) = last_line {
-          if last_line + 1 != line_index {
-            let dash = colors::gray(&"-".repeat(WIDTH + 1));
-            println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
-          }
-        }
-
-        println!(
-          "{:width$} {} {}",
-          line_index + 1,
-          colors::gray(SEPERATOR),
-          colors::red(&lines[line_index]),
-          width = WIDTH
-        );
-
-        last_line = Some(line_index);
+      last_line = Some(line_index);
     }
   }
 
-  fn done(&mut self) {
-  }
+  fn done(&mut self) {}
 }
 
 fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
