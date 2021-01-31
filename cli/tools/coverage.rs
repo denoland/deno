@@ -157,6 +157,8 @@ impl CoverageReporter for LcovCoverageReporter {
     maybe_source_map: Option<Vec<u8>>,
     maybe_original_source: Option<String>,
   ) {
+    // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
+    // elsewhere.
     let maybe_source_map = if let Some(source_map) = maybe_source_map {
       Some(SourceMap::from_slice(&source_map).unwrap())
     } else {
@@ -176,9 +178,20 @@ impl CoverageReporter for LcovCoverageReporter {
       let source_line = script_source[0..function.ranges[0].start_offset]
         .split('\n')
         .count();
+
+      let line_number = if let Some(source_map) = maybe_source_map.as_ref() {
+          source_map
+              .tokens()
+              .find(|token| token.get_dst_line() as usize == source_line)
+              .map(|token| token.get_src_line() as usize)
+              .unwrap_or(0)
+      } else {
+          source_line
+      };
+
       let function_name = &function.function_name;
 
-      println!("FN:{},{}", source_line, function_name);
+      println!("FN:{},{}", line_number + 1, function_name);
 
       functions_found += 1;
     }
