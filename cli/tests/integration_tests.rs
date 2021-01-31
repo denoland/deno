@@ -1008,13 +1008,12 @@ fn ts_reload() {
 
   // check the output of the the bundle program.
   let output_path = hello_ts.canonicalize().unwrap();
-  let clean_output_path = output_path.to_str().unwrap().replace("\"", "");
   assert!(std::str::from_utf8(&output.stderr)
     .unwrap()
     .trim()
     .contains(&format!(
-      "host.getSourceFile(\"file://{}\", Latest)",
-      clean_output_path
+      "host.getSourceFile(\"{}\", Latest)",
+      url::Url::from_file_path(&output_path).unwrap().as_str()
     )));
 }
 
