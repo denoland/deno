@@ -983,7 +983,6 @@ async fn cover_command(
   flags: Flags,
   dir: String,
   lcov: bool,
-  summary: bool,
   include: Vec<String>,
   exclude: Vec<String>,
 ) -> Result<(), AnyError> {
@@ -992,7 +991,6 @@ async fn cover_command(
     flags.clone(),
     &dir,
     lcov,
-    summary,
     include,
     exclude,
   )
@@ -1185,11 +1183,10 @@ fn get_subcommand(
     DenoSubcommand::Cover {
       dir,
       lcov,
-      summary,
       include,
       exclude,
     } => {
-      cover_command(flags, dir, lcov, summary, include, exclude).boxed_local()
+      cover_command(flags, dir, lcov, include, exclude).boxed_local()
     }
     DenoSubcommand::Fmt {
       check,

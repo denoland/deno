@@ -115,7 +115,6 @@ pub struct GetScriptSourceResult {
 
 pub enum CoverageReporterKind {
   Pretty,
-  Summary,
   Lcov,
 }
 
@@ -124,11 +123,8 @@ fn create_reporter(
 ) -> Box<dyn CoverageReporter + Send> {
   match kind {
     CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
-    CoverageReporterKind::Summary => {
-      Box::new(PrettyCoverageReporter::new(true))
-    }
     CoverageReporterKind::Pretty => {
-      Box::new(PrettyCoverageReporter::new(false))
+      Box::new(PrettyCoverageReporter::new())
     }
   }
 }
@@ -303,21 +299,11 @@ impl CoverageReporter for LcovCoverageReporter {
 }
 
 pub struct PrettyCoverageReporter {
-  summary: bool,
-  covered_lines: usize,
-  total_lines: usize,
 }
 
 impl PrettyCoverageReporter {
-  pub fn new(summary: bool) -> PrettyCoverageReporter {
-    let covered_lines = 0;
-    let total_lines = 0;
-
-    PrettyCoverageReporter {
-      summary,
-      covered_lines,
-      total_lines,
-    }
+  pub fn new() -> PrettyCoverageReporter {
+    PrettyCoverageReporter {}
   }
 }
 
@@ -439,7 +425,6 @@ impl CoverageReporter for PrettyCoverageReporter {
     // TODO self.covered_lines += covered_lines.len();
     // TODO self.total_lines += lines.len();
 
-    if !self.summary {
       print!("cover {} ... ", script_coverage.url);
 
       let hit_lines = line_counts
@@ -489,18 +474,10 @@ impl CoverageReporter for PrettyCoverageReporter {
         );
 
         last_line = Some(line_index);
-      }
     }
   }
 
   fn done(&mut self) {
-    let line_ratio = self.covered_lines as f32 / self.total_lines as f32;
-    println!(
-      "coverage result: lines {:.3}% ({}/{})",
-      line_ratio * 100.0,
-      self.covered_lines,
-      self.total_lines
-    );
   }
 }
 
@@ -604,7 +581,6 @@ pub async fn report_coverages(
   flags: Flags,
   dir: &PathBuf,
   lcov: bool,
-  summary: bool,
   include: Vec<String>,
   exclude: Vec<String>,
 ) -> Result<(), AnyError> {
@@ -618,8 +594,6 @@ pub async fn report_coverages(
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov
-  } else if summary {
-    CoverageReporterKind::Summary
   } else {
     CoverageReporterKind::Pretty
   };
