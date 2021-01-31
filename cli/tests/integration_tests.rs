@@ -422,7 +422,8 @@ async fn cache_test() {
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
 
-  check_cached_file(module_url, std::path::PathBuf::from(deno_dir.path())).await;
+  check_cached_file(module_url, std::path::PathBuf::from(deno_dir.path()))
+    .await;
 }
 
 async fn check_cached_file(module_url: url::Url, deno_dir: std::path::PathBuf) {
