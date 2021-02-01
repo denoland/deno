@@ -9,3 +9,4 @@
 [submodule "test_util/std"]
 	path = test_util/std
 	url = https://github.com/denoland/deno_std
+	shallow = true
