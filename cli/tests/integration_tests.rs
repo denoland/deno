@@ -25,42 +25,6 @@ macro_rules! itest(
 );
 
 #[test]
-fn std_tests() {
-  let dir = TempDir::new().expect("tempdir fail");
-  let status = util::deno_cmd()
-    .env("DENO_DIR", dir.path())
-    .current_dir(util::root_path())
-    .arg("test")
-    .arg("--unstable")
-    .arg("--seed=86") // Some tests rely on specific random numbers.
-    .arg("-A")
-    // .arg("-Ldebug")
-    .arg("std/")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
-fn std_lint() {
-  let status = util::deno_cmd()
-    .arg("lint")
-    .arg("--unstable")
-    .arg(format!(
-      "--ignore={}",
-      util::root_path().join("std/node/tests").to_string_lossy()
-    ))
-    .arg(util::root_path().join("std"))
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
 fn help_flag() {
   let status = util::deno_cmd()
     .current_dir(util::root_path())
