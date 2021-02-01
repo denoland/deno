@@ -749,7 +749,6 @@ fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::serde_json;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
