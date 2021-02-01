@@ -311,7 +311,7 @@ impl NetPermission {
   }
 
   pub fn from_string(host: String) -> Self {
-    let url = url::Url::parse(&host).unwrap();
+    let url = url::Url::parse(&format!("http://{}", host)).unwrap();
     let hostname = url.host_str().unwrap().to_string();
 
     NetPermission(hostname, url.port())
@@ -348,7 +348,9 @@ impl UnaryPermission<NetPermission> {
     } else if self.state == PermissionState::Granted
       || match host.as_ref() {
         None => false,
-        Some(host) => self.granted_list.contains(&NetPermission::new(host)),
+        Some(host) => {
+          self.granted_list.contains(&NetPermission::new(&&(host.0.as_ref().to_string().clone(), None))) || self.granted_list.contains(&NetPermission::new(host))
+        },
       }
     {
       PermissionState::Granted
@@ -442,7 +444,7 @@ impl UnaryPermission<NetPermission> {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct BooleanPermission {
   pub name: String,
   pub description: String,
@@ -477,7 +479,7 @@ impl BooleanPermission {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<ReadPermission>,
   pub write: UnaryPermission<WritePermission>,
@@ -1082,97 +1084,8 @@ mod tests {
   }
 
   #[test]
-  fn test_deserialize_perms() {
-    let json_perms = r#"
-    {
-      "read": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "write": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "net": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "env": "Granted",
-      "run": "Granted",
-      "plugin": "Granted",
-      "hrtime": "Granted"
-    }
-    "#;
-    let perms0 = Permissions {
-      read: UnaryPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      write: UnaryPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      net: UnaryPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      env: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      run: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      hrtime: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      plugin: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-    };
-    let deserialized_perms: Permissions =
-      serde_json::from_str(json_perms).unwrap();
-    assert_eq!(perms0, deserialized_perms);
-  }
-
-  #[test]
   fn test_query() {
-    let perms1 = Permissions {
-      read: UnaryPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      write: UnaryPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      net: UnaryPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      env: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      run: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      plugin: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-      hrtime: BooleanPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
-      },
-    };
+    let perms1 = Permissions::allow_all();
     let perms2 = Permissions {
       read: UnaryPermission {
         state: PermissionState::Prompt,
