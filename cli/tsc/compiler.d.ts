@@ -42,15 +42,16 @@ declare global {
 
   type LanguageServerRequest =
     | ConfigureRequest
+    | FindRenameLocationsRequest
     | GetAsset
-    | GetDiagnosticsRequest
-    | GetQuickInfoRequest
-    | GetDocumentHighlightsRequest
-    | GetReferencesRequest
-    | GetDefinitionRequest
     | GetCompletionsRequest
+    | GetDefinitionRequest
+    | GetDiagnosticsRequest
+    | GetDocumentHighlightsRequest
     | GetImplementationRequest
-    | FindRenameLocationsRequest;
+    | GetNavigationTree
+    | GetQuickInfoRequest
+    | GetReferencesRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -63,9 +64,25 @@ declare global {
     compilerOptions: Record<string, any>;
   }
 
+  interface FindRenameLocationsRequest extends BaseLanguageServerRequest {
+    method: "findRenameLocations";
+    specifier: string;
+    position: number;
+    findInStrings: boolean;
+    findInComments: boolean;
+    providePrefixAndSuffixTextForRename: boolean;
+  }
+
   interface GetAsset extends BaseLanguageServerRequest {
     method: "getAsset";
     specifier: string;
+  }
+
+  interface GetCompletionsRequest extends BaseLanguageServerRequest {
+    method: "getCompletions";
+    specifier: string;
+    position: number;
+    preferences: ts.UserPreferences;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
@@ -73,8 +90,8 @@ declare global {
     specifiers: string[];
   }
 
-  interface GetQuickInfoRequest extends BaseLanguageServerRequest {
-    method: "getQuickInfo";
+  interface GetDefinitionRequest extends BaseLanguageServerRequest {
+    method: "getDefinition";
     specifier: string;
     position: number;
   }
@@ -86,37 +103,26 @@ declare global {
     filesToSearch: string[];
   }
 
-  interface GetReferencesRequest extends BaseLanguageServerRequest {
-    method: "getReferences";
-    specifier: string;
-    position: number;
-  }
-
-  interface GetDefinitionRequest extends BaseLanguageServerRequest {
-    method: "getDefinition";
-    specifier: string;
-    position: number;
-  }
-
-  interface GetCompletionsRequest extends BaseLanguageServerRequest {
-    method: "getCompletions";
-    specifier: string;
-    position: number;
-    preferences: ts.UserPreferences;
-  }
-
   interface GetImplementationRequest extends BaseLanguageServerRequest {
     method: "getImplementation";
     specifier: string;
     position: number;
   }
 
-  interface FindRenameLocationsRequest extends BaseLanguageServerRequest {
-    method: "findRenameLocations";
+  interface GetNavigationTree extends BaseLanguageServerRequest {
+    method: "getNavigationTree";
+    specifier: string;
+  }
+
+  interface GetQuickInfoRequest extends BaseLanguageServerRequest {
+    method: "getQuickInfo";
     specifier: string;
     position: number;
-    findInStrings: boolean;
-    findInComments: boolean;
-    providePrefixAndSuffixTextForRename: boolean;
+  }
+
+  interface GetReferencesRequest extends BaseLanguageServerRequest {
+    method: "getReferences";
+    specifier: string;
+    position: number;
   }
 }

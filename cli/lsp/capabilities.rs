@@ -6,6 +6,7 @@
 ///! client.
 ///!
 use lspower::lsp::ClientCapabilities;
+use lspower::lsp::CodeLensOptions;
 use lspower::lsp::CompletionOptions;
 use lspower::lsp::HoverProviderCapability;
 use lspower::lsp::ImplementationProviderCapability;
@@ -59,7 +60,9 @@ pub fn server_capabilities(
     document_symbol_provider: None,
     workspace_symbol_provider: None,
     code_action_provider: None,
-    code_lens_provider: None,
+    code_lens_provider: Some(CodeLensOptions {
+      resolve_provider: Some(true),
+    }),
     document_formatting_provider: Some(OneOf::Left(true)),
     document_range_formatting_provider: None,
     document_on_type_formatting_provider: None,
