@@ -349,8 +349,12 @@ impl UnaryPermission<NetPermission> {
       || match host.as_ref() {
         None => false,
         Some(host) => {
-          self.granted_list.contains(&NetPermission::new(&&(host.0.as_ref().to_string().clone(), None))) || self.granted_list.contains(&NetPermission::new(host))
-        },
+          self.granted_list.contains(&NetPermission::new(&&(
+            host.0.as_ref().to_string(),
+            None,
+          )))
+            || self.granted_list.contains(&NetPermission::new(host))
+        }
       }
     {
       PermissionState::Granted
@@ -761,8 +765,6 @@ fn set_prompt_result(value: bool) {
 
 #[cfg(test)]
 mod tests {
-  use deno_core::serde_json;
-
   use super::*;
 
   // Creates vector of strings, Vec<String>
