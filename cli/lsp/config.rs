@@ -15,12 +15,25 @@ pub struct ClientCapabilities {
   pub workspace_did_change_watched_files: bool,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeLensSettings {
+  /// Flag for providing reference code lens.
+  #[serde(default)]
+  pub references: bool,
+  /// Flag for providing reference code lens on all functions.  For this to have
+  /// an impact, the `references` flag needs to be `true`.
+  #[serde(default)]
+  pub references_all_functions: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
+  pub code_lens: Option<CodeLensSettings>,
 
   #[serde(default)]
   pub lint: bool,
@@ -28,7 +41,36 @@ pub struct WorkspaceSettings {
   pub unstable: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+impl WorkspaceSettings {
+  /// Determine if any code lenses are enabled at all.  This allows short
+  /// circuiting when there are no code lenses enabled.
+  pub fn enabled_code_lens(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      // This should contain all the "top level" code lens references
+      code_lens.references
+    } else {
+      false
+    }
+  }
+
+  pub fn enabled_code_lens_references(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      code_lens.references
+    } else {
+      false
+    }
+  }
+
+  pub fn enabled_code_lens_references_all_functions(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      code_lens.references_all_functions
+    } else {
+      false
+    }
+  }
+}
+
+#[derive(Debug, Default)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,

@@ -502,12 +502,43 @@ delete Object.prototype.__proto__;
         compilationSettings = options;
         return respond(id, true);
       }
+      case "findRenameLocations": {
+        return respond(
+          id,
+          languageService.findRenameLocations(
+            request.specifier,
+            request.position,
+            request.findInStrings,
+            request.findInComments,
+            request.providePrefixAndSuffixTextForRename,
+          ),
+        );
+      }
       case "getAsset": {
         const sourceFile = host.getSourceFile(
           request.specifier,
           ts.ScriptTarget.ESNext,
         );
         return respond(id, sourceFile && sourceFile.text);
+      }
+      case "getCompletions": {
+        return respond(
+          id,
+          languageService.getCompletionsAtPosition(
+            request.specifier,
+            request.position,
+            request.preferences,
+          ),
+        );
+      }
+      case "getDefinition": {
+        return respond(
+          id,
+          languageService.getDefinitionAndBoundSpan(
+            request.specifier,
+            request.position,
+          ),
+        );
       }
       case "getDiagnostics": {
         try {
@@ -530,25 +561,6 @@ delete Object.prototype.__proto__;
           return respond(id, {});
         }
       }
-      case "getQuickInfo": {
-        return respond(
-          id,
-          languageService.getQuickInfoAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getCompletions": {
-        return respond(
-          id,
-          languageService.getCompletionsAtPosition(
-            request.specifier,
-            request.position,
-            request.preferences,
-          ),
-        );
-      }
       case "getDocumentHighlights": {
         return respond(
           id,
@@ -556,24 +568,6 @@ delete Object.prototype.__proto__;
             request.specifier,
             request.position,
             request.filesToSearch,
-          ),
-        );
-      }
-      case "getReferences": {
-        return respond(
-          id,
-          languageService.getReferencesAtPosition(
-            request.specifier,
-            request.position,
-          ),
-        );
-      }
-      case "getDefinition": {
-        return respond(
-          id,
-          languageService.getDefinitionAndBoundSpan(
-            request.specifier,
-            request.position,
           ),
         );
       }
@@ -586,15 +580,27 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "findRenameLocations": {
+      case "getNavigationTree": {
         return respond(
           id,
-          languageService.findRenameLocations(
+          languageService.getNavigationTree(request.specifier),
+        );
+      }
+      case "getQuickInfo": {
+        return respond(
+          id,
+          languageService.getQuickInfoAtPosition(
             request.specifier,
             request.position,
-            request.findInStrings,
-            request.findInComments,
-            request.providePrefixAndSuffixTextForRename,
+          ),
+        );
+      }
+      case "getReferences": {
+        return respond(
+          id,
+          languageService.getReferencesAtPosition(
+            request.specifier,
+            request.position,
           ),
         );
       }
