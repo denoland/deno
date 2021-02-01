@@ -203,17 +203,17 @@
 
     // Our function may have properties, so we want to format those
     // as if our function was an object
-    const propString = inspectRawObject(value, ctx, level, inspectOptions);
     // If we didn't find any properties, we will just append an
     // empty suffix.
-    let suffix = ` ${propString}`;
+    let suffix = ``;
     if (
-      propString === "{}" || propString === "AsyncFunction {}" ||
-      propString === "GeneratorFunction {}" ||
-      propString === "AsyncGeneratorFunction {}"
+      Object.keys(value).length > 0 ||
+      Object.getOwnPropertySymbols(value).length > 0
     ) {
-      suffix = "";
+      const propString = inspectRawObject(value, ctx, level, inspectOptions);
+      suffix = ` ${propString}`;
     }
+
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
       return cyan(`[${cstrName}: ${value.name}]`) + suffix;
