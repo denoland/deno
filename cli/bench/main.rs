@@ -79,7 +79,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "check",
-    &["cache", "--reload", "std/examples/chat/server_test.ts"],
+    &["cache", "--reload", "test_util/std/examples/chat/server_test.ts"],
     None,
   ),
   (
@@ -88,18 +88,18 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "cache",
       "--reload",
       "--no-check",
-      "std/examples/chat/server_test.ts",
+      "test_util/std/examples/chat/server_test.ts",
     ],
     None,
   ),
   (
     "bundle",
-    &["bundle", "std/examples/chat/server_test.ts"],
+    &["bundle", "test_util/std/examples/chat/server_test.ts"],
     None,
   ),
   (
     "bundle_no_check",
-    &["bundle", "--no-check", "std/examples/chat/server_test.ts"],
+    &["bundle", "--no-check", "test_util/std/examples/chat/server_test.ts"],
     None,
   ),
 ];
@@ -254,8 +254,8 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<HashMap<String, u64>> {
 }
 
 const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./std/http/file_server.ts"),
-  ("gist", "./std/examples/gist.ts"),
+  ("file_server", "./test_util/std/http/file_server.ts"),
+  ("gist", "./test_util/std/examples/gist.ts"),
 ];
 fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
   let mut sizes = HashMap::<String, u64>::new();

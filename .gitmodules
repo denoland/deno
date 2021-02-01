@@ -6,3 +6,6 @@
 	path = test_util/wpt
 	url = https://github.com/denoland/wpt.git
 	shallow = true
+[submodule "test_util/std"]
+	path = test_util/std
+	url = https://github.com/denoland/deno_std

@@ -1,13 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 const { args } = Deno;
-import { createHash, SupportedAlgorithm } from "../../std/hash/mod.ts";
-import { Md5 } from "../../std/hash/md5.ts";
-import { Sha1 } from "../../std/hash/sha1.ts";
-import { Sha256 } from "../../std/hash/sha256.ts";
-import { Sha512 } from "../../std/hash/sha512.ts";
+import { createHash, SupportedAlgorithm } from "../../test_util/std/hash/mod.ts";
+import { Md5 } from "../../test_util/std/hash/md5.ts";
+import { Sha1 } from "../../test_util/std/hash/sha1.ts";
+import { Sha256 } from "../../test_util/std/hash/sha256.ts";
+import { Sha512 } from "../../test_util/std/hash/sha512.ts";
 // deno-lint-ignore camelcase
-import { Sha3_224, Sha3_256, Sha3_384, Sha3_512 } from "../../std/hash/sha3.ts";
+import { Sha3_224, Sha3_256, Sha3_384, Sha3_512 } from "../../test_util/std/hash/sha3.ts";
 
 if (args.length < 3) Deno.exit(0);
 

@@ -4893,7 +4893,7 @@ fn compile() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./std/examples/welcome.ts")
+    .arg("./test_util/std/examples/welcome.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
