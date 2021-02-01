@@ -362,6 +362,21 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   assertEquals(stringify(agf), "[Function: agf]");
 });
 
+unitTest(function consoleTestStringifyFunctionWithProperties(): void {
+  const f = () => "test";
+  f.x = () => "foo";
+  f.y = 3;
+  f.z = () => "baz";
+  f.b = function bar() {};
+  f.a = new Map();
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
+}`,
+  );
+});
+
 unitTest(function consoleTestStringifyWithDepth(): void {
   // deno-lint-ignore no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };

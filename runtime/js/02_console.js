@@ -188,7 +188,8 @@
     return inspectOptions.colors ? fn : (s) => s;
   }
 
-  function inspectFunction(value, _ctx) {
+  function inspectFunction(value, ctx, level, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     if (customInspect in value && typeof value[customInspect] === "function") {
       return String(value[customInspect]());
     }
@@ -199,11 +200,25 @@
       // use generic 'Function' instead.
       cstrName = "Function";
     }
+
+    // Our function may have properties, so we want to format those
+    // as if our function was an object
+    const propString = inspectRawObject(value, ctx, level, inspectOptions);
+    // If we didn't find any properties, we will just append an
+    // empty suffix.
+    let suffix = ` ${propString}`;
+    if (
+      propString === "{}" || propString === "AsyncFunction {}" ||
+      propString === "GeneratorFunction {}" ||
+      propString === "AsyncGeneratorFunction {}"
+    ) {
+      suffix = "";
+    }
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
-      return `[${cstrName}: ${value.name}]`;
+      return cyan(`[${cstrName}: ${value.name}]`) + suffix;
     }
-    return `[${cstrName}]`;
+    return cyan(`[${cstrName}]`) + suffix;
   }
 
   function inspectIterable(
@@ -428,7 +443,7 @@
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
-        return cyan(inspectFunction(value, ctx));
+        return inspectFunction(value, ctx, level, inspectOptions);
       case "object": // null is bold
         if (value === null) {
           return bold("null");
