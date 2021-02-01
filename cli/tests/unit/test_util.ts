@@ -1,6 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "../../../test_util/std/testing/asserts.ts";
 import * as colors from "../../../test_util/std/fmt/colors.ts";
 export { colors };
 import { resolve } from "../../../test_util/std/path/mod.ts";
