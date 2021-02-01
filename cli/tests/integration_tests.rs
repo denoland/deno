@@ -2465,8 +2465,7 @@ itest!(_034_onload {
 });
 
 itest!(_035_cached_only_flag {
-  args:
-    "run --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  args: "run --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -2546,8 +2545,7 @@ itest!(_049_info_flag_script_jsx {
 });
 
 itest!(_052_no_remote_flag {
-  args:
-    "run --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  args: "run --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
