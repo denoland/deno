@@ -151,7 +151,10 @@ mod tests {
   fn supports_dirs() {
     // TODO(caspervonb) generate some fixtures in a temporary directory instead, there's no need
     // for this to rely on external fixtures.
-    let root = test_util::root_path().join("test_util").join("std").join("http");
+    let root = test_util::root_path()
+      .join("test_util")
+      .join("std")
+      .join("http");
     println!("root {:?}", root);
     let mut matched_urls =
       prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();

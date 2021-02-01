@@ -79,7 +79,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "check",
-    &["cache", "--reload", "test_util/std/examples/chat/server_test.ts"],
+    &[
+      "cache",
+      "--reload",
+      "test_util/std/examples/chat/server_test.ts",
+    ],
     None,
   ),
   (
@@ -99,7 +103,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "bundle_no_check",
-    &["bundle", "--no-check", "test_util/std/examples/chat/server_test.ts"],
+    &[
+      "bundle",
+      "--no-check",
+      "test_util/std/examples/chat/server_test.ts",
+    ],
     None,
   ),
 ];
