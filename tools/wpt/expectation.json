@@ -1018,5 +1018,18 @@
         ]
       }
     }
+  },
+  "FileAPI": {
+    "blob": {
+      "Blob-array-buffer.any.js": true,
+      "Blob-stream.any.js": true,
+      "Blob-text.any.js": true,
+      "Blob-constructor.any.js": [
+        "Blob interface object",
+        "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
+      ],
+      "Blob-slice-overflow.any.js": true,
+      "Blob-slice.any.js": true
+    }
   }
 }

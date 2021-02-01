@@ -9,11 +9,13 @@ use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
 use deno_core::error::AnyError;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
-use lspower::lsp_types;
-use lspower::lsp_types::Position;
-use lspower::lsp_types::Range;
+use lspower::lsp;
+use lspower::lsp::Position;
+use lspower::lsp::Range;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -77,14 +79,14 @@ pub fn get_lint_references(
 
 pub fn references_to_diagnostics(
   references: Vec<Reference>,
-) -> Vec<lsp_types::Diagnostic> {
+) -> Vec<lsp::Diagnostic> {
   references
     .into_iter()
     .map(|r| match r.category {
-      Category::Lint { message, code, .. } => lsp_types::Diagnostic {
+      Category::Lint { message, code, .. } => lsp::Diagnostic {
         range: r.range,
-        severity: Some(lsp_types::DiagnosticSeverity::Warning),
-        code: Some(lsp_types::NumberOrString::String(code)),
+        severity: Some(lsp::DiagnosticSeverity::Warning),
+        code: Some(lsp::NumberOrString::String(code)),
         code_description: None,
         source: Some("deno-lint".to_string()),
         message,
@@ -249,6 +251,19 @@ pub fn analyze_dependencies(
   }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub enum CodeLensSource {
+  #[serde(rename = "references")]
+  References,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeLensData {
+  pub source: CodeLensSource,
+  pub specifier: ModuleSpecifier,
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -270,12 +285,12 @@ mod tests {
     let actual = as_lsp_range(&fixture);
     assert_eq!(
       actual,
-      lsp_types::Range {
-        start: lsp_types::Position {
+      lsp::Range {
+        start: lsp::Position {
           line: 0,
           character: 2,
         },
-        end: lsp_types::Position {
+        end: lsp::Position {
           line: 1,
           character: 0,
         },
@@ -293,7 +308,7 @@ mod tests {
       Router,
       Status,
     } from "https://deno.land/x/oak@v6.3.2/mod.ts";
-    
+
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
     import * as React from "https://cdn.skypack.dev/react";
     "#;

@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -11,12 +12,15 @@ use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
-use lspower::lsp_types::request::*;
-use lspower::lsp_types::*;
+use lspower::lsp::request::*;
+use lspower::lsp::*;
 use lspower::Client;
+use regex::Regex;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use tokio::fs;
 
@@ -25,6 +29,8 @@ use crate::import_map::ImportMap;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
+use super::analysis::CodeLensData;
+use super::analysis::CodeLensSource;
 use super::capabilities;
 use super::config::Config;
 use super::diagnostics;
@@ -40,6 +46,10 @@ use super::tsc;
 use super::tsc::AssetDocument;
 use super::tsc::TsServer;
 use super::utils;
+
+lazy_static! {
+  static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
+}
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
@@ -162,6 +172,37 @@ impl Inner {
     maybe_line_index
   }
 
+  async fn get_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<tsc::NavigationTree, AnyError> {
+    if self.documents.contains(specifier) {
+      if let Some(navigation_tree) = self.documents.navigation_tree(specifier) {
+        Ok(navigation_tree)
+      } else {
+        let res = self
+          .ts_server
+          .request(
+            self.snapshot(),
+            tsc::RequestMethod::GetNavigationTree(specifier.clone()),
+          )
+          .await
+          .unwrap();
+        let navigation_tree: tsc::NavigationTree =
+          serde_json::from_value(res).unwrap();
+        self
+          .documents
+          .set_navigation_tree(specifier, navigation_tree.clone())?;
+        Ok(navigation_tree)
+      }
+    } else {
+      Err(custom_error(
+        "NotFound",
+        format!("The document \"{}\" was unexpectedly not found.", specifier),
+      ))
+    }
+  }
+
   async fn prepare_diagnostics(&mut self) -> Result<(), AnyError> {
     let (enabled, lint_enabled) = {
       let config = &self.config;
@@ -271,14 +312,13 @@ impl Inner {
       (maybe_changes, diagnostics_collection.clone())
     };
     if let Some(diagnostic_changes) = maybe_changes {
-      let settings = self.config.settings.clone();
       for specifier in diagnostic_changes {
         // TODO(@kitsonk) not totally happy with the way we collect and store
         // different types of diagnostics and offer them up to the client, we
         // do need to send "empty" vectors though when a particular feature is
         // disabled, otherwise the client will not clear down previous
         // diagnostics
-        let mut diagnostics: Vec<Diagnostic> = if settings.lint {
+        let mut diagnostics: Vec<Diagnostic> = if self.config.settings.lint {
           diagnostics_collection
             .diagnostics_for(&specifier, &DiagnosticSource::Lint)
             .cloned()
@@ -778,6 +818,209 @@ impl Inner {
     }
   }
 
+  async fn code_lens(
+    &mut self,
+    params: CodeLensParams,
+  ) -> LspResult<Option<Vec<CodeLens>>> {
+    if !self.enabled() || !self.config.settings.enabled_code_lens() {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("code_lens");
+    let specifier = utils::normalize_url(params.text_document.uri);
+    let line_index = self.get_line_index_sync(&specifier).unwrap();
+    let navigation_tree =
+      self.get_navigation_tree(&specifier).await.map_err(|err| {
+        error!("Failed to retrieve nav tree: {:#?}", err);
+        LspError::invalid_request()
+      })?;
+
+    // because we have to use this as a mutable in a closure, the compiler
+    // can't be sure when the vector will be mutated, and so a RefCell is
+    // required to "protect" the vector.
+    let cl = Rc::new(RefCell::new(Vec::new()));
+    navigation_tree.walk(&|i, mp| {
+      let mut code_lenses = cl.borrow_mut();
+
+      // TSC References Code Lens
+      if self.config.settings.enabled_code_lens_references() {
+        let source = CodeLensSource::References;
+        if let Some(parent) = &mp {
+          if parent.kind == tsc::ScriptElementKind::EnumElement {
+            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+          }
+        }
+        match i.kind {
+          tsc::ScriptElementKind::FunctionElement => {
+            if self
+              .config
+              .settings
+              .enabled_code_lens_references_all_functions()
+            {
+              code_lenses.push(i.to_code_lens(
+                &line_index,
+                &specifier,
+                &source,
+              ));
+            }
+          }
+          tsc::ScriptElementKind::ConstElement
+          | tsc::ScriptElementKind::LetElement
+          | tsc::ScriptElementKind::VariableElement => {
+            if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
+              code_lenses.push(i.to_code_lens(
+                &line_index,
+                &specifier,
+                &source,
+              ));
+            }
+          }
+          tsc::ScriptElementKind::ClassElement => {
+            if i.text != "<class>" {
+              code_lenses.push(i.to_code_lens(
+                &line_index,
+                &specifier,
+                &source,
+              ));
+            }
+          }
+          tsc::ScriptElementKind::InterfaceElement
+          | tsc::ScriptElementKind::TypeElement
+          | tsc::ScriptElementKind::EnumElement => {
+            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+          }
+          tsc::ScriptElementKind::LocalFunctionElement
+          | tsc::ScriptElementKind::MemberGetAccessorElement
+          | tsc::ScriptElementKind::MemberSetAccessorElement
+          | tsc::ScriptElementKind::ConstructorImplementationElement
+          | tsc::ScriptElementKind::MemberVariableElement => {
+            if let Some(parent) = &mp {
+              if parent.spans[0].start != i.spans[0].start {
+                match parent.kind {
+                  tsc::ScriptElementKind::ClassElement
+                  | tsc::ScriptElementKind::InterfaceElement
+                  | tsc::ScriptElementKind::TypeElement => {
+                    code_lenses.push(i.to_code_lens(
+                      &line_index,
+                      &specifier,
+                      &source,
+                    ));
+                  }
+                  _ => (),
+                }
+              }
+            }
+          }
+          _ => (),
+        }
+      }
+    });
+
+    self.performance.measure(mark);
+    Ok(Some(Rc::try_unwrap(cl).unwrap().into_inner()))
+  }
+
+  async fn code_lens_resolve(
+    &mut self,
+    params: CodeLens,
+  ) -> LspResult<CodeLens> {
+    let mark = self.performance.mark("code_lens_resolve");
+    if let Some(data) = params.data.clone() {
+      let code_lens_data: CodeLensData = serde_json::from_value(data)
+        .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      let code_lens = match code_lens_data.source {
+        CodeLensSource::References => {
+          let line_index =
+            self.get_line_index_sync(&code_lens_data.specifier).unwrap();
+          let req = tsc::RequestMethod::GetReferences((
+            code_lens_data.specifier.clone(),
+            line_index.offset_tsc(params.range.start)?,
+          ));
+          let res =
+            self.ts_server.request(self.snapshot(), req).await.map_err(
+              |err| {
+                error!("Error processing TypeScript request: {}", err);
+                LspError::internal_error()
+              },
+            )?;
+          let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
+            serde_json::from_value(res).map_err(|err| {
+              error!("Error deserializing response: {}", err);
+              LspError::internal_error()
+            })?;
+          if let Some(references) = maybe_references {
+            let mut locations = Vec::new();
+            for reference in references {
+              if reference.is_definition {
+                continue;
+              }
+              let reference_specifier = ModuleSpecifier::resolve_url(
+                &reference.document_span.file_name,
+              )
+              .map_err(|err| {
+                error!("Invalid specifier returned from TypeScript: {}", err);
+                LspError::internal_error()
+              })?;
+              let line_index = self
+                .get_line_index(reference_specifier)
+                .await
+                .map_err(|err| {
+                error!("Unable to get line index: {}", err);
+                LspError::internal_error()
+              })?;
+              locations.push(reference.to_location(&line_index));
+            }
+            let command = if !locations.is_empty() {
+              let title = if locations.len() > 1 {
+                format!("{} references", locations.len())
+              } else {
+                "1 reference".to_string()
+              };
+              Command {
+                title,
+                command: "deno.showReferences".to_string(),
+                arguments: Some(vec![
+                  serde_json::to_value(code_lens_data.specifier).unwrap(),
+                  serde_json::to_value(params.range.start).unwrap(),
+                  serde_json::to_value(locations).unwrap(),
+                ]),
+              }
+            } else {
+              Command {
+                title: "0 references".to_string(),
+                command: "".to_string(),
+                arguments: None,
+              }
+            };
+            CodeLens {
+              range: params.range,
+              command: Some(command),
+              data: None,
+            }
+          } else {
+            let command = Command {
+              title: "0 references".to_string(),
+              command: "".to_string(),
+              arguments: None,
+            };
+            CodeLens {
+              range: params.range,
+              command: Some(command),
+              data: None,
+            }
+          }
+        }
+      };
+      self.performance.measure(mark);
+      Ok(code_lens)
+    } else {
+      self.performance.measure(mark);
+      Err(LspError::invalid_params(
+        "Code lens is missing the \"data\" property.",
+      ))
+    }
+  }
+
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
@@ -1193,6 +1436,17 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     self.0.lock().await.hover(params).await
+  }
+
+  async fn code_lens(
+    &self,
+    params: CodeLensParams,
+  ) -> LspResult<Option<Vec<CodeLens>>> {
+    self.0.lock().await.code_lens(params).await
+  }
+
+  async fn code_lens_resolve(&self, params: CodeLens) -> LspResult<CodeLens> {
+    self.0.lock().await.code_lens_resolve(params).await
   }
 
   async fn document_highlight(
@@ -1753,6 +2007,108 @@ mod tests {
                 "newText": "variable_modified"
               }]
             }]
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_code_lens_request() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_cl_references.json",
+        LspResponse::None,
+      ),
+      (
+        "code_lens_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 6,
+                },
+                "end": {
+                  "line": 0,
+                  "character": 7,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              },
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 1,
+                  "character": 2,
+                },
+                "end": {
+                  "line": 1,
+                  "character": 3,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              }
+            }
+          ]),
+        ),
+      ),
+      (
+        "code_lens_resolve_request.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 6,
+              },
+              "end": {
+                "line": 0,
+                "character": 7,
+              }
+            },
+            "command": {
+              "title": "1 reference",
+              "command": "deno.showReferences",
+              "arguments": [
+                "file:///a/file.ts",
+                {
+                  "line": 0,
+                  "character": 6,
+                },
+                [
+                  {
+                    "uri": "file:///a/file.ts",
+                    "range": {
+                      "start": {
+                        "line": 12,
+                        "character": 14,
+                      },
+                      "end": {
+                        "line": 12,
+                        "character": 15,
+                      }
+                    }
+                  }
+                ],
+              ]
+            }
           }),
         ),
       ),
