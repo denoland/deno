@@ -1097,12 +1097,8 @@ pub fn new_deno_dir() -> TempDir {
 }
 
 pub fn deno_cmd() -> Command {
-  let e = deno_exe_path();
   let deno_dir = new_deno_dir();
-  assert!(e.exists());
-  let mut c = Command::new(e);
-  c.env("DENO_DIR", deno_dir.path());
-  c
+  deno_cmd_with_deno_dir(deno_dir.path())
 }
 
 pub fn deno_cmd_with_deno_dir(deno_dir: &std::path::Path) -> Command {

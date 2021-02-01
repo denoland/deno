@@ -2209,95 +2209,95 @@ itest!(stdout_write_all {
 });
 
 itest!(_001_hello {
-  args: "run --reload 001_hello.js",
+  args: "run 001_hello.js",
   output: "001_hello.js.out",
 });
 
 itest!(_002_hello {
-  args: "run --quiet --reload 002_hello.ts",
+  args: "run --quiet 002_hello.ts",
   output: "002_hello.ts.out",
 });
 
 itest!(_003_relative_import {
-  args: "run --quiet --reload 003_relative_import.ts",
+  args: "run --quiet 003_relative_import.ts",
   output: "003_relative_import.ts.out",
 });
 
 itest!(_004_set_timeout {
-  args: "run --quiet --reload 004_set_timeout.ts",
+  args: "run --quiet 004_set_timeout.ts",
   output: "004_set_timeout.ts.out",
 });
 
 itest!(_005_more_imports {
-  args: "run --quiet --reload 005_more_imports.ts",
+  args: "run --quiet 005_more_imports.ts",
   output: "005_more_imports.ts.out",
 });
 
 itest!(_006_url_imports {
-  args: "run --quiet --reload 006_url_imports.ts",
+  args: "run --quiet 006_url_imports.ts",
   output: "006_url_imports.ts.out",
   http_server: true,
 });
 
 itest!(_012_async {
-  args: "run --quiet --reload 012_async.ts",
+  args: "run --quiet 012_async.ts",
   output: "012_async.ts.out",
 });
 
 itest!(_013_dynamic_import {
-  args: "run --quiet --reload --allow-read 013_dynamic_import.ts",
+  args: "run --quiet --allow-read 013_dynamic_import.ts",
   output: "013_dynamic_import.ts.out",
 });
 
 itest!(_014_duplicate_import {
-  args: "run --quiet --reload --allow-read 014_duplicate_import.ts ",
+  args: "run --quiet --allow-read 014_duplicate_import.ts ",
   output: "014_duplicate_import.ts.out",
 });
 
 itest!(_015_duplicate_parallel_import {
-  args: "run --quiet --reload --allow-read 015_duplicate_parallel_import.js",
+  args: "run --quiet --allow-read 015_duplicate_parallel_import.js",
   output: "015_duplicate_parallel_import.js.out",
 });
 
 itest!(_016_double_await {
-  args: "run --quiet --allow-read --reload 016_double_await.ts",
+  args: "run --quiet --allow-read 016_double_await.ts",
   output: "016_double_await.ts.out",
 });
 
 itest!(_017_import_redirect {
-  args: "run --quiet --reload 017_import_redirect.ts",
+  args: "run --quiet 017_import_redirect.ts",
   output: "017_import_redirect.ts.out",
 });
 
 itest!(_017_import_redirect_nocheck {
-  args: "run --quiet --reload --no-check 017_import_redirect.ts",
+  args: "run --quiet --no-check 017_import_redirect.ts",
   output: "017_import_redirect.ts.out",
 });
 
 itest!(_017_import_redirect_info {
-  args: "info --quiet --reload 017_import_redirect.ts",
+  args: "info --quiet 017_import_redirect.ts",
   output: "017_import_redirect_info.out",
 });
 
 itest!(_018_async_catch {
-  args: "run --quiet --reload 018_async_catch.ts",
+  args: "run --quiet 018_async_catch.ts",
   output: "018_async_catch.ts.out",
 });
 
 itest!(_019_media_types {
-  args: "run --reload 019_media_types.ts",
+  args: "run 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
 });
 
 itest!(_020_json_modules {
-  args: "run --reload 020_json_modules.ts",
+  args: "run 020_json_modules.ts",
   output: "020_json_modules.ts.out",
   exit_code: 1,
 });
 
 itest!(_021_mjs_modules {
-  args: "run --quiet --reload 021_mjs_modules.ts",
+  args: "run --quiet 021_mjs_modules.ts",
   output: "021_mjs_modules.ts.out",
 });
 
@@ -2308,23 +2308,23 @@ itest!(_022_info_flag_script {
 });
 
 itest!(_023_no_ext {
-  args: "run --reload 023_no_ext",
+  args: "run 023_no_ext",
   output: "023_no_ext.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --unstable --reload 025_hrtime.ts",
+  args: "run --quiet --allow-hrtime --unstable 025_hrtime.ts",
   output: "025_hrtime.ts.out",
 });
 
 itest!(_025_reload_js_type_error {
-  args: "run --quiet --reload 025_reload_js_type_error.js",
+  args: "run --quiet 025_reload_js_type_error.js",
   output: "025_reload_js_type_error.js.out",
 });
 
 itest!(_026_redirect_javascript {
-  args: "run --quiet --reload 026_redirect_javascript.js",
+  args: "run --quiet 026_redirect_javascript.js",
   output: "026_redirect_javascript.js.out",
   http_server: true,
 });
@@ -2427,13 +2427,13 @@ fn compiler_api() {
 }
 
 itest!(_027_redirect_typescript {
-  args: "run --quiet --reload 027_redirect_typescript.ts",
+  args: "run --quiet 027_redirect_typescript.ts",
   output: "027_redirect_typescript.ts.out",
   http_server: true,
 });
 
 itest!(_028_args {
-  args: "run --quiet --reload 028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
+  args: "run --quiet 028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
   output: "028_args.ts.out",
 });
 
@@ -2455,18 +2455,18 @@ itest!(_031_info_ts_error {
 
 itest!(_033_import_map {
   args:
-    "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+    "run --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
   output: "033_import_map.out",
 });
 
 itest!(_034_onload {
-  args: "run --quiet --reload 034_onload/main.ts",
+  args: "run --quiet 034_onload/main.ts",
   output: "034_onload.out",
 });
 
 itest!(_035_cached_only_flag {
   args:
-    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -2474,19 +2474,19 @@ itest!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+    "cache --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
 itest!(_037_fetch_multiple {
-  args: "cache --reload fetch/test.ts fetch/other.ts",
+  args: "cache fetch/test.ts fetch/other.ts",
   http_server: true,
   output: "037_fetch_multiple.out",
 });
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --config 038_checkjs.tsconfig.json 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -2507,34 +2507,34 @@ itest!(info_json {
 });
 
 itest!(_042_dyn_import_evalcontext {
-  args: "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
+  args: "run --quiet --allow-read 042_dyn_import_evalcontext.ts",
   output: "042_dyn_import_evalcontext.ts.out",
 });
 
 itest!(_044_bad_resource {
-  args: "run --quiet --reload --allow-read 044_bad_resource.ts",
+  args: "run --quiet --allow-read 044_bad_resource.ts",
   output: "044_bad_resource.ts.out",
   exit_code: 1,
 });
 
 itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
+  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
 
 itest!(_046_tsx {
-  args: "run --quiet --reload 046_jsx_test.tsx",
+  args: "run --quiet 046_jsx_test.tsx",
   output: "046_jsx_test.tsx.out",
 });
 
 itest!(_047_jsx {
-  args: "run --quiet --reload 047_jsx_test.jsx",
+  args: "run --quiet 047_jsx_test.jsx",
   output: "047_jsx_test.jsx.out",
 });
 
 itest!(_048_media_types_jsx {
-  args: "run  --reload 048_media_types_jsx.ts",
+  args: "run  048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
@@ -2547,7 +2547,7 @@ itest!(_049_info_flag_script_jsx {
 
 itest!(_052_no_remote_flag {
   args:
-    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
@@ -2715,7 +2715,7 @@ itest!(_082_prepare_stack_trace_throw {
 });
 
 itest!(js_import_detect {
-  args: "run --quiet --reload js_import_detect.ts",
+  args: "run --quiet js_import_detect.ts",
   output: "js_import_detect.ts.out",
   exit_code: 0,
 });
@@ -2776,7 +2776,7 @@ itest!(lock_check_err_with_bundle {
 
 itest!(async_error {
   exit_code: 1,
-  args: "run --reload async_error.ts",
+  args: "run async_error.ts",
   output: "async_error.ts.out",
 });
 
@@ -2834,30 +2834,30 @@ itest!(fmt_stdin_check_not_formatted {
 });
 
 itest!(config {
-  args: "run --reload --config config.tsconfig.json config.ts",
+  args: "run --config config.tsconfig.json config.ts",
   exit_code: 1,
   output: "config.ts.out",
 });
 
 itest!(emtpy_typescript {
-  args: "run --reload subdir/empty.ts",
+  args: "run subdir/empty.ts",
   output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
 });
 
 itest!(error_001 {
-  args: "run --reload error_001.ts",
+  args: "run error_001.ts",
   exit_code: 1,
   output: "error_001.ts.out",
 });
 
 itest!(error_002 {
-  args: "run --reload error_002.ts",
+  args: "run error_002.ts",
   exit_code: 1,
   output: "error_002.ts.out",
 });
 
 itest!(error_003_typescript {
-  args: "run --reload error_003_typescript.ts",
+  args: "run error_003_typescript.ts",
   exit_code: 1,
   output: "error_003_typescript.ts.out",
 });
@@ -2873,31 +2873,31 @@ itest!(error_003_typescript2 {
 });
 
 itest!(error_004_missing_module {
-  args: "run --reload error_004_missing_module.ts",
+  args: "run error_004_missing_module.ts",
   exit_code: 1,
   output: "error_004_missing_module.ts.out",
 });
 
 itest!(error_005_missing_dynamic_import {
-  args: "run --reload --allow-read --quiet error_005_missing_dynamic_import.ts",
+  args: "run --allow-read --quiet error_005_missing_dynamic_import.ts",
   exit_code: 1,
   output: "error_005_missing_dynamic_import.ts.out",
 });
 
 itest!(error_006_import_ext_failure {
-  args: "run --reload error_006_import_ext_failure.ts",
+  args: "run error_006_import_ext_failure.ts",
   exit_code: 1,
   output: "error_006_import_ext_failure.ts.out",
 });
 
 itest!(error_007_any {
-  args: "run --reload error_007_any.ts",
+  args: "run error_007_any.ts",
   exit_code: 1,
   output: "error_007_any.ts.out",
 });
 
 itest!(error_008_checkjs {
-  args: "run --reload error_008_checkjs.js",
+  args: "run error_008_checkjs.js",
   exit_code: 1,
   output: "error_008_checkjs.js.out",
 });
@@ -2909,30 +2909,30 @@ itest!(error_009_op_crates_error {
 });
 
 itest!(error_011_bad_module_specifier {
-  args: "run --reload error_011_bad_module_specifier.ts",
+  args: "run error_011_bad_module_specifier.ts",
   exit_code: 1,
   output: "error_011_bad_module_specifier.ts.out",
 });
 
 itest!(error_012_bad_dynamic_import_specifier {
-  args: "run --reload error_012_bad_dynamic_import_specifier.ts",
+  args: "run error_012_bad_dynamic_import_specifier.ts",
   exit_code: 1,
   output: "error_012_bad_dynamic_import_specifier.ts.out",
 });
 
 itest!(error_013_missing_script {
-  args: "run --reload missing_file_name",
+  args: "run missing_file_name",
   exit_code: 1,
   output: "error_013_missing_script.out",
 });
 
 itest!(error_014_catch_dynamic_import_error {
-  args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
+  args: "run  --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
 });
 
 itest!(error_015_dynamic_import_permissions {
-  args: "run --reload --quiet error_015_dynamic_import_permissions.js",
+  args: "run --quiet error_015_dynamic_import_permissions.js",
   output: "error_015_dynamic_import_permissions.out",
   exit_code: 1,
   http_server: true,
@@ -2940,14 +2940,14 @@ itest!(error_015_dynamic_import_permissions {
 
 // We have an allow-net flag but not allow-read, it should still result in error.
 itest!(error_016_dynamic_import_permissions2 {
-  args: "run --reload --allow-net error_016_dynamic_import_permissions2.js",
+  args: "run --allow-net error_016_dynamic_import_permissions2.js",
   output: "error_016_dynamic_import_permissions2.out",
   exit_code: 1,
   http_server: true,
 });
 
 itest!(error_017_hide_long_source_ts {
-  args: "run --reload error_017_hide_long_source_ts.ts",
+  args: "run error_017_hide_long_source_ts.ts",
   output: "error_017_hide_long_source_ts.ts.out",
   exit_code: 1,
 });
@@ -3001,57 +3001,57 @@ itest!(error_025_tab_indent {
 });
 
 itest!(error_missing_module_named_import {
-  args: "run --reload error_missing_module_named_import.ts",
+  args: "run error_missing_module_named_import.ts",
   output: "error_missing_module_named_import.ts.out",
   exit_code: 1,
 });
 
 itest!(error_no_check {
-  args: "run --reload --no-check error_no_check.ts",
+  args: "run --no-check error_no_check.ts",
   output: "error_no_check.ts.out",
   exit_code: 1,
 });
 
 itest!(error_syntax {
-  args: "run --reload error_syntax.js",
+  args: "run error_syntax.js",
   exit_code: 1,
   output: "error_syntax.js.out",
 });
 
 itest!(error_syntax_empty_trailing_line {
-  args: "run --reload error_syntax_empty_trailing_line.mjs",
+  args: "run error_syntax_empty_trailing_line.mjs",
   exit_code: 1,
   output: "error_syntax_empty_trailing_line.mjs.out",
 });
 
 itest!(error_type_definitions {
-  args: "run --reload error_type_definitions.ts",
+  args: "run error_type_definitions.ts",
   exit_code: 1,
   output: "error_type_definitions.ts.out",
 });
 
 itest!(error_local_static_import_from_remote_ts {
-  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
+  args: "run http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
   exit_code: 1,
   http_server: true,
   output: "error_local_static_import_from_remote.ts.out",
 });
 
 itest!(error_local_static_import_from_remote_js {
-  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
+  args: "run http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
   exit_code: 1,
   http_server: true,
   output: "error_local_static_import_from_remote.js.out",
 });
 
 itest!(error_worker_permissions_local {
-  args: "run --reload error_worker_permissions_local.ts",
+  args: "run error_worker_permissions_local.ts",
   output: "error_worker_permissions_local.ts.out",
   exit_code: 1,
 });
 
 itest!(error_worker_permissions_remote {
-  args: "run --reload error_worker_permissions_remote.ts",
+  args: "run error_worker_permissions_remote.ts",
   http_server: true,
   output: "error_worker_permissions_remote.ts.out",
   exit_code: 1,
@@ -3059,59 +3059,59 @@ itest!(error_worker_permissions_remote {
 
 itest!(exit_error42 {
   exit_code: 42,
-  args: "run --quiet --reload exit_error42.ts",
+  args: "run --quiet exit_error42.ts",
   output: "exit_error42.ts.out",
 });
 
 itest!(https_import {
-  args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
+  args: "run --quiet --cert tls/RootCA.pem https_import.ts",
   output: "https_import.ts.out",
   http_server: true,
 });
 
 itest!(if_main {
-  args: "run --quiet --reload if_main.ts",
+  args: "run --quiet if_main.ts",
   output: "if_main.ts.out",
 });
 
 itest!(import_meta {
-  args: "run --quiet --reload import_meta.ts",
+  args: "run --quiet import_meta.ts",
   output: "import_meta.ts.out",
 });
 
 itest!(main_module {
-  args: "run --quiet --allow-read --reload main_module.ts",
+  args: "run --quiet --allow-read main_module.ts",
   output: "main_module.ts.out",
 });
 
 itest!(no_check {
-  args: "run --quiet --reload --no-check 006_url_imports.ts",
+  args: "run --quiet --no-check 006_url_imports.ts",
   output: "006_url_imports.ts.out",
   http_server: true,
 });
 
 itest!(no_check_decorators {
-  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  args: "run --quiet --no-check no_check_decorators.ts",
   output: "no_check_decorators.ts.out",
 });
 
 itest!(runtime_decorators {
-  args: "run --quiet --reload --no-check runtime_decorators.ts",
+  args: "run --quiet --no-check runtime_decorators.ts",
   output: "runtime_decorators.ts.out",
 });
 
 itest!(lib_dom_asynciterable {
-  args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
+  args: "run --quiet --unstable lib_dom_asynciterable.ts",
   output: "lib_dom_asynciterable.ts.out",
 });
 
 itest!(lib_ref {
-  args: "run --quiet --unstable --reload lib_ref.ts",
+  args: "run --quiet --unstable lib_ref.ts",
   output: "lib_ref.ts.out",
 });
 
 itest!(lib_runtime_api {
-  args: "run --quiet --unstable --reload lib_runtime_api.ts",
+  args: "run --quiet --unstable lib_runtime_api.ts",
   output: "lib_runtime_api.ts.out",
 });
 
@@ -3122,53 +3122,53 @@ itest!(seed_random {
 });
 
 itest!(type_definitions {
-  args: "run --reload type_definitions.ts",
+  args: "run type_definitions.ts",
   output: "type_definitions.ts.out",
 });
 
 itest!(type_definitions_for_export {
-  args: "run --reload type_definitions_for_export.ts",
+  args: "run type_definitions_for_export.ts",
   output: "type_definitions_for_export.ts.out",
   exit_code: 1,
 });
 
 itest!(type_directives_01 {
-  args: "run --reload -L debug type_directives_01.ts",
+  args: "run -L debug type_directives_01.ts",
   output: "type_directives_01.ts.out",
   http_server: true,
 });
 
 itest!(type_directives_02 {
-  args: "run --reload -L debug type_directives_02.ts",
+  args: "run -L debug type_directives_02.ts",
   output: "type_directives_02.ts.out",
 });
 
 itest!(type_directives_js_main {
-  args: "run --reload -L debug type_directives_js_main.js",
+  args: "run -L debug type_directives_js_main.js",
   output: "type_directives_js_main.js.out",
   exit_code: 0,
 });
 
 itest!(type_directives_redirect {
-  args: "run --reload type_directives_redirect.ts",
+  args: "run type_directives_redirect.ts",
   output: "type_directives_redirect.ts.out",
   http_server: true,
 });
 
 itest!(type_headers_deno_types {
-  args: "run --reload type_headers_deno_types.ts",
+  args: "run type_headers_deno_types.ts",
   output: "type_headers_deno_types.ts.out",
   http_server: true,
 });
 
 itest!(ts_type_imports {
-  args: "run --reload ts_type_imports.ts",
+  args: "run ts_type_imports.ts",
   output: "ts_type_imports.ts.out",
   exit_code: 1,
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
+  args: "run -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
 
@@ -3178,12 +3178,12 @@ itest!(ts_decorators_bundle {
 });
 
 itest!(ts_type_only_import {
-  args: "run --reload ts_type_only_import.ts",
+  args: "run ts_type_only_import.ts",
   output: "ts_type_only_import.ts.out",
 });
 
 itest!(swc_syntax_error {
-  args: "run --reload swc_syntax_error.ts",
+  args: "run swc_syntax_error.ts",
   output: "swc_syntax_error.ts.out",
   exit_code: 1,
 });
@@ -3194,12 +3194,12 @@ itest!(types {
 });
 
 itest!(unbuffered_stderr {
-  args: "run --reload unbuffered_stderr.ts",
+  args: "run unbuffered_stderr.ts",
   output: "unbuffered_stderr.ts.out",
 });
 
 itest!(unbuffered_stdout {
-  args: "run --quiet --reload unbuffered_stdout.ts",
+  args: "run --quiet unbuffered_stdout.ts",
   output: "unbuffered_stdout.ts.out",
 });
 
@@ -3254,7 +3254,7 @@ itest!(wasm_unreachable {
 });
 
 itest!(weakref {
-  args: "run --quiet --reload weakref.ts",
+  args: "run --quiet weakref.ts",
   output: "weakref.ts.out",
 });
 
@@ -3301,65 +3301,65 @@ itest!(top_level_for_await_ts {
 });
 
 itest!(unstable_disabled {
-  args: "run --reload unstable.ts",
+  args: "run unstable.ts",
   exit_code: 1,
   output: "unstable_disabled.out",
 });
 
 itest!(unstable_enabled {
-  args: "run --quiet --reload --unstable unstable.ts",
+  args: "run --quiet --unstable unstable.ts",
   output: "unstable_enabled.out",
 });
 
 itest!(unstable_disabled_js {
-  args: "run --reload unstable.js",
+  args: "run unstable.js",
   output: "unstable_disabled_js.out",
 });
 
 itest!(unstable_enabled_js {
-  args: "run --quiet --reload --unstable unstable.ts",
+  args: "run --quiet --unstable unstable.ts",
   output: "unstable_enabled_js.out",
 });
 
 itest!(unstable_disabled_ts2551 {
-  args: "run --reload unstable_ts2551.ts",
+  args: "run unstable_ts2551.ts",
   exit_code: 1,
   output: "unstable_disabled_ts2551.out",
 });
 
 itest!(unstable_worker {
-  args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
+  args: "run --unstable --quiet --allow-read unstable_worker.ts",
   output: "unstable_worker.ts.out",
 });
 
 itest!(_053_import_compression {
-  args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
+  args: "run --quiet --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
   http_server: true,
 });
 
 itest!(cache_extensionless {
-  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext",
+  args: "cache http://localhost:4545/cli/tests/subdir/no_js_ext",
   output: "cache_extensionless.out",
   http_server: true,
 });
 
 itest!(cache_random_extension {
-  args: "cache --reload http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
+  args: "cache http://localhost:4545/cli/tests/subdir/no_js_ext@1.0.0",
   output: "cache_random_extension.out",
   http_server: true,
 });
 
 // TODO(lucacasonato): reenable these tests once we figure out what is wrong with cafile tests
 // itest!(cafile_url_imports {
-//   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
+//   args: "run --quiet --cert tls/RootCA.pem cafile_url_imports.ts",
 //   output: "cafile_url_imports.ts.out",
 //   http_server: true,
 // });
 
 // itest!(cafile_ts_fetch {
 //   args:
-//     "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
+//     "run --quiet --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
 //   output: "cafile_ts_fetch.ts.out",
 //   http_server: true,
 // });
@@ -3378,87 +3378,87 @@ itest!(cache_random_extension {
 // });
 
 itest!(disallow_http_from_https_js {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+  args: "run --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
   output: "disallow_http_from_https_js.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(disallow_http_from_https_ts {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+  args: "run --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
   output: "disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(dynamic_import_conditional {
-  args: "run --quiet --reload dynamic_import_conditional.js",
+  args: "run --quiet dynamic_import_conditional.js",
   output: "dynamic_import_conditional.js.out",
 });
 
 itest!(tsx_imports {
-  args: "run --reload tsx_imports.ts",
+  args: "run tsx_imports.ts",
   output: "tsx_imports.ts.out",
 });
 
 itest!(fix_dynamic_import_errors {
-  args: "run --reload fix_dynamic_import_errors.js",
+  args: "run fix_dynamic_import_errors.js",
   output: "fix_dynamic_import_errors.js.out",
 });
 
 itest!(fix_emittable_skipped {
-  args: "run --reload fix_emittable_skipped.js",
+  args: "run fix_emittable_skipped.js",
   output: "fix_emittable_skipped.ts.out",
 });
 
 itest!(fix_exotic_specifiers {
-  args: "run --quiet --reload fix_exotic_specifiers.ts",
+  args: "run --quiet fix_exotic_specifiers.ts",
   output: "fix_exotic_specifiers.ts.out",
 });
 
 itest!(fix_js_import_js {
-  args: "run --quiet --reload fix_js_import_js.ts",
+  args: "run --quiet fix_js_import_js.ts",
   output: "fix_js_import_js.ts.out",
 });
 
 itest!(fix_js_imports {
-  args: "run --quiet --reload fix_js_imports.ts",
+  args: "run --quiet fix_js_imports.ts",
   output: "fix_js_imports.ts.out",
 });
 
 itest!(fix_tsc_file_exists {
-  args: "run --quiet --reload tsc/test.js",
+  args: "run --quiet tsc/test.js",
   output: "fix_tsc_file_exists.out",
 });
 
 itest!(es_private_fields {
-  args: "run --quiet --reload es_private_fields.js",
+  args: "run --quiet es_private_fields.js",
   output: "es_private_fields.js.out",
 });
 
 itest!(cjs_imports {
-  args: "run --quiet --reload cjs_imports.ts",
+  args: "run --quiet cjs_imports.ts",
   output: "cjs_imports.ts.out",
 });
 
 itest!(ts_import_from_js {
-  args: "run --quiet --reload ts_import_from_js.js",
+  args: "run --quiet ts_import_from_js.js",
   output: "ts_import_from_js.js.out",
   http_server: true,
 });
 
 itest!(jsx_import_from_ts {
-  args: "run --quiet --reload jsx_import_from_ts.ts",
+  args: "run --quiet jsx_import_from_ts.ts",
   output: "jsx_import_from_ts.ts.out",
 });
 
 itest!(single_compile_with_reload {
-  args: "run --reload --allow-read single_compile_with_reload.ts",
+  args: "run --allow-read single_compile_with_reload.ts",
   output: "single_compile_with_reload.ts.out",
 });
 
 itest!(performance_stats {
-  args: "cache --reload --log-level debug 002_hello.ts",
+  args: "cache --log-level debug 002_hello.ts",
   output: "performance_stats.out",
 });
 
@@ -3469,7 +3469,7 @@ itest!(proto_exploit {
 
 itest!(redirect_cache {
   http_server: true,
-  args: "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
+  args: "cache http://localhost:4548/cli/tests/subdir/redirects/a.ts",
   output: "redirect_cache.out",
 });
 
@@ -3595,40 +3595,40 @@ itest!(deno_doc_import_map {
 });
 
 itest!(import_data_url_error_stack {
-  args: "run --quiet --reload import_data_url_error_stack.ts",
+  args: "run --quiet import_data_url_error_stack.ts",
   output: "import_data_url_error_stack.ts.out",
   exit_code: 1,
 });
 
 itest!(import_data_url_import_relative {
-  args: "run --quiet --reload import_data_url_import_relative.ts",
+  args: "run --quiet import_data_url_import_relative.ts",
   output: "import_data_url_import_relative.ts.out",
   exit_code: 1,
 });
 
 itest!(import_data_url_imports {
-  args: "run --quiet --reload import_data_url_imports.ts",
+  args: "run --quiet import_data_url_imports.ts",
   output: "import_data_url_imports.ts.out",
   http_server: true,
 });
 
 itest!(import_data_url_jsx {
-  args: "run --quiet --reload import_data_url_jsx.ts",
+  args: "run --quiet import_data_url_jsx.ts",
   output: "import_data_url_jsx.ts.out",
 });
 
 itest!(import_data_url {
-  args: "run --quiet --reload import_data_url.ts",
+  args: "run --quiet import_data_url.ts",
   output: "import_data_url.ts.out",
 });
 
 itest!(import_dynamic_data_url {
-  args: "run --quiet --reload import_dynamic_data_url.ts",
+  args: "run --quiet import_dynamic_data_url.ts",
   output: "import_dynamic_data_url.ts.out",
 });
 
 itest!(import_file_with_colon {
-  args: "run --quiet --reload import_file_with_colon.ts",
+  args: "run --quiet import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
 });
@@ -3651,7 +3651,7 @@ itest!(info_type_import {
 });
 
 itest!(ignore_require {
-  args: "cache --reload --no-check ignore_require.js",
+  args: "cache --no-check ignore_require.js",
   output_str: Some(""),
   exit_code: 0,
 });
