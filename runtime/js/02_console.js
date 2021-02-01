@@ -210,7 +210,9 @@
       Object.keys(value).length > 0 ||
       Object.getOwnPropertySymbols(value).length > 0
     ) {
+      ctx.add(value);
       const propString = inspectRawObject(value, ctx, level, inspectOptions);
+      ctx.delete(value);
       suffix = ` ${propString}`;
     }
 
@@ -443,6 +445,11 @@
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
+        if (ctx.has(value)) {
+          // Circular string is cyan
+          return cyan("[Circular]");
+        }
+
         return inspectFunction(value, ctx, level, inspectOptions);
       case "object": // null is bold
         if (value === null) {

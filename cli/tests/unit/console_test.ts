@@ -375,6 +375,25 @@ unitTest(function consoleTestStringifyFunctionWithProperties(): void {
   f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
 }`,
   );
+
+  const t = () => {};
+  t.x = f;
+  f.s = f;
+  f.t = t;
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] {
+    x: [Function],
+    y: 3,
+    z: [Function],
+    b: [Function: bar],
+    a: Map {},
+    s: [Circular],
+    t: [Function: t] { x: [Circular] }
+  }
+}`,
+  );
 });
 
 unitTest(function consoleTestStringifyWithDepth(): void {
