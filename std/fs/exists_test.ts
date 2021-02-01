@@ -59,13 +59,13 @@ const scenes: Scenes[] = [
   {
     read: false,
     async: true,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
     file: "0.ts",
   },
   {
     read: false,
     async: false,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
     file: "0.ts",
   },
   // 2
@@ -85,13 +85,13 @@ const scenes: Scenes[] = [
   {
     read: false,
     async: true,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
     file: "no_exist_file_for_test.ts",
   },
   {
     read: false,
     async: false,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
     file: "no_exist_file_for_test.ts",
   },
   // 4

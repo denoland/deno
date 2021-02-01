@@ -138,39 +138,39 @@ const scenes: Scenes[] = [
     read: false,
     write: false,
     async: true,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
   },
   {
     read: false,
     write: false,
     async: false,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
   },
   // 2
   {
     read: true,
     write: false,
     async: true,
-    output: "run again with the --allow-write flag",
+    output: "run again with read permission",
   },
   {
     read: true,
     write: false,
     async: false,
-    output: "run again with the --allow-write flag",
+    output: "run again with read permission",
   },
   // 3
   {
     read: false,
     write: true,
     async: true,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
   },
   {
     read: false,
     write: true,
     async: false,
-    output: "run again with the --allow-read flag",
+    output: "run again with read permission",
   },
   // 4
   {

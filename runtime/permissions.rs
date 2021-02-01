@@ -310,7 +310,7 @@ impl NetPermission {
     NetPermission(host.0.as_ref().to_string(), host.1)
   }
 
-  pub(crate) fn from_string(host: String) -> Self {
+  pub fn from_string(host: String) -> Self {
     let url = url::Url::parse(&host).unwrap();
     let hostname = url.host_str().unwrap().to_string();
 
