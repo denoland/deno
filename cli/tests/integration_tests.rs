@@ -5188,7 +5188,7 @@ fn standalone_runtime_flags() {
   assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
   let stderr_str = String::from_utf8(output.stderr).unwrap();
   assert!(util::strip_ansi_codes(&stderr_str)
-    .contains("PermissionDenied: write access"));
+    .contains("PermissionDenied: Access to write"));
 }
 
 #[test]
@@ -5449,7 +5449,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Access to network for "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -5471,7 +5471,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Access to network for "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
