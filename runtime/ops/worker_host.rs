@@ -478,8 +478,11 @@ where
   let value: UnaryPermissionBase =
     deserializer.deserialize_any(ParseBooleanOrStringVec)?;
 
-  let allowed: HashSet<NetPermission> =
-    value.paths.into_iter().map(NetPermission).collect();
+  let allowed: HashSet<NetPermission> = value
+    .paths
+    .into_iter()
+    .map(NetPermission::from_string)
+    .collect();
 
   Ok(Some(UnaryPermission::<NetPermission> {
     state: value.global_state,

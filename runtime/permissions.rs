@@ -95,9 +95,8 @@ impl UnaryPermission<ReadPermission> {
         }
       }
     {
-      return PermissionState::Denied;
-    }
-    if self.state == PermissionState::Granted
+      PermissionState::Denied
+    } else if self.state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
         Some(path) => {
@@ -112,17 +111,18 @@ impl UnaryPermission<ReadPermission> {
         }
       }
     {
-      return PermissionState::Granted;
+      PermissionState::Granted
+    } else {
+      PermissionState::Prompt
     }
-    PermissionState::Prompt
   }
 
   pub fn request(&mut self, path: &Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(&Some(&resolved_path));
-      if state == PermissionState::Prompt {
-        return if permission_prompt(&format!(
+      return if state == PermissionState::Prompt {
+        if permission_prompt(&format!(
           "read access to \"{}\"",
           display_path.display()
         )) {
@@ -138,22 +138,24 @@ impl UnaryPermission<ReadPermission> {
           self.denied_list.insert(ReadPermission(resolved_path));
           self.state = PermissionState::Denied;
           PermissionState::Denied
-        };
-      }
-      state
+        }
+      } else {
+        state
+      };
     } else {
       let state = self.query(&None);
       if state == PermissionState::Prompt {
-        return if permission_prompt("read access") {
+        if permission_prompt("read access") {
           self.granted_list.clear();
           self.state = PermissionState::Granted;
           PermissionState::Granted
         } else {
           self.state = PermissionState::Denied;
           PermissionState::Denied
-        };
+        }
+      } else {
+        state
       }
-      state
     }
   }
 
@@ -301,7 +303,29 @@ impl UnaryPermission<WritePermission> {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct NetPermission(pub String);
+pub struct NetPermission(pub String, pub Option<u16>);
+
+impl NetPermission {
+  fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
+    NetPermission(host.0.as_ref().to_string(), host.1)
+  }
+
+  pub(crate) fn from_string(host: String) -> Self {
+    let url = url::Url::parse(&host).unwrap();
+    let hostname = url.host_str().unwrap().to_string();
+
+    NetPermission(hostname, url.port())
+  }
+}
+
+impl fmt::Display for NetPermission {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(&match self.1 {
+      None => self.0.clone(),
+      Some(port) => format!("{}:{}", self.0, port),
+    })
+  }
+}
 
 impl UnaryPermission<NetPermission> {
   pub fn query<T: AsRef<str>>(
@@ -311,14 +335,12 @@ impl UnaryPermission<NetPermission> {
     if self.state == PermissionState::Denied
       && match host.as_ref() {
         None => true,
-        Some((hostname, port)) => match port {
-          None => self.denied_list.iter().any(|host| {
-            host.0 == hostname.as_ref()
-              || host.0.starts_with(&format!("{}:", hostname.as_ref()))
-          }),
-          Some(_) => self
+        Some(host) => match host.1 {
+          None => self
             .denied_list
-            .contains(&NetPermission(format_host(host.unwrap()))),
+            .iter()
+            .any(|host_| host.0.as_ref() == host_.0),
+          Some(_) => self.denied_list.contains(&NetPermission::new(host)),
         },
       }
     {
@@ -326,15 +348,7 @@ impl UnaryPermission<NetPermission> {
     } else if self.state == PermissionState::Granted
       || match host.as_ref() {
         None => false,
-        Some(host) => {
-          self
-            .granted_list
-            .contains(&NetPermission(host.0.as_ref().to_string()))
-            || (host.1.is_some()
-              && self
-                .granted_list
-                .contains(&NetPermission(format_host(host))))
-        }
+        Some(host) => self.granted_list.contains(&NetPermission::new(host)),
       }
     {
       PermissionState::Granted
@@ -350,43 +364,38 @@ impl UnaryPermission<NetPermission> {
     if let Some(host) = host {
       let state = self.query(&Some(host));
       if state == PermissionState::Prompt {
-        let host_string = format_host(host);
-        return if permission_prompt(&format!(
-          "network access to \"{}\"",
-          host_string
-        )) {
+        let host = NetPermission::new(host);
+        if permission_prompt(&format!("network access to \"{}\"", host)) {
           if host.1.is_none() {
-            self
-              .granted_list
-              .retain(|h| !h.0.starts_with(&format!("{}:", host.0.as_ref())));
+            self.granted_list.retain(|h| h.0 != host.0);
           }
-          self.granted_list.insert(NetPermission(host_string));
+          self.granted_list.insert(host);
           PermissionState::Granted
         } else {
           if host.1.is_some() {
-            self
-              .denied_list
-              .remove(&NetPermission(host.0.as_ref().to_string()));
+            self.denied_list.remove(&host);
           }
-          self.denied_list.insert(NetPermission(host_string));
+          self.denied_list.insert(host);
           self.state = PermissionState::Denied;
           PermissionState::Denied
-        };
+        }
+      } else {
+        state
       }
-      state
     } else {
       let state = self.query::<&str>(&None);
       if state == PermissionState::Prompt {
-        return if permission_prompt("network access") {
+        if permission_prompt("network access") {
           self.granted_list.clear();
           self.state = PermissionState::Granted;
           PermissionState::Granted
         } else {
           self.state = PermissionState::Denied;
           PermissionState::Denied
-        };
+        }
+      } else {
+        state
       }
-      state
     }
   }
 
@@ -395,11 +404,9 @@ impl UnaryPermission<NetPermission> {
     host: &Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if let Some(host) = host {
-      self.granted_list.remove(&NetPermission(format_host(host)));
+      self.granted_list.remove(&NetPermission::new(host));
       if host.1.is_none() {
-        self
-          .granted_list
-          .retain(|h| !h.0.starts_with(&format!("{}:", host.0.as_ref())));
+        self.granted_list.retain(|h| h.0 != host.0.as_ref());
       }
     } else {
       self.granted_list.clear();
@@ -415,7 +422,7 @@ impl UnaryPermission<NetPermission> {
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
     self.query(&Some(host)).check(
-      &format!("network for \"{}\"", format_host(host)),
+      &format!("network for \"{}\"", NetPermission::new(&host)),
       &self.name,
     )
   }
@@ -540,7 +547,11 @@ impl Permissions {
       } else {
         state
           .as_ref()
-          .map(|v| v.iter().map(|x| NetPermission(x.clone())).collect())
+          .map(|v| {
+            v.iter()
+              .map(|x| NetPermission::from_string(x.clone()))
+              .collect()
+          })
           .unwrap_or_else(HashSet::new)
       },
       denied_list: Default::default(),
@@ -680,14 +691,6 @@ pub fn resolve_write_allowlist(
       .collect()
   } else {
     HashSet::new()
-  }
-}
-
-fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
-  let (hostname, port) = host;
-  match port {
-    None => hostname.as_ref().to_string(),
-    Some(port) => format!("{}:{}", hostname.as_ref(), port),
   }
 }
 
