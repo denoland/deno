@@ -143,7 +143,7 @@ unitTest({ perms: { read: false } }, function execPathPerm(): void {
       Deno.execPath();
     },
     Deno.errors.PermissionDenied,
-    "Access to to read <exec_path>, run again with read permission",
+    "Access to read <exec_path> required, run again with read permission",
   );
 });
 

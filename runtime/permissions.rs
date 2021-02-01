@@ -36,7 +36,7 @@ impl PermissionState {
   /// Check the permission state.
   fn check(self, description: &str, name: &str) -> Result<(), AnyError> {
     if self == PermissionState::Granted {
-      log_perm_access(&*format!("Access to {}", description));
+      log_perm_access(&format!("Access to {}", description));
       return Ok(());
     }
     let message = format!(
@@ -1091,17 +1091,11 @@ mod tests {
     let perms2 = Permissions {
       read: UnaryPermission {
         state: PermissionState::Prompt,
-        granted_list: resolve_read_allowlist(&Some(vec![PathBuf::from(
-          "/foo",
-        )])),
-        ..Default::default()
+        ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]), false)
       },
       write: UnaryPermission {
         state: PermissionState::Prompt,
-        granted_list: resolve_write_allowlist(&Some(vec![PathBuf::from(
-          "/foo",
-        )])),
-        ..Default::default()
+        ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]), false)
       },
       net: UnaryPermission {
         state: PermissionState::Prompt,
@@ -1153,36 +1147,7 @@ mod tests {
 
   #[test]
   fn test_request() {
-    let mut perms = Permissions {
-      read: UnaryPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
-      },
-      write: UnaryPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
-      },
-      net: UnaryPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
-      },
-      env: BooleanPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
-      },
-      run: BooleanPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
-      },
-      plugin: BooleanPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
-      },
-      hrtime: BooleanPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
-      },
-    };
+    let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
       let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
@@ -1224,17 +1189,11 @@ mod tests {
     let mut perms = Permissions {
       read: UnaryPermission {
         state: PermissionState::Prompt,
-        granted_list: resolve_read_allowlist(&Some(vec![PathBuf::from(
-          "/foo",
-        )])),
-        ..Default::default()
+        ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]), false)
       },
       write: UnaryPermission {
         state: PermissionState::Prompt,
-        granted_list: resolve_write_allowlist(&Some(vec![PathBuf::from(
-          "/foo",
-        )])),
-        ..Default::default()
+        ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]), false)
       },
       net: UnaryPermission {
         state: PermissionState::Prompt,
