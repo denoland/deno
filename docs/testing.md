@@ -209,30 +209,28 @@ deno test --fail-fast
 
 ## Test coverage
 
-Deno will automatically determine test coverage for your code if you specify the
-`--coverage` flag when starting `deno test`. Coverage is determined on a line by
-line basis for modules that share the parent directory with at-least one test
-module that is being executed.
+Deno will collect test coverage into a directory for your code if you specify
+the `--coverage` flag when starting `deno test`.
 
-This coverage information is acquired directly from the JavaScript engine (V8).
-Because of this, the coverage reports are very accurate.
+This coverage information is acquired directly from the JavaScript engine (V8)
+which is very accurate.
 
-When all tests are done running a summary of coverage per file is printed to
-stdout. In the future there will be support for `lcov` output too.
+This can then be further processed from the internal format into well known
+formats by the `deno cover` tool.
 
 ```
-$ git clone git@github.com:denosaurs/deno_brotli.git && cd deno_brotli
-$ deno test --coverage coverage_dir --unstable
-Debugger listening on ws://127.0.0.1:9229/ws/5a593019-d185-478b-a928-ebc33e5834be
-Check file:///home/deno/deno_brotli/$deno$test.ts
-running 2 tests
-test compress ... ok (26ms)
-test decompress ... ok (13ms)
+# Go into your project's working directory
+git clone https://github.com/denoland/deno_std && cd deno_std
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out (40ms)
+# Collect your coverage once
+deno test --coverage=coverage --unstable
 
-$ deno cover --unstable coverage_dir
-test coverage:
-file:///home/deno/deno_brotli/mod.ts 100.000%
-file:///home/deno/deno_brotli/wasm.js 100.000%
+# From this you can get a pretty printed diff of uncovered lines
+deno cover --unstable coverage
+
+# Or generate an lcov report
+deno cover --unstable coverage --lcov > coverage.lcov
+
+# Which can then be further processed by tools like genhtml
+genhtml -o coverage_html coverage.lcov
 ```
