@@ -66,9 +66,9 @@ impl Default for PermissionState {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
   #[serde(skip)]
-  pub name: String,
+  pub name: &'static str,
   #[serde(skip)]
-  pub description: String,
+  pub description: &'static str,
   pub state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
@@ -450,8 +450,8 @@ impl UnaryPermission<NetPermission> {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BooleanPermission {
-  pub name: String,
-  pub description: String,
+  pub name: &'static str,
+  pub description: &'static str,
   pub state: PermissionState,
 }
 
