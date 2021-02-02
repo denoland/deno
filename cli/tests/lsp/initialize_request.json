@@ -11,6 +11,9 @@
     "rootUri": null,
     "initializationOptions": {
       "enable": true,
+      "codeLens": {
+        "references": true
+      },
       "lint": true,
       "importMap": null,
       "unstable": false

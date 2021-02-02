@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::language_server::StateSnapshot;
 use super::text;
@@ -241,7 +242,7 @@ fn replace_links(text: &str) -> String {
     .to_string()
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
   Unknown,
@@ -356,8 +357,8 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
-  start: u32,
-  length: u32,
+  pub start: u32,
+  pub length: u32,
 }
 
 impl TextSpan {
@@ -476,6 +477,59 @@ impl DocumentSpan {
       Some(link)
     } else {
       None
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigationTree {
+  pub text: String,
+  pub kind: ScriptElementKind,
+  pub kind_modifiers: String,
+  pub spans: Vec<TextSpan>,
+  pub name_span: Option<TextSpan>,
+  pub child_items: Option<Vec<NavigationTree>>,
+}
+
+impl NavigationTree {
+  pub fn to_code_lens(
+    &self,
+    line_index: &LineIndex,
+    specifier: &ModuleSpecifier,
+    source: &CodeLensSource,
+  ) -> lsp::CodeLens {
+    lsp::CodeLens {
+      range: self.name_span.clone().unwrap().to_range(line_index),
+      command: None,
+      data: Some(json!({
+        "specifier": specifier,
+        "source": source
+      })),
+    }
+  }
+
+  pub fn walk<F>(&self, callback: &F)
+  where
+    F: Fn(&NavigationTree, Option<&NavigationTree>),
+  {
+    callback(self, None);
+    if let Some(child_items) = &self.child_items {
+      for child in child_items {
+        child.walk_child(callback, self);
+      }
+    }
+  }
+
+  fn walk_child<F>(&self, callback: &F, parent: &NavigationTree)
+  where
+    F: Fn(&NavigationTree, Option<&NavigationTree>),
+  {
+    callback(self, Some(parent));
+    if let Some(child_items) = &self.child_items {
+      for child in child_items {
+        child.walk_child(callback, self);
+      }
     }
   }
 }
@@ -1157,24 +1211,26 @@ pub struct UserPreferences {
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),
-  /// Retrieve the text of an assets that exists in memory in the isolate.
-  GetAsset(ModuleSpecifier),
-  /// Return diagnostics for given file.
-  GetDiagnostics(Vec<ModuleSpecifier>),
-  /// Return quick info at position (hover information).
-  GetQuickInfo((ModuleSpecifier, u32)),
-  /// Return document highlights at position.
-  GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
-  /// Get document references for a specific position.
-  GetReferences((ModuleSpecifier, u32)),
-  /// Get declaration information for a specific position.
-  GetDefinition((ModuleSpecifier, u32)),
-  /// Get completion information at a given position (IntelliSense).
-  GetCompletions((ModuleSpecifier, u32, UserPreferences)),
-  /// Get implementation information for a specific position.
-  GetImplementation((ModuleSpecifier, u32)),
   /// Get rename locations at a given position.
   FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
+  /// Retrieve the text of an assets that exists in memory in the isolate.
+  GetAsset(ModuleSpecifier),
+  /// Get completion information at a given position (IntelliSense).
+  GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  /// Get declaration information for a specific position.
+  GetDefinition((ModuleSpecifier, u32)),
+  /// Return diagnostics for given file.
+  GetDiagnostics(Vec<ModuleSpecifier>),
+  /// Return document highlights at position.
+  GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
+  /// Get implementation information for a specific position.
+  GetImplementation((ModuleSpecifier, u32)),
+  /// Get a "navigation tree" for a specifier.
+  GetNavigationTree(ModuleSpecifier),
+  /// Return quick info at position (hover information).
+  GetQuickInfo((ModuleSpecifier, u32)),
+  /// Get document references for a specific position.
+  GetReferences((ModuleSpecifier, u32)),
 }
 
 impl RequestMethod {
@@ -1184,60 +1240,6 @@ impl RequestMethod {
         "id": id,
         "method": "configure",
         "compilerOptions": config,
-      }),
-      RequestMethod::GetAsset(specifier) => json!({
-        "id": id,
-        "method": "getAsset",
-        "specifier": specifier,
-      }),
-      RequestMethod::GetDiagnostics(specifiers) => json!({
-        "id": id,
-        "method": "getDiagnostics",
-        "specifiers": specifiers,
-      }),
-      RequestMethod::GetQuickInfo((specifier, position)) => json!({
-        "id": id,
-        "method": "getQuickInfo",
-        "specifier": specifier,
-        "position": position,
-      }),
-      RequestMethod::GetDocumentHighlights((
-        specifier,
-        position,
-        files_to_search,
-      )) => json!({
-        "id": id,
-        "method": "getDocumentHighlights",
-        "specifier": specifier,
-        "position": position,
-        "filesToSearch": files_to_search,
-      }),
-      RequestMethod::GetReferences((specifier, position)) => json!({
-        "id": id,
-        "method": "getReferences",
-        "specifier": specifier,
-        "position": position,
-      }),
-      RequestMethod::GetDefinition((specifier, position)) => json!({
-        "id": id,
-        "method": "getDefinition",
-        "specifier": specifier,
-        "position": position,
-      }),
-      RequestMethod::GetCompletions((specifier, position, preferences)) => {
-        json!({
-          "id": id,
-          "method": "getCompletions",
-          "specifier": specifier,
-          "position": position,
-          "preferences": preferences,
-        })
-      }
-      RequestMethod::GetImplementation((specifier, position)) => json!({
-          "id": id,
-          "method": "getImplementation",
-          "specifier": specifier,
-          "position": position,
       }),
       RequestMethod::FindRenameLocations((
         specifier,
@@ -1256,6 +1258,65 @@ impl RequestMethod {
           "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
         })
       }
+      RequestMethod::GetAsset(specifier) => json!({
+        "id": id,
+        "method": "getAsset",
+        "specifier": specifier,
+      }),
+      RequestMethod::GetCompletions((specifier, position, preferences)) => {
+        json!({
+          "id": id,
+          "method": "getCompletions",
+          "specifier": specifier,
+          "position": position,
+          "preferences": preferences,
+        })
+      }
+      RequestMethod::GetDefinition((specifier, position)) => json!({
+        "id": id,
+        "method": "getDefinition",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetDiagnostics(specifiers) => json!({
+        "id": id,
+        "method": "getDiagnostics",
+        "specifiers": specifiers,
+      }),
+      RequestMethod::GetDocumentHighlights((
+        specifier,
+        position,
+        files_to_search,
+      )) => json!({
+        "id": id,
+        "method": "getDocumentHighlights",
+        "specifier": specifier,
+        "position": position,
+        "filesToSearch": files_to_search,
+      }),
+      RequestMethod::GetImplementation((specifier, position)) => json!({
+        "id": id,
+        "method": "getImplementation",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetNavigationTree(specifier) => json!({
+        "id": id,
+        "method": "getNavigationTree",
+        "specifier": specifier,
+      }),
+      RequestMethod::GetQuickInfo((specifier, position)) => json!({
+        "id": id,
+        "method": "getQuickInfo",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetReferences((specifier, position)) => json!({
+        "id": id,
+        "method": "getReferences",
+        "specifier": specifier,
+        "position": position,
+      }),
     }
   }
 }

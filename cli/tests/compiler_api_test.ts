@@ -305,3 +305,17 @@ Deno.test({
     });
   },
 });
+
+Deno.test({
+  name: "Deno.emit() - non-normalized specifier and source can compile",
+  async fn() {
+    const specifier = "https://example.com/foo//bar.ts";
+    const { files } = await Deno.emit(specifier, {
+      sources: {
+        [specifier]: `export let foo: string = "foo";`,
+      },
+    });
+    assertEquals(files[`${specifier}.js`], 'export let foo = "foo";\n');
+    assert(typeof files[`${specifier}.js.map`] === "string");
+  },
+});

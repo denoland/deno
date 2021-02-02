@@ -114,43 +114,6 @@ impl Default for OpTable {
   }
 }
 
-#[test]
-fn op_table() {
-  let state = Rc::new(RefCell::new(OpState::new()));
-
-  let foo_id;
-  let bar_id;
-  {
-    let op_table = &mut state.borrow_mut().op_table;
-    foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
-    assert_eq!(foo_id, 1);
-    bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
-    assert_eq!(bar_id, 2);
-  }
-
-  let foo_res = OpTable::route_op(foo_id, state.clone(), Default::default());
-  assert!(matches!(foo_res, Op::Sync(buf) if &*buf == b"oof!"));
-  let bar_res = OpTable::route_op(bar_id, state.clone(), Default::default());
-  assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
-
-  let catalog_res = OpTable::route_op(0, state, Default::default());
-  let mut catalog_entries = match catalog_res {
-    Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
-      .map(|map| map.into_iter().collect::<Vec<_>>())
-      .unwrap(),
-    _ => panic!("unexpected `Op` variant"),
-  };
-  catalog_entries.sort_by(|(_, id1), (_, id2)| id1.partial_cmp(id2).unwrap());
-  assert_eq!(
-    catalog_entries,
-    vec![
-      ("ops".to_owned(), 0),
-      ("foo".to_owned(), 1),
-      ("bar".to_owned(), 2)
-    ]
-  )
-}
-
 /// Creates an op that passes data synchronously using JSON.
 ///
 /// The provided function `op_fn` has the following parameters:
@@ -303,4 +266,46 @@ pub fn op_close(
     .ok_or_else(bad_resource_id)?;
 
   Ok(json!({}))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn op_table() {
+    let state = Rc::new(RefCell::new(OpState::new()));
+
+    let foo_id;
+    let bar_id;
+    {
+      let op_table = &mut state.borrow_mut().op_table;
+      foo_id = op_table.register_op("foo", |_, _| Op::Sync(b"oof!"[..].into()));
+      assert_eq!(foo_id, 1);
+      bar_id = op_table.register_op("bar", |_, _| Op::Sync(b"rab!"[..].into()));
+      assert_eq!(bar_id, 2);
+    }
+
+    let foo_res = OpTable::route_op(foo_id, state.clone(), Default::default());
+    assert!(matches!(foo_res, Op::Sync(buf) if &*buf == b"oof!"));
+    let bar_res = OpTable::route_op(bar_id, state.clone(), Default::default());
+    assert!(matches!(bar_res, Op::Sync(buf) if &*buf == b"rab!"));
+
+    let catalog_res = OpTable::route_op(0, state, Default::default());
+    let mut catalog_entries = match catalog_res {
+      Op::Sync(buf) => serde_json::from_slice::<HashMap<String, OpId>>(&buf)
+        .map(|map| map.into_iter().collect::<Vec<_>>())
+        .unwrap(),
+      _ => panic!("unexpected `Op` variant"),
+    };
+    catalog_entries.sort_by(|(_, id1), (_, id2)| id1.partial_cmp(id2).unwrap());
+    assert_eq!(
+      catalog_entries,
+      vec![
+        ("ops".to_owned(), 0),
+        ("foo".to_owned(), 1),
+        ("bar".to_owned(), 2)
+      ]
+    );
+  }
 }

@@ -146,22 +146,27 @@ pub fn diff(orig_text: &str, edit_text: &str) -> String {
   diff
 }
 
-#[test]
-fn test_diff() {
-  let simple_console_log_unfmt = "console.log('Hello World')";
-  let simple_console_log_fmt = "console.log(\"Hello World\");";
-  assert_eq!(
-    colors::strip_ansi_codes(&diff(
-      simple_console_log_unfmt,
-      simple_console_log_fmt
-    )),
-    "1 | -console.log('Hello World')\n1 | +console.log(\"Hello World\");\n"
-  );
+#[cfg(test)]
+mod tests {
+  use super::*;
 
-  let line_number_unfmt = "\n\n\n\nconsole.log(\n'Hello World'\n)";
-  let line_number_fmt = "console.log(\n\"Hello World\"\n);";
-  assert_eq!(
-    colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt)),
-    "1 | -\n2 | -\n3 | -\n4 | -\n5 | -console.log(\n1 | +console.log(\n6 | -'Hello World'\n2 | +\"Hello World\"\n7 | -)\n3 | +);\n"
-  )
+  #[test]
+  fn test_diff() {
+    let simple_console_log_unfmt = "console.log('Hello World')";
+    let simple_console_log_fmt = "console.log(\"Hello World\");";
+    assert_eq!(
+      colors::strip_ansi_codes(&diff(
+        simple_console_log_unfmt,
+        simple_console_log_fmt
+      )),
+      "1 | -console.log('Hello World')\n1 | +console.log(\"Hello World\");\n"
+    );
+
+    let line_number_unfmt = "\n\n\n\nconsole.log(\n'Hello World'\n)";
+    let line_number_fmt = "console.log(\n\"Hello World\"\n);";
+    assert_eq!(
+      colors::strip_ansi_codes(&diff(line_number_unfmt, line_number_fmt)),
+      "1 | -\n2 | -\n3 | -\n4 | -\n5 | -console.log(\n1 | +console.log(\n6 | -'Hello World'\n2 | +\"Hello World\"\n7 | -)\n3 | +);\n"
+    );
+  }
 }
