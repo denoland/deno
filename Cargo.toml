@@ -18,10 +18,10 @@ exclude = [
 
 [profile.release]
 codegen-units = 1
-lto = true
+lto = "thin"
 opt-level = 'z' # Optimize for size
 
 [profile.bench]
 codegen-units = 1
-lto = true
+lto = "thin"
 opt-level = 'z' # Optimize for size
