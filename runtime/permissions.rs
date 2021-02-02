@@ -510,8 +510,8 @@ impl Permissions {
     state: &Option<Vec<PathBuf>>,
   ) -> UnaryPermission<ReadPermission> {
     UnaryPermission::<ReadPermission> {
-      name: String::from("read"),
-      description: String::from("read the file system"),
+      name: "read",
+      description: "read the file system",
       state: global_state_from_option(state),
       granted_list: resolve_read_allowlist(&state),
       denied_list: Default::default(),
@@ -522,8 +522,8 @@ impl Permissions {
     state: &Option<Vec<PathBuf>>,
   ) -> UnaryPermission<WritePermission> {
     UnaryPermission::<WritePermission> {
-      name: String::from("write"),
-      description: String::from("write to the file system"),
+      name: "write",
+      description: "write to the file system",
       state: global_state_from_option(state),
       granted_list: resolve_write_allowlist(&state),
       denied_list: Default::default(),
@@ -534,8 +534,8 @@ impl Permissions {
     state: &Option<Vec<String>>,
   ) -> UnaryPermission<NetPermission> {
     UnaryPermission::<NetPermission> {
-      name: String::from("net"),
-      description: String::from("network"),
+      name: "net",
+      description: "network",
       state: global_state_from_option(state),
       granted_list: state
         .as_ref()
@@ -635,12 +635,12 @@ fn log_perm_access(message: &str) {
 
 fn boolean_permission_from_flag_bool(
   flag: bool,
-  name: &str,
-  description: &str,
+  name: &'static str,
+  description: &'static str,
 ) -> BooleanPermission {
   BooleanPermission {
-    name: name.to_string(),
-    description: description.to_string(),
+    name,
+    description,
     state: if flag {
       PermissionState::Granted
     } else {
