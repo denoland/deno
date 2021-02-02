@@ -210,8 +210,8 @@ impl CoverageReporter for LcovCoverageReporter {
       }
     }
 
-    println!("FNF: {}", functions_found);
-    println!("FNH: {}", functions_hit);
+    println!("FNF:{}", functions_found);
+    println!("FNH:{}", functions_hit);
 
     let mut branches_found = 0;
     let mut branches_hit = 0;
