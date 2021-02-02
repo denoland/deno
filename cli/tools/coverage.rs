@@ -177,7 +177,7 @@ impl CoverageReporter for LcovCoverageReporter {
         .split('\n')
         .count();
 
-      let line_number = if let Some(source_map) = maybe_source_map.as_ref() {
+      let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
         source_map
           .tokens()
           .find(|token| token.get_dst_line() as usize == source_line)
@@ -189,7 +189,7 @@ impl CoverageReporter for LcovCoverageReporter {
 
       let function_name = &function.function_name;
 
-      println!("FN:{},{}", line_number + 1, function_name);
+      println!("FN:{},{}", line_index + 1, function_name);
 
       functions_found += 1;
     }
@@ -221,7 +221,7 @@ impl CoverageReporter for LcovCoverageReporter {
         let source_line =
           script_source[0..range.start_offset].split('\n').count();
 
-        let line_number = if let Some(source_map) = maybe_source_map.as_ref() {
+        let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
           source_map
             .tokens()
             .find(|token| token.get_dst_line() as usize == source_line)
@@ -235,7 +235,7 @@ impl CoverageReporter for LcovCoverageReporter {
 
         println!(
           "BRDA:{},{},{},{}",
-          line_number, block_number, branch_number, taken
+          line_index + 1, block_number, branch_number, taken
         );
 
         branches_found += 1;
