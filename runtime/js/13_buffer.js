@@ -1,3 +1,4 @@
+"use strict";
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This code has been ported almost directly from Go's src/bytes/buffer.go

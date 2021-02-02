@@ -1,3 +1,4 @@
+"use strict";
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
@@ -34,7 +35,7 @@
    */
 
   /**
-   * @param {OpEmitRequest} request 
+   * @param {OpEmitRequest} request
    * @returns {Promise<OpEmitResponse>}
    */
   function opEmit(request) {
@@ -42,7 +43,7 @@
   }
 
   /**
-   * @param {string} specifier 
+   * @param {string} specifier
    * @returns {string}
    */
   function checkRelative(specifier) {
@@ -62,9 +63,9 @@
    */
 
   /**
-   * @param {string | URL} rootSpecifier 
+   * @param {string | URL} rootSpecifier
    * @param {EmitOptions=} options
-   * @returns {Promise<OpEmitResponse>} 
+   * @returns {Promise<OpEmitResponse>}
    */
   function emit(rootSpecifier, options = {}) {
     util.log(`Deno.emit`, { rootSpecifier });

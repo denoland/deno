@@ -1,3 +1,4 @@
+"use strict";
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // The only purpose of this file is to set up "globalThis.__bootstrap" namespace,

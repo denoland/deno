@@ -1,3 +1,4 @@
+"use strict";
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 ((window) => {
   const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
