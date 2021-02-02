@@ -10,7 +10,8 @@ export interface Complex {
   baz: string;
 }
 
-export function complex(
+// More padding
+function dependency(
   foo: string,
   bar: string,
   baz: string,
@@ -20,6 +21,19 @@ export function complex(
     bar,
     baz,
   };
+}
+
+// And yet even more padding
+export function complex(
+  foo: string,
+  bar: string,
+  baz: string,
+): Complex {
+  return dependency(
+    foo,
+    bar,
+    baz,
+  );
 }
 
 export function unused(

@@ -3426,45 +3426,27 @@ console.log("finish");
     output: "redirect_cache.out",
   });
 
-  itest!(deno_test_coverage {
-    args: "test --coverage --unstable test_coverage.ts",
-    output: "test_coverage.out",
+  itest!(test_cover_branch {
+    args: "run --allow-all test_cover_branch.ts",
+    output: "test_cover_branch.out",
     exit_code: 0,
   });
 
-  itest!(deno_test_comment_coverage {
-    args: "test --coverage --unstable test_comment_coverage.ts",
-    output: "test_comment_coverage.out",
+  itest!(test_cover_branch_lcov {
+    args: "run --allow-all test_cover_branch_lcov.ts",
+    output: "test_cover_branch_lcov.out",
     exit_code: 0,
   });
 
-  itest!(deno_test_branch_coverage {
-    args: "test --coverage --unstable test_branch_coverage.ts",
-    output: "test_branch_coverage.out",
+  itest!(test_cover_complex {
+    args: "run --allow-all test_cover_complex.ts",
+    output: "test_cover_complex.out",
     exit_code: 0,
   });
 
-  itest!(deno_test_coverage_explicit {
-    args: "test --coverage=.test_coverage --unstable test_coverage.ts",
-    output: "test_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_run_test_coverage {
-    args: "test --allow-all --coverage --unstable test_run_test_coverage.ts",
-    output: "test_run_test_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_run_run_coverage {
-    args: "test --allow-all --coverage --unstable test_run_run_coverage.ts",
-    output: "test_run_run_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_run_combined_coverage {
-    args: "test --allow-all --coverage --unstable test_run_run_coverage.ts test_run_test_coverage.ts",
-    output: "test_run_combined_coverage.out",
+  itest!(test_cover_complex_lcov {
+    args: "run --allow-all test_cover_complex_lcov.ts",
+    output: "test_cover_complex_lcov.out",
     exit_code: 0,
   });
 

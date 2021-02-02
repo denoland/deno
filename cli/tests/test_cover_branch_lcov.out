@@ -1,0 +1,25 @@
+Check [WILDCARD]/tests/test_cover_branch_lcov.ts
+Check [WILDCARD]/tests/$deno$test.ts
+running 1 tests
+test branch ... ok ([WILDCARD])
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+SF:[WILDCARD]/tests/coverage/branch.ts
+FN:2,branch
+FNDA:1,branch
+FNF:1
+FNH:1
+BRDA:3,1,0,0
+BRF:1
+BRH:0
+DA:1,1
+DA:2,2
+DA:3,2
+DA:4,0
+DA:5,0
+DA:6,0
+DA:7,1
+LH:4
+LF:7
+end_of_record

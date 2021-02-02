@@ -1,0 +1,51 @@
+Check [WILDCARD]/tests/test_cover_complex_lcov.ts
+Check [WILDCARD]/tests/$deno$test.ts
+running 1 tests
+test complex ... ok ([WILDCARD])
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+SF:[WILDCARD]/tests/coverage/complex.ts
+FN:19,dependency
+FN:32,complex
+FN:44,unused
+FNDA:1,dependency
+FNDA:1,complex
+FNDA:0,unused
+FNF:3
+FNH:2
+BRF:0
+BRH:0
+DA:14,2
+DA:15,2
+DA:16,2
+DA:17,2
+DA:19,2
+DA:20,2
+DA:21,2
+DA:22,2
+DA:23,2
+DA:24,1
+DA:27,1
+DA:28,1
+DA:29,1
+DA:30,1
+DA:32,2
+DA:33,2
+DA:34,2
+DA:35,2
+DA:36,2
+DA:37,1
+DA:39,0
+DA:40,0
+DA:41,0
+DA:42,0
+DA:44,0
+DA:45,0
+DA:46,0
+DA:47,0
+DA:48,0
+DA:49,0
+LH:20
+LF:30
+end_of_record
