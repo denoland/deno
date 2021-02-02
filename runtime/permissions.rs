@@ -69,7 +69,7 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub name: &'static str,
   #[serde(skip)]
   pub description: &'static str,
-  pub state: PermissionState,
+  pub global_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
 }
@@ -80,7 +80,7 @@ pub struct ReadPermission(pub PathBuf);
 impl UnaryPermission<ReadPermission> {
   pub fn query(&self, path: &Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    if self.state == PermissionState::Denied
+    if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
         Some(path) => {
@@ -96,7 +96,7 @@ impl UnaryPermission<ReadPermission> {
       }
     {
       PermissionState::Denied
-    } else if self.state == PermissionState::Granted
+    } else if self.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
         Some(path) => {
@@ -136,7 +136,7 @@ impl UnaryPermission<ReadPermission> {
             .denied_list
             .retain(|path| !resolved_path.starts_with(path.0.clone()));
           self.denied_list.insert(ReadPermission(resolved_path));
-          self.state = PermissionState::Denied;
+          self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else {
@@ -147,10 +147,10 @@ impl UnaryPermission<ReadPermission> {
       if state == PermissionState::Prompt {
         if permission_prompt("read access") {
           self.granted_list.clear();
-          self.state = PermissionState::Granted;
+          self.global_state = PermissionState::Granted;
           PermissionState::Granted
         } else {
-          self.state = PermissionState::Denied;
+          self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else {
@@ -167,8 +167,8 @@ impl UnaryPermission<ReadPermission> {
         .retain(|path_| !path_.0.starts_with(&path));
     } else {
       self.granted_list.clear();
-      if self.state == PermissionState::Granted {
-        self.state = PermissionState::Prompt;
+      if self.global_state == PermissionState::Granted {
+        self.global_state = PermissionState::Prompt;
       }
     }
     self.query(path)
@@ -201,7 +201,7 @@ pub struct WritePermission(pub PathBuf);
 impl UnaryPermission<WritePermission> {
   pub fn query(&self, path: &Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
-    if self.state == PermissionState::Denied
+    if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
         Some(path) => {
@@ -217,7 +217,7 @@ impl UnaryPermission<WritePermission> {
       }
     {
       PermissionState::Denied
-    } else if self.state == PermissionState::Granted
+    } else if self.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
         Some(path) => {
@@ -257,7 +257,7 @@ impl UnaryPermission<WritePermission> {
             .denied_list
             .retain(|path| !resolved_path.starts_with(path.0.clone()));
           self.denied_list.insert(WritePermission(resolved_path));
-          self.state = PermissionState::Denied;
+          self.global_state = PermissionState::Denied;
           PermissionState::Denied
         };
       }
@@ -267,10 +267,10 @@ impl UnaryPermission<WritePermission> {
       if state == PermissionState::Prompt {
         return if permission_prompt("write access") {
           self.granted_list.clear();
-          self.state = PermissionState::Granted;
+          self.global_state = PermissionState::Granted;
           PermissionState::Granted
         } else {
-          self.state = PermissionState::Denied;
+          self.global_state = PermissionState::Denied;
           PermissionState::Denied
         };
       }
@@ -286,8 +286,8 @@ impl UnaryPermission<WritePermission> {
         .retain(|path_| !path_.0.starts_with(&path));
     } else {
       self.granted_list.clear();
-      if self.state == PermissionState::Granted {
-        self.state = PermissionState::Prompt;
+      if self.global_state == PermissionState::Granted {
+        self.global_state = PermissionState::Prompt;
       }
     }
     self.query(path)
@@ -332,7 +332,7 @@ impl UnaryPermission<NetPermission> {
     &self,
     host: &Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    if self.state == PermissionState::Denied
+    if self.global_state == PermissionState::Denied
       && match host.as_ref() {
         None => true,
         Some(host) => match host.1 {
@@ -345,7 +345,7 @@ impl UnaryPermission<NetPermission> {
       }
     {
       PermissionState::Denied
-    } else if self.state == PermissionState::Granted
+    } else if self.global_state == PermissionState::Granted
       || match host.as_ref() {
         None => false,
         Some(host) => {
@@ -382,7 +382,7 @@ impl UnaryPermission<NetPermission> {
             self.denied_list.remove(&host);
           }
           self.denied_list.insert(host);
-          self.state = PermissionState::Denied;
+          self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else {
@@ -393,10 +393,10 @@ impl UnaryPermission<NetPermission> {
       if state == PermissionState::Prompt {
         if permission_prompt("network access") {
           self.granted_list.clear();
-          self.state = PermissionState::Granted;
+          self.global_state = PermissionState::Granted;
           PermissionState::Granted
         } else {
-          self.state = PermissionState::Denied;
+          self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else {
@@ -416,8 +416,8 @@ impl UnaryPermission<NetPermission> {
       }
     } else {
       self.granted_list.clear();
-      if self.state == PermissionState::Granted {
-        self.state = PermissionState::Prompt;
+      if self.global_state == PermissionState::Granted {
+        self.global_state = PermissionState::Prompt;
       }
     }
     self.query(host)
@@ -512,7 +512,7 @@ impl Permissions {
     UnaryPermission::<ReadPermission> {
       name: "read",
       description: "read the file system",
-      state: global_state_from_option(state),
+      global_state: global_state_from_option(state),
       granted_list: resolve_read_allowlist(&state),
       denied_list: Default::default(),
     }
@@ -524,7 +524,7 @@ impl Permissions {
     UnaryPermission::<WritePermission> {
       name: "write",
       description: "write to the file system",
-      state: global_state_from_option(state),
+      global_state: global_state_from_option(state),
       granted_list: resolve_write_allowlist(&state),
       denied_list: Default::default(),
     }
@@ -536,7 +536,7 @@ impl Permissions {
     UnaryPermission::<NetPermission> {
       name: "net",
       description: "network",
-      state: global_state_from_option(state),
+      global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
         .map(|v| {
@@ -1075,15 +1075,15 @@ mod tests {
     let perms1 = Permissions::allow_all();
     let perms2 = Permissions {
       read: UnaryPermission {
-        state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]))
       },
       write: UnaryPermission {
-        state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]))
       },
       net: UnaryPermission {
-        state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]))
       },
       env: BooleanPermission {
@@ -1173,15 +1173,15 @@ mod tests {
   fn test_revoke() {
     let mut perms = Permissions {
       read: UnaryPermission {
-        state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]))
       },
       write: UnaryPermission {
-        state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]))
       },
       net: UnaryPermission {
-        state: PermissionState::Prompt,
+        global_state: PermissionState::Prompt,
         ..Permissions::new_net(&Some(svec!["127.0.0.1"]))
       },
       env: BooleanPermission {

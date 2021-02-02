@@ -151,14 +151,14 @@ fn merge_net_permissions(
   };
 
   let new_permissions = incoming.unwrap();
-  match &target.state {
+  match &target.global_state {
     PermissionState::Granted => Ok(UnaryPermission::<NetPermission> {
-      state: new_permissions.state,
+      global_state: new_permissions.global_state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
       ..Permissions::new_net(&None)
     }),
-    PermissionState::Prompt => match new_permissions.state {
+    PermissionState::Prompt => match new_permissions.global_state {
       //Throw
       PermissionState::Granted => Err(custom_error(
         "PermissionDenied",
@@ -171,7 +171,7 @@ fn merge_net_permissions(
           &new_permissions.granted_list,
         ) {
           Ok(UnaryPermission::<NetPermission> {
-            state: new_permissions.state,
+            global_state: new_permissions.global_state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
             ..Permissions::new_net(&None)
@@ -185,15 +185,15 @@ fn merge_net_permissions(
       }
       //Copy
       PermissionState::Denied => Ok(UnaryPermission::<NetPermission> {
-        state: new_permissions.state,
+        global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
         ..Permissions::new_net(&None)
       }),
     },
-    PermissionState::Denied => match new_permissions.state {
+    PermissionState::Denied => match new_permissions.global_state {
       PermissionState::Denied => Ok(UnaryPermission::<NetPermission> {
-        state: new_permissions.state,
+        global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
         ..Permissions::new_net(&None)
@@ -234,14 +234,14 @@ fn merge_read_permissions(
   };
 
   let new_permissions = incoming.unwrap();
-  match &target.state {
+  match &target.global_state {
     PermissionState::Granted => Ok(UnaryPermission::<ReadPermission> {
-      state: new_permissions.state,
+      global_state: new_permissions.global_state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
       ..Permissions::new_read(&None)
     }),
-    PermissionState::Prompt => match new_permissions.state {
+    PermissionState::Prompt => match new_permissions.global_state {
       //Throw
       PermissionState::Granted => Err(custom_error(
         "PermissionDenied",
@@ -254,7 +254,7 @@ fn merge_read_permissions(
           current_permissions,
         ) {
           Ok(UnaryPermission::<ReadPermission> {
-            state: new_permissions.state,
+            global_state: new_permissions.global_state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
             ..Permissions::new_read(&None)
@@ -268,15 +268,15 @@ fn merge_read_permissions(
       }
       //Copy
       PermissionState::Denied => Ok(UnaryPermission::<ReadPermission> {
-        state: new_permissions.state,
+        global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
         ..Permissions::new_read(&None)
       }),
     },
-    PermissionState::Denied => match new_permissions.state {
+    PermissionState::Denied => match new_permissions.global_state {
       PermissionState::Denied => Ok(UnaryPermission::<ReadPermission> {
-        state: new_permissions.state,
+        global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
         ..Permissions::new_read(&None)
@@ -299,14 +299,14 @@ fn merge_write_permissions(
   };
 
   let new_permissions = incoming.unwrap();
-  match &target.state {
+  match &target.global_state {
     PermissionState::Granted => Ok(UnaryPermission::<WritePermission> {
-      state: new_permissions.state,
+      global_state: new_permissions.global_state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
       ..Permissions::new_write(&None)
     }),
-    PermissionState::Prompt => match new_permissions.state {
+    PermissionState::Prompt => match new_permissions.global_state {
       //Throw
       PermissionState::Granted => Err(custom_error(
         "PermissionDenied",
@@ -319,7 +319,7 @@ fn merge_write_permissions(
           current_permissions,
         ) {
           Ok(UnaryPermission::<WritePermission> {
-            state: new_permissions.state,
+            global_state: new_permissions.global_state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
             ..Permissions::new_write(&None)
@@ -333,15 +333,15 @@ fn merge_write_permissions(
       }
       //Copy
       PermissionState::Denied => Ok(UnaryPermission::<WritePermission> {
-        state: new_permissions.state,
+        global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
         ..Permissions::new_write(&None)
       }),
     },
-    PermissionState::Denied => match new_permissions.state {
+    PermissionState::Denied => match new_permissions.global_state {
       PermissionState::Denied => Ok(UnaryPermission::<WritePermission> {
-        state: new_permissions.state,
+        global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
         ..Permissions::new_write(&None)
@@ -485,7 +485,7 @@ where
     .collect();
 
   Ok(Some(UnaryPermission::<NetPermission> {
-    state: value.global_state,
+    global_state: value.global_state,
     granted_list: allowed,
     ..Default::default()
   }))
@@ -504,7 +504,7 @@ where
     value.paths.into_iter().map(PathBuf::from).collect();
 
   Ok(Some(UnaryPermission::<ReadPermission> {
-    state: value.global_state,
+    global_state: value.global_state,
     granted_list: resolve_read_allowlist(&Some(paths)),
     ..Default::default()
   }))
@@ -523,7 +523,7 @@ where
     value.paths.into_iter().map(PathBuf::from).collect();
 
   Ok(Some(UnaryPermission::<WritePermission> {
-    state: value.global_state,
+    global_state: value.global_state,
     granted_list: resolve_write_allowlist(&Some(paths)),
     ..Default::default()
   }))
