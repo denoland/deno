@@ -1423,7 +1423,7 @@ impl RequestMethod {
           "position": position,
           "options": options,
         })
-      },
+      }
     }
   }
 }
