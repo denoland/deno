@@ -1,6 +1,6 @@
-let dir = await Deno.makeTempDir();
+const dir = await Deno.makeTempDir();
 
-let test = await Deno.run({
+const test = await Deno.run({
   cmd: [
     Deno.execPath(),
     "test",
@@ -14,7 +14,7 @@ let test = await Deno.run({
 
 await test.status();
 
-let cover = await Deno.run({
+const cover = await Deno.run({
   cmd: [
     Deno.execPath(),
     "cover",
