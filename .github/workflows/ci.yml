@@ -57,8 +57,7 @@ jobs:
           startsWith(matrix.os, 'ubuntu') &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
@@ -112,9 +111,8 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/'))
+          github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/')
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -126,9 +124,8 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/'))
+          github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/')
         uses: google-github-actions/setup-gcloud@master
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
@@ -288,8 +285,7 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
@@ -300,8 +296,7 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
@@ -315,8 +310,7 @@ jobs:
         if: |
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

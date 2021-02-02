@@ -11,42 +11,6 @@ use tempfile::TempDir;
 use test_util as util;
 
 #[test]
-fn std_tests() {
-  let dir = TempDir::new().expect("tempdir fail");
-  let status = util::deno_cmd()
-    .env("DENO_DIR", dir.path())
-    .current_dir(util::root_path())
-    .arg("test")
-    .arg("--unstable")
-    .arg("--seed=86") // Some tests rely on specific random numbers.
-    .arg("-A")
-    // .arg("-Ldebug")
-    .arg("std/")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
-fn std_lint() {
-  let status = util::deno_cmd()
-    .arg("lint")
-    .arg("--unstable")
-    .arg(format!(
-      "--ignore={}",
-      util::root_path().join("std/node/tests").to_string_lossy()
-    ))
-    .arg(util::root_path().join("std"))
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
@@ -4888,7 +4852,7 @@ console.log("finish");
       .arg("--unstable")
       .arg("--output")
       .arg(&exe)
-      .arg("./std/examples/welcome.ts")
+      .arg("./test_util/std/examples/welcome.ts")
       .stdout(std::process::Stdio::piped())
       .spawn()
       .unwrap()
