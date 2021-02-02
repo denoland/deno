@@ -121,7 +121,7 @@ impl UnaryPermission<ReadPermission> {
     if let Some(path) = path {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(&Some(&resolved_path));
-      return if state == PermissionState::Prompt {
+      if state == PermissionState::Prompt {
         if permission_prompt(&format!(
           "read access to \"{}\"",
           display_path.display()
@@ -141,7 +141,7 @@ impl UnaryPermission<ReadPermission> {
         }
       } else {
         state
-      };
+      }
     } else {
       let state = self.query(&None);
       if state == PermissionState::Prompt {
@@ -178,7 +178,7 @@ impl UnaryPermission<ReadPermission> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
     self
       .query(&Some(&resolved_path))
-      .check(&format!("read \"{}\"", display_path.display()), &self.name)
+      .check(&format!("read \"{}\"", display_path.display()), self.name)
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -191,7 +191,7 @@ impl UnaryPermission<ReadPermission> {
     let resolved_path = resolve_from_cwd(path).unwrap();
     self
       .query(&Some(&resolved_path))
-      .check(&format!("read <{}>", display), &self.name)
+      .check(&format!("read <{}>", display), self.name)
   }
 }
 
@@ -243,7 +243,7 @@ impl UnaryPermission<WritePermission> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(&Some(&resolved_path));
       if state == PermissionState::Prompt {
-        return if permission_prompt(&format!(
+        if permission_prompt(&format!(
           "write access to \"{}\"",
           display_path.display()
         )) {
@@ -259,22 +259,24 @@ impl UnaryPermission<WritePermission> {
           self.denied_list.insert(WritePermission(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
-        };
+        }
+      } else {
+        state
       }
-      state
     } else {
       let state = self.query(&None);
       if state == PermissionState::Prompt {
-        return if permission_prompt("write access") {
+        if permission_prompt("write access") {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
         } else {
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
-        };
+        }
+      } else {
+        state
       }
-      state
     }
   }
 
@@ -297,7 +299,7 @@ impl UnaryPermission<WritePermission> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
     self.query(&Some(&resolved_path)).check(
       &format!("write to \"{}\"", display_path.display()),
-      &self.name,
+      self.name,
     )
   }
 }
@@ -429,7 +431,7 @@ impl UnaryPermission<NetPermission> {
   ) -> Result<(), AnyError> {
     self.query(&Some(host)).check(
       &format!("network for \"{}\"", NetPermission::new(&host)),
-      &self.name,
+      self.name,
     )
   }
 
@@ -444,7 +446,7 @@ impl UnaryPermission<NetPermission> {
     };
     self
       .query(&Some(&(hostname, url.port_or_known_default())))
-      .check(&format!("network for \"{}\"", display_host), &self.name)
+      .check(&format!("network for \"{}\"", display_host), self.name)
   }
 }
 
@@ -479,7 +481,7 @@ impl BooleanPermission {
   }
 
   pub fn check(&self) -> Result<(), AnyError> {
-    self.state.check(&self.description, &self.name)
+    self.state.check(self.description, self.name)
   }
 }
 
