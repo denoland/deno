@@ -83,32 +83,20 @@ impl UnaryPermission<ReadPermission> {
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
-        Some(path) => {
-          let mut res = false;
-          for path_ in &self.denied_list {
-            if path_.0.starts_with(path) {
-              res = true;
-              break;
-            }
-          }
-          res
-        }
+        Some(path) => self
+          .denied_list
+          .iter()
+          .any(|path_| path_.0.starts_with(path)),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
-        Some(path) => {
-          let mut res = false;
-          for path_ in &self.granted_list {
-            if path.starts_with(path_.0.clone()) {
-              res = true;
-              break;
-            }
-          }
-          res
-        }
+        Some(path) => self
+          .granted_list
+          .iter()
+          .any(|path_| path.starts_with(&path_.0)),
       }
     {
       PermissionState::Granted
@@ -134,7 +122,7 @@ impl UnaryPermission<ReadPermission> {
         } else {
           self
             .denied_list
-            .retain(|path| !resolved_path.starts_with(path.0.clone()));
+            .retain(|path| !resolved_path.starts_with(&path.0));
           self.denied_list.insert(ReadPermission(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
@@ -204,32 +192,20 @@ impl UnaryPermission<WritePermission> {
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
-        Some(path) => {
-          let mut res = false;
-          for path_ in &self.denied_list {
-            if path_.0.starts_with(path) {
-              res = true;
-              break;
-            }
-          }
-          res
-        }
+        Some(path) => self
+          .denied_list
+          .iter()
+          .any(|path_| path_.0.starts_with(path)),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match path.as_ref() {
         None => false,
-        Some(path) => {
-          let mut res = false;
-          for path_ in &self.granted_list {
-            if path.starts_with(path_.0.clone()) {
-              res = true;
-              break;
-            }
-          }
-          res
-        }
+        Some(path) => self
+          .granted_list
+          .iter()
+          .any(|path_| path.starts_with(&path_.0)),
       }
     {
       PermissionState::Granted
@@ -255,7 +231,7 @@ impl UnaryPermission<WritePermission> {
         } else {
           self
             .denied_list
-            .retain(|path| !resolved_path.starts_with(path.0.clone()));
+            .retain(|path| !resolved_path.starts_with(&path.0));
           self.denied_list.insert(WritePermission(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
