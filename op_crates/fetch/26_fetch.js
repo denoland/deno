@@ -1,3 +1,4 @@
+"use strict";
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
@@ -26,10 +27,10 @@
   const MAX_SIZE = 2 ** 32 - 2;
 
   /**
-   * @param {Uint8Array} src 
-   * @param {Uint8Array} dst 
+   * @param {Uint8Array} src
+   * @param {Uint8Array} dst
    * @param {number} off the offset into `dst` where it will at which to begin writing values from `src`
-   * 
+   *
    * @returns {number} number of bytes copied
    */
   function copyBytes(src, dst, off = 0) {
@@ -135,7 +136,7 @@
       return Promise.resolve(n);
     }
 
-    /** 
+    /**
      * @param {number} n
      * @returns {number}
      */
@@ -171,7 +172,7 @@
       return m;
     };
 
-    /** 
+    /**
      * @param {number} n
      * @returns {void}
      */
@@ -184,7 +185,7 @@
     }
   }
 
-  /** 
+  /**
    * @param {unknown} x
    * @returns {x is ArrayBufferView}
    */
@@ -192,7 +193,7 @@
     return ArrayBuffer.isView(x) && !(x instanceof DataView);
   }
 
-  /** 
+  /**
    * @param {string} s
    * @param {string} value
    * @returns {boolean}
@@ -228,9 +229,9 @@
 
   class DomFile extends Blob {
     /**
-     * @param {globalThis.BlobPart[]} fileBits 
-     * @param {string} fileName 
-     * @param {FilePropertyBag | undefined} options 
+     * @param {globalThis.BlobPart[]} fileBits
+     * @param {string} fileName
+     * @param {FilePropertyBag | undefined} options
      */
     constructor(
       fileBits,
@@ -250,7 +251,7 @@
   }
 
   /**
-   * @param {Blob | string} value 
+   * @param {Blob | string} value
    * @param {string | undefined} filename
    * @returns {FormDataEntryValue}
    */
@@ -274,9 +275,9 @@
     [dataSymbol] = [];
 
     /**
-     * @param {string} name 
-     * @param {string | Blob} value 
-     * @param {string} [filename] 
+     * @param {string} name
+     * @param {string | Blob} value
+     * @param {string} [filename]
      * @returns {void}
      */
     append(name, value, filename) {
@@ -286,7 +287,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {void}
      */
     delete(name) {
@@ -303,7 +304,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {FormDataEntryValue[]}
      */
     getAll(name) {
@@ -320,7 +321,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {FormDataEntryValue | null}
      */
     get(name) {
@@ -336,7 +337,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {boolean}
      */
     has(name) {
@@ -346,9 +347,9 @@
     }
 
     /**
-     * @param {string} name 
-     * @param {string | Blob} value 
-     * @param {string} [filename] 
+     * @param {string} name
+     * @param {string | Blob} value
+     * @param {string} [filename]
      * @returns {void}
      */
     set(name, value, filename) {
@@ -387,8 +388,8 @@
 
   class MultipartBuilder {
     /**
-     * @param {FormData} formData 
-     * @param {string} [boundary] 
+     * @param {FormData} formData
+     * @param {string} [boundary]
      */
     constructor(formData, boundary) {
       this.formData = formData;
@@ -396,14 +397,14 @@
       this.writer = new Buffer();
     }
 
-    /** 
+    /**
      * @returns {string}
      */
     getContentType() {
       return `multipart/form-data; boundary=${this.boundary}`;
     }
 
-    /** 
+    /**
      * @returns {Uint8Array}
      */
     getBody() {
@@ -427,7 +428,7 @@
       );
     };
 
-    /** 
+    /**
      * @param {[string, string][]} headers
      * @returns {void}
      */
@@ -443,7 +444,7 @@
       this.writer.writeSync(encoder.encode(buf));
     };
 
-    /** 
+    /**
      * @param {string} field
      * @param {string} filename
      * @param {string} [type]
@@ -498,8 +499,8 @@
 
   class MultipartParser {
     /**
-     * @param {Uint8Array} body 
-     * @param {string | undefined} boundary 
+     * @param {Uint8Array} body
+     * @param {string | undefined} boundary
      */
     constructor(body, boundary) {
       if (!boundary) {
@@ -614,8 +615,8 @@
   }
 
   /**
-   * @param {string} name 
-   * @param {BodyInit | null} bodySource 
+   * @param {string} name
+   * @param {BodyInit | null} bodySource
    */
   function validateBodyType(name, bodySource) {
     if (isTypedArray(bodySource)) {
@@ -639,8 +640,8 @@
   }
 
   /**
-   * @param {ReadableStreamReader<Uint8Array>} stream 
-   * @param {number} [size] 
+   * @param {ReadableStreamReader<Uint8Array>} stream
+   * @param {number} [size]
    */
   async function bufferFromStream(
     stream,
@@ -676,7 +677,7 @@
   }
 
   /**
-   * @param {Exclude<BodyInit, ReadableStream> | null} bodySource 
+   * @param {Exclude<BodyInit, ReadableStream> | null} bodySource
    */
   function bodyToArrayBuffer(bodySource) {
     if (isTypedArray(bodySource)) {
@@ -714,8 +715,8 @@
     #stream = null;
 
     /**
-     * @param {BodyInit| null} bodySource 
-     * @param {{contentType: string, size?: number}} meta 
+     * @param {BodyInit| null} bodySource
+     * @param {{contentType: string, size?: number}} meta
      */
     constructor(bodySource, meta) {
       validateBodyType(this.constructor.name, bodySource);
@@ -740,7 +741,7 @@
 
           this.#stream = new ReadableStream({
             /**
-             * @param {ReadableStreamDefaultController<Uint8Array>} controller 
+             * @param {ReadableStreamDefaultController<Uint8Array>} controller
              */
             start(controller) {
               controller.enqueue(new Uint8Array(buf));
@@ -871,7 +872,7 @@
 
   class HttpClient {
     /**
-     * @param {number} rid 
+     * @param {number} rid
      */
     constructor(rid) {
       this.rid = rid;
@@ -882,8 +883,8 @@
   }
 
   /**
-   * @param {{ headers: [string,string][], method: string, url: string, baseUrl: string | null, clientRid: number | null, hasBody: boolean }} args 
-   * @param {Uint8Array | null} body 
+   * @param {{ headers: [string,string][], method: string, url: string, baseUrl: string | null, clientRid: number | null, hasBody: boolean }} args
+   * @param {Uint8Array | null} body
    * @returns {{requestRid: number, requestBodyRid: number | null}}
    */
   function opFetch(args, body) {
@@ -903,8 +904,8 @@
   }
 
   /**
-   * @param {{rid: number}} args 
-   * @param {Uint8Array} body 
+   * @param {{rid: number}} args
+   * @param {Uint8Array} body
    * @returns {Promise<void>}
    */
   function opFetchRequestWrite(args, body) {
@@ -959,8 +960,8 @@
     #credentials = "omit";
 
     /**
-     * @param {RequestInfo} input 
-     * @param {RequestInit} init 
+     * @param {RequestInfo} input
+     * @param {RequestInit} init
      */
     // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init) {
@@ -1090,8 +1091,8 @@
 
   const responseData = new WeakMap();
   class Response extends Body {
-    /** 
-     * @param {BodyInit | null} body 
+    /**
+     * @param {BodyInit | null} body
      * @param {ResponseInit} [init]
      */
     constructor(body = null, init) {
@@ -1215,7 +1216,7 @@
     }
 
     /**
-     * @param {string } url 
+     * @param {string } url
      * @param {number} status
      */
     static redirect(url, status = 302) {
@@ -1241,10 +1242,10 @@
   }
 
   /**
-   * @param {string} url 
-   * @param {string} method 
-   * @param {Headers} headers 
-   * @param {ReadableStream<Uint8Array> | ArrayBufferView | undefined} body 
+   * @param {string} url
+   * @param {string} method
+   * @param {Headers} headers
+   * @param {ReadableStream<Uint8Array> | ArrayBufferView | undefined} body
    * @param {number | null} clientRid
    * @returns {Promise<{status: number, statusText: string, headers: Record<string,string[]>, url: string, responseRid: number}>}
    */
@@ -1272,8 +1273,8 @@
       }
       const writer = new WritableStream({
         /**
-         * @param {Uint8Array} chunk 
-         * @param {WritableStreamDefaultController} controller 
+         * @param {Uint8Array} chunk
+         * @param {WritableStreamDefaultController} controller
          */
         async write(chunk, controller) {
           try {
@@ -1293,8 +1294,8 @@
   }
 
   /**
-   * @param {Request | URL | string} input 
-   * @param {RequestInit & {client: Deno.HttpClient}} [init] 
+   * @param {Request | URL | string} input
+   * @param {RequestInit & {client: Deno.HttpClient}} [init]
    * @returns {Promise<Response>}
    */
   async function fetch(input, init) {

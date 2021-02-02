@@ -1,3 +1,4 @@
+"use strict";
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
@@ -65,7 +66,7 @@
 
   /**
    * @param  {...Uint8Array} bytesArrays
-   * @returns {Uint8Array} 
+   * @returns {Uint8Array}
    */
   function concatUint8Arrays(...bytesArrays) {
     let byteLength = 0;
@@ -86,7 +87,7 @@
 
   /** @typedef {BufferSource | Blob | string} BlobPart */
 
-  /** 
+  /**
      * @param {BlobPart[]} parts
      * @param {string} endings
      * @returns {Uint8Array}
@@ -121,7 +122,7 @@
   }
 
   /**
-   * @param {string} str 
+   * @param {string} str
    * @returns {string}
    */
   function normalizeType(str) {
@@ -141,7 +142,7 @@
     /** @type {Uint8Array} */
     [_byteSequence];
 
-    /** 
+    /**
      * @param {BlobPart[]} [blobParts]
      * @param {BlobPropertyBag} [options]
      */
@@ -201,7 +202,7 @@
       return this.#type;
     }
 
-    /** 
+    /**
      * @param {number} [start]
      * @param {number} [end]
      * @param {string} [contentType]
