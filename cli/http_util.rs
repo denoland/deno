@@ -313,7 +313,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -345,7 +345,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -376,7 +376,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -416,7 +416,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )

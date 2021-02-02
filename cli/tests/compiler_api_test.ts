@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   assertThrowsAsync,
-} from "../../std/testing/asserts.ts";
+} from "../../test_util/std/testing/asserts.ts";
 
 Deno.test({
   name: "Deno.emit() - sources provided",
