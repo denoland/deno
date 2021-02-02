@@ -156,7 +156,7 @@ fn merge_net_permissions(
       state: new_permissions.state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
-      ..Permissions::new_net(&None, false)
+      ..Permissions::new_net(&None)
     }),
     PermissionState::Prompt => match new_permissions.state {
       //Throw
@@ -174,7 +174,7 @@ fn merge_net_permissions(
             state: new_permissions.state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
-            ..Permissions::new_net(&None, false)
+            ..Permissions::new_net(&None)
           })
         } else {
           Err(custom_error(
@@ -188,7 +188,7 @@ fn merge_net_permissions(
         state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_net(&None, false)
+        ..Permissions::new_net(&None)
       }),
     },
     PermissionState::Denied => match new_permissions.state {
@@ -196,7 +196,7 @@ fn merge_net_permissions(
         state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_net(&None, false)
+        ..Permissions::new_net(&None)
       }),
       _ => Err(custom_error(
         "PermissionDenied",
@@ -239,7 +239,7 @@ fn merge_read_permissions(
       state: new_permissions.state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
-      ..Permissions::new_read(&None, false)
+      ..Permissions::new_read(&None)
     }),
     PermissionState::Prompt => match new_permissions.state {
       //Throw
@@ -257,7 +257,7 @@ fn merge_read_permissions(
             state: new_permissions.state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
-            ..Permissions::new_read(&None, false)
+            ..Permissions::new_read(&None)
           })
         } else {
           Err(custom_error(
@@ -271,7 +271,7 @@ fn merge_read_permissions(
         state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_read(&None, false)
+        ..Permissions::new_read(&None)
       }),
     },
     PermissionState::Denied => match new_permissions.state {
@@ -279,7 +279,7 @@ fn merge_read_permissions(
         state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_read(&None, false)
+        ..Permissions::new_read(&None)
       }),
       _ => Err(custom_error(
         "PermissionDenied",
@@ -304,7 +304,7 @@ fn merge_write_permissions(
       state: new_permissions.state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
-      ..Permissions::new_write(&None, false)
+      ..Permissions::new_write(&None)
     }),
     PermissionState::Prompt => match new_permissions.state {
       //Throw
@@ -322,7 +322,7 @@ fn merge_write_permissions(
             state: new_permissions.state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
-            ..Permissions::new_write(&None, false)
+            ..Permissions::new_write(&None)
           })
         } else {
           Err(custom_error(
@@ -336,7 +336,7 @@ fn merge_write_permissions(
         state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_write(&None, false)
+        ..Permissions::new_write(&None)
       }),
     },
     PermissionState::Denied => match new_permissions.state {
@@ -344,7 +344,7 @@ fn merge_write_permissions(
         state: new_permissions.state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_write(&None, false)
+        ..Permissions::new_write(&None)
       }),
       _ => Err(custom_error(
         "PermissionDenied",

@@ -508,58 +508,43 @@ pub struct PermissionsOptions {
 impl Permissions {
   pub fn new_read(
     state: &Option<Vec<PathBuf>>,
-    all: bool,
   ) -> UnaryPermission<ReadPermission> {
     UnaryPermission::<ReadPermission> {
       name: String::from("read"),
       description: String::from("read the file system"),
       state: global_state_from_option(state),
-      granted_list: if all {
-        Default::default()
-      } else {
-        resolve_read_allowlist(&state)
-      },
+      granted_list: resolve_read_allowlist(&state),
       denied_list: Default::default(),
     }
   }
 
   pub fn new_write(
     state: &Option<Vec<PathBuf>>,
-    all: bool,
   ) -> UnaryPermission<WritePermission> {
     UnaryPermission::<WritePermission> {
       name: String::from("write"),
       description: String::from("write to the file system"),
       state: global_state_from_option(state),
-      granted_list: if all {
-        Default::default()
-      } else {
-        resolve_write_allowlist(&state)
-      },
+      granted_list: resolve_write_allowlist(&state),
       denied_list: Default::default(),
     }
   }
 
   pub fn new_net(
     state: &Option<Vec<String>>,
-    all: bool,
   ) -> UnaryPermission<NetPermission> {
     UnaryPermission::<NetPermission> {
       name: String::from("net"),
       description: String::from("network"),
       state: global_state_from_option(state),
-      granted_list: if all {
-        Default::default()
-      } else {
-        state
-          .as_ref()
-          .map(|v| {
-            v.iter()
-              .map(|x| NetPermission::from_string(x.clone()))
-              .collect()
-          })
-          .unwrap_or_else(HashSet::new)
-      },
+      granted_list: state
+        .as_ref()
+        .map(|v| {
+          v.iter()
+            .map(|x| NetPermission::from_string(x.clone()))
+            .collect()
+        })
+        .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
     }
   }
@@ -582,9 +567,9 @@ impl Permissions {
 
   pub fn from_options(opts: &PermissionsOptions) -> Self {
     Self {
-      read: Permissions::new_read(&opts.allow_read, false),
-      write: Permissions::new_write(&opts.allow_write, false),
-      net: Permissions::new_net(&opts.allow_net, false),
+      read: Permissions::new_read(&opts.allow_read),
+      write: Permissions::new_write(&opts.allow_write),
+      net: Permissions::new_net(&opts.allow_net),
       env: Permissions::new_env(opts.allow_env),
       run: Permissions::new_run(opts.allow_run),
       plugin: Permissions::new_plugin(opts.allow_plugin),
@@ -594,9 +579,9 @@ impl Permissions {
 
   pub fn allow_all() -> Self {
     Self {
-      read: Permissions::new_read(&Some(vec![]), true),
-      write: Permissions::new_write(&Some(vec![]), true),
-      net: Permissions::new_net(&Some(vec![]), true),
+      read: Permissions::new_read(&Some(vec![])),
+      write: Permissions::new_write(&Some(vec![])),
+      net: Permissions::new_net(&Some(vec![])),
       env: Permissions::new_env(true),
       run: Permissions::new_run(true),
       plugin: Permissions::new_plugin(true),
@@ -1091,15 +1076,15 @@ mod tests {
     let perms2 = Permissions {
       read: UnaryPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]), false)
+        ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]))
       },
       write: UnaryPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]), false)
+        ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]))
       },
       net: UnaryPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]), false)
+        ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]))
       },
       env: BooleanPermission {
         state: PermissionState::Prompt,
@@ -1189,15 +1174,15 @@ mod tests {
     let mut perms = Permissions {
       read: UnaryPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]), false)
+        ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]))
       },
       write: UnaryPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]), false)
+        ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]))
       },
       net: UnaryPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_net(&Some(svec!["127.0.0.1"]), false)
+        ..Permissions::new_net(&Some(svec!["127.0.0.1"]))
       },
       env: BooleanPermission {
         state: PermissionState::Granted,
