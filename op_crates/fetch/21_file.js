@@ -287,14 +287,14 @@
     }
   }
 
-  const _name = Symbol("[[Name]]");
-  const _lastModfied = Symbol("[[LastModified]]");
+  const _Name = Symbol("[[Name]]");
+  const _LastModfied = Symbol("[[LastModified]]");
 
   class File extends Blob {
     /** @type {string} */
-    [_name];
+    [_Name];
     /** @type {number} */
-    [_lastModfied];
+    [_LastModfied];
 
     /**
      * @param {BlobPart[]} fileBits 
@@ -314,24 +314,24 @@
       }
       super(fileBits, { endings: options?.endings, type: options?.type });
       /** @type {string} */
-      this[_name] = String(fileName).replaceAll("/", ":");
+      this[_Name] = String(fileName).replaceAll("/", ":");
       if (options?.lastModified === undefined) {
         /** @type {number} */
-        this[_lastModfied] = new Date().getTime();
+        this[_LastModfied] = new Date().getTime();
       } else {
         /** @type {number} */
-        this[_lastModfied] = Number(options.lastModified);
+        this[_LastModfied] = Number(options.lastModified);
       }
     }
 
     /** @returns {string} */
     get name() {
-      return this[_name];
+      return this[_Name];
     }
 
     /** @returns {number} */
     get lastModified() {
-      return this[_lastModfied];
+      return this[_LastModfied];
     }
   }
 
