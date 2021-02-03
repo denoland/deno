@@ -7,8 +7,8 @@ import {
   assertEquals,
   assertThrows,
   fail,
-} from "../../std/testing/asserts.ts";
-import { deferred } from "../../std/async/deferred.ts";
+} from "../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../test_util/std/async/deferred.ts";
 
 Deno.test({
   name: "worker terminate",

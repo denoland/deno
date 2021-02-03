@@ -351,8 +351,13 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
   }
 }
 
-#[test]
-fn thread_safe() {
-  fn f<S: Send + Sync>(_: S) {}
-  f(ProgramState::mock(vec![], None));
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn thread_safe() {
+    fn f<S: Send + Sync>(_: S) {}
+    f(ProgramState::mock(vec![], None));
+  }
 }
