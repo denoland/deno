@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![allow(unused)]
 use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;
@@ -154,7 +153,7 @@ impl CoverageReporter for LcovCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
-    maybe_original_source: Option<String>,
+    _maybe_original_source: Option<String>,
   ) {
     // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
     // elsewhere.
@@ -305,7 +304,7 @@ impl CoverageReporter for LcovCoverageReporter {
 
         count
       })
-      .collect::<Vec<(usize)>>();
+      .collect::<Vec<usize>>();
 
     let found_lines = if let Some(source_map) = maybe_source_map.as_ref() {
       let mut found_lines = line_counts
