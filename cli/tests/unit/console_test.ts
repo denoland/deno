@@ -310,7 +310,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
     stringify(JSON),
-    'JSON { [Symbol(Symbol.toStringTag)]: "JSON" }',
+    "JSON {}",
   );
   assertEquals(
     stringify(console),
@@ -335,7 +335,6 @@ unitTest(function consoleTestStringifyCircular(): void {
   clear: [Function: clear],
   trace: [Function: trace],
   indentLevel: 0,
-  [Symbol(Symbol.toStringTag)]: "console",
   [Symbol(isConsoleInstance)]: true
 }`,
   );
@@ -393,6 +392,16 @@ unitTest(function consoleTestStringifyFunctionWithProperties(): void {
     t: [Function: t] { x: [Circular] }
   }
 }`,
+  );
+
+  assertEquals(
+    stringify(Array),
+    `[Function: Array]`,
+  );
+
+  assertEquals(
+    stripColor(Deno.inspect(Array, { showNonEnumerable: true })),
+    `[Function: Array] { [Symbol(Symbol.species)]: [Getter] }`,
   );
 });
 

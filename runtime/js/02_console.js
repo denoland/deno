@@ -158,6 +158,7 @@
     showProxy: false,
     colors: false,
     getters: false,
+    showNonEnumerable: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -210,10 +211,15 @@
       Object.keys(value).length > 0 ||
       Object.getOwnPropertySymbols(value).length > 0
     ) {
-      ctx.add(value);
       const propString = inspectRawObject(value, ctx, level, inspectOptions);
-      ctx.delete(value);
-      suffix = ` ${propString}`;
+      // Filter out the empty string for the case we only have
+      // non-enumerable symbols.
+      if (
+        propString.length > 0 &&
+        propString !== "{}"
+      ) {
+        suffix = ` ${propString}`;
+      }
     }
 
     if (value.name && value.name !== "anonymous") {
@@ -818,6 +824,13 @@
     }
 
     for (const key of symbolKeys) {
+      if (
+        !inspectOptions.showNonEnumerable &&
+        !value.propertyIsEnumerable(key)
+      ) {
+        continue;
+      }
+
       if (inspectOptions.getters) {
         let propertyValue;
         let error;
