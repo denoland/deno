@@ -981,22 +981,11 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
 async fn cover_command(
   flags: Flags,
-  dir: String,
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   lcov: bool,
-  include: Vec<String>,
-  exclude: Vec<String>,
 ) -> Result<(), AnyError> {
-  let dir = PathBuf::from(dir);
-  tools::coverage::report_coverages(
-    flags.clone(),
-    &dir,
-    lcov,
-    include,
-    exclude,
-  )
-  .await?;
-
-  Ok(())
+  tools::coverage::cover_files(flags.clone(), files, ignore, lcov).await
 }
 
 async fn test_command(
@@ -1181,11 +1170,10 @@ fn get_subcommand(
     } => compile_command(flags, source_file, output, args, target, lite)
       .boxed_local(),
     DenoSubcommand::Cover {
-      dir,
+      files,
+      ignore,
       lcov,
-      include,
-      exclude,
-    } => cover_command(flags, dir, lcov, include, exclude).boxed_local(),
+    } => cover_command(flags, files, ignore, lcov).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

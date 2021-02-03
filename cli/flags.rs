@@ -35,10 +35,9 @@ pub enum DenoSubcommand {
     buf: Box<[u8]>,
   },
   Cover {
-    dir: String,
+    files: Vec<PathBuf>,
+    ignore: Vec<PathBuf>,
     lcov: bool,
-    include: Vec<String>,
-    exclude: Vec<String>,
   },
   Doc {
     private: bool,
@@ -571,23 +570,19 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let dir = matches.value_of("dir").map(String::from).unwrap();
+  let files = match matches.values_of("files") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
   let lcov = matches.is_present("lcov");
-  let include = match matches.values_of("include") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
-
-  let exclude = match matches.values_of("exclude") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
-
   flags.subcommand = DenoSubcommand::Cover {
-    dir,
+    files,
+    ignore,
     lcov,
-    include,
-    exclude,
   };
 }
 
@@ -1097,37 +1092,27 @@ Future runs of this module will trigger no downloads or compilation unless
 
 fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("cover")
+    .about("Generate coverage reports")
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore covering particular source files"),
+    )
     .arg(
       Arg::with_name("lcov")
         .long("lcov")
-        .requires("unstable")
-        .help("Print a lcov compatible tracefile."),
+        .help("Output cover result in lcov format")
+        .takes_value(false),
     )
     .arg(
-      Arg::with_name("include")
-        .long("include")
+      Arg::with_name("files")
         .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .requires("unstable")
-        .help("Include a particular file in the coverage report."),
+        .multiple(true)
+        .required(false),
     )
-    .arg(
-      Arg::with_name("exclude")
-        .long("exclude")
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .requires("unstable")
-        .help("Exclude a particular file from the coverage report."),
-    )
-    .arg(
-      Arg::with_name("dir")
-        .takes_value(true)
-        .required(true)
-        .min_values(1),
-    )
-    .about("Generate coverage reports")
 }
 
 fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {

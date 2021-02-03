@@ -6,6 +6,7 @@ use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::flags::Flags;
 use crate::media_type::MediaType;
+use crate::fs_util::collect_files;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
@@ -525,12 +526,17 @@ impl CoverageReporter for PrettyCoverageReporter {
   fn done(&mut self) {}
 }
 
-fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
+fn collect_coverages(
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
+  let file_paths = collect_files(&files, &ignore, |file_path| {
+      file_path.extension().map_or(false, |ext| ext == "json")
+  })?;
 
-  let entries = fs::read_dir(dir)?;
-  for entry in entries {
-    let json = fs::read_to_string(entry.unwrap().path())?;
+  for file_path in file_paths {
+    let json = fs::read_to_string(file_path.as_path())?;
     let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
 
     let existing_coverage =
@@ -573,31 +579,12 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
 
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
-  include: Vec<String>,
-  exclude: Vec<String>,
 ) -> Vec<ScriptCoverage> {
-  let include_patterns = include
-    .iter()
-    .map(|i| glob::Pattern::new(i).unwrap())
-    .collect::<Vec<glob::Pattern>>();
-  let exclude_patterns = exclude
-    .iter()
-    .map(|x| glob::Pattern::new(x).unwrap())
-    .collect::<Vec<glob::Pattern>>();
-
   coverages
     .into_iter()
     .filter(|e| {
       if let Ok(url) = Url::parse(&e.url) {
         if let Ok(file_path) = url.to_file_path() {
-          if include_patterns.iter().any(|p| p.matches_path(&file_path)) {
-            return true;
-          }
-
-          if exclude_patterns.iter().any(|p| p.matches_path(&file_path)) {
-            return false;
-          }
-
           if let Some(file_stem) = file_path.file_stem() {
             if file_stem == "__anonymous__" {
               return false;
@@ -621,17 +608,16 @@ fn filter_coverages(
     .collect::<Vec<ScriptCoverage>>()
 }
 
-pub async fn report_coverages(
+pub async fn cover_files(
   flags: Flags,
-  dir: &PathBuf,
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   lcov: bool,
-  include: Vec<String>,
-  exclude: Vec<String>,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags)?;
 
-  let coverages = collect_coverages(dir)?;
-  let coverages = filter_coverages(coverages, include, exclude);
+  let script_coverages = collect_coverages(files, ignore)?;
+  let script_coverages = filter_coverages(script_coverages);
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov
@@ -641,7 +627,7 @@ pub async fn report_coverages(
 
   let mut reporter = create_reporter(reporter_kind);
 
-  for script_coverage in coverages {
+  for script_coverage in script_coverages {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
     program_state
