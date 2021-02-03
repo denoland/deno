@@ -15,6 +15,7 @@ SharedQueue Binary Layout
 |                        RECORDS (*MAX_RECORDS)               ...
 +---------------------------------------------------------------+
  */
+"use strict";
 
 ((window) => {
   const MAX_RECORDS = 100;
