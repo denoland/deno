@@ -68,7 +68,7 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub denied_list: HashSet<T>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<PathBuf>,
   pub write: UnaryPermission<PathBuf>,
@@ -749,7 +749,6 @@ fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::serde_json;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -1062,54 +1061,6 @@ mod tests {
         .check_specifier(&ModuleSpecifier::resolve_url_or_path(url).unwrap())
         .is_err());
     }
-  }
-
-  #[test]
-  fn test_deserialize_perms() {
-    let json_perms = r#"
-    {
-      "read": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "write": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "net": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "env": "Granted",
-      "run": "Granted",
-      "plugin": "Granted",
-      "hrtime": "Granted"
-    }
-    "#;
-    let perms0 = Permissions {
-      read: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      write: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      net: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      env: PermissionState::Granted,
-      run: PermissionState::Granted,
-      hrtime: PermissionState::Granted,
-      plugin: PermissionState::Granted,
-    };
-    let deserialized_perms: Permissions =
-      serde_json::from_str(json_perms).unwrap();
-    assert_eq!(perms0, deserialized_perms);
   }
 
   #[test]

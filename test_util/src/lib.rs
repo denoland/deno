@@ -272,8 +272,8 @@ async fn get_tls_config(
 }
 
 async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
 
   let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
@@ -691,8 +691,8 @@ async fn wrap_main_server() {
 
 async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
   let tls_config = get_tls_config(cert_file, key_file)
     .await
     .expect("Cannot get TLS config");
