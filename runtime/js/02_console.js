@@ -16,6 +16,17 @@
     return Object.prototype.hasOwnProperty.call(obj, v);
   }
 
+  function propertyIsEnumerable(obj, prop) {
+    if (
+      obj == null ||
+      typeof obj.propertyIsEnumerable !== "function"
+    ) {
+      return false;
+    }
+
+    return obj.propertyIsEnumerable(prop);
+  }
+
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
 
@@ -826,7 +837,7 @@
     for (const key of symbolKeys) {
       if (
         !inspectOptions.showNonEnumerable &&
-        !value.propertyIsEnumerable(key)
+        !propertyIsEnumerable(value, key)
       ) {
         continue;
       }
