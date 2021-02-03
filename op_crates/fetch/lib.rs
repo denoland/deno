@@ -3,6 +3,7 @@
 #![deny(warnings)]
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
@@ -433,5 +434,5 @@ fn create_http_client(
   }
   builder
     .build()
-    .map_err(|_| deno_core::error::generic_error("Unable to build http client"))
+    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
 }
