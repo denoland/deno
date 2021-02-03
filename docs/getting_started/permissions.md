@@ -85,6 +85,28 @@ Allow net calls to any host/url:
 deno run --allow-net fetch.ts
 ```
 
+### Security Table
+This is not a comprehensive list, it mostly exists to help visualize what you are exposing your system to when enabling a given permission.
+| Permission       | Allows Read | Allows Write | Allows Net | Allows Arbitrary Code Execution | Notes |
+|------------------|-------------|--------------|------------|---------------------------------|-------|
+| `-A`             | Entire Disk | Entire Disk  | Entire Net | Yes                             |       |
+| `--allow-plugin` | Entire Disk | Entire Disk  | Entire Net | Yes                             | [plugin] |
+| `--allow-run`    | Entire Disk | Entire Disk  | Entire Net | Yes                             | [run] |
+| `--allow-net`    | No          | No           | Entire Net | Through Web Workers             |       |
+| `--allow-env`    | No*         | No*          | No*        | No*                             | [env] |
+| `--allow-read`   | Entire Disk | No           | No         | No                              |       |
+| `--allow-read=/usr`   | /usr/* | No           | No         | No                              |       |
+| `--allow-write`  | No          | Entire Disk  | No         | No                              |       |
+| `--allow-write=/usr` | No      | /usr/*       | No         | No                              |       |
+| `--allow-net=1.1.1.1,8.8.8.8` | No | No | 1.1.1.1 & 8.8.8.8 | Not unless hosted @ 1.1.1.1 or 8.8.8.8 |  |
+| `--allow-hrtime` | No          | No           | No         | No                              | [hrt] |
+
+* [plugin]: Plugins allow for arbitrary shared objects to be loaded into deno.  
+* [run]: Run allows for any code to be run, including wget, chmod, and any program downloaded from wget and the execute bit flipped with chmod.  
+* [env]: If the environment variables are used in another program after deno it could bypass the sandbox, but that is outside of this scope.  
+* [hrt]: As stated above, High-resolution
+  time can be used in timing attacks and fingerprinting.
+
 ### Conference
 
 Ryan Dahl. (September 25, 2020).
