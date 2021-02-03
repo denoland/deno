@@ -235,7 +235,10 @@ impl CoverageReporter for LcovCoverageReporter {
 
         println!(
           "BRDA:{},{},{},{}",
-          line_index + 1, block_number, branch_number, taken
+          line_index + 1,
+          block_number,
+          branch_number,
+          taken
         );
 
         branches_found += 1;
