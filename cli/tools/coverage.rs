@@ -470,9 +470,6 @@ impl CoverageReporter for PrettyCoverageReporter {
       line_counts
     };
 
-    // TODO self.covered_lines += covered_lines.len();
-    // TODO self.total_lines += lines.len();
-
     print!("cover {} ... ", script_coverage.url);
 
     let hit_lines = line_counts
@@ -635,9 +632,6 @@ pub async fn report_coverages(
 
   let coverages = collect_coverages(dir)?;
   let coverages = filter_coverages(coverages, include, exclude);
-
-  // let mut coverage_reporter = PrettyCoverageReporter::new(summary);
-  let mut coverage_reporter = LcovCoverageReporter::new();
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov
