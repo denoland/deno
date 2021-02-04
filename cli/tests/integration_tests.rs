@@ -1775,7 +1775,6 @@ mod integration {
       }
     }
 
-
     #[test]
     fn console_log() {
       let (out, err) = util::run_and_collect_output(
