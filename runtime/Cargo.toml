@@ -20,7 +20,7 @@ path = "examples/hello_runtime.rs"
 [build-dependencies]
 deno_core = { path = "../core", version = "0.77.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.11.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.20.1" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.20.2" }
 deno_web = { path = "../op_crates/web", version = "0.28.1" }
 deno_websocket = { path = "../op_crates/websocket", version = "0.3.1" }
 
@@ -31,7 +31,7 @@ winapi = "0.3.9"
 [dependencies]
 deno_core = { path = "../core", version = "0.77.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.11.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.20.1" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.20.2" }
 deno_web = { path = "../op_crates/web", version = "0.28.1" }
 deno_websocket = { path = "../op_crates/websocket", version = "0.3.1" }
 

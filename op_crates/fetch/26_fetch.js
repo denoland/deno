@@ -682,6 +682,10 @@
 
   const teeBody = Symbol("Body#tee");
 
+  // fastBody and dontValidateUrl allow users to opt out of certain behaviors
+  const fastBody = Symbol("Body#fast");
+  const dontValidateUrl = Symbol("dontValidateUrl");
+
   class Body {
     #contentType = "";
     #size;
@@ -728,6 +732,17 @@
       }
 
       return this.#stream;
+    }
+
+    // Optimization that allows caller to bypass expensive ReadableStream.
+    [fastBody]() {
+      if (!this.#bodySource) {
+        return null;
+      } else if (!(this.#bodySource instanceof ReadableStream)) {
+        return bodyToArrayBuffer(this.#bodySource);
+      } else {
+        return this.body;
+      }
     }
 
     /** @returns {BodyInit | null} */
@@ -991,10 +1006,16 @@
         this.#headers = new Headers(input.headers);
         this.#credentials = input.credentials;
       } else {
-        const baseUrl = getLocationHref();
-        this.#url = baseUrl != null
-          ? new URL(String(input), baseUrl).href
-          : new URL(String(input)).href;
+        // Constructing a URL just for validation is known to be expensive.
+        // dontValidateUrl allows one to opt out.
+        if (init[dontValidateUrl]) {
+          this.#url = input;
+        } else {
+          const baseUrl = getLocationHref();
+          this.#url = baseUrl != null
+            ? new URL(String(input), baseUrl).href
+            : new URL(String(input)).href;
+        }
       }
 
       if (init && "method" in init && init.method) {
@@ -1477,5 +1498,7 @@
     Response,
     HttpClient,
     createHttpClient,
+    fastBody,
+    dontValidateUrl,
   };
 })(this);

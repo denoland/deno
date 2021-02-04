@@ -501,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.20.1"
+version = "0.20.2"
 dependencies = [
  "bytes",
  "deno_core",
