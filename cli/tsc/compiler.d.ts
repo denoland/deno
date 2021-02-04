@@ -92,6 +92,7 @@ declare global {
   interface GetCombinedCodeFix extends BaseLanguageServerRequest {
     method: "getCombinedCodeFix";
     specifier: string;
+    // deno-lint-ignore ban-types
     fixId: {};
   }
 

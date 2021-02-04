@@ -976,9 +976,9 @@ impl Inner {
       }
     }
     code_actions.set_preferred_fixes();
-    let maybe_code_action_response = code_actions.get_response();
+    let code_action_response = code_actions.get_response();
     self.performance.measure(mark);
-    Ok(maybe_code_action_response)
+    Ok(Some(code_action_response))
   }
 
   async fn code_lens(

@@ -299,12 +299,31 @@ pub struct CodeLensData {
   pub specifier: ModuleSpecifier,
 }
 
+fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
+  match code {
+    Some(lsp::NumberOrString::String(str)) => str.clone(),
+    Some(lsp::NumberOrString::Number(num)) => num.to_string(),
+    _ => "".to_string(),
+  }
+}
+
+/// Determines if two TypeScript diagnostic codes are effectively equivalent.
+fn is_equivalent_code(
+  a: &Option<lsp::NumberOrString>,
+  b: &Option<lsp::NumberOrString>,
+) -> bool {
+  let a_code = code_as_string(a);
+  let b_code = code_as_string(b);
+  FIX_ALL_ERROR_CODES.get(a_code.as_str())
+    == FIX_ALL_ERROR_CODES.get(b_code.as_str())
+}
+
 /// Return a boolean flag to indicate if the specified action is the preferred
 /// action for a given set of actions.
-fn get_is_preferred(
+fn is_preferred(
   action: &tsc::CodeFixAction,
   actions: &Vec<(lsp::CodeAction, tsc::CodeFixAction)>,
-  fix_priority: &u32,
+  fix_priority: u32,
   only_one: bool,
 ) -> bool {
   actions.iter().all(|(_, a)| {
@@ -317,9 +336,9 @@ fn get_is_preferred(
     if let Some((other_fix_priority, _)) =
       PREFERRED_FIXES.get(a.fix_name.as_str())
     {
-      if other_fix_priority < fix_priority {
+      if *other_fix_priority < fix_priority {
         return true;
-      } else if other_fix_priority > fix_priority {
+      } else if *other_fix_priority > fix_priority {
         return false;
       }
       if only_one && action.fix_name == a.fix_name {
@@ -477,13 +496,13 @@ impl CodeActionCollection {
   }
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
-  pub fn get_response(self) -> Option<lsp::CodeActionResponse> {
+  pub fn get_response(self) -> lsp::CodeActionResponse {
     let code_actions = self
       .actions
       .into_iter()
       .map(|(c, _)| lsp::CodeActionOrCommand::CodeAction(c))
       .collect();
-    Some(code_actions)
+    code_actions
   }
 
   /// Determine if a action can be converted into a "fix all" action.
@@ -493,33 +512,33 @@ impl CodeActionCollection {
     diagnostic: &lsp::Diagnostic,
     file_diagnostics: &Vec<&lsp::Diagnostic>,
   ) -> bool {
+    // If the action does not have a fix id (indicating it can be "bundled up")
+    // or if the collection already contains a "bundled" action return false
     if action.fix_id.is_none()
       || self
         .fix_all_actions
         .contains_key(&action.fix_id.clone().unwrap())
     {
       false
-    } else if !file_diagnostics.iter().any(|d| {
+    // else iterate over the diagnostic in the file and see if there are any
+    // other diagnostics that could be bundled together in a "fix all" code
+    // action
+    } else if file_diagnostics.iter().any(|d| {
+      // skip this diagnostic or any where either side doesn't have a code
       if d == &diagnostic || d.code.is_none() || diagnostic.code.is_none() {
         false
       } else {
-        let d_code = match &d.code {
-          Some(lsp::NumberOrString::String(code)) => code,
-          _ => "",
-        };
-        let diagnostic_code = match &diagnostic.code {
-          Some(lsp::NumberOrString::String(code)) => code,
-          _ => "",
-        };
+        // determine if the code is the same or effectively the same
         d.code == diagnostic.code
-          || (FIX_ALL_ERROR_CODES.contains_key(d_code)
-            && FIX_ALL_ERROR_CODES.get(d_code)
-              == FIX_ALL_ERROR_CODES.get(diagnostic_code))
+          || is_equivalent_code(&d.code, &diagnostic.code)
       }
     }) {
-      false
-    } else {
+      // there is at least one diagnostic in the file that this action could
+      // also solve
       true
+    } else {
+      // there aren't any other valid diagnostics this fix can solve
+      false
     }
   }
 
@@ -535,7 +554,7 @@ impl CodeActionCollection {
         PREFERRED_FIXES.get(action.fix_name.as_str())
       {
         code_action.is_preferred =
-          Some(get_is_preferred(action, &actions, fix_priority, *only_one));
+          Some(is_preferred(action, &actions, *fix_priority, *only_one));
       }
     }
   }
