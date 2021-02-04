@@ -704,6 +704,8 @@
     "Failed to execute 'clone' on 'Body': body is already used";
 
   const teeBody = Symbol("Body#tee");
+  const fastBody = Symbol("Body#fast");
+  const dontValidateUrl = Symbol("dontValidateUrl");
 
   class Body {
     #contentType = "";
@@ -751,6 +753,16 @@
       }
 
       return this.#stream;
+    }
+
+    [fastBody]() {
+      if (!this.#bodySource) {
+        return null;
+      } else if (!(this.#bodySource instanceof ReadableStream)) {
+        return bodyToArrayBuffer(this.#bodySource);
+      } else {
+        return this.body;
+      }
     }
 
     /** @returns {BodyInit | null} */
@@ -1014,10 +1026,14 @@
         this.#headers = new Headers(input.headers);
         this.#credentials = input.credentials;
       } else {
-        const baseUrl = getLocationHref();
-        this.#url = baseUrl != null
-          ? new URL(String(input), baseUrl).href
-          : new URL(String(input)).href;
+        if (init[dontValidateUrl]) {
+          this.#url = input;
+        } else {
+          const baseUrl = getLocationHref();
+          this.#url = baseUrl != null
+            ? new URL(String(input), baseUrl).href
+            : new URL(String(input)).href;
+        }
       }
 
       if (init && "method" in init && init.method) {
@@ -1501,5 +1517,7 @@
     Response,
     HttpClient,
     createHttpClient,
+    fastBody,
+    dontValidateUrl,
   };
 })(this);
