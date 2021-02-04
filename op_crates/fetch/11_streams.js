@@ -4,6 +4,7 @@
 /// <reference path="./11_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
+"use strict";
 
 ((window) => {
   const customInspect = Symbol.for("Deno.customInspect");

@@ -8,6 +8,7 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
