@@ -25,7 +25,7 @@ path = "./bench/main.rs"
 
 [build-dependencies]
 deno_core = { path = "../core", version = "0.77.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.20.1" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.20.2" }
 deno_web = { path = "../op_crates/web", version = "0.28.1" }
 deno_websocket = { path = "../op_crates/websocket", version = "0.3.1" }
 regex = "1.4.3"
