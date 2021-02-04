@@ -10,6 +10,9 @@ use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
+use serde::Deserialize;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -118,10 +121,10 @@ impl Default for OpTable {
 ///
 /// The provided function `op_fn` has the following parameters:
 /// * `&mut OpState`: the op state, can be used to read/write resources in the runtime from an op.
-/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `V`: the deserializable value that is passed to the Rust function.
 /// * `&mut [ZeroCopyBuf]`: raw bytes passed along, usually not needed if the JSON value is used.
 ///
-/// `op_fn` returns a JSON value, which is directly returned to JavaScript.
+/// `op_fn` returns a serializable value, which is directly returned to JavaScript.
 ///
 /// When registering an op like this...
 /// ```ignore
@@ -137,10 +140,12 @@ impl Default for OpTable {
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_sync<F>(op_fn: F) -> Box<OpFn>
+pub fn json_op_sync<V, F, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
+  V: DeserializeOwned,
+  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError>
     + 'static,
+  R: Serialize,
 {
   Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
     let result = serde_json::from_slice(&bufs[0])
@@ -152,14 +157,18 @@ where
   })
 }
 
+// Async request from JS that includes a promiseId and args.
+#[derive(Deserialize)]
+struct AsyncRequest<V>(u64, V);
+
 /// Creates an op that passes data asynchronously using JSON.
 ///
 /// The provided function `op_fn` has the following parameters:
 /// * `Rc<RefCell<OpState>`: the op state, can be used to read/write resources in the runtime from an op.
-/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `V`: the deserializable value that is passed to the Rust function.
 /// * `BufVec`: raw bytes passed along, usually not needed if the JSON value is used.
 ///
-/// `op_fn` returns a future, whose output is a JSON value. This value will be asynchronously
+/// `op_fn` returns a future, whose output is a serializable value. This value will be asynchronously
 /// returned to JavaScript.
 ///
 /// When registering an op like this...
@@ -176,21 +185,20 @@ where
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_async<F, R>(op_fn: F) -> Box<OpFn>
+pub fn json_op_async<V, F, RV, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
-  R: Future<Output = Result<Value, AnyError>> + 'static,
+  V: DeserializeOwned,
+  F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
+  RV: Serialize,
+  R: Future<Output = Result<RV, AnyError>> + 'static,
 {
   let try_dispatch_op =
     move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
-      let args: Value = serde_json::from_slice(&bufs[0])?;
-      let promise_id = args
-        .get("promiseId")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| type_error("missing or invalid `promiseId`"))?;
+      let args: AsyncRequest<V> = serde_json::from_slice(&bufs[0])?;
+      let promise_id = args.0;
       let bufs = bufs[1..].into();
       use crate::futures::FutureExt;
-      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
+      let fut = op_fn(state.clone(), args.1, bufs).map(move |result| {
         json_serialize_op_result(
           Some(promise_id),
           result,
@@ -205,18 +213,21 @@ where
       Ok(op) => op,
       Err(err) => Op::Sync(json_serialize_op_result(
         None,
-        Err(err),
+        Err::<(), AnyError>(err),
         state.borrow().get_error_class_fn,
       )),
     }
   })
 }
 
-fn json_serialize_op_result(
+fn json_serialize_op_result<R>(
   promise_id: Option<u64>,
-  result: Result<serde_json::Value, AnyError>,
+  result: Result<R, AnyError>,
   get_error_class_fn: crate::runtime::GetErrorClassFn,
-) -> Box<[u8]> {
+) -> Box<[u8]>
+where
+  R: Serialize,
+{
   let value = match result {
     Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => serde_json::json!({

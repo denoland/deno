@@ -213,11 +213,11 @@ SharedQueue Binary Layout
     throw new ErrorClass(res.err.message);
   }
 
-  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
+  async function jsonOpAsync(opName, args = null, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
-    args.promiseId = nextPromiseId++;
-    const argsBuf = encodeJson(args);
+    const promiseId = nextPromiseId++;
+    const argsBuf = encodeJson([ promiseId, args ]);
     dispatch(opName, argsBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
@@ -226,11 +226,11 @@ SharedQueue Binary Layout
     });
     promise.resolve = resolve;
     promise.reject = reject;
-    promiseTable[args.promiseId] = promise;
+    promiseTable[promiseId] = promise;
     return processResponse(await promise);
   }
 
-  function jsonOpSync(opName, args = {}, ...zeroCopy) {
+  function jsonOpSync(opName, args = null, ...zeroCopy) {
     const argsBuf = encodeJson(args);
     const res = dispatch(opName, argsBuf, ...zeroCopy);
     return processResponse(decodeJson(res));
