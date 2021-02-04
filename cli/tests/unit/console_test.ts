@@ -400,7 +400,7 @@ unitTest(function consoleTestStringifyFunctionWithProperties(): void {
   );
 
   assertEquals(
-    stripColor(Deno.inspect(Array, { showNonEnumerable: true })),
+    stripColor(Deno.inspect(Array, { showHidden: true })),
     `[Function: Array] { [Symbol(Symbol.species)]: [Getter] }`,
   );
 });

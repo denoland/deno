@@ -169,7 +169,7 @@
     showProxy: false,
     colors: false,
     getters: false,
-    showNonEnumerable: false,
+    showHidden: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -836,7 +836,7 @@
 
     for (const key of symbolKeys) {
       if (
-        !inspectOptions.showNonEnumerable &&
+        !inspectOptions.showHidden &&
         !propertyIsEnumerable(value, key)
       ) {
         continue;
