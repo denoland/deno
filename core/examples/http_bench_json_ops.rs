@@ -14,10 +14,11 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::env;
 use std::io::Error;
 use std::net::SocketAddr;
@@ -124,83 +125,67 @@ fn create_js_runtime() -> JsRuntime {
   runtime
 }
 
+#[derive(Deserialize, Serialize)]
+struct ResourceId {
+  rid: u32
+}
+
 fn op_listen(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   _bufs: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<ResourceId, AnyError> {
   debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   std_listener.set_nonblocking(true)?;
   let listener = TcpListener::try_from(std_listener)?;
   let rid = state.resource_table.add(listener);
-  Ok(serde_json::json!({ "rid": rid }))
+  Ok(ResourceId { rid })
 }
 
 fn op_close(
   state: &mut OpState,
-  args: Value,
+  args: ResourceId,
   _buf: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let rid: u32 = args
-    .get("rid")
-    .unwrap()
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
-  debug!("close rid={}", rid);
+) -> Result<(), AnyError> {
+  debug!("close rid={}", args.rid);
   state
     .resource_table
-    .close(rid)
-    .map(|_| serde_json::json!(()))
+    .close(args.rid)
+    .map(|_| ())
     .ok_or_else(bad_resource_id)
 }
 
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ResourceId,
   _bufs: BufVec,
-) -> Result<Value, AnyError> {
-  let rid: u32 = args
-    .get("rid")
-    .unwrap()
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
-  debug!("accept rid={}", rid);
+) -> Result<ResourceId, AnyError> {
+  debug!("accept rid={}", args.rid);
 
   let listener = state
     .borrow()
     .resource_table
-    .get::<TcpListener>(rid)
+    .get::<TcpListener>(args.rid)
     .ok_or_else(bad_resource_id)?;
   let stream = listener.accept().await?;
   let rid = state.borrow_mut().resource_table.add(stream);
-  Ok(serde_json::json!({ "rid": rid }))
+  Ok(ResourceId { rid })
 }
 
 async fn op_read(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ResourceId,
   mut bufs: BufVec,
 ) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  let rid: u32 = args
-    .get("rid")
-    .unwrap()
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
-  debug!("read rid={}", rid);
+  debug!("read rid={}", args.rid);
 
   let stream = state
     .borrow()
     .resource_table
-    .get::<TcpStream>(rid)
+    .get::<TcpStream>(args.rid)
     .ok_or_else(bad_resource_id)?;
   let nread = stream.read(&mut bufs[0]).await?;
   Ok(serde_json::json!({ "nread": nread }))
@@ -208,23 +193,16 @@ async fn op_read(
 
 async fn op_write(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ResourceId,
   bufs: BufVec,
 ) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  let rid: u32 = args
-    .get("rid")
-    .unwrap()
-    .as_u64()
-    .unwrap()
-    .try_into()
-    .unwrap();
-  debug!("write rid={}", rid);
+  debug!("write rid={}", args.rid);
 
   let stream = state
     .borrow()
     .resource_table
-    .get::<TcpStream>(rid)
+    .get::<TcpStream>(args.rid)
     .ok_or_else(bad_resource_id)?;
   let nwritten = stream.write(&bufs[0]).await?;
   Ok(serde_json::json!({ "nwritten": nwritten }))

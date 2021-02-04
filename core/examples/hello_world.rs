@@ -50,27 +50,15 @@ fn main() {
     // The json_op_sync function automatically deserializes
     // the first ZeroCopyBuf and serializes the return value
     // to reduce boilerplate
-    json_op_sync(|_state, json, zero_copy| {
-      // We check that we only got the JSON value,
-      // and that it's of the right type.
+    json_op_sync(|_state, json: Vec<f64>, zero_copy| {
+      // We check that we only got the JSON value.
       if !zero_copy.is_empty() {
         Err(anyhow!("Expected exactly one argument"))
-      } else if !json.is_array() {
-        Err(anyhow!("Argument is not of type array"))
-      } else if !json
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|value| value.is_number())
-      {
-        Err(anyhow!("Argument is not array of numbers"))
       } else {
-        // And if everything checks out we do our actual task
+        // And if we did, do our actual task
         let sum = json
-          .as_array()
-          .unwrap()
           .iter()
-          .fold(0.0, |a, v| a + v.as_f64().unwrap());
+          .fold(0.0, |a, v| a + v);
 
         // Finally we return a JSON value
         Ok(Value::from(sum))
