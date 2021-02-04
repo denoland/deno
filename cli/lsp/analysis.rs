@@ -21,6 +21,7 @@ use deno_lint::rules;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -322,7 +323,7 @@ fn is_equivalent_code(
 /// action for a given set of actions.
 fn is_preferred(
   action: &tsc::CodeFixAction,
-  actions: &Vec<(lsp::CodeAction, tsc::CodeFixAction)>,
+  actions: &[(lsp::CodeAction, tsc::CodeFixAction)],
   fix_priority: u32,
   only_one: bool,
 ) -> bool {
@@ -336,10 +337,10 @@ fn is_preferred(
     if let Some((other_fix_priority, _)) =
       PREFERRED_FIXES.get(a.fix_name.as_str())
     {
-      if *other_fix_priority < fix_priority {
-        return true;
-      } else if *other_fix_priority > fix_priority {
-        return false;
+      match other_fix_priority.cmp(&fix_priority) {
+        Ordering::Less => return true,
+        Ordering::Greater => return false,
+        Ordering::Equal => (),
       }
       if only_one && action.fix_name == a.fix_name {
         return false;
@@ -352,7 +353,7 @@ fn is_preferred(
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
 async fn ts_changes_to_edit<F, Fut, V>(
-  changes: &Vec<tsc::FileTextChanges>,
+  changes: &[tsc::FileTextChanges],
   index_provider: &F,
   version_provider: &V,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError>
@@ -497,12 +498,11 @@ impl CodeActionCollection {
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
   pub fn get_response(self) -> lsp::CodeActionResponse {
-    let code_actions = self
+    self
       .actions
       .into_iter()
       .map(|(c, _)| lsp::CodeActionOrCommand::CodeAction(c))
-      .collect();
-    code_actions
+      .collect()
   }
 
   /// Determine if a action can be converted into a "fix all" action.
@@ -510,7 +510,7 @@ impl CodeActionCollection {
     &self,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    file_diagnostics: &Vec<&lsp::Diagnostic>,
+    file_diagnostics: &[&lsp::Diagnostic],
   ) -> bool {
     // If the action does not have a fix id (indicating it can be "bundled up")
     // or if the collection already contains a "bundled" action return false
@@ -520,25 +520,18 @@ impl CodeActionCollection {
         .contains_key(&action.fix_id.clone().unwrap())
     {
       false
-    // else iterate over the diagnostic in the file and see if there are any
-    // other diagnostics that could be bundled together in a "fix all" code
-    // action
-    } else if file_diagnostics.iter().any(|d| {
-      // skip this diagnostic or any where either side doesn't have a code
-      if d == &diagnostic || d.code.is_none() || diagnostic.code.is_none() {
-        false
-      } else {
-        // determine if the code is the same or effectively the same
-        d.code == diagnostic.code
-          || is_equivalent_code(&d.code, &diagnostic.code)
-      }
-    }) {
-      // there is at least one diagnostic in the file that this action could
-      // also solve
-      true
     } else {
-      // there aren't any other valid diagnostics this fix can solve
-      false
+      // else iterate over the diagnostic in the file and see if there are any
+      // other diagnostics that could be bundled together in a "fix all" code
+      // action
+      file_diagnostics.iter().any(|d| {
+        if d == &diagnostic || d.code.is_none() || diagnostic.code.is_none() {
+          false
+        } else {
+          d.code == diagnostic.code
+            || is_equivalent_code(&d.code, &diagnostic.code)
+        }
+      })
     }
   }
 

@@ -894,7 +894,7 @@ impl Inner {
       return Ok(None);
     }
     let line_index = self.get_line_index_sync(&specifier).unwrap();
-    let file_diagnostics = self
+    let file_diagnostics: Vec<&Diagnostic> = self
       .diagnostics
       .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
       .collect();
