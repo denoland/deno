@@ -21,7 +21,7 @@
     window.__bootstrap.streams;
   const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { Headers } = window.__bootstrap.headers;
-  const { Blob, _byteSequence } = window.__bootstrap.blob;
+  const { Blob, _byteSequence, File } = window.__bootstrap.file;
 
   const MAX_SIZE = 2 ** 32 - 2;
 
@@ -226,42 +226,19 @@
 
   const dataSymbol = Symbol("data");
 
-  class DomFile extends Blob {
-    /**
-     * @param {globalThis.BlobPart[]} fileBits 
-     * @param {string} fileName 
-     * @param {FilePropertyBag | undefined} options 
-     */
-    constructor(
-      fileBits,
-      fileName,
-      options,
-    ) {
-      const { lastModified = Date.now(), ...blobPropertyBag } = options ?? {};
-      super(fileBits, blobPropertyBag);
-
-      // 4.1.2.1 Replace any "/" character (U+002F SOLIDUS)
-      // with a ":" (U + 003A COLON)
-      this.name = String(fileName).replace(/\u002F/g, "\u003A");
-      // 4.1.3.3 If lastModified is not provided, set lastModified to the current
-      // date and time represented in number of milliseconds since the Unix Epoch.
-      this.lastModified = lastModified;
-    }
-  }
-
   /**
    * @param {Blob | string} value 
    * @param {string | undefined} filename
    * @returns {FormDataEntryValue}
    */
   function parseFormDataValue(value, filename) {
-    if (value instanceof DomFile) {
-      return new DomFile([value], filename || value.name, {
+    if (value instanceof File) {
+      return new File([value], filename || value.name, {
         type: value.type,
         lastModified: value.lastModified,
       });
     } else if (value instanceof Blob) {
-      return new DomFile([value], filename || "blob", {
+      return new File([value], filename || "blob", {
         type: value.type,
       });
     } else {
@@ -408,7 +385,7 @@
      */
     getBody() {
       for (const [fieldName, fieldValue] of this.formData.entries()) {
-        if (fieldValue instanceof DomFile) {
+        if (fieldValue instanceof File) {
           this.#writeFile(fieldName, fieldValue);
         } else this.#writeField(fieldName, fieldValue);
       }
@@ -487,7 +464,7 @@
 
     /**
      * @param {string} field
-     * @param {DomFile} value
+     * @param {File} value
      * @returns {void}
      */
     #writeFile = (field, value) => {
@@ -1493,7 +1470,6 @@
   }
 
   window.__bootstrap.fetch = {
-    File: DomFile,
     FormData,
     setBaseUrl,
     fetch,

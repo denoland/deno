@@ -141,7 +141,7 @@
     /** @type {Uint8Array} */
     [_byteSequence];
 
-    /** 
+    /**
      * @param {BlobPart[]} [blobParts]
      * @param {BlobPropertyBag} [options]
      */
@@ -287,8 +287,57 @@
     }
   }
 
-  window.__bootstrap.blob = {
+  const _Name = Symbol("[[Name]]");
+  const _LastModfied = Symbol("[[LastModified]]");
+
+  class File extends Blob {
+    /** @type {string} */
+    [_Name];
+    /** @type {number} */
+    [_LastModfied];
+
+    /**
+     * @param {BlobPart[]} fileBits 
+     * @param {string} fileName 
+     * @param {FilePropertyBag} [options] 
+     */
+    constructor(fileBits, fileName, options) {
+      if (fileBits === undefined) {
+        throw new TypeError(
+          "Failed to construct 'File'. 2 arguments required, but first not specified.",
+        );
+      }
+      if (fileName === undefined) {
+        throw new TypeError(
+          "Failed to construct 'File'. 2 arguments required, but second not specified.",
+        );
+      }
+      super(fileBits, { endings: options?.endings, type: options?.type });
+      /** @type {string} */
+      this[_Name] = String(fileName).replaceAll("/", ":");
+      if (options?.lastModified === undefined) {
+        /** @type {number} */
+        this[_LastModfied] = new Date().getTime();
+      } else {
+        /** @type {number} */
+        this[_LastModfied] = Number(options.lastModified);
+      }
+    }
+
+    /** @returns {string} */
+    get name() {
+      return this[_Name];
+    }
+
+    /** @returns {number} */
+    get lastModified() {
+      return this[_LastModfied];
+    }
+  }
+
+  window.__bootstrap.file = {
     Blob,
     _byteSequence,
+    File,
   };
 })(this);
