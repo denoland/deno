@@ -1,0 +1,150 @@
+[
+  {
+    "title": "Add async modifier to containing function",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 2
+          },
+          "end": {
+            "line": 1,
+            "character": 7
+          }
+        },
+        "severity": 1,
+        "code": 1308,
+        "source": "deno-ts",
+        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+        "relatedInformation": []
+      }
+    ],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file.ts",
+            "version": 1
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 7
+                },
+                "end": {
+                  "line": 0,
+                  "character": 7
+                }
+              },
+              "newText": "async "
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 21
+                },
+                "end": {
+                  "line": 0,
+                  "character": 25
+                }
+              },
+              "newText": "Promise<void>"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "title": "Add all missing 'async' modifiers",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 2
+          },
+          "end": {
+            "line": 1,
+            "character": 7
+          }
+        },
+        "severity": 1,
+        "code": 1308,
+        "source": "deno-ts",
+        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+        "relatedInformation": []
+      }
+    ],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file.ts",
+            "version": 1
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 7
+                },
+                "end": {
+                  "line": 0,
+                  "character": 7
+                }
+              },
+              "newText": "async "
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 21
+                },
+                "end": {
+                  "line": 0,
+                  "character": 25
+                }
+              },
+              "newText": "Promise<void>"
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 4,
+                  "character": 7
+                },
+                "end": {
+                  "line": 4,
+                  "character": 7
+                }
+              },
+              "newText": "async "
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 4,
+                  "character": 21
+                },
+                "end": {
+                  "line": 4,
+                  "character": 25
+                }
+              },
+              "newText": "Promise<void>"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]
