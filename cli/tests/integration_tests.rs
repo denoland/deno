@@ -1751,6 +1751,7 @@ mod integration {
       }
     }
 
+    #[cfg(unix)]
     #[test]
     fn pty_complete_symbol() {
       use std::io::Read;
