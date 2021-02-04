@@ -704,6 +704,8 @@
     "Failed to execute 'clone' on 'Body': body is already used";
 
   const teeBody = Symbol("Body#tee");
+
+  // fastBody and dontValidateUrl allow users to opt out of certain behaviors
   const fastBody = Symbol("Body#fast");
   const dontValidateUrl = Symbol("dontValidateUrl");
 
@@ -755,6 +757,7 @@
       return this.#stream;
     }
 
+    // Optimization that allows caller to bypass expensive ReadableStream.
     [fastBody]() {
       if (!this.#bodySource) {
         return null;
@@ -1026,6 +1029,8 @@
         this.#headers = new Headers(input.headers);
         this.#credentials = input.credentials;
       } else {
+        // Constructing a URL just for validation is known to be expensive.
+        // dontValidateUrl allows one to opt out.
         if (init[dontValidateUrl]) {
           this.#url = input;
         } else {
