@@ -6,6 +6,9 @@
 ///! client.
 ///!
 use lspower::lsp::ClientCapabilities;
+use lspower::lsp::CodeActionKind;
+use lspower::lsp::CodeActionOptions;
+use lspower::lsp::CodeActionProviderCapability;
 use lspower::lsp::CodeLensOptions;
 use lspower::lsp::CompletionOptions;
 use lspower::lsp::HoverProviderCapability;
@@ -18,9 +21,27 @@ use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
 use lspower::lsp::WorkDoneProgressOptions;
 
+fn code_action_capabilities(
+  client_capabilities: &ClientCapabilities,
+) -> CodeActionProviderCapability {
+  client_capabilities
+    .text_document
+    .as_ref()
+    .and_then(|it| it.code_action.as_ref())
+    .and_then(|it| it.code_action_literal_support.as_ref())
+    .map_or(CodeActionProviderCapability::Simple(true), |_| {
+      CodeActionProviderCapability::Options(CodeActionOptions {
+        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+        resolve_provider: None,
+        work_done_progress_options: Default::default(),
+      })
+    })
+}
+
 pub fn server_capabilities(
-  _client_capabilities: &ClientCapabilities,
+  client_capabilities: &ClientCapabilities,
 ) -> ServerCapabilities {
+  let code_action_provider = code_action_capabilities(client_capabilities);
   ServerCapabilities {
     text_document_sync: Some(TextDocumentSyncCapability::Options(
       TextDocumentSyncOptions {
@@ -59,7 +80,7 @@ pub fn server_capabilities(
     document_highlight_provider: Some(OneOf::Left(true)),
     document_symbol_provider: None,
     workspace_symbol_provider: None,
-    code_action_provider: None,
+    code_action_provider: Some(code_action_provider),
     code_lens_provider: Some(CodeLensOptions {
       resolve_provider: Some(true),
     }),

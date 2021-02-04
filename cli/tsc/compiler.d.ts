@@ -44,6 +44,8 @@ declare global {
     | ConfigureRequest
     | FindRenameLocationsRequest
     | GetAsset
+    | GetCodeFixes
+    | GetCombinedCodeFix
     | GetCompletionsRequest
     | GetDefinitionRequest
     | GetDiagnosticsRequest
@@ -51,7 +53,8 @@ declare global {
     | GetImplementationRequest
     | GetNavigationTree
     | GetQuickInfoRequest
-    | GetReferencesRequest;
+    | GetReferencesRequest
+    | GetSupportedCodeFixes;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -76,6 +79,20 @@ declare global {
   interface GetAsset extends BaseLanguageServerRequest {
     method: "getAsset";
     specifier: string;
+  }
+
+  interface GetCodeFixes extends BaseLanguageServerRequest {
+    method: "getCodeFixes";
+    specifier: string;
+    startPosition: number;
+    endPosition: number;
+    errorCodes: string[];
+  }
+
+  interface GetCombinedCodeFix extends BaseLanguageServerRequest {
+    method: "getCombinedCodeFix";
+    specifier: string;
+    fixId: {};
   }
 
   interface GetCompletionsRequest extends BaseLanguageServerRequest {
@@ -124,5 +141,9 @@ declare global {
     method: "getReferences";
     specifier: string;
     position: number;
+  }
+
+  interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
+    method: "getSupportedCodeFixes";
   }
 }

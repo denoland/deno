@@ -354,7 +354,7 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
   pub start: u32,
@@ -708,6 +708,90 @@ impl DocumentHighlights {
       })
       .collect()
   }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TextChange {
+  span: TextSpan,
+  new_text: String,
+}
+
+impl TextChange {
+  pub fn as_text_edit(
+    &self,
+    line_index: &LineIndex,
+  ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
+    lsp::OneOf::Left(lsp::TextEdit {
+      range: self.span.to_range(line_index),
+      new_text: self.new_text.clone(),
+    })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileTextChanges {
+  file_name: String,
+  text_changes: Vec<TextChange>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_new_file: Option<bool>,
+}
+
+impl FileTextChanges {
+  pub async fn to_text_document_edit<F, Fut, V>(
+    &self,
+    index_provider: &F,
+    version_provider: &V,
+  ) -> Result<lsp::TextDocumentEdit, AnyError>
+  where
+    F: Fn(ModuleSpecifier) -> Fut + Clone,
+    Fut: Future<Output = Result<LineIndex, AnyError>>,
+    V: Fn(ModuleSpecifier) -> Option<i32>,
+  {
+    let specifier = ModuleSpecifier::resolve_url(&self.file_name)?;
+    let line_index = index_provider(specifier.clone()).await?;
+    let edits = self
+      .text_changes
+      .iter()
+      .map(|tc| tc.as_text_edit(&line_index))
+      .collect();
+    Ok(lsp::TextDocumentEdit {
+      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+        uri: specifier.as_url().clone(),
+        version: version_provider(specifier),
+      },
+      edits,
+    })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeFixAction {
+  pub description: String,
+  pub changes: Vec<FileTextChanges>,
+  // These are opaque types that should just be passed back when applying the
+  // action.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub commands: Option<Vec<Value>>,
+  pub fix_name: String,
+  // It appears currently that all fixIds are strings, but the protocol
+  // specifies an opaque type, the problem is that we need to use the id as a
+  // hash key, and `Value` does not implement hash (and it could provide a false
+  // positive depending on JSON whitespace, so we deserialize it but it might
+  // break in the future)
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub fix_id: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub fix_all_description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombinedCodeActions {
+  pub changes: Vec<FileTextChanges>,
+  pub commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1215,8 +1299,12 @@ pub enum RequestMethod {
   FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
   /// Retrieve the text of an assets that exists in memory in the isolate.
   GetAsset(ModuleSpecifier),
+  /// Retrieve code fixes for a range of a file with the provided error codes.
+  GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>)),
   /// Get completion information at a given position (IntelliSense).
   GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  /// Retrieve the combined code fixes for a fix id for a module.
+  GetCombinedCodeFix((ModuleSpecifier, Value)),
   /// Get declaration information for a specific position.
   GetDefinition((ModuleSpecifier, u32)),
   /// Return diagnostics for given file.
@@ -1231,6 +1319,8 @@ pub enum RequestMethod {
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Get document references for a specific position.
   GetReferences((ModuleSpecifier, u32)),
+  /// Get the diagnostic codes that support some form of code fix.
+  GetSupportedCodeFixes,
 }
 
 impl RequestMethod {
@@ -1262,6 +1352,25 @@ impl RequestMethod {
         "id": id,
         "method": "getAsset",
         "specifier": specifier,
+      }),
+      RequestMethod::GetCodeFixes((
+        specifier,
+        start_pos,
+        end_pos,
+        error_codes,
+      )) => json!({
+        "id": id,
+        "method": "getCodeFixes",
+        "specifier": specifier,
+        "startPosition": start_pos,
+        "endPosition": end_pos,
+        "errorCodes": error_codes,
+      }),
+      RequestMethod::GetCombinedCodeFix((specifier, fix_id)) => json!({
+        "id": id,
+        "method": "getCombinedCodeFix",
+        "specifier": specifier,
+        "fixId": fix_id,
       }),
       RequestMethod::GetCompletions((specifier, position, preferences)) => {
         json!({
@@ -1316,6 +1425,10 @@ impl RequestMethod {
         "method": "getReferences",
         "specifier": specifier,
         "position": position,
+      }),
+      RequestMethod::GetSupportedCodeFixes => json!({
+        "id": id,
+        "method": "getSupportedCodeFixes",
       }),
     }
   }
