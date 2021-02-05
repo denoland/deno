@@ -2,6 +2,7 @@
 
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
+use super::assets::AssetDocument;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::text::LineIndex;
@@ -83,21 +84,13 @@ impl TsServer {
   }
 }
 
-/// An lsp representation of an asset in memory, that has either been retrieved
-/// from static assets built into Rust, or static assets built into tsc.
-#[derive(Debug, Clone)]
-pub struct AssetDocument {
-  pub text: String,
-  pub line_index: LineIndex,
-}
-
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
 pub async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
-  state_snapshot: &mut StateSnapshot,
+  state_snapshot: StateSnapshot,
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
@@ -105,9 +98,6 @@ pub async fn get_asset(
       line_index: LineIndex::new(text),
       text: text.to_string(),
     });
-    state_snapshot
-      .assets
-      .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
   } else {
     let res = ts_server
@@ -125,9 +115,6 @@ pub async fn get_asset(
     } else {
       None
     };
-    state_snapshot
-      .assets
-      .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
   }
 }

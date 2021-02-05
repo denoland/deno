@@ -18,7 +18,6 @@ use lspower::Client;
 use regex::Regex;
 use serde_json::from_value;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -33,6 +32,7 @@ use crate::tsc_config::TsConfig;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
+use super::assets::Assets;
 use super::capabilities;
 use super::config::Config;
 use super::diagnostics;
@@ -45,7 +45,6 @@ use super::sources::Sources;
 use super::text;
 use super::text::LineIndex;
 use super::tsc;
-use super::tsc::AssetDocument;
 use super::tsc::TsServer;
 use super::utils;
 
@@ -58,7 +57,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
-  pub assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
+  pub assets: Assets,
   pub documents: DocumentCache,
   pub sources: Sources,
 }
@@ -67,7 +66,7 @@ pub struct StateSnapshot {
 struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
-  assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
+  assets: Assets,
   /// The LSP client that this LSP server is connected to.
   client: Client,
   /// Configuration information.
@@ -136,7 +135,7 @@ impl Inner {
   ) -> Result<LineIndex, AnyError> {
     let mark = self.performance.mark("get_line_index");
     let result = if specifier.as_url().scheme() == "asset" {
-      let maybe_asset = self.assets.get(&specifier).cloned();
+      let maybe_asset = self.assets.get(&specifier);
       if let Some(maybe_asset) = maybe_asset {
         if let Some(asset) = maybe_asset {
           Ok(asset.line_index)
@@ -144,11 +143,10 @@ impl Inner {
           Err(anyhow!("asset is missing: {}", specifier))
         }
       } else {
-        let mut state_snapshot = self.snapshot();
-        if let Some(asset) =
-          tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
-            .await?
-        {
+        let maybe_asset =
+          tsc::get_asset(&specifier, &self.ts_server, self.snapshot()).await?;
+        self.assets.insert(specifier.clone(), maybe_asset.clone());
+        if let Some(asset) = maybe_asset {
           Ok(asset.line_index)
         } else {
           Err(anyhow!("asset is missing: {}", specifier))
@@ -174,7 +172,7 @@ impl Inner {
     let mark = self.performance.mark("get_line_index_sync");
     let maybe_line_index = if specifier.as_url().scheme() == "asset" {
       if let Some(Some(asset)) = self.assets.get(specifier) {
-        Some(asset.line_index.clone())
+        Some(asset.line_index)
       } else {
         None
       }
@@ -1738,7 +1736,7 @@ impl Inner {
     } else {
       match url.scheme() {
         "asset" => {
-          let maybe_asset = self.assets.get(&specifier).cloned();
+          let maybe_asset = self.assets.get(&specifier);
           if let Some(maybe_asset) = maybe_asset {
             if let Some(asset) = maybe_asset {
               Some(asset.text)
@@ -1746,12 +1744,12 @@ impl Inner {
               None
             }
           } else {
-            let mut state_snapshot = self.snapshot();
-            if let Some(asset) =
-              tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
+            let maybe_asset =
+              tsc::get_asset(&specifier, &self.ts_server, self.snapshot())
                 .await
-                .map_err(|_| LspError::internal_error())?
-            {
+                .map_err(|_| LspError::internal_error())?;
+            self.assets.insert(specifier.clone(), maybe_asset.clone());
+            if let Some(asset) = maybe_asset {
               Some(asset.text)
             } else {
               error!("Missing asset: {}", specifier);
@@ -1915,12 +1913,57 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_hover_asset() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_asset.json", LspResponse::None),
+      ("hover_request_asset_01.json", LspResponse::RequestAny),
+      (
+        "virtual_text_document_request.json",
+        LspResponse::RequestAny,
+      ),
+      (
+        "hover_request_asset_02.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "interface Date",
+              },
+              "Enables basic storage and retrieval of dates and times."
+            ],
+            "range": {
+              "start": {
+                "line": 109,
+                "character": 10,
+              },
+              "end": {
+                "line": 109,
+                "character": 14,
+              }
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
   async fn test_hover_disabled() {
     let mut harness = LspTestHarness::new(vec![
       ("initialize_request_disabled.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification.json", LspResponse::None),
-      ("hover_request.json", LspResponse::Request(2, json!(null))),
+      ("hover_request.json", LspResponse::Request(4, json!(null))),
       (
         "shutdown_request.json",
         LspResponse::Request(3, json!(null)),

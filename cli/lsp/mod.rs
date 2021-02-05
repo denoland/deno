@@ -4,6 +4,7 @@ use lspower::LspService;
 use lspower::Server;
 
 mod analysis;
+mod assets;
 mod capabilities;
 mod config;
 mod diagnostics;
