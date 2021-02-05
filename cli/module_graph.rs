@@ -799,6 +799,7 @@ impl Graph {
       // Enabled by default to align to transpile/swc defaults
       "experimentalDecorators": true,
       "incremental": true,
+      "jsx": "react",
       "isolatedModules": true,
       "lib": options.lib,
       "module": "esnext",
@@ -811,7 +812,6 @@ impl Graph {
         // TODO(@kitsonk) consider enabling this by default
         //   see: https://github.com/denoland/deno/issues/7732
         "emitDecoratorMetadata": false,
-        "jsx": "react",
         "inlineSourceMap": true,
         "outDir": "deno://",
         "removeComments": true,
