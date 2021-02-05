@@ -2702,6 +2702,11 @@ console.log("finish");
     output: "bundle.test.out",
   });
 
+  itest!(bundle_jsx {
+    args: "bundle jsx_import_from_ts.ts",
+    output: "bundle_jsx.out",
+  });
+
   itest!(fmt_check_tests_dir {
     args: "fmt --check ./",
     output: "fmt/expected_fmt_check_tests_dir.out",

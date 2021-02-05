@@ -431,8 +431,10 @@ impl Inner {
     let mark = self.performance.mark("update_tsconfig");
     let mut tsconfig = TsConfig::new(json!({
       "allowJs": true,
+      "esModuleInterop": true,
       "experimentalDecorators": true,
       "isolatedModules": true,
+      "jsx": "react",
       "lib": ["deno.ns", "deno.window"],
       "module": "esnext",
       "noEmit": true,
