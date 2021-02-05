@@ -30,7 +30,9 @@ use crate::import_map::ImportMap;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
+use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
+use super::analysis::CodeActionData;
 use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
 use super::capabilities;
@@ -945,35 +947,7 @@ impl Inner {
           diagnostic,
           &file_diagnostics,
         ) {
-          let req = tsc::RequestMethod::GetCombinedCodeFix((
-            specifier.clone(),
-            json!(action.fix_id.clone().unwrap()),
-          ));
-          let res =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
-                error!("Unable to get combined fix from TypeScript: {}", err);
-                LspError::internal_error()
-              },
-            )?;
-          let combined_code_actions: tsc::CombinedCodeActions = from_value(res)
-            .map_err(|err| {
-              error!("Cannot decode combined actions from TypeScript: {}", err);
-              LspError::internal_error()
-            })?;
-          code_actions
-            .add_ts_fix_all_action(
-              &action,
-              diagnostic,
-              &combined_code_actions,
-              &|s| self.get_line_index(s),
-              &|s| self.documents.version(&s),
-            )
-            .await
-            .map_err(|err| {
-              error!("Unable to add fix all: {}", err);
-              LspError::internal_error()
-            })?;
+          code_actions.add_ts_fix_all_action(&action, &specifier, diagnostic);
         }
       }
     }
@@ -981,6 +955,59 @@ impl Inner {
     let code_action_response = code_actions.get_response();
     self.performance.measure(mark);
     Ok(Some(code_action_response))
+  }
+
+  async fn code_action_resolve(
+    &self,
+    params: CodeAction,
+  ) -> LspResult<CodeAction> {
+    let mark = self.performance.mark("code_action_resolve");
+    let result =
+      if let Some(data) = params.data.clone() {
+        let code_action_data: CodeActionData =
+          from_value(data).map_err(|err| {
+            error!("Unable to decode code action data: {}", err);
+            LspError::invalid_params("The CodeAction's data is invalid.")
+          })?;
+        let req = tsc::RequestMethod::GetCombinedCodeFix((
+          code_action_data.specifier,
+          json!(code_action_data.fix_id.clone()),
+        ));
+        let res = self.ts_server.request(self.snapshot(), req).await.map_err(
+          |err| {
+            error!("Unable to get combined fix from TypeScript: {}", err);
+            LspError::internal_error()
+          },
+        )?;
+        let combined_code_actions: tsc::CombinedCodeActions =
+          from_value(res).map_err(|err| {
+            error!("Cannot decode combined actions from TypeScript: {}", err);
+            LspError::internal_error()
+          })?;
+        if combined_code_actions.commands.is_some() {
+          error!("Deno does not support code actions with commands.");
+          Err(LspError::invalid_request())
+        } else {
+          let mut code_action = params.clone();
+          code_action.edit = ts_changes_to_edit(
+            &combined_code_actions.changes,
+            &|s| self.get_line_index(s),
+            &|s| self.documents.version(&s),
+          )
+          .await
+          .map_err(|err| {
+            error!("Unable to convert changes to edits: {}", err);
+            LspError::internal_error()
+          })?;
+          Ok(code_action)
+        }
+      } else {
+        Err(LspError::invalid_params(
+          "The CodeAction's data is missing.",
+        ))
+      };
+    self.performance.measure(mark);
+    result
   }
 
   async fn code_lens(
@@ -1608,6 +1635,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
     self.0.lock().await.code_action(params).await
+  }
+
+  async fn code_action_resolve(
+    &self,
+    params: CodeAction,
+  ) -> LspResult<CodeAction> {
+    self.0.lock().await.code_action_resolve(params).await
   }
 
   async fn code_lens(
@@ -2318,6 +2352,13 @@ mod tests {
       (
         "code_action_request.json",
         LspResponse::RequestFixture(2, "code_action_response.json".to_string()),
+      ),
+      (
+        "code_action_resolve_request.json",
+        LspResponse::RequestFixture(
+          4,
+          "code_action_resolve_request_response.json".to_string(),
+        ),
       ),
       (
         "shutdown_request.json",
