@@ -581,27 +581,45 @@ fn collect_coverages(
 
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
+  include: Vec<String>,
   exclude: Vec<String>,
 ) -> Vec<ScriptCoverage> {
+  let include_regexes: Vec<Regex> =
+    include.iter().map(|e| Regex::new(e).unwrap()).collect();
+
   let exclude_regexes: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
   coverages
     .into_iter()
     .filter(|e| {
+      // Include must take precedence so it can override default exclusions and less specific
+      // exclude matches.
+      if include_regexes.iter().any(|p| p.is_match(&e.url)) {
+        return true;
+      }
+
+      if e.url.ends_with("test.js") || e.url.ends_with("test.ts") {
+        return false;
+      }
+
+      if exclude_regexes.iter().any(|p| p.is_match(&e.url)) {
+        return false;
+      }
+
+      // TODO(caspervonb) support this so we can collect coverage for internal sources.
       if e.url.starts_with("deno") {
         return false;
       }
 
+
+      // TODO(caspervonb) we should give these fake virtual urls a custom schema because they look
+      // like urls from an inspector client's point of view.
       if e.url.ends_with("$deno$test.ts") {
         return false;
       }
 
       if e.url.ends_with("__anonymous__") {
-        return false;
-      }
-
-      if exclude_regexes.iter().any(|p| p.is_match(&e.url)) {
         return false;
       }
 
@@ -614,13 +632,14 @@ pub async fn cover_files(
   flags: Flags,
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
+  include: Vec<String>,
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags)?;
 
   let script_coverages = collect_coverages(files, ignore)?;
-  let script_coverages = filter_coverages(script_coverages, exclude);
+  let script_coverages = filter_coverages(script_coverages, include, exclude);
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov

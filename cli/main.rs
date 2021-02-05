@@ -983,6 +983,7 @@ async fn cover_command(
   flags: Flags,
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
+  include: Vec<String>,
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
@@ -990,7 +991,7 @@ async fn cover_command(
     exit_unstable("compile");
   }
 
-  tools::coverage::cover_files(flags.clone(), files, ignore, exclude, lcov)
+  tools::coverage::cover_files(flags.clone(), files, ignore, include, exclude, lcov)
     .await
 }
 
@@ -1178,9 +1179,10 @@ fn get_subcommand(
     DenoSubcommand::Cover {
       files,
       ignore,
+      include,
       exclude,
       lcov,
-    } => cover_command(flags, files, ignore, exclude, lcov).boxed_local(),
+    } => cover_command(flags, files, ignore, include, exclude, lcov).boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

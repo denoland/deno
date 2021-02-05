@@ -37,6 +37,7 @@ pub enum DenoSubcommand {
   Cover {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
+    include: Vec<String>,
     exclude: Vec<String>,
     lcov: bool,
   },
@@ -579,6 +580,10 @@ fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
+  let include = match matches.values_of("include") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let exclude = match matches.values_of("exclude") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
@@ -587,6 +592,7 @@ fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Cover {
     files,
     ignore,
+    include,
     exclude,
     lcov,
   };
@@ -1105,12 +1111,19 @@ fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Ignore coverage profile files"),
+        .help("Ignore coverage files"),
+    )
+    .arg(
+      Arg::with_name("include")
+        .long("include")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Include source files in the report"),
     )
     .arg(
       Arg::with_name("exclude")
         .long("exclude")
-        .default_value(r"test\.\w+$")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
