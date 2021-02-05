@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -522,23 +523,25 @@
     #searchParams = null;
 
     [Symbol.for("Deno.customInspect")]() {
-      const keys = [
-        "href",
-        "origin",
-        "protocol",
-        "username",
-        "password",
-        "host",
-        "hostname",
-        "port",
-        "pathname",
-        "hash",
-        "search",
-      ];
-      const objectString = keys
-        .map((key) => `${key}: "${this[key] || ""}"`)
-        .join(", ");
-      return `URL { ${objectString} }`;
+      const object = {
+        href: this.href,
+        origin: this.origin,
+        protocol: this.protocol,
+        username: this.username,
+        password: this.password,
+        host: this.host,
+        hostname: this.hostname,
+        port: this.port,
+        pathname: this.pathname,
+        hash: this.hash,
+        search: this.search,
+      };
+      if (typeof globalThis?.Deno?.inspect == "function") {
+        return `URL ${Deno.inspect(object)}`;
+      }
+      return `URL { ${
+        Object.entries(object).map(([k, v]) => `${k}: ${v}`).join(", ")
+      } }`;
     }
 
     #updateSearchParams = () => {

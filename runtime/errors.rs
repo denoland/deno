@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -167,6 +167,12 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<dlopen::Error>()
         .map(get_dlopen_error_class)
+    })
+    .or_else(|| {
+      e.downcast_ref::<deno_core::Canceled>().map(|e| {
+        let io_err: io::Error = e.to_owned().into();
+        get_io_error_class(&io_err)
+      })
     })
     .or_else(|| {
       e.downcast_ref::<env::VarError>()

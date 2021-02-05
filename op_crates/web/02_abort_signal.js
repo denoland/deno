@@ -1,6 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
+  const { setIsTrusted } = window.__bootstrap.event;
+
   const add = Symbol("add");
   const signalAbort = Symbol("signalAbort");
   const remove = Symbol("remove");
@@ -24,7 +27,9 @@
         algorithm();
       }
       this.#abortAlgorithms.clear();
-      this.dispatchEvent(new Event("abort"));
+      const event = new Event("abort");
+      setIsTrusted(event, true);
+      this.dispatchEvent(event);
     }
 
     [remove](algorithm) {

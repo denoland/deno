@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #[macro_use]
 extern crate lazy_static;
@@ -17,7 +17,6 @@ mod normalize_path;
 mod ops;
 pub mod plugin_api;
 mod resources;
-mod resources2;
 mod runtime;
 mod shared_queue;
 mod zero_copy_buf;
@@ -64,10 +63,9 @@ pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
+pub use crate::resources::Resource;
+pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;
-pub use crate::resources2::Resource;
-pub use crate::resources2::ResourceId;
-pub use crate::resources2::ResourceTable2;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
@@ -80,7 +78,12 @@ pub fn v8_version() -> &'static str {
   v8::V8::get_version()
 }
 
-#[test]
-fn test_v8_version() {
-  assert!(v8_version().len() > 3);
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_v8_version() {
+    assert!(v8_version().len() > 3);
+  }
 }

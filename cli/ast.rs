@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::media_type::MediaType;
 use crate::tsc_config;
@@ -556,6 +556,7 @@ impl swc_bundler::Hook for BundleHook {
         value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
           span,
           value: value.into(),
+          kind: ast::StrKind::Synthesized,
           has_escape: false,
         }))),
       },

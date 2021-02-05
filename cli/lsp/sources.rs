@@ -1,7 +1,7 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
-use super::text;
+use super::text::LineIndex;
 
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
@@ -10,8 +10,13 @@ use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
+use crate::module_graph::GraphBuilder;
+use crate::program_state::ProgramState;
+use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
+use deno_runtime::permissions::Permissions;
 
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
@@ -19,22 +24,39 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::time::SystemTime;
+
+pub async fn cache(
+  specifier: ModuleSpecifier,
+  maybe_import_map: Option<ImportMap>,
+) -> Result<(), AnyError> {
+  let program_state = Arc::new(ProgramState::new(Default::default())?);
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
+    &program_state,
+    Permissions::allow_all(),
+  )?));
+  let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
+  builder.add(&specifier, false).await
+}
 
 #[derive(Debug, Clone, Default)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
-  maybe_types: Option<analysis::ResolvedImport>,
+  line_index: LineIndex,
+  maybe_types: Option<analysis::ResolvedDependency>,
   media_type: MediaType,
   source: String,
   version: String,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Sources {
+pub struct Sources(Arc<Mutex<Inner>>);
+
+#[derive(Debug, Default)]
+struct Inner {
   http_cache: HttpCache,
-  maybe_import_map: Option<Arc<RwLock<ImportMap>>>,
+  maybe_import_map: Option<ImportMap>,
   metadata: HashMap<ModuleSpecifier, Metadata>,
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
   remotes: HashMap<ModuleSpecifier, PathBuf>,
@@ -42,13 +64,64 @@ pub struct Sources {
 
 impl Sources {
   pub fn new(location: &Path) -> Self {
+    Self(Arc::new(Mutex::new(Inner::new(location))))
+  }
+
+  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+    self.0.lock().unwrap().contains(specifier)
+  }
+
+  /// Provides the length of the source content, calculated in a way that should
+  /// match the behavior of JavaScript, where strings are stored effectively as
+  /// `&[u16]` and when counting "chars" we need to represent the string as a
+  /// UTF-16 string in Rust.
+  pub fn get_length_utf16(&self, specifier: &ModuleSpecifier) -> Option<usize> {
+    self.0.lock().unwrap().get_length_utf16(specifier)
+  }
+
+  pub fn get_line_index(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<LineIndex> {
+    self.0.lock().unwrap().get_line_index(specifier)
+  }
+
+  pub fn get_media_type(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    self.0.lock().unwrap().get_media_type(specifier)
+  }
+
+  pub fn get_script_version(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    self.0.lock().unwrap().get_script_version(specifier)
+  }
+
+  pub fn get_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.0.lock().unwrap().get_text(specifier)
+  }
+
+  pub fn resolve_import(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    self.0.lock().unwrap().resolve_import(specifier, referrer)
+  }
+}
+
+impl Inner {
+  fn new(location: &Path) -> Self {
     Self {
       http_cache: HttpCache::new(location),
       ..Default::default()
     }
   }
 
-  pub fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
+  fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
     if let Some(specifier) = self.resolve_specifier(specifier) {
       if self.get_metadata(&specifier).is_some() {
         return true;
@@ -57,22 +130,22 @@ impl Sources {
     false
   }
 
-  pub fn get_length(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
+  fn get_length_utf16(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.source.chars().count())
+    Some(metadata.source.encode_utf16().count())
   }
 
-  pub fn get_line_index(
+  fn get_line_index(
     &mut self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Vec<u32>> {
+  ) -> Option<LineIndex> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(text::index_lines(&metadata.source))
+    Some(metadata.line_index)
   }
 
-  pub fn get_media_type(
+  fn get_media_type(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
@@ -102,15 +175,17 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             maybe_types = mt;
             Some(dependencies)
           } else {
             None
           };
+          let line_index = LineIndex::new(&source);
           let metadata = Metadata {
             dependencies,
+            line_index,
             maybe_types,
             media_type,
             source,
@@ -132,7 +207,7 @@ impl Sources {
               Some(analysis::resolve_import(
                 types,
                 &specifier,
-                self.maybe_import_map.clone(),
+                &self.maybe_import_map,
               ))
             } else {
               None
@@ -142,7 +217,7 @@ impl Sources {
               &specifier,
               &source,
               &media_type,
-              None,
+              &None,
             ) {
             if maybe_types.is_none() {
               maybe_types = mt;
@@ -151,8 +226,10 @@ impl Sources {
           } else {
             None
           };
+          let line_index = LineIndex::new(&source);
           let metadata = Metadata {
             dependencies,
+            line_index,
             maybe_types,
             media_type,
             source,
@@ -206,7 +283,7 @@ impl Sources {
     None
   }
 
-  pub fn get_script_version(
+  fn get_script_version(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
@@ -227,7 +304,7 @@ impl Sources {
     None
   }
 
-  pub fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source)
@@ -247,7 +324,7 @@ impl Sources {
     Some((resolved_specifier, media_type))
   }
 
-  pub fn resolve_import(
+  fn resolve_import(
     &mut self,
     specifier: &str,
     referrer: &ModuleSpecifier,
@@ -257,7 +334,7 @@ impl Sources {
     let dependencies = &metadata.dependencies?;
     let dependency = dependencies.get(specifier)?;
     if let Some(type_dependency) = &dependency.maybe_type {
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         type_dependency
       {
         self.resolution_result(resolved_specifier)
@@ -266,7 +343,7 @@ impl Sources {
       }
     } else {
       let code_dependency = &dependency.maybe_code.clone()?;
-      if let analysis::ResolvedImport::Resolved(resolved_specifier) =
+      if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         code_dependency
       {
         self.resolution_result(resolved_specifier)
@@ -343,7 +420,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_script_version() {
-    let (mut sources, _) = setup();
+    let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -356,7 +433,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_text() {
-    let (mut sources, _) = setup();
+    let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -370,15 +447,15 @@ mod tests {
   }
 
   #[test]
-  fn test_sources_get_length() {
-    let (mut sources, _) = setup();
+  fn test_sources_get_length_utf16() {
+    let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
       &tests.join("001_hello.js").to_string_lossy(),
     )
     .unwrap();
-    let actual = sources.get_length(&specifier);
+    let actual = sources.get_length_utf16(&specifier);
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual, 28);
@@ -386,10 +463,10 @@ mod tests {
 
   #[test]
   fn test_sources_resolve_specifier_non_supported_schema() {
-    let (mut sources, _) = setup();
+    let (sources, _) = setup();
     let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
       .expect("could not create specifier");
-    let actual = sources.resolve_specifier(&specifier);
+    let actual = sources.0.lock().unwrap().resolve_specifier(&specifier);
     assert!(actual.is_none());
   }
 }

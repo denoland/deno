@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -19,6 +19,14 @@ delete Object.prototype.__proto__;
   let logDebug = false;
   let logSource = "JS";
 
+  // The map from the normalized specifier to the original.
+  // TypeScript normalizes the specifier in its internal processing,
+  // but the original specifier is needed when looking up the source from the runtime.
+  // This map stores that relationship, and the original can be restored by the
+  // normalized specifier.
+  // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
+  const normalizedToOriginalMap = new Map();
+
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -31,8 +39,20 @@ delete Object.prototype.__proto__;
       const stringifiedArgs = args.map((arg) =>
         typeof arg === "string" ? arg : JSON.stringify(arg)
       ).join(" ");
-      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
+      // adding a non-zero integer value to the end of the debug string causes
+      // the message to be printed to stderr instead of stdout, which is better
+      // aligned to the behaviour of debug messages
+      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`, 1);
     }
+  }
+
+  function error(...args) {
+    const stringifiedArgs = args.map((arg) =>
+      typeof arg === "string" || arg instanceof Error
+        ? String(arg)
+        : JSON.stringify(arg)
+    ).join(" ");
+    core.print(`ERROR ${logSource} = ${stringifiedArgs}\n`, 1);
   }
 
   class AssertionError extends Error {
@@ -128,6 +148,9 @@ delete Object.prototype.__proto__;
     // TS2691: An import path cannot end with a '.ts' extension. Consider
     // importing 'bad-module' instead.
     2691,
+    // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
+    // option to 'node', or to add aliases to the 'paths' option?
+    2792,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -161,15 +184,15 @@ delete Object.prototype.__proto__;
     version;
     /**
      * @param {string} specifier
-     * @param {string} version 
+     * @param {string} version
      */
     constructor(specifier, version) {
       this.specifier = specifier;
       this.version = version;
     }
     /**
-     * @param {number} start 
-     * @param {number} end 
+     * @param {number} start
+     * @param {number} end
      * @returns {string}
      */
     getText(start, end) {
@@ -244,6 +267,9 @@ delete Object.prototype.__proto__;
       if (sourceFile) {
         return sourceFile;
       }
+
+      // Needs the original specifier
+      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
       /** @type {{ data: string; hash?: string; scriptKind: ts.ScriptKind }} */
       const { data, hash, scriptKind } = core.jsonOpSync(
@@ -379,7 +405,7 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {{ program: ts.Program | ts.EmitAndSemanticDiagnosticsBuilderProgram, fileCount?: number }} options 
+   * @param {{ program: ts.Program | ts.EmitAndSemanticDiagnosticsBuilderProgram, fileCount?: number }} options
    */
   function performanceProgram({ program, fileCount }) {
     if (program) {
@@ -421,6 +447,27 @@ delete Object.prototype.__proto__;
    * @property {string[]} rootNames
    */
 
+  /**
+   * Checks the normalized version of the root name and stores it in
+   * `normalizedToOriginalMap`. If the normalized specifier is already
+   * registered for the different root name, it throws an AssertionError.
+   *
+   * @param {string} rootName
+   */
+  function checkNormalizedPath(rootName) {
+    const normalized = ts.normalizePath(rootName);
+    const originalRootName = normalizedToOriginalMap.get(normalized);
+    if (typeof originalRootName === "undefined") {
+      normalizedToOriginalMap.set(normalized, rootName);
+    } else if (originalRootName !== rootName) {
+      // The different root names are normalizd to the same path.
+      // This will cause problem when looking up the source for each.
+      throw new AssertionError(
+        `The different names for the same normalized specifier are specified: normalized=${normalized}, rootNames=${originalRootName},${rootName}`,
+      );
+    }
+  }
+
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
@@ -429,6 +476,8 @@ delete Object.prototype.__proto__;
     performanceStart();
     debug(">>> exec start", { rootNames });
     debug(config);
+
+    rootNames.forEach(checkNormalizedPath);
 
     const { options, errors: configFileParsingDiagnostics } = ts
       .convertCompilerOptionsFromJson(config, "");
@@ -464,15 +513,15 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {number} id 
-   * @param {any} data 
+   * @param {number} id
+   * @param {any} data
    */
   function respond(id, data = null) {
     core.jsonOpSync("op_respond", { id, data });
   }
 
   /**
-   * @param {LanguageServerRequest} request 
+   * @param {LanguageServerRequest} request
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
@@ -487,30 +536,61 @@ delete Object.prototype.__proto__;
         compilationSettings = options;
         return respond(id, true);
       }
-      case "getSemanticDiagnostics": {
-        const diagnostics = languageService.getSemanticDiagnostics(
-          request.specifier,
-        ).filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-        return respond(id, fromTypeScriptDiagnostic(diagnostics));
-      }
-      case "getSuggestionDiagnostics": {
-        const diagnostics = languageService.getSuggestionDiagnostics(
-          request.specifier,
-        ).filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-        return respond(id, fromTypeScriptDiagnostic(diagnostics));
-      }
-      case "getSyntacticDiagnostics": {
-        const diagnostics = languageService.getSyntacticDiagnostics(
-          request.specifier,
-        ).filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-        return respond(id, fromTypeScriptDiagnostic(diagnostics));
-      }
-      case "getQuickInfo": {
+      case "findRenameLocations": {
         return respond(
           id,
-          languageService.getQuickInfoAtPosition(
+          languageService.findRenameLocations(
             request.specifier,
             request.position,
+            request.findInStrings,
+            request.findInComments,
+            request.providePrefixAndSuffixTextForRename,
+          ),
+        );
+      }
+      case "getAsset": {
+        const sourceFile = host.getSourceFile(
+          request.specifier,
+          ts.ScriptTarget.ESNext,
+        );
+        return respond(id, sourceFile && sourceFile.text);
+      }
+      case "getCodeFixes": {
+        return respond(
+          id,
+          languageService.getCodeFixesAtPosition(
+            request.specifier,
+            request.startPosition,
+            request.endPosition,
+            request.errorCodes.map((v) => Number(v)),
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Block,
+              semicolons: ts.SemicolonPreference.Insert,
+            },
+            {
+              quotePreference: "double",
+            },
+          ),
+        );
+      }
+      case "getCombinedCodeFix": {
+        return respond(
+          id,
+          languageService.getCombinedCodeFix(
+            {
+              type: "file",
+              fileName: request.specifier,
+            },
+            request.fixId,
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Block,
+              semicolons: ts.SemicolonPreference.Insert,
+            },
+            {
+              quotePreference: "double",
+            },
           ),
         );
       }
@@ -524,6 +604,36 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getDefinition": {
+        return respond(
+          id,
+          languageService.getDefinitionAndBoundSpan(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getDiagnostics": {
+        try {
+          /** @type {Record<string, any[]>} */
+          const diagnosticMap = {};
+          for (const specifier of request.specifiers) {
+            diagnosticMap[specifier] = fromTypeScriptDiagnostic([
+              ...languageService.getSemanticDiagnostics(specifier),
+              ...languageService.getSuggestionDiagnostics(specifier),
+              ...languageService.getSyntacticDiagnostics(specifier),
+            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
+          }
+          return respond(id, diagnosticMap);
+        } catch (e) {
+          if ("stack" in e) {
+            error(e.stack);
+          } else {
+            error(e);
+          }
+          return respond(id, {});
+        }
+      }
       case "getDocumentHighlights": {
         return respond(
           id,
@@ -531,6 +641,30 @@ delete Object.prototype.__proto__;
             request.specifier,
             request.position,
             request.filesToSearch,
+          ),
+        );
+      }
+      case "getImplementation": {
+        return respond(
+          id,
+          languageService.getImplementationAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getNavigationTree": {
+        return respond(
+          id,
+          languageService.getNavigationTree(request.specifier),
+        );
+      }
+      case "getQuickInfo": {
+        return respond(
+          id,
+          languageService.getQuickInfoAtPosition(
+            request.specifier,
+            request.position,
           ),
         );
       }
@@ -543,13 +677,10 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getDefinition": {
+      case "getSupportedCodeFixes": {
         return respond(
           id,
-          languageService.getDefinitionAndBoundSpan(
-            request.specifier,
-            request.position,
-          ),
+          ts.getSupportedCodeFixes(),
         );
       }
       default:
@@ -568,7 +699,6 @@ delete Object.prototype.__proto__;
     hasStarted = true;
     languageService = ts.createLanguageService(host);
     core.ops();
-    core.registerErrorClass("Error", Error);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
@@ -584,7 +714,6 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     core.ops();
-    core.registerErrorClass("Error", Error);
     setLogDebug(!!debugFlag, "TS");
   }
 

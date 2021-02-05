@@ -1,20 +1,63 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// Think of Resources as File Descriptors. They are integers that are allocated by
-// the privileged side of Deno to refer to various rust objects that need to be
-// referenced between multiple ops. For example, network sockets are resources.
-// Resources may or may not correspond to a real operating system file
-// descriptor (hence the different name).
+// Think of Resources as File Descriptors. They are integers that are allocated
+// by the privileged side of Deno which refer to various rust objects that need
+// to be persisted between various ops. For example, network sockets are
+// resources. Resources may or may not correspond to a real operating system
+// file descriptor (hence the different name).
 
-use crate::resources2::ResourceId;
+use std::any::type_name;
 use std::any::Any;
+use std::any::TypeId;
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::iter::Iterator;
+use std::rc::Rc;
 
-/// These store Deno's file descriptors. These are not necessarily the operating
-/// system ones.
-type ResourceMap = HashMap<ResourceId, (String, Box<dyn Any>)>;
+/// All objects that can be store in the resource table should implement the
+/// `Resource` trait.
+pub trait Resource: Any + 'static {
+  /// Returns a string representation of the resource which is made available
+  /// to JavaScript code through `op_resources`. The default implementation
+  /// returns the Rust type name, but specific resource types may override this
+  /// trait method.
+  fn name(&self) -> Cow<str> {
+    type_name::<Self>().into()
+  }
 
-/// Map-like data structure storing Deno's resources (equivalent to file descriptors).
+  /// Resources may implement the `close()` trait method if they need to do
+  /// resource specific clean-ups, such as cancelling pending futures, after a
+  /// resource has been removed from the resource table.
+  fn close(self: Rc<Self>) {}
+}
+
+impl dyn Resource {
+  #[inline(always)]
+  fn is<T: Resource>(&self) -> bool {
+    self.type_id() == TypeId::of::<T>()
+  }
+
+  #[inline(always)]
+  #[allow(clippy::needless_lifetimes)]
+  pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
+    if self.is::<T>() {
+      let ptr = self as *const Rc<_> as *const Rc<T>;
+      Some(unsafe { &*ptr })
+    } else {
+      None
+    }
+  }
+}
+
+/// A `ResourceId` is an integer value referencing a resource. It could be
+/// considered to be the Deno equivalent of a `file descriptor` in POSIX like
+/// operating systems. Elsewhere in the code base it is commonly abbreviated
+/// to `rid`.
+// TODO: use `u64` instead?
+pub type ResourceId = u32;
+
+/// Map-like data structure storing Deno's resources (equivalent to file
+/// descriptors).
 ///
 /// Provides basic methods for element access. A resource can be of any type.
 /// Different types of resources can be stored in the same map, and provided
@@ -24,156 +67,98 @@ type ResourceMap = HashMap<ResourceId, (String, Box<dyn Any>)>;
 /// the key in the map.
 #[derive(Default)]
 pub struct ResourceTable {
-  map: ResourceMap,
-  next_id: u32,
+  index: HashMap<ResourceId, Rc<dyn Resource>>,
+  next_rid: ResourceId,
 }
 
 impl ResourceTable {
-  /// Checks if the given resource ID is contained.
-  pub fn has(&self, rid: ResourceId) -> bool {
-    self.map.contains_key(&rid)
-  }
-
-  /// Returns a shared reference to a resource.
-  ///
-  /// Returns `None`, if `rid` is not stored or has a type different from `T`.
-  pub fn get<T: Any>(&self, rid: ResourceId) -> Option<&T> {
-    let (_, resource) = self.map.get(&rid)?;
-    resource.downcast_ref::<T>()
-  }
-
-  /// Returns a mutable reference to a resource.
-  ///
-  /// Returns `None`, if `rid` is not stored or has a type different from `T`.
-  pub fn get_mut<T: Any>(&mut self, rid: ResourceId) -> Option<&mut T> {
-    let (_, resource) = self.map.get_mut(&rid)?;
-    resource.downcast_mut::<T>()
-  }
-
-  // TODO: resource id allocation should probably be randomized for security.
-  fn next_rid(&mut self) -> ResourceId {
-    let next_rid = self.next_id;
-    self.next_id += 1;
-    next_rid as ResourceId
-  }
-
-  /// Inserts a resource, taking ownership of it.
+  /// Inserts resource into the resource table, which takes ownership of it.
   ///
   /// The resource type is erased at runtime and must be statically known
   /// when retrieving it through `get()`.
   ///
   /// Returns a unique resource ID, which acts as a key for this resource.
-  pub fn add(&mut self, name: &str, resource: Box<dyn Any>) -> ResourceId {
-    let rid = self.next_rid();
-    let r = self.map.insert(rid, (name.to_string(), resource));
-    assert!(r.is_none());
+  pub fn add<T: Resource>(&mut self, resource: T) -> ResourceId {
+    self.add_rc(Rc::new(resource))
+  }
+
+  /// Inserts a `Rc`-wrapped resource into the resource table.
+  ///
+  /// The resource type is erased at runtime and must be statically known
+  /// when retrieving it through `get()`.
+  ///
+  /// Returns a unique resource ID, which acts as a key for this resource.
+  pub fn add_rc<T: Resource>(&mut self, resource: Rc<T>) -> ResourceId {
+    let resource = resource as Rc<dyn Resource>;
+    let rid = self.next_rid;
+    let removed_resource = self.index.insert(rid, resource);
+    assert!(removed_resource.is_none());
+    self.next_rid += 1;
     rid
   }
 
-  /// Returns a map of resource IDs to names.
-  ///
-  /// The name is the one specified during `add()`. To access resources themselves,
-  /// use the `get()` or `get_mut()` functions.
-  pub fn entries(&self) -> HashMap<ResourceId, String> {
+  /// Returns true if any resource with the given `rid` exists.
+  pub fn has(&self, rid: ResourceId) -> bool {
+    self.index.contains_key(&rid)
+  }
+
+  /// Returns a reference counted pointer to the resource of type `T` with the
+  /// given `rid`. If `rid` is not present or has a type different than `T`,
+  /// this function returns `None`.
+  pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<Rc<T>> {
     self
-      .map
-      .iter()
-      .map(|(key, (name, _resource))| (*key, name.clone()))
-      .collect()
+      .index
+      .get(&rid)
+      .and_then(|rc| rc.downcast_rc::<T>())
+      .map(Clone::clone)
   }
 
-  // close(2) is done by dropping the value. Therefore we just need to remove
-  // the resource from the resource table.
+  pub fn get_any(&self, rid: ResourceId) -> Option<Rc<dyn Resource>> {
+    self.index.get(&rid).map(Clone::clone)
+  }
+
+  /// Removes a resource of type `T` from the resource table and returns it.
+  /// If a resource with the given `rid` exists but its type does not match `T`,
+  /// it is not removed from the resource table. Note that the resource's
+  /// `close()` method is *not* called.
+  pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Option<Rc<T>> {
+    let resource = self.get::<T>(rid)?;
+    self.index.remove(&rid);
+    Some(resource)
+  }
+
+  /// Removes a resource from the resource table and returns it. Note that the
+  /// resource's `close()` method is *not* called.
+  pub fn take_any(&mut self, rid: ResourceId) -> Option<Rc<dyn Resource>> {
+    self.index.remove(&rid)
+  }
+
+  /// Removes the resource with the given `rid` from the resource table. If the
+  /// only reference to this resource existed in the resource table, this will
+  /// cause the resource to be dropped. However, since resources are reference
+  /// counted, therefore pending ops are not automatically cancelled. A resource
+  /// may implement the `close()` method to perform clean-ups such as canceling
+  /// ops.
   pub fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.map.remove(&rid).map(|(_name, _resource)| ())
+    self.index.remove(&rid).map(|resource| resource.close())
   }
 
-  /// Removes the resource identified by `rid` and returns it.
+  /// Returns an iterator that yields a `(id, name)` pair for every resource
+  /// that's currently in the resource table. This can be used for debugging
+  /// purposes or to implement the `op_resources` op. Note that the order in
+  /// which items appear is not specified.
   ///
-  /// When the provided `rid` is stored, the associated resource will be removed.
-  /// Otherwise, nothing happens and `None` is returned.
+  /// # Example
   ///
-  /// If the type `T` matches the resource's type, the resource will be returned.
-  /// If the type mismatches, `None` is returned, but the resource is still removed.
-  pub fn remove<T: Any>(&mut self, rid: ResourceId) -> Option<Box<T>> {
-    if let Some((_name, resource)) = self.map.remove(&rid) {
-      let res = match resource.downcast::<T>() {
-        Ok(res) => Some(res),
-        Err(_e) => None,
-      };
-      return res;
-    }
-    None
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  struct FakeResource {
-    not_empty: u128,
-  }
-
-  impl FakeResource {
-    fn new(value: u128) -> FakeResource {
-      FakeResource { not_empty: value }
-    }
-  }
-
-  #[test]
-  fn test_create_resource_table_default() {
-    let table = ResourceTable::default();
-    assert_eq!(table.map.len(), 0);
-  }
-
-  #[test]
-  fn test_add_to_resource_table_not_empty() {
-    let mut table = ResourceTable::default();
-    table.add("fake1", Box::new(FakeResource::new(1)));
-    table.add("fake2", Box::new(FakeResource::new(2)));
-    assert_eq!(table.map.len(), 2);
-  }
-
-  #[test]
-  fn test_add_to_resource_table_are_contiguous() {
-    let mut table = ResourceTable::default();
-    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
-    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
-    assert_eq!(rid1 + 1, rid2);
-  }
-
-  #[test]
-  fn test_get_from_resource_table_is_what_was_given() {
-    let mut table = ResourceTable::default();
-    let rid = table.add("fake", Box::new(FakeResource::new(7)));
-    let resource = table.get::<FakeResource>(rid);
-    assert_eq!(resource.unwrap().not_empty, 7);
-  }
-
-  #[test]
-  fn test_remove_from_resource_table() {
-    let mut table = ResourceTable::default();
-    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
-    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
-    assert_eq!(table.map.len(), 2);
-    table.close(rid1);
-    assert_eq!(table.map.len(), 1);
-    table.close(rid2);
-    assert_eq!(table.map.len(), 0);
-  }
-
-  #[test]
-  fn test_take_from_resource_table() {
-    let mut table = ResourceTable::default();
-    let rid1 = table.add("fake1", Box::new(FakeResource::new(1)));
-    let rid2 = table.add("fake2", Box::new(FakeResource::new(2)));
-    assert_eq!(table.map.len(), 2);
-    let res1 = table.remove::<FakeResource>(rid1);
-    assert_eq!(table.map.len(), 1);
-    assert!(res1.is_some());
-    let res2 = table.remove::<FakeResource>(rid2);
-    assert_eq!(table.map.len(), 0);
-    assert!(res2.is_some());
+  /// ```
+  /// # use deno_core::ResourceTable;
+  /// # let resource_table = ResourceTable::default();
+  /// let resource_names = resource_table.names().collect::<Vec<_>>();
+  /// ```
+  pub fn names(&self) -> impl Iterator<Item = (ResourceId, Cow<str>)> {
+    self
+      .index
+      .iter()
+      .map(|(&id, resource)| (id, resource.name()))
   }
 }

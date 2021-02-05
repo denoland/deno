@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::Result;
 use std::{
@@ -191,7 +191,7 @@ fn deno_http(deno_exe: &str) -> Result<HttpBenchmarkResult> {
       "--allow-net",
       "--reload",
       "--unstable",
-      "std/http/bench.ts",
+      "test_util/std/http/bench.ts",
       &server_addr(port),
     ],
     port,

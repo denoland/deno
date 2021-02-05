@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #[macro_use]
 extern crate log;
@@ -134,7 +134,7 @@ fn op_listen(
   let std_listener = std::net::TcpListener::bind(&addr)?;
   std_listener.set_nonblocking(true)?;
   let listener = TcpListener::try_from(std_listener)?;
-  let rid = state.resource_table_2.add(listener);
+  let rid = state.resource_table.add(listener);
   Ok(serde_json::json!({ "rid": rid }))
 }
 
@@ -152,7 +152,7 @@ fn op_close(
     .unwrap();
   debug!("close rid={}", rid);
   state
-    .resource_table_2
+    .resource_table
     .close(rid)
     .map(|_| serde_json::json!(()))
     .ok_or_else(bad_resource_id)
@@ -174,11 +174,11 @@ async fn op_accept(
 
   let listener = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TcpListener>(rid)
     .ok_or_else(bad_resource_id)?;
   let stream = listener.accept().await?;
-  let rid = state.borrow_mut().resource_table_2.add(stream);
+  let rid = state.borrow_mut().resource_table.add(stream);
   Ok(serde_json::json!({ "rid": rid }))
 }
 
@@ -199,7 +199,7 @@ async fn op_read(
 
   let stream = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
   let nread = stream.read(&mut bufs[0]).await?;
@@ -223,7 +223,7 @@ async fn op_write(
 
   let stream = state
     .borrow()
-    .resource_table_2
+    .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
   let nwritten = stream.write(&bufs[0]).await?;

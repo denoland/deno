@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Used for benchmarking Deno's tcp proxy performance.
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const originAddr = Deno.args[1] || "127.0.0.1:4501";

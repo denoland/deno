@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
 use crate::module_graph::TypeLib;
@@ -22,6 +22,10 @@ pub struct CliModuleLoader {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub lib: TypeLib,
+  /// The initial set of permissions used to resolve the imports in the worker.
+  /// They are decoupled from the worker permissions since read access errors
+  /// must be raised based on the parent thread permissions
+  pub initial_permissions: Rc<RefCell<Option<Permissions>>>,
   pub program_state: Arc<ProgramState>,
 }
 
@@ -38,11 +42,15 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map,
       lib,
+      initial_permissions: Rc::new(RefCell::new(None)),
       program_state,
     })
   }
 
-  pub fn new_for_worker(program_state: Arc<ProgramState>) -> Rc<Self> {
+  pub fn new_for_worker(
+    program_state: Arc<ProgramState>,
+    permissions: Permissions,
+  ) -> Rc<Self> {
     let lib = if program_state.flags.unstable {
       TypeLib::UnstableDenoWorker
     } else {
@@ -52,6 +60,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: None,
       lib,
+      initial_permissions: Rc::new(RefCell::new(Some(permissions))),
       program_state,
     })
   }
@@ -94,26 +103,14 @@ impl ModuleLoader for CliModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.to_owned();
-    let module_url_specified = module_specifier.to_string();
+    let module_specifier = module_specifier.clone();
     let program_state = self.program_state.clone();
 
     // NOTE: this block is async only because of `deno_core`
     // interface requirements; module was already loaded
     // when constructing module graph during call to `prepare_load`.
-    let fut = async move {
-      let compiled_module = program_state
-        .fetch_compiled_module(module_specifier, maybe_referrer)?;
-      Ok(deno_core::ModuleSource {
-        // Real module name, might be different from initial specifier
-        // due to redirections.
-        code: compiled_module.code,
-        module_url_specified,
-        module_url_found: compiled_module.name,
-      })
-    };
-
-    fut.boxed_local()
+    async move { program_state.load(module_specifier, maybe_referrer) }
+      .boxed_local()
   }
 
   fn prepare_load(
@@ -130,7 +127,16 @@ impl ModuleLoader for CliModuleLoader {
     let state = op_state.borrow();
 
     // The permissions that should be applied to any dynamically imported module
-    let dynamic_permissions = state.borrow::<Permissions>().clone();
+    let dynamic_permissions =
+      // If there are initial permissions assigned to the loader take them 
+      // and use only once for top level module load.
+      // Otherwise use permissions assigned to the current worker.
+      if let Some(permissions) = self.initial_permissions.borrow_mut().take() {
+        permissions
+      } else {
+        state.borrow::<Permissions>().clone()
+      };
+
     let lib = self.lib.clone();
     drop(state);
 

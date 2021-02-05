@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.72.0", path = "../../core" }
-serde = { version = "1.0.116", features = ["derive"] }
+deno_core = { version = "0.77.1", path = "../../core" }
+serde = { version = "1.0.121", features = ["derive"] }
 wgc = { package = "wgpu-core", version = "0.6.5" }
 wgt = { package = "wgpu-types", version = "0.6.1" }

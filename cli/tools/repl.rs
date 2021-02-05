@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
 use crate::ast::TokenOrComment;
@@ -28,6 +28,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use swc_ecmascript::parser::token::{Token, Word};
+use tokio::pin;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -102,25 +103,25 @@ impl Completer for Helper {
 
     if let Some(result) = evaluate_response.get("result") {
       if let Some(object_id) = result.get("objectId") {
-        let get_properties_response = self
-          .post_message(
-            "Runtime.getProperties",
-            Some(json!({
-              "objectId": object_id,
-            })),
-          )
-          .unwrap();
+        let get_properties_response = self.post_message(
+          "Runtime.getProperties",
+          Some(json!({
+            "objectId": object_id,
+          })),
+        );
 
-        if let Some(result) = get_properties_response.get("result") {
-          let candidates = result
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
-            .filter(|r| r.starts_with(&suffix[1..]))
-            .collect();
+        if let Ok(get_properties_response) = get_properties_response {
+          if let Some(result) = get_properties_response.get("result") {
+            let candidates = result
+              .as_array()
+              .unwrap()
+              .iter()
+              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+              .filter(|r| r.starts_with(&suffix[1..]))
+              .collect();
 
-          return Ok((pos - (suffix.len() - 1), candidates));
+            return Ok((pos - (suffix.len() - 1), candidates));
+          }
         }
       }
     }
@@ -277,7 +278,7 @@ async fn post_message_and_poll(
         // A zero delay is long enough to yield the thread in order to prevent the loop from
         // running hot for messages that are taking longer to resolve like for example an
         // evaluation of top level await.
-        tokio::time::delay_for(tokio::time::Duration::from_millis(0)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
       }
     }
   }
@@ -304,8 +305,10 @@ async fn read_line_and_poll(
 
     // Because an inspector websocket client may choose to connect at anytime when we have an
     // inspector server we need to keep polling the worker to pick up new connections.
-    let mut timeout =
-      tokio::time::delay_for(tokio::time::Duration::from_millis(100));
+    // TODO(piscisaureus): the above comment is a red herring; figure out if/why
+    // the event loop isn't woken by a waker when a websocket client connects.
+    let timeout = tokio::time::sleep(tokio::time::Duration::from_millis(100));
+    pin!(timeout);
 
     tokio::select! {
       result = &mut line => {
@@ -314,7 +317,7 @@ async fn read_line_and_poll(
       _ = worker.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }
-      _ = &mut timeout => {
+      _ = timeout => {
         poll_worker = true
       }
     }

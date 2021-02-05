@@ -1,6 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
+use serde::de;
+use serde::Deserialize;
+use serde::Deserializer;
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
@@ -209,9 +212,21 @@ impl PartialEq<String> for ModuleSpecifier {
   }
 }
 
+impl<'de> Deserialize<'de> for ModuleSpecifier {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let url_str: String = Deserialize::deserialize(deserializer)?;
+    ModuleSpecifier::resolve_url(&url_str).map_err(de::Error::custom)
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::serde_json::from_value;
+  use crate::serde_json::json;
   use std::path::Path;
 
   #[test]
@@ -544,5 +559,14 @@ mod tests {
         PathBuf::from("C:\\a\\c")
       );
     }
+  }
+
+  #[test]
+  fn test_deserialize_module_specifier() {
+    let actual: ModuleSpecifier =
+      from_value(json!("http://deno.land/x/mod.ts")).unwrap();
+    let expected =
+      ModuleSpecifier::resolve_url("http://deno.land/x/mod.ts").unwrap();
+    assert_eq!(actual, expected);
   }
 }

@@ -17,13 +17,13 @@ jobs:
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: test_debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: bench
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
             kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
@@ -57,8 +57,7 @@ jobs:
           startsWith(matrix.os, 'ubuntu') &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
@@ -66,7 +65,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.48.0
+          rust-version: 1.49.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -90,8 +89,14 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v1
         with:
-          python-version: "2.7"
+          python-version: "3.8"
           architecture: x64
+
+      - name: Install Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+          check-latest: true
 
       - name: Remove unused versions of Python
         if: startsWith(matrix.os, 'windows')
@@ -106,7 +111,8 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/')
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -118,7 +124,8 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/')
         uses: google-github-actions/setup-gcloud@master
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
@@ -169,6 +176,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          zip -r denort-x86_64-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
 
       - name: Pre-release (mac)
@@ -178,6 +186,7 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
+          zip -r denort-x86_64-apple-darwin.zip denort
 
       - name: Pre-release (windows)
         if: |
@@ -185,8 +194,9 @@ jobs:
           matrix.kind == 'test_release'
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
 
-      - name: Upload canary (unix)
+      - name: Upload canary to dl.deno.land (unix)
         if: |
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
@@ -197,7 +207,7 @@ jobs:
           echo $(git rev-parse HEAD) > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
-      - name: Upload canary (windows)
+      - name: Upload canary to dl.deno.land (windows)
         if: |
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
@@ -220,6 +230,28 @@ jobs:
         run: |
           cargo test --locked --doc
           cargo test --locked --all-targets
+
+      - name: Configure hosts file for WPT (unix)
+        if: runner.os != 'Windows'
+        run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
+        working-directory: test_util/wpt/
+
+      - name: Configure hosts file for WPT (windows)
+        if: runner.os == 'Windows'
+        working-directory: test_util/wpt/
+        run: python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
+
+      - name: Run web platform tests (release)
+        if: matrix.kind == 'test_release'
+        run: |
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release
+
+      - name: Run web platform tests (debug)
+        if: matrix.kind == 'test_debug'
+        run: |
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
@@ -248,13 +280,37 @@ jobs:
           cat /proc/cpuinfo
           cat /proc/meminfo
 
-      - name: Release stable
+      - name: Upload release to dl.deno.land (unix)
+        if: |
+          runner.os != 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/')
+        run: |
+          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          echo ${GITHUB_REF#refs/*/} > release-latest.txt
+          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+
+      - name: Upload release to dl.deno.land (windows)
+        if: |
+          runner.os == 'Windows' &&
+          matrix.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/')
+        env:
+          CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
+        shell: bash
+        run: |
+          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          echo ${GITHUB_REF#refs/*/} > release-latest.txt
+          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+
+      - name: Upload release to GitHub
         uses: softprops/action-gh-release@v1
         if: |
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -265,16 +321,3 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
-
-      - name: Publish
-        if: |
-          startsWith(matrix.os, 'ubuntu') &&
-          matrix.kind == 'test_release' &&
-          github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          cd cli
-          cargo publish

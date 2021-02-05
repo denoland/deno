@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -75,23 +75,6 @@ impl Into<Box<[u8]>> for ErrorRecord {
   }
 }
 
-#[test]
-fn test_error_record() {
-  let expected = vec![
-    1, 0, 0, 0, 255, 255, 255, 255, 11, 0, 0, 0, 66, 97, 100, 82, 101, 115,
-    111, 117, 114, 99, 101, 69, 114, 114, 111, 114,
-  ];
-  let err_record = ErrorRecord {
-    promise_id: 1,
-    arg: -1,
-    error_len: 11,
-    error_class: b"BadResource",
-    error_message: b"Error".to_vec(),
-  };
-  let buf: Box<[u8]> = err_record.into();
-  assert_eq!(buf, expected.into_boxed_slice());
-}
-
 pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
   if bytes.len() % std::mem::size_of::<i32>() != 0 {
     return None;
@@ -111,25 +94,6 @@ pub fn parse_min_record(bytes: &[u8]) -> Option<Record> {
     arg: ints[1],
     result: ints[2],
   })
-}
-
-#[test]
-fn test_parse_min_record() {
-  let buf = vec![1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0];
-  assert_eq!(
-    parse_min_record(&buf),
-    Some(Record {
-      promise_id: 1,
-      arg: 3,
-      result: 4
-    })
-  );
-
-  let buf = vec![];
-  assert_eq!(parse_min_record(&buf), None);
-
-  let buf = vec![5];
-  assert_eq!(parse_min_record(&buf), None);
 }
 
 pub fn minimal_op<F>(op_fn: F) -> Box<OpFn>
@@ -202,4 +166,45 @@ where
       }
     }
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_error_record() {
+    let expected = vec![
+      1, 0, 0, 0, 255, 255, 255, 255, 11, 0, 0, 0, 66, 97, 100, 82, 101, 115,
+      111, 117, 114, 99, 101, 69, 114, 114, 111, 114,
+    ];
+    let err_record = ErrorRecord {
+      promise_id: 1,
+      arg: -1,
+      error_len: 11,
+      error_class: b"BadResource",
+      error_message: b"Error".to_vec(),
+    };
+    let buf: Box<[u8]> = err_record.into();
+    assert_eq!(buf, expected.into_boxed_slice());
+  }
+
+  #[test]
+  fn test_parse_min_record() {
+    let buf = vec![1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0];
+    assert_eq!(
+      parse_min_record(&buf),
+      Some(Record {
+        promise_id: 1,
+        arg: 3,
+        result: 4
+      })
+    );
+
+    let buf = vec![];
+    assert_eq!(parse_min_record(&buf), None);
+
+    let buf = vec![5];
+    assert_eq!(parse_min_record(&buf), None);
+  }
 }

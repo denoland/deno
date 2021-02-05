@@ -1,0 +1,17 @@
+A
+["1.2.3.4"]
+AAAA
+["1:2:3:4:5:6:7:8"]
+ANAME
+["aname.com."]
+CNAME
+["cname.com."]
+MX
+[{"preference":0,"exchange":"mx.com."}]
+PTR
+["ptr.com."]
+SRV
+[{"priority":0,"weight":100,"port":1234,"target":"srv.com."}]
+TXT
+[["foo","bar"]]
+Error thrown for not-found-example.com

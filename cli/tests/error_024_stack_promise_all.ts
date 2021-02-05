@@ -1,4 +1,5 @@
 const p = Promise.all([
+  Promise.resolve(),
   (async (): Promise<never> => {
     await Promise.resolve();
     throw new Error("Promise.all()");

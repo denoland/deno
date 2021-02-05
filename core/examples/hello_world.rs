@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 //!  This example shows you how to define ops in Rust and then call them from
 //!  JavaScript.
 
