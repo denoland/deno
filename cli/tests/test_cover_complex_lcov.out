@@ -5,7 +5,7 @@ test complex ... ok ([WILDCARD])
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
-SF:[WILDCARD]/tests/coverage/complex.ts
+SF:[WILDCARD]complex.ts
 FN:19,dependency
 FN:32,complex
 FN:44,unused
