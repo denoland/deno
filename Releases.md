@@ -8,8 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 1.7.2 / 2021.02.05
 
-- feat(lsp): add references code lens (#9316)
-- feat(lsp): add TS quick fix code actions (#9396)
+- feat(lsp, unstable): add references code lens (#9316)
+- feat(lsp, unstable): add TS quick fix code actions (#9396)
 - fix: improve http client builder error message (#9380)
 - fix(cli): fix handling of non-normalized specifier (#9357)
 - fix(cli/coverage): display mapped instrumentation line counts (#9310)
@@ -18,10 +18,8 @@ https://github.com/denoland/deno_install
 - refactor: rewrite Blob implementation (#9309)
 - refactor: rewrite File implementation (#9334)
 
-Changes in std version 0.86.0:
-
-- feat(http/file_server): support do not show dotfiles (#690)
-- feat(http/file_server): show ../ if it makes sense & end dirs with / (#691)
+Release notes for std version 0.86.0:
+https://github.com/denoland/deno_std/releases/tag/0.86.0
 
 ### 1.7.1 / 2021.01.29
 
