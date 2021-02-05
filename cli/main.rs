@@ -985,6 +985,10 @@ async fn cover_command(
   ignore: Vec<PathBuf>,
   lcov: bool,
 ) -> Result<(), AnyError> {
+  if !flags.unstable {
+    exit_unstable("compile");
+  }
+
   tools::coverage::cover_files(flags.clone(), files, ignore, lcov).await
 }
 
