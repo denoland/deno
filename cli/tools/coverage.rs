@@ -392,6 +392,8 @@ impl CoverageReporter for PrettyCoverageReporter {
       offsets
     };
 
+    // TODO(caspervonb): collect uncovered ranges on the lines so that we can highlight specific
+    // parts of a line in color (word diff style) instead of the entire line.
     let line_counts = line_offsets
       .iter()
       .enumerate()
@@ -527,7 +529,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 
 fn collect_coverages(
   files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  ignore: &Vec<PathBuf>,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = collect_files(&files, &ignore, |file_path| {
@@ -578,7 +580,13 @@ fn collect_coverages(
 
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
-) -> Vec<ScriptCoverage> {
+  ignore: &Vec<PathBuf>,
+  ) -> Vec<ScriptCoverage> {
+  let canonicalized_ignore: Vec<PathBuf> = ignore
+    .iter()
+    .filter_map(|i| i.canonicalize().ok())
+    .collect();
+
   coverages
     .into_iter()
     .filter(|e| {
@@ -598,13 +606,15 @@ fn filter_coverages(
             }
           }
 
-          return true;
+          return file_path.canonicalize().map_or(false, |c| {
+            !canonicalized_ignore.iter().any(|i| c.starts_with(i))
+          })
         }
       }
 
       false
     })
-    .collect::<Vec<ScriptCoverage>>()
+  .collect::<Vec<ScriptCoverage>>()
 }
 
 pub async fn cover_files(
@@ -612,11 +622,11 @@ pub async fn cover_files(
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   lcov: bool,
-) -> Result<(), AnyError> {
+  ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags)?;
 
-  let script_coverages = collect_coverages(files, ignore)?;
-  let script_coverages = filter_coverages(script_coverages);
+  let script_coverages = collect_coverages(files, &ignore)?;
+  let script_coverages = filter_coverages(script_coverages, &ignore);
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov
@@ -636,7 +646,7 @@ pub async fn cover_files(
         Permissions::allow_all(),
         false,
         program_state.maybe_import_map.clone(),
-      )
+        )
       .await?;
 
     let module_source = program_state.load(module_specifier.clone(), None)?;
@@ -653,7 +663,7 @@ pub async fn cover_files(
       &script_source,
       maybe_source_map,
       maybe_cached_source,
-    );
+      );
   }
 
   reporter.done();
