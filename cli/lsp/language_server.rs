@@ -1963,7 +1963,7 @@ mod tests {
       ("initialize_request_disabled.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification.json", LspResponse::None),
-      ("hover_request.json", LspResponse::Request(4, json!(null))),
+      ("hover_request.json", LspResponse::Request(2, json!(null))),
       (
         "shutdown_request.json",
         LspResponse::Request(3, json!(null)),
