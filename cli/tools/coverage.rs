@@ -612,7 +612,6 @@ fn filter_coverages(
         return false;
       }
 
-
       // TODO(caspervonb) we should give these fake virtual urls a custom schema because they look
       // like urls from an inspector client's point of view.
       if e.url.ends_with("$deno$test.ts") {

@@ -991,8 +991,15 @@ async fn cover_command(
     exit_unstable("compile");
   }
 
-  tools::coverage::cover_files(flags.clone(), files, ignore, include, exclude, lcov)
-    .await
+  tools::coverage::cover_files(
+    flags.clone(),
+    files,
+    ignore,
+    include,
+    exclude,
+    lcov,
+  )
+  .await
 }
 
 async fn test_command(
@@ -1182,7 +1189,9 @@ fn get_subcommand(
       include,
       exclude,
       lcov,
-    } => cover_command(flags, files, ignore, include, exclude, lcov).boxed_local(),
+    } => {
+      cover_command(flags, files, ignore, include, exclude, lcov).boxed_local()
+    }
     DenoSubcommand::Fmt {
       check,
       files,
