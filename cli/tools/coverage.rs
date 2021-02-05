@@ -4,8 +4,8 @@ use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::flags::Flags;
-use crate::media_type::MediaType;
 use crate::fs_util::collect_files;
+use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
@@ -533,7 +533,7 @@ fn collect_coverages(
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = collect_files(&files, &ignore, |file_path| {
-      file_path.extension().map_or(false, |ext| ext == "json")
+    file_path.extension().map_or(false, |ext| ext == "json")
   })?;
 
   for file_path in file_paths {
@@ -581,7 +581,7 @@ fn collect_coverages(
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
   ignore: &Vec<PathBuf>,
-  ) -> Vec<ScriptCoverage> {
+) -> Vec<ScriptCoverage> {
   let canonicalized_ignore: Vec<PathBuf> = ignore
     .iter()
     .filter_map(|i| i.canonicalize().ok())
@@ -608,13 +608,13 @@ fn filter_coverages(
 
           return file_path.canonicalize().map_or(false, |c| {
             !canonicalized_ignore.iter().any(|i| c.starts_with(i))
-          })
+          });
         }
       }
 
       false
     })
-  .collect::<Vec<ScriptCoverage>>()
+    .collect::<Vec<ScriptCoverage>>()
 }
 
 pub async fn cover_files(
@@ -622,7 +622,7 @@ pub async fn cover_files(
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   lcov: bool,
-  ) -> Result<(), AnyError> {
+) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags)?;
 
   let script_coverages = collect_coverages(files, &ignore)?;
@@ -646,7 +646,7 @@ pub async fn cover_files(
         Permissions::allow_all(),
         false,
         program_state.maybe_import_map.clone(),
-        )
+      )
       .await?;
 
     let module_source = program_state.load(module_specifier.clone(), None)?;
@@ -663,7 +663,7 @@ pub async fn cover_files(
       &script_source,
       maybe_source_map,
       maybe_cached_source,
-      );
+    );
   }
 
   reporter.done();
