@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.7.2 / 2021.02.05
+
+- feat(lsp): add references code lens (#9316)
+- feat(lsp): add TS quick fix code actions (#9396)
+- fix: improve http client builder error message (#9380)
+- fix(cli): fix handling of non-normalized specifier (#9357)
+- fix(cli/coverage): display mapped instrumentation line counts (#9310)
+- fix(cli/lsp): fix using jsx/tsx when not emitting via tsc (#9407)
+- fix(repl): prevent symbol completion panic (#9400)
+- refactor: rewrite Blob implementation (#9309)
+- refactor: rewrite File implementation (#9334)
+
+Changes in std version 0.86.0:
+
+- feat(http/file_server): support do not show dotfiles (#690)
+- feat(http/file_server): show ../ if it makes sense & end dirs with / (#691)
+
 ### 1.7.1 / 2021.01.29
 
 - feat(lsp, unstable): add performance measurements (#9209)
