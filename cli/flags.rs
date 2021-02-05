@@ -1104,7 +1104,20 @@ Future runs of this module will trigger no downloads or compilation unless
 
 fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("cover")
-    .about("Generate coverage reports")
+    .about("Print coverage reports")
+    .long_about(
+      "Print coverage reports from coverage profiles.
+
+Print a report to stdout:
+  deno cover coverage_profile
+
+Write a report using the lcov format:
+  deno cover --lcov coverage_profile > coverage.lcov
+
+Generate html reports from lcov:
+  genhtml -o html_coverage coverage.lcov
+",
+    )
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
