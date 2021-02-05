@@ -32,7 +32,7 @@ fn code_action_capabilities(
     .map_or(CodeActionProviderCapability::Simple(true), |_| {
       CodeActionProviderCapability::Options(CodeActionOptions {
         code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
-        resolve_provider: None,
+        resolve_provider: Some(true),
         work_done_progress_options: Default::default(),
       })
     })

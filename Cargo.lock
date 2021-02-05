@@ -396,7 +396,7 @@ checksum = "993a608597367c6377b258c25d7120740f00ed23a2252b729b1932dd7866f908"
 
 [[package]]
 name = "deno"
-version = "1.7.1"
+version = "1.7.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
