@@ -111,8 +111,8 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/')
+          (github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -124,8 +124,8 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/')
+          (github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
