@@ -37,6 +37,7 @@ pub enum DenoSubcommand {
   Cover {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
+    exclude: Vec<String>,
     lcov: bool,
   },
   Doc {
@@ -578,10 +579,15 @@ fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
+  let exclude = match matches.values_of("exclude") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let lcov = matches.is_present("lcov");
   flags.subcommand = DenoSubcommand::Cover {
     files,
     ignore,
+    exclude,
     lcov,
   };
 }
@@ -1099,7 +1105,16 @@ fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Ignore covering particular source files"),
+        .help("Ignore coverage profile files"),
+    )
+    .arg(
+      Arg::with_name("exclude")
+        .long("exclude")
+        .default_value(r"test\.\w+$")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Exclude source files from the report"),
     )
     .arg(
       Arg::with_name("lcov")

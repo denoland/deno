@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::inspector::InspectorSession;
 use deno_runtime::permissions::Permissions;
+use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use sourcemap::SourceMap;
@@ -529,7 +530,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 
 fn collect_coverages(
   files: Vec<PathBuf>,
-  ignore: &[PathBuf],
+  ignore: Vec<PathBuf>,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = collect_files(&files, &ignore, |file_path| {
@@ -580,39 +581,31 @@ fn collect_coverages(
 
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
-  ignore: &[PathBuf],
+  exclude: Vec<String>,
 ) -> Vec<ScriptCoverage> {
-  let canonicalized_ignore: Vec<PathBuf> = ignore
-    .iter()
-    .filter_map(|i| i.canonicalize().ok())
-    .collect();
+  let exclude_regexes: Vec<Regex> =
+    exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
   coverages
     .into_iter()
     .filter(|e| {
-      if let Ok(url) = Url::parse(&e.url) {
-        if let Ok(file_path) = url.to_file_path() {
-          if let Some(file_stem) = file_path.file_stem() {
-            if file_stem == "__anonymous__" {
-              return false;
-            }
-
-            if file_stem.to_str().unwrap().starts_with("$deno") {
-              return false;
-            }
-
-            if file_stem.to_str().unwrap().ends_with("test") {
-              return false;
-            }
-          }
-
-          return file_path.canonicalize().map_or(false, |c| {
-            !canonicalized_ignore.iter().any(|i| c.starts_with(i))
-          });
-        }
+      if e.url.starts_with("deno") {
+        return false;
       }
 
-      false
+      if e.url.ends_with("$deno$test.ts") {
+        return false;
+      }
+
+      if e.url.ends_with("__anonymous__") {
+        return false;
+      }
+
+      if exclude_regexes.iter().any(|p| p.is_match(&e.url)) {
+        return false;
+      }
+
+      true
     })
     .collect::<Vec<ScriptCoverage>>()
 }
@@ -621,12 +614,13 @@ pub async fn cover_files(
   flags: Flags,
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
+  exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::new(flags)?;
 
-  let script_coverages = collect_coverages(files, &ignore)?;
-  let script_coverages = filter_coverages(script_coverages, &ignore);
+  let script_coverages = collect_coverages(files, ignore)?;
+  let script_coverages = filter_coverages(script_coverages, exclude);
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov
