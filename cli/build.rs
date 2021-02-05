@@ -8,6 +8,7 @@ use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use regex::Regex;
 use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -142,7 +143,7 @@ fn create_compiler_snapshot(
   });
   js_runtime.register_op(
     "op_build_info",
-    json_op_sync(move |_state, _args, _bufs| {
+    json_op_sync(move |_state, _args: Value, _bufs| {
       Ok(json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
