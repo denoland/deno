@@ -529,7 +529,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 
 fn collect_coverages(
   files: Vec<PathBuf>,
-  ignore: &Vec<PathBuf>,
+  ignore: &[PathBuf],
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
   let file_paths = collect_files(&files, &ignore, |file_path| {
@@ -580,7 +580,7 @@ fn collect_coverages(
 
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
-  ignore: &Vec<PathBuf>,
+  ignore: &[PathBuf],
 ) -> Vec<ScriptCoverage> {
   let canonicalized_ignore: Vec<PathBuf> = ignore
     .iter()
