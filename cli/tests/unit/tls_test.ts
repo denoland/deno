@@ -26,7 +26,7 @@ function unreachable(): never {
 
 unitTest(async function connectTLSNoPerm() {
   await assertThrowsAsync(async () => {
-    await Deno.connectTls({ hostname: "github.com", port: 443 });
+    await Deno.connectTls({ hostname: "deno.land", port: 443 });
   }, Deno.errors.PermissionDenied);
 });
 
@@ -51,12 +51,40 @@ unitTest(
 unitTest(async function connectTLSCertFileNoReadPerm() {
   await assertThrowsAsync(async () => {
     await Deno.connectTls({
-      hostname: "github.com",
+      hostname: "deno.land",
       port: 443,
       certFile: "cli/tests/tls/RootCA.crt",
     });
   }, Deno.errors.PermissionDenied);
 });
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSBadClientCertPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: "bad data",
+        privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSBadClientCertChain(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+        privateKey: "bad data",
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
 
 unitTest(
   { perms: { read: true, net: true } },
