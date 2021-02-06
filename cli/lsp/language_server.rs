@@ -138,19 +138,10 @@ impl Inner {
   ) -> Result<LineIndex, AnyError> {
     let mark = self.performance.mark("get_line_index");
     let result = if specifier.as_url().scheme() == "asset" {
-      let maybe_asset = self.assets.get(&specifier).cloned();
-      if let Some(maybe_asset) = maybe_asset {
-        if let Some(asset) = maybe_asset {
-          Ok(asset.line_index)
-        } else {
-          Err(anyhow!("asset is missing: {}", specifier))
-        }
+      if let Some(asset) = self.get_asset(&specifier).await? {
+        Ok(asset.line_index)
       } else {
-        if let Some(asset) = self.get_asset(&specifier).await? {
-          Ok(asset.line_index)
-        } else {
-          Err(anyhow!("asset is missing: {}", specifier))
-        }
+        Err(anyhow!("asset is missing: {}", specifier))
       }
     } else if let Some(line_index) = self.documents.line_index(&specifier) {
       Ok(line_index)
@@ -509,11 +500,16 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<AssetDocument>, AnyError> {
-    let mut state_snapshot = self.snapshot();
-    let maybe_asset =
-      tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot).await?;
-    self.assets.insert(specifier.clone(), maybe_asset.clone());
-    Ok(maybe_asset)
+    if let Some(maybe_asset) = self.assets.get(specifier) {
+      return Ok(maybe_asset.clone());
+    } else {
+      let mut state_snapshot = self.snapshot();
+      let maybe_asset =
+        tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
+          .await?;
+      self.assets.insert(specifier.clone(), maybe_asset.clone());
+      Ok(maybe_asset)
+    }
   }
 }
 
@@ -1772,24 +1768,15 @@ impl Inner {
     } else {
       match url.scheme() {
         "asset" => {
-          let maybe_asset = self.assets.get(&specifier).cloned();
-          if let Some(maybe_asset) = maybe_asset {
-            if let Some(asset) = maybe_asset {
-              Some(asset.text)
-            } else {
-              None
-            }
+          if let Some(asset) = self
+            .get_asset(&specifier)
+            .await
+            .map_err(|_| LspError::internal_error())?
+          {
+            Some(asset.text)
           } else {
-            if let Some(asset) = self
-              .get_asset(&specifier)
-              .await
-              .map_err(|_| LspError::internal_error())?
-            {
-              Some(asset.text)
-            } else {
-              error!("Missing asset: {}", specifier);
-              None
-            }
+            error!("Missing asset: {}", specifier);
+            None
           }
         }
         _ => {
