@@ -10,9 +10,9 @@ use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -143,8 +143,7 @@ impl Default for OpTable {
 pub fn json_op_sync<V, F, R>(op_fn: F) -> Box<OpFn>
 where
   V: DeserializeOwned,
-  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError>
-    + 'static,
+  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
   R: Serialize,
 {
   Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {

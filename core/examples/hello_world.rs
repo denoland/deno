@@ -56,9 +56,7 @@ fn main() {
         Err(anyhow!("Expected exactly one argument"))
       } else {
         // And if we did, do our actual task
-        let sum = json
-          .iter()
-          .fold(0.0, |a, v| a + v);
+        let sum = json.iter().fold(0.0, |a, v| a + v);
 
         // Finally we return a JSON value
         Ok(Value::from(sum))

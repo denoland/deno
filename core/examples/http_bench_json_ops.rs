@@ -127,7 +127,7 @@ fn create_js_runtime() -> JsRuntime {
 
 #[derive(Deserialize, Serialize)]
 struct ResourceId {
-  rid: u32
+  rid: u32,
 }
 
 fn op_listen(
