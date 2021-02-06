@@ -4,10 +4,17 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+
+pub(crate) struct WebGPUSampler(pub(crate) wgc::id::SamplerId);
+impl Resource for WebGPUSampler {
+  fn name(&self) -> Cow<str> {
+    "webGPUSampler".into()
+  }
+}
 
 fn serialize_address_mode(address_mode: Option<String>) -> wgt::AddressMode {
   match address_mode {
@@ -71,14 +78,16 @@ pub fn op_webgpu_create_sampler(
 ) -> Result<Value, AnyError> {
   let args: CreateSamplerArgs = serde_json::from_value(args)?;
 
-  let device = *state
+  let device_resource = state
     .resource_table
-    .get::<wgc::id::DeviceId>(args.device_rid)
+    .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let device = device_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let descriptor = wgc::resource::SamplerDescriptor {
     label: args.label.map(Cow::Owned),
@@ -108,7 +117,7 @@ pub fn op_webgpu_create_sampler(
     std::marker::PhantomData
   ))?;
 
-  let rid = state.resource_table.add("webGPUTexture", Box::new(sampler));
+  let rid = state.resource_table.add(WebGPUSampler(sampler));
 
   Ok(json!({
     "rid": rid,

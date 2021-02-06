@@ -411,7 +411,8 @@
     }
 
     getMappedRange(offset = 0, size = undefined) {
-      const { buffer, rid } = core.jsonOpSync(
+      const buffer = new Uint8Array(size ?? this.#mappedSize);
+      const { rid } = core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
         {
           instanceRid,
@@ -419,10 +420,11 @@
           offset,
           size: size ?? this.#mappedSize,
         },
+        buffer,
       );
 
       this.#mappedRid = rid;
-      this.#mappedBuffer = new Uint8Array(buffer);
+      this.#mappedBuffer = buffer;
       return this.#mappedBuffer.buffer;
     }
 

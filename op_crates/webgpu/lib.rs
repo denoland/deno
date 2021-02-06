@@ -18,12 +18,34 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{BufVec, Resource};
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+struct WebGPUInstance(wgc::hub::Global<wgc::hub::IdentityManagerFactory>);
+impl Resource for WebGPUInstance {
+  fn name(&self) -> Cow<str> {
+    "webGPUInstance".into()
+  }
+}
+
+struct WebGPUAdapter(wgc::id::AdapterId);
+impl Resource for WebGPUAdapter {
+  fn name(&self) -> Cow<str> {
+    "webGPUAdapter".into()
+  }
+}
+
+struct WebGPUDevice(wgc::id::DeviceId);
+impl Resource for WebGPUDevice {
+  fn name(&self) -> Cow<str> {
+    "webGPUDevice".into()
+  }
+}
 
 /// Execute this crates' JS source files.
 pub fn init(isolate: &mut deno_core::JsRuntime) {
@@ -49,8 +71,6 @@ fn deserialize_features(features: &wgt::Features) -> Vec<&str> {
   return_features
 }
 
-type WgcInstance = wgc::hub::Global<wgc::hub::IdentityManagerFactory>;
-
 pub fn op_webgpu_create_instance(
   state: &mut OpState,
   _args: Value,
@@ -62,9 +82,7 @@ pub fn op_webgpu_create_instance(
     wgt::BackendBit::PRIMARY,
   );
 
-  let rid = state
-    .resource_table
-    .add("webGPUInstance", Box::new(instance));
+  let rid = state.resource_table.add(WebGPUInstance(instance));
 
   Ok(json!({
     "rid": rid,
@@ -86,10 +104,11 @@ pub async fn op_webgpu_request_adapter(
   let args: RequestAdapterArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
-  let instance = state
+  let instance_resource = state
     .resource_table
-    .get_mut::<WgcInstance>(args.instance_rid)
+    .get::<WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let descriptor = wgc::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
@@ -115,7 +134,7 @@ pub async fn op_webgpu_request_adapter(
     wgc::gfx_select!(adapter => instance.adapter_features(adapter))?;
   let features = deserialize_features(&adapter_features);
 
-  let rid = state.resource_table.add("webGPUAdapter", Box::new(adapter));
+  let rid = state.resource_table.add(WebGPUAdapter(adapter));
 
   Ok(json!({
     "rid": rid,
@@ -156,14 +175,16 @@ pub async fn op_webgpu_request_device(
   let args: RequestDeviceArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
-  let adapter = *state
+  let adapter_resource = state
     .resource_table
-    .get_mut::<wgc::id::AdapterId>(args.adapter_rid)
+    .get::<WebGPUAdapter>(args.adapter_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let adapter = adapter_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<WgcInstance>(args.instance_rid)
+    .get::<WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let mut features = wgt::Features::default();
 
@@ -233,7 +254,7 @@ pub async fn op_webgpu_request_device(
      "max_uniform_buffer_binding_size": limits.max_uniform_buffer_binding_size,
   });
 
-  let rid = state.resource_table.add("webGPUDevice", Box::new(device));
+  let rid = state.resource_table.add(WebGPUDevice(device));
 
   Ok(json!({
     "rid": rid,

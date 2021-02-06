@@ -4,10 +4,24 @@ use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+
+pub(crate) struct WebGPUTexture(pub(crate) wgc::id::TextureId);
+impl Resource for WebGPUTexture {
+  fn name(&self) -> Cow<str> {
+    "webGPUTexture".into()
+  }
+}
+
+pub(crate) struct WebGPUTextureView(pub(crate) wgc::id::TextureViewId);
+impl Resource for WebGPUTextureView {
+  fn name(&self) -> Cow<str> {
+    "webGPUTextureView".into()
+  }
+}
 
 pub fn serialize_texture_format(
   format: String,
@@ -134,14 +148,16 @@ pub fn op_webgpu_create_texture(
 ) -> Result<Value, AnyError> {
   let args: CreateTextureArgs = serde_json::from_value(args)?;
 
-  let device = *state
+  let device_resource = state
     .resource_table
-    .get::<wgc::id::DeviceId>(args.device_rid)
+    .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let device = device_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let descriptor = wgc::resource::TextureDescriptor {
     label: args.label.map(Cow::Owned),
@@ -171,7 +187,7 @@ pub fn op_webgpu_create_texture(
     std::marker::PhantomData
   ))?;
 
-  let rid = state.resource_table.add("webGPUTexture", Box::new(texture));
+  let rid = state.resource_table.add(WebGPUTexture(texture));
 
   Ok(json!({
     "rid": rid,
@@ -200,14 +216,16 @@ pub fn op_webgpu_create_texture_view(
 ) -> Result<Value, AnyError> {
   let args: CreateTextureViewArgs = serde_json::from_value(args)?;
 
-  let texture = *state
+  let texture_resource = state
     .resource_table
-    .get_mut::<wgc::id::TextureId>(args.texture_rid)
+    .get::<WebGPUTexture>(args.texture_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let texture = texture_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let descriptor = wgc::resource::TextureViewDescriptor {
     label: args.label.map(Cow::Owned),
@@ -235,9 +253,7 @@ pub fn op_webgpu_create_texture_view(
     std::marker::PhantomData
   ))?;
 
-  let rid = state
-    .resource_table
-    .add("webGPUTextureView", Box::new(texture_view));
+  let rid = state.resource_table.add(WebGPUTextureView(texture_view));
 
   Ok(json!({
     "rid": rid,

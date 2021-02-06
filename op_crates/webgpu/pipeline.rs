@@ -6,20 +6,44 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+
+pub(crate) struct WebGPUPipelineLayout(pub(crate) wgc::id::PipelineLayoutId);
+impl Resource for WebGPUPipelineLayout {
+  fn name(&self) -> Cow<str> {
+    "webGPUPipelineLayout".into()
+  }
+}
+
+pub(crate) struct WebGPUComputePipeline(pub(crate) wgc::id::ComputePipelineId);
+impl Resource for WebGPUComputePipeline {
+  fn name(&self) -> Cow<str> {
+    "webGPUComputePipeline".into()
+  }
+}
+
+pub(crate) struct WebGPURenderPipeline(pub(crate) wgc::id::RenderPipelineId);
+impl Resource for WebGPURenderPipeline {
+  fn name(&self) -> Cow<str> {
+    "webGPURenderPipeline".into()
+  }
+}
 
 fn serialize_programmable_stage_descriptor(
   state: &OpState,
   programmable_stage_descriptor: GPUProgrammableStageDescriptor,
 ) -> Result<wgc::pipeline::ProgrammableStageDescriptor, AnyError> {
+  let shader_module_resource = state
+    .resource_table
+    .get::<super::shader::WebGPUShaderModule>(
+      programmable_stage_descriptor.module,
+    )
+    .ok_or_else(bad_resource_id)?;
   Ok(wgc::pipeline::ProgrammableStageDescriptor {
-    module: *state
-      .resource_table
-      .get::<wgc::id::ShaderModuleId>(programmable_stage_descriptor.module)
-      .ok_or_else(bad_resource_id)?,
+    module: shader_module_resource.0,
     entry_point: Cow::Owned(programmable_stage_descriptor.entry_point),
   })
 }
@@ -142,22 +166,23 @@ pub fn op_webgpu_create_compute_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateComputePipelineArgs = serde_json::from_value(args)?;
 
-  let instance = state
+  let device_resource = state
     .resource_table
-    .get::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-
-  let device = *state
+  let device = device_resource.0;
+  let instance_resource = state
     .resource_table
-    .get::<wgc::id::DeviceId>(args.device_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
-  let layout = if let Some(rid) = args.layout {
+  let pipeline_layout = if let Some(rid) = args.layout {
     let id = state
       .resource_table
-      .get::<wgc::id::PipelineLayoutId>(rid)
+      .get::<WebGPUPipelineLayout>(rid)
       .ok_or_else(bad_resource_id)?;
-    Some(*id)
+    Some(id.0)
   } else {
     None
   };
@@ -167,7 +192,7 @@ pub fn op_webgpu_create_compute_pipeline(
 
   let descriptor = wgc::pipeline::ComputePipelineDescriptor {
     label: args.label.map(Cow::Owned),
-    layout,
+    layout: pipeline_layout,
     compute_stage,
   };
   let implicit_pipelines = match args.layout {
@@ -187,7 +212,7 @@ pub fn op_webgpu_create_compute_pipeline(
 
   let rid = state
     .resource_table
-    .add("webGPUComputePipeline", Box::new(compute_pipeline));
+    .add(WebGPUComputePipeline(compute_pipeline));
 
   Ok(json!({
     "rid": rid,
@@ -210,21 +235,23 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   let args: ComputePipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
-  let compute_pipeline = *state
+  let compute_pipeline_resource = state
     .resource_table
-    .get::<wgc::id::ComputePipelineId>(args.compute_pipeline_rid)
+    .get::<WebGPUComputePipeline>(args.compute_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let compute_pipeline = compute_pipeline_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let bind_group_layout = wgc::gfx_select!(compute_pipeline => instance
     .compute_pipeline_get_bind_group_layout(compute_pipeline, args.index))?;
 
   let rid = state
     .resource_table
-    .add("webGPUBindGroupLayout", Box::new(bind_group_layout));
+    .add(super::binding::WebGPUBindGroupLayout(bind_group_layout));
 
   Ok(json!({
     "rid": rid,
@@ -329,14 +356,16 @@ pub fn op_webgpu_create_render_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateRenderPipelineArgs = serde_json::from_value(args)?;
 
-  let instance = state
+  let device_resource = state
     .resource_table
-    .get::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = *state
+  let device = device_resource.0;
+  let instance_resource = state
     .resource_table
-    .get::<wgc::id::DeviceId>(args.device_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let mut color_states = vec![];
 
@@ -388,9 +417,9 @@ pub fn op_webgpu_create_render_pipeline(
   let layout = if let Some(rid) = args.layout {
     let id = state
       .resource_table
-      .get::<wgc::id::PipelineLayoutId>(rid)
+      .get::<WebGPUPipelineLayout>(rid)
       .ok_or_else(bad_resource_id)?;
-    Some(*id)
+    Some(id.0)
   } else {
     None
   };
@@ -560,7 +589,7 @@ pub fn op_webgpu_create_render_pipeline(
 
   let rid = state
     .resource_table
-    .add("webGPURenderPipeline", Box::new(render_pipeline));
+    .add(WebGPURenderPipeline(render_pipeline));
 
   Ok(json!({
     "rid": rid,
@@ -583,21 +612,23 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   let args: RenderPipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
-  let render_pipeline = *state
+  let render_pipeline_resource = state
     .resource_table
-    .get_mut::<wgc::id::RenderPipelineId>(args.render_pipeline_rid)
+    .get::<WebGPURenderPipeline>(args.render_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let render_pipeline = render_pipeline_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let bind_group_layout = wgc::gfx_select!(render_pipeline => instance
     .render_pipeline_get_bind_group_layout(render_pipeline, args.index))?;
 
   let rid = state
     .resource_table
-    .add("webGPUBindGroupLayout", Box::new(bind_group_layout));
+    .add(super::binding::WebGPUBindGroupLayout(bind_group_layout));
 
   Ok(json!({
     "rid": rid,

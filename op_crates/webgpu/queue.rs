@@ -8,6 +8,8 @@ use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 
+type WebGPUQueue = super::WebGPUDevice;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QueueSubmitArgs {
@@ -23,25 +25,26 @@ pub fn op_webgpu_queue_submit(
 ) -> Result<Value, AnyError> {
   let args: QueueSubmitArgs = serde_json::from_value(args)?;
 
-  let queue = *state
+  let queue_resource = state
     .resource_table
-    .get::<wgc::id::QueueId>(args.queue_rid)
+    .get::<WebGPUQueue>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
+  let queue = queue_resource.0;
+  let instance_resource = state
+    .resource_table
+    .get::<super::WebGPUInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let mut ids = vec![];
 
-  for rid in &args.command_buffers {
-    let buffer_id = state
+  for rid in args.command_buffers {
+    let buffer_resource = state
       .resource_table
-      .get::<wgc::id::CommandBufferId>(*rid)
+      .get::<super::command_encoder::WebGPUCommandBuffer>(rid)
       .ok_or_else(bad_resource_id)?;
-    ids.push(*buffer_id);
+    ids.push(buffer_resource.0);
   }
-
-  let instance = state
-    .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
 
   wgc::gfx_select!(queue => instance.queue_submit(queue, &ids))?;
 
@@ -74,18 +77,21 @@ pub fn op_webgpu_write_buffer(
 ) -> Result<Value, AnyError> {
   let args: QueueWriteBufferArgs = serde_json::from_value(args)?;
 
-  let queue = *state
+  let buffer_resource = state
     .resource_table
-    .get::<wgc::id::QueueId>(args.queue_rid)
+    .get::<super::buffer::WebGPUBuffer>(args.buffer)
     .ok_or_else(bad_resource_id)?;
-  let buffer = *state
+  let buffer = buffer_resource.0;
+  let queue_resource = state
     .resource_table
-    .get::<wgc::id::BufferId>(args.buffer)
+    .get::<WebGPUQueue>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let queue = queue_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let data = match args.size {
     Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
@@ -118,21 +124,23 @@ pub fn op_webgpu_write_texture(
 ) -> Result<Value, AnyError> {
   let args: QueueWriteTextureArgs = serde_json::from_value(args)?;
 
-  let texture = *state
+  let texture_resource = state
     .resource_table
-    .get::<wgc::id::TextureId>(args.destination.texture)
+    .get::<super::texture::WebGPUTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
-  let queue = *state
+  let queue_resource = state
     .resource_table
-    .get::<wgc::id::QueueId>(args.queue_rid)
+    .get::<WebGPUQueue>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let queue = queue_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let destination = wgc::command::TextureCopyView {
-    texture,
+    texture: texture_resource.0,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
       .destination

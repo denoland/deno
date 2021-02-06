@@ -5,13 +5,27 @@ use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+pub(crate) struct WebGPUBuffer(pub(crate) wgc::id::BufferId);
+impl Resource for WebGPUBuffer {
+  fn name(&self) -> Cow<str> {
+    "webGPUBuffer".into()
+  }
+}
+
+struct WebGPUBufferMapped(RefCell<Vec<u8>>);
+impl Resource for WebGPUBufferMapped {
+  fn name(&self) -> Cow<str> {
+    "webGPUBufferMapped".into()
+  }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,14 +45,16 @@ pub fn op_webgpu_create_buffer(
 ) -> Result<Value, AnyError> {
   let args: CreateBufferArgs = serde_json::from_value(args)?;
 
-  let device = *state
+  let device_resource = state
     .resource_table
-    .get::<wgc::id::DeviceId>(args.device_rid)
+    .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let device = device_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let descriptor = wgc::resource::BufferDescriptor {
     label: args.label.map(Cow::Owned),
@@ -52,7 +68,7 @@ pub fn op_webgpu_create_buffer(
     std::marker::PhantomData
   ))?;
 
-  let rid = state.resource_table.add("webGPUBuffer", Box::new(buffer));
+  let rid = state.resource_table.add(WebGPUBuffer(buffer));
 
   Ok(json!({
     "rid": rid,
@@ -76,15 +92,17 @@ pub async fn op_webgpu_buffer_get_map_async(
 ) -> Result<Value, AnyError> {
   let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
 
-  let mut state = state.borrow_mut();
-  let buffer = *state
+  let state = state.borrow_mut();
+  let buffer_resource = state
     .resource_table
-    .get_mut::<wgc::id::BufferId>(args.buffer_rid)
+    .get::<WebGPUBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let buffer = buffer_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
@@ -136,18 +154,20 @@ struct BufferGetMappedRangeArgs {
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: BufferGetMappedRangeArgs = serde_json::from_value(args)?;
 
-  let buffer = *state
+  let buffer_resource = state
     .resource_table
-    .get::<wgc::id::BufferId>(args.buffer_rid)
+    .get::<WebGPUBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let buffer = buffer_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let slice_pointer = wgc::gfx_select!(buffer => instance.buffer_get_mapped_range(
     buffer,
@@ -158,17 +178,14 @@ pub fn op_webgpu_buffer_get_mapped_range(
   let slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
   };
-
-  let mut buf: Vec<u8> = vec![0; slice.len()];
-  buf.copy_from_slice(slice);
+  zero_copy[0].copy_from_slice(slice);
 
   let rid = state
     .resource_table
-    .add("webGPUBufferMapped", Box::new(slice));
+    .add(WebGPUBufferMapped(RefCell::new(slice.to_vec())));
 
   Ok(json!({
     "rid": rid,
-    "buffer": buf,
   }))
 }
 
@@ -187,20 +204,25 @@ pub fn op_webgpu_buffer_unmap(
 ) -> Result<Value, AnyError> {
   let args: BufferUnmapArgs = serde_json::from_value(args)?;
 
-  let buffer = *state
+  let buffer_resource = state
     .resource_table
-    .get::<wgc::id::BufferId>(args.buffer_rid)
+    .get::<WebGPUBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
-  let mapped = *state
+  let buffer = buffer_resource.0;
+  let mapped_resource = state
     .resource_table
-    .remove::<&mut [u8]>(args.mapped_rid)
+    .get::<WebGPUBufferMapped>(args.mapped_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
-  mapped.copy_from_slice(&*zero_copy[0]);
+  mapped_resource
+    .0
+    .borrow_mut()
+    .copy_from_slice(&zero_copy[0]);
 
   wgc::gfx_select!(buffer => instance.buffer_unmap(buffer))?;
 

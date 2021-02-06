@@ -4,9 +4,20 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{OpState, Resource};
 use serde::Deserialize;
+use std::borrow::Cow;
+use std::cell::RefCell;
+
+pub(crate) struct WebGPUComputePass(
+  pub(crate) RefCell<wgc::command::ComputePass>,
+);
+impl Resource for WebGPUComputePass {
+  fn name(&self) -> Cow<str> {
+    "webGPUComputePass".into()
+  }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,18 +33,18 @@ pub fn op_webgpu_compute_pass_set_pipeline(
 ) -> Result<Value, AnyError> {
   let args: ComputePassSetPipelineArgs = serde_json::from_value(args)?;
 
-  let pipeline_id = *state
+  let compute_pipeline_resource = state
     .resource_table
-    .get_mut::<wgc::id::ComputePipelineId>(args.pipeline)
+    .get::<super::pipeline::WebGPUComputePipeline>(args.pipeline)
     .ok_or_else(bad_resource_id)?;
-  let compute_pass = state
+  let compute_pass_resource = state
     .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgc::command::compute_ffi::wgpu_compute_pass_set_pipeline(
-    compute_pass,
-    pipeline_id,
+    &mut compute_pass_resource.0.borrow_mut(),
+    compute_pipeline_resource.0,
   );
 
   Ok(json!({}))
@@ -55,13 +66,13 @@ pub fn op_webgpu_compute_pass_dispatch(
 ) -> Result<Value, AnyError> {
   let args: ComputePassDispatchArgs = serde_json::from_value(args)?;
 
-  let compute_pass = state
+  let compute_pass_resource = state
     .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgc::command::compute_ffi::wgpu_compute_pass_dispatch(
-    compute_pass,
+    &mut compute_pass_resource.0.borrow_mut(),
     args.x,
     args.y,
     args.z,
@@ -85,18 +96,18 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
 ) -> Result<Value, AnyError> {
   let args: ComputePassDispatchIndirectArgs = serde_json::from_value(args)?;
 
-  let buffer_id = *state
+  let buffer_resource = state
     .resource_table
-    .get_mut::<wgc::id::BufferId>(args.indirect_buffer)
+    .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)
     .ok_or_else(bad_resource_id)?;
-  let compute_pass = state
+  let compute_pass_resource = state
     .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgc::command::compute_ffi::wgpu_compute_pass_dispatch_indirect(
-    compute_pass,
-    buffer_id,
+    &mut compute_pass_resource.0.borrow_mut(),
+    buffer_resource.0,
     args.indirect_offset,
   );
 
@@ -118,18 +129,23 @@ pub fn op_webgpu_compute_pass_end_pass(
 ) -> Result<Value, AnyError> {
   let args: ComputePassEndPassArgs = serde_json::from_value(args)?;
 
-  let instance = state
+  let instance_resource = state
     .resource_table
-    .get::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let command_encoder = *state
+  let ref instance = instance_resource.0;
+  let command_encoder_resource = state
     .resource_table
-    .get::<wgc::id::CommandEncoderId>(args.command_encoder_rid)
+    .get::<super::command_encoder::WebGPUCommandEncoder>(
+      args.command_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
-  let compute_pass = state
+  let command_encoder = command_encoder_resource.0;
+  let compute_pass_resource = state
     .resource_table
-    .get::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref compute_pass = compute_pass_resource.0.borrow();
 
   wgc::gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(
     command_encoder,
@@ -157,21 +173,20 @@ pub fn op_webgpu_compute_pass_set_bind_group(
 ) -> Result<Value, AnyError> {
   let args: ComputePassSetBindGroupArgs = serde_json::from_value(args)?;
 
-  let bind_group_id = *state
+  let bind_group_resource = state
     .resource_table
-    .get::<wgc::id::BindGroupId>(args.bind_group)
+    .get::<super::binding::WebGPUBindGroup>(args.bind_group)
     .ok_or_else(bad_resource_id)?;
-
-  let compute_pass = state
+  let compute_pass_resource = state
     .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
     wgc::command::compute_ffi::wgpu_compute_pass_set_bind_group(
-      compute_pass,
+      &mut compute_pass_resource.0.borrow_mut(),
       args.index,
-      bind_group_id,
+      bind_group_resource.0,
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
         None => {
@@ -202,15 +217,15 @@ pub fn op_webgpu_compute_pass_push_debug_group(
 ) -> Result<Value, AnyError> {
   let args: ComputePassPushDebugGroupArgs = serde_json::from_value(args)?;
 
-  let compute_pass = state
+  let compute_pass_resource = state
     .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
     let label = std::ffi::CString::new(args.group_label).unwrap();
     wgc::command::compute_ffi::wgpu_compute_pass_push_debug_group(
-      compute_pass,
+      &mut compute_pass_resource.0.borrow_mut(),
       label.as_ptr(),
       0, // wgpu#975
     );
@@ -232,12 +247,14 @@ pub fn op_webgpu_compute_pass_pop_debug_group(
 ) -> Result<Value, AnyError> {
   let args: ComputePassPopDebugGroupArgs = serde_json::from_value(args)?;
 
-  let compute_pass = state
+  let compute_pass_resource = state
     .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::compute_ffi::wgpu_compute_pass_pop_debug_group(compute_pass);
+  wgc::command::compute_ffi::wgpu_compute_pass_pop_debug_group(
+    &mut compute_pass_resource.0.borrow_mut(),
+  );
 
   Ok(json!({}))
 }
@@ -256,15 +273,15 @@ pub fn op_webgpu_compute_pass_insert_debug_marker(
 ) -> Result<Value, AnyError> {
   let args: ComputePassInsertDebugMarkerArgs = serde_json::from_value(args)?;
 
-  let compute_pass = state
+  let compute_pass_resource = state
     .resource_table
-    .get_mut::<wgc::command::ComputePass>(args.compute_pass_rid)
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
     let label = std::ffi::CString::new(args.marker_label).unwrap();
     wgc::command::compute_ffi::wgpu_compute_pass_insert_debug_marker(
-      compute_pass,
+      &mut compute_pass_resource.0.borrow_mut(),
       label.as_ptr(),
       0, // wgpu#975
     );

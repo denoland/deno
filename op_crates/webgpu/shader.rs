@@ -4,10 +4,17 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+
+pub(crate) struct WebGPUShaderModule(pub(crate) wgc::id::ShaderModuleId);
+impl Resource for WebGPUShaderModule {
+  fn name(&self) -> Cow<str> {
+    "webGPUShaderModule".into()
+  }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,14 +33,16 @@ pub fn op_webgpu_create_shader_module(
 ) -> Result<Value, AnyError> {
   let args: CreateShaderModuleArgs = serde_json::from_value(args)?;
 
-  let device = *state
+  let device_resource = state
     .resource_table
-    .get::<wgc::id::DeviceId>(args.device_rid)
+    .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state
+  let device = device_resource.0;
+  let instance_resource = state
     .resource_table
-    .get_mut::<super::WgcInstance>(args.instance_rid)
+    .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
+  let ref instance = instance_resource.0;
 
   let source = match args.code {
     Some(code) => wgc::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
@@ -50,9 +59,7 @@ pub fn op_webgpu_create_shader_module(
     std::marker::PhantomData
   ))?;
 
-  let rid = state
-    .resource_table
-    .add("webGPUShaderModule", Box::new(shader_module));
+  let rid = state.resource_table.add(WebGPUShaderModule(shader_module));
 
   Ok(json!({
     "rid": rid,
