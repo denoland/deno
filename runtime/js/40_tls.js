@@ -28,12 +28,14 @@
     hostname = "127.0.0.1",
     transport = "tcp",
     certFile = undefined,
+    clientCert = undefined,
   }) {
     const res = await opConnectTls({
       port,
       hostname,
       transport,
       certFile,
+      clientCert,
     });
     return new Conn(res.rid, res.remoteAddr, res.localAddr);
   }

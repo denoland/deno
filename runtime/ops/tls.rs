@@ -28,7 +28,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -77,6 +77,13 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_accept_tls", op_accept_tls);
 }
 
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ClientCertArgs {
+  chain: String,
+  private_key: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConnectTLSArgs {
@@ -84,6 +91,8 @@ struct ConnectTLSArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+
+  client_cert: Option<ClientCertArgs>,
 }
 
 #[derive(Deserialize)]
@@ -201,6 +210,22 @@ async fn op_connect_tls(
     let reader = &mut BufReader::new(key_file);
     config.root_store.add_pem_file(reader).unwrap();
   }
+  if let Some(client_cert) = args.client_cert {
+    let cert_chain = load_certs(&mut client_cert.chain.as_bytes())?;
+    let private_key = load_keys(&mut client_cert.private_key.as_bytes())
+      .and_then(|keys| {
+        if keys.len() != 1 {
+          return Err(custom_error(
+            "InvalidData",
+            "Multiple private keys given",
+          ));
+        }
+        Ok(keys[0].clone())
+      })?;
+
+    config.set_single_client_cert(cert_chain, private_key)?;
+  }
+
   let tls_connector = TlsConnector::from(Arc::new(config));
   let dnsname =
     DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
@@ -226,10 +251,7 @@ async fn op_connect_tls(
   }))
 }
 
-fn load_certs(path: &str) -> Result<Vec<Certificate>, AnyError> {
-  let cert_file = File::open(path)?;
-  let reader = &mut BufReader::new(cert_file);
-
+fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
   let certs = certs(reader)
     .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
 
@@ -241,6 +263,12 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, AnyError> {
   Ok(certs)
 }
 
+fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
+  let cert_file = File::open(path)?;
+  let reader = &mut BufReader::new(cert_file);
+  return load_certs(reader);
+}
+
 fn key_decode_err() -> AnyError {
   custom_error("InvalidData", "Unable to decode key")
 }
@@ -249,28 +277,15 @@ fn key_not_found_err() -> AnyError {
   custom_error("InvalidData", "No keys found in key file")
 }
 
-/// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
-  let key_file = File::open(path)?;
-  let reader = &mut BufReader::new(key_file);
-  let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
-  Ok(keys)
-}
-
-/// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
-  let key_file = File::open(path)?;
-  let reader = &mut BufReader::new(key_file);
-  let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
-  Ok(keys)
-}
-
-fn load_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
-  let path = path.to_string();
-  let mut keys = load_rsa_keys(&path)?;
+fn load_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  // Starts with -----BEGIN RSA PRIVATE KEY-----
+  let mut keys =
+    rsa_private_keys(&mut bytes.clone()).map_err(|_| key_decode_err())?;
 
   if keys.is_empty() {
-    keys = load_pkcs8_keys(&path)?;
+    // Starts with -----BEGIN PRIVATE KEY-----
+    keys =
+      pkcs8_private_keys(&mut bytes.clone()).map_err(|_| key_decode_err())?;
   }
 
   if keys.is_empty() {
@@ -278,6 +293,11 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
   }
 
   Ok(keys)
+}
+
+fn load_keys_from_file(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
+  let key_bytes = std::fs::read(path)?;
+  return load_keys(&key_bytes);
 }
 
 pub struct TlsListenerResource {
@@ -324,7 +344,10 @@ fn op_listen_tls(
   }
   let mut config = ServerConfig::new(NoClientAuth::new());
   config
-    .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
+    .set_single_cert(
+      load_certs_from_file(&cert_file)?,
+      load_keys_from_file(&key_file)?.remove(0),
+    )
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
   let addr = resolve_addr_sync(&args.hostname, args.port)?

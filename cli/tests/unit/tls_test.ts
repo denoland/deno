@@ -32,6 +32,54 @@ unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
 
 unitTest(
   { perms: { read: true, net: true } },
+  async function connectTLSClientCertConnection(): Promise<void> {
+    const conn = await Deno.connectTls({
+      hostname: "github.com",
+      port: 443,
+      clientCert: {
+        chain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+        privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
+      },
+    });
+
+    conn.close();
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSBadClientCertPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "github.com",
+        port: 443,
+        clientCert: {
+          chain: "bad data",
+          privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
+        },
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSBadClientCertChain(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "github.com",
+        port: 443,
+        clientCert: {
+          chain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+          privateKey: "bad data",
+        },
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
   function listenTLSNonExistentCertKeyFiles(): void {
     const options = {
       hostname: "localhost",
