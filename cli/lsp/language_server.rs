@@ -146,11 +146,7 @@ impl Inner {
           Err(anyhow!("asset is missing: {}", specifier))
         }
       } else {
-        let mut state_snapshot = self.snapshot();
-        if let Some(asset) =
-          tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
-            .await?
-        {
+        if let Some(asset) = self.get_asset(&specifier).await? {
           Ok(asset.line_index)
         } else {
           Err(anyhow!("asset is missing: {}", specifier))
@@ -507,6 +503,17 @@ impl Inner {
     specifier: ModuleSpecifier,
   ) -> Option<i32> {
     self.documents.version(&specifier)
+  }
+
+  async fn get_asset(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<AssetDocument>, AnyError> {
+    let mut state_snapshot = self.snapshot();
+    let maybe_asset =
+      tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot).await?;
+    self.assets.insert(specifier.clone(), maybe_asset.clone());
+    Ok(maybe_asset)
   }
 }
 
@@ -1773,11 +1780,10 @@ impl Inner {
               None
             }
           } else {
-            let mut state_snapshot = self.snapshot();
-            if let Some(asset) =
-              tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
-                .await
-                .map_err(|_| LspError::internal_error())?
+            if let Some(asset) = self
+              .get_asset(&specifier)
+              .await
+              .map_err(|_| LspError::internal_error())?
             {
               Some(asset.text)
             } else {
