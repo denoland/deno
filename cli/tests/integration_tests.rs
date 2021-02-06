@@ -1238,42 +1238,42 @@ mod integration {
     assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
   }
 
-#[test]
-fn ts_reload() {
-  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
-  assert!(hello_ts.is_file());
+  #[test]
+  fn ts_reload() {
+    let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
+    assert!(hello_ts.is_file());
 
-  let deno_dir = TempDir::new().expect("tempdir fail");
-  let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
-    .current_dir(util::root_path())
-    .arg("cache")
-    .arg(&hello_ts)
-    .spawn()
-    .expect("failed to spawn script");
-  let status_initial =
-    initial.wait().expect("failed to wait for child process");
-  assert!(status_initial.success());
+    let deno_dir = TempDir::new().expect("tempdir fail");
+    let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
+      .current_dir(util::root_path())
+      .arg("cache")
+      .arg(&hello_ts)
+      .spawn()
+      .expect("failed to spawn script");
+    let status_initial =
+      initial.wait().expect("failed to wait for child process");
+    assert!(status_initial.success());
 
-  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
-    .current_dir(util::root_path())
-    .arg("cache")
-    .arg("--reload")
-    .arg("-L")
-    .arg("debug")
-    .arg(&hello_ts)
-    .output()
-    .expect("failed to spawn script");
+    let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+      .current_dir(util::root_path())
+      .arg("cache")
+      .arg("--reload")
+      .arg("-L")
+      .arg("debug")
+      .arg(&hello_ts)
+      .output()
+      .expect("failed to spawn script");
 
-  // check the output of the the bundle program.
-  let output_path = hello_ts.canonicalize().unwrap();
-  assert!(std::str::from_utf8(&output.stderr)
-    .unwrap()
-    .trim()
-    .contains(&format!(
-      "host.getSourceFile(\"{}\", Latest)",
-      url::Url::from_file_path(&output_path).unwrap().as_str()
-    )));
-}
+    // check the output of the the bundle program.
+    let output_path = hello_ts.canonicalize().unwrap();
+    assert!(std::str::from_utf8(&output.stderr)
+      .unwrap()
+      .trim()
+      .contains(&format!(
+        "host.getSourceFile(\"{}\", Latest)",
+        url::Url::from_file_path(&output_path).unwrap().as_str()
+      )));
+  }
 
   #[test]
   fn bundle_exports() {
