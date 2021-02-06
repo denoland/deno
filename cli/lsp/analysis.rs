@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::text::LineIndex;
+use super::language_server;
 use super::tsc;
 
 use crate::ast;
@@ -13,7 +13,6 @@ use crate::tools::lint::create_linter;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::futures::Future;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
@@ -353,21 +352,14 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-pub async fn ts_changes_to_edit<F, Fut, V>(
+pub(crate) async fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
-  index_provider: &F,
-  version_provider: &V,
-) -> Result<Option<lsp::WorkspaceEdit>, AnyError>
-where
-  F: Fn(ModuleSpecifier) -> Fut + Clone,
-  Fut: Future<Output = Result<LineIndex, AnyError>>,
-  V: Fn(ModuleSpecifier) -> Option<i32>,
-{
+  language_server: &mut language_server::Inner,
+) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let text_document_edit = change
-      .to_text_document_edit(index_provider, version_provider)
-      .await?;
+    let text_document_edit =
+      change.to_text_document_edit(language_server).await?;
     text_document_edits.push(text_document_edit);
   }
   Ok(Some(lsp::WorkspaceEdit {
@@ -392,18 +384,12 @@ pub struct CodeActionCollection {
 
 impl CodeActionCollection {
   /// Add a TypeScript code fix action to the code actions collection.
-  pub async fn add_ts_fix_action<F, Fut, V>(
+  pub(crate) async fn add_ts_fix_action(
     &mut self,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    index_provider: &F,
-    version_provider: &V,
-  ) -> Result<(), AnyError>
-  where
-    F: Fn(ModuleSpecifier) -> Fut + Clone,
-    Fut: Future<Output = Result<LineIndex, AnyError>>,
-    V: Fn(ModuleSpecifier) -> Option<i32>,
-  {
+    language_server: &mut language_server::Inner,
+  ) -> Result<(), AnyError> {
     if action.commands.is_some() {
       // In theory, tsc can return actions that require "commands" to be applied
       // back into TypeScript.  Currently there is only one command, `install
@@ -417,9 +403,7 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let edit =
-      ts_changes_to_edit(&action.changes, index_provider, version_provider)
-        .await?;
+    let edit = ts_changes_to_edit(&action.changes, language_server).await?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
@@ -502,7 +486,7 @@ impl CodeActionCollection {
     &self,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    file_diagnostics: &[&lsp::Diagnostic],
+    file_diagnostics: &[lsp::Diagnostic],
   ) -> bool {
     // If the action does not have a fix id (indicating it can be "bundled up")
     // or if the collection already contains a "bundled" action return false
@@ -517,7 +501,7 @@ impl CodeActionCollection {
       // other diagnostics that could be bundled together in a "fix all" code
       // action
       file_diagnostics.iter().any(|d| {
-        if d == &diagnostic || d.code.is_none() || diagnostic.code.is_none() {
+        if d == diagnostic || d.code.is_none() || diagnostic.code.is_none() {
           false
         } else {
           d.code == diagnostic.code

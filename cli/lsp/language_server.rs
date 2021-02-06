@@ -66,7 +66,7 @@ pub struct StateSnapshot {
 }
 
 #[derive(Debug)]
-struct Inner {
+pub(crate) struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
@@ -132,8 +132,8 @@ impl Inner {
   /// Searches assets, open documents and external sources for a line_index,
   /// which might be performed asynchronously, hydrating in memory caches for
   /// subsequent requests.
-  async fn get_line_index(
-    &self,
+  pub(crate) async fn get_line_index(
+    &mut self,
     specifier: ModuleSpecifier,
   ) -> Result<LineIndex, AnyError> {
     let mark = self.performance.mark("get_line_index");
@@ -170,7 +170,7 @@ impl Inner {
   /// Only searches already cached assets and documents for a line index.  If
   /// the line index cannot be found, `None` is returned.
   fn get_line_index_sync(
-    &self,
+    &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let mark = self.performance.mark("get_line_index_sync");
@@ -501,6 +501,13 @@ impl Inner {
     self.performance.measure(mark);
     Ok(())
   }
+
+  pub(crate) fn document_version(
+    &mut self,
+    specifier: ModuleSpecifier,
+  ) -> Option<i32> {
+    self.documents.version(&specifier)
+  }
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
@@ -826,7 +833,7 @@ impl Inner {
     }
   }
 
-  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(&mut self, params: HoverParams) -> LspResult<Option<Hover>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -898,9 +905,10 @@ impl Inner {
       return Ok(None);
     }
     let line_index = self.get_line_index_sync(&specifier).unwrap();
-    let file_diagnostics: Vec<&Diagnostic> = self
+    let file_diagnostics: Vec<Diagnostic> = self
       .diagnostics
       .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
+      .cloned()
       .collect();
     let mut code_actions = CodeActionCollection::default();
     for diagnostic in &fixable_diagnostics {
@@ -931,12 +939,7 @@ impl Inner {
         })?;
       for action in actions {
         code_actions
-          .add_ts_fix_action(
-            &action,
-            diagnostic,
-            &|s| self.get_line_index(s),
-            &|s| self.documents.version(&s),
-          )
+          .add_ts_fix_action(&action, diagnostic, self)
           .await
           .map_err(|err| {
             error!("Unable to convert fix: {}", err);
@@ -958,7 +961,7 @@ impl Inner {
   }
 
   async fn code_action_resolve(
-    &self,
+    &mut self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
     let mark = self.performance.mark("code_action_resolve");
@@ -989,16 +992,13 @@ impl Inner {
           Err(LspError::invalid_request())
         } else {
           let mut code_action = params.clone();
-          code_action.edit = ts_changes_to_edit(
-            &combined_code_actions.changes,
-            &|s| self.get_line_index(s),
-            &|s| self.documents.version(&s),
-          )
-          .await
-          .map_err(|err| {
-            error!("Unable to convert changes to edits: {}", err);
-            LspError::internal_error()
-          })?;
+          code_action.edit =
+            ts_changes_to_edit(&combined_code_actions.changes, self)
+              .await
+              .map_err(|err| {
+                error!("Unable to convert changes to edits: {}", err);
+                LspError::internal_error()
+              })?;
           Ok(code_action)
         }
       } else {
@@ -1214,7 +1214,7 @@ impl Inner {
   }
 
   async fn document_highlight(
-    &self,
+    &mut self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     if !self.enabled() {
@@ -1342,9 +1342,7 @@ impl Inner {
       serde_json::from_value(res).unwrap();
 
     if let Some(definition) = maybe_definition {
-      let results = definition
-        .to_definition(&line_index, |s| self.get_line_index(s))
-        .await;
+      let results = definition.to_definition(&line_index, self).await;
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -1354,7 +1352,7 @@ impl Inner {
   }
 
   async fn completion(
-    &self,
+    &mut self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
     if !self.enabled() {
@@ -1399,7 +1397,7 @@ impl Inner {
   }
 
   async fn goto_implementation(
-    &self,
+    &mut self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
     if !self.enabled() {
@@ -1447,10 +1445,7 @@ impl Inner {
           ModuleSpecifier::resolve_url(&document_span.file_name).unwrap();
         let impl_line_index =
           &self.get_line_index(impl_specifier).await.unwrap();
-        if let Some(link) = document_span
-          .to_link(impl_line_index, |s| self.get_line_index(s))
-          .await
-        {
+        if let Some(link) = document_span.to_link(impl_line_index, self).await {
           results.push(link);
         }
       }
@@ -1463,13 +1458,13 @@ impl Inner {
   }
 
   async fn rename(
-    &self,
+    &mut self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.mark("goto_implementation");
+    let mark = self.performance.mark("rename");
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
 
@@ -1515,11 +1510,7 @@ impl Inner {
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
       let workspace_edits = rename_locations
-        .into_workspace_edit(
-          &params.new_name,
-          |s| self.get_line_index(s),
-          |s| self.documents.version(&s),
-        )
+        .into_workspace_edit(&params.new_name, self)
         .await
         .map_err(|err| {
           error!("Failed to get workspace edits: {:#?}", err);
@@ -1747,7 +1738,7 @@ impl Inner {
   }
 
   async fn virtual_text_document(
-    &self,
+    &mut self,
     params: VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
     let mark = self.performance.mark("virtual_text_document");

@@ -51,10 +51,7 @@ struct Metadata {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Sources(Arc<Mutex<Inner>>);
-
-#[derive(Debug, Default)]
-struct Inner {
+pub struct Sources {
   http_cache: HttpCache,
   maybe_import_map: Option<ImportMap>,
   metadata: HashMap<ModuleSpecifier, Metadata>,
@@ -64,64 +61,13 @@ struct Inner {
 
 impl Sources {
   pub fn new(location: &Path) -> Self {
-    Self(Arc::new(Mutex::new(Inner::new(location))))
-  }
-
-  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().unwrap().contains(specifier)
-  }
-
-  /// Provides the length of the source content, calculated in a way that should
-  /// match the behavior of JavaScript, where strings are stored effectively as
-  /// `&[u16]` and when counting "chars" we need to represent the string as a
-  /// UTF-16 string in Rust.
-  pub fn get_length_utf16(&self, specifier: &ModuleSpecifier) -> Option<usize> {
-    self.0.lock().unwrap().get_length_utf16(specifier)
-  }
-
-  pub fn get_line_index(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<LineIndex> {
-    self.0.lock().unwrap().get_line_index(specifier)
-  }
-
-  pub fn get_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    self.0.lock().unwrap().get_media_type(specifier)
-  }
-
-  pub fn get_script_version(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<String> {
-    self.0.lock().unwrap().get_script_version(specifier)
-  }
-
-  pub fn get_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.0.lock().unwrap().get_text(specifier)
-  }
-
-  pub fn resolve_import(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Option<(ModuleSpecifier, MediaType)> {
-    self.0.lock().unwrap().resolve_import(specifier, referrer)
-  }
-}
-
-impl Inner {
-  fn new(location: &Path) -> Self {
     Self {
       http_cache: HttpCache::new(location),
       ..Default::default()
     }
   }
 
-  fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
+  pub fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
     if let Some(specifier) = self.resolve_specifier(specifier) {
       if self.get_metadata(&specifier).is_some() {
         return true;
@@ -130,13 +76,20 @@ impl Inner {
     false
   }
 
-  fn get_length_utf16(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
+  /// Provides the length of the source content, calculated in a way that should
+  /// match the behavior of JavaScript, where strings are stored effectively as
+  /// `&[u16]` and when counting "chars" we need to represent the string as a
+  /// UTF-16 string in Rust.
+  pub fn get_length_utf16(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<usize> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source.encode_utf16().count())
   }
 
-  fn get_line_index(
+  pub fn get_line_index(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
@@ -145,7 +98,7 @@ impl Inner {
     Some(metadata.line_index)
   }
 
-  fn get_media_type(
+  pub fn get_media_type(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
@@ -283,7 +236,7 @@ impl Inner {
     None
   }
 
-  fn get_script_version(
+  pub fn get_script_version(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
@@ -304,7 +257,7 @@ impl Inner {
     None
   }
 
-  fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source)
@@ -324,7 +277,7 @@ impl Inner {
     Some((resolved_specifier, media_type))
   }
 
-  fn resolve_import(
+  pub fn resolve_import(
     &mut self,
     specifier: &str,
     referrer: &ModuleSpecifier,
@@ -420,7 +373,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_script_version() {
-    let (sources, _) = setup();
+    let (mut sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -433,7 +386,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_text() {
-    let (sources, _) = setup();
+    let (mut sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -448,7 +401,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_length_utf16() {
-    let (sources, _) = setup();
+    let (mut sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -463,10 +416,10 @@ mod tests {
 
   #[test]
   fn test_sources_resolve_specifier_non_supported_schema() {
-    let (sources, _) = setup();
+    let (mut sources, _) = setup();
     let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
       .expect("could not create specifier");
-    let actual = sources.0.lock().unwrap().resolve_specifier(&specifier);
+    let actual = sources.resolve_specifier(&specifier);
     assert!(actual.is_none());
   }
 }

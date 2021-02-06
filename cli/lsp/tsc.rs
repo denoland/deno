@@ -2,6 +2,7 @@
 
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
+use super::language_server;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::text::LineIndex;
@@ -16,7 +17,6 @@ use crate::tsc_config::TsConfig;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::futures::Future;
 use deno_core::json_op_sync;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -443,18 +443,16 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
-  pub async fn to_link<F, Fut>(
+  pub(crate) async fn to_link(
     &self,
     line_index: &LineIndex,
-    index_provider: F,
-  ) -> Option<lsp::LocationLink>
-  where
-    F: Fn(ModuleSpecifier) -> Fut,
-    Fut: Future<Output = Result<LineIndex, AnyError>>,
-  {
+    language_server: &mut language_server::Inner,
+  ) -> Option<lsp::LocationLink> {
     let target_specifier =
       ModuleSpecifier::resolve_url(&self.file_name).unwrap();
-    if let Ok(target_line_index) = index_provider(target_specifier).await {
+    if let Ok(target_line_index) =
+      language_server.get_line_index(target_specifier).await
+    {
       let target_uri = utils::normalize_file_name(&self.file_name).unwrap();
       let (target_range, target_selection_range) =
         if let Some(context_span) = &self.context_span {
@@ -559,17 +557,11 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub async fn into_workspace_edit<F, Fut, V>(
+  pub(crate) async fn into_workspace_edit(
     self,
     new_name: &str,
-    index_provider: F,
-    version_provider: V,
-  ) -> Result<lsp::WorkspaceEdit, AnyError>
-  where
-    F: Fn(ModuleSpecifier) -> Fut,
-    Fut: Future<Output = Result<LineIndex, AnyError>>,
-    V: Fn(ModuleSpecifier) -> Option<i32>,
-  {
+    language_server: &mut language_server::Inner,
+  ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
@@ -584,7 +576,7 @@ impl RenameLocations {
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
-              version: version_provider(specifier.clone()),
+              version: language_server.document_version(specifier.clone()),
             },
             edits:
               Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
@@ -598,7 +590,7 @@ impl RenameLocations {
         range: location
           .document_span
           .text_span
-          .to_range(&index_provider(specifier.clone()).await?),
+          .to_range(&language_server.get_line_index(specifier.clone()).await?),
         new_text: new_name.to_string(),
       }));
     }
@@ -655,22 +647,16 @@ pub struct DefinitionInfoAndBoundSpan {
 }
 
 impl DefinitionInfoAndBoundSpan {
-  pub async fn to_definition<F, Fut>(
+  pub(crate) async fn to_definition(
     &self,
     line_index: &LineIndex,
-    index_provider: F,
-  ) -> Option<lsp::GotoDefinitionResponse>
-  where
-    F: Fn(ModuleSpecifier) -> Fut + Clone,
-    Fut: Future<Output = Result<LineIndex, AnyError>>,
-  {
+    language_server: &mut language_server::Inner,
+  ) -> Option<lsp::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
       for di in definitions {
-        if let Some(link) = di
-          .document_span
-          .to_link(line_index, index_provider.clone())
-          .await
+        if let Some(link) =
+          di.document_span.to_link(line_index, language_server).await
         {
           location_links.push(link);
         }
@@ -739,18 +725,12 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub async fn to_text_document_edit<F, Fut, V>(
+  pub(crate) async fn to_text_document_edit(
     &self,
-    index_provider: &F,
-    version_provider: &V,
-  ) -> Result<lsp::TextDocumentEdit, AnyError>
-  where
-    F: Fn(ModuleSpecifier) -> Fut + Clone,
-    Fut: Future<Output = Result<LineIndex, AnyError>>,
-    V: Fn(ModuleSpecifier) -> Option<i32>,
-  {
+    language_server: &mut language_server::Inner,
+  ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = ModuleSpecifier::resolve_url(&self.file_name)?;
-    let line_index = index_provider(specifier.clone()).await?;
+    let line_index = language_server.get_line_index(specifier.clone()).await?;
     let edits = self
       .text_changes
       .iter()
@@ -759,7 +739,7 @@ impl FileTextChanges {
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.as_url().clone(),
-        version: version_provider(specifier),
+        version: language_server.document_version(specifier),
       },
       edits,
     })
@@ -1043,7 +1023,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap();
     Ok(json!(content.encode_utf16().count()))
   } else {
-    let sources = &state.state_snapshot.sources;
+    let sources = &mut state.state_snapshot.sources;
     Ok(json!(sources.get_length_utf16(&specifier).unwrap()))
   }
 }
@@ -1068,7 +1048,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .unwrap()
       .clone()
   } else {
-    let sources = &state.state_snapshot.sources;
+    let sources = &mut state.state_snapshot.sources;
     sources.get_text(&specifier).unwrap()
   };
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -1078,7 +1058,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
-  let sources = &state.state_snapshot.sources;
+  let sources = &mut state.state_snapshot.sources;
 
   if state.state_snapshot.documents.contains(&referrer) {
     if let Some(dependencies) =
@@ -1172,7 +1152,7 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   if let Some(version) = state.state_snapshot.documents.version(&specifier) {
     return Ok(json!(version.to_string()));
   } else {
-    let sources = &state.state_snapshot.sources;
+    let sources = &mut state.state_snapshot.sources;
     if let Some(version) = sources.get_script_version(&specifier) {
       return Ok(json!(version));
     }
