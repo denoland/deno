@@ -217,7 +217,7 @@ SharedQueue Binary Layout
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
     const promiseId = nextPromiseId++;
-    const argsBuf = encodeJson([ promiseId, args ]);
+    const argsBuf = encodeJson([promiseId, args]);
     dispatch(opName, argsBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
