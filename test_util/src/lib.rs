@@ -272,8 +272,8 @@ async fn get_tls_config(
 }
 
 async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
 
   let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
@@ -691,8 +691,8 @@ async fn wrap_main_server() {
 
 async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
   let tls_config = get_tls_config(cert_file, key_file)
     .await
     .expect("Cannot get TLS config");
@@ -1560,6 +1560,70 @@ mod tests {
       dbg!(pattern, string, expected);
       assert_eq!(actual, expected);
     }
+  }
+
+  #[test]
+  fn test_pattern_match() {
+    // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+
+    let wildcard = "[BAR]";
+    assert!(pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+    assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+    let multiline_pattern = "[BAR]
+foo:
+[BAR]baz[BAR]";
+
+    fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+      // If there is leading text add a newline so it's on it's own line
+      let head = match leading_text {
+        Some(v) => format!("{}\n", v),
+        None => "".to_string(),
+      };
+      format!(
+        "{}foo:
+quuz {} corge
+grault",
+        head, input
+      )
+    }
+
+    // Validate multi-line string builder
+    assert_eq!(
+      "QUUX=qux
+foo:
+quuz BAZ corge
+grault",
+      multi_line_builder("BAZ", Some("QUUX=qux"))
+    );
+
+    // Correct input & leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Correct input & no leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", None),
+      wildcard
+    ));
+
+    // Incorrect input & leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Incorrect input & no leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", None),
+      wildcard
+    ));
   }
 
   #[test]

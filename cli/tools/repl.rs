@@ -103,25 +103,25 @@ impl Completer for Helper {
 
     if let Some(result) = evaluate_response.get("result") {
       if let Some(object_id) = result.get("objectId") {
-        let get_properties_response = self
-          .post_message(
-            "Runtime.getProperties",
-            Some(json!({
-              "objectId": object_id,
-            })),
-          )
-          .unwrap();
+        let get_properties_response = self.post_message(
+          "Runtime.getProperties",
+          Some(json!({
+            "objectId": object_id,
+          })),
+        );
 
-        if let Some(result) = get_properties_response.get("result") {
-          let candidates = result
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
-            .filter(|r| r.starts_with(&suffix[1..]))
-            .collect();
+        if let Ok(get_properties_response) = get_properties_response {
+          if let Some(result) = get_properties_response.get("result") {
+            let candidates = result
+              .as_array()
+              .unwrap()
+              .iter()
+              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+              .filter(|r| r.starts_with(&suffix[1..]))
+              .collect();
 
-          return Ok((pos - (suffix.len() - 1), candidates));
+            return Ok((pos - (suffix.len() - 1), candidates));
+          }
         }
       }
     }

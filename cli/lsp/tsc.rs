@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::language_server::StateSnapshot;
 use super::text;
@@ -241,7 +242,7 @@ fn replace_links(text: &str) -> String {
     .to_string()
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
   Unknown,
@@ -353,11 +354,11 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
-  start: u32,
-  length: u32,
+  pub start: u32,
+  pub length: u32,
 }
 
 impl TextSpan {
@@ -476,6 +477,59 @@ impl DocumentSpan {
       Some(link)
     } else {
       None
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigationTree {
+  pub text: String,
+  pub kind: ScriptElementKind,
+  pub kind_modifiers: String,
+  pub spans: Vec<TextSpan>,
+  pub name_span: Option<TextSpan>,
+  pub child_items: Option<Vec<NavigationTree>>,
+}
+
+impl NavigationTree {
+  pub fn to_code_lens(
+    &self,
+    line_index: &LineIndex,
+    specifier: &ModuleSpecifier,
+    source: &CodeLensSource,
+  ) -> lsp::CodeLens {
+    lsp::CodeLens {
+      range: self.name_span.clone().unwrap().to_range(line_index),
+      command: None,
+      data: Some(json!({
+        "specifier": specifier,
+        "source": source
+      })),
+    }
+  }
+
+  pub fn walk<F>(&self, callback: &F)
+  where
+    F: Fn(&NavigationTree, Option<&NavigationTree>),
+  {
+    callback(self, None);
+    if let Some(child_items) = &self.child_items {
+      for child in child_items {
+        child.walk_child(callback, self);
+      }
+    }
+  }
+
+  fn walk_child<F>(&self, callback: &F, parent: &NavigationTree)
+  where
+    F: Fn(&NavigationTree, Option<&NavigationTree>),
+  {
+    callback(self, Some(parent));
+    if let Some(child_items) = &self.child_items {
+      for child in child_items {
+        child.walk_child(callback, self);
+      }
     }
   }
 }
@@ -654,6 +708,90 @@ impl DocumentHighlights {
       })
       .collect()
   }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TextChange {
+  span: TextSpan,
+  new_text: String,
+}
+
+impl TextChange {
+  pub fn as_text_edit(
+    &self,
+    line_index: &LineIndex,
+  ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
+    lsp::OneOf::Left(lsp::TextEdit {
+      range: self.span.to_range(line_index),
+      new_text: self.new_text.clone(),
+    })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileTextChanges {
+  file_name: String,
+  text_changes: Vec<TextChange>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_new_file: Option<bool>,
+}
+
+impl FileTextChanges {
+  pub async fn to_text_document_edit<F, Fut, V>(
+    &self,
+    index_provider: &F,
+    version_provider: &V,
+  ) -> Result<lsp::TextDocumentEdit, AnyError>
+  where
+    F: Fn(ModuleSpecifier) -> Fut + Clone,
+    Fut: Future<Output = Result<LineIndex, AnyError>>,
+    V: Fn(ModuleSpecifier) -> Option<i32>,
+  {
+    let specifier = ModuleSpecifier::resolve_url(&self.file_name)?;
+    let line_index = index_provider(specifier.clone()).await?;
+    let edits = self
+      .text_changes
+      .iter()
+      .map(|tc| tc.as_text_edit(&line_index))
+      .collect();
+    Ok(lsp::TextDocumentEdit {
+      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+        uri: specifier.as_url().clone(),
+        version: version_provider(specifier),
+      },
+      edits,
+    })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeFixAction {
+  pub description: String,
+  pub changes: Vec<FileTextChanges>,
+  // These are opaque types that should just be passed back when applying the
+  // action.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub commands: Option<Vec<Value>>,
+  pub fix_name: String,
+  // It appears currently that all fixIds are strings, but the protocol
+  // specifies an opaque type, the problem is that we need to use the id as a
+  // hash key, and `Value` does not implement hash (and it could provide a false
+  // positive depending on JSON whitespace, so we deserialize it but it might
+  // break in the future)
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub fix_id: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub fix_all_description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombinedCodeActions {
+  pub changes: Vec<FileTextChanges>,
+  pub commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1157,24 +1295,32 @@ pub struct UserPreferences {
 pub enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),
-  /// Retrieve the text of an assets that exists in memory in the isolate.
-  GetAsset(ModuleSpecifier),
-  /// Return diagnostics for given file.
-  GetDiagnostics(Vec<ModuleSpecifier>),
-  /// Return quick info at position (hover information).
-  GetQuickInfo((ModuleSpecifier, u32)),
-  /// Return document highlights at position.
-  GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
-  /// Get document references for a specific position.
-  GetReferences((ModuleSpecifier, u32)),
-  /// Get declaration information for a specific position.
-  GetDefinition((ModuleSpecifier, u32)),
-  /// Get completion information at a given position (IntelliSense).
-  GetCompletions((ModuleSpecifier, u32, UserPreferences)),
-  /// Get implementation information for a specific position.
-  GetImplementation((ModuleSpecifier, u32)),
   /// Get rename locations at a given position.
   FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
+  /// Retrieve the text of an assets that exists in memory in the isolate.
+  GetAsset(ModuleSpecifier),
+  /// Retrieve code fixes for a range of a file with the provided error codes.
+  GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>)),
+  /// Get completion information at a given position (IntelliSense).
+  GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  /// Retrieve the combined code fixes for a fix id for a module.
+  GetCombinedCodeFix((ModuleSpecifier, Value)),
+  /// Get declaration information for a specific position.
+  GetDefinition((ModuleSpecifier, u32)),
+  /// Return diagnostics for given file.
+  GetDiagnostics(Vec<ModuleSpecifier>),
+  /// Return document highlights at position.
+  GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
+  /// Get implementation information for a specific position.
+  GetImplementation((ModuleSpecifier, u32)),
+  /// Get a "navigation tree" for a specifier.
+  GetNavigationTree(ModuleSpecifier),
+  /// Return quick info at position (hover information).
+  GetQuickInfo((ModuleSpecifier, u32)),
+  /// Get document references for a specific position.
+  GetReferences((ModuleSpecifier, u32)),
+  /// Get the diagnostic codes that support some form of code fix.
+  GetSupportedCodeFixes,
 }
 
 impl RequestMethod {
@@ -1184,60 +1330,6 @@ impl RequestMethod {
         "id": id,
         "method": "configure",
         "compilerOptions": config,
-      }),
-      RequestMethod::GetAsset(specifier) => json!({
-        "id": id,
-        "method": "getAsset",
-        "specifier": specifier,
-      }),
-      RequestMethod::GetDiagnostics(specifiers) => json!({
-        "id": id,
-        "method": "getDiagnostics",
-        "specifiers": specifiers,
-      }),
-      RequestMethod::GetQuickInfo((specifier, position)) => json!({
-        "id": id,
-        "method": "getQuickInfo",
-        "specifier": specifier,
-        "position": position,
-      }),
-      RequestMethod::GetDocumentHighlights((
-        specifier,
-        position,
-        files_to_search,
-      )) => json!({
-        "id": id,
-        "method": "getDocumentHighlights",
-        "specifier": specifier,
-        "position": position,
-        "filesToSearch": files_to_search,
-      }),
-      RequestMethod::GetReferences((specifier, position)) => json!({
-        "id": id,
-        "method": "getReferences",
-        "specifier": specifier,
-        "position": position,
-      }),
-      RequestMethod::GetDefinition((specifier, position)) => json!({
-        "id": id,
-        "method": "getDefinition",
-        "specifier": specifier,
-        "position": position,
-      }),
-      RequestMethod::GetCompletions((specifier, position, preferences)) => {
-        json!({
-          "id": id,
-          "method": "getCompletions",
-          "specifier": specifier,
-          "position": position,
-          "preferences": preferences,
-        })
-      }
-      RequestMethod::GetImplementation((specifier, position)) => json!({
-          "id": id,
-          "method": "getImplementation",
-          "specifier": specifier,
-          "position": position,
       }),
       RequestMethod::FindRenameLocations((
         specifier,
@@ -1256,6 +1348,88 @@ impl RequestMethod {
           "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
         })
       }
+      RequestMethod::GetAsset(specifier) => json!({
+        "id": id,
+        "method": "getAsset",
+        "specifier": specifier,
+      }),
+      RequestMethod::GetCodeFixes((
+        specifier,
+        start_pos,
+        end_pos,
+        error_codes,
+      )) => json!({
+        "id": id,
+        "method": "getCodeFixes",
+        "specifier": specifier,
+        "startPosition": start_pos,
+        "endPosition": end_pos,
+        "errorCodes": error_codes,
+      }),
+      RequestMethod::GetCombinedCodeFix((specifier, fix_id)) => json!({
+        "id": id,
+        "method": "getCombinedCodeFix",
+        "specifier": specifier,
+        "fixId": fix_id,
+      }),
+      RequestMethod::GetCompletions((specifier, position, preferences)) => {
+        json!({
+          "id": id,
+          "method": "getCompletions",
+          "specifier": specifier,
+          "position": position,
+          "preferences": preferences,
+        })
+      }
+      RequestMethod::GetDefinition((specifier, position)) => json!({
+        "id": id,
+        "method": "getDefinition",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetDiagnostics(specifiers) => json!({
+        "id": id,
+        "method": "getDiagnostics",
+        "specifiers": specifiers,
+      }),
+      RequestMethod::GetDocumentHighlights((
+        specifier,
+        position,
+        files_to_search,
+      )) => json!({
+        "id": id,
+        "method": "getDocumentHighlights",
+        "specifier": specifier,
+        "position": position,
+        "filesToSearch": files_to_search,
+      }),
+      RequestMethod::GetImplementation((specifier, position)) => json!({
+        "id": id,
+        "method": "getImplementation",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetNavigationTree(specifier) => json!({
+        "id": id,
+        "method": "getNavigationTree",
+        "specifier": specifier,
+      }),
+      RequestMethod::GetQuickInfo((specifier, position)) => json!({
+        "id": id,
+        "method": "getQuickInfo",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetReferences((specifier, position)) => json!({
+        "id": id,
+        "method": "getReferences",
+        "specifier": specifier,
+        "position": position,
+      }),
+      RequestMethod::GetSupportedCodeFixes => json!({
+        "id": id,
+        "method": "getSupportedCodeFixes",
+      }),
     }
   }
 }
