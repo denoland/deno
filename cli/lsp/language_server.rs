@@ -1935,6 +1935,51 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_hover_asset() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_asset.json", LspResponse::None),
+      ("hover_request_asset_01.json", LspResponse::RequestAny),
+      (
+        "virtual_text_document_request.json",
+        LspResponse::RequestAny,
+      ),
+      (
+        "hover_request_asset_02.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "interface Date",
+              },
+              "Enables basic storage and retrieval of dates and times."
+            ],
+            "range": {
+              "start": {
+                "line": 109,
+                "character": 10,
+              },
+              "end": {
+                "line": 109,
+                "character": 14,
+              }
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
   async fn test_hover_disabled() {
     let mut harness = LspTestHarness::new(vec![
       ("initialize_request_disabled.json", LspResponse::RequestAny),
