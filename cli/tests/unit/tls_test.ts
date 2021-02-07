@@ -16,14 +16,14 @@ const decoder = new TextDecoder();
 
 unitTest(async function connectTLSNoPerm(): Promise<void> {
   await assertThrowsAsync(async () => {
-    await Deno.connectTls({ hostname: "github.com", port: 443 });
+    await Deno.connectTls({ hostname: "deno.land", port: 443 });
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   await assertThrowsAsync(async () => {
     await Deno.connectTls({
-      hostname: "github.com",
+      hostname: "deno.land",
       port: 443,
       certFile: "cli/tests/tls/RootCA.crt",
     });
@@ -34,7 +34,7 @@ unitTest(
   { perms: { read: true, net: true } },
   async function connectTLSClientCertConnection(): Promise<void> {
     const conn = await Deno.connectTls({
-      hostname: "github.com",
+      hostname: "deno.land",
       port: 443,
       clientCert: {
         chain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
@@ -51,7 +51,7 @@ unitTest(
   async function connectTLSBadClientCertPrivateKey(): Promise<void> {
     await assertThrowsAsync(async () => {
       await Deno.connectTls({
-        hostname: "github.com",
+        hostname: "deno.land",
         port: 443,
         clientCert: {
           chain: "bad data",
@@ -67,7 +67,7 @@ unitTest(
   async function connectTLSBadClientCertChain(): Promise<void> {
     await assertThrowsAsync(async () => {
       await Deno.connectTls({
-        hostname: "github.com",
+        hostname: "deno.land",
         port: 443,
         clientCert: {
           chain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
