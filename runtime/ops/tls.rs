@@ -91,7 +91,6 @@ struct ConnectTLSArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
-
   client_cert: Option<ClientCertArgs>,
 }
 
@@ -212,12 +211,10 @@ async fn op_connect_tls(
   }
   if let Some(client_cert) = args.client_cert {
     let cert_chain = load_certs(&mut client_cert.chain.as_bytes())?;
-    let private_key = load_private_keys(&mut client_cert.private_key.as_bytes())?.remove(0);
+    let private_key =
+      load_private_keys(&client_cert.private_key.as_bytes())?.remove(0);
 
-    config.set_single_client_cert(
-      cert_chain,
-      private_key
-    )?;
+    config.set_single_client_cert(cert_chain, private_key)?;
   }
 
   let tls_connector = TlsConnector::from(Arc::new(config));
@@ -260,7 +257,7 @@ fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
 fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
-  return load_certs(reader);
+  load_certs(reader)
 }
 
 fn key_decode_err() -> AnyError {
@@ -271,15 +268,23 @@ fn key_not_found_err() -> AnyError {
   custom_error("InvalidData", "No keys found in key file")
 }
 
+/// Starts with -----BEGIN RSA PRIVATE KEY-----
+fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
+  Ok(keys)
+}
+
+/// Starts with -----BEGIN PRIVATE KEY-----
+fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
+  Ok(keys)
+}
+
 fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
-  // Starts with -----BEGIN RSA PRIVATE KEY-----
-  let mut keys =
-    rsa_private_keys(&mut bytes.clone()).map_err(|_| key_decode_err())?;
+  let mut keys = load_rsa_keys(&bytes)?;
 
   if keys.is_empty() {
-    // Starts with -----BEGIN PRIVATE KEY-----
-    keys =
-      pkcs8_private_keys(&mut bytes.clone()).map_err(|_| key_decode_err())?;
+    keys = load_pkcs8_keys(&bytes)?;
   }
 
   if keys.is_empty() {
@@ -289,9 +294,11 @@ fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   Ok(keys)
 }
 
-fn load_private_keys_from_file(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_private_keys_from_file(
+  path: &str,
+) -> Result<Vec<PrivateKey>, AnyError> {
   let key_bytes = std::fs::read(path)?;
-  return load_private_keys(&key_bytes);
+  load_private_keys(&key_bytes)
 }
 
 pub struct TlsListenerResource {

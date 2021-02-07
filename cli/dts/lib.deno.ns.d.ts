@@ -1780,7 +1780,7 @@ declare namespace Deno {
   export function connect(options: ConnectOptions): Promise<Conn>;
 
   export interface TlsClientCertificateOptions {
-    /** PEM formatted client certificate chain */
+    /** PEM formatted client certificate chain. */
     chain: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey: string;
