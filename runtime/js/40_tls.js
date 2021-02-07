@@ -29,7 +29,7 @@
     transport = "tcp",
     certFile = undefined,
     certChain = undefined,
-    privateKey = undefined
+    privateKey = undefined,
   }) {
     const res = await opConnectTls({
       port,
@@ -37,7 +37,7 @@
       transport,
       certFile,
       certChain,
-      privateKey
+      privateKey,
     });
     return new Conn(res.rid, res.remoteAddr, res.localAddr);
   }
