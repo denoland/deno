@@ -1780,9 +1780,9 @@ declare namespace Deno {
   export function connect(options: ConnectOptions): Promise<Conn>;
 
   export interface TlsClientCertificateOptions {
-    /**  TODO: documentation */
+    /** PEM formatted client certificate chain */
     chain: string;
-    /**  TODO: documentation */
+    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey: string;
   }
 
@@ -1794,7 +1794,7 @@ declare namespace Deno {
     hostname?: string;
     /** Server certificate file. */
     certFile?: string;
-    /**  TODO: documentation */
+    /** TLS client certificate options. */
     clientCert?: TlsClientCertificateOptions;
   }
 
@@ -1928,10 +1928,10 @@ declare namespace Deno {
      *
      * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
      * manually before the process can exit.
-     * 
+     *
      * To run process to completion and collect output from both `stdout` and
      * `stderr` use:
-     * 
+     *
      * ```ts
      * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
