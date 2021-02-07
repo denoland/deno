@@ -11,12 +11,31 @@
     "rootUri": null,
     "initializationOptions": {
       "enable": true,
+      "codeLens": {
+        "references": true
+      },
       "lint": true,
       "importMap": null,
       "unstable": false
     },
     "capabilities": {
       "textDocument": {
+        "codeAction": {
+          "codeActionLiteralSupport": {
+            "codeActionKind": {
+              "valueSet": [
+                "quickfix"
+              ]
+            }
+          },
+          "isPreferredSupport": true,
+          "dataSupport": true,
+          "resolveSupport": {
+            "properties": [
+              "edit"
+            ]
+          }
+        },
         "synchronization": {
           "dynamicRegistration": true,
           "willSave": true,

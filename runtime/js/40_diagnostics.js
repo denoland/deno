@@ -3,6 +3,7 @@
 // Diagnostic provides an abstraction for advice/errors received from a
 // compiler, which is strongly influenced by the format of TypeScript
 // diagnostics.
+"use strict";
 
 ((window) => {
   const DiagnosticCategory = {

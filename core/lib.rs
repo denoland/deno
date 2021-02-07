@@ -78,7 +78,12 @@ pub fn v8_version() -> &'static str {
   v8::V8::get_version()
 }
 
-#[test]
-fn test_v8_version() {
-  assert!(v8_version().len() > 3);
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_v8_version() {
+    assert!(v8_version().len() > 3);
+  }
 }
