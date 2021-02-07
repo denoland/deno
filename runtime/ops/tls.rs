@@ -212,18 +212,12 @@ async fn op_connect_tls(
   }
   if let Some(client_cert) = args.client_cert {
     let cert_chain = load_certs(&mut client_cert.chain.as_bytes())?;
-    let private_key = load_keys(&mut client_cert.private_key.as_bytes())
-      .and_then(|keys| {
-        if keys.len() != 1 {
-          return Err(custom_error(
-            "InvalidData",
-            "Multiple private keys given",
-          ));
-        }
-        Ok(keys[0].clone())
-      })?;
+    let private_key = load_private_keys(&mut client_cert.private_key.as_bytes())?.remove(0);
 
-    config.set_single_client_cert(cert_chain, private_key)?;
+    config.set_single_client_cert(
+      cert_chain,
+      private_key
+    )?;
   }
 
   let tls_connector = TlsConnector::from(Arc::new(config));
@@ -277,7 +271,7 @@ fn key_not_found_err() -> AnyError {
   custom_error("InvalidData", "No keys found in key file")
 }
 
-fn load_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   // Starts with -----BEGIN RSA PRIVATE KEY-----
   let mut keys =
     rsa_private_keys(&mut bytes.clone()).map_err(|_| key_decode_err())?;
@@ -295,9 +289,9 @@ fn load_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   Ok(keys)
 }
 
-fn load_keys_from_file(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_private_keys_from_file(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
   let key_bytes = std::fs::read(path)?;
-  return load_keys(&key_bytes);
+  return load_private_keys(&key_bytes);
 }
 
 pub struct TlsListenerResource {
@@ -346,7 +340,7 @@ fn op_listen_tls(
   config
     .set_single_cert(
       load_certs_from_file(&cert_file)?,
-      load_keys_from_file(&key_file)?.remove(0),
+      load_private_keys_from_file(&key_file)?.remove(0),
     )
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
