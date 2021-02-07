@@ -21,8 +21,8 @@ unitTest(function malformedJsonControlBuffer(): void {
 
 unitTest(function invalidPromiseId(): void {
   const opId = Deno.core.ops()["op_open_async"];
+  const promiseId = "1. NEIN!";
   const argsObj = {
-    promiseId: "1. NEIN!",
     path: "/tmp/P.I.S.C.I.X/yeah",
     mode: 0o666,
     options: {
@@ -34,7 +34,7 @@ unitTest(function invalidPromiseId(): void {
       createNew: false,
     },
   };
-  const argsText = JSON.stringify(argsObj);
+  const argsText = JSON.stringify([promiseId, argsObj]);
   const argsBuf = new TextEncoder().encode(argsText);
   const resBuf = Deno.core.send(opId, argsBuf);
   const resText = new TextDecoder().decode(resBuf);

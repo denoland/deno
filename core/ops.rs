@@ -140,10 +140,10 @@ impl Default for OpTable {
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_sync<V, F, R>(op_fn: F) -> Box<OpFn>
+pub fn json_op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
 where
-  V: DeserializeOwned,
   F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  V: DeserializeOwned,
   R: Serialize,
 {
   Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
@@ -184,12 +184,12 @@ struct AsyncRequest<V>(u64, V);
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_async<V, F, RV, R>(op_fn: F) -> Box<OpFn>
+pub fn json_op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  V: DeserializeOwned,
   F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
-  RV: Serialize,
+  V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
+  RV: Serialize,
 {
   let try_dispatch_op =
     move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
@@ -219,14 +219,11 @@ where
   })
 }
 
-fn json_serialize_op_result<R>(
+fn json_serialize_op_result<R: Serialize>(
   promise_id: Option<u64>,
   result: Result<R, AnyError>,
   get_error_class_fn: crate::runtime::GetErrorClassFn,
-) -> Box<[u8]>
-where
-  R: Serialize,
-{
+) -> Box<[u8]> {
   let value = match result {
     Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => serde_json::json!({
