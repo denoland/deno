@@ -1779,13 +1779,6 @@ declare namespace Deno {
    * Requires `allow-net` permission for "tcp". */
   export function connect(options: ConnectOptions): Promise<Conn>;
 
-  export interface TlsClientCertificateOptions {
-    /** PEM formatted client certificate chain. */
-    chain: string;
-    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
-    privateKey: string;
-  }
-
   export interface ConnectTlsOptions {
     /** The port to connect to. */
     port: number;
@@ -1794,8 +1787,6 @@ declare namespace Deno {
     hostname?: string;
     /** Server certificate file. */
     certFile?: string;
-    /** TLS client certificate options. */
-    clientCert?: TlsClientCertificateOptions;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

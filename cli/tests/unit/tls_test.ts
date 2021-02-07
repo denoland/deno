@@ -36,10 +36,8 @@ unitTest(
     const conn = await Deno.connectTls({
       hostname: "deno.land",
       port: 443,
-      clientCert: {
-        chain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
-        privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
-      },
+      certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+      privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
     });
 
     conn.close();
@@ -53,10 +51,8 @@ unitTest(
       await Deno.connectTls({
         hostname: "deno.land",
         port: 443,
-        clientCert: {
-          chain: "bad data",
-          privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
-        },
+        certChain: "bad data",
+        privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
       });
     }, Deno.errors.InvalidData);
   },
@@ -69,10 +65,8 @@ unitTest(
       await Deno.connectTls({
         hostname: "deno.land",
         port: 443,
-        clientCert: {
-          chain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
-          privateKey: "bad data",
-        },
+        certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+        privateKey: "bad data",
       });
     }, Deno.errors.InvalidData);
   },

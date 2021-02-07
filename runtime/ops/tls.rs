@@ -77,13 +77,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_async(rt, "op_accept_tls", op_accept_tls);
 }
 
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ClientCertArgs {
-  chain: String,
-  private_key: String,
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConnectTLSArgs {
@@ -91,7 +84,8 @@ struct ConnectTLSArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
-  client_cert: Option<ClientCertArgs>,
+  cert_chain: Option<String>,
+  private_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -209,12 +203,19 @@ async fn op_connect_tls(
     let reader = &mut BufReader::new(key_file);
     config.root_store.add_pem_file(reader).unwrap();
   }
-  if let Some(client_cert) = args.client_cert {
-    let cert_chain = load_certs(&mut client_cert.chain.as_bytes())?;
-    let private_key =
-      load_private_keys(&client_cert.private_key.as_bytes())?.remove(0);
 
-    config.set_single_client_cert(cert_chain, private_key)?;
+  if args.cert_chain.is_some() || args.private_key.is_some() {
+    let cert_chain = args
+      .cert_chain
+      .ok_or_else(|| generic_error("No certificate chain provided"))?;
+    let private_key = args
+      .private_key
+      .ok_or_else(|| generic_error("No private key provided"))?;
+
+    config.set_single_client_cert(
+      load_certs(&mut cert_chain.as_bytes())?,
+      load_private_keys(&private_key.as_bytes())?.remove(0),
+    )?;
   }
 
   let tls_connector = TlsConnector::from(Arc::new(config));

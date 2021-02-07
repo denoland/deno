@@ -848,7 +848,7 @@ declare namespace Deno {
     | "TXT";
 
   export interface ResolveDnsOptions {
-    /** The name server to be used for lookups. 
+    /** The name server to be used for lookups.
     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
     nameServer?: {
       /** The IP address of the name server */
@@ -1020,6 +1020,32 @@ declare namespace Deno {
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
     options: ConnectOptions | UnixConnectOptions,
+  ): Promise<Conn>;
+
+  export interface ConnectTlsClientCertOptions {
+    /** PEM formatted client certificate chain. */
+    certChain: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
+    privateKey: string;
+  }
+
+  /** **UNSTABLE** New API, yet to be vetted.
+   *
+   * Create a TLS connection with an attached client certificate.
+   *
+   * ```ts
+   * const conn = await Deno.connectTls({
+   *   hostname: "deno.land",
+   *   port: 443,
+   *   certChain: "---- BEGIN CERTIFICATE ----\n ...",
+   *   privateKey: "---- BEGIN PRIVATE KEY ----\n ...",
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function connectTls(
+    options: ConnectTlsOptions & ConnectTlsClientCertOptions,
   ): Promise<Conn>;
 
   export interface StartTlsOptions {
