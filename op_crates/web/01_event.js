@@ -4,6 +4,7 @@
 // Many parts of the DOM are not implemented in Deno, but the logic for those
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
+"use strict";
 
 ((window) => {
   const eventData = new WeakMap();

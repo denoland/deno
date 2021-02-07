@@ -16,6 +16,7 @@ use lspower::lsp::request::*;
 use lspower::lsp::*;
 use lspower::Client;
 use regex::Regex;
+use serde_json::from_value;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
@@ -29,6 +30,9 @@ use crate::import_map::ImportMap;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
+use super::analysis::ts_changes_to_edit;
+use super::analysis::CodeActionCollection;
+use super::analysis::CodeActionData;
 use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
 use super::capabilities;
@@ -63,16 +67,31 @@ pub struct StateSnapshot {
 
 #[derive(Debug)]
 struct Inner {
+  /// Cached versions of "fixed" assets that can either be inlined in Rust or
+  /// are part of the TypeScript snapshot and have to be fetched out.
   assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
+  /// The LSP client that this LSP server is connected to.
   client: Client,
+  /// Configuration information.
   config: Config,
+  /// A collection of diagnostics from different sources.
   diagnostics: DiagnosticCollection,
+  /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
+  /// An optional URL which provides the location of a TypeScript configuration
+  /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
+  /// An optional import map which is used to resolve modules.
   maybe_import_map: Option<ImportMap>,
+  /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// A collection of measurements which instrument that performance of the LSP.
   performance: Performance,
+  /// Cached sources that are read-only.
   sources: Sources,
+  /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
+  ts_fixable_diagnostics: Vec<String>,
+  /// An abstraction that handles interactions with TypeScript.
   ts_server: TsServer,
 }
 
@@ -101,6 +120,7 @@ impl Inner {
       maybe_import_map_uri: Default::default(),
       performance: Default::default(),
       sources,
+      ts_fixable_diagnostics: Default::default(),
       ts_server: TsServer::new(),
     }
   }
@@ -177,7 +197,9 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Result<tsc::NavigationTree, AnyError> {
     if self.documents.contains(specifier) {
+      let mark = self.performance.mark("get_navigation_tree");
       if let Some(navigation_tree) = self.documents.navigation_tree(specifier) {
+        self.performance.measure(mark);
         Ok(navigation_tree)
       } else {
         let res = self
@@ -193,6 +215,7 @@ impl Inner {
         self
           .documents
           .set_navigation_tree(specifier, navigation_tree.clone())?;
+        self.performance.measure(mark);
         Ok(navigation_tree)
       }
     } else {
@@ -410,8 +433,10 @@ impl Inner {
     let mark = self.performance.mark("update_tsconfig");
     let mut tsconfig = TsConfig::new(json!({
       "allowJs": true,
+      "esModuleInterop": true,
       "experimentalDecorators": true,
       "isolatedModules": true,
+      "jsx": "react",
       "lib": ["deno.ns", "deno.window"],
       "module": "esnext",
       "noEmit": true,
@@ -485,6 +510,7 @@ impl Inner {
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
     info!("Starting Deno language server...");
+    let mark = self.performance.mark("initialize");
 
     let capabilities = capabilities::server_capabilities(&params.capabilities);
 
@@ -522,6 +548,24 @@ impl Inner {
       warn!("Updating tsconfig has errored: {}", err);
     }
 
+    if capabilities.code_action_provider.is_some() {
+      let res = self
+        .ts_server
+        .request(self.snapshot(), tsc::RequestMethod::GetSupportedCodeFixes)
+        .await
+        .map_err(|err| {
+          error!("Unable to get fixable diagnostics: {}", err);
+          LspError::internal_error()
+        })?;
+      let fixable_diagnostics: Vec<String> =
+        from_value(res).map_err(|err| {
+          error!("Unable to get fixable diagnostics: {}", err);
+          LspError::internal_error()
+        })?;
+      self.ts_fixable_diagnostics = fixable_diagnostics;
+    }
+
+    self.performance.measure(mark);
     Ok(InitializeResult {
       capabilities,
       server_info: Some(server_info),
@@ -816,6 +860,154 @@ impl Inner {
       self.performance.measure(mark);
       Ok(None)
     }
+  }
+
+  async fn code_action(
+    &mut self,
+    params: CodeActionParams,
+  ) -> LspResult<Option<CodeActionResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("code_action");
+    let specifier = utils::normalize_url(params.text_document.uri);
+    let fixable_diagnostics: Vec<&Diagnostic> = params
+      .context
+      .diagnostics
+      .iter()
+      .filter(|d| match &d.source {
+        Some(source) => match source.as_str() {
+          "deno-ts" => match &d.code {
+            Some(NumberOrString::String(code)) => {
+              self.ts_fixable_diagnostics.contains(code)
+            }
+            Some(NumberOrString::Number(code)) => {
+              self.ts_fixable_diagnostics.contains(&code.to_string())
+            }
+            _ => false,
+          },
+          // currently only processing `deno-ts` quick fixes
+          _ => false,
+        },
+        None => false,
+      })
+      .collect();
+    if fixable_diagnostics.is_empty() {
+      self.performance.measure(mark);
+      return Ok(None);
+    }
+    let line_index = self.get_line_index_sync(&specifier).unwrap();
+    let file_diagnostics: Vec<&Diagnostic> = self
+      .diagnostics
+      .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
+      .collect();
+    let mut code_actions = CodeActionCollection::default();
+    for diagnostic in &fixable_diagnostics {
+      let code = match &diagnostic.code.clone().unwrap() {
+        NumberOrString::String(code) => code.to_string(),
+        NumberOrString::Number(code) => code.to_string(),
+      };
+      let codes = vec![code];
+      let req = tsc::RequestMethod::GetCodeFixes((
+        specifier.clone(),
+        line_index.offset_tsc(diagnostic.range.start)?,
+        line_index.offset_tsc(diagnostic.range.end)?,
+        codes,
+      ));
+      let res =
+        self
+          .ts_server
+          .request(self.snapshot(), req)
+          .await
+          .map_err(|err| {
+            error!("Error getting actions from TypeScript: {}", err);
+            LspError::internal_error()
+          })?;
+      let actions: Vec<tsc::CodeFixAction> =
+        from_value(res).map_err(|err| {
+          error!("Cannot decode actions from TypeScript: {}", err);
+          LspError::internal_error()
+        })?;
+      for action in actions {
+        code_actions
+          .add_ts_fix_action(
+            &action,
+            diagnostic,
+            &|s| self.get_line_index(s),
+            &|s| self.documents.version(&s),
+          )
+          .await
+          .map_err(|err| {
+            error!("Unable to convert fix: {}", err);
+            LspError::internal_error()
+          })?;
+        if code_actions.is_fix_all_action(
+          &action,
+          diagnostic,
+          &file_diagnostics,
+        ) {
+          code_actions.add_ts_fix_all_action(&action, &specifier, diagnostic);
+        }
+      }
+    }
+    code_actions.set_preferred_fixes();
+    let code_action_response = code_actions.get_response();
+    self.performance.measure(mark);
+    Ok(Some(code_action_response))
+  }
+
+  async fn code_action_resolve(
+    &self,
+    params: CodeAction,
+  ) -> LspResult<CodeAction> {
+    let mark = self.performance.mark("code_action_resolve");
+    let result =
+      if let Some(data) = params.data.clone() {
+        let code_action_data: CodeActionData =
+          from_value(data).map_err(|err| {
+            error!("Unable to decode code action data: {}", err);
+            LspError::invalid_params("The CodeAction's data is invalid.")
+          })?;
+        let req = tsc::RequestMethod::GetCombinedCodeFix((
+          code_action_data.specifier,
+          json!(code_action_data.fix_id.clone()),
+        ));
+        let res = self.ts_server.request(self.snapshot(), req).await.map_err(
+          |err| {
+            error!("Unable to get combined fix from TypeScript: {}", err);
+            LspError::internal_error()
+          },
+        )?;
+        let combined_code_actions: tsc::CombinedCodeActions =
+          from_value(res).map_err(|err| {
+            error!("Cannot decode combined actions from TypeScript: {}", err);
+            LspError::internal_error()
+          })?;
+        if combined_code_actions.commands.is_some() {
+          error!("Deno does not support code actions with commands.");
+          Err(LspError::invalid_request())
+        } else {
+          let mut code_action = params.clone();
+          code_action.edit = ts_changes_to_edit(
+            &combined_code_actions.changes,
+            &|s| self.get_line_index(s),
+            &|s| self.documents.version(&s),
+          )
+          .await
+          .map_err(|err| {
+            error!("Unable to convert changes to edits: {}", err);
+            LspError::internal_error()
+          })?;
+          Ok(code_action)
+        }
+      } else {
+        Err(LspError::invalid_params(
+          "The CodeAction's data is missing.",
+        ))
+      };
+    self.performance.measure(mark);
+    result
   }
 
   async fn code_lens(
@@ -1438,6 +1630,20 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.hover(params).await
   }
 
+  async fn code_action(
+    &self,
+    params: CodeActionParams,
+  ) -> LspResult<Option<CodeActionResponse>> {
+    self.0.lock().await.code_action(params).await
+  }
+
+  async fn code_action_resolve(
+    &self,
+    params: CodeAction,
+  ) -> LspResult<CodeAction> {
+    self.0.lock().await.code_action_resolve(params).await
+  }
+
   async fn code_lens(
     &self,
     params: CodeLensParams,
@@ -1512,6 +1718,7 @@ struct VirtualTextDocumentParams {
   text_document: TextDocumentIdentifier,
 }
 
+// These are implementations of custom commands supported by the LSP
 impl Inner {
   async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
     let mark = self.performance.mark("cache");
@@ -1623,6 +1830,7 @@ mod tests {
     RequestAny,
     Request(u64, Value),
     RequestAssert(V),
+    RequestFixture(u64, String),
   }
 
   type LspTestHarnessRequest = (&'static str, LspResponse<fn(Value)>);
@@ -1667,6 +1875,20 @@ mod tests {
               Some(jsonrpc::Outgoing::Response(resp)) => assert(json!(resp)),
               _ => panic!("unexpected result: {:?}", result),
             },
+            LspResponse::RequestFixture(id, res_path_str) => {
+              let res_path = fixtures_path.join(res_path_str);
+              let res_str = fs::read_to_string(res_path).unwrap();
+              match result {
+                Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
+                  resp,
+                  jsonrpc::Response::ok(
+                    jsonrpc::Id::Number(*id),
+                    serde_json::from_str(&res_str).unwrap()
+                  )
+                ),
+                _ => panic!("unexpected result: {:?}", result),
+              }
+            }
           },
           Err(err) => panic!("Error result: {}", err),
         }
@@ -2121,6 +2343,32 @@ mod tests {
     harness.run().await;
   }
 
+  #[tokio::test]
+  async fn test_code_actions() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_code_action.json", LspResponse::None),
+      (
+        "code_action_request.json",
+        LspResponse::RequestFixture(2, "code_action_response.json".to_string()),
+      ),
+      (
+        "code_action_resolve_request.json",
+        LspResponse::RequestFixture(
+          4,
+          "code_action_resolve_request_response.json".to_string(),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
   #[derive(Deserialize)]
   struct PerformanceAverages {
     averages: Vec<PerformanceAverage>,
@@ -2166,7 +2414,7 @@ mod tests {
         LspResponse::RequestAssert(|value| {
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
-          assert_eq!(resp.result.averages.len(), 9);
+          assert_eq!(resp.result.averages.len(), 10);
         }),
       ),
       (
