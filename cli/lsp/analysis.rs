@@ -16,6 +16,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
 use lspower::lsp;
@@ -352,7 +353,7 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-async fn ts_changes_to_edit<F, Fut, V>(
+pub async fn ts_changes_to_edit<F, Fut, V>(
   changes: &[tsc::FileTextChanges],
   index_provider: &F,
   version_provider: &V,
@@ -374,6 +375,13 @@ where
     document_changes: Some(lsp::DocumentChanges::Edits(text_document_edits)),
     change_annotations: None,
   }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeActionData {
+  pub specifier: ModuleSpecifier,
+  pub fix_id: String,
 }
 
 #[derive(Debug, Default)]
@@ -442,31 +450,16 @@ impl CodeActionCollection {
 
   /// Add a TypeScript action to the actions as a "fix all" action, where it
   /// will fix all occurrences of the diagnostic in the file.
-  pub async fn add_ts_fix_all_action<F, Fut, V>(
+  pub fn add_ts_fix_all_action(
     &mut self,
     action: &tsc::CodeFixAction,
+    specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
-    combined_code_actions: &tsc::CombinedCodeActions,
-    index_provider: &F,
-    version_provider: &V,
-  ) -> Result<(), AnyError>
-  where
-    F: Fn(ModuleSpecifier) -> Fut + Clone,
-    Fut: Future<Output = Result<LineIndex, AnyError>>,
-    V: Fn(ModuleSpecifier) -> Option<i32>,
-  {
-    if combined_code_actions.commands.is_some() {
-      return Err(custom_error(
-        "UnsupportedFix",
-        "The action returned from TypeScript is unsupported.",
-      ));
-    }
-    let edit = ts_changes_to_edit(
-      &combined_code_actions.changes,
-      index_provider,
-      version_provider,
-    )
-    .await?;
+  ) {
+    let data = Some(json!({
+      "specifier": specifier,
+      "fixId": action.fix_id,
+    }));
     let title = if let Some(description) = &action.fix_all_description {
       description.clone()
     } else {
@@ -477,11 +470,11 @@ impl CodeActionCollection {
       title,
       kind: Some(lsp::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
-      edit,
+      edit: None,
       command: None,
       is_preferred: None,
       disabled: None,
-      data: None,
+      data,
     };
     if let Some((existing, _)) =
       self.fix_all_actions.get(&action.fix_id.clone().unwrap())
@@ -493,7 +486,6 @@ impl CodeActionCollection {
       action.fix_id.clone().unwrap(),
       (code_action, action.clone()),
     );
-    Ok(())
   }
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
