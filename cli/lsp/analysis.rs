@@ -289,6 +289,8 @@ pub fn analyze_dependencies(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum CodeLensSource {
+  #[serde(rename = "implementations")]
+  Implementations,
   #[serde(rename = "references")]
   References,
 }

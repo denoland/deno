@@ -497,8 +497,16 @@ impl NavigationTree {
     specifier: &ModuleSpecifier,
     source: &CodeLensSource,
   ) -> lsp::CodeLens {
+    let range = if let Some(name_span) = &self.name_span {
+      name_span.to_range(line_index)
+    } else if !self.spans.is_empty() {
+      let span = &self.spans[0];
+      span.to_range(line_index)
+    } else {
+      lsp::Range::default()
+    };
     lsp::CodeLens {
-      range: self.name_span.clone().unwrap().to_range(line_index),
+      range,
       command: None,
       data: Some(json!({
         "specifier": specifier,
@@ -540,6 +548,17 @@ pub struct ImplementationLocation {
   // ImplementationLocation props
   kind: ScriptElementKind,
   display_parts: Vec<SymbolDisplayPart>,
+}
+
+impl ImplementationLocation {
+  pub fn to_location(&self, line_index: &LineIndex) -> lsp::Location {
+    let uri =
+      utils::normalize_file_name(&self.document_span.file_name).unwrap();
+    lsp::Location {
+      uri,
+      range: self.document_span.text_span.to_range(line_index),
+    }
+  }
 }
 
 #[derive(Debug, Deserialize)]
