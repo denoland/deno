@@ -2,7 +2,7 @@
 
 #![deny(warnings)]
 
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{serde_json, ZeroCopyBuf, AsyncRefCell, RcRef};
 use deno_core::{BufVec, Resource};
 use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
@@ -26,7 +26,7 @@ pub mod sampler;
 pub mod shader;
 pub mod texture;
 
-struct WebGPUInstance(wgc::hub::Global<wgc::hub::IdentityManagerFactory>);
+struct WebGPUInstance(AsyncRefCell<wgc::hub::Global<wgc::hub::IdentityManagerFactory>>);
 impl Resource for WebGPUInstance {
   fn name(&self) -> Cow<str> {
     "webGPUInstance".into()
@@ -82,7 +82,7 @@ pub fn op_webgpu_create_instance(
     wgt::BackendBit::PRIMARY,
   );
 
-  let rid = state.resource_table.add(WebGPUInstance(instance));
+  let rid = state.resource_table.add(WebGPUInstance(AsyncRefCell::new(instance)));
 
   Ok(json!({
     "rid": rid,
@@ -108,7 +108,7 @@ pub async fn op_webgpu_request_adapter(
     .resource_table
     .get::<WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = &RcRef::map(&instance_resource, |r| &r.0).borrow().await;
 
   let descriptor = wgc::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
@@ -184,7 +184,7 @@ pub async fn op_webgpu_request_device(
     .resource_table
     .get::<WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
 
   let mut features = wgt::Features::default();
 

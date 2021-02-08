@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{serde_json, ZeroCopyBuf, RcRef};
 use deno_core::{OpState, Resource};
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::error::AnyError;
@@ -76,7 +76,7 @@ pub fn op_webgpu_create_bind_group_layout(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
 
   let mut entries = vec![];
 
@@ -197,7 +197,7 @@ pub fn op_webgpu_create_pipeline_layout(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
 
   let descriptor = wgc::binding_model::PipelineLayoutDescriptor {
     label: args.label.map(Cow::Owned),
@@ -308,7 +308,7 @@ pub fn op_webgpu_create_bind_group(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
 
   let bind_group = wgc::gfx_select!(device => instance.device_create_bind_group(
     device,
