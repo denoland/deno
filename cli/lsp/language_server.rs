@@ -82,7 +82,7 @@ pub(crate) struct Inner {
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  maybe_import_map: Option<ImportMap>,
+  pub maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A map of all the cached navigation trees.
@@ -635,10 +635,12 @@ impl Inner {
       params.text_document.version,
       params.text_document.text,
     );
-    if let Err(err) = self
-      .documents
-      .analyze_dependencies(&specifier, &self.maybe_import_map)
-    {
+    let mut sources = self.sources.clone();
+    if let Err(err) = self.documents.analyze_dependencies(
+      &specifier,
+      &self.maybe_import_map,
+      &mut |s| sources.get_maybe_types(s),
+    ) {
       error!("{}", err);
     }
     // there are scenarios where local documents with a nav tree are opened in
@@ -662,10 +664,12 @@ impl Inner {
     ) {
       error!("{}", err);
     }
-    if let Err(err) = self
-      .documents
-      .analyze_dependencies(&specifier, &self.maybe_import_map)
-    {
+    let mut sources = self.sources.clone();
+    if let Err(err) = self.documents.analyze_dependencies(
+      &specifier,
+      &self.maybe_import_map,
+      &mut |s| sources.get_maybe_types(s),
+    ) {
       error!("{}", err);
     }
     self.navigation_trees.remove(&specifier);

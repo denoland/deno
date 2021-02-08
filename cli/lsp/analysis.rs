@@ -193,12 +193,16 @@ pub fn resolve_import(
 
 // TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
 // Module::parse() and should be refactored out to a common function.
-pub fn analyze_dependencies(
+pub fn analyze_dependencies<F>(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: &MediaType,
   maybe_import_map: &Option<ImportMap>,
-) -> Option<(HashMap<String, Dependency>, Option<ResolvedDependency>)> {
+  get_maybe_type: &mut F,
+) -> Option<(HashMap<String, Dependency>, Option<ResolvedDependency>)>
+where
+  F: FnMut(&ModuleSpecifier) -> Option<ResolvedDependency>,
+{
   let specifier_str = specifier.to_string();
   let source_map = Rc::new(swc_common::SourceMap::default());
   let mut maybe_type = None;
@@ -241,14 +245,18 @@ pub fn analyze_dependencies(
       let resolved_import =
         resolve_import(&desc.specifier, specifier, maybe_import_map);
 
-      // Check for `@deno-types` pragmas that effect the import
-      let maybe_resolved_type_import =
+      let maybe_resolved_type_dependency =
+        // Check for `@deno-types` pragmas that effect the import
         if let Some(comment) = desc.leading_comments.last() {
           if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
             Some(resolve_import(deno_types, specifier, maybe_import_map))
           } else {
             None
           }
+        // Otherwise check to see if the import itself has a type only
+        // dependency
+        } else if let ResolvedDependency::Resolved(specifier) = &resolved_import {
+          get_maybe_type(specifier)
         } else {
           None
         };
@@ -276,8 +284,8 @@ pub fn analyze_dependencies(
           dep.maybe_code = Some(resolved_import);
         }
       }
-      if maybe_resolved_type_import.is_some() && dep.maybe_type.is_none() {
-        dep.maybe_type = maybe_resolved_type_import;
+      if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
+        dep.maybe_type = maybe_resolved_type_dependency;
       }
     }
 
@@ -579,8 +587,13 @@ mod tests {
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
     import * as React from "https://cdn.skypack.dev/react";
     "#;
-    let actual =
-      analyze_dependencies(&specifier, source, &MediaType::TypeScript, &None);
+    let actual = analyze_dependencies(
+      &specifier,
+      source,
+      &MediaType::TypeScript,
+      &None,
+      &mut |_| None,
+    );
     assert!(actual.is_some());
     let (actual, maybe_type) = actual.unwrap();
     assert!(maybe_type.is_none());
@@ -628,6 +641,61 @@ mod tests {
           end: Position {
             line: 5,
             character: 50,
+          }
+        }),
+      })
+    );
+  }
+
+  #[test]
+  fn test_analyze_deps_type_dep() {
+    let specifier =
+      ModuleSpecifier::resolve_url("file:///a.ts").expect("bad specifier");
+    let source =
+      r#"import * as React from "https://cdn.skypack.dev/react?dts";"#;
+    let actual = analyze_dependencies(
+      &specifier,
+      source,
+      &MediaType::TypeScript,
+      &None,
+      &mut |s| match s.to_string().as_ref() {
+        "https://cdn.skypack.dev/react?dts" => {
+          Some(ResolvedDependency::Resolved(
+            ModuleSpecifier::resolve_url(
+              "https://cdn.skypack.dev/react/index.d.ts",
+            )
+            .unwrap(),
+          ))
+        }
+        _ => None,
+      },
+    );
+    assert!(actual.is_some());
+    let (actual, maybe_type) = actual.unwrap();
+    assert!(maybe_type.is_none());
+    assert_eq!(actual.len(), 1);
+    assert_eq!(
+      actual.get("https://cdn.skypack.dev/react?dts").cloned(),
+      Some(Dependency {
+        is_dynamic: false,
+        maybe_code: Some(ResolvedDependency::Resolved(
+          ModuleSpecifier::resolve_url("https://cdn.skypack.dev/react?dts")
+            .unwrap()
+        )),
+        maybe_type: Some(ResolvedDependency::Resolved(
+          ModuleSpecifier::resolve_url(
+            "https://cdn.skypack.dev/react/index.d.ts"
+          )
+          .unwrap()
+        )),
+        maybe_code_specifier_range: Some(Range {
+          start: Position {
+            line: 0,
+            character: 23,
+          },
+          end: Position {
+            line: 0,
+            character: 58,
           }
         }),
       })

@@ -98,6 +98,14 @@ impl Sources {
     Some(metadata.line_index)
   }
 
+  pub fn get_maybe_types(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<analysis::ResolvedDependency> {
+    let metadata = self.get_metadata(specifier)?;
+    metadata.maybe_types.clone()
+  }
+
   pub fn get_media_type(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -129,6 +137,7 @@ impl Sources {
               &source,
               &media_type,
               &None,
+              &mut |s| self.get_maybe_types(s),
             ) {
             maybe_types = mt;
             Some(dependencies)
@@ -171,6 +180,7 @@ impl Sources {
               &source,
               &media_type,
               &None,
+              &mut |s| self.get_maybe_types(s),
             ) {
             if maybe_types.is_none() {
               maybe_types = mt;

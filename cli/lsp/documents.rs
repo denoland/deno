@@ -92,11 +92,15 @@ pub struct DocumentCache {
 }
 
 impl DocumentCache {
-  pub fn analyze_dependencies(
+  pub fn analyze_dependencies<F>(
     &mut self,
     specifier: &ModuleSpecifier,
     maybe_import_map: &Option<ImportMap>,
-  ) -> Result<(), AnyError> {
+    get_maybe_type: &mut F,
+  ) -> Result<(), AnyError>
+  where
+    F: FnMut(&ModuleSpecifier) -> Option<analysis::ResolvedDependency>,
+  {
     if !self.contains(specifier) {
       return Err(custom_error(
         "NotFound",
@@ -114,6 +118,7 @@ impl DocumentCache {
         source,
         &MediaType::from(specifier),
         maybe_import_map,
+        get_maybe_type,
       ) {
         doc.dependencies = Some(dependencies);
       } else {
