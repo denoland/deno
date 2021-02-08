@@ -103,7 +103,7 @@ impl Sources {
     specifier: &ModuleSpecifier,
   ) -> Option<analysis::ResolvedDependency> {
     let metadata = self.get_metadata(specifier)?;
-    metadata.maybe_types.clone()
+    metadata.maybe_types
   }
 
   pub fn get_media_type(
