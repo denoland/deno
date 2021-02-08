@@ -77,13 +77,13 @@ jobs:
         if: |
           !startsWith(matrix.os, 'windows')
         run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Install Deno (Windows)
         if: startsWith(matrix.os, 'windows')
         run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
 
       - name: Install Python
