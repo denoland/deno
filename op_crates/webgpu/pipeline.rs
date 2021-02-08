@@ -1,15 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::sampler::serialize_compare_function;
-use super::texture::serialize_texture_format;
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{OpState, Resource};
+use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use serde::Deserialize;
 use std::borrow::Cow;
+
+use super::sampler::serialize_compare_function;
+use super::texture::serialize_texture_format;
 
 pub(crate) struct WebGPUPipelineLayout(pub(crate) wgc::id::PipelineLayoutId);
 impl Resource for WebGPUPipelineLayout {
@@ -175,7 +176,7 @@ pub fn op_webgpu_create_compute_pipeline(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let pipeline_layout = if let Some(rid) = args.layout {
     let id = state
@@ -244,7 +245,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let bind_group_layout = wgc::gfx_select!(compute_pipeline => instance
     .compute_pipeline_get_bind_group_layout(compute_pipeline, args.index))?;
@@ -365,7 +366,7 @@ pub fn op_webgpu_create_render_pipeline(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let mut color_states = vec![];
 
@@ -621,7 +622,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let bind_group_layout = wgc::gfx_select!(render_pipeline => instance
     .render_pipeline_get_bind_group_layout(render_pipeline, args.index))?;

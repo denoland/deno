@@ -1,17 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
-use deno_core::futures::channel::oneshot;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::OpState;
-use deno_core::{serde_json, ZeroCopyBuf};
-use deno_core::{BufVec, Resource};
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use serde::Deserialize;
+
+use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::{BufVec, Resource};
+use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
+use deno_core::futures::channel::oneshot;
+use deno_core::OpState;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 
 pub(crate) struct WebGPUBuffer(pub(crate) wgc::id::BufferId);
 impl Resource for WebGPUBuffer {
@@ -54,7 +56,7 @@ pub fn op_webgpu_create_buffer(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let descriptor = wgc::resource::BufferDescriptor {
     label: args.label.map(Cow::Owned),
@@ -92,7 +94,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 ) -> Result<Value, AnyError> {
   let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
 
-  let state = state.borrow_mut();
+  let state = state.borrow();
   let buffer_resource = state
     .resource_table
     .get::<WebGPUBuffer>(args.buffer_rid)
@@ -102,7 +104,7 @@ pub async fn op_webgpu_buffer_get_map_async(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
@@ -167,7 +169,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let slice_pointer = wgc::gfx_select!(buffer => instance.buffer_get_mapped_range(
     buffer,
@@ -217,7 +219,7 @@ pub fn op_webgpu_buffer_unmap(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   mapped_resource
     .0

@@ -1,16 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use super::texture::serialize_texture_format;
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{OpState, Resource};
+use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use super::texture::serialize_texture_format;
 
 struct WebGPURenderBundleEncoder(RefCell<wgc::command::RenderBundleEncoder>);
 impl Resource for WebGPURenderBundleEncoder {
@@ -97,12 +98,16 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .resource_table
     .take::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
-  let render_bundle_encoder = Rc::try_unwrap(render_bundle_encoder_resource).ok().expect("unwrapping render_bundle_encoder_resource should succeed").0.into_inner();
+  let render_bundle_encoder = Rc::try_unwrap(render_bundle_encoder_resource)
+    .ok()
+    .expect("unwrapping render_bundle_encoder_resource should succeed")
+    .0
+    .into_inner();
   let instance_resource = state
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,

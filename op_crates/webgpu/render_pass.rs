@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{OpState, Resource};
+use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -214,19 +214,21 @@ pub fn op_webgpu_render_pass_end_pass(
 
   let command_encoder_resource = state
     .resource_table
-    .get::<super::command_encoder::WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<super::command_encoder::WebGPUCommandEncoder>(
+      args.command_encoder_rid,
+    )
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let instance_resource = state
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref render_pass = render_pass_resource.0.borrow();
+  let render_pass = &render_pass_resource.0.borrow();
   wgc::gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass))?;
 
   Ok(json!({}))

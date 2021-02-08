@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{OpState, Resource};
+use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -133,7 +133,7 @@ pub fn op_webgpu_compute_pass_end_pass(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGPUCommandEncoder>(
@@ -145,7 +145,7 @@ pub fn op_webgpu_compute_pass_end_pass(
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref compute_pass = compute_pass_resource.0.borrow();
+  let compute_pass = &compute_pass_resource.0.borrow();
 
   wgc::gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(
     command_encoder,

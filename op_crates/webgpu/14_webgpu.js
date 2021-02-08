@@ -97,7 +97,7 @@
     }
   }
 
-  // TODO: https://gpuweb.github.io/gpuweb/#errors-and-debugging
+  // TODO(@crowlKats): https://gpuweb.github.io/gpuweb/#errors-and-debugging
   class GPUDevice extends EventTarget {
     #rid;
     #adapter;
@@ -533,7 +533,7 @@
         },
       );
 
-      const bindGroupLayout = new GPUBindGroupLayout(); // TODO: label?
+      const bindGroupLayout = new GPUBindGroupLayout(); // TODO(@crowlKats): label?
       GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
       return bindGroupLayout;
     }
@@ -558,7 +558,7 @@
         },
       );
 
-      const bindGroupLayout = new GPUBindGroupLayout(); // TODO: label?
+      const bindGroupLayout = new GPUBindGroupLayout(); // TODO(@crowlKats): label?
       GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
       return bindGroupLayout;
     }

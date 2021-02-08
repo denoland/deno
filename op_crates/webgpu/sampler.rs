@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{OpState, Resource};
+use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use serde::Deserialize;
 use std::borrow::Cow;
 
@@ -87,7 +87,7 @@ pub fn op_webgpu_create_sampler(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let ref instance = instance_resource.0;
+  let instance = &instance_resource.0;
 
   let descriptor = wgc::resource::SamplerDescriptor {
     label: args.label.map(Cow::Owned),
