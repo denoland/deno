@@ -123,6 +123,8 @@ impl Sources {
         }
       }
     }
+    // TODO(@kitsonk) this needs to be refactored, lots of duplicate logic and
+    // is really difficult to follow.
     let version = self.get_script_version(specifier)?;
     let path = self.get_path(specifier)?;
     if let Ok(bytes) = fs::read(path) {
@@ -131,12 +133,13 @@ impl Sources {
         if let Ok(source) = get_source_from_bytes(bytes, Some(charset)) {
           let media_type = MediaType::from(specifier);
           let mut maybe_types = None;
+          let maybe_import_map = self.maybe_import_map.clone();
           let dependencies = if let Some((dependencies, mt)) =
             analysis::analyze_dependencies(
               &specifier,
               &source,
               &media_type,
-              &None,
+              &maybe_import_map,
               &mut |s| self.get_maybe_types(s),
             ) {
             maybe_types = mt;
@@ -174,12 +177,13 @@ impl Sources {
             } else {
               None
             };
+          let maybe_import_map = self.maybe_import_map.clone();
           let dependencies = if let Some((dependencies, mt)) =
             analysis::analyze_dependencies(
               &specifier,
               &source,
               &media_type,
-              &None,
+              &maybe_import_map,
               &mut |s| self.get_maybe_types(s),
             ) {
             if maybe_types.is_none() {

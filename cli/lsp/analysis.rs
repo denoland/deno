@@ -246,7 +246,7 @@ where
         resolve_import(&desc.specifier, specifier, maybe_import_map);
 
       let maybe_resolved_type_dependency =
-        // Check for `@deno-types` pragmas that effect the import
+        // Check for `@deno-types` pragmas that affect the import
         if let Some(comment) = desc.leading_comments.last() {
           if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
             Some(resolve_import(deno_types, specifier, maybe_import_map))
