@@ -1785,7 +1785,8 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Server certificate file. */
+    /** Path to a file containing a PEM formatted CA certificate. Requires
+     * `--allow-read`. */
     certFile?: string;
   }
 
