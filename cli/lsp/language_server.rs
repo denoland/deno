@@ -698,10 +698,6 @@ impl Inner {
     self.performance.measure(mark);
   }
 
-  async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-    // nothing to do yet... cleanup things?
-  }
-
   async fn did_change_configuration(
     &mut self,
     params: DidChangeConfigurationParams,
@@ -744,6 +740,9 @@ impl Inner {
           .client
           .show_message(MessageType::Warning, err.to_string())
           .await;
+      }
+      if let Err(err) = self.prepare_diagnostics().await {
+        error!("{}", err);
       }
     } else {
       error!("received empty extension settings from the client");
@@ -1695,10 +1694,6 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     self.0.lock().await.did_close(params).await
-  }
-
-  async fn did_save(&self, params: DidSaveTextDocumentParams) {
-    self.0.lock().await.did_save(params).await
   }
 
   async fn did_change_configuration(
