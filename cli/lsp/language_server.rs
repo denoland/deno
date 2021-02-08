@@ -52,6 +52,7 @@ use super::tsc::TsServer;
 use super::utils;
 
 lazy_static! {
+  static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
   static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
 }
 
@@ -1034,6 +1035,30 @@ impl Inner {
     navigation_tree.walk(&|i, mp| {
       let mut code_lenses = cl.borrow_mut();
 
+      // TSC Implementations Code Lens
+      if self.config.settings.enabled_code_lens_implementations() {
+        let source = CodeLensSource::Implementations;
+        match i.kind {
+          tsc::ScriptElementKind::InterfaceElement => {
+            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+          }
+          tsc::ScriptElementKind::ClassElement
+          | tsc::ScriptElementKind::MemberFunctionElement
+          | tsc::ScriptElementKind::MemberVariableElement
+          | tsc::ScriptElementKind::MemberGetAccessorElement
+          | tsc::ScriptElementKind::MemberSetAccessorElement => {
+            if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
+              code_lenses.push(i.to_code_lens(
+                &line_index,
+                &specifier,
+                &source,
+              ));
+            }
+          }
+          _ => (),
+        }
+      }
+
       // TSC References Code Lens
       if self.config.settings.enabled_code_lens_references() {
         let source = CodeLensSource::References;
@@ -1121,6 +1146,83 @@ impl Inner {
       let code_lens_data: CodeLensData = serde_json::from_value(data)
         .map_err(|err| LspError::invalid_params(err.to_string()))?;
       let code_lens = match code_lens_data.source {
+        CodeLensSource::Implementations => {
+          let line_index =
+            self.get_line_index_sync(&code_lens_data.specifier).unwrap();
+          let req = tsc::RequestMethod::GetImplementation((
+            code_lens_data.specifier.clone(),
+            line_index.offset_tsc(params.range.start)?,
+          ));
+          let res =
+            self.ts_server.request(self.snapshot(), req).await.map_err(
+              |err| {
+                error!("Error processing TypeScript request: {}", err);
+                LspError::internal_error()
+              },
+            )?;
+          let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
+            serde_json::from_value(res).map_err(|err| {
+              error!("Error deserializing response: {}", err);
+              LspError::internal_error()
+            })?;
+          if let Some(implementations) = maybe_implementations {
+            let mut locations = Vec::new();
+            for implementation in implementations {
+              let implementation_specifier = ModuleSpecifier::resolve_url(
+                &implementation.document_span.file_name,
+              )
+              .map_err(|err| {
+                error!("Invalid specifier returned from TypeScript: {}", err);
+                LspError::internal_error()
+              })?;
+              let implementation_location =
+                implementation.to_location(&line_index);
+              if !(implementation_specifier == code_lens_data.specifier
+                && implementation_location.range.start == params.range.start)
+              {
+                locations.push(implementation_location);
+              }
+            }
+            let command = if !locations.is_empty() {
+              let title = if locations.len() > 1 {
+                format!("{} implementations", locations.len())
+              } else {
+                "1 implementation".to_string()
+              };
+              Command {
+                title,
+                command: "deno.showReferences".to_string(),
+                arguments: Some(vec![
+                  serde_json::to_value(code_lens_data.specifier).unwrap(),
+                  serde_json::to_value(params.range.start).unwrap(),
+                  serde_json::to_value(locations).unwrap(),
+                ]),
+              }
+            } else {
+              Command {
+                title: "0 implementations".to_string(),
+                command: "".to_string(),
+                arguments: None,
+              }
+            };
+            CodeLens {
+              range: params.range,
+              command: Some(command),
+              data: None,
+            }
+          } else {
+            let command = Command {
+              title: "0 implementations".to_string(),
+              command: "".to_string(),
+              arguments: None,
+            };
+            CodeLens {
+              range: params.range,
+              command: Some(command),
+              data: None,
+            }
+          }
+        }
         CodeLensSource::References => {
           let line_index =
             self.get_line_index_sync(&code_lens_data.specifier).unwrap();
@@ -2325,6 +2427,121 @@ mod tests {
                       "end": {
                         "line": 12,
                         "character": 15,
+                      }
+                    }
+                  }
+                ],
+              ]
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_code_lens_impl_request() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_cl_impl.json", LspResponse::None),
+      (
+        "code_lens_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 10,
+                },
+                "end": {
+                  "line": 0,
+                  "character": 11,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "implementations",
+              },
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 10,
+                },
+                "end": {
+                  "line": 0,
+                  "character": 11,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              },
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 4,
+                  "character": 6,
+                },
+                "end": {
+                  "line": 4,
+                  "character": 7,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              },
+            },
+          ]),
+        ),
+      ),
+      (
+        "code_lens_resolve_request_impl.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 10,
+              },
+              "end": {
+                "line": 0,
+                "character": 11,
+              }
+            },
+            "command": {
+              "title": "1 implementation",
+              "command": "deno.showReferences",
+              "arguments": [
+                "file:///a/file.ts",
+                {
+                  "line": 0,
+                  "character": 10,
+                },
+                [
+                  {
+                    "uri": "file:///a/file.ts",
+                    "range": {
+                      "start": {
+                        "line": 4,
+                        "character": 6,
+                      },
+                      "end": {
+                        "line": 4,
+                        "character": 7,
                       }
                     }
                   }

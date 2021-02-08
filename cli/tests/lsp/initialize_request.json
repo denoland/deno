@@ -12,6 +12,7 @@
     "initializationOptions": {
       "enable": true,
       "codeLens": {
+        "implementations": true,
         "references": true
       },
       "lint": true,
