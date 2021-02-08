@@ -82,69 +82,9 @@
         "relatedInformation": []
       }
     ],
-    "edit": {
-      "documentChanges": [
-        {
-          "textDocument": {
-            "uri": "file:///a/file.ts",
-            "version": 1
-          },
-          "edits": [
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 7
-                },
-                "end": {
-                  "line": 0,
-                  "character": 7
-                }
-              },
-              "newText": "async "
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 21
-                },
-                "end": {
-                  "line": 0,
-                  "character": 25
-                }
-              },
-              "newText": "Promise<void>"
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 4,
-                  "character": 7
-                },
-                "end": {
-                  "line": 4,
-                  "character": 7
-                }
-              },
-              "newText": "async "
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 4,
-                  "character": 21
-                },
-                "end": {
-                  "line": 4,
-                  "character": 25
-                }
-              },
-              "newText": "Promise<void>"
-            }
-          ]
-        }
-      ]
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "fixId": "fixAwaitInSyncFunction"
     }
   }
 ]

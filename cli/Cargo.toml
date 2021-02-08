@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.7.1"
+version = "1.7.2"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -24,10 +24,10 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.77.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.20.2" }
-deno_web = { path = "../op_crates/web", version = "0.28.1" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.3.1" }
+deno_core = { path = "../core", version = "0.78.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.21.0" }
+deno_web = { path = "../op_crates/web", version = "0.29.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.4.0" }
 deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 regex = "1.4.3"
 serde = { version = "1.0.121", features = ["derive"] }
@@ -37,10 +37,10 @@ winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.77.1" }
+deno_core = { path = "../core", version = "0.78.0" }
 deno_doc = "0.1.21"
 deno_lint = "0.2.17"
-deno_runtime = { path = "../runtime", version = "0.7.1" }
+deno_runtime = { path = "../runtime", version = "0.8.0" }
 
 atty = "0.2.14"
 base64 = "0.13.0"

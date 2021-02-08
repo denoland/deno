@@ -489,7 +489,7 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "deno"
-version = "1.7.1"
+version = "1.7.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.77.1"
+version = "0.78.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -571,7 +571,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
@@ -595,7 +595,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.20.2"
+version = "0.21.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "atty",
  "deno_core",
@@ -671,7 +671,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.28.1"
+version = "0.29.0"
 dependencies = [
  "deno_core",
  "futures",
@@ -692,7 +692,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "deno_core",
  "http",
@@ -2507,9 +2507,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a50f63f3030b5a676b9f6e7d53bf1f880904973c2350a3f034dbf82facca0b4f"
+checksum = "e4cacd73b88c22512f09c5ec78e56eb89d95e4dc1201fe52bd6c81824b5e041b"
 dependencies = [
  "bitflags",
  "cargo_gn",
