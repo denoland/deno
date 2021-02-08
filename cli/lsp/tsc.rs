@@ -501,13 +501,11 @@ impl NavigationTree {
   ) -> lsp::CodeLens {
     let range = if let Some(name_span) = &self.name_span {
       name_span.to_range(line_index)
+    } else if !self.spans.is_empty() {
+      let span = &self.spans[0];
+      span.to_range(line_index)
     } else {
-      if !self.spans.is_empty() {
-        let span = &self.spans[0];
-        span.to_range(line_index)
-      } else {
-        lsp::Range::default()
-      }
+      lsp::Range::default()
     };
     lsp::CodeLens {
       range,
