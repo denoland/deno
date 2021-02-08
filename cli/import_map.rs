@@ -36,7 +36,7 @@ impl Error for ImportMapError {}
 
 // NOTE: here is difference between deno and reference implementation - deno currently
 //  can't resolve URL with other schemes (eg. data:, about:, blob:)
-const SUPPORTED_FETCH_SCHEMES: [&str; 3] = ["http", "https", "file"];
+const SUPPORTED_FETCH_SCHEMES: [&str; 4] = ["http", "https", "file", "data"];
 
 type SpecifierMap = IndexMap<String, Vec<ModuleSpecifier>>;
 type ScopesMap = IndexMap<String, SpecifierMap>;
@@ -2067,6 +2067,17 @@ mod tests {
     assert_resolve(
       import_map.resolve("std:none", base_url),
       "https://example.com/app/none.mjs",
+    );
+  }
+
+  #[test]
+  fn resolve_data_urls() {
+    let base_url = "https://example.com/app/main.ts";
+    let json_map = r#"{}"#;
+    let import_map = ImportMap::from_json(base_url, json_map).unwrap();
+    assert_resolve(
+      import_map.resolve("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", base_url), 
+      "data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=",
     );
   }
 }
