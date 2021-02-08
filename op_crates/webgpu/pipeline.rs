@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::{serde_json, ZeroCopyBuf, RcRef};
-use deno_core::{OpState, Resource};
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::{serde_json, RcRef, ZeroCopyBuf};
+use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
@@ -176,7 +176,9 @@ pub fn op_webgpu_create_compute_pipeline(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
 
   let pipeline_layout = if let Some(rid) = args.layout {
     let id = state
@@ -245,7 +247,9 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
 
   let bind_group_layout = wgc::gfx_select!(compute_pipeline => instance
     .compute_pipeline_get_bind_group_layout(compute_pipeline, args.index))?;
@@ -366,7 +370,9 @@ pub fn op_webgpu_create_render_pipeline(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
 
   let mut color_states = vec![];
 
@@ -622,7 +628,9 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
 
   let bind_group_layout = wgc::gfx_select!(render_pipeline => instance
     .render_pipeline_get_bind_group_layout(render_pipeline, args.index))?;

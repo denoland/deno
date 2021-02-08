@@ -6,14 +6,14 @@ use std::rc::Rc;
 
 use serde::Deserialize;
 
-use deno_core::{serde_json, ZeroCopyBuf, RcRef};
-use deno_core::{BufVec, Resource};
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
-use deno_core::OpState;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::OpState;
+use deno_core::{serde_json, RcRef, ZeroCopyBuf};
+use deno_core::{BufVec, Resource};
 
 pub(crate) struct WebGPUBuffer(pub(crate) wgc::id::BufferId);
 impl Resource for WebGPUBuffer {
@@ -56,7 +56,9 @@ pub fn op_webgpu_create_buffer(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
 
   let descriptor = wgc::resource::BufferDescriptor {
     label: args.label.map(Cow::Owned),
@@ -173,7 +175,9 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
 
   let slice_pointer = wgc::gfx_select!(buffer => instance.buffer_get_mapped_range(
     buffer,
@@ -223,7 +227,9 @@ pub fn op_webgpu_buffer_unmap(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0).try_borrow().unwrap();
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
 
   mapped_resource
     .0
