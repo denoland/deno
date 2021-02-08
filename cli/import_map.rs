@@ -34,8 +34,8 @@ impl fmt::Display for ImportMapError {
 
 impl Error for ImportMapError {}
 
-// NOTE: here is difference between deno and reference implementation - deno currently
-//  can't resolve URL with other schemes (eg. data:, about:, blob:)
+// NOTE: here is difference between deno and reference implementation - Deno 
+// doesn't resolve URLs outside of the supported schemes.
 const SUPPORTED_FETCH_SCHEMES: [&str; 4] = ["http", "https", "file", "data"];
 
 type SpecifierMap = IndexMap<String, Vec<ModuleSpecifier>>;
