@@ -34,9 +34,10 @@ unitTest(function invalidPromiseId(): void {
       createNew: false,
     },
   };
-  const argsText = JSON.stringify([promiseId, argsObj]);
-  const argsBuf = new TextEncoder().encode(argsText);
-  const resBuf = Deno.core.send(opId, argsBuf);
+  const argsText = JSON.stringify(argsObj);
+  const reqText = JSON.stringify([promiseId, argsText]);
+  const reqBuf = new TextEncoder().encode(reqText);
+  const resBuf = Deno.core.send(opId, reqBuf);
   const resText = new TextDecoder().decode(resBuf);
   const resObj = JSON.parse(resText);
   console.error(resText);

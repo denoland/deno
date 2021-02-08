@@ -156,9 +156,9 @@ where
   })
 }
 
-// Async request from JS that includes a promiseId and args.
+// Async request from JS that includes a promiseId and json representation of args.
 #[derive(Deserialize)]
-struct AsyncRequest<V>(u64, V);
+struct AsyncRequest(u64, String);
 
 /// Creates an op that passes data asynchronously using JSON.
 ///
@@ -193,11 +193,13 @@ where
 {
   let try_dispatch_op =
     move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
-      let args: AsyncRequest<V> = serde_json::from_slice(&bufs[0])?;
-      let promise_id = args.0;
+      let req: AsyncRequest = serde_json::from_slice(&bufs[0])
+        .map_err(|_| type_error("missing or invalid `promiseId`"))?;
+      let promise_id = req.0;
+      let args = serde_json::from_str(&req.1)?;
       let bufs = bufs[1..].into();
       use crate::futures::FutureExt;
-      let fut = op_fn(state.clone(), args.1, bufs).map(move |result| {
+      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
         json_serialize_op_result(
           Some(promise_id),
           result,
