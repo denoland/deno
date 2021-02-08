@@ -137,6 +137,7 @@
 
       const buffer = new GPUBuffer(
         rid,
+        this.#rid,
         descriptor.label,
         descriptor.size,
         descriptor.mappedAtCreation,
@@ -381,14 +382,16 @@
   const GPUBufferMap = new WeakMap();
   class GPUBuffer {
     #rid;
+    #deviceRid;
     #size;
     #mappedSize;
     #mappedOffset;
     #mappedRid;
     #mappedBuffer;
 
-    constructor(rid, label, size, mappedAtCreation) {
+    constructor(rid, deviceRid, label, size, mappedAtCreation) {
       this.#rid = rid;
+      this.#deviceRid = deviceRid;
       this.label = label ?? null;
       this.#size = size;
 
@@ -404,6 +407,7 @@
       await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
         instanceRid,
         bufferRid: this.#rid,
+        deviceRid: this.#deviceRid,
         mode,
         offset,
         size: this.#mappedSize,

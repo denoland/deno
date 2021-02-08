@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -84,6 +85,7 @@ pub fn op_webgpu_create_buffer(
 struct BufferGetMapAsyncArgs {
   instance_rid: u32,
   buffer_rid: u32,
+  device_rid: u32,
   mode: u32,
   offset: u64,
   size: u64,
@@ -97,6 +99,7 @@ pub async fn op_webgpu_buffer_get_map_async(
   let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
 
   let buffer;
+  let device;
   let instance;
   {
     let state = state.borrow();
@@ -105,6 +108,11 @@ pub async fn op_webgpu_buffer_get_map_async(
       .get::<WebGPUBuffer>(args.buffer_rid)
       .ok_or_else(bad_resource_id)?;
     buffer = buffer_resource.0;
+    let device_resource = state
+      .resource_table
+      .get::<super::WebGPUDevice>(args.device_rid)
+      .ok_or_else(bad_resource_id)?;
+    device = device_resource.0.clone();
     let instance_resource = state
       .resource_table
       .get::<super::WebGPUInstance>(args.instance_rid)
@@ -144,8 +152,39 @@ pub async fn op_webgpu_buffer_get_map_async(
       user_data: sender_ptr,
     }
   ))?;
+  drop(instance);
 
-  receiver.await??;
+  let done = Rc::new(RefCell::new(false));
+  let done_ = done.clone();
+  let instance_rid = args.instance_rid;
+  let device_poll_fut = async move {
+    while !*done.borrow() {
+      {
+        let state = state.borrow();
+        let instance_resource = state
+          .resource_table
+          .get::<super::WebGPUInstance>(instance_rid);
+        if let Some(instance_resource) = instance_resource {
+          let instance =
+            RcRef::map(&instance_resource, |r| &r.0).borrow().await;
+          wgc::gfx_select!(device.clone() => instance.device_poll(device, false)).unwrap()
+        } else {
+          break;
+        }
+      }
+      tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    Ok::<(), AnyError>(())
+  };
+
+  let receiver_fut = async move {
+    receiver.await??;
+    let mut done = done_.borrow_mut();
+    *done = true;
+    Ok::<(), AnyError>(())
+  };
+
+  tokio::try_join!(device_poll_fut, receiver_fut)?;
 
   Ok(json!({}))
 }
