@@ -94,17 +94,21 @@ pub async fn op_webgpu_buffer_get_map_async(
 ) -> Result<Value, AnyError> {
   let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
 
-  let state = state.borrow();
-  let buffer_resource = state
-    .resource_table
-    .get::<WebGPUBuffer>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
-  let buffer = buffer_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &RcRef::map(&instance_resource, |r| &r.0).borrow().await;
+  let buffer;
+  let instance;
+  {
+    let state = state.borrow();
+    let buffer_resource = state
+      .resource_table
+      .get::<WebGPUBuffer>(args.buffer_rid)
+      .ok_or_else(bad_resource_id)?;
+    buffer = buffer_resource.0;
+    let instance_resource = state
+      .resource_table
+      .get::<super::WebGPUInstance>(args.instance_rid)
+      .ok_or_else(bad_resource_id)?;
+    instance = RcRef::map(&instance_resource, |r| &r.0).borrow().await;
+  }
 
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
