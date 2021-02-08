@@ -2685,6 +2685,11 @@ console.log("finish");
     assert_eq!(out, "");
   }
 
+  itest!(_084_worker_custom_inspect {
+    args: "run 084_worker_custom_inspect.ts",
+    output: "084_worker_custom_inspect.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
