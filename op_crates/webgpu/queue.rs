@@ -5,7 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::{serde_json, RcRef, ZeroCopyBuf};
+use deno_core::{serde_json, ZeroCopyBuf};
 use serde::Deserialize;
 
 type WebGPUQueue = super::WebGPUDevice;
@@ -34,9 +34,7 @@ pub fn op_webgpu_queue_submit(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let mut ids = vec![];
 
@@ -93,9 +91,7 @@ pub fn op_webgpu_write_buffer(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let data = match args.size {
     Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
@@ -141,9 +137,7 @@ pub fn op_webgpu_write_texture(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let destination = wgc::command::TextureCopyView {
     texture: texture_resource.0,

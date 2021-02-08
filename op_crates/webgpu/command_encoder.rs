@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, RcRef, ZeroCopyBuf};
+use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -57,9 +57,7 @@ pub fn op_webgpu_create_command_encoder(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let descriptor = wgt::CommandEncoderDescriptor {
     label: args.label.map(Cow::Owned),
@@ -313,9 +311,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   wgc::gfx_select!(command_encoder => instance.command_encoder_copy_buffer_to_buffer(
     command_encoder,
@@ -389,9 +385,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let source = wgc::command::BufferCopyView {
     buffer: source_buffer_resource.0,
@@ -462,9 +456,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let source = wgc::command::TextureCopyView {
     texture: source_texture_resource.0,
@@ -534,9 +526,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let source = wgc::command::TextureCopyView {
     texture: source_texture_resource.0,
@@ -599,9 +589,7 @@ pub fn op_webgpu_command_encoder_push_debug_group(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   wgc::gfx_select!(command_encoder => instance
     .command_encoder_push_debug_group(command_encoder, &args.group_label))?;
@@ -632,9 +620,7 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   wgc::gfx_select!(command_encoder => instance.command_encoder_pop_debug_group(command_encoder))?;
 
@@ -665,9 +651,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   wgc::gfx_select!(command_encoder => instance.command_encoder_insert_debug_marker(
     command_encoder,
@@ -701,9 +685,7 @@ pub fn op_webgpu_command_encoder_finish(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let descriptor = wgt::CommandBufferDescriptor {
     label: args.label.map(Cow::Owned),
