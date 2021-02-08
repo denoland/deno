@@ -34,7 +34,7 @@ impl fmt::Display for ImportMapError {
 
 impl Error for ImportMapError {}
 
-// NOTE: here is difference between deno and reference implementation - Deno 
+// NOTE: here is difference between deno and reference implementation - Deno
 // doesn't resolve URLs outside of the supported schemes.
 const SUPPORTED_FETCH_SCHEMES: [&str; 4] = ["http", "https", "file", "data"];
 
