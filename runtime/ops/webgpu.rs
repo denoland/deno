@@ -16,7 +16,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     "op_webgpu_request_device",
     op_webgpu_request_device,
   );
-  super::reg_json_async(
+  super::reg_json_sync(
     rt,
     "op_webgpu_create_query_set",
     op_webgpu_create_query_set,

@@ -107,8 +107,14 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
   if features.contains(wgpu_types::Features::DEPTH_CLAMPING) {
     return_features.push("depth-clamping");
   }
+  if features.contains(wgpu_types::Features::PIPELINE_STATISTICS_QUERY) {
+    return_features.push("pipeline-statistics-query");
+  }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_BC) {
     return_features.push("texture-compression-bc");
+  }
+  if features.contains(wgpu_types::Features::TIMESTAMP_QUERY) {
+    return_features.push("timestamp-query");
   }
 
   return_features
@@ -206,6 +212,10 @@ pub async fn op_webgpu_request_adapter(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GPULimits {
+  _max_texture_dimension1d: Option<u32>,
+  _max_texture_dimension2d: Option<u32>,
+  _max_texture_dimension3d: Option<u32>,
+  _max_texture_array_layers: Option<u32>,
   max_bind_groups: Option<u32>,
   max_dynamic_uniform_buffers_per_pipeline_layout: Option<u32>,
   max_dynamic_storage_buffers_per_pipeline_layout: Option<u32>,
@@ -215,6 +225,10 @@ struct GPULimits {
   max_storage_textures_per_shader_stage: Option<u32>,
   max_uniform_buffers_per_shader_stage: Option<u32>,
   max_uniform_buffer_binding_size: Option<u32>,
+  _max_storage_buffer_binding_size: Option<u32>,
+  _max_vertex_buffers: Option<u32>,
+  _max_vertex_attributes: Option<u32>,
+  _max_vertex_buffer_array_stride: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -224,7 +238,7 @@ struct RequestDeviceArgs {
   adapter_rid: u32,
   label: Option<String>,
   non_guaranteed_features: Option<Vec<String>>,
-  non_guaranteed_limits: Option<GPULimits>, // TODO
+  non_guaranteed_limits: Option<GPULimits>,
 }
 
 pub async fn op_webgpu_request_device(
@@ -248,16 +262,21 @@ pub async fn op_webgpu_request_device(
     .try_borrow()
     .unwrap();
 
-  let mut features = wgpu_types::Features::default();
+  let mut features: wgpu_types::Features = wgpu_types::Features::empty();
 
   if let Some(passed_features) = args.non_guaranteed_features {
     if passed_features.contains(&"depth-clamping".to_string()) {
       features.set(wgpu_types::Features::DEPTH_CLAMPING, true);
     }
+    if passed_features.contains(&"pipeline-statistics-query".to_string()) {
+      features.set(wgpu_types::Features::PIPELINE_STATISTICS_QUERY, true);
+    }
     if passed_features.contains(&"texture-compression-bc".to_string()) {
       features.set(wgpu_types::Features::TEXTURE_COMPRESSION_BC, true);
     }
-    // TODO
+    if passed_features.contains(&"timestamp-query".to_string()) {
+      features.set(wgpu_types::Features::TIMESTAMP_QUERY, true);
+    }
   }
 
   let descriptor = wgpu_types::DeviceDescriptor {
@@ -307,15 +326,15 @@ pub async fn op_webgpu_request_device(
   let features = deserialize_features(&device_features);
   let limits = gfx_select!(device => instance.device_limits(device))?;
   let json_limits = json!({
-     "max_bind_groups": limits.max_bind_groups,
-     "max_dynamic_uniform_buffers_per_pipeline_layout": limits.max_dynamic_uniform_buffers_per_pipeline_layout,
-     "max_dynamic_storage_buffers_per_pipeline_layout": limits.max_dynamic_storage_buffers_per_pipeline_layout,
-     "max_sampled_textures_per_shader_stage": limits.max_sampled_textures_per_shader_stage,
-     "max_samplers_per_shader_stage": limits.max_samplers_per_shader_stage,
-     "max_storage_buffers_per_shader_stage": limits.max_storage_buffers_per_shader_stage,
-     "max_storage_textures_per_shader_stage": limits.max_storage_textures_per_shader_stage,
-     "max_uniform_buffers_per_shader_stage": limits.max_uniform_buffers_per_shader_stage,
-     "max_uniform_buffer_binding_size": limits.max_uniform_buffer_binding_size,
+     "maxBindGroups": limits.max_bind_groups,
+     "maxDynamicUniformBuffersPerPipelineLayout": limits.max_dynamic_uniform_buffers_per_pipeline_layout,
+     "maxDynamicStorageBuffersPerPipelineLayout": limits.max_dynamic_storage_buffers_per_pipeline_layout,
+     "maxSampledTexturesPerShaderStage": limits.max_sampled_textures_per_shader_stage,
+     "maxSamplersPerShaderStage": limits.max_samplers_per_shader_stage,
+     "maxStorageBuffersPerShaderStage": limits.max_storage_buffers_per_shader_stage,
+     "maxStorageTexturesPerShaderStage": limits.max_storage_textures_per_shader_stage,
+     "maxUniformBuffersPerShaderStage": limits.max_uniform_buffers_per_shader_stage,
+     "maxUniformBufferBindingSize": limits.max_uniform_buffer_binding_size,
   });
 
   let rid = state.resource_table.add(WebGPUDevice(device));

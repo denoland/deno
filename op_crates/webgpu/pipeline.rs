@@ -208,13 +208,16 @@ pub fn op_webgpu_create_compute_pipeline(
     }),
   };
 
-  // TODO
-  let (compute_pipeline, _, _) = gfx_select!(device => instance.device_create_compute_pipeline(
+  let (compute_pipeline, _, err) = gfx_select!(device => instance.device_create_compute_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
   ));
+
+  if let Some(err) = err {
+    return Err(err.into());
+  }
 
   let rid = state
     .resource_table
@@ -616,13 +619,16 @@ pub fn op_webgpu_create_render_pipeline(
     }),
   };
 
-  // TODO
-  let (render_pipeline, _, _) = gfx_select!(device => instance.device_create_render_pipeline(
+  let (render_pipeline, _, err) = gfx_select!(device => instance.device_create_render_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
   ));
+
+  if let Some(err) = err {
+    return Err(err.into());
+  }
 
   let rid = state
     .resource_table
