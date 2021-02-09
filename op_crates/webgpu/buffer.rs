@@ -1,11 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Duration;
-
-use serde::Deserialize;
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -15,8 +8,13 @@ use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{BufVec, Resource};
+use serde::Deserialize;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
 
-pub(crate) struct WebGPUBuffer(pub(crate) wgc::id::BufferId);
+pub(crate) struct WebGPUBuffer(pub(crate) wgpu_core::id::BufferId);
 impl Resource for WebGPUBuffer {
   fn name(&self) -> Cow<str> {
     "webGPUBuffer".into()
@@ -59,13 +57,14 @@ pub fn op_webgpu_create_buffer(
     .ok_or_else(bad_resource_id)?;
   let instance = &instance_resource.0;
 
-  let descriptor = wgc::resource::BufferDescriptor {
-    label: args.label.map(Cow::Owned),
+  let descriptor = wgpu_core::resource::BufferDescriptor {
+    label: args.label.map(Cow::from),
     size: args.size,
-    usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
+    usage: wgpu_types::BufferUsage::from_bits(args.usage).unwrap(),
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
-  let buffer = wgc::gfx_select!(device => instance.device_create_buffer(
+
+  let buffer = gfx_select_err!(device => instance.device_create_buffer(
     device,
     &descriptor,
     std::marker::PhantomData
@@ -119,26 +118,26 @@ pub async fn op_webgpu_buffer_get_map_async(
   let sender_ptr = Box::into_raw(boxed_sender) as *mut u8;
 
   extern "C" fn buffer_map_future_wrapper(
-    status: wgc::resource::BufferMapAsyncStatus,
+    status: wgpu_core::resource::BufferMapAsyncStatus,
     user_data: *mut u8,
   ) {
     let sender_ptr = user_data as *mut oneshot::Sender<Result<(), AnyError>>;
     let boxed_sender = unsafe { Box::from_raw(sender_ptr) };
     boxed_sender
       .send(match status {
-        wgc::resource::BufferMapAsyncStatus::Success => Ok(()),
+        wgpu_core::resource::BufferMapAsyncStatus::Success => Ok(()),
         _ => unreachable!(), // TODO
       })
       .unwrap();
   }
 
-  wgc::gfx_select!(buffer => instance.buffer_map_async(
+  gfx_select!(buffer => instance.buffer_map_async(
     buffer,
     args.offset..(args.offset + args.size),
-    wgc::resource::BufferMapOperation {
+    wgpu_core::resource::BufferMapOperation {
       host: match args.mode {
-        1 => wgc::device::HostMap::Read,
-        2 => wgc::device::HostMap::Write,
+        1 => wgpu_core::device::HostMap::Read,
+        2 => wgpu_core::device::HostMap::Write,
         _ => unreachable!(),
       },
       callback: buffer_map_future_wrapper,
@@ -160,8 +159,7 @@ pub async fn op_webgpu_buffer_get_map_async(
           .get::<super::WebGPUInstance>(instance_rid)
           .ok_or_else(bad_resource_id)?;
         let instance = &instance_resource.0;
-        wgc::gfx_select!(device => instance.device_poll(device, false))
-          .unwrap()
+        wgc::gfx_select!(device => instance.device_poll(device, false)).unwrap()
       }
       tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -207,7 +205,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .ok_or_else(bad_resource_id)?;
   let instance = &instance_resource.0;
 
-  let slice_pointer = wgc::gfx_select!(buffer => instance.buffer_get_mapped_range(
+  let slice_pointer = gfx_select!(buffer => instance.buffer_get_mapped_range(
     buffer,
     args.offset,
     std::num::NonZeroU64::new(args.size)
@@ -262,7 +260,7 @@ pub fn op_webgpu_buffer_unmap(
     .borrow_mut()
     .copy_from_slice(&zero_copy[0]);
 
-  wgc::gfx_select!(buffer => instance.buffer_unmap(buffer))?;
+  gfx_select!(buffer => instance.buffer_unmap(buffer))?;
 
   Ok(json!({}))
 }

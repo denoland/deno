@@ -17,5 +17,5 @@ path = "lib.rs"
 deno_core = { version = "0.78.0", path = "../../core" }
 tokio = { version = "1.1.1", features = ["full"] }
 serde = { version = "1.0.121", features = ["derive"] }
-wgc = { package = "wgpu-core", version = "0.6.5" }
-wgt = { package = "wgpu-types", version = "0.6.1" }
+wgpu-core = "0.7.0"
+wgpu-types = "0.7.0"

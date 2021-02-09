@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -13,14 +13,16 @@ use std::rc::Rc;
 
 use super::texture::serialize_texture_format;
 
-struct WebGPURenderBundleEncoder(RefCell<wgc::command::RenderBundleEncoder>);
+struct WebGPURenderBundleEncoder(
+  RefCell<wgpu_core::command::RenderBundleEncoder>,
+);
 impl Resource for WebGPURenderBundleEncoder {
   fn name(&self) -> Cow<str> {
     "webGPURenderBundleEncoder".into()
   }
 }
 
-pub(crate) struct WebGPURenderBundle(pub(crate) wgc::id::RenderBundleId);
+pub(crate) struct WebGPURenderBundle(pub(crate) wgpu_core::id::RenderBundleId);
 impl Resource for WebGPURenderBundle {
   fn name(&self) -> Cow<str> {
     "webGPURenderBundle".into()
@@ -53,20 +55,20 @@ pub fn op_webgpu_create_render_bundle_encoder(
   let mut color_formats = vec![];
 
   for format in &args.color_formats {
-    color_formats.push(serialize_texture_format(format.clone())?);
+    color_formats.push(serialize_texture_format(format)?);
   }
 
-  let descriptor = wgc::command::RenderBundleEncoderDescriptor {
-    label: args.label.map(Cow::Owned),
-    color_formats: Cow::Owned(color_formats),
+  let descriptor = wgpu_core::command::RenderBundleEncoderDescriptor {
+    label: args.label.map(Cow::from),
+    color_formats: Cow::from(color_formats),
     depth_stencil_format: args
       .depth_stencil_format
-      .map(serialize_texture_format)
+      .map(|s| serialize_texture_format(&s))
       .transpose()?,
     sample_count: args.sample_count.unwrap_or(1),
   };
   let render_bundle_encoder =
-    wgc::command::RenderBundleEncoder::new(&descriptor, device, None)?;
+    wgpu_core::command::RenderBundleEncoder::new(&descriptor, device, None)?;
 
   let rid = state
     .resource_table
@@ -109,10 +111,10 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .ok_or_else(bad_resource_id)?;
   let instance = &instance_resource.0;
 
-  let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
+  let render_bundle = gfx_select_err!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
-    &wgc::command::RenderBundleDescriptor {
-      label: args.label.map(Cow::Owned),
+    &wgpu_core::command::RenderBundleDescriptor {
+      label: args.label.map(Cow::from),
     },
     std::marker::PhantomData
   ))?;
@@ -152,7 +154,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
-    wgc::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
+    wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
       &mut render_bundle_encoder_resource.0.borrow_mut(),
       args.index,
       bind_group_resource.0,
@@ -194,7 +196,7 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
 
   unsafe {
     let label = std::ffi::CString::new(args.group_label).unwrap();
-    wgc::command::bundle_ffi::wgpu_render_bundle_push_debug_group(
+    wgpu_core::command::bundle_ffi::wgpu_render_bundle_push_debug_group(
       &mut render_bundle_encoder_resource.0.borrow_mut(),
       label.as_ptr(),
     );
@@ -223,7 +225,7 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
-    wgc::command::bundle_ffi::wgpu_render_bundle_pop_debug_group(
+    wgpu_core::command::bundle_ffi::wgpu_render_bundle_pop_debug_group(
       &mut render_bundle_encoder_resource.0.borrow_mut(),
     );
   }
@@ -253,7 +255,7 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
 
   unsafe {
     let label = std::ffi::CString::new(args.marker_label).unwrap();
-    wgc::command::bundle_ffi::wgpu_render_bundle_insert_debug_marker(
+    wgpu_core::command::bundle_ffi::wgpu_render_bundle_insert_debug_marker(
       &mut render_bundle_encoder_resource.0.borrow_mut(),
       label.as_ptr(),
     );
@@ -285,7 +287,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::bundle_ffi::wgpu_render_bundle_set_pipeline(
+  wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_pipeline(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
     render_pipeline_resource.0,
   );
@@ -298,7 +300,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 struct RenderBundleEncoderSetIndexBufferArgs {
   render_bundle_encoder_rid: u32,
   buffer: u32,
-  _index_format: String, // wgpu#978
+  index_format: String,
   offset: u64,
   size: u64,
 }
@@ -320,12 +322,15 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::bundle_ffi::wgpu_render_bundle_set_index_buffer(
-    &mut render_bundle_encoder_resource.0.borrow_mut(),
-    buffer_resource.0,
-    args.offset,
-    std::num::NonZeroU64::new(args.size),
-  );
+  render_bundle_encoder_resource
+    .0
+    .borrow_mut()
+    .set_index_buffer(
+      buffer_resource.0,
+      super::pipeline::serialize_index_format(args.index_format),
+      args.offset,
+      std::num::NonZeroU64::new(args.size),
+    );
 
   Ok(json!({}))
 }
@@ -357,7 +362,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::bundle_ffi::wgpu_render_bundle_set_vertex_buffer(
+  wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_vertex_buffer(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
     args.slot,
     buffer_resource.0,
@@ -390,7 +395,7 @@ pub fn op_webgpu_render_bundle_encoder_draw(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::bundle_ffi::wgpu_render_bundle_draw(
+  wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
     args.vertex_count,
     args.instance_count,
@@ -424,7 +429,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::bundle_ffi::wgpu_render_bundle_draw_indexed(
+  wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw_indexed(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
     args.index_count,
     args.instance_count,
@@ -460,7 +465,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::bundle_ffi::wgpu_render_bundle_draw_indirect(
+  wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw_indirect(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
     buffer_resource.0,
     args.indirect_offset,

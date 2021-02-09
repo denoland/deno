@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -9,7 +9,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub(crate) struct WebGPUShaderModule(pub(crate) wgc::id::ShaderModuleId);
+pub(crate) struct WebGPUShaderModule(pub(crate) wgpu_core::id::ShaderModuleId);
 impl Resource for WebGPUShaderModule {
   fn name(&self) -> Cow<str> {
     "webGPUShaderModule".into()
@@ -21,9 +21,9 @@ impl Resource for WebGPUShaderModule {
 struct CreateShaderModuleArgs {
   instance_rid: u32,
   device_rid: u32,
-  _label: Option<String>, // wgpu#977
+  label: Option<String>,
   code: Option<String>,
-  _source_map: Option<()>, // not in wgpu
+  _source_map: Option<()>, // not yet implemented
 }
 
 pub fn op_webgpu_create_shader_module(
@@ -45,16 +45,25 @@ pub fn op_webgpu_create_shader_module(
   let instance = &instance_resource.0;
 
   let source = match args.code {
-    Some(code) => wgc::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
-    None => wgc::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
+    Some(code) => {
+      wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::from(code))
+    }
+    None => wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::from(unsafe {
       let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
       assert!(prefix.is_empty());
       assert!(suffix.is_empty());
       data
     })),
   };
-  let shader_module = wgc::gfx_select!(device => instance.device_create_shader_module(
+
+  let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
+    label: args.label.map(Cow::from),
+    flags: Default::default(),
+  };
+
+  let shader_module = gfx_select_err!(device => instance.device_create_shader_module(
     device,
+    &descriptor,
     source,
     std::marker::PhantomData
   ))?;

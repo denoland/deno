@@ -16,6 +16,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     "op_webgpu_request_device",
     op_webgpu_request_device,
   );
+  super::reg_json_sync(
+    rt,
+    "op_webgpu_create_query_set",
+    op_webgpu_create_query_set,
+  );
 
   {
     // buffer
@@ -156,6 +161,16 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     );
     super::reg_json_sync(
       rt,
+      "op_webgpu_command_encoder_write_timestamp",
+      command_encoder::op_webgpu_command_encoder_write_timestamp,
+    );
+    super::reg_json_sync(
+      rt,
+      "op_webgpu_command_encoder_resolve_query_set",
+      command_encoder::op_webgpu_command_encoder_resolve_query_set,
+    );
+    super::reg_json_sync(
+      rt,
       "op_webgpu_command_encoder_finish",
       command_encoder::op_webgpu_command_encoder_finish,
     );
@@ -181,6 +196,21 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
       rt,
       "op_webgpu_render_pass_set_stencil_reference",
       render_pass::op_webgpu_render_pass_set_stencil_reference,
+    );
+    super::reg_json_sync(
+      rt,
+      "op_webgpu_render_pass_begin_pipeline_statistics_query",
+      render_pass::op_webgpu_render_pass_begin_pipeline_statistics_query,
+    );
+    super::reg_json_sync(
+      rt,
+      "op_webgpu_render_pass_end_pipeline_statistics_query",
+      render_pass::op_webgpu_render_pass_end_pipeline_statistics_query,
+    );
+    super::reg_json_sync(
+      rt,
+      "op_webgpu_render_pass_write_timestamp",
+      render_pass::op_webgpu_render_pass_write_timestamp,
     );
     super::reg_json_sync(
       rt,

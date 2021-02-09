@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -9,46 +9,52 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub(crate) struct WebGPUSampler(pub(crate) wgc::id::SamplerId);
+pub(crate) struct WebGPUSampler(pub(crate) wgpu_core::id::SamplerId);
 impl Resource for WebGPUSampler {
   fn name(&self) -> Cow<str> {
     "webGPUSampler".into()
   }
 }
 
-fn serialize_address_mode(address_mode: Option<String>) -> wgt::AddressMode {
+fn serialize_address_mode(
+  address_mode: Option<String>,
+) -> wgpu_types::AddressMode {
   match address_mode {
     Some(address_mode) => match address_mode.as_str() {
-      "clamp-to-edge" => wgt::AddressMode::ClampToEdge,
-      "repeat" => wgt::AddressMode::Repeat,
-      "mirror-repeat" => wgt::AddressMode::MirrorRepeat,
+      "clamp-to-edge" => wgpu_types::AddressMode::ClampToEdge,
+      "repeat" => wgpu_types::AddressMode::Repeat,
+      "mirror-repeat" => wgpu_types::AddressMode::MirrorRepeat,
       _ => unreachable!(),
     },
-    None => wgt::AddressMode::ClampToEdge,
+    None => wgpu_types::AddressMode::ClampToEdge,
   }
 }
 
-fn serialize_filter_mode(filter_mode: Option<String>) -> wgt::FilterMode {
+fn serialize_filter_mode(
+  filter_mode: Option<String>,
+) -> wgpu_types::FilterMode {
   match filter_mode {
     Some(filter_mode) => match filter_mode.as_str() {
-      "nearest" => wgt::FilterMode::Nearest,
-      "linear" => wgt::FilterMode::Linear,
+      "nearest" => wgpu_types::FilterMode::Nearest,
+      "linear" => wgpu_types::FilterMode::Linear,
       _ => unreachable!(),
     },
-    None => wgt::FilterMode::Nearest,
+    None => wgpu_types::FilterMode::Nearest,
   }
 }
 
-pub fn serialize_compare_function(compare: &str) -> wgt::CompareFunction {
+pub fn serialize_compare_function(
+  compare: &str,
+) -> wgpu_types::CompareFunction {
   match compare {
-    "never" => wgt::CompareFunction::Never,
-    "less" => wgt::CompareFunction::Less,
-    "equal" => wgt::CompareFunction::Equal,
-    "less-equal" => wgt::CompareFunction::LessEqual,
-    "greater" => wgt::CompareFunction::Greater,
-    "not-equal" => wgt::CompareFunction::NotEqual,
-    "greater-equal" => wgt::CompareFunction::GreaterEqual,
-    "always" => wgt::CompareFunction::Always,
+    "never" => wgpu_types::CompareFunction::Never,
+    "less" => wgpu_types::CompareFunction::Less,
+    "equal" => wgpu_types::CompareFunction::Equal,
+    "less-equal" => wgpu_types::CompareFunction::LessEqual,
+    "greater" => wgpu_types::CompareFunction::Greater,
+    "not-equal" => wgpu_types::CompareFunction::NotEqual,
+    "greater-equal" => wgpu_types::CompareFunction::GreaterEqual,
+    "always" => wgpu_types::CompareFunction::Always,
     _ => unreachable!(),
   }
 }
@@ -89,8 +95,8 @@ pub fn op_webgpu_create_sampler(
     .ok_or_else(bad_resource_id)?;
   let instance = &instance_resource.0;
 
-  let descriptor = wgc::resource::SamplerDescriptor {
-    label: args.label.map(Cow::Owned),
+  let descriptor = wgpu_core::resource::SamplerDescriptor {
+    label: args.label.map(Cow::from),
     address_modes: [
       serialize_address_mode(args.address_mode_u),
       serialize_address_mode(args.address_mode_v),
@@ -100,9 +106,9 @@ pub fn op_webgpu_create_sampler(
     min_filter: serialize_filter_mode(args.min_filter),
     mipmap_filter: serialize_filter_mode(args.mipmap_filter),
     lod_min_clamp: args.lod_min_clamp.unwrap_or(0.0),
-    lod_max_clamp: args
-      .lod_max_clamp
-      .unwrap_or(wgc::resource::SamplerDescriptor::default().lod_max_clamp),
+    lod_max_clamp: args.lod_max_clamp.unwrap_or(
+      wgpu_core::resource::SamplerDescriptor::default().lod_max_clamp,
+    ),
     compare: args
       .compare
       .as_ref()
@@ -110,8 +116,10 @@ pub fn op_webgpu_create_sampler(
     anisotropy_clamp: std::num::NonZeroU8::new(
       args.max_anisotropy.unwrap_or(0),
     ),
+    border_color: None, // native-only
   };
-  let sampler = wgc::gfx_select!(device => instance.device_create_sampler(
+
+  let sampler = gfx_select_err!(device => instance.device_create_sampler(
     device,
     &descriptor,
     std::marker::PhantomData
