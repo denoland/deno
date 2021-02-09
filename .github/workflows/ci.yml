@@ -30,7 +30,7 @@ jobs:
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
       # Don't fast-fail on tag build because publishing binaries shouldn't be
-      # prevented if 'upload built binaries' fails (which can be a false negative).
+      # prevented if if any of the stages fails (which can be a false negative).
       fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
         'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
 
