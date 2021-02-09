@@ -1019,7 +1019,6 @@ impl Inner {
       return Ok(None);
     }
 
-    info!("code_lens: {:#?}", params);
     let mark = self.performance.mark("code_lens");
     let specifier = utils::normalize_url(params.text_document.uri);
     let line_index = self.get_line_index_sync(&specifier).unwrap();
@@ -1190,11 +1189,16 @@ impl Inner {
               } else {
                 "1 implementation".to_string()
               };
+              let url = utils::normalize_specifier(&code_lens_data.specifier)
+                .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
                 arguments: Some(vec![
-                  serde_json::to_value(code_lens_data.specifier).unwrap(),
+                  serde_json::to_value(url).unwrap(),
                   serde_json::to_value(params.range.start).unwrap(),
                   serde_json::to_value(locations).unwrap(),
                 ]),
@@ -1271,11 +1275,16 @@ impl Inner {
               } else {
                 "1 reference".to_string()
               };
+              let url = utils::normalize_specifier(&code_lens_data.specifier)
+                .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
                 arguments: Some(vec![
-                  serde_json::to_value(code_lens_data.specifier).unwrap(),
+                  serde_json::to_value(url).unwrap(),
                   serde_json::to_value(params.range.start).unwrap(),
                   serde_json::to_value(locations).unwrap(),
                 ]),
@@ -2588,6 +2597,11 @@ mod tests {
     pub result: Option<Vec<CodeLens>>,
   }
 
+  #[derive(Deserialize)]
+  struct CodeLensResolveResponse {
+    pub result: CodeLens,
+  }
+
   #[tokio::test]
   async fn test_code_lens_non_doc_nav_tree() {
     let mut harness = LspTestHarness::new(vec![
@@ -2602,7 +2616,16 @@ mod tests {
         "code_lens_request_asset.json",
         LspResponse::RequestAssert(|value| {
           let resp: CodeLensResponse = serde_json::from_value(value).unwrap();
-          assert!(resp.result.unwrap().len() > 50);
+          let lenses = resp.result.unwrap();
+          assert!(lenses.len() > 50);
+        }),
+      ),
+      (
+        "code_lens_resolve_request_asset.json",
+        LspResponse::RequestAssert(|value| {
+          let resp: CodeLensResolveResponse =
+            serde_json::from_value(value).unwrap();
+          assert!(resp.result.command.is_some());
         }),
       ),
       (
