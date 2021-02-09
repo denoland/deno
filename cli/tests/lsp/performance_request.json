@@ -1,0 +1,6 @@
+{
+  "jsonrpc": "2.0",
+  "id": 99,
+  "method": "deno/performance",
+  "params": {}
+}

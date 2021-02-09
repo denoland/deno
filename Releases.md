@@ -6,6 +6,59 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.7.2 / 2021.02.05
+
+- feat(lsp, unstable): add references code lens (#9316)
+- feat(lsp, unstable): add TS quick fix code actions (#9396)
+- fix: improve http client builder error message (#9380)
+- fix(cli): fix handling of non-normalized specifier (#9357)
+- fix(cli/coverage): display mapped instrumentation line counts (#9310)
+- fix(cli/lsp): fix using jsx/tsx when not emitting via tsc (#9407)
+- fix(repl): prevent symbol completion panic (#9400)
+- refactor: rewrite Blob implementation (#9309)
+- refactor: rewrite File implementation (#9334)
+
+Release notes for std version 0.86.0:
+https://github.com/denoland/deno_std/releases/tag/0.86.0
+
+### 1.7.1 / 2021.01.29
+
+- feat(lsp, unstable): add performance measurements (#9209)
+- fix(cli): IO resource types, fix concurrent read/write and graceful close
+  (#9118)
+- fix(cli): Move WorkerOptions::deno types to unstable (#9163)
+- fix(cli): add lib dom.asynciterable (#9288)
+- fix(cli): correctly determine emit state with redirects (#9287)
+- fix(cli): early abort before type checking on missing modules (#9285)
+- fix(cli): enable url wpt (#9299)
+- fix(cli): fix panic in Deno.emit (#9302)
+- fix(cli): fix panic in op_dns_resolve (#9187)
+- fix(cli): fix recursive dispatches of unload event (#9207)
+- fix(cli): fmt command help message (#9280)
+- fix(cli): use DOMException in Performance#measure (#9142)
+- fix(cli/flags): don't panic on invalid location scheme (#9202)
+- fix(compile): fix panic when cross-compiling between windows and unix (#9203)
+- fix(core): Handle prepareStackTrace() throws (#9211)
+- fix(coverage): ignore comments (#8639)
+- fix(coverage): use source maps when printing pretty reports (#9278)
+- fix(lsp): complete list of unused diagnostics (#9274)
+- fix(lsp): fix deadlocks, use one big mutex (#9271)
+- fix(lsp): handle mbc documents properly (#9151)
+- fix(lsp): handle mbc properly when formatting (#9273)
+- fix(lsp): reduce deadlocks with in memory documents (#9259)
+- fix(op_crates/fetch): fix ReadableStream.pipeThrough() (#9265)
+- fix(op_crates/web): Add gb18030 and GBK encodings (#9242)
+- fix(op_crates/web): Improve customInspect for Location (#9290)
+- chore: new typescript WPT runner (#9269)
+
+Changes in std version 0.85.0:
+
+- feat(std/node): Add support for process.on("exit") (#8940)
+- fix(std/async): make pooledMap() errors catchable (#9217)
+- fix(std/node): Stop callbacks being called twice when callback throws error
+  (#8867)
+- fix(std/node): replace uses of `window` with `globalThis` (#9237)
+
 ### 1.7.0 / 2021.01.19
 
 - BREAKING(unstable): Use hosts for net allowlists (#8845)

@@ -34,8 +34,9 @@ pub fn create_http_client(
 
   builder
     .build()
-    .map_err(|_| generic_error("Unable to build http client"))
+    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
 }
+
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
 fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
@@ -313,7 +314,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -345,7 +346,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -376,7 +377,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -416,7 +417,7 @@ mod tests {
       Some(
         read(
           test_util::root_path()
-            .join("std/http/testdata/tls/RootCA.pem")
+            .join("cli/tests/tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )

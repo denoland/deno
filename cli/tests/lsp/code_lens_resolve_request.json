@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "codeLens/resolve",
+  "params": {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 6
+      },
+      "end": {
+        "line": 0,
+        "character": 7
+      }
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "source": "references"
+    }
+  }
+}

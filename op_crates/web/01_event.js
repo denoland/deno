@@ -4,6 +4,7 @@
 // Many parts of the DOM are not implemented in Deno, but the logic for those
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
+"use strict";
 
 ((window) => {
   const eventData = new WeakMap();
@@ -142,8 +143,8 @@
       });
     }
 
-    [Symbol.for("Deno.customInspect")]() {
-      return buildCustomInspectOutput(this, EVENT_PROPS);
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return buildCustomInspectOutput(this, EVENT_PROPS, inspect);
     }
 
     get bubbles() {
@@ -386,14 +387,9 @@
     }
   }
 
-  function buildCustomInspectOutput(obj, props) {
-    const inspectObj = {};
-
-    for (const prop of props) {
-      inspectObj[prop] = obj[prop];
-    }
-
-    return `${obj.constructor.name} ${Deno.inspect(inspectObj)}`;
+  function buildCustomInspectOutput(object, keys, inspect) {
+    const inspectObject = Object.fromEntries(keys.map((k) => [k, object[k]]));
+    return `${object.constructor.name} ${inspect(inspectObject)}`;
   }
 
   function defineEnumerableProps(
@@ -1040,7 +1036,7 @@
       return "ErrorEvent";
     }
 
-    [Symbol.for("Deno.customInspect")]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "message",
@@ -1048,7 +1044,7 @@
         "lineno",
         "colno",
         "error",
-      ]);
+      ], inspect);
     }
   }
 
@@ -1094,13 +1090,13 @@
       this.#reason = reason;
     }
 
-    [Symbol.for("Deno.customInspect")]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "wasClean",
         "code",
         "reason",
-      ]);
+      ], inspect);
     }
   }
 
@@ -1117,13 +1113,13 @@
       this.lastEventId = eventInitDict?.lastEventId ?? "";
     }
 
-    [Symbol.for("Deno.customInspect")]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "data",
         "origin",
         "lastEventId",
-      ]);
+      ], inspect);
     }
   }
 
@@ -1145,11 +1141,11 @@
       return "CustomEvent";
     }
 
-    [Symbol.for("Deno.customInspect")]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "detail",
-      ]);
+      ], inspect);
     }
   }
 
@@ -1168,13 +1164,13 @@
       this.total = eventInitDict?.total ?? 0;
     }
 
-    [Symbol.for("Deno.customInspect")]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "lengthComputable",
         "loaded",
         "total",
-      ]);
+      ], inspect);
     }
   }
 

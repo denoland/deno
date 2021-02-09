@@ -1,4 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -872,7 +873,11 @@
       nonUniqueCustomInspect in value &&
       typeof value[nonUniqueCustomInspect] === "function"
     ) {
-      return String(value[nonUniqueCustomInspect]());
+      // TODO(nayeemrmn): `inspect` is passed as an argument because custom
+      // inspect implementations in `op_crates` need it, but may not have access
+      // to the `Deno` namespace in web workers. Remove when the `Deno`
+      // namespace is always enabled.
+      return String(value[nonUniqueCustomInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);
