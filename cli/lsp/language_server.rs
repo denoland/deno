@@ -1717,6 +1717,11 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.did_change(params).await
   }
 
+  async fn did_save(&self, _params: DidSaveTextDocumentParams) {
+    // We don't need to do anything on save at the moment, but if this isn't
+    // implemented, lspower complains about it not being implemented.
+  }
+
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     self.0.lock().await.did_close(params).await
   }
