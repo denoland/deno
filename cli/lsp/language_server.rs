@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::anyhow;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -86,6 +85,8 @@ pub(crate) struct Inner {
   maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// A map of all the cached navigation trees.
+  navigation_trees: HashMap<ModuleSpecifier, tsc::NavigationTree>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Performance,
   /// Cached sources that are read-only.
@@ -119,6 +120,7 @@ impl Inner {
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
+      navigation_trees: Default::default(),
       performance: Default::default(),
       sources,
       ts_fixable_diagnostics: Default::default(),
@@ -184,33 +186,24 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<tsc::NavigationTree, AnyError> {
-    if self.documents.contains(specifier) {
-      let mark = self.performance.mark("get_navigation_tree");
-      if let Some(navigation_tree) = self.documents.navigation_tree(specifier) {
-        self.performance.measure(mark);
-        Ok(navigation_tree)
-      } else {
-        let res = self
-          .ts_server
-          .request(
-            self.snapshot(),
-            tsc::RequestMethod::GetNavigationTree(specifier.clone()),
-          )
-          .await
-          .unwrap();
-        let navigation_tree: tsc::NavigationTree =
-          serde_json::from_value(res).unwrap();
-        self
-          .documents
-          .set_navigation_tree(specifier, navigation_tree.clone())?;
-        self.performance.measure(mark);
-        Ok(navigation_tree)
-      }
+    let mark = self.performance.mark("get_navigation_tree");
+    if let Some(navigation_tree) = self.navigation_trees.get(specifier) {
+      self.performance.measure(mark);
+      Ok(navigation_tree.clone())
     } else {
-      Err(custom_error(
-        "NotFound",
-        format!("The document \"{}\" was unexpectedly not found.", specifier),
-      ))
+      let res = self
+        .ts_server
+        .request(
+          self.snapshot(),
+          tsc::RequestMethod::GetNavigationTree(specifier.clone()),
+        )
+        .await?;
+      let navigation_tree: tsc::NavigationTree = serde_json::from_value(res)?;
+      self
+        .navigation_trees
+        .insert(specifier.clone(), navigation_tree.clone());
+      self.performance.measure(mark);
+      Ok(navigation_tree)
     }
   }
 
@@ -648,6 +641,9 @@ impl Inner {
     {
       error!("{}", err);
     }
+    // there are scenarios where local documents with a nav tree are opened in
+    // the editor
+    self.navigation_trees.remove(&specifier);
 
     self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
@@ -672,6 +668,7 @@ impl Inner {
     {
       error!("{}", err);
     }
+    self.navigation_trees.remove(&specifier);
 
     self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
@@ -690,12 +687,13 @@ impl Inner {
     }
     let specifier = utils::normalize_url(params.text_document.uri);
     self.documents.close(&specifier);
+    self.navigation_trees.remove(&specifier);
 
+    self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
     }
-    self.performance.measure(mark);
   }
 
   async fn did_change_configuration(
@@ -713,7 +711,7 @@ impl Inner {
         .await
         .map(|vec| vec.get(0).cloned())
         .unwrap_or_else(|err| {
-          error!("failed to fetch the extension settings {:?}", err);
+          error!("failed to fetch the extension settings {}", err);
           None
         })
     } else {
@@ -1026,7 +1024,7 @@ impl Inner {
     let line_index = self.get_line_index_sync(&specifier).unwrap();
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
-        error!("Failed to retrieve nav tree: {:#?}", err);
+        error!("Failed to retrieve nav tree: {}", err);
         LspError::invalid_request()
       })?;
 
@@ -1191,11 +1189,16 @@ impl Inner {
               } else {
                 "1 implementation".to_string()
               };
+              let url = utils::normalize_specifier(&code_lens_data.specifier)
+                .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
                 arguments: Some(vec![
-                  serde_json::to_value(code_lens_data.specifier).unwrap(),
+                  serde_json::to_value(url).unwrap(),
                   serde_json::to_value(params.range.start).unwrap(),
                   serde_json::to_value(locations).unwrap(),
                 ]),
@@ -1272,11 +1275,16 @@ impl Inner {
               } else {
                 "1 reference".to_string()
               };
+              let url = utils::normalize_specifier(&code_lens_data.specifier)
+                .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
                 arguments: Some(vec![
-                  serde_json::to_value(code_lens_data.specifier).unwrap(),
+                  serde_json::to_value(url).unwrap(),
                   serde_json::to_value(params.range.start).unwrap(),
                   serde_json::to_value(locations).unwrap(),
                 ]),
@@ -1531,13 +1539,13 @@ impl Inner {
         .request(self.snapshot(), req)
         .await
         .map_err(|err| {
-          error!("Failed to request to tsserver {:#?}", err);
+          error!("Failed to request to tsserver {}", err);
           LspError::invalid_request()
         })?;
 
     let maybe_implementations = serde_json::from_value::<Option<Vec<tsc::ImplementationLocation>>>(res)
       .map_err(|err| {
-        error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {:#?}", err);
+        error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {}", err);
         LspError::internal_error()
       })?;
 
@@ -1596,7 +1604,7 @@ impl Inner {
         .request(self.snapshot(), req)
         .await
         .map_err(|err| {
-          error!("Failed to request to tsserver {:#?}", err);
+          error!("Failed to request to tsserver {}", err);
           LspError::invalid_request()
         })?;
 
@@ -1605,7 +1613,7 @@ impl Inner {
     >(res)
     .map_err(|err| {
       error!(
-        "Failed to deserialize tsserver response to Vec<RenameLocation> {:#?}",
+        "Failed to deserialize tsserver response to Vec<RenameLocation> {}",
         err
       );
       LspError::internal_error()
@@ -1617,7 +1625,7 @@ impl Inner {
         .into_workspace_edit(&params.new_name, self)
         .await
         .map_err(|err| {
-          error!("Failed to get workspace edits: {:#?}", err);
+          error!("Failed to get workspace edits: {}", err);
           LspError::internal_error()
         })?;
       self.performance.measure(mark);
@@ -1637,7 +1645,7 @@ impl Inner {
       "deno/cache" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.cache(params).await?).map_err(|err| {
-            error!("Failed to serialize cache response: {:#?}", err);
+            error!("Failed to serialize cache response: {}", err);
             LspError::internal_error()
           })?,
         )),
@@ -1650,7 +1658,7 @@ impl Inner {
           serde_json::to_value(self.virtual_text_document(params).await?)
             .map_err(|err| {
               error!(
-                "Failed to serialize virtual_text_document response: {:#?}",
+                "Failed to serialize virtual_text_document response: {}",
                 err
               );
               LspError::internal_error()
@@ -2574,6 +2582,51 @@ mod tests {
             }
           }),
         ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[derive(Deserialize)]
+  struct CodeLensResponse {
+    pub result: Option<Vec<CodeLens>>,
+  }
+
+  #[derive(Deserialize)]
+  struct CodeLensResolveResponse {
+    pub result: CodeLens,
+  }
+
+  #[tokio::test]
+  async fn test_code_lens_non_doc_nav_tree() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_asset.json", LspResponse::None),
+      (
+        "virtual_text_document_request.json",
+        LspResponse::RequestAny,
+      ),
+      (
+        "code_lens_request_asset.json",
+        LspResponse::RequestAssert(|value| {
+          let resp: CodeLensResponse = serde_json::from_value(value).unwrap();
+          let lenses = resp.result.unwrap();
+          assert!(lenses.len() > 50);
+        }),
+      ),
+      (
+        "code_lens_resolve_request_asset.json",
+        LspResponse::RequestAssert(|value| {
+          let resp: CodeLensResolveResponse =
+            serde_json::from_value(value).unwrap();
+          assert!(resp.result.command.is_some());
+        }),
       ),
       (
         "shutdown_request.json",

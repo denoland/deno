@@ -3577,6 +3577,11 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(import_data_url_import_map {
+    args: "run --quiet --reload --unstable --import-map import_maps/import_map.json import_data_url.ts",
+    output: "import_data_url.ts.out",
+  });
+
   itest!(import_data_url_imports {
     args: "run --quiet --reload import_data_url_imports.ts",
     output: "import_data_url_imports.ts.out",

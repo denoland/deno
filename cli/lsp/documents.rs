@@ -2,7 +2,6 @@
 
 use super::analysis;
 use super::text::LineIndex;
-use super::tsc::NavigationTree;
 
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
@@ -34,7 +33,6 @@ impl IndexValid {
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   line_index: Option<LineIndex>,
-  navigation_tree: Option<NavigationTree>,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
 }
@@ -74,7 +72,6 @@ impl DocumentData {
     } else {
       Some(LineIndex::new(&content))
     };
-    self.navigation_tree = None;
     Ok(())
   }
 
@@ -190,14 +187,6 @@ impl DocumentCache {
     doc.line_index.clone()
   }
 
-  pub fn navigation_tree(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<NavigationTree> {
-    let doc = self.docs.get(specifier)?;
-    doc.navigation_tree.clone()
-  }
-
   pub fn open(
     &mut self,
     specifier: ModuleSpecifier,
@@ -227,22 +216,6 @@ impl DocumentCache {
         }
       })
       .collect()
-  }
-
-  pub fn set_navigation_tree(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    navigation_tree: NavigationTree,
-  ) -> Result<(), AnyError> {
-    if let Some(mut doc) = self.docs.get_mut(specifier) {
-      doc.navigation_tree = Some(navigation_tree);
-      Ok(())
-    } else {
-      Err(custom_error(
-        "NotFound",
-        "The document \"{}\" was unexpectedly missing.",
-      ))
-    }
   }
 
   pub fn version(&self, specifier: &ModuleSpecifier) -> Option<i32> {
