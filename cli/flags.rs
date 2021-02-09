@@ -3485,6 +3485,28 @@ mod tests {
   }
 
   #[test]
+  fn coverage() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "coverage",
+      "foo.json"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Coverage {
+          files: vec![PathBuf::from("foo.json")],
+          ignore: vec![],
+          include: vec![],
+          exclude: vec![],
+          lcov: false,
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn location_with_bad_scheme() {
     #[rustfmt::skip]
     let r = flags_from_vec(svec!["deno", "run", "--location", "foo:", "mod.ts"]);
