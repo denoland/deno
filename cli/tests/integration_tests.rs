@@ -1751,6 +1751,31 @@ mod integration {
       }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn pty_complete_symbol() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b"Deno.internal\t\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
+
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
+
+        assert!(output.contains("Symbol(Deno.internal)"));
+
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
+
     #[test]
     fn console_log() {
       let (out, err) = util::run_and_collect_output(
@@ -2631,6 +2656,40 @@ console.log("finish");
     exit_code: 1,
   });
 
+  #[test]
+  fn _083_legacy_external_source_map() {
+    let _g = util::http_server();
+    let deno_dir = TempDir::new().expect("tempdir fail");
+    let module_url = url::Url::parse(
+      "http://localhost:4545/cli/tests/083_legacy_external_source_map.ts",
+    )
+    .unwrap();
+    // Write a faulty old external source map.
+    let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
+    std::fs::create_dir_all(faulty_map_path.parent().unwrap())
+      .expect("Failed to create faulty source map dir.");
+    std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/cli/tests/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+    let output = Command::new(util::deno_exe_path())
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg(module_url.to_string())
+      .output()
+      .expect("Failed to spawn script");
+    // Before https://github.com/denoland/deno/issues/6965 was fixed, the faulty
+    // old external source map would cause a panic while formatting the error
+    // and the exit code would be 101. The external source map should be ignored
+    // in favor of the inline one.
+    assert_eq!(output.status.code(), Some(1));
+    let out = std::str::from_utf8(&output.stdout).unwrap();
+    assert_eq!(out, "");
+  }
+
+  itest!(_084_worker_custom_inspect {
+    args: "run --allow-read 084_worker_custom_inspect.ts",
+    output: "084_worker_custom_inspect.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -2700,6 +2759,11 @@ console.log("finish");
   itest!(bundle {
     args: "bundle subdir/mod1.ts",
     output: "bundle.test.out",
+  });
+
+  itest!(bundle_jsx {
+    args: "bundle jsx_import_from_ts.ts",
+    output: "bundle_jsx.out",
   });
 
   itest!(fmt_check_tests_dir {
@@ -3498,6 +3562,11 @@ console.log("finish");
     args: "run --quiet --reload import_data_url_import_relative.ts",
     output: "import_data_url_import_relative.ts.out",
     exit_code: 1,
+  });
+
+  itest!(import_data_url_import_map {
+    args: "run --quiet --reload --unstable --import-map import_maps/import_map.json import_data_url.ts",
+    output: "import_data_url.ts.out",
   });
 
   itest!(import_data_url_imports {

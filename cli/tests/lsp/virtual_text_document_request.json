@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "deno/virtualTextDocument",
+  "params": {
+    "textDocument": {
+      "uri": "deno:/asset//lib.es2015.symbol.wellknown.d.ts"
+    }
+  }
+}

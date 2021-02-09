@@ -4,6 +4,7 @@
 
 // This file contains the runtime APIs which will dispatch work to the internal
 // compiler within Deno.
+"use strict";
 ((window) => {
   const core = window.Deno.core;
   const util = window.__bootstrap.util;

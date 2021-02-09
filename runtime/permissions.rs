@@ -624,7 +624,7 @@ impl deno_fetch::FetchPermissions for Permissions {
     Permissions::check_net_url(self, url)
   }
 
-  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+  fn check_read(&self, p: &Path) -> Result<(), AnyError> {
     Permissions::check_read(self, p)
   }
 }

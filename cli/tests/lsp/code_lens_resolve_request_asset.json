@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "method": "codeLens/resolve",
+  "params": {
+    "range": {
+      "start": {
+        "line": 93,
+        "character": 10
+      },
+      "end": {
+        "line": 93,
+        "character": 15
+      }
+    },
+    "data": {
+      "specifier": "asset:///lib.es2015.symbol.wellknown.d.ts",
+      "source": "implementations"
+    }
+  }
+}

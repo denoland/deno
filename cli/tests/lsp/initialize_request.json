@@ -12,6 +12,7 @@
     "initializationOptions": {
       "enable": true,
       "codeLens": {
+        "implementations": true,
         "references": true
       },
       "lint": true,
@@ -20,6 +21,22 @@
     },
     "capabilities": {
       "textDocument": {
+        "codeAction": {
+          "codeActionLiteralSupport": {
+            "codeActionKind": {
+              "valueSet": [
+                "quickfix"
+              ]
+            }
+          },
+          "isPreferredSupport": true,
+          "dataSupport": true,
+          "resolveSupport": {
+            "properties": [
+              "edit"
+            ]
+          }
+        },
         "synchronization": {
           "dynamicRegistration": true,
           "willSave": true,
