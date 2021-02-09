@@ -60,7 +60,9 @@ pub mod sampler;
 pub mod shader;
 pub mod texture;
 
-struct WebGPUInstance(wgc::hub::Global<wgc::hub::IdentityManagerFactory>);
+struct WebGPUInstance(
+  wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>,
+);
 impl Resource for WebGPUInstance {
   fn name(&self) -> Cow<str> {
     "webGPUInstance".into()
@@ -368,9 +370,7 @@ pub fn op_webgpu_create_query_set(
     .resource_table
     .get::<WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let descriptor = wgpu_types::QuerySetDescriptor {
     ty: match args.kind.as_str() {

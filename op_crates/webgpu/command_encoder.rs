@@ -700,9 +700,7 @@ pub fn op_webgpu_command_encoder_write_timestamp(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
   let query_set_resource = state
     .resource_table
     .get::<super::WebGPUQuerySet>(args.query_set)
@@ -745,9 +743,7 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
   let query_set_resource = state
     .resource_table
     .get::<super::WebGPUQuerySet>(args.query_set)

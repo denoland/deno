@@ -159,7 +159,7 @@ pub async fn op_webgpu_buffer_get_map_async(
           .get::<super::WebGPUInstance>(instance_rid)
           .ok_or_else(bad_resource_id)?;
         let instance = &instance_resource.0;
-        wgc::gfx_select!(device => instance.device_poll(device, false)).unwrap()
+        gfx_select!(device => instance.device_poll(device, false)).unwrap()
       }
       tokio::time::sleep(Duration::from_millis(10)).await;
     }
