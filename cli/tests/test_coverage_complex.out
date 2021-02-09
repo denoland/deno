@@ -1,4 +1,4 @@
-Check [WILDCARD]/tests/test_cover_complex.ts
+Check [WILDCARD]/tests/test_coverage_complex.ts
 Check [WILDCARD]/tests/$deno$test.ts
 running 1 tests
 test complex ... ok ([WILDCARD])

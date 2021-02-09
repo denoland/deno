@@ -14,16 +14,15 @@ const test = await Deno.run({
 
 await test.status();
 
-const cover = await Deno.run({
+const coverage = await Deno.run({
   cmd: [
     Deno.execPath(),
-    "cover",
+    "coverage",
     "--unstable",
-    "--lcov",
     dir,
   ],
   stdout: "inherit",
   stderr: "inherit",
 });
 
-await cover.status();
+await coverage.status();

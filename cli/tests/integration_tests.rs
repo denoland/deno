@@ -3390,27 +3390,27 @@ console.log("finish");
     output: "redirect_cache.out",
   });
 
-  itest!(test_cover_branch {
-    args: "run --allow-all test_cover_branch.ts",
-    output: "test_cover_branch.out",
+  itest!(test_coverage_branch {
+    args: "run --allow-all test_coverage_branch.ts",
+    output: "test_coverage_branch.out",
     exit_code: 0,
   });
 
-  itest!(test_cover_branch_lcov {
-    args: "run --allow-all test_cover_branch_lcov.ts",
-    output: "test_cover_branch_lcov.out",
+  itest!(test_coverage_branch_lcov {
+    args: "run --allow-all test_coverage_branch_lcov.ts",
+    output: "test_coverage_branch_lcov.out",
     exit_code: 0,
   });
 
-  itest!(test_cover_complex {
-    args: "run --allow-all test_cover_complex.ts",
-    output: "test_cover_complex.out",
+  itest!(test_coverage_complex {
+    args: "run --allow-all test_coverage_complex.ts",
+    output: "test_coverage_complex.out",
     exit_code: 0,
   });
 
-  itest!(test_cover_complex_lcov {
-    args: "run --allow-all test_cover_complex_lcov.ts",
-    output: "test_cover_complex_lcov.out",
+  itest!(test_coverage_complex_lcov {
+    args: "run --allow-all test_coverage_complex_lcov.ts",
+    output: "test_coverage_complex_lcov.out",
     exit_code: 0,
   });
 

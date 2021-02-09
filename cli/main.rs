@@ -979,7 +979,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   Ok(())
 }
 
-async fn cover_command(
+async fn coverage_command(
   flags: Flags,
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
@@ -1183,14 +1183,14 @@ fn get_subcommand(
       target,
     } => compile_command(flags, source_file, output, args, target, lite)
       .boxed_local(),
-    DenoSubcommand::Cover {
+    DenoSubcommand::Coverage {
       files,
       ignore,
       include,
       exclude,
       lcov,
     } => {
-      cover_command(flags, files, ignore, include, exclude, lcov).boxed_local()
+      coverage_command(flags, files, ignore, include, exclude, lcov).boxed_local()
     }
     DenoSubcommand::Fmt {
       check,

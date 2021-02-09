@@ -34,7 +34,7 @@ pub enum DenoSubcommand {
   Completions {
     buf: Box<[u8]>,
   },
-  Cover {
+  Coverage {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
     include: Vec<String>,
@@ -302,8 +302,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     types_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("cache") {
     cache_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("cover") {
-    cover_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("coverage") {
+    coverage_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("info") {
     info_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("eval") {
@@ -379,7 +379,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(cache_subcommand())
     .subcommand(compile_subcommand())
     .subcommand(completions_subcommand())
-    .subcommand(cover_subcommand())
+    .subcommand(coverage_subcommand())
     .subcommand(doc_subcommand())
     .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
@@ -571,7 +571,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Cache { files };
 }
 
-fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -589,7 +589,7 @@ fn cover_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let lcov = matches.is_present("lcov");
-  flags.subcommand = DenoSubcommand::Cover {
+  flags.subcommand = DenoSubcommand::Coverage {
     files,
     ignore,
     include,
@@ -1102,17 +1102,17 @@ Future runs of this module will trigger no downloads or compilation unless
     )
 }
 
-fn cover_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("cover")
+fn coverage_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("coverage")
     .about("Print coverage reports")
     .long_about(
       "Print coverage reports from coverage profiles.
 
 Print a report to stdout:
-  deno cover coverage_profile
+  deno coverage coverage_profile
 
 Write a report using the lcov format:
-  deno cover --lcov coverage_profile > coverage.lcov
+  deno coverage --lcov coverage_profile > coverage.lcov
 
 Generate html reports from lcov:
   genhtml -o html_coverage coverage.lcov

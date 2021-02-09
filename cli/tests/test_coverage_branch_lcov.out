@@ -1,4 +1,4 @@
-Check [WILDCARD]/tests/test_cover_branch_lcov.ts
+Check [WILDCARD]/tests/test_coverage_branch_lcov.ts
 Check [WILDCARD]/tests/$deno$test.ts
 running 1 tests
 test branch ... ok ([WILDCARD])
