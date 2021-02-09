@@ -16,6 +16,19 @@ pub fn normalize_file_name(file_name: &str) -> Result<Url, AnyError> {
   Url::parse(&specifier_str).map_err(|err| err.into())
 }
 
+pub fn normalize_specifier(
+  specifier: &ModuleSpecifier,
+) -> Result<Url, AnyError> {
+  let url = specifier.as_url();
+  if url.scheme() == "file" {
+    Ok(url.clone())
+  } else {
+    let specifier_str =
+      format!("deno:///{}", url.as_str().replacen("://", "/", 1));
+    Url::parse(&specifier_str).map_err(|err| err.into())
+  }
+}
+
 /// Normalize URLs from the client, where "virtual" `deno:///` URLs are
 /// converted into proper module specifiers.
 pub fn normalize_url(url: Url) -> ModuleSpecifier {
@@ -39,6 +52,23 @@ pub fn normalize_url(url: Url) -> ModuleSpecifier {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_normalize_file_name() {
+    let fixture = "https://deno.land/x/mod.ts";
+    let actual = normalize_file_name(fixture).unwrap();
+    let expected = Url::parse("deno:///https/deno.land/x/mod.ts").unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn test_normalize_specifier() {
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let actual = normalize_specifier(&fixture).unwrap();
+    let expected = Url::parse("deno:///https/deno.land/x/mod.ts").unwrap();
+    assert_eq!(actual, expected);
+  }
 
   #[test]
   fn test_normalize_url() {

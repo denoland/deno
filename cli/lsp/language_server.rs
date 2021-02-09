@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::anyhow;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -52,6 +51,7 @@ use super::tsc::TsServer;
 use super::utils;
 
 lazy_static! {
+  static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
   static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
 }
 
@@ -66,7 +66,7 @@ pub struct StateSnapshot {
 }
 
 #[derive(Debug)]
-struct Inner {
+pub(crate) struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
@@ -85,6 +85,8 @@ struct Inner {
   maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// A map of all the cached navigation trees.
+  navigation_trees: HashMap<ModuleSpecifier, tsc::NavigationTree>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Performance,
   /// Cached sources that are read-only.
@@ -118,6 +120,7 @@ impl Inner {
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
+      navigation_trees: Default::default(),
       performance: Default::default(),
       sources,
       ts_fixable_diagnostics: Default::default(),
@@ -132,29 +135,16 @@ impl Inner {
   /// Searches assets, open documents and external sources for a line_index,
   /// which might be performed asynchronously, hydrating in memory caches for
   /// subsequent requests.
-  async fn get_line_index(
-    &self,
+  pub(crate) async fn get_line_index(
+    &mut self,
     specifier: ModuleSpecifier,
   ) -> Result<LineIndex, AnyError> {
     let mark = self.performance.mark("get_line_index");
     let result = if specifier.as_url().scheme() == "asset" {
-      let maybe_asset = self.assets.get(&specifier).cloned();
-      if let Some(maybe_asset) = maybe_asset {
-        if let Some(asset) = maybe_asset {
-          Ok(asset.line_index)
-        } else {
-          Err(anyhow!("asset is missing: {}", specifier))
-        }
+      if let Some(asset) = self.get_asset(&specifier).await? {
+        Ok(asset.line_index)
       } else {
-        let mut state_snapshot = self.snapshot();
-        if let Some(asset) =
-          tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
-            .await?
-        {
-          Ok(asset.line_index)
-        } else {
-          Err(anyhow!("asset is missing: {}", specifier))
-        }
+        Err(anyhow!("asset is missing: {}", specifier))
       }
     } else if let Some(line_index) = self.documents.line_index(&specifier) {
       Ok(line_index)
@@ -170,7 +160,7 @@ impl Inner {
   /// Only searches already cached assets and documents for a line index.  If
   /// the line index cannot be found, `None` is returned.
   fn get_line_index_sync(
-    &self,
+    &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let mark = self.performance.mark("get_line_index_sync");
@@ -196,33 +186,24 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<tsc::NavigationTree, AnyError> {
-    if self.documents.contains(specifier) {
-      let mark = self.performance.mark("get_navigation_tree");
-      if let Some(navigation_tree) = self.documents.navigation_tree(specifier) {
-        self.performance.measure(mark);
-        Ok(navigation_tree)
-      } else {
-        let res = self
-          .ts_server
-          .request(
-            self.snapshot(),
-            tsc::RequestMethod::GetNavigationTree(specifier.clone()),
-          )
-          .await
-          .unwrap();
-        let navigation_tree: tsc::NavigationTree =
-          serde_json::from_value(res).unwrap();
-        self
-          .documents
-          .set_navigation_tree(specifier, navigation_tree.clone())?;
-        self.performance.measure(mark);
-        Ok(navigation_tree)
-      }
+    let mark = self.performance.mark("get_navigation_tree");
+    if let Some(navigation_tree) = self.navigation_trees.get(specifier) {
+      self.performance.measure(mark);
+      Ok(navigation_tree.clone())
     } else {
-      Err(custom_error(
-        "NotFound",
-        format!("The document \"{}\" was unexpectedly not found.", specifier),
-      ))
+      let res = self
+        .ts_server
+        .request(
+          self.snapshot(),
+          tsc::RequestMethod::GetNavigationTree(specifier.clone()),
+        )
+        .await?;
+      let navigation_tree: tsc::NavigationTree = serde_json::from_value(res)?;
+      self
+        .navigation_trees
+        .insert(specifier.clone(), navigation_tree.clone());
+      self.performance.measure(mark);
+      Ok(navigation_tree)
     }
   }
 
@@ -501,6 +482,29 @@ impl Inner {
     self.performance.measure(mark);
     Ok(())
   }
+
+  pub(crate) fn document_version(
+    &mut self,
+    specifier: ModuleSpecifier,
+  ) -> Option<i32> {
+    self.documents.version(&specifier)
+  }
+
+  async fn get_asset(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<AssetDocument>, AnyError> {
+    if let Some(maybe_asset) = self.assets.get(specifier) {
+      return Ok(maybe_asset.clone());
+    } else {
+      let mut state_snapshot = self.snapshot();
+      let maybe_asset =
+        tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
+          .await?;
+      self.assets.insert(specifier.clone(), maybe_asset.clone());
+      Ok(maybe_asset)
+    }
+  }
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
@@ -637,6 +641,9 @@ impl Inner {
     {
       error!("{}", err);
     }
+    // there are scenarios where local documents with a nav tree are opened in
+    // the editor
+    self.navigation_trees.remove(&specifier);
 
     self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
@@ -661,6 +668,7 @@ impl Inner {
     {
       error!("{}", err);
     }
+    self.navigation_trees.remove(&specifier);
 
     self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
@@ -679,16 +687,13 @@ impl Inner {
     }
     let specifier = utils::normalize_url(params.text_document.uri);
     self.documents.close(&specifier);
+    self.navigation_trees.remove(&specifier);
 
+    self.performance.measure(mark);
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
     }
-    self.performance.measure(mark);
-  }
-
-  async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-    // nothing to do yet... cleanup things?
   }
 
   async fn did_change_configuration(
@@ -706,7 +711,7 @@ impl Inner {
         .await
         .map(|vec| vec.get(0).cloned())
         .unwrap_or_else(|err| {
-          error!("failed to fetch the extension settings {:?}", err);
+          error!("failed to fetch the extension settings {}", err);
           None
         })
     } else {
@@ -733,6 +738,9 @@ impl Inner {
           .client
           .show_message(MessageType::Warning, err.to_string())
           .await;
+      }
+      if let Err(err) = self.prepare_diagnostics().await {
+        error!("{}", err);
       }
     } else {
       error!("received empty extension settings from the client");
@@ -826,7 +834,7 @@ impl Inner {
     }
   }
 
-  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(&mut self, params: HoverParams) -> LspResult<Option<Hover>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -898,9 +906,10 @@ impl Inner {
       return Ok(None);
     }
     let line_index = self.get_line_index_sync(&specifier).unwrap();
-    let file_diagnostics: Vec<&Diagnostic> = self
+    let file_diagnostics: Vec<Diagnostic> = self
       .diagnostics
       .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
+      .cloned()
       .collect();
     let mut code_actions = CodeActionCollection::default();
     for diagnostic in &fixable_diagnostics {
@@ -931,12 +940,7 @@ impl Inner {
         })?;
       for action in actions {
         code_actions
-          .add_ts_fix_action(
-            &action,
-            diagnostic,
-            &|s| self.get_line_index(s),
-            &|s| self.documents.version(&s),
-          )
+          .add_ts_fix_action(&action, diagnostic, self)
           .await
           .map_err(|err| {
             error!("Unable to convert fix: {}", err);
@@ -958,7 +962,7 @@ impl Inner {
   }
 
   async fn code_action_resolve(
-    &self,
+    &mut self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
     let mark = self.performance.mark("code_action_resolve");
@@ -989,16 +993,13 @@ impl Inner {
           Err(LspError::invalid_request())
         } else {
           let mut code_action = params.clone();
-          code_action.edit = ts_changes_to_edit(
-            &combined_code_actions.changes,
-            &|s| self.get_line_index(s),
-            &|s| self.documents.version(&s),
-          )
-          .await
-          .map_err(|err| {
-            error!("Unable to convert changes to edits: {}", err);
-            LspError::internal_error()
-          })?;
+          code_action.edit =
+            ts_changes_to_edit(&combined_code_actions.changes, self)
+              .await
+              .map_err(|err| {
+                error!("Unable to convert changes to edits: {}", err);
+                LspError::internal_error()
+              })?;
           Ok(code_action)
         }
       } else {
@@ -1023,7 +1024,7 @@ impl Inner {
     let line_index = self.get_line_index_sync(&specifier).unwrap();
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
-        error!("Failed to retrieve nav tree: {:#?}", err);
+        error!("Failed to retrieve nav tree: {}", err);
         LspError::invalid_request()
       })?;
 
@@ -1033,6 +1034,30 @@ impl Inner {
     let cl = Rc::new(RefCell::new(Vec::new()));
     navigation_tree.walk(&|i, mp| {
       let mut code_lenses = cl.borrow_mut();
+
+      // TSC Implementations Code Lens
+      if self.config.settings.enabled_code_lens_implementations() {
+        let source = CodeLensSource::Implementations;
+        match i.kind {
+          tsc::ScriptElementKind::InterfaceElement => {
+            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+          }
+          tsc::ScriptElementKind::ClassElement
+          | tsc::ScriptElementKind::MemberFunctionElement
+          | tsc::ScriptElementKind::MemberVariableElement
+          | tsc::ScriptElementKind::MemberGetAccessorElement
+          | tsc::ScriptElementKind::MemberSetAccessorElement => {
+            if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
+              code_lenses.push(i.to_code_lens(
+                &line_index,
+                &specifier,
+                &source,
+              ));
+            }
+          }
+          _ => (),
+        }
+      }
 
       // TSC References Code Lens
       if self.config.settings.enabled_code_lens_references() {
@@ -1121,6 +1146,88 @@ impl Inner {
       let code_lens_data: CodeLensData = serde_json::from_value(data)
         .map_err(|err| LspError::invalid_params(err.to_string()))?;
       let code_lens = match code_lens_data.source {
+        CodeLensSource::Implementations => {
+          let line_index =
+            self.get_line_index_sync(&code_lens_data.specifier).unwrap();
+          let req = tsc::RequestMethod::GetImplementation((
+            code_lens_data.specifier.clone(),
+            line_index.offset_tsc(params.range.start)?,
+          ));
+          let res =
+            self.ts_server.request(self.snapshot(), req).await.map_err(
+              |err| {
+                error!("Error processing TypeScript request: {}", err);
+                LspError::internal_error()
+              },
+            )?;
+          let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
+            serde_json::from_value(res).map_err(|err| {
+              error!("Error deserializing response: {}", err);
+              LspError::internal_error()
+            })?;
+          if let Some(implementations) = maybe_implementations {
+            let mut locations = Vec::new();
+            for implementation in implementations {
+              let implementation_specifier = ModuleSpecifier::resolve_url(
+                &implementation.document_span.file_name,
+              )
+              .map_err(|err| {
+                error!("Invalid specifier returned from TypeScript: {}", err);
+                LspError::internal_error()
+              })?;
+              let implementation_location =
+                implementation.to_location(&line_index);
+              if !(implementation_specifier == code_lens_data.specifier
+                && implementation_location.range.start == params.range.start)
+              {
+                locations.push(implementation_location);
+              }
+            }
+            let command = if !locations.is_empty() {
+              let title = if locations.len() > 1 {
+                format!("{} implementations", locations.len())
+              } else {
+                "1 implementation".to_string()
+              };
+              let url = utils::normalize_specifier(&code_lens_data.specifier)
+                .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?;
+              Command {
+                title,
+                command: "deno.showReferences".to_string(),
+                arguments: Some(vec![
+                  serde_json::to_value(url).unwrap(),
+                  serde_json::to_value(params.range.start).unwrap(),
+                  serde_json::to_value(locations).unwrap(),
+                ]),
+              }
+            } else {
+              Command {
+                title: "0 implementations".to_string(),
+                command: "".to_string(),
+                arguments: None,
+              }
+            };
+            CodeLens {
+              range: params.range,
+              command: Some(command),
+              data: None,
+            }
+          } else {
+            let command = Command {
+              title: "0 implementations".to_string(),
+              command: "".to_string(),
+              arguments: None,
+            };
+            CodeLens {
+              range: params.range,
+              command: Some(command),
+              data: None,
+            }
+          }
+        }
         CodeLensSource::References => {
           let line_index =
             self.get_line_index_sync(&code_lens_data.specifier).unwrap();
@@ -1168,11 +1275,16 @@ impl Inner {
               } else {
                 "1 reference".to_string()
               };
+              let url = utils::normalize_specifier(&code_lens_data.specifier)
+                .map_err(|err| {
+                error!("{}", err);
+                LspError::internal_error()
+              })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
                 arguments: Some(vec![
-                  serde_json::to_value(code_lens_data.specifier).unwrap(),
+                  serde_json::to_value(url).unwrap(),
                   serde_json::to_value(params.range.start).unwrap(),
                   serde_json::to_value(locations).unwrap(),
                 ]),
@@ -1214,7 +1326,7 @@ impl Inner {
   }
 
   async fn document_highlight(
-    &self,
+    &mut self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     if !self.enabled() {
@@ -1342,9 +1454,7 @@ impl Inner {
       serde_json::from_value(res).unwrap();
 
     if let Some(definition) = maybe_definition {
-      let results = definition
-        .to_definition(&line_index, |s| self.get_line_index(s))
-        .await;
+      let results = definition.to_definition(&line_index, self).await;
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -1354,7 +1464,7 @@ impl Inner {
   }
 
   async fn completion(
-    &self,
+    &mut self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
     if !self.enabled() {
@@ -1399,7 +1509,7 @@ impl Inner {
   }
 
   async fn goto_implementation(
-    &self,
+    &mut self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
     if !self.enabled() {
@@ -1429,13 +1539,13 @@ impl Inner {
         .request(self.snapshot(), req)
         .await
         .map_err(|err| {
-          error!("Failed to request to tsserver {:#?}", err);
+          error!("Failed to request to tsserver {}", err);
           LspError::invalid_request()
         })?;
 
     let maybe_implementations = serde_json::from_value::<Option<Vec<tsc::ImplementationLocation>>>(res)
       .map_err(|err| {
-        error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {:#?}", err);
+        error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {}", err);
         LspError::internal_error()
       })?;
 
@@ -1447,10 +1557,7 @@ impl Inner {
           ModuleSpecifier::resolve_url(&document_span.file_name).unwrap();
         let impl_line_index =
           &self.get_line_index(impl_specifier).await.unwrap();
-        if let Some(link) = document_span
-          .to_link(impl_line_index, |s| self.get_line_index(s))
-          .await
-        {
+        if let Some(link) = document_span.to_link(impl_line_index, self).await {
           results.push(link);
         }
       }
@@ -1463,13 +1570,13 @@ impl Inner {
   }
 
   async fn rename(
-    &self,
+    &mut self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.mark("goto_implementation");
+    let mark = self.performance.mark("rename");
     let specifier =
       utils::normalize_url(params.text_document_position.text_document.uri);
 
@@ -1497,7 +1604,7 @@ impl Inner {
         .request(self.snapshot(), req)
         .await
         .map_err(|err| {
-          error!("Failed to request to tsserver {:#?}", err);
+          error!("Failed to request to tsserver {}", err);
           LspError::invalid_request()
         })?;
 
@@ -1506,7 +1613,7 @@ impl Inner {
     >(res)
     .map_err(|err| {
       error!(
-        "Failed to deserialize tsserver response to Vec<RenameLocation> {:#?}",
+        "Failed to deserialize tsserver response to Vec<RenameLocation> {}",
         err
       );
       LspError::internal_error()
@@ -1515,14 +1622,10 @@ impl Inner {
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
       let workspace_edits = rename_locations
-        .into_workspace_edit(
-          &params.new_name,
-          |s| self.get_line_index(s),
-          |s| self.documents.version(&s),
-        )
+        .into_workspace_edit(&params.new_name, self)
         .await
         .map_err(|err| {
-          error!("Failed to get workspace edits: {:#?}", err);
+          error!("Failed to get workspace edits: {}", err);
           LspError::internal_error()
         })?;
       self.performance.measure(mark);
@@ -1542,7 +1645,7 @@ impl Inner {
       "deno/cache" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.cache(params).await?).map_err(|err| {
-            error!("Failed to serialize cache response: {:#?}", err);
+            error!("Failed to serialize cache response: {}", err);
             LspError::internal_error()
           })?,
         )),
@@ -1555,7 +1658,7 @@ impl Inner {
           serde_json::to_value(self.virtual_text_document(params).await?)
             .map_err(|err| {
               error!(
-                "Failed to serialize virtual_text_document response: {:#?}",
+                "Failed to serialize virtual_text_document response: {}",
                 err
               );
               LspError::internal_error()
@@ -1599,10 +1702,6 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     self.0.lock().await.did_close(params).await
-  }
-
-  async fn did_save(&self, params: DidSaveTextDocumentParams) {
-    self.0.lock().await.did_save(params).await
   }
 
   async fn did_change_configuration(
@@ -1747,7 +1846,7 @@ impl Inner {
   }
 
   async fn virtual_text_document(
-    &self,
+    &mut self,
     params: VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
     let mark = self.performance.mark("virtual_text_document");
@@ -1774,25 +1873,15 @@ impl Inner {
     } else {
       match url.scheme() {
         "asset" => {
-          let maybe_asset = self.assets.get(&specifier).cloned();
-          if let Some(maybe_asset) = maybe_asset {
-            if let Some(asset) = maybe_asset {
-              Some(asset.text)
-            } else {
-              None
-            }
+          if let Some(asset) = self
+            .get_asset(&specifier)
+            .await
+            .map_err(|_| LspError::internal_error())?
+          {
+            Some(asset.text)
           } else {
-            let mut state_snapshot = self.snapshot();
-            if let Some(asset) =
-              tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
-                .await
-                .map_err(|_| LspError::internal_error())?
-            {
-              Some(asset.text)
-            } else {
-              error!("Missing asset: {}", specifier);
-              None
-            }
+            error!("Missing asset: {}", specifier);
+            None
           }
         }
         _ => {
@@ -1936,6 +2025,51 @@ mod tests {
               "end": {
                 "line": 0,
                 "character": 21
+              }
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_hover_asset() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_asset.json", LspResponse::None),
+      ("hover_request_asset_01.json", LspResponse::RequestAny),
+      (
+        "virtual_text_document_request.json",
+        LspResponse::RequestAny,
+      ),
+      (
+        "hover_request_asset_02.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "contents": [
+              {
+                "language": "typescript",
+                "value": "interface Date",
+              },
+              "Enables basic storage and retrieval of dates and times."
+            ],
+            "range": {
+              "start": {
+                "line": 109,
+                "character": 10,
+              },
+              "end": {
+                "line": 109,
+                "character": 14,
               }
             }
           }),
@@ -2333,6 +2467,166 @@ mod tests {
             }
           }),
         ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_code_lens_impl_request() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_cl_impl.json", LspResponse::None),
+      (
+        "code_lens_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 10,
+                },
+                "end": {
+                  "line": 0,
+                  "character": 11,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "implementations",
+              },
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 10,
+                },
+                "end": {
+                  "line": 0,
+                  "character": 11,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              },
+            },
+            {
+              "range": {
+                "start": {
+                  "line": 4,
+                  "character": 6,
+                },
+                "end": {
+                  "line": 4,
+                  "character": 7,
+                }
+              },
+              "data": {
+                "specifier": "file:///a/file.ts",
+                "source": "references",
+              },
+            },
+          ]),
+        ),
+      ),
+      (
+        "code_lens_resolve_request_impl.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 10,
+              },
+              "end": {
+                "line": 0,
+                "character": 11,
+              }
+            },
+            "command": {
+              "title": "1 implementation",
+              "command": "deno.showReferences",
+              "arguments": [
+                "file:///a/file.ts",
+                {
+                  "line": 0,
+                  "character": 10,
+                },
+                [
+                  {
+                    "uri": "file:///a/file.ts",
+                    "range": {
+                      "start": {
+                        "line": 4,
+                        "character": 6,
+                      },
+                      "end": {
+                        "line": 4,
+                        "character": 7,
+                      }
+                    }
+                  }
+                ],
+              ]
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[derive(Deserialize)]
+  struct CodeLensResponse {
+    pub result: Option<Vec<CodeLens>>,
+  }
+
+  #[derive(Deserialize)]
+  struct CodeLensResolveResponse {
+    pub result: CodeLens,
+  }
+
+  #[tokio::test]
+  async fn test_code_lens_non_doc_nav_tree() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_asset.json", LspResponse::None),
+      (
+        "virtual_text_document_request.json",
+        LspResponse::RequestAny,
+      ),
+      (
+        "code_lens_request_asset.json",
+        LspResponse::RequestAssert(|value| {
+          let resp: CodeLensResponse = serde_json::from_value(value).unwrap();
+          let lenses = resp.result.unwrap();
+          assert!(lenses.len() > 50);
+        }),
+      ),
+      (
+        "code_lens_resolve_request_asset.json",
+        LspResponse::RequestAssert(|value| {
+          let resp: CodeLensResolveResponse =
+            serde_json::from_value(value).unwrap();
+          assert!(resp.result.command.is_some());
+        }),
       ),
       (
         "shutdown_request.json",

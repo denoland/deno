@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "textDocument/hover",
+  "params": {
+    "textDocument": {
+      "uri": "deno:/asset//lib.es2015.symbol.wellknown.d.ts"
+    },
+    "position": {
+      "line": 109,
+      "character": 13
+    }
+  }
+}
