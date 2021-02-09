@@ -140,8 +140,8 @@ async fn op_start_tls(
   }
 
   let tls_connector = TlsConnector::from(Arc::new(config));
-  let dnsname =
-    DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+  let dnsname = DNSNameRef::try_from_ascii_str(&domain)
+    .map_err(|_| generic_error("Invalid DNS lookup"))?;
   let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
 
   let rid = {
@@ -202,8 +202,8 @@ async fn op_connect_tls(
     config.root_store.add_pem_file(reader).unwrap();
   }
   let tls_connector = TlsConnector::from(Arc::new(config));
-  let dnsname =
-    DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+  let dnsname = DNSNameRef::try_from_ascii_str(&domain)
+    .map_err(|_| generic_error("Invalid DNS lookup"))?;
   let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
   let rid = {
     let mut state_ = state.borrow_mut();
