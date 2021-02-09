@@ -20,6 +20,7 @@ mod resources;
 mod runtime;
 mod shared_queue;
 mod zero_copy_buf;
+mod serialize_deserialize;
 
 // Re-exports
 pub use futures;

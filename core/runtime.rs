@@ -2026,6 +2026,22 @@ pub mod tests {
   }
 
   #[test]
+  fn test_serialize_deserialize() {
+    run_in_task(|mut cx| {
+      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+      runtime
+        .execute(
+          "serialize_deserialize_test.js",
+          include_str!("serialize_deserialize_test.js"),
+        )
+        .unwrap();
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
   fn will_snapshot() {
     let snapshot = {
       let mut runtime = JsRuntime::new(RuntimeOptions {

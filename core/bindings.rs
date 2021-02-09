@@ -2,6 +2,7 @@
 
 use crate::error::AnyError;
 use crate::runtime::JsRuntimeState;
+use crate::serialize_deserialize;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
@@ -45,6 +46,12 @@ lazy_static! {
       },
       v8::ExternalReference {
         function: decode.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: serialize.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: deserialize.map_fn_to()
       },
       v8::ExternalReference {
         function: get_promise_details.map_fn_to()
@@ -152,6 +159,16 @@ pub fn initialize_context<'s>(
   let decode_tmpl = v8::FunctionTemplate::new(scope, decode);
   let decode_val = decode_tmpl.get_function(scope).unwrap();
   core_val.set(scope, decode_key.into(), decode_val.into());
+
+  let serialize_key = v8::String::new(scope, "serialize").unwrap();
+  let serialize_tmpl = v8::FunctionTemplate::new(scope, serialize);
+  let serialize_val = serialize_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, serialize_key.into(), serialize_val.into());
+
+  let deserialize_key = v8::String::new(scope, "deserialize").unwrap();
+  let deserialize_tmpl = v8::FunctionTemplate::new(scope, deserialize);
+  let deserialize_val = deserialize_tmpl.get_function(scope).unwrap();
+  core_val.set(scope, deserialize_key.into(), deserialize_val.into());
 
   let get_promise_details_key =
     v8::String::new(scope, "getPromiseDetails").unwrap();
@@ -661,6 +678,71 @@ fn decode(
   // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
   match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
     Some(text) => rv.set(text.into()),
+    None => {
+      let msg = v8::String::new(scope, "string too long").unwrap();
+      let exception = v8::Exception::range_error(scope, msg);
+      scope.throw_exception(exception);
+    }
+  };
+}
+
+fn serialize(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  match serialize_deserialize::serialize(scope, args.get(0)) {
+    Some(vector) => {
+      let buf = {
+        let buf_len = vector.len();
+        let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
+          vector.into_boxed_slice(),
+        );
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        v8::Uint8Array::new(scope, ab, 0, buf_len)
+          .expect("Failed to create UintArray8")
+      };
+
+      rv.set(buf.into());
+    }
+    None => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exception);
+    }
+  }
+}
+
+fn deserialize(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+    Ok(view) => view,
+    Err(_) => {
+      let msg = v8::String::new(scope, "Invalid argument").unwrap();
+      let exception = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exception);
+      return;
+    }
+  };
+
+  let backing_store = view.buffer(scope).unwrap().get_backing_store();
+  let buf = unsafe {
+    get_backing_store_slice(
+      &backing_store,
+      view.byte_offset(),
+      view.byte_length(),
+    )
+  };
+
+  let value = serialize_deserialize::deserialize(scope, buf);
+
+  match value {
+    Some(deserialized) => rv.set(deserialized),
     None => {
       let msg = v8::String::new(scope, "string too long").unwrap();
       let exception = v8::Exception::range_error(scope, msg);
