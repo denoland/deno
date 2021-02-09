@@ -3,9 +3,6 @@
 use super::analysis;
 use super::text::LineIndex;
 
-use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
-
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -76,9 +73,10 @@ impl DocumentData {
   }
 
   pub fn content(&self) -> Result<Option<String>, AnyError> {
-    if let Some(bytes) = self.bytes.clone() {
+    if let Some(bytes) = &self.bytes {
       Ok(Some(
-        String::from_utf8(bytes).context("cannot decode bytes to string")?,
+        String::from_utf8(bytes.clone())
+          .context("cannot decode bytes to string")?,
       ))
     } else {
       Ok(None)
@@ -92,51 +90,12 @@ pub struct DocumentCache {
 }
 
 impl DocumentCache {
-  pub fn analyze_dependencies<F>(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    maybe_import_map: &Option<ImportMap>,
-    get_maybe_type: &mut F,
-  ) -> Result<(), AnyError>
-  where
-    F: FnMut(&ModuleSpecifier) -> Option<analysis::ResolvedDependency>,
-  {
-    if !self.contains(specifier) {
-      return Err(custom_error(
-        "NotFound",
-        format!(
-          "The specifier (\"{}\") does not exist in the document cache.",
-          specifier
-        ),
-      ));
-    }
-
-    let doc = self.docs.get_mut(specifier).unwrap();
-    if let Some(source) = &doc.content()? {
-      if let Some((dependencies, _)) = analysis::analyze_dependencies(
-        specifier,
-        source,
-        &MediaType::from(specifier),
-        maybe_import_map,
-        get_maybe_type,
-      ) {
-        doc.dependencies = Some(dependencies);
-      } else {
-        doc.dependencies = None;
-      }
-    } else {
-      doc.dependencies = None;
-    }
-
-    Ok(())
-  }
-
   pub fn change(
     &mut self,
     specifier: &ModuleSpecifier,
     version: i32,
     content_changes: Vec<TextDocumentContentChangeEvent>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Option<String>, AnyError> {
     if !self.contains(specifier) {
       return Err(custom_error(
         "NotFound",
@@ -150,7 +109,7 @@ impl DocumentCache {
     let doc = self.docs.get_mut(specifier).unwrap();
     doc.apply_content_changes(content_changes)?;
     doc.version = Some(version);
-    Ok(())
+    doc.content()
   }
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
@@ -221,6 +180,43 @@ impl DocumentCache {
         }
       })
       .collect()
+  }
+
+  pub fn set_dependencies(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    maybe_dependencies: Option<HashMap<String, analysis::Dependency>>,
+  ) -> Result<(), AnyError> {
+    if !self.contains(specifier) {
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "The specifier (\"{}\") does not exist in the document cache.",
+          specifier
+        ),
+      ));
+    }
+
+    let doc = self.docs.get_mut(specifier).unwrap();
+    doc.dependencies = maybe_dependencies;
+
+    Ok(())
+  }
+
+  pub fn set_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: NavigationTree,
+  ) -> Result<(), AnyError> {
+    if let Some(mut doc) = self.docs.get_mut(specifier) {
+      doc.navigation_tree = Some(navigation_tree);
+      Ok(())
+    } else {
+      Err(custom_error(
+        "NotFound",
+        "The document \"{}\" was unexpectedly missing.",
+      ))
+    }
   }
 
   pub fn version(&self, specifier: &ModuleSpecifier) -> Option<i32> {

@@ -16,6 +16,7 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
+use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
 use lspower::lsp;
@@ -23,6 +24,7 @@ use lspower::lsp::Position;
 use lspower::lsp::Range;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
 
 lazy_static! {
@@ -143,9 +145,32 @@ pub struct Dependency {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedDependencyErr {
+  InvalidDowngrade,
+  InvalidLocalImport,
+  InvalidSpecifier(ModuleResolutionError),
+  Missing,
+}
+
+impl fmt::Display for ResolvedDependencyErr {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::InvalidDowngrade => {
+        write!(f, "HTTPS modules cannot import HTTP modules.")
+      }
+      Self::InvalidLocalImport => {
+        write!(f, "Remote modules cannot import local modules.")
+      }
+      Self::InvalidSpecifier(err) => write!(f, "{}", err),
+      Self::Missing => write!(f, "The module is unexpectedly missing."),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedDependency {
   Resolved(ModuleSpecifier),
-  Err(String),
+  Err(ResolvedDependencyErr),
 }
 
 pub fn resolve_import(
@@ -170,22 +195,23 @@ pub fn resolve_import(
   } else {
     match ModuleSpecifier::resolve_import(specifier, referrer.as_str()) {
       Ok(resolved) => resolved,
-      Err(err) => return ResolvedDependency::Err(err.to_string()),
+      Err(err) => {
+        return ResolvedDependency::Err(
+          ResolvedDependencyErr::InvalidSpecifier(err),
+        )
+      }
     }
   };
   let referrer_scheme = referrer.as_url().scheme();
   let specifier_scheme = specifier.as_url().scheme();
   if referrer_scheme == "https" && specifier_scheme == "http" {
-    return ResolvedDependency::Err(
-      "Modules imported via https are not allowed to import http modules."
-        .to_string(),
-    );
+    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidDowngrade);
   }
   if (referrer_scheme == "https" || referrer_scheme == "http")
     && !(specifier_scheme == "https" || specifier_scheme == "http")
     && !remapped
   {
-    return ResolvedDependency::Err("Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.".to_string());
+    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidLocalImport);
   }
 
   ResolvedDependency::Resolved(specifier)
@@ -193,16 +219,12 @@ pub fn resolve_import(
 
 // TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
 // Module::parse() and should be refactored out to a common function.
-pub fn analyze_dependencies<F>(
+pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: &MediaType,
   maybe_import_map: &Option<ImportMap>,
-  get_maybe_type: &mut F,
-) -> Option<(HashMap<String, Dependency>, Option<ResolvedDependency>)>
-where
-  F: FnMut(&ModuleSpecifier) -> Option<ResolvedDependency>,
-{
+) -> Option<(HashMap<String, Dependency>, Option<ResolvedDependency>)> {
   let specifier_str = specifier.to_string();
   let source_map = Rc::new(swc_common::SourceMap::default());
   let mut maybe_type = None;
@@ -253,10 +275,6 @@ where
           } else {
             None
           }
-        // Otherwise check to see if the import itself has a type only
-        // dependency
-        } else if let ResolvedDependency::Resolved(specifier) = &resolved_import {
-          get_maybe_type(specifier)
         } else {
           None
         };
@@ -587,13 +605,8 @@ mod tests {
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
     import * as React from "https://cdn.skypack.dev/react";
     "#;
-    let actual = analyze_dependencies(
-      &specifier,
-      source,
-      &MediaType::TypeScript,
-      &None,
-      &mut |_| None,
-    );
+    let actual =
+      analyze_dependencies(&specifier, source, &MediaType::TypeScript, &None);
     assert!(actual.is_some());
     let (actual, maybe_type) = actual.unwrap();
     assert!(maybe_type.is_none());
@@ -641,61 +654,6 @@ mod tests {
           end: Position {
             line: 5,
             character: 50,
-          }
-        }),
-      })
-    );
-  }
-
-  #[test]
-  fn test_analyze_deps_type_dep() {
-    let specifier =
-      ModuleSpecifier::resolve_url("file:///a.ts").expect("bad specifier");
-    let source =
-      r#"import * as React from "https://cdn.skypack.dev/react?dts";"#;
-    let actual = analyze_dependencies(
-      &specifier,
-      source,
-      &MediaType::TypeScript,
-      &None,
-      &mut |s| match s.to_string().as_ref() {
-        "https://cdn.skypack.dev/react?dts" => {
-          Some(ResolvedDependency::Resolved(
-            ModuleSpecifier::resolve_url(
-              "https://cdn.skypack.dev/react/index.d.ts",
-            )
-            .unwrap(),
-          ))
-        }
-        _ => None,
-      },
-    );
-    assert!(actual.is_some());
-    let (actual, maybe_type) = actual.unwrap();
-    assert!(maybe_type.is_none());
-    assert_eq!(actual.len(), 1);
-    assert_eq!(
-      actual.get("https://cdn.skypack.dev/react?dts").cloned(),
-      Some(Dependency {
-        is_dynamic: false,
-        maybe_code: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url("https://cdn.skypack.dev/react?dts")
-            .unwrap()
-        )),
-        maybe_type: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url(
-            "https://cdn.skypack.dev/react/index.d.ts"
-          )
-          .unwrap()
-        )),
-        maybe_code_specifier_range: Some(Range {
-          start: Position {
-            line: 0,
-            character: 23,
-          },
-          end: Position {
-            line: 0,
-            character: 58,
           }
         }),
       })

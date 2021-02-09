@@ -140,7 +140,6 @@ impl Sources {
               &source,
               &media_type,
               &maybe_import_map,
-              &mut |s| self.get_maybe_types(s),
             ) {
             maybe_types = mt;
             Some(dependencies)
@@ -184,7 +183,6 @@ impl Sources {
               &source,
               &media_type,
               &maybe_import_map,
-              &mut |s| self.get_maybe_types(s),
             ) {
             if maybe_types.is_none() {
               maybe_types = mt;

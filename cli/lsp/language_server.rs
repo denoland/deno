@@ -26,14 +26,17 @@ use tokio::fs;
 
 use crate::deno_dir;
 use crate::import_map::ImportMap;
+use crate::media_type::MediaType;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
+use super::analysis;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
 use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
+use super::analysis::ResolvedDependency;
 use super::capabilities;
 use super::config::Config;
 use super::diagnostics;
@@ -125,6 +128,33 @@ impl Inner {
       sources,
       ts_fixable_diagnostics: Default::default(),
       ts_server: TsServer::new(),
+    }
+  }
+
+  /// Analyzes dependencies of a document that has been opened in the editor and
+  /// sets the dependencies property on the document.
+  fn analyze_dependencies(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) {
+    if let Some((mut deps, _)) = analysis::analyze_dependencies(
+      specifier,
+      source,
+      &MediaType::from(specifier),
+      &self.maybe_import_map,
+    ) {
+      for (_, dep) in deps.iter_mut() {
+        if dep.maybe_type.is_none() {
+          if let Some(ResolvedDependency::Resolved(resolved)) = &dep.maybe_code
+          {
+            dep.maybe_type = self.sources.get_maybe_types(resolved);
+          }
+        }
+      }
+      if let Err(err) = self.documents.set_dependencies(specifier, Some(deps)) {
+        error!("{}", err);
+      }
     }
   }
 
@@ -630,24 +660,15 @@ impl Inner {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
+    info!("did_open {}", specifier);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
-      params.text_document.text,
+      params.text_document.text.clone(),
     );
-    let mut sources = self.sources.clone();
-    if let Err(err) = self.documents.analyze_dependencies(
-      &specifier,
-      &self.maybe_import_map,
-      &mut |s| sources.get_maybe_types(s),
-    ) {
-      error!("{}", err);
-    }
-    // there are scenarios where local documents with a nav tree are opened in
-    // the editor
-    self.navigation_trees.remove(&specifier);
-
+    self.analyze_dependencies(&specifier, &params.text_document.text);
     self.performance.measure(mark);
+
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
@@ -657,24 +678,17 @@ impl Inner {
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change");
     let specifier = utils::normalize_url(params.text_document.uri);
-    if let Err(err) = self.documents.change(
+    match self.documents.change(
       &specifier,
       params.text_document.version,
       params.content_changes,
     ) {
-      error!("{}", err);
+      Ok(Some(source)) => self.analyze_dependencies(&specifier, &source),
+      Ok(_) => error!("No content returned from change."),
+      Err(err) => error!("{}", err),
     }
-    let mut sources = self.sources.clone();
-    if let Err(err) = self.documents.analyze_dependencies(
-      &specifier,
-      &self.maybe_import_map,
-      &mut |s| sources.get_maybe_types(s),
-    ) {
-      error!("{}", err);
-    }
-    self.navigation_trees.remove(&specifier);
-
     self.performance.measure(mark);
+
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
