@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -68,12 +68,11 @@ pub fn op_webgpu_create_buffer(
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
 
-  // TODO
-  let (buffer, _) = gfx_select!(device => instance.device_create_buffer(
+  let buffer = gfx_select_err!(device => instance.device_create_buffer(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state.resource_table.add(WebGPUBuffer(buffer));
 
@@ -169,7 +168,8 @@ pub async fn op_webgpu_buffer_get_map_async(
         if let Some(instance_resource) = instance_resource {
           let instance =
             RcRef::map(&instance_resource, |r| &r.0).borrow().await;
-          gfx_select!(device.clone() => instance.device_poll(device, false)).unwrap()
+          gfx_select!(device.clone() => instance.device_poll(device, false))
+            .unwrap()
         } else {
           break;
         }

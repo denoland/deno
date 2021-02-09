@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #![deny(warnings)]
 
@@ -30,6 +30,19 @@ mod macros {
         #[cfg(any(target_arch = "wasm32", all(unix, not(any(target_os = "ios", target_os = "macos")))))]
         wgpu_types::Backend::Gl => $global.$method::<wgpu_core::backend::Gl>( $($param),+ ),
         other => panic!("Unexpected backend {:?}", other),
+      }
+    };
+  }
+
+  macro_rules! gfx_select_err {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
+      {
+        let (data, err) = gfx_select!($id => $global.$method( $($param),* ));
+        if let Some(err) = err {
+          Err(err)
+        } else {
+          Ok(data)
+        }
       }
     };
   }
@@ -148,13 +161,13 @@ pub async fn op_webgpu_request_adapter(
   };
   let adapter = instance.request_adapter(
     &descriptor,
-    wgpu_core::instance::AdapterInputs::Mask(wgpu_types::BackendBit::PRIMARY, |_| {
-      std::marker::PhantomData
-    }),
+    wgpu_core::instance::AdapterInputs::Mask(
+      wgpu_types::BackendBit::PRIMARY,
+      |_| std::marker::PhantomData,
+    ),
   )?;
 
-  let name =
-    gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
+  let name = gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
   let adapter_features =
     gfx_select!(adapter => instance.adapter_features(adapter))?;
   let features = deserialize_features(&adapter_features);
@@ -274,13 +287,13 @@ pub async fn op_webgpu_request_device(
         max_push_constant_size: 0,
       }),
   };
-  // TODO
-  let (device, _) = gfx_select!(adapter => instance.adapter_request_device(
+
+  let device = gfx_select_err!(adapter => instance.adapter_request_device(
     adapter,
     &descriptor,
     None,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let device_features =
     gfx_select!(device => instance.device_features(device))?;

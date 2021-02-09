@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -13,21 +13,27 @@ use super::sampler::serialize_compare_function;
 use super::texture::serialize_texture_format;
 use crate::shader::WebGPUShaderModule;
 
-pub(crate) struct WebGPUPipelineLayout(pub(crate) wgpu_core::id::PipelineLayoutId);
+pub(crate) struct WebGPUPipelineLayout(
+  pub(crate) wgpu_core::id::PipelineLayoutId,
+);
 impl Resource for WebGPUPipelineLayout {
   fn name(&self) -> Cow<str> {
     "webGPUPipelineLayout".into()
   }
 }
 
-pub(crate) struct WebGPUComputePipeline(pub(crate) wgpu_core::id::ComputePipelineId);
+pub(crate) struct WebGPUComputePipeline(
+  pub(crate) wgpu_core::id::ComputePipelineId,
+);
 impl Resource for WebGPUComputePipeline {
   fn name(&self) -> Cow<str> {
     "webGPUComputePipeline".into()
   }
 }
 
-pub(crate) struct WebGPURenderPipeline(pub(crate) wgpu_core::id::RenderPipelineId);
+pub(crate) struct WebGPURenderPipeline(
+  pub(crate) wgpu_core::id::RenderPipelineId,
+);
 impl Resource for WebGPURenderPipeline {
   fn name(&self) -> Cow<str> {
     "webGPURenderPipeline".into()
@@ -42,7 +48,9 @@ pub fn serialize_index_format(format: String) -> wgpu_types::IndexFormat {
   }
 }
 
-fn serialize_stencil_operation(operation: &str) -> wgpu_types::StencilOperation {
+fn serialize_stencil_operation(
+  operation: &str,
+) -> wgpu_types::StencilOperation {
   match operation {
     "keep" => wgpu_types::StencilOperation::Keep,
     "zero" => wgpu_types::StencilOperation::Zero,
@@ -56,7 +64,9 @@ fn serialize_stencil_operation(operation: &str) -> wgpu_types::StencilOperation 
   }
 }
 
-fn serialize_stencil_face_state(state: GPUStencilFaceState) -> wgpu_types::StencilFaceState {
+fn serialize_stencil_face_state(
+  state: GPUStencilFaceState,
+) -> wgpu_types::StencilFaceState {
   wgpu_types::StencilFaceState {
     compare: state
       .compare
@@ -104,7 +114,9 @@ fn serialize_blend_factor(blend_factor: &str) -> wgpu_types::BlendFactor {
   }
 }
 
-fn serialize_blend_component(blend: GPUBlendComponent) -> wgpu_types::BlendState {
+fn serialize_blend_component(
+  blend: GPUBlendComponent,
+) -> wgpu_types::BlendState {
   wgpu_types::BlendState {
     src_factor: blend
       .src_factor
@@ -189,7 +201,7 @@ pub fn op_webgpu_create_compute_pipeline(
     layout: pipeline_layout,
     stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
       module: compute_shader_module_resource.0,
-      entry_point: Cow::Owned(args.compute.entry_point)
+      entry_point: Cow::Owned(args.compute.entry_point),
     },
   };
   let implicit_pipelines = match args.layout {
@@ -246,8 +258,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
     .try_borrow()
     .unwrap();
 
-  // TODO
-  let (bind_group_layout, _) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData));
+  let bind_group_layout = gfx_select_err!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData))?;
 
   let rid = state
     .resource_table
@@ -478,7 +489,6 @@ pub fn op_webgpu_create_render_pipeline(
       }),
     },
     primitive: args.primitive.map_or(Default::default(), |primitive| {
-      // TODO
       wgpu_types::PrimitiveState {
         topology: match primitive.topology {
           Some(topology) => match topology.as_str() {
@@ -491,7 +501,9 @@ pub fn op_webgpu_create_render_pipeline(
           },
           None => wgpu_types::PrimitiveTopology::TriangleList,
         },
-        strip_index_format: primitive.strip_index_format.map(serialize_index_format),
+        strip_index_format: primitive
+          .strip_index_format
+          .map(serialize_index_format),
         front_face: match primitive.front_face {
           Some(front_face) => match front_face.as_str() {
             "ccw" => wgpu_types::FrontFace::Ccw,
@@ -543,7 +555,6 @@ pub fn op_webgpu_create_render_pipeline(
     }),
     multisample: args.multisample.map_or(Default::default(), |multisample| {
       wgpu_types::MultisampleState {
-        // TODO
         count: multisample.count.unwrap_or(1),
         mask: multisample.mask.unwrap_or(0xFFFFFFFF),
         alpha_to_coverage_enabled: multisample
@@ -556,7 +567,7 @@ pub fn op_webgpu_create_render_pipeline(
         .resource_table
         .get::<super::shader::WebGPUShaderModule>(fragment.module)
         .ok_or_else(bad_resource_id)
-        .unwrap(); // TODO
+        .unwrap();
 
       wgpu_core::pipeline::FragmentState {
         stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
@@ -577,7 +588,8 @@ pub fn op_webgpu_create_render_pipeline(
 
               wgpu_types::ColorTargetState {
                 format: serialize_texture_format(&target.format).unwrap(),
-                alpha_blend: blends.clone()
+                alpha_blend: blends
+                  .clone()
                   .map_or(Default::default(), |states| states.0),
                 color_blend: blends
                   .map_or(Default::default(), |states| states.1),
@@ -648,8 +660,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
     .try_borrow()
     .unwrap();
 
-  // TODO
-  let (bind_group_layout, _) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData));
+  let bind_group_layout = gfx_select_err!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData))?;
 
   let rid = state
     .resource_table

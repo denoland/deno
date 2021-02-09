@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -13,7 +13,9 @@ use std::rc::Rc;
 
 use super::texture::serialize_texture_format;
 
-struct WebGPURenderBundleEncoder(RefCell<wgpu_core::command::RenderBundleEncoder>);
+struct WebGPURenderBundleEncoder(
+  RefCell<wgpu_core::command::RenderBundleEncoder>,
+);
 impl Resource for WebGPURenderBundleEncoder {
   fn name(&self) -> Cow<str> {
     "webGPURenderBundleEncoder".into()
@@ -111,14 +113,13 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .try_borrow()
     .unwrap();
 
-  // TODO
-  let (render_bundle, _) = gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
+  let render_bundle = gfx_select_err!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
     &wgpu_core::command::RenderBundleDescriptor {
       label: args.label.map(Cow::Owned),
     },
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state.resource_table.add(WebGPURenderBundle(render_bundle));
 
@@ -323,12 +324,15 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  render_bundle_encoder_resource.0.borrow_mut().set_index_buffer(
-    buffer_resource.0,
-    super::pipeline::serialize_index_format(args.index_format),
-    args.offset,
-    std::num::NonZeroU64::new(args.size),
-  );
+  render_bundle_encoder_resource
+    .0
+    .borrow_mut()
+    .set_index_buffer(
+      buffer_resource.0,
+      super::pipeline::serialize_index_format(args.index_format),
+      args.offset,
+      std::num::NonZeroU64::new(args.size),
+    );
 
   Ok(json!({}))
 }

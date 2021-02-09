@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -10,14 +10,18 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-pub(crate) struct WebGPUCommandEncoder(pub(crate) wgpu_core::id::CommandEncoderId);
+pub(crate) struct WebGPUCommandEncoder(
+  pub(crate) wgpu_core::id::CommandEncoderId,
+);
 impl Resource for WebGPUCommandEncoder {
   fn name(&self) -> Cow<str> {
     "webGPUCommandEncoder".into()
   }
 }
 
-pub(crate) struct WebGPUCommandBuffer(pub(crate) wgpu_core::id::CommandBufferId);
+pub(crate) struct WebGPUCommandBuffer(
+  pub(crate) wgpu_core::id::CommandBufferId,
+);
 impl Resource for WebGPUCommandBuffer {
   fn name(&self) -> Cow<str> {
     "webGPUCommandBuffer".into()
@@ -38,7 +42,7 @@ struct CreateCommandEncoderArgs {
   instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
-  _measure_execution_time: Option<bool>, // waiting for wgpu to add measure_execution_time
+  _measure_execution_time: Option<bool>, // not yet implemented
 }
 
 pub fn op_webgpu_create_command_encoder(
@@ -65,12 +69,11 @@ pub fn op_webgpu_create_command_encoder(
     label: args.label.map(Cow::Owned),
   };
 
-  // TODO
-  let (command_encoder, _) = gfx_select!(device => instance.device_create_command_encoder(
+  let command_encoder = gfx_select_err!(device => instance.device_create_command_encoder(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state
     .resource_table
@@ -112,7 +115,7 @@ struct CommandEncoderBeginRenderPassArgs {
   label: Option<String>,
   color_attachments: Vec<GPURenderPassColorAttachment>,
   depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachment>,
-  _occlusion_query_set: u32, // TODO wgpu#721
+  _occlusion_query_set: u32, // not yet implemented
 }
 
 pub fn op_webgpu_command_encoder_begin_render_pass(
@@ -229,8 +232,10 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
     depth_stencil_attachment: depth_stencil_attachment.as_ref(),
   };
 
-  let render_pass =
-    wgpu_core::command::RenderPass::new(command_encoder_resource.0, &descriptor);
+  let render_pass = wgpu_core::command::RenderPass::new(
+    command_encoder_resource.0,
+    &descriptor,
+  );
 
   let rid = state
     .resource_table
@@ -266,8 +271,10 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
     label: args.label.map(Cow::Owned),
   };
 
-  let compute_pass =
-    wgpu_core::command::ComputePass::new(command_encoder_resource.0, &descriptor);
+  let compute_pass = wgpu_core::command::ComputePass::new(
+    command_encoder_resource.0,
+    &descriptor,
+  );
 
   let rid = state
     .resource_table
@@ -358,7 +365,7 @@ pub struct GPUImageCopyTexture {
   pub texture: u32,
   pub mip_level: Option<u32>,
   pub origin: Option<GPUOrigin3D>,
-  pub aspect: Option<String>, // TODO
+  pub aspect: Option<String>, // not yet implemented
 }
 
 #[derive(Deserialize)]
@@ -716,11 +723,10 @@ pub fn op_webgpu_command_encoder_finish(
     label: args.label.map(Cow::Owned),
   };
 
-  // TODO
-  let (command_buffer, _) = gfx_select!(command_encoder => instance.command_encoder_finish(
+  let command_buffer = gfx_select_err!(command_encoder => instance.command_encoder_finish(
     command_encoder,
     &descriptor
-  ));
+  ))?;
 
   let rid = state
     .resource_table

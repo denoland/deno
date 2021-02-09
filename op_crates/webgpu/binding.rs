@@ -1,7 +1,7 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::{serde_json, RcRef, ZeroCopyBuf};
@@ -9,7 +9,9 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub(crate) struct WebGPUBindGroupLayout(pub(crate) wgpu_core::id::BindGroupLayoutId);
+pub(crate) struct WebGPUBindGroupLayout(
+  pub(crate) wgpu_core::id::BindGroupLayoutId,
+);
 impl Resource for WebGPUBindGroupLayout {
   fn name(&self) -> Cow<str> {
     "webGPUBindGroupLayout".into()
@@ -106,7 +108,9 @@ pub fn op_webgpu_create_bind_group_layout(
           ty: match &buffer.kind {
             Some(kind) => match kind.as_str() {
               "uniform" => wgpu_types::BufferBindingType::Uniform,
-              "storage" => wgpu_types::BufferBindingType::Storage { read_only: false },
+              "storage" => {
+                wgpu_types::BufferBindingType::Storage { read_only: false }
+              }
               "read-only-storage" => {
                 wgpu_types::BufferBindingType::Storage { read_only: true }
               }
@@ -149,7 +153,9 @@ pub fn op_webgpu_create_bind_group_layout(
         wgpu_types::BindingType::Texture {
           sample_type: match &texture.sample_type {
             Some(sample_type) => match sample_type.as_str() {
-              "float" => wgpu_types::TextureSampleType::Float { filterable: true },
+              "float" => {
+                wgpu_types::TextureSampleType::Float { filterable: true }
+              }
               "unfilterable-float" => {
                 wgpu_types::TextureSampleType::Float { filterable: false }
               }
@@ -196,12 +202,12 @@ pub fn op_webgpu_create_bind_group_layout(
     label: args.label.map(Cow::Owned),
     entries: Cow::Owned(entries),
   };
-  // TODO
-  let (bind_group_layout, _) = gfx_select!(device => instance.device_create_bind_group_layout(
+
+  let bind_group_layout = gfx_select_err!(device => instance.device_create_bind_group_layout(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state
     .resource_table
@@ -257,12 +263,12 @@ pub fn op_webgpu_create_pipeline_layout(
     bind_group_layouts: Cow::Owned(bind_group_layouts),
     push_constant_ranges: Default::default(),
   };
-  // TODO
-  let (pipeline_layout, _) = gfx_select!(device => instance.device_create_pipeline_layout(
+
+  let pipeline_layout = gfx_select_err!(device => instance.device_create_pipeline_layout(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state
     .resource_table
@@ -366,12 +372,11 @@ pub fn op_webgpu_create_bind_group(
     .try_borrow()
     .unwrap();
 
-  // TODO
-  let (bind_group, _) = gfx_select!(device => instance.device_create_bind_group(
+  let bind_group = gfx_select_err!(device => instance.device_create_bind_group(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state.resource_table.add(WebGPUBindGroup(bind_group));
 

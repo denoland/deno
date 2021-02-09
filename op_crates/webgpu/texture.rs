@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
@@ -24,9 +24,9 @@ impl Resource for WebGPUTextureView {
 }
 
 pub fn serialize_texture_format(
-  format: &String,
+  format: &str,
 ) -> Result<wgpu_types::TextureFormat, AnyError> {
-  Ok(match format.as_str() {
+  Ok(match format {
     // 8-bit formats
     "r8unorm" => wgpu_types::TextureFormat::R8Unorm,
     "r8snorm" => wgpu_types::TextureFormat::R8Snorm,
@@ -107,7 +107,9 @@ pub fn serialize_texture_format(
   })
 }
 
-pub fn serialize_dimension(dimension: &String) -> wgpu_types::TextureViewDimension {
+pub fn serialize_dimension(
+  dimension: &String,
+) -> wgpu_types::TextureViewDimension {
   match dimension.as_str() {
     "1d" => wgpu_types::TextureViewDimension::D1,
     "2d" => wgpu_types::TextureViewDimension::D2,
@@ -183,12 +185,11 @@ pub fn op_webgpu_create_texture(
     usage: wgpu_types::TextureUsage::from_bits(args.usage).unwrap(),
   };
 
-  // TODO
-  let (texture, _) = gfx_select!(device => instance.device_create_texture(
+  let texture = gfx_select_err!(device => instance.device_create_texture(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state.resource_table.add(WebGPUTexture(texture));
 
@@ -234,7 +235,10 @@ pub fn op_webgpu_create_texture_view(
 
   let descriptor = wgpu_core::resource::TextureViewDescriptor {
     label: args.label.map(Cow::Owned),
-    format: args.format.map(|s| serialize_texture_format(&s)).transpose()?,
+    format: args
+      .format
+      .map(|s| serialize_texture_format(&s))
+      .transpose()?,
     dimension: args.dimension.map(|s| serialize_dimension(&s)),
     aspect: match args.aspect {
       Some(aspect) => match aspect.as_str() {
@@ -253,12 +257,11 @@ pub fn op_webgpu_create_texture_view(
     ),
   };
 
-  // TODO
-  let (texture_view, _) = gfx_select!(texture => instance.texture_create_view(
+  let texture_view = gfx_select_err!(texture => instance.texture_create_view(
     texture,
     &descriptor,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state.resource_table.add(WebGPUTextureView(texture_view));
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -47,27 +47,30 @@ pub fn op_webgpu_create_shader_module(
     .unwrap();
 
   let source = match args.code {
-    Some(code) => wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
-    None => wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
-      let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
-      assert!(prefix.is_empty());
-      assert!(suffix.is_empty());
-      data
-    })),
+    Some(code) => {
+      wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code))
+    }
+    None => {
+      wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
+        let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
+        assert!(prefix.is_empty());
+        assert!(suffix.is_empty());
+        data
+      }))
+    }
   };
 
   let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
     label: args.label.map(Cow::Owned),
-    flags: Default::default()
+    flags: Default::default(),
   };
 
-  // TODO
-  let (shader_module, _) = gfx_select!(device => instance.device_create_shader_module(
+  let shader_module = gfx_select_err!(device => instance.device_create_shader_module(
     device,
     &descriptor,
     source,
     std::marker::PhantomData
-  ));
+  ))?;
 
   let rid = state.resource_table.add(WebGPUShaderModule(shader_module));
 
