@@ -660,7 +660,6 @@ impl Inner {
       return;
     }
     let specifier = utils::normalize_url(params.text_document.uri);
-    info!("did_open {}", specifier);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
