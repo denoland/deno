@@ -179,10 +179,10 @@
     createBindGroupLayout(descriptor) {
       for (const entry of descriptor.entries) {
         let i = 0;
-        if (descriptor.buffer) i++;
-        if (descriptor.sampler) i++;
-        if (descriptor.texture) i++;
-        if (descriptor.storageTexture) i++;
+        if (entry.buffer) i++;
+        if (entry.sampler) i++;
+        if (entry.texture) i++;
+        if (entry.storageTexture) i++;
 
         if (i !== 1) {
           throw new Error(); // TODO(@crowlKats): correct error
@@ -257,7 +257,7 @@
             : undefined,
           sourceMap: descriptor.sourceMap,
         },
-        (descriptor.code instanceof Uint32Array) ? descriptor.code : undefined,
+        ...(descriptor.code instanceof Uint32Array ? [descriptor.code] : [])
       );
 
       return new GPUShaderModule(rid, descriptor.label);
@@ -269,9 +269,9 @@
         deviceRid: this.#rid,
         label: descriptor.label,
         layout: descriptor.layout ? descriptor.layout[ridSymbol] : undefined,
-        computeStage: {
-          module: descriptor.computeStage.module[ridSymbol],
-          entryPoint: descriptor.computeStage.entryPoint,
+        compute: {
+          module: descriptor.compute.module[ridSymbol],
+          entryPoint: descriptor.compute.entryPoint,
         },
       });
 
