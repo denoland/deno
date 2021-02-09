@@ -58,7 +58,7 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
-const TLS_CLIENT_AUTH_PORT: u16 = 4244;
+const TLS_CLIENT_AUTH_PORT: u16 = 4551;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -205,6 +205,7 @@ async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: ws");
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
       let ws_stream_fut = accept_async(stream);
@@ -298,6 +299,7 @@ async fn run_wss_server(addr: &SocketAddr) {
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: wss");
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -335,6 +337,7 @@ async fn run_tls_client_auth_server(addr: &SocketAddr) {
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: tls client auth");
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -757,7 +760,7 @@ async fn wrap_main_https_server() {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
-    println!("tls ready");
+    println!("ready: https");
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = async_stream::stream! {
@@ -832,7 +835,7 @@ pub async fn run_all_servers() {
   futures::future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
     if !replace(&mut did_print_ready, true) {
-      println!("ready");
+      println!("ready: server_fut");
     }
     poll_result
   })
@@ -959,17 +962,15 @@ impl HttpServerCount {
       let stdout = test_server.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
       let lines = BufReader::new(stdout).lines();
-      let mut ready = false;
-      let mut tls_ready = false;
+
+      // Wait for all the servers to report being ready.
+      let mut ready_count = 0;
       for maybe_line in lines {
         if let Ok(line) = maybe_line {
-          if line.starts_with("ready") {
-            ready = true;
+          if line.starts_with("ready:") {
+            ready_count += 1;
           }
-          if line.starts_with("tls ready") {
-            tls_ready = true;
-          }
-          if ready && tls_ready {
+          if ready_count == 5 {
             break;
           }
         } else {
