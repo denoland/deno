@@ -203,7 +203,9 @@
         instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
-        bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) => bindGroupLayout[ridSymbol]),
+        bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) =>
+          bindGroupLayout[ridSymbol]
+        ),
       });
 
       return new GPUPipelineLayout(rid, descriptor.label);
@@ -266,9 +268,7 @@
         instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
-        layout: descriptor.layout
-          ? descriptor.layout[ridSymbol]
-          : undefined,
+        layout: descriptor.layout ? descriptor.layout[ridSymbol] : undefined,
         computeStage: {
           module: descriptor.computeStage.module[ridSymbol],
           entryPoint: descriptor.computeStage.entryPoint,
@@ -463,7 +463,7 @@
         ...descriptor,
       });
 
-      return new GPUTextureView(rid); // TODO(@crowlKats): label?
+      return new GPUTextureView(rid, descriptor.label);
     }
 
     destroy() {
@@ -524,7 +524,7 @@
     }
 
     getBindGroupLayout(index) {
-      const { rid } = core.jsonOpSync(
+      const { rid, label } = core.jsonOpSync(
         "op_webgpu_compute_pipeline_get_bind_group_layout",
         {
           instanceRid,
@@ -533,7 +533,7 @@
         },
       );
 
-      return new GPUBindGroupLayout(rid); // TODO(@crowlKats): label?
+      return new GPUBindGroupLayout(rid, label);
     }
   }
 
@@ -544,7 +544,7 @@
     }
 
     getBindGroupLayout(index) {
-      const { rid } = core.jsonOpSync(
+      const { rid, label } = core.jsonOpSync(
         "op_webgpu_render_pipeline_get_bind_group_layout",
         {
           instanceRid,
@@ -553,7 +553,7 @@
         },
       );
 
-      return new GPUBindGroupLayout(rid); // TODO(@crowlKats): label?
+      return new GPUBindGroupLayout(rid, label);
     }
   }
 

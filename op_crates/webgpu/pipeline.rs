@@ -256,12 +256,15 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
 
   let bind_group_layout = gfx_select_err!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData))?;
 
+  let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
+
   let rid = state
     .resource_table
     .add(super::binding::WebGPUBindGroupLayout(bind_group_layout));
 
   Ok(json!({
     "rid": rid,
+    "label": label,
   }))
 }
 
@@ -661,11 +664,14 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
 
   let bind_group_layout = gfx_select_err!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData))?;
 
+  let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
+
   let rid = state
     .resource_table
     .add(super::binding::WebGPUBindGroupLayout(bind_group_layout));
 
   Ok(json!({
     "rid": rid,
+    "label": label,
   }))
 }
