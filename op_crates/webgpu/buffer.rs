@@ -6,7 +6,7 @@ use deno_core::futures::channel::oneshot;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::{serde_json, RcRef, ZeroCopyBuf};
+use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -55,9 +55,7 @@ pub fn op_webgpu_create_buffer(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::from),
@@ -97,29 +95,24 @@ pub async fn op_webgpu_buffer_get_map_async(
 ) -> Result<Value, AnyError> {
   let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
 
-  let buffer;
-  let device;
-  let instance;
-  {
-    let state = state.borrow();
-    let buffer_resource = state
-      .resource_table
-      .get::<WebGPUBuffer>(args.buffer_rid)
-      .ok_or_else(bad_resource_id)?;
-    buffer = buffer_resource.0;
-    let device_resource = state
-      .resource_table
-      .get::<super::WebGPUDevice>(args.device_rid)
-      .ok_or_else(bad_resource_id)?;
-    device = device_resource.0.clone();
-    let instance_resource = state
-      .resource_table
-      .get::<super::WebGPUInstance>(args.instance_rid)
-      .ok_or_else(bad_resource_id)?;
-    instance = RcRef::map(&instance_resource, |r| &r.0).borrow().await;
-  }
-
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
+
+  let state_ = state.borrow();
+  let buffer_resource = state_
+    .resource_table
+    .get::<WebGPUBuffer>(args.buffer_rid)
+    .ok_or_else(bad_resource_id)?;
+  let buffer = buffer_resource.0;
+  let device_resource = state_
+    .resource_table
+    .get::<super::WebGPUDevice>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
+  let device = device_resource.0;
+  let instance_resource = state_
+    .resource_table
+    .get::<super::WebGPUInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let instance = &instance_resource.0;
 
   let boxed_sender = Box::new(sender);
   let sender_ptr = Box::into_raw(boxed_sender) as *mut u8;
@@ -152,6 +145,7 @@ pub async fn op_webgpu_buffer_get_map_async(
     }
   ))?;
   drop(instance);
+  drop(state_);
 
   let done = Rc::new(RefCell::new(false));
   let done_ = done.clone();
@@ -162,15 +156,10 @@ pub async fn op_webgpu_buffer_get_map_async(
         let state = state.borrow();
         let instance_resource = state
           .resource_table
-          .get::<super::WebGPUInstance>(instance_rid);
-        if let Some(instance_resource) = instance_resource {
-          let instance =
-            RcRef::map(&instance_resource, |r| &r.0).borrow().await;
-          gfx_select!(device.clone() => instance.device_poll(device, false))
-            .unwrap()
-        } else {
-          break;
-        }
+          .get::<super::WebGPUInstance>(instance_rid)
+          .ok_or_else(bad_resource_id)?;
+        let instance = &instance_resource.0;
+        wgc::gfx_select!(device => instance.device_poll(device, false)).unwrap()
       }
       tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -214,9 +203,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let slice_pointer = gfx_select!(buffer => instance.buffer_get_mapped_range(
     buffer,
@@ -266,9 +253,7 @@ pub fn op_webgpu_buffer_unmap(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   mapped_resource
     .0

@@ -1123,6 +1123,8 @@ fn init_logger(maybe_level: Option<Level>) {
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", LevelFilter::Off)
+  // wgpu backend crates (gfx_backend), have a lot of useless INFO and WARN logs
+  .filter_module("gfx", LevelFilter::Error)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

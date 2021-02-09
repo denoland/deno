@@ -4,7 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, RcRef, ZeroCopyBuf};
+use deno_core::{serde_json, ZeroCopyBuf};
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -159,9 +159,7 @@ pub fn op_webgpu_create_texture(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::resource::TextureDescriptor {
     label: args.label.map(Cow::from),
@@ -229,9 +227,7 @@ pub fn op_webgpu_create_texture_view(
     .resource_table
     .get::<super::WebGPUInstance>(args.instance_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = RcRef::map(&instance_resource, |r| &r.0)
-    .try_borrow()
-    .unwrap();
+  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::resource::TextureViewDescriptor {
     label: args.label.map(Cow::from),
