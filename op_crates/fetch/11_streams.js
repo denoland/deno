@@ -7,8 +7,6 @@
 "use strict";
 
 ((window) => {
-  const customInspect = Symbol.for("Deno.customInspect");
-
   class AssertionError extends Error {
     constructor(msg) {
       super(msg);
@@ -3224,10 +3222,8 @@
       return iterator;
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} ${
-        Deno.inspect({ locked: this.locked })
-      }`;
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
   }
 
@@ -3308,8 +3304,8 @@
       readableStreamReaderGenericRelease(this);
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} { closed: ${String(this.closed)} }`;
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
     }
   }
 
@@ -3597,12 +3593,9 @@
       return this[_writable];
     }
 
-    [customInspect]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${
-        Deno.inspect(
-          { readable: this.readable, writable: this.writable },
-          { depth: 1 },
-        )
+        inspect({ readable: this.readable, writable: this.writable })
       }`;
     }
   }
@@ -3736,10 +3729,8 @@
       return acquireWritableStreamDefaultWriter(this);
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} ${
-        Deno.inspect({ locked: this.locked })
-      }`;
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
   }
 
