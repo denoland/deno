@@ -59,8 +59,8 @@ pub fn op_webgpu_create_render_bundle_encoder(
   }
 
   let descriptor = wgpu_core::command::RenderBundleEncoderDescriptor {
-    label: args.label.map(Cow::Owned),
-    color_formats: Cow::Owned(color_formats),
+    label: args.label.map(Cow::from),
+    color_formats: Cow::from(color_formats),
     depth_stencil_format: args
       .depth_stencil_format
       .map(|s| serialize_texture_format(&s))
@@ -116,7 +116,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
   let render_bundle = gfx_select_err!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
     &wgpu_core::command::RenderBundleDescriptor {
-      label: args.label.map(Cow::Owned),
+      label: args.label.map(Cow::from),
     },
     std::marker::PhantomData
   ))?;

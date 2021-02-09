@@ -9,10 +9,6 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::sampler::serialize_compare_function;
-use super::texture::serialize_texture_format;
-use crate::shader::WebGPUShaderModule;
-
 pub(crate) struct WebGPUPipelineLayout(
   pub(crate) wgpu_core::id::PipelineLayoutId,
 );
@@ -72,7 +68,7 @@ fn serialize_stencil_face_state(
       .compare
       .as_ref()
       .map_or(wgpu_types::CompareFunction::Always, |op| {
-        serialize_compare_function(op)
+        super::sampler::serialize_compare_function(op)
       }),
     fail_op: state
       .fail_op
@@ -193,15 +189,15 @@ pub fn op_webgpu_create_compute_pipeline(
 
   let compute_shader_module_resource = state
     .resource_table
-    .get::<WebGPUShaderModule>(args.compute.module)
+    .get::<super::shader::WebGPUShaderModule>(args.compute.module)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgpu_core::pipeline::ComputePipelineDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     layout: pipeline_layout,
     stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
       module: compute_shader_module_resource.0,
-      entry_point: Cow::Owned(args.compute.entry_point),
+      entry_point: Cow::from(args.compute.entry_point),
     },
   };
   let implicit_pipelines = match args.layout {
@@ -416,14 +412,14 @@ pub fn op_webgpu_create_render_pipeline(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgpu_core::pipeline::RenderPipelineDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     layout,
     vertex: wgpu_core::pipeline::VertexState {
       stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
         module: vertex_shader_module_resource.0,
-        entry_point: Cow::Owned(args.vertex.entry_point),
+        entry_point: Cow::from(args.vertex.entry_point),
       },
-      buffers: Cow::Owned(if let Some(buffers) = args.vertex.vertex_buffers {
+      buffers: Cow::from(if let Some(buffers) = args.vertex.vertex_buffers {
         let mut return_buffers = vec![];
         for buffer in buffers {
           if let Some(buffer) = buffer {
@@ -437,7 +433,7 @@ pub fn op_webgpu_create_render_pipeline(
                 },
                 None => wgpu_types::InputStepMode::Vertex,
               },
-              attributes: Cow::Owned(
+              attributes: Cow::from(
                 buffer
                   .attributes
                   .iter()
@@ -478,7 +474,7 @@ pub fn op_webgpu_create_render_pipeline(
                     offset: attribute.offset,
                     shader_location: attribute.shader_location,
                   })
-                  .collect(),
+                  .collect::<Vec<wgpu_types::VertexAttribute>>(),
               ),
             })
           }
@@ -572,9 +568,9 @@ pub fn op_webgpu_create_render_pipeline(
       wgpu_core::pipeline::FragmentState {
         stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
           module: fragment_shader_module_resource.0,
-          entry_point: Cow::Owned(fragment.entry_point),
+          entry_point: Cow::from(fragment.entry_point),
         },
-        targets: Cow::Owned(
+        targets: Cow::from(
           fragment
             .targets
             .iter()
@@ -587,7 +583,10 @@ pub fn op_webgpu_create_render_pipeline(
               });
 
               wgpu_types::ColorTargetState {
-                format: serialize_texture_format(&target.format).unwrap(),
+                format: super::texture::serialize_texture_format(
+                  &target.format,
+                )
+                .unwrap(),
                 alpha_blend: blends
                   .clone()
                   .map_or(Default::default(), |states| states.0),
@@ -600,7 +599,7 @@ pub fn op_webgpu_create_render_pipeline(
                   }),
               }
             })
-            .collect(),
+            .collect::<Vec<wgpu_types::ColorTargetState>>(),
         ),
       }
     }),

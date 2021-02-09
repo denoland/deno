@@ -98,7 +98,7 @@ pub fn op_webgpu_create_sampler(
     .unwrap();
 
   let descriptor = wgpu_core::resource::SamplerDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     address_modes: [
       serialize_address_mode(args.address_mode_u),
       serialize_address_mode(args.address_mode_v),

@@ -66,7 +66,7 @@ pub fn op_webgpu_create_command_encoder(
     .unwrap();
 
   let descriptor = wgpu_types::CommandEncoderDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
   };
 
   let command_encoder = gfx_select_err!(device => instance.device_create_command_encoder(
@@ -227,8 +227,8 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   }
 
   let descriptor = wgpu_core::command::RenderPassDescriptor {
-    label: args.label.map(Cow::Owned),
-    color_attachments: Cow::Owned(color_attachments),
+    label: args.label.map(Cow::from),
+    color_attachments: Cow::from(color_attachments),
     depth_stencil_attachment: depth_stencil_attachment.as_ref(),
   };
 
@@ -268,7 +268,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgpu_core::command::ComputePassDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
   };
 
   let compute_pass = wgpu_core::command::ComputePass::new(
@@ -693,6 +693,100 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CommandEncoderWriteTimestampArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  query_set: u32,
+  query_index: u32,
+}
+
+pub fn op_webgpu_command_encoder_write_timestamp(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderWriteTimestampArgs = serde_json::from_value(args)?;
+
+  let command_encoder_resource = state
+    .resource_table
+    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = command_encoder_resource.0;
+  let instance_resource = state
+    .resource_table
+    .get::<super::WebGPUInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
+  let query_set_resource = state
+    .resource_table
+    .get::<super::WebGPUQuerySet>(args.query_set)
+    .ok_or_else(bad_resource_id)?;
+
+  gfx_select!(command_encoder => instance.command_encoder_write_timestamp(
+    command_encoder,
+    query_set_resource.0,
+    args.query_index
+  ))?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandEncoderResolveQuerySetArgs {
+  instance_rid: u32,
+  command_encoder_rid: u32,
+  query_set: u32,
+  first_query: u32,
+  query_count: u32,
+  destination: u32,
+  destination_offset: u64,
+}
+
+pub fn op_webgpu_command_encoder_resolve_query_set(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CommandEncoderResolveQuerySetArgs = serde_json::from_value(args)?;
+
+  let command_encoder_resource = state
+    .resource_table
+    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .ok_or_else(bad_resource_id)?;
+  let command_encoder = command_encoder_resource.0;
+  let instance_resource = state
+    .resource_table
+    .get::<super::WebGPUInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
+  let query_set_resource = state
+    .resource_table
+    .get::<super::WebGPUQuerySet>(args.query_set)
+    .ok_or_else(bad_resource_id)?;
+  let destination_resource = state
+    .resource_table
+    .get::<super::buffer::WebGPUBuffer>(args.destination)
+    .ok_or_else(bad_resource_id)?;
+
+  gfx_select!(command_encoder => instance.command_encoder_resolve_query_set(
+    command_encoder,
+    query_set_resource.0,
+    args.first_query,
+    args.query_count,
+    destination_resource.0,
+    args.destination_offset
+  ))?;
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CommandEncoderFinishArgs {
   instance_rid: u32,
   command_encoder_rid: u32,
@@ -720,7 +814,7 @@ pub fn op_webgpu_command_encoder_finish(
     .unwrap();
 
   let descriptor = wgpu_types::CommandBufferDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
   };
 
   let command_buffer = gfx_select_err!(command_encoder => instance.command_encoder_finish(

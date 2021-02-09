@@ -133,7 +133,9 @@
       this.label = data.label;
     }
 
-    destroy() {} // TODO
+    destroy() {
+      throw new Error("Not yet implemented");
+    }
 
     createBuffer(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
@@ -187,7 +189,7 @@
         if (descriptor.storageTexture) i++;
 
         if (i !== 1) {
-          throw new Error(); // TODO
+          throw new Error(); // TODO(@crowlKats): correct error
         }
       }
 
@@ -305,11 +307,11 @@
     }
 
     createComputePipelineAsync(_descriptor) {
-      throw new Error("Not yet implemented"); // TODO easy polyfill
+      throw new Error("Not yet implemented"); // easy polyfill
     }
 
     createRenderPipelineAsync(_descriptor) {
-      throw new Error("Not yet implemented"); // TODO easy polyfill
+      throw new Error("Not yet implemented"); // easy polyfill
     }
 
     createCommandEncoder(descriptor = {}) {
@@ -334,8 +336,16 @@
       return new GPURenderBundleEncoder(rid, descriptor.label);
     }
 
-    createQuerySet(_descriptor) {
-      throw new Error("Not yet implemented"); // wgpu#721
+    createQuerySet(descriptor) {
+      const { rid } = core.jsonOpSync("op_webgpu_create_query_set", {
+        instanceRid,
+        deviceRid: this.#rid,
+        ...descriptor,
+      });
+
+      const querySet = new GPUQuerySet(descriptor.label);
+      GPUQuerySetMap.set(querySet, rid);
+      return querySet;
     }
   }
 
@@ -533,7 +543,7 @@
     }
 
     compilationInfo() {
-      throw new Error("Not yet implemented"); // wgpu#977
+      throw new Error("Not yet implemented");
     }
   }
 
@@ -772,25 +782,38 @@
       });
     }
     insertDebugMarker(markerLabel) {
-      core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
+      core.jsonOpSync("op_webgpu_command_encoder_insert_debug_marker", {
         instanceRid,
         commandEncoderRid: this.#rid,
         markerLabel,
       });
     }
 
-    writeTimestamp(_querySet, _queryIndex) {
-      throw new Error("Not yet implemented"); // wgpu#721
+    writeTimestamp(querySet, queryIndex) {
+      core.jsonOpSync("op_webgpu_command_encoder_write_timestamp", {
+        instanceRid,
+        commandEncoderRid: this.#rid,
+        querySet: GPUQuerySetMap.get(querySet),
+        queryIndex,
+      });
     }
 
     resolveQuerySet(
-      _querySet,
-      _firstQuery,
-      _queryCount,
-      _destination,
-      _destinationOffset,
+      querySet,
+      firstQuery,
+      queryCount,
+      destination,
+      destinationOffset,
     ) {
-      throw new Error("Not yet implemented"); // wgpu#721
+      core.jsonOpSync("op_webgpu_command_encoder_resolve_query_set", {
+        instanceRid,
+        commandEncoderRid: this.#rid,
+        querySet: GPUQuerySetMap.get(querySet),
+        firstQuery,
+        queryCount,
+        destination: GPUBufferMap.get(destination),
+        destinationOffset,
+      });
     }
 
     finish(descriptor = {}) {
@@ -858,15 +881,25 @@
       throw new Error("Not yet implemented"); // wgpu#721
     }
 
-    beginPipelineStatisticsQuery(_querySet, _queryIndex) {
-      throw new Error("Not yet implemented"); // wgpu#721
+    beginPipelineStatisticsQuery(querySet, queryIndex) {
+      core.jsonOpSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
+        renderPassRid: this.#rid,
+        querySet: GPUQuerySetMap.get(querySet),
+        queryIndex,
+      });
     }
     endPipelineStatisticsQuery() {
-      throw new Error("Not yet implemented"); // wgpu#721
+      core.jsonOpSync("op_webgpu_render_pass_end_pipeline_statistics_query", {
+        renderPassRid: this.#rid,
+      });
     }
 
-    writeTimestamp(_querySet, _queryIndex) {
-      throw new Error("Not yet implemented"); // wgpu#721
+    writeTimestamp(querySet, queryIndex) {
+      core.jsonOpSync("op_webgpu_render_pass_write_timestamp", {
+        renderPassRid: this.#rid,
+        querySet: GPUQuerySetMap.get(querySet),
+        queryIndex,
+      });
     }
 
     executeBundles(bundles) {
@@ -1034,15 +1067,28 @@
       });
     }
 
-    beginPipelineStatisticsQuery(_querySet, _queryIndex) {
-      throw new Error("Not yet implemented"); // wgpu#721
+    beginPipelineStatisticsQuery(querySet, queryIndex) {
+      core.jsonOpSync(
+        "op_webgpu_compute_pass_begin_pipeline_statistics_query",
+        {
+          computePassRid: this.#rid,
+          querySet: GPUQuerySetMap.get(querySet),
+          queryIndex,
+        },
+      );
     }
     endPipelineStatisticsQuery() {
-      throw new Error("Not yet implemented"); // wgpu#721
+      core.jsonOpSync("op_webgpu_compute_pass_end_pipeline_statistics_query", {
+        computePassRid: this.#rid,
+      });
     }
 
-    writeTimestamp(_querySet, _queryIndex) {
-      throw new Error("Not yet implemented"); // wgpu#721
+    writeTimestamp(querySet, queryIndex) {
+      core.jsonOpSync("op_webgpu_compute_pass_write_timestamp", {
+        computePassRid: this.#rid,
+        querySet: GPUQuerySetMap.get(querySet),
+        queryIndex,
+      });
     }
 
     endPass() {
@@ -1257,6 +1303,17 @@
   class GPURenderBundle {
     constructor(label) {
       this.label = label ?? null;
+    }
+  }
+
+  const GPUQuerySetMap = new WeakMap();
+  class GPUQuerySet {
+    constructor(label) {
+      this.label = label ?? null;
+    }
+
+    destroy() {
+      throw new Error("Not yet implemented");
     }
   }
 

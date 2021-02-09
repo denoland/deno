@@ -116,6 +116,105 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ComputePassBeginPipelineStatisticsQueryArgs {
+  compute_pass_rid: u32,
+  query_set: u32,
+  query_index: u32,
+}
+
+pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: ComputePassBeginPipelineStatisticsQueryArgs =
+    serde_json::from_value(args)?;
+
+  let compute_pass_resource = state
+    .resource_table
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+  let query_set_resource = state
+    .resource_table
+    .get::<super::WebGPUQuerySet>(args.query_set)
+    .ok_or_else(bad_resource_id)?;
+
+  unsafe {
+    wgpu_core::command::compute_ffi::wgpu_compute_pass_begin_pipeline_statistics_query(
+      &mut compute_pass_resource.0.borrow_mut(),
+      query_set_resource.0,
+      args.query_index,
+    );
+  }
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ComputePassEndPipelineStatisticsQueryArgs {
+  compute_pass_rid: u32,
+}
+
+pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: ComputePassEndPipelineStatisticsQueryArgs =
+    serde_json::from_value(args)?;
+
+  let compute_pass_resource = state
+    .resource_table
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  unsafe {
+    wgpu_core::command::compute_ffi::wgpu_compute_pass_end_pipeline_statistics_query(
+      &mut compute_pass_resource.0.borrow_mut(),
+    );
+  }
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ComputePassWriteTimestampArgs {
+  compute_pass_rid: u32,
+  query_set: u32,
+  query_index: u32,
+}
+
+pub fn op_webgpu_compute_pass_write_timestamp(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: ComputePassWriteTimestampArgs = serde_json::from_value(args)?;
+
+  let compute_pass_resource = state
+    .resource_table
+    .get::<WebGPUComputePass>(args.compute_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+  let query_set_resource = state
+    .resource_table
+    .get::<super::WebGPUQuerySet>(args.query_set)
+    .ok_or_else(bad_resource_id)?;
+
+  unsafe {
+    wgpu_core::command::compute_ffi::wgpu_compute_pass_write_timestamp(
+      &mut compute_pass_resource.0.borrow_mut(),
+      query_set_resource.0,
+      args.query_index,
+    );
+  }
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ComputePassEndPassArgs {
   instance_rid: u32,
   command_encoder_rid: u32,

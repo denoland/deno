@@ -108,9 +108,9 @@ pub fn serialize_texture_format(
 }
 
 pub fn serialize_dimension(
-  dimension: &String,
+  dimension: &str,
 ) -> wgpu_types::TextureViewDimension {
-  match dimension.as_str() {
+  match dimension {
     "1d" => wgpu_types::TextureViewDimension::D1,
     "2d" => wgpu_types::TextureViewDimension::D2,
     "2d-array" => wgpu_types::TextureViewDimension::D2Array,
@@ -164,7 +164,7 @@ pub fn op_webgpu_create_texture(
     .unwrap();
 
   let descriptor = wgpu_core::resource::TextureDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     size: wgpu_types::Extent3d {
       width: args.size.width.unwrap_or(1),
       height: args.size.height.unwrap_or(1),
@@ -234,7 +234,7 @@ pub fn op_webgpu_create_texture_view(
     .unwrap();
 
   let descriptor = wgpu_core::resource::TextureViewDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     format: args
       .format
       .map(|s| serialize_texture_format(&s))

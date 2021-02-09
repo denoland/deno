@@ -48,20 +48,18 @@ pub fn op_webgpu_create_shader_module(
 
   let source = match args.code {
     Some(code) => {
-      wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code))
+      wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::from(code))
     }
-    None => {
-      wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
-        let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
-        assert!(prefix.is_empty());
-        assert!(suffix.is_empty());
-        data
-      }))
-    }
+    None => wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::from(unsafe {
+      let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
+      assert!(prefix.is_empty());
+      assert!(suffix.is_empty());
+      data
+    })),
   };
 
   let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     flags: Default::default(),
   };
 

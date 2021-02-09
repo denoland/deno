@@ -1,12 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Duration;
-
-use serde::Deserialize;
-
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
@@ -15,6 +8,11 @@ use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::{serde_json, RcRef, ZeroCopyBuf};
 use deno_core::{BufVec, Resource};
+use serde::Deserialize;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
 
 pub(crate) struct WebGPUBuffer(pub(crate) wgpu_core::id::BufferId);
 impl Resource for WebGPUBuffer {
@@ -62,7 +60,7 @@ pub fn op_webgpu_create_buffer(
     .unwrap();
 
   let descriptor = wgpu_core::resource::BufferDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     size: args.size,
     usage: wgpu_types::BufferUsage::from_bits(args.usage).unwrap(),
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),

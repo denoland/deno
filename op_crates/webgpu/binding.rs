@@ -199,8 +199,8 @@ pub fn op_webgpu_create_bind_group_layout(
   }
 
   let descriptor = wgpu_core::binding_model::BindGroupLayoutDescriptor {
-    label: args.label.map(Cow::Owned),
-    entries: Cow::Owned(entries),
+    label: args.label.map(Cow::from),
+    entries: Cow::from(entries),
   };
 
   let bind_group_layout = gfx_select_err!(device => instance.device_create_bind_group_layout(
@@ -259,8 +259,8 @@ pub fn op_webgpu_create_pipeline_layout(
     .unwrap();
 
   let descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
-    label: args.label.map(Cow::Owned),
-    bind_group_layouts: Cow::Owned(bind_group_layouts),
+    label: args.label.map(Cow::from),
+    bind_group_layouts: Cow::from(bind_group_layouts),
     push_constant_ranges: Default::default(),
   };
 
@@ -359,9 +359,9 @@ pub fn op_webgpu_create_bind_group(
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgpu_core::binding_model::BindGroupDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     layout: bind_group_layout.0,
-    entries: Cow::Owned(entries),
+    entries: Cow::from(entries),
   };
 
   let instance_resource = state

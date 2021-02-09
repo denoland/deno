@@ -2,8 +2,8 @@
 
 #![deny(warnings)]
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
+use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -19,7 +19,7 @@ mod macros {
   macro_rules! gfx_select {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
       match $id.backend() {
-        #[cfg(all(not(target_arch = "wasm32"), any(not(any(target_os = "ios", target_os = "macos")), feature = "gfx-backend-vulkan")))]
+        #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "ios", target_os = "macos"))))]
         wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::backend::Vulkan>( $($param),* ),
         #[cfg(all(not(target_arch = "wasm32"), any(target_os = "ios", target_os = "macos")))]
         wgpu_types::Backend::Metal => $global.$method::<wgpu_core::backend::Metal>( $($param),* ),
@@ -80,6 +80,13 @@ struct WebGPUDevice(wgpu_core::id::DeviceId);
 impl Resource for WebGPUDevice {
   fn name(&self) -> Cow<str> {
     "webGPUDevice".into()
+  }
+}
+
+struct WebGPUQuerySet(wgpu_core::id::QuerySetId);
+impl Resource for WebGPUQuerySet {
+  fn name(&self) -> Cow<str> {
+    "webGPUQuerySet".into()
   }
 }
 
@@ -254,7 +261,7 @@ pub async fn op_webgpu_request_device(
   }
 
   let descriptor = wgpu_types::DeviceDescriptor {
-    label: args.label.map(Cow::Owned),
+    label: args.label.map(Cow::from),
     features,
     limits: args
       .non_guaranteed_limits
@@ -317,5 +324,105 @@ pub async fn op_webgpu_request_device(
     "rid": rid,
     "features": features,
     "limits": json_limits,
+  }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateQuerySetArgs {
+  instance_rid: u32,
+  device_rid: u32,
+  _label: Option<String>, // not yet implemented
+  #[serde(rename = "type")]
+  kind: String,
+  count: u32,
+  pipeline_statistics: Option<Vec<String>>,
+}
+
+pub fn op_webgpu_create_query_set(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: CreateQuerySetArgs = serde_json::from_value(args)?;
+
+  let device_resource = state
+    .resource_table
+    .get::<WebGPUDevice>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
+  let device = device_resource.0;
+  let instance_resource = state
+    .resource_table
+    .get::<WebGPUInstance>(args.instance_rid)
+    .ok_or_else(bad_resource_id)?;
+  let instance = RcRef::map(&instance_resource, |r| &r.0)
+    .try_borrow()
+    .unwrap();
+
+  let descriptor = wgpu_types::QuerySetDescriptor {
+    ty: match args.kind.as_str() {
+      "pipeline-statistics" => {
+        let mut pipeline_statistics_names =
+          wgpu_types::PipelineStatisticsTypes::empty();
+
+        if let Some(pipeline_statistics) = args.pipeline_statistics {
+          if pipeline_statistics
+            .contains(&"vertex-shader-invocations".to_string())
+          {
+            pipeline_statistics_names.set(
+              wgpu_types::PipelineStatisticsTypes::VERTEX_SHADER_INVOCATIONS,
+              true,
+            );
+          }
+          if pipeline_statistics.contains(&"clipper-invocations".to_string()) {
+            pipeline_statistics_names.set(
+              wgpu_types::PipelineStatisticsTypes::CLIPPER_INVOCATIONS,
+              true,
+            );
+          }
+          if pipeline_statistics.contains(&"clipper-primitives-out".to_string())
+          {
+            pipeline_statistics_names.set(
+              wgpu_types::PipelineStatisticsTypes::CLIPPER_PRIMITIVES_OUT,
+              true,
+            );
+          }
+          if pipeline_statistics
+            .contains(&"fragment-shader-invocations".to_string())
+          {
+            pipeline_statistics_names.set(
+              wgpu_types::PipelineStatisticsTypes::FRAGMENT_SHADER_INVOCATIONS,
+              true,
+            );
+          }
+          if pipeline_statistics
+            .contains(&"compute-shader-invocations".to_string())
+          {
+            pipeline_statistics_names.set(
+              wgpu_types::PipelineStatisticsTypes::COMPUTE_SHADER_INVOCATIONS,
+              true,
+            );
+          }
+        };
+
+        wgpu_types::QueryType::PipelineStatistics(pipeline_statistics_names)
+      }
+      "occlusion" => return Err(not_supported()),
+      "timestamp" => wgpu_types::QueryType::Timestamp,
+      _ => unreachable!(),
+    },
+    count: args.count,
+  };
+
+  let query_set = gfx_select_err!(device => instance.device_create_query_set(
+    device,
+    &descriptor,
+    std::marker::PhantomData
+  ))?;
+
+  let rid = state.resource_table.add(WebGPUQuerySet(query_set));
+
+  Ok(json!({
+    "rid": rid,
   }))
 }

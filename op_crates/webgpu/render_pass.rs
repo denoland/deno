@@ -159,6 +159,105 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RenderPassBeginPipelineStatisticsQueryArgs {
+  render_pass_rid: u32,
+  query_set: u32,
+  query_index: u32,
+}
+
+pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassBeginPipelineStatisticsQueryArgs =
+    serde_json::from_value(args)?;
+
+  let render_pass_resource = state
+    .resource_table
+    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+  let query_set_resource = state
+    .resource_table
+    .get::<super::WebGPUQuerySet>(args.query_set)
+    .ok_or_else(bad_resource_id)?;
+
+  unsafe {
+    wgpu_core::command::render_ffi::wgpu_render_pass_begin_pipeline_statistics_query(
+      &mut render_pass_resource.0.borrow_mut(),
+      query_set_resource.0,
+      args.query_index,
+    );
+  }
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderPassEndPipelineStatisticsQueryArgs {
+  render_pass_rid: u32,
+}
+
+pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassEndPipelineStatisticsQueryArgs =
+    serde_json::from_value(args)?;
+
+  let render_pass_resource = state
+    .resource_table
+    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+
+  unsafe {
+    wgpu_core::command::render_ffi::wgpu_render_pass_end_pipeline_statistics_query(
+      &mut render_pass_resource.0.borrow_mut(),
+    );
+  }
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderPassWriteTimestampArgs {
+  render_pass_rid: u32,
+  query_set: u32,
+  query_index: u32,
+}
+
+pub fn op_webgpu_render_pass_write_timestamp(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: RenderPassWriteTimestampArgs = serde_json::from_value(args)?;
+
+  let render_pass_resource = state
+    .resource_table
+    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .ok_or_else(bad_resource_id)?;
+  let query_set_resource = state
+    .resource_table
+    .get::<super::WebGPUQuerySet>(args.query_set)
+    .ok_or_else(bad_resource_id)?;
+
+  unsafe {
+    wgpu_core::command::render_ffi::wgpu_render_pass_write_timestamp(
+      &mut render_pass_resource.0.borrow_mut(),
+      query_set_resource.0,
+      args.query_index,
+    );
+  }
+
+  Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RenderPassExecuteBundlesArgs {
   render_pass_rid: u32,
   bundles: Vec<u32>,
