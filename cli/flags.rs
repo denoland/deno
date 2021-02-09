@@ -3486,11 +3486,7 @@ mod tests {
 
   #[test]
   fn coverage() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "coverage",
-      "foo.json"
-    ]);
+    let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);
     assert_eq!(
       r.unwrap(),
       Flags {
