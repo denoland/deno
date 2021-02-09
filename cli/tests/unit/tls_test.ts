@@ -34,11 +34,18 @@ unitTest(
   { perms: { read: true, net: true } },
   async function connectTLSClientCertConnection(): Promise<void> {
     const conn = await Deno.connectTls({
-      hostname: "deno.land",
-      port: 443,
+      hostname: "localhost",
+      port: 4244,
       certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
       privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
+      certFile: "cli/tests/tls/RootCA.pem",
     });
+
+    const reader = new TextProtoReader(new BufReader(conn));
+    const result = await reader.readLine() as string;
+
+    // Server will respond with PASS if client authentication was successful.
+    assertEquals(result, "PASS");
 
     conn.close();
   },
@@ -49,8 +56,8 @@ unitTest(
   async function connectTLSBadClientCertPrivateKey(): Promise<void> {
     await assertThrowsAsync(async () => {
       await Deno.connectTls({
-        hostname: "deno.land",
-        port: 443,
+        hostname: "localhost",
+        port: 4244,
         certChain: "bad data",
         privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
       });
@@ -63,8 +70,8 @@ unitTest(
   async function connectTLSBadClientCertChain(): Promise<void> {
     await assertThrowsAsync(async () => {
       await Deno.connectTls({
-        hostname: "deno.land",
-        port: 443,
+        hostname: "localhost",
+        port: 4244,
         certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
         privateKey: "bad data",
       });
