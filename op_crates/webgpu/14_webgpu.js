@@ -3,6 +3,8 @@
 ((window) => {
   const core = window.Deno.core;
 
+  const ridSymbol = Symbol("rid");
+
   function normalizeGPUExtent3D(data) {
     if (Array.isArray(data)) {
       return {
@@ -144,15 +146,13 @@
         ...descriptor,
       });
 
-      const buffer = new GPUBuffer(
+      return new GPUBuffer(
         rid,
         this.#rid,
         descriptor.label,
         descriptor.size,
         descriptor.mappedAtCreation,
       );
-      GPUBufferMap.set(buffer, rid);
-      return buffer;
     }
 
     createTexture(descriptor) {
@@ -163,9 +163,7 @@
         size: normalizeGPUExtent3D(descriptor.size),
       });
 
-      const texture = new GPUTexture(rid, descriptor.label);
-      GPUTextureMap.set(texture, rid);
-      return texture;
+      return new GPUTexture(rid, descriptor.label);
     }
 
     createSampler(descriptor = {}) {
@@ -175,9 +173,7 @@
         ...descriptor,
       });
 
-      const sampler = new GPUSampler(descriptor.label);
-      GPUSamplerMap.set(sampler, rid);
-      return sampler;
+      return new GPUSampler(rid, descriptor.label);
     }
 
     createBindGroupLayout(descriptor) {
@@ -199,9 +195,7 @@
         ...descriptor,
       });
 
-      const bindGroupLayout = new GPUBindGroupLayout(descriptor.label);
-      GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
-      return bindGroupLayout;
+      return new GPUBindGroupLayout(rid, descriptor.label);
     }
 
     createPipelineLayout(descriptor) {
@@ -209,14 +203,10 @@
         instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
-        bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) => {
-          return GPUBindGroupLayoutMap.get(bindGroupLayout);
-        }),
+        bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) => bindGroupLayout[ridSymbol]),
       });
 
-      const pipelineLayout = new GPUPipelineLayout(descriptor.label);
-      GPUPipelineLayoutMap.set(pipelineLayout, rid);
-      return pipelineLayout;
+      return new GPUPipelineLayout(rid, descriptor.label);
     }
 
     createBindGroup(descriptor) {
@@ -224,25 +214,25 @@
         instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
-        layout: GPUBindGroupLayoutMap.get(descriptor.layout),
+        layout: descriptor.layout[ridSymbol],
         entries: descriptor.entries.map((entry) => {
           if (entry instanceof GPUSampler) {
             return {
               binding: entry.binding,
               kind: "GPUSampler",
-              resource: GPUSamplerMap.get(entry.resource),
+              resource: entry.resource[ridSymbol],
             };
           } else if (entry instanceof GPUTextureView) {
             return {
               binding: entry.binding,
               kind: "GPUTextureView",
-              resource: GPUTextureViewMap.get(entry.resource),
+              resource: entry.resource[ridSymbol],
             };
           } else {
             return {
               binding: entry.binding,
               kind: "GPUBufferBinding",
-              resource: GPUBufferMap.get(entry.resource.buffer),
+              resource: entry.resource.buffer[ridSymbol],
               offset: entry.resource.offset,
               size: entry.resource.size,
             };
@@ -250,9 +240,7 @@
         }),
       });
 
-      const bindGroup = new GPUBindGroup(descriptor.label);
-      GPUBindGroupMap.set(bindGroup, rid);
-      return bindGroup;
+      return new GPUBindGroup(rid, descriptor.label);
     }
 
     createShaderModule(descriptor) {
@@ -270,9 +258,7 @@
         (descriptor.code instanceof Uint32Array) ? descriptor.code : undefined,
       );
 
-      const shaderModule = new GPUShaderModule(rid, descriptor.label);
-      GPUShaderModuleMap.set(shaderModule, rid);
-      return shaderModule;
+      return new GPUShaderModule(rid, descriptor.label);
     }
 
     createComputePipeline(descriptor) {
@@ -281,17 +267,15 @@
         deviceRid: this.#rid,
         label: descriptor.label,
         layout: descriptor.layout
-          ? GPUPipelineLayoutMap.get(descriptor.layout)
+          ? descriptor.layout[ridSymbol]
           : undefined,
         computeStage: {
-          module: GPUShaderModuleMap.get(descriptor.computeStage.module),
+          module: descriptor.computeStage.module[ridSymbol],
           entryPoint: descriptor.computeStage.entryPoint,
         },
       });
 
-      const pipeline = new GPUComputePipeline(rid, descriptor.label);
-      GPUComputePipelineMap.set(pipeline, rid);
-      return pipeline;
+      return new GPUComputePipeline(rid, descriptor.label);
     }
 
     createRenderPipeline(descriptor) {
@@ -301,9 +285,7 @@
         ...descriptor,
       });
 
-      const pipeline = new GPURenderPipeline(rid, descriptor.label);
-      GPURenderPipelineMap.set(pipeline, rid);
-      return pipeline;
+      return new GPURenderPipeline(rid, descriptor.label);
     }
 
     createComputePipelineAsync(_descriptor) {
@@ -343,9 +325,7 @@
         ...descriptor,
       });
 
-      const querySet = new GPUQuerySet(descriptor.label);
-      GPUQuerySetMap.set(querySet, rid);
-      return querySet;
+      return new GPUQuerySet(rid, descriptor.label);
     }
   }
 
@@ -360,9 +340,7 @@
       core.jsonOpSync("op_webgpu_queue_submit", {
         instanceRid,
         queueRid: this.#rid,
-        commandBuffers: commandBuffers.map((buffer) =>
-          GPUCommandBufferMap.get(buffer)
-        ),
+        commandBuffers: commandBuffers.map((buffer) => buffer[ridSymbol]),
       });
     }
 
@@ -375,7 +353,7 @@
         {
           instanceRid,
           queueRid: this.#rid,
-          buffer: GPUBufferMap.get(buffer),
+          buffer: buffer[ridSymbol],
           bufferOffset,
           dataOffset,
           size,
@@ -391,7 +369,7 @@
           instanceRid,
           queueRid: this.#rid,
           destination: {
-            texture: GPUTextureMap.get(destination.texture),
+            texture: destination.texture[ridSymbol],
             mipLevel: destination.mipLevel,
             origin: destination.origin ??
               normalizeGPUOrigin3D(destination.origin),
@@ -408,9 +386,7 @@
     }
   }
 
-  const GPUBufferMap = new WeakMap();
   class GPUBuffer {
-    #rid;
     #deviceRid;
     #size;
     #mappedSize;
@@ -419,7 +395,7 @@
     #mappedBuffer;
 
     constructor(rid, deviceRid, label, size, mappedAtCreation) {
-      this.#rid = rid;
+      this[ridSymbol] = rid;
       this.#deviceRid = deviceRid;
       this.label = label ?? null;
       this.#size = size;
@@ -435,7 +411,7 @@
       this.#mappedSize = size ?? (this.#size - offset);
       await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
         instanceRid,
-        bufferRid: this.#rid,
+        bufferRid: this[ridSymbol],
         deviceRid: this.#deviceRid,
         mode,
         offset,
@@ -449,7 +425,7 @@
         "op_webgpu_buffer_get_mapped_range",
         {
           instanceRid,
-          bufferRid: this.#rid,
+          bufferRid: this[ridSymbol],
           offset,
           size: size ?? this.#mappedSize,
         },
@@ -464,7 +440,7 @@
     unmap() {
       core.jsonOpSync("op_webgpu_buffer_unmap", {
         instanceRid,
-        bufferRid: this.#rid,
+        bufferRid: this[ridSymbol],
         mappedRid: this.#mappedRid,
       }, this.#mappedBuffer);
     }
@@ -474,24 +450,20 @@
     }
   }
 
-  const GPUTextureMap = new WeakMap();
   class GPUTexture {
-    #rid;
     constructor(rid, label) {
-      this.#rid = rid;
+      this[ridSymbol] = rid;
       this.label = label ?? null;
     }
 
     createView(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_texture_view", {
         instanceRid,
-        textureRid: this.#rid,
+        textureRid: this[ridSymbol],
         ...descriptor,
       });
 
-      const view = new GPUTextureView();
-      GPUTextureViewMap.set(view, rid);
-      return view;
+      return new GPUTextureView(rid); // TODO(@crowlKats): label?
     }
 
     destroy() {
@@ -499,46 +471,44 @@
     }
   }
 
-  const GPUTextureViewMap = new WeakMap();
   class GPUTextureView {
-    constructor(label) {
-      this.label = label ?? null;
-    }
-  }
-
-  const GPUSamplerMap = new WeakMap();
-  class GPUSampler {
-    constructor(label) {
-      this.label = label ?? null;
-    }
-  }
-
-  const GPUBindGroupLayoutMap = new WeakMap();
-  class GPUBindGroupLayout {
-    constructor(label) {
-      this.label = label ?? null;
-    }
-  }
-
-  const GPUPipelineLayoutMap = new WeakMap();
-  class GPUPipelineLayout {
-    constructor(label) {
-      this.label = label ?? null;
-    }
-  }
-
-  const GPUBindGroupMap = new WeakMap();
-  class GPUBindGroup {
-    constructor(label) {
-      this.label = label ?? null;
-    }
-  }
-
-  const GPUShaderModuleMap = new WeakMap();
-  class GPUShaderModule {
-    #rid;
     constructor(rid, label) {
-      this.#rid = rid;
+      this[ridSymbol] = rid;
+      this.label = label ?? null;
+    }
+  }
+
+  class GPUSampler {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
+      this.label = label ?? null;
+    }
+  }
+
+  class GPUBindGroupLayout {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
+      this.label = label ?? null;
+    }
+  }
+
+  class GPUPipelineLayout {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
+      this.label = label ?? null;
+    }
+  }
+
+  class GPUBindGroup {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
+      this.label = label ?? null;
+    }
+  }
+
+  class GPUShaderModule {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
       this.label = label ?? null;
     }
 
@@ -547,12 +517,9 @@
     }
   }
 
-  const GPUComputePipelineMap = new WeakMap();
   class GPUComputePipeline {
-    #rid;
-
     constructor(rid, label) {
-      this.#rid = rid;
+      this[ridSymbol] = rid;
       this.label = label ?? null;
     }
 
@@ -561,23 +528,18 @@
         "op_webgpu_compute_pipeline_get_bind_group_layout",
         {
           instanceRid,
-          computePipelineRid: this.#rid,
+          computePipelineRid: this[ridSymbol],
           index,
         },
       );
 
-      const bindGroupLayout = new GPUBindGroupLayout(); // TODO(@crowlKats): label?
-      GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
-      return bindGroupLayout;
+      return new GPUBindGroupLayout(rid); // TODO(@crowlKats): label?
     }
   }
 
-  const GPURenderPipelineMap = new WeakMap();
   class GPURenderPipeline {
-    #rid;
-
     constructor(rid, label) {
-      this.#rid = rid;
+      this[ridSymbol] = rid;
       this.label = label ?? null;
     }
 
@@ -586,14 +548,12 @@
         "op_webgpu_render_pipeline_get_bind_group_layout",
         {
           instanceRid,
-          renderPipelineRid: this.#rid,
+          renderPipelineRid: this[ridSymbol],
           index,
         },
       );
 
-      const bindGroupLayout = new GPUBindGroupLayout(); // TODO(@crowlKats): label?
-      GPUBindGroupLayoutMap.set(bindGroupLayout, rid);
-      return bindGroupLayout;
+      return new GPUBindGroupLayout(rid); // TODO(@crowlKats): label?
     }
   }
 
@@ -610,9 +570,7 @@
       if (descriptor.depthStencilAttachment) {
         depthStencilAttachment = {
           ...descriptor.depthStencilAttachment,
-          attachment: GPUTextureViewMap.get(
-            descriptor.depthStencilAttachment.attachment,
-          ),
+          view: descriptor.depthStencilAttachment.view[ridSymbol],
         };
 
         if (
@@ -646,9 +604,9 @@
           colorAttachments: descriptor.colorAttachments.map(
             (colorAttachment) => {
               const attachment = {
-                attachment: GPUTextureViewMap.get(colorAttachment.attachment),
+                view: colorAttachment.view[ridSymbol],
                 resolveTarget: colorAttachment.resolveTarget
-                  ? GPUTextureViewMap.get(colorAttachment.resolveTarget)
+                  ? colorAttachment.resolveTarget[ridSymbol]
                   : undefined,
                 storeOp: colorAttachment.storeOp,
               };
@@ -696,9 +654,9 @@
         {
           instanceRid,
           commandEncoderRid: this.#rid,
-          source: GPUBufferMap.get(source),
+          source: source[ridSymbol],
           sourceOffset,
-          destination: GPUBufferMap.get(destination),
+          destination: destination[ridSymbol],
           destinationOffset,
           size,
         },
@@ -713,10 +671,10 @@
           commandEncoderRid: this.#rid,
           source: {
             ...source,
-            buffer: GPUBufferMap.get(source.buffer),
+            buffer: source.buffer[ridSymbol],
           },
           destination: {
-            texture: GPUTextureMap.get(destination.texture),
+            texture: destination.texture[ridSymbol],
             mipLevel: destination.mipLevel,
             origin: destination.origin ??
               normalizeGPUOrigin3D(destination.origin),
@@ -733,13 +691,13 @@
           instanceRid,
           commandEncoderRid: this.#rid,
           source: {
-            texture: GPUTextureMap.get(source.texture),
+            texture: source.texture[ridSymbol],
             mipLevel: source.mipLevel,
             origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
           },
           destination: {
             ...destination,
-            buffer: GPUBufferMap.get(destination.buffer),
+            buffer: destination.buffer[ridSymbol],
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -753,12 +711,12 @@
           instanceRid,
           commandEncoderRid: this.#rid,
           source: {
-            texture: GPUTextureMap.get(source.texture),
+            texture: source.texture[ridSymbol],
             mipLevel: source.mipLevel,
             origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
           },
           destination: {
-            texture: GPUTextureMap.get(destination.texture),
+            texture: destination.texture[ridSymbol],
             mipLevel: destination.mipLevel,
             origin: destination.origin ??
               normalizeGPUOrigin3D(destination.origin),
@@ -793,7 +751,7 @@
       core.jsonOpSync("op_webgpu_command_encoder_write_timestamp", {
         instanceRid,
         commandEncoderRid: this.#rid,
-        querySet: GPUQuerySetMap.get(querySet),
+        querySet: querySet[ridSymbol],
         queryIndex,
       });
     }
@@ -808,10 +766,10 @@
       core.jsonOpSync("op_webgpu_command_encoder_resolve_query_set", {
         instanceRid,
         commandEncoderRid: this.#rid,
-        querySet: GPUQuerySetMap.get(querySet),
+        querySet: querySet[ridSymbol],
         firstQuery,
         queryCount,
-        destination: GPUBufferMap.get(destination),
+        destination: destination[ridSymbol],
         destinationOffset,
       });
     }
@@ -823,9 +781,7 @@
         ...descriptor,
       });
 
-      const buffer = new GPUCommandBuffer(descriptor.label);
-      GPUCommandBufferMap.set(buffer, rid);
-      return buffer;
+      return new GPUCommandBuffer(rid, descriptor.label);
     }
   }
 
@@ -884,7 +840,7 @@
     beginPipelineStatisticsQuery(querySet, queryIndex) {
       core.jsonOpSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
         renderPassRid: this.#rid,
-        querySet: GPUQuerySetMap.get(querySet),
+        querySet: querySet[ridSymbol],
         queryIndex,
       });
     }
@@ -897,7 +853,7 @@
     writeTimestamp(querySet, queryIndex) {
       core.jsonOpSync("op_webgpu_render_pass_write_timestamp", {
         renderPassRid: this.#rid,
-        querySet: GPUQuerySetMap.get(querySet),
+        querySet: querySet[ridSymbol],
         queryIndex,
       });
     }
@@ -905,7 +861,7 @@
     executeBundles(bundles) {
       core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
         renderPassRid: this.#rid,
-        bundles: bundles.map((bundle) => GPURenderBundleMap.get(bundle)),
+        bundles: bundles.map((bundle) => bundle[ridSymbol]),
       });
     }
     endPass() {
@@ -923,7 +879,7 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      const bind = GPUBindGroupMap.get(bindGroup);
+      const bind = bindGroup[ridSymbol];
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_render_pass_set_bind_group",
@@ -970,14 +926,14 @@
     setPipeline(pipeline) {
       core.jsonOpSync("op_webgpu_render_pass_set_pipeline", {
         renderPassRid: this.#rid,
-        pipeline: GPURenderPipelineMap.get(pipeline),
+        pipeline: pipeline[ridSymbol],
       });
     }
 
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
       core.jsonOpSync("op_webgpu_render_pass_set_index_buffer", {
         renderPassRid: this.#rid,
-        buffer: GPUBufferMap.get(buffer),
+        buffer: buffer[ridSymbol],
         indexFormat,
         offset,
         size,
@@ -987,7 +943,7 @@
       core.jsonOpSync("op_webgpu_render_pass_set_vertex_buffer", {
         renderPassRid: this.#rid,
         slot,
-        buffer: GPUBufferMap.get(buffer),
+        buffer: buffer[ridSymbol],
         offset,
         size,
       });
@@ -1022,14 +978,14 @@
     drawIndirect(indirectBuffer, indirectOffset) {
       core.jsonOpSync("op_webgpu_render_pass_draw_indirect", {
         renderPassRid: this.#rid,
-        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectBuffer: indirectBuffer[ridSymbol],
         indirectOffset,
       });
     }
     drawIndexedIndirect(indirectBuffer, indirectOffset) {
       core.jsonOpSync("op_webgpu_render_pass_draw_indexed_indirect", {
         renderPassRid: this.#rid,
-        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectBuffer: indirectBuffer[ridSymbol],
         indirectOffset,
       });
     }
@@ -1048,7 +1004,7 @@
     setPipeline(pipeline) {
       core.jsonOpSync("op_webgpu_compute_pass_set_pipeline", {
         computePassRid: this.#rid,
-        pipeline: GPUComputePipelineMap.get(pipeline),
+        pipeline: pipeline[ridSymbol],
       });
     }
     dispatch(x, y = 1, z = 1) {
@@ -1062,7 +1018,7 @@
     dispatchIndirect(indirectBuffer, indirectOffset) {
       core.jsonOpSync("op_webgpu_compute_pass_dispatch_indirect", {
         computePassRid: this.#rid,
-        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectBuffer: indirectBuffer[ridSymbol],
         indirectOffset,
       });
     }
@@ -1072,7 +1028,7 @@
         "op_webgpu_compute_pass_begin_pipeline_statistics_query",
         {
           computePassRid: this.#rid,
-          querySet: GPUQuerySetMap.get(querySet),
+          querySet: querySet[ridSymbol],
           queryIndex,
         },
       );
@@ -1086,7 +1042,7 @@
     writeTimestamp(querySet, queryIndex) {
       core.jsonOpSync("op_webgpu_compute_pass_write_timestamp", {
         computePassRid: this.#rid,
-        querySet: GPUQuerySetMap.get(querySet),
+        querySet: querySet[ridSymbol],
         queryIndex,
       });
     }
@@ -1106,7 +1062,7 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      const bind = GPUBindGroupMap.get(bindGroup);
+      const bind = bindGroup[ridSymbol];
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_compute_pass_set_bind_group",
@@ -1151,9 +1107,9 @@
     }
   }
 
-  const GPUCommandBufferMap = new WeakMap();
   class GPUCommandBuffer {
-    constructor(label) {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
       this.label = label ?? null;
     }
 
@@ -1179,9 +1135,7 @@
         },
       );
 
-      const bundle = new GPURenderBundle(descriptor.label);
-      GPURenderBundleMap.set(bundle, rid);
-      return bundle;
+      return new GPURenderBundle(rid, descriptor.label);
     }
 
     setBindGroup(
@@ -1191,7 +1145,7 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      const bind = GPUBindGroupMap.get(bindGroup);
+      const bind = bindGroup[ridSymbol];
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_render_bundle_encoder_set_bind_group",
@@ -1238,14 +1192,14 @@
     setPipeline(pipeline) {
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_pipeline", {
         renderBundleEncoderRid: this.#rid,
-        pipeline: GPURenderPipelineMap.get(pipeline),
+        pipeline: pipeline[ridSymbol],
       });
     }
 
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
         renderBundleEncoderRid: this.#rid,
-        buffer: GPUBufferMap.get(buffer),
+        buffer: buffer[ridSymbol],
         indexFormat,
         offset,
         size,
@@ -1255,7 +1209,7 @@
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
         renderBundleEncoderRid: this.#rid,
         slot,
-        buffer: GPUBufferMap.get(buffer),
+        buffer: buffer[ridSymbol],
         offset,
         size,
       });
@@ -1290,7 +1244,7 @@
     drawIndirect(indirectBuffer, indirectOffset) {
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indirect", {
         renderBundleEncoderRid: this.#rid,
-        indirectBuffer: GPUBufferMap.get(indirectBuffer),
+        indirectBuffer: indirectBuffer[ridSymbol],
         indirectOffset,
       });
     }
@@ -1299,16 +1253,16 @@
     }
   }
 
-  const GPURenderBundleMap = new WeakMap();
   class GPURenderBundle {
-    constructor(label) {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
       this.label = label ?? null;
     }
   }
 
-  const GPUQuerySetMap = new WeakMap();
   class GPUQuerySet {
-    constructor(label) {
+    constructor(rid, label) {
+      this[ridSymbol] = rid;
       this.label = label ?? null;
     }
 
