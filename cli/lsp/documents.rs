@@ -151,12 +151,15 @@ impl DocumentCache {
     doc.line_index.clone()
   }
 
-  pub fn open(
-    &mut self,
-    specifier: ModuleSpecifier,
-    version: i32,
-    text: String,
-  ) {
+  pub fn navigation_tree(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<NavigationTree> {
+    let doc = self.docs.get(specifier)?;
+    doc.navigation_tree.clone()
+  }
+
+  pub fn open(&mut self, specifier: ModuleSpecifier, version: i32, text: &str) {
     self.docs.insert(
       specifier,
       DocumentData {
@@ -187,20 +190,18 @@ impl DocumentCache {
     specifier: &ModuleSpecifier,
     maybe_dependencies: Option<HashMap<String, analysis::Dependency>>,
   ) -> Result<(), AnyError> {
-    if !self.contains(specifier) {
-      return Err(custom_error(
+    if let Some(doc) = self.docs.get_mut(specifier) {
+      doc.dependencies = maybe_dependencies;
+      Ok(())
+    } else {
+      Err(custom_error(
         "NotFound",
         format!(
           "The specifier (\"{}\") does not exist in the document cache.",
           specifier
         ),
-      ));
+      ))
     }
-
-    let doc = self.docs.get_mut(specifier).unwrap();
-    doc.dependencies = maybe_dependencies;
-
-    Ok(())
   }
 
   pub fn set_navigation_tree(
@@ -235,11 +236,7 @@ mod tests {
     let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
     let missing_specifier =
       ModuleSpecifier::resolve_url("file:///a/c.ts").unwrap();
-    document_cache.open(
-      specifier.clone(),
-      1,
-      "console.log(\"Hello Deno\");\n".to_owned(),
-    );
+    document_cache.open(specifier.clone(), 1, "console.log(\"Hello Deno\");\n");
     assert!(document_cache.contains(&specifier));
     assert!(!document_cache.contains(&missing_specifier));
   }
@@ -248,11 +245,7 @@ mod tests {
   fn test_document_cache_change() {
     let mut document_cache = DocumentCache::default();
     let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
-    document_cache.open(
-      specifier.clone(),
-      1,
-      "console.log(\"Hello deno\");\n".to_owned(),
-    );
+    document_cache.open(specifier.clone(), 1, "console.log(\"Hello deno\");\n");
     document_cache
       .change(
         &specifier,
@@ -283,11 +276,7 @@ mod tests {
   fn test_document_cache_change_utf16() {
     let mut document_cache = DocumentCache::default();
     let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
-    document_cache.open(
-      specifier.clone(),
-      1,
-      "console.log(\"Hello 🦕\");\n".to_owned(),
-    );
+    document_cache.open(specifier.clone(), 1, "console.log(\"Hello 🦕\");\n");
     document_cache
       .change(
         &specifier,

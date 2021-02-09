@@ -663,7 +663,7 @@ impl Inner {
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
-      params.text_document.text.clone(),
+      &params.text_document.text,
     );
     self.analyze_dependencies(&specifier, &params.text_document.text);
     self.performance.measure(mark);

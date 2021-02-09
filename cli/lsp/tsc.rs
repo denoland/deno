@@ -1477,7 +1477,7 @@ mod tests {
     for (specifier, content, version) in sources {
       let specifier = ModuleSpecifier::resolve_url(specifier)
         .expect("failed to create specifier");
-      documents.open(specifier, version, content.to_string());
+      documents.open(specifier, version, content);
     }
     StateSnapshot {
       assets: Default::default(),
