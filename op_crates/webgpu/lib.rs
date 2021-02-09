@@ -121,7 +121,7 @@ pub async fn op_webgpu_request_adapter(
         "high-performance" => wgt::PowerPreference::HighPerformance,
         _ => unreachable!(),
       },
-      None => wgt::PowerPreference::Default,
+      None => Default::default(),
     },
     compatible_surface: None, // windowless
   };
@@ -137,6 +137,20 @@ pub async fn op_webgpu_request_adapter(
   let adapter_features =
     wgc::gfx_select!(adapter => instance.adapter_features(adapter))?;
   let features = deserialize_features(&adapter_features);
+  let adapter_limits =
+    wgc::gfx_select!(adapter => instance.adapter_limits(adapter))?;
+
+  let limits = json!({
+    "maxBindGroups": adapter_limits.max_bind_groups,
+    "maxDynamicUniformBuffersPerPipelineLayout": adapter_limits.max_dynamic_uniform_buffers_per_pipeline_layout,
+    "maxDynamicStorageBuffersPerPipelineLayout": adapter_limits.max_dynamic_storage_buffers_per_pipeline_layout,
+    "maxSampledTexturesPerShaderStage": adapter_limits.max_sampled_textures_per_shader_stage,
+    "maxSamplersPerShaderStage": adapter_limits.max_samplers_per_shader_stage,
+    "maxStorageBuffersPerShaderStage": adapter_limits.max_storage_buffers_per_shader_stage,
+    "maxStorageTexturesPerShaderStage": adapter_limits.max_storage_textures_per_shader_stage,
+    "maxUniformBuffersPerShaderStage": adapter_limits.max_uniform_buffers_per_shader_stage,
+    "maxUniformBufferBindingSize": adapter_limits.max_uniform_buffer_binding_size
+  });
 
   let rid = state.resource_table.add(WebGPUAdapter(adapter));
 
@@ -144,6 +158,7 @@ pub async fn op_webgpu_request_adapter(
     "rid": rid,
     "name": name,
     "features": features,
+    "limits": limits
   }))
 }
 
@@ -166,9 +181,9 @@ struct GPULimits {
 struct RequestDeviceArgs {
   instance_rid: u32,
   adapter_rid: u32,
-  _label: Option<String>, // wgpu#976
-  features: Option<Vec<String>>,
-  limits: Option<GPULimits>,
+  label: Option<String>,
+  non_guaranteed_features: Option<Vec<String>>,
+  non_guaranteed_limits: Option<GPULimits>, // TODO
 }
 
 pub async fn op_webgpu_request_device(
@@ -194,19 +209,21 @@ pub async fn op_webgpu_request_device(
 
   let mut features = wgt::Features::default();
 
-  if let Some(passed_features) = args.features {
+  if let Some(passed_features) = args.non_guaranteed_features {
     if passed_features.contains(&"depth-clamping".to_string()) {
       features.set(wgt::Features::DEPTH_CLAMPING, true);
     }
     if passed_features.contains(&"texture-compression-bc".to_string()) {
       features.set(wgt::Features::TEXTURE_COMPRESSION_BC, true);
     }
+    // TODO
   }
 
   let descriptor = wgt::DeviceDescriptor {
+    label: args.label.map(Cow::Owned),
     features,
     limits: args
-      .limits
+      .non_guaranteed_limits
       .map_or(Default::default(), |limits| wgt::Limits {
         max_bind_groups: limits.max_bind_groups.unwrap_or(4),
         max_dynamic_uniform_buffers_per_pipeline_layout: limits
@@ -235,14 +252,14 @@ pub async fn op_webgpu_request_device(
           .unwrap_or(16384),
         max_push_constant_size: 0,
       }),
-    shader_validation: false,
   };
-  let device = wgc::gfx_select!(adapter => instance.adapter_request_device(
+  // TODO
+  let (device, _) = wgc::gfx_select!(adapter => instance.adapter_request_device(
     adapter,
     &descriptor,
     None,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let device_features =
     wgc::gfx_select!(device => instance.device_features(device))?;

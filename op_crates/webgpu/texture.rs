@@ -24,7 +24,7 @@ impl Resource for WebGPUTextureView {
 }
 
 pub fn serialize_texture_format(
-  format: String,
+  format: &String,
 ) -> Result<wgt::TextureFormat, AnyError> {
   Ok(match format.as_str() {
     // 8-bit formats
@@ -107,7 +107,7 @@ pub fn serialize_texture_format(
   })
 }
 
-pub fn serialize_dimension(dimension: String) -> wgt::TextureViewDimension {
+pub fn serialize_dimension(dimension: &String) -> wgt::TextureViewDimension {
   match dimension.as_str() {
     "1d" => wgt::TextureViewDimension::D1,
     "2d" => wgt::TextureViewDimension::D2,
@@ -122,9 +122,9 @@ pub fn serialize_dimension(dimension: String) -> wgt::TextureViewDimension {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GPUExtent3D {
-  pub width: u32,
-  pub height: u32,
-  pub depth: u32,
+  pub width: Option<u32>,
+  pub height: Option<u32>,
+  pub depth: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -164,9 +164,9 @@ pub fn op_webgpu_create_texture(
   let descriptor = wgc::resource::TextureDescriptor {
     label: args.label.map(Cow::Owned),
     size: wgt::Extent3d {
-      width: args.size.width,
-      height: args.size.height,
-      depth: args.size.depth,
+      width: args.size.width.unwrap_or(1),
+      height: args.size.height.unwrap_or(1),
+      depth: args.size.depth.unwrap_or(1),
     },
     mip_level_count: args.mip_level_count.unwrap_or(1),
     sample_count: args.sample_count.unwrap_or(1),
@@ -179,15 +179,16 @@ pub fn op_webgpu_create_texture(
       },
       None => wgt::TextureDimension::D2,
     },
-    format: serialize_texture_format(args.format)?,
+    format: serialize_texture_format(&args.format)?,
     usage: wgt::TextureUsage::from_bits(args.usage).unwrap(),
   };
 
-  let texture = wgc::gfx_select!(device => instance.device_create_texture(
+  // TODO
+  let (texture, _) = wgc::gfx_select!(device => instance.device_create_texture(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUTexture(texture));
 
@@ -233,8 +234,8 @@ pub fn op_webgpu_create_texture_view(
 
   let descriptor = wgc::resource::TextureViewDescriptor {
     label: args.label.map(Cow::Owned),
-    format: args.format.map(serialize_texture_format).transpose()?,
-    dimension: args.dimension.map(serialize_dimension),
+    format: args.format.map(|s| serialize_texture_format(&s)).transpose()?,
+    dimension: args.dimension.map(|s| serialize_dimension(&s)),
     aspect: match args.aspect {
       Some(aspect) => match aspect.as_str() {
         "all" => wgt::TextureAspect::All,
@@ -251,11 +252,13 @@ pub fn op_webgpu_create_texture_view(
       args.array_layer_count.unwrap_or(0),
     ),
   };
-  let texture_view = wgc::gfx_select!(texture => instance.texture_create_view(
+
+  // TODO
+  let (texture_view, _) = wgc::gfx_select!(texture => instance.texture_create_view(
     texture,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUTextureView(texture_view));
 

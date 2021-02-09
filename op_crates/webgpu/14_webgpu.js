@@ -73,11 +73,16 @@
     get features() {
       return this.#features;
     }
+    #limits;
+    get limits() {
+      return this.#limits;
+    }
 
     constructor(rid, data) {
       this.#rid = rid;
       this.#name = data.name;
       this.#features = Object.freeze(data.features);
+      this.#limits = Object.freeze(data.limits);
     }
 
     async requestDevice(descriptor = {}) {
@@ -112,9 +117,9 @@
     get limits() {
       return this.#limits;
     }
-    #defaultQueue;
-    get defaultQueue() {
-      return this.#defaultQueue;
+    #queue;
+    get queue() {
+      return this.#queue;
     }
 
     constructor(adapter, rid, data) {
@@ -124,9 +129,11 @@
       this.#rid = rid;
       this.#features = Object.freeze(data.features);
       this.#limits = data.limits;
-      this.#defaultQueue = new GPUQueue(rid, data.label);
+      this.#queue = new GPUQueue(rid, data.label);
       this.label = data.label;
     }
+
+    destroy() {} // TODO
 
     createBuffer(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
@@ -172,6 +179,18 @@
     }
 
     createBindGroupLayout(descriptor) {
+      for (const entry of descriptor.entries) {
+        let i = 0;
+        if (descriptor.buffer) i++;
+        if (descriptor.sampler) i++;
+        if (descriptor.texture) i++;
+        if (descriptor.storageTexture) i++;
+
+        if (i !== 1) {
+          throw new Error(); // TODO
+        }
+      }
+
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group_layout", {
         instanceRid,
         deviceRid: this.#rid,
@@ -285,12 +304,12 @@
       return pipeline;
     }
 
-    createReadyComputePipeline(_descriptor) {
-      throw new Error("Not yet implemented"); // easy polyfill
+    createComputePipelineAsync(_descriptor) {
+      throw new Error("Not yet implemented"); // TODO easy polyfill
     }
 
-    createReadyRenderPipeline(_descriptor) {
-      throw new Error("Not yet implemented"); // easy polyfill
+    createRenderPipelineAsync(_descriptor) {
+      throw new Error("Not yet implemented"); // TODO easy polyfill
     }
 
     createCommandEncoder(descriptor = {}) {
@@ -336,8 +355,8 @@
         ),
       });
     }
-    createFence(_descriptor = {}) {
-      throw new Error("Not yet implemented");
+
+    async onSubmittedWorkDone() {
     }
 
     writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {

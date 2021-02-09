@@ -407,7 +407,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
 struct RenderPassSetIndexBufferArgs {
   render_pass_rid: u32,
   buffer: u32,
-  _index_format: String, // wgpu#978
+  index_format: String,
   offset: u64,
   size: u64,
 }
@@ -428,9 +428,9 @@ pub fn op_webgpu_render_pass_set_index_buffer(
     .get::<WebGPURenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::render_ffi::wgpu_render_pass_set_index_buffer(
-    &mut render_pass_resource.0.borrow_mut(),
+  render_pass_resource.0.borrow_mut().set_index_buffer(
     buffer_resource.0,
+    super::pipeline::serialize_index_format(args.index_format),
     args.offset,
     std::num::NonZeroU64::new(args.size),
   );

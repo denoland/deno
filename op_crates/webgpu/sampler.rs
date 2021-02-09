@@ -112,12 +112,15 @@ pub fn op_webgpu_create_sampler(
     anisotropy_clamp: std::num::NonZeroU8::new(
       args.max_anisotropy.unwrap_or(0),
     ),
+    border_color: None, // native-only
   };
-  let sampler = wgc::gfx_select!(device => instance.device_create_sampler(
+
+  // TODO
+  let (sampler, _) = wgc::gfx_select!(device => instance.device_create_sampler(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUSampler(sampler));
 

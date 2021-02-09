@@ -55,7 +55,7 @@ pub fn op_webgpu_queue_submit(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUTextureDataLayout {
+struct GPUImageDataLayout {
   offset: Option<u64>,
   bytes_per_row: Option<u32>,
   rows_per_image: Option<u32>,
@@ -116,8 +116,8 @@ pub fn op_webgpu_write_buffer(
 struct QueueWriteTextureArgs {
   instance_rid: u32,
   queue_rid: u32,
-  destination: super::command_encoder::GPUTextureCopyView,
-  data_layout: GPUTextureDataLayout,
+  destination: super::command_encoder::GPUImageCopyTexture,
+  data_layout: GPUImageDataLayout,
   size: super::texture::GPUExtent3D,
 }
 
@@ -162,15 +162,16 @@ pub fn op_webgpu_write_texture(
     bytes_per_row: args.data_layout.bytes_per_row.unwrap_or(0),
     rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
   };
+
   wgc::gfx_select!(queue => instance.queue_write_texture(
     queue,
     &destination,
     &*zero_copy[0],
     &data_layout,
     &wgt::Extent3d {
-      width: args.size.width,
-      height: args.size.height,
-      depth: args.size.depth,
+      width: args.size.width.unwrap_or(1),
+      height: args.size.height.unwrap_or(1),
+      depth: args.size.depth.unwrap_or(1),
     }
   ))?;
 

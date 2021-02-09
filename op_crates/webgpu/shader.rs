@@ -21,7 +21,7 @@ impl Resource for WebGPUShaderModule {
 struct CreateShaderModuleArgs {
   instance_rid: u32,
   device_rid: u32,
-  _label: Option<String>, // wgpu#977
+  label: Option<String>,
   code: Option<String>,
   _source_map: Option<()>, // not in wgpu
 }
@@ -55,11 +55,19 @@ pub fn op_webgpu_create_shader_module(
       data
     })),
   };
-  let shader_module = wgc::gfx_select!(device => instance.device_create_shader_module(
+
+  let descriptor = wgc::pipeline::ShaderModuleDescriptor {
+    label: args.label.map(Cow::Owned),
+    flags: Default::default()
+  };
+
+  // TODO
+  let (shader_module, _) = wgc::gfx_select!(device => instance.device_create_shader_module(
     device,
+    &descriptor,
     source,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUShaderModule(shader_module));
 

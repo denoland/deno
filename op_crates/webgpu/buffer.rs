@@ -67,11 +67,13 @@ pub fn op_webgpu_create_buffer(
     usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
-  let buffer = wgc::gfx_select!(device => instance.device_create_buffer(
+
+  // TODO
+  let (buffer, _) = wgc::gfx_select!(device => instance.device_create_buffer(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUBuffer(buffer));
 

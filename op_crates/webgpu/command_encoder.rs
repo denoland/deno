@@ -64,11 +64,13 @@ pub fn op_webgpu_create_command_encoder(
   let descriptor = wgt::CommandEncoderDescriptor {
     label: args.label.map(Cow::Owned),
   };
-  let command_encoder = wgc::gfx_select!(device => instance.device_create_command_encoder(
+
+  // TODO
+  let (command_encoder, _) = wgc::gfx_select!(device => instance.device_create_command_encoder(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state
     .resource_table
@@ -81,8 +83,8 @@ pub fn op_webgpu_create_command_encoder(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPURenderPassColorAttachmentDescriptor {
-  attachment: u32,
+struct GPURenderPassColorAttachment {
+  view: u32,
   resolve_target: Option<u32>,
   load_op: String,
   load_value: Option<super::render_pass::GPUColor>,
@@ -91,8 +93,8 @@ struct GPURenderPassColorAttachmentDescriptor {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPURenderPassDepthStencilAttachmentDescriptor {
-  attachment: u32,
+struct GPURenderPassDepthStencilAttachment {
+  view: u32,
   depth_load_op: String,
   depth_load_value: Option<f32>,
   depth_store_op: String,
@@ -107,11 +109,10 @@ struct GPURenderPassDepthStencilAttachmentDescriptor {
 #[serde(rename_all = "camelCase")]
 struct CommandEncoderBeginRenderPassArgs {
   command_encoder_rid: u32,
-  _label: Option<String>, // wgpu#974
-  color_attachments: Vec<GPURenderPassColorAttachmentDescriptor>,
-  depth_stencil_attachment:
-    Option<GPURenderPassDepthStencilAttachmentDescriptor>,
-  _occlusion_query_set: u32, // wgpu#721
+  label: Option<String>,
+  color_attachments: Vec<GPURenderPassColorAttachment>,
+  depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachment>,
+  _occlusion_query_set: u32, // TODO wgpu#721
 }
 
 pub fn op_webgpu_command_encoder_begin_render_pass(
@@ -131,7 +132,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   for color_attachment in args.color_attachments {
     let texture_view_resource = state
       .resource_table
-      .get::<super::texture::WebGPUTextureView>(color_attachment.attachment)
+      .get::<super::texture::WebGPUTextureView>(color_attachment.view)
       .ok_or_else(bad_resource_id)?;
 
     let attachment = wgc::command::ColorAttachmentDescriptor {
@@ -183,53 +184,53 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   if let Some(attachment) = args.depth_stencil_attachment {
     let texture_view_resource = state
       .resource_table
-      .get::<super::texture::WebGPUTextureView>(attachment.attachment)
+      .get::<super::texture::WebGPUTextureView>(attachment.view)
       .ok_or_else(bad_resource_id)?;
 
-    let attachment = wgc::command::DepthStencilAttachmentDescriptor {
-      attachment: texture_view_resource.0,
-      depth: match attachment.depth_load_op.as_str() {
-        "load" => wgc::command::PassChannel {
-          load_op: wgc::command::LoadOp::Load,
-          store_op: serialize_store_op(attachment.depth_store_op),
-          clear_value: 0.0,
-          read_only: attachment.depth_read_only.unwrap_or(false),
+    depth_stencil_attachment =
+      Some(wgc::command::DepthStencilAttachmentDescriptor {
+        attachment: texture_view_resource.0,
+        depth: match attachment.depth_load_op.as_str() {
+          "load" => wgc::command::PassChannel {
+            load_op: wgc::command::LoadOp::Load,
+            store_op: serialize_store_op(attachment.depth_store_op),
+            clear_value: 0.0,
+            read_only: attachment.depth_read_only.unwrap_or(false),
+          },
+          "clear" => wgc::command::PassChannel {
+            load_op: wgc::command::LoadOp::Clear,
+            store_op: serialize_store_op(attachment.depth_store_op),
+            clear_value: attachment.depth_load_value.unwrap(),
+            read_only: attachment.depth_read_only.unwrap_or(false),
+          },
+          _ => unreachable!(),
         },
-        "clear" => wgc::command::PassChannel {
-          load_op: wgc::command::LoadOp::Clear,
-          store_op: serialize_store_op(attachment.depth_store_op),
-          clear_value: attachment.depth_load_value.unwrap(),
-          read_only: attachment.depth_read_only.unwrap_or(false),
+        stencil: match attachment.stencil_load_op.as_str() {
+          "load" => wgc::command::PassChannel {
+            load_op: wgc::command::LoadOp::Load,
+            store_op: serialize_store_op(attachment.stencil_store_op),
+            clear_value: 0,
+            read_only: attachment.stencil_read_only.unwrap_or(false),
+          },
+          "clear" => wgc::command::PassChannel {
+            load_op: wgc::command::LoadOp::Clear,
+            store_op: serialize_store_op(attachment.stencil_store_op),
+            clear_value: attachment.stencil_load_value.unwrap(),
+            read_only: attachment.stencil_read_only.unwrap_or(false),
+          },
+          _ => unreachable!(),
         },
-        _ => unreachable!(),
-      },
-      stencil: match attachment.stencil_load_op.as_str() {
-        "load" => wgc::command::PassChannel {
-          load_op: wgc::command::LoadOp::Load,
-          store_op: serialize_store_op(attachment.stencil_store_op),
-          clear_value: 0,
-          read_only: attachment.stencil_read_only.unwrap_or(false),
-        },
-        "clear" => wgc::command::PassChannel {
-          load_op: wgc::command::LoadOp::Clear,
-          store_op: serialize_store_op(attachment.stencil_store_op),
-          clear_value: attachment.stencil_load_value.unwrap(),
-          read_only: attachment.stencil_read_only.unwrap_or(false),
-        },
-        _ => unreachable!(),
-      },
-    };
-
-    depth_stencil_attachment = Some(attachment);
+      });
   }
 
-  let render_pass = wgc::command::RenderPass::new(
-    command_encoder_resource.0,
-    wgc::command::RenderPassDescriptor {
-      color_attachments: Cow::Owned(color_attachments),
-      depth_stencil_attachment: depth_stencil_attachment.as_ref(),
-    },
-  );
+  let descriptor = wgc::command::RenderPassDescriptor {
+    label: args.label.map(Cow::Owned),
+    color_attachments: Cow::Owned(color_attachments),
+    depth_stencil_attachment: depth_stencil_attachment.as_ref(),
+  };
+
+  let render_pass =
+    wgc::command::RenderPass::new(command_encoder_resource.0, &descriptor);
 
   let rid = state
     .resource_table
@@ -246,7 +247,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
 #[serde(rename_all = "camelCase")]
 struct CommandEncoderBeginComputePassArgs {
   command_encoder_rid: u32,
-  _label: Option<String>, // wgpu#974
+  label: Option<String>,
 }
 
 pub fn op_webgpu_command_encoder_begin_compute_pass(
@@ -261,7 +262,12 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
     .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let compute_pass = wgc::command::ComputePass::new(command_encoder_resource.0);
+  let descriptor = wgc::command::ComputePassDescriptor {
+    label: args.label.map(Cow::Owned),
+  };
+
+  let compute_pass =
+    wgc::command::ComputePass::new(command_encoder_resource.0, &descriptor);
 
   let rid = state
     .resource_table
@@ -331,7 +337,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPUBufferCopyView {
+pub struct GPUImageCopyBuffer {
   buffer: u32,
   offset: Option<u64>,
   bytes_per_row: Option<u32>,
@@ -348,10 +354,11 @@ pub struct GPUOrigin3D {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPUTextureCopyView {
+pub struct GPUImageCopyTexture {
   pub texture: u32,
   pub mip_level: Option<u32>,
   pub origin: Option<GPUOrigin3D>,
+  pub aspect: Option<String>, // TODO
 }
 
 #[derive(Deserialize)]
@@ -359,8 +366,8 @@ pub struct GPUTextureCopyView {
 struct CommandEncoderCopyBufferToTextureArgs {
   instance_rid: u32,
   command_encoder_rid: u32,
-  source: GPUBufferCopyView,
-  destination: GPUTextureCopyView,
+  source: GPUImageCopyBuffer,
+  destination: GPUImageCopyTexture,
   copy_size: super::texture::GPUExtent3D,
 }
 
@@ -418,9 +425,9 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     &source,
     &destination,
     &wgt::Extent3d {
-      width: args.copy_size.width,
-      height: args.copy_size.height,
-      depth: args.copy_size.depth,
+      width: args.copy_size.width.unwrap_or(1),
+      height: args.copy_size.height.unwrap_or(1),
+      depth: args.copy_size.depth.unwrap_or(1),
     }
   ))?;
 
@@ -432,8 +439,8 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
 struct CommandEncoderCopyTextureToBufferArgs {
   instance_rid: u32,
   command_encoder_rid: u32,
-  source: GPUTextureCopyView,
-  destination: GPUBufferCopyView,
+  source: GPUImageCopyTexture,
+  destination: GPUImageCopyBuffer,
   copy_size: super::texture::GPUExtent3D,
 }
 
@@ -490,9 +497,9 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     &source,
     &destination,
     &wgt::Extent3d {
-      width: args.copy_size.width,
-      height: args.copy_size.height,
-      depth: args.copy_size.depth,
+      width: args.copy_size.width.unwrap_or(1),
+      height: args.copy_size.height.unwrap_or(1),
+      depth: args.copy_size.depth.unwrap_or(1),
     }
   ))?;
 
@@ -504,8 +511,8 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
 struct CommandEncoderCopyTextureToTextureArgs {
   instance_rid: u32,
   command_encoder_rid: u32,
-  source: GPUTextureCopyView,
-  destination: GPUTextureCopyView,
+  source: GPUImageCopyTexture,
+  destination: GPUImageCopyTexture,
   copy_size: super::texture::GPUExtent3D,
 }
 
@@ -566,9 +573,9 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     &source,
     &destination,
     &wgt::Extent3d {
-      width: args.copy_size.width,
-      height: args.copy_size.height,
-      depth: args.copy_size.depth,
+      width: args.copy_size.width.unwrap_or(1),
+      height: args.copy_size.height.unwrap_or(1),
+      depth: args.copy_size.depth.unwrap_or(1),
     }
   ))?;
 
@@ -708,10 +715,12 @@ pub fn op_webgpu_command_encoder_finish(
   let descriptor = wgt::CommandBufferDescriptor {
     label: args.label.map(Cow::Owned),
   };
-  let command_buffer = wgc::gfx_select!(command_encoder => instance.command_encoder_finish(
+
+  // TODO
+  let (command_buffer, _) = wgc::gfx_select!(command_encoder => instance.command_encoder_finish(
     command_encoder,
     &descriptor
-  ))?;
+  ));
 
   let rid = state
     .resource_table

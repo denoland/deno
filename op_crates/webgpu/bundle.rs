@@ -53,7 +53,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
   let mut color_formats = vec![];
 
   for format in &args.color_formats {
-    color_formats.push(serialize_texture_format(format.clone())?);
+    color_formats.push(serialize_texture_format(format)?);
   }
 
   let descriptor = wgc::command::RenderBundleEncoderDescriptor {
@@ -61,7 +61,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
     color_formats: Cow::Owned(color_formats),
     depth_stencil_format: args
       .depth_stencil_format
-      .map(serialize_texture_format)
+      .map(|s| serialize_texture_format(&s))
       .transpose()?,
     sample_count: args.sample_count.unwrap_or(1),
   };
@@ -111,13 +111,14 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .try_borrow()
     .unwrap();
 
-  let render_bundle = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
+  // TODO
+  let (render_bundle, _) = wgc::gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
     &wgc::command::RenderBundleDescriptor {
       label: args.label.map(Cow::Owned),
     },
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPURenderBundle(render_bundle));
 
@@ -300,7 +301,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 struct RenderBundleEncoderSetIndexBufferArgs {
   render_bundle_encoder_rid: u32,
   buffer: u32,
-  _index_format: String, // wgpu#978
+  index_format: String,
   offset: u64,
   size: u64,
 }
@@ -322,9 +323,9 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgc::command::bundle_ffi::wgpu_render_bundle_set_index_buffer(
-    &mut render_bundle_encoder_resource.0.borrow_mut(),
+  render_bundle_encoder_resource.0.borrow_mut().set_index_buffer(
     buffer_resource.0,
+    super::pipeline::serialize_index_format(args.index_format),
     args.offset,
     std::num::NonZeroU64::new(args.size),
   );
