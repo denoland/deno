@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::fmt;
@@ -67,7 +68,7 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub denied_list: HashSet<T>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<PathBuf>,
   pub write: UnaryPermission<PathBuf>,
@@ -78,31 +79,38 @@ pub struct Permissions {
   pub hrtime: PermissionState,
 }
 
-fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
-  allowlist
-    .iter()
-    .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
-    .collect()
+pub fn resolve_fs_allowlist(allow: &Option<Vec<PathBuf>>) -> HashSet<PathBuf> {
+  if let Some(v) = allow {
+    v.iter()
+      .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
+      .collect()
+  } else {
+    HashSet::new()
+  }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct PermissionsOptions {
   pub allow_env: bool,
   pub allow_hrtime: bool,
-  pub allow_net: bool,
+  pub allow_net: Option<Vec<String>>,
   pub allow_plugin: bool,
-  pub allow_read: bool,
+  pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: bool,
-  pub allow_write: bool,
-  pub net_allowlist: Vec<String>,
-  pub read_allowlist: Vec<PathBuf>,
-  pub write_allowlist: Vec<PathBuf>,
+  pub allow_write: Option<Vec<PathBuf>>,
 }
 
 impl Permissions {
   pub fn from_options(opts: &PermissionsOptions) -> Self {
-    fn state_from_flag_bool(flag: bool) -> PermissionState {
+    fn global_state_from_flag_bool(flag: bool) -> PermissionState {
       if flag {
+        PermissionState::Granted
+      } else {
+        PermissionState::Prompt
+      }
+    }
+    fn global_state_from_option<T>(flag: &Option<Vec<T>>) -> PermissionState {
+      if matches!(flag, Some(v) if v.is_empty()) {
         PermissionState::Granted
       } else {
         PermissionState::Prompt
@@ -110,24 +118,28 @@ impl Permissions {
     }
     Self {
       read: UnaryPermission::<PathBuf> {
-        global_state: state_from_flag_bool(opts.allow_read),
-        granted_list: resolve_fs_allowlist(&opts.read_allowlist),
+        global_state: global_state_from_option(&opts.allow_read),
+        granted_list: resolve_fs_allowlist(&opts.allow_read),
         ..Default::default()
       },
       write: UnaryPermission::<PathBuf> {
-        global_state: state_from_flag_bool(opts.allow_write),
-        granted_list: resolve_fs_allowlist(&opts.write_allowlist),
+        global_state: global_state_from_option(&opts.allow_write),
+        granted_list: resolve_fs_allowlist(&opts.allow_write),
         ..Default::default()
       },
       net: UnaryPermission::<String> {
-        global_state: state_from_flag_bool(opts.allow_net),
-        granted_list: opts.net_allowlist.iter().cloned().collect(),
+        global_state: global_state_from_option(&opts.allow_net),
+        granted_list: opts
+          .allow_net
+          .as_ref()
+          .map(|v| v.iter().cloned().collect())
+          .unwrap_or_else(HashSet::new),
         ..Default::default()
       },
-      env: state_from_flag_bool(opts.allow_env),
-      run: state_from_flag_bool(opts.allow_run),
-      plugin: state_from_flag_bool(opts.allow_plugin),
-      hrtime: state_from_flag_bool(opts.allow_hrtime),
+      env: global_state_from_flag_bool(opts.allow_env),
+      run: global_state_from_flag_bool(opts.allow_run),
+      plugin: global_state_from_flag_bool(opts.allow_plugin),
+      hrtime: global_state_from_flag_bool(opts.allow_hrtime),
     }
   }
 
@@ -212,42 +224,27 @@ impl Permissions {
     PermissionState::Prompt
   }
 
-  pub fn query_net(&self, host: &str, port: Option<u16>) -> PermissionState {
+  pub fn query_net<T: AsRef<str>>(
+    &self,
+    host: &Option<&(T, Option<u16>)>,
+  ) -> PermissionState {
     if self.net.global_state == PermissionState::Denied
-      || check_host_and_port_list(host, port, &self.net.denied_list)
+      && match host.as_ref() {
+        None => true,
+        Some(host) => check_host_blocklist(host, &self.net.denied_list),
+      }
     {
       return PermissionState::Denied;
     }
     if self.net.global_state == PermissionState::Granted
-      || check_host_and_port_list(host, port, &self.net.granted_list)
+      || match host.as_ref() {
+        None => false,
+        Some(host) => check_host_allowlist(host, &self.net.granted_list),
+      }
     {
       return PermissionState::Granted;
     }
     PermissionState::Prompt
-  }
-
-  pub fn query_net_url(
-    &self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
-    if url.is_none() {
-      return Ok(self.net.global_state);
-    }
-    let url: &str = url.unwrap();
-    // If url is invalid, then throw a TypeError.
-    let parsed = url::Url::parse(url)?;
-    // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
-    // Note that host:port combos are parsed as scheme:path
-    if parsed.host().is_none() {
-      return Err(custom_error(
-        "URIError",
-        "invalid urlormat: <scheme>://<host>[:port][/subpath]",
-      ));
-    }
-    Ok(self.query_net(
-      &parsed.host().unwrap().to_string(),
-      parsed.port_or_known_default(),
-    ))
   }
 
   pub fn query_env(&self) -> PermissionState {
@@ -350,39 +347,49 @@ impl Permissions {
     }
   }
 
-  pub fn request_net(
+  pub fn request_net<T: AsRef<str>>(
     &mut self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
-    if let Some(url) = url {
-      let state = self.query_net_url(&Some(url))?;
+    host: &Option<&(T, Option<u16>)>,
+  ) -> PermissionState {
+    if let Some(host) = host {
+      let state = self.query_net(&Some(host));
       if state == PermissionState::Prompt {
+        let host_string = format_host(host);
         if permission_prompt(&format!(
           "Deno requests network access to \"{}\"",
-          url
+          host_string,
         )) {
-          self.net.granted_list.insert(url.to_string());
-          return Ok(PermissionState::Granted);
+          if host.1.is_none() {
+            self
+              .net
+              .granted_list
+              .retain(|h| !h.starts_with(&format!("{}:", host.0.as_ref())));
+          }
+          self.net.granted_list.insert(host_string);
+          return PermissionState::Granted;
         } else {
-          self.net.denied_list.insert(url.to_string());
+          if host.1.is_some() {
+            self.net.denied_list.remove(host.0.as_ref());
+          }
+          self.net.denied_list.insert(host_string);
           self.net.global_state = PermissionState::Denied;
-          return Ok(PermissionState::Denied);
+          return PermissionState::Denied;
         }
       }
-      Ok(state)
+      state
     } else {
-      let state = self.query_net_url(&None)?;
+      let state = self.query_net::<&str>(&None);
       if state == PermissionState::Prompt {
         if permission_prompt("Deno requests network access") {
           self.net.granted_list.clear();
           self.net.global_state = PermissionState::Granted;
-          return Ok(PermissionState::Granted);
+          return PermissionState::Granted;
         } else {
           self.net.global_state = PermissionState::Denied;
-          return Ok(PermissionState::Denied);
+          return PermissionState::Denied;
         }
       }
-      Ok(state)
+      state
     }
   }
 
@@ -462,19 +469,25 @@ impl Permissions {
     self.query_write(path)
   }
 
-  pub fn revoke_net(
+  pub fn revoke_net<T: AsRef<str>>(
     &mut self,
-    url: &Option<&str>,
-  ) -> Result<PermissionState, AnyError> {
-    if let Some(url) = url {
-      self.net.granted_list.remove(*url);
+    host: &Option<&(T, Option<u16>)>,
+  ) -> PermissionState {
+    if let Some(host) = host {
+      self.net.granted_list.remove(&format_host(host));
+      if host.1.is_none() {
+        self
+          .net
+          .granted_list
+          .retain(|h| !h.starts_with(&format!("{}:", host.0.as_ref())));
+      }
     } else {
       self.net.granted_list.clear();
       if self.net.global_state == PermissionState::Granted {
         self.net.global_state = PermissionState::Prompt;
       }
     }
-    self.query_net_url(url)
+    self.query_net(host)
   }
 
   pub fn revoke_env(&mut self) -> PermissionState {
@@ -534,18 +547,31 @@ impl Permissions {
     )
   }
 
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), AnyError> {
-    self.query_net(hostname, Some(port)).check(
-      &format!("network access to \"{}:{}\"", hostname, port),
+  pub fn check_net<T: AsRef<str>>(
+    &self,
+    host: &(T, Option<u16>),
+  ) -> Result<(), AnyError> {
+    self.query_net(&Some(host)).check(
+      &format!("network access to \"{}\"", format_host(host)),
       "--allow-net",
     )
   }
 
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
-    let host = url.host_str().ok_or_else(|| uri_error("missing host"))?;
+    let hostname = url
+      .host_str()
+      .ok_or_else(|| uri_error("Missing host"))?
+      .to_string();
+    let display_host = match url.port() {
+      None => hostname.clone(),
+      Some(port) => format!("{}:{}", hostname, port),
+    };
     self
-      .query_net(host, url.port_or_known_default())
-      .check(&format!("network access to \"{}\"", url), "--allow-net")
+      .query_net(&Some(&(hostname, url.port_or_known_default())))
+      .check(
+        &format!("network access to \"{}\"", display_host),
+        "--allow-net",
+      )
   }
 
   /// A helper function that determines if the module specifier is a local or
@@ -555,11 +581,16 @@ impl Permissions {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let url = specifier.as_url();
-    if url.scheme() == "file" {
-      let path = url.to_file_path().unwrap();
-      self.check_read(&path)
-    } else {
-      self.check_net_url(url)
+    match url.scheme() {
+      "file" => match url.to_file_path() {
+        Ok(path) => self.check_read(&path),
+        Err(_) => Err(uri_error(format!(
+          "Invalid file path.\n  Specifier: {}",
+          specifier
+        ))),
+      },
+      "data" => Ok(()),
+      _ => self.check_net_url(url),
     }
   }
 
@@ -593,8 +624,14 @@ impl deno_fetch::FetchPermissions for Permissions {
     Permissions::check_net_url(self, url)
   }
 
-  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+  fn check_read(&self, p: &Path) -> Result<(), AnyError> {
     Permissions::check_read(self, p)
+  }
+}
+
+impl deno_websocket::WebSocketPermissions for Permissions {
+  fn check_net_url(&self, url: &url::Url) -> Result<(), AnyError> {
+    Permissions::check_net_url(self, url)
   }
 }
 
@@ -678,20 +715,40 @@ fn check_path_blocklist(path: &Path, blocklist: &HashSet<PathBuf>) -> bool {
   false
 }
 
-fn check_host_and_port_list(
-  host: &str,
-  port: Option<u16>,
+fn check_host_allowlist<T: AsRef<str>>(
+  host: &(T, Option<u16>),
   allowlist: &HashSet<String>,
 ) -> bool {
-  allowlist.contains(host)
-    || (port.is_some()
-      && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
+  let (hostname, port) = host;
+  allowlist.contains(hostname.as_ref())
+    || (port.is_some() && allowlist.contains(&format_host(host)))
+}
+
+fn check_host_blocklist<T: AsRef<str>>(
+  host: &(T, Option<u16>),
+  blocklist: &HashSet<String>,
+) -> bool {
+  let (hostname, port) = host;
+  match port {
+    None => blocklist.iter().any(|host| {
+      host == hostname.as_ref()
+        || host.starts_with(&format!("{}:", hostname.as_ref()))
+    }),
+    Some(_) => blocklist.contains(&format_host(host)),
+  }
+}
+
+fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
+  let (hostname, port) = host;
+  match port {
+    None => hostname.as_ref().to_string(),
+    Some(port) => format!("{}:{}", hostname.as_ref(), port),
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::serde_json;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -707,8 +764,8 @@ mod tests {
     ];
 
     let perms = Permissions::from_options(&PermissionsOptions {
-      read_allowlist: allowlist.clone(),
-      write_allowlist: allowlist,
+      allow_read: Some(allowlist.clone()),
+      allow_write: Some(allowlist),
       ..Default::default()
     });
 
@@ -760,16 +817,16 @@ mod tests {
   }
 
   #[test]
-  fn test_check_net() {
+  fn test_check_net_with_values() {
     let perms = Permissions::from_options(&PermissionsOptions {
-      net_allowlist: svec![
+      allow_net: Some(svec![
         "localhost",
         "deno.land",
         "github.com:3000",
         "127.0.0.1",
         "172.16.0.2:8000",
         "www.github.com:443"
-      ],
+      ]),
       ..Default::default()
     });
 
@@ -795,6 +852,93 @@ mod tests {
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
     ];
+
+    for (host, port, is_ok) in domain_tests {
+      assert_eq!(is_ok, perms.check_net(&(host, Some(port))).is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_only_flag() {
+    let perms = Permissions::from_options(&PermissionsOptions {
+      allow_net: Some(svec![]), // this means `--allow-net` is present without values following `=` sign
+      ..Default::default()
+    });
+
+    let domain_tests = vec![
+      ("localhost", 1234),
+      ("deno.land", 0),
+      ("deno.land", 3000),
+      ("deno.lands", 0),
+      ("deno.lands", 3000),
+      ("github.com", 3000),
+      ("github.com", 0),
+      ("github.com", 2000),
+      ("github.net", 3000),
+      ("127.0.0.1", 0),
+      ("127.0.0.1", 3000),
+      ("127.0.0.2", 0),
+      ("127.0.0.2", 3000),
+      ("172.16.0.2", 8000),
+      ("172.16.0.2", 0),
+      ("172.16.0.2", 6000),
+      ("172.16.0.1", 8000),
+      ("somedomain", 0),
+      ("192.168.0.1", 0),
+    ];
+
+    for (host, port) in domain_tests {
+      assert!(perms.check_net(&(host, Some(port))).is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_no_flag() {
+    let perms = Permissions::from_options(&PermissionsOptions {
+      allow_net: None,
+      ..Default::default()
+    });
+
+    let domain_tests = vec![
+      ("localhost", 1234),
+      ("deno.land", 0),
+      ("deno.land", 3000),
+      ("deno.lands", 0),
+      ("deno.lands", 3000),
+      ("github.com", 3000),
+      ("github.com", 0),
+      ("github.com", 2000),
+      ("github.net", 3000),
+      ("127.0.0.1", 0),
+      ("127.0.0.1", 3000),
+      ("127.0.0.2", 0),
+      ("127.0.0.2", 3000),
+      ("172.16.0.2", 8000),
+      ("172.16.0.2", 0),
+      ("172.16.0.2", 6000),
+      ("172.16.0.1", 8000),
+      ("somedomain", 0),
+      ("192.168.0.1", 0),
+    ];
+
+    for (host, port) in domain_tests {
+      assert!(!perms.check_net(&(host, Some(port))).is_ok());
+    }
+  }
+
+  #[test]
+  fn test_check_net_url() {
+    let perms = Permissions::from_options(&PermissionsOptions {
+      allow_net: Some(svec![
+        "localhost",
+        "deno.land",
+        "github.com:3000",
+        "127.0.0.1",
+        "172.16.0.2:8000",
+        "www.github.com:443"
+      ]),
+      ..Default::default()
+    });
 
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
@@ -835,13 +979,9 @@ mod tests {
       ("https://www.github.com:443/robots.txt", true),
     ];
 
-    for (url_str, is_ok) in url_tests.iter() {
+    for (url_str, is_ok) in url_tests {
       let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(*is_ok, perms.check_net_url(&u).is_ok());
-    }
-
-    for (host, port, is_ok) in domain_tests.iter() {
-      assert_eq!(*is_ok, perms.check_net(host, *port).is_ok());
+      assert_eq!(is_ok, perms.check_net_url(&u).is_ok());
     }
   }
 
@@ -853,8 +993,8 @@ mod tests {
       vec![PathBuf::from("/a")]
     };
     let perms = Permissions::from_options(&PermissionsOptions {
-      read_allowlist,
-      net_allowlist: svec!["localhost"],
+      allow_read: Some(read_allowlist),
+      allow_net: Some(svec!["localhost"]),
       ..Default::default()
     });
 
@@ -868,6 +1008,13 @@ mod tests {
         ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
           .unwrap(),
         false,
+      ),
+      (
+        ModuleSpecifier::resolve_url_or_path(
+          "data:text/plain,Hello%2C%20Deno!",
+        )
+        .unwrap(),
+        true,
       ),
     ];
 
@@ -897,51 +1044,23 @@ mod tests {
   }
 
   #[test]
-  fn test_deserialize_perms() {
-    let json_perms = r#"
-    {
-      "read": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "write": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "net": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "env": "Granted",
-      "run": "Granted",
-      "plugin": "Granted",
-      "hrtime": "Granted"
+  fn check_invalid_specifiers() {
+    let perms = Permissions::allow_all();
+
+    let mut test_cases = vec![];
+
+    if cfg!(target_os = "windows") {
+      test_cases.push("file://");
+      test_cases.push("file:///");
+    } else {
+      test_cases.push("file://remotehost/");
     }
-    "#;
-    let perms0 = Permissions {
-      read: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      write: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      net: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      env: PermissionState::Granted,
-      run: PermissionState::Granted,
-      hrtime: PermissionState::Granted,
-      plugin: PermissionState::Granted,
-    };
-    let deserialized_perms: Permissions =
-      serde_json::from_str(json_perms).unwrap();
-    assert_eq!(perms0, deserialized_perms);
+
+    for url in test_cases {
+      assert!(perms
+        .check_specifier(&ModuleSpecifier::resolve_url_or_path(url).unwrap())
+        .is_err());
+    }
   }
 
   #[test]
@@ -967,12 +1086,12 @@ mod tests {
     let perms2 = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       net: UnaryPermission {
@@ -997,10 +1116,10 @@ mod tests {
       assert_eq!(perms2.query_write(&None), PermissionState::Prompt);
       assert_eq!(perms2.query_write(&Some(&Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.query_write(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms1.query_net_url(&None).unwrap(), PermissionState::Granted);
-      assert_eq!(perms1.query_net_url(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
-      assert_eq!(perms2.query_net_url(&None).unwrap(), PermissionState::Prompt);
-      assert_eq!(perms2.query_net_url(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
+      assert_eq!(perms1.query_net::<&str>(&None), PermissionState::Granted);
+      assert_eq!(perms1.query_net(&Some(&("127.0.0.1", None))), PermissionState::Granted);
+      assert_eq!(perms2.query_net::<&str>(&None), PermissionState::Prompt);
+      assert_eq!(perms2.query_net(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms1.query_env(), PermissionState::Granted);
       assert_eq!(perms2.query_env(), PermissionState::Prompt);
       assert_eq!(perms1.query_run(), PermissionState::Granted);
@@ -1046,9 +1165,9 @@ mod tests {
       set_prompt_result(true);
       assert_eq!(perms.request_write(&None), PermissionState::Denied);
       set_prompt_result(true);
-      assert_eq!(perms.request_net(&None).unwrap(), PermissionState::Granted);
+      assert_eq!(perms.request_net(&Some(&("127.0.0.1", None))), PermissionState::Granted);
       set_prompt_result(false);
-      assert_eq!(perms.request_net(&Some("http://127.0.0.1:8000")).unwrap(), PermissionState::Granted);
+      assert_eq!(perms.request_net(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       set_prompt_result(true);
       assert_eq!(perms.request_env(), PermissionState::Granted);
       set_prompt_result(false);
@@ -1073,16 +1192,17 @@ mod tests {
     let mut perms = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
+        granted_list: resolve_fs_allowlist(&Some(vec![PathBuf::from("/foo")])),
         ..Default::default()
       },
       net: UnaryPermission {
-        global_state: PermissionState::Denied,
+        global_state: PermissionState::Prompt,
+        granted_list: svec!["127.0.0.1"].iter().cloned().collect(),
         ..Default::default()
       },
       env: PermissionState::Granted,
@@ -1098,7 +1218,8 @@ mod tests {
       assert_eq!(perms.revoke_write(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms.revoke_write(&None), PermissionState::Prompt);
       assert_eq!(perms.query_write(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.revoke_net(&None).unwrap(), PermissionState::Denied);
+      assert_eq!(perms.revoke_net(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms.revoke_net(&Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.revoke_env(), PermissionState::Prompt);
       assert_eq!(perms.revoke_run(), PermissionState::Prompt);
       assert_eq!(perms.revoke_plugin(), PermissionState::Prompt);

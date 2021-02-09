@@ -1,71 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json::Value;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use lsp_server::Notification;
-use serde::de::DeserializeOwned;
-use std::error::Error;
-use std::fmt;
-
-// TODO(@kitsonk) support actually supporting cancellation requests from the
-// client.
-
-pub struct Canceled {
-  _private: (),
-}
-
-impl Canceled {
-  #[allow(unused)]
-  pub fn new() -> Self {
-    Self { _private: () }
-  }
-
-  #[allow(unused)]
-  pub fn throw() -> ! {
-    std::panic::resume_unwind(Box::new(Canceled::new()))
-  }
-}
-
-impl fmt::Display for Canceled {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "cancelled")
-  }
-}
-
-impl fmt::Debug for Canceled {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "Canceled")
-  }
-}
-
-impl Error for Canceled {}
-
-pub fn from_json<T: DeserializeOwned>(
-  what: &'static str,
-  json: Value,
-) -> Result<T, AnyError> {
-  let response = T::deserialize(&json).map_err(|err| {
-    custom_error(
-      "DeserializeFailed",
-      format!("Failed to deserialize {}: {}; {}", what, err, json),
-    )
-  })?;
-  Ok(response)
-}
-
-pub fn is_canceled(e: &(dyn Error + 'static)) -> bool {
-  e.downcast_ref::<Canceled>().is_some()
-}
-
-pub fn notification_is<N: lsp_types::notification::Notification>(
-  notification: &Notification,
-) -> bool {
-  notification.method == N::METHOD
-}
 
 /// Normalizes a file name returned from the TypeScript compiler into a URI that
 /// should be sent by the language server to the client.
@@ -76,6 +14,19 @@ pub fn normalize_file_name(file_name: &str) -> Result<Url, AnyError> {
     format!("deno:///{}", file_name.replacen("://", "/", 1))
   };
   Url::parse(&specifier_str).map_err(|err| err.into())
+}
+
+pub fn normalize_specifier(
+  specifier: &ModuleSpecifier,
+) -> Result<Url, AnyError> {
+  let url = specifier.as_url();
+  if url.scheme() == "file" {
+    Ok(url.clone())
+  } else {
+    let specifier_str =
+      format!("deno:///{}", url.as_str().replacen("://", "/", 1));
+    Url::parse(&specifier_str).map_err(|err| err.into())
+  }
 }
 
 /// Normalize URLs from the client, where "virtual" `deno:///` URLs are
@@ -101,6 +52,23 @@ pub fn normalize_url(url: Url) -> ModuleSpecifier {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_normalize_file_name() {
+    let fixture = "https://deno.land/x/mod.ts";
+    let actual = normalize_file_name(fixture).unwrap();
+    let expected = Url::parse("deno:///https/deno.land/x/mod.ts").unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn test_normalize_specifier() {
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let actual = normalize_specifier(&fixture).unwrap();
+    let expected = Url::parse("deno:///https/deno.land/x/mod.ts").unwrap();
+    assert_eq!(actual, expected);
+  }
 
   #[test]
   fn test_normalize_url() {

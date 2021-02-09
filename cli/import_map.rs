@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -34,9 +34,9 @@ impl fmt::Display for ImportMapError {
 
 impl Error for ImportMapError {}
 
-// NOTE: here is difference between deno and reference implementation - deno currently
-//  can't resolve URL with other schemes (eg. data:, about:, blob:)
-const SUPPORTED_FETCH_SCHEMES: [&str; 3] = ["http", "https", "file"];
+// NOTE: here is difference between deno and reference implementation - Deno
+// doesn't resolve URLs outside of the supported schemes.
+const SUPPORTED_FETCH_SCHEMES: [&str; 4] = ["http", "https", "file", "data"];
 
 type SpecifierMap = IndexMap<String, Vec<ModuleSpecifier>>;
 type ScopesMap = IndexMap<String, SpecifierMap>;
@@ -863,9 +863,9 @@ mod tests {
         "http://good/": {},
         "https://good/": {},
         "file:///good": {},
+        "data:good": {},
         "about:bad": {},
         "blob:bad": {},
-        "data:bad": {},
         "filesystem:bad": {},
         "ftp://bad/": {},
         "import:bad": {},
@@ -880,7 +880,8 @@ mod tests {
     assert!(import_map.scopes.contains_key("http://good/"));
     assert!(import_map.scopes.contains_key("https://good/"));
     assert!(import_map.scopes.contains_key("file:///good"));
-    assert_eq!(import_map.scopes.len(), 3);
+    assert!(import_map.scopes.contains_key("data:good"));
+    assert_eq!(import_map.scopes.len(), 4);
 
     // Should parse absolute URL scope keys, ignoring unparseable ones..
     let json_map = r#"{
@@ -994,9 +995,9 @@ mod tests {
         "http": "http://good/",
         "https": "https://good/",
         "file": "file:///good",
+        "data": "data:good",
         "about": "about:bad",
         "blob": "blob:bad",
-        "data": "data:bad",
         "filesystem": "filesystem:bad",
         "ftp": "ftp://good/",
         "import": "import:bad",
@@ -1021,10 +1022,13 @@ mod tests {
       import_map.imports.get("https").unwrap(),
       &vec!["https://good/".to_string()]
     );
+    assert_eq!(
+      import_map.imports.get("data").unwrap(),
+      &vec!["data:good".to_string()]
+    );
 
     assert!(import_map.imports.get("about").unwrap().is_empty());
     assert!(import_map.imports.get("blob").unwrap().is_empty());
-    assert!(import_map.imports.get("data").unwrap().is_empty());
     assert!(import_map.imports.get("filesystem").unwrap().is_empty());
     assert!(import_map.imports.get("ftp").unwrap().is_empty());
     assert!(import_map.imports.get("import").unwrap().is_empty());
@@ -1041,9 +1045,9 @@ mod tests {
         "http": ["http://good/"],
         "https": ["https://good/"],
         "file": ["file:///good"],
+        "data": ["data:good"],
         "about": ["about:bad"],
         "blob": ["blob:bad"],
-        "data": ["data:bad"],
         "filesystem": ["filesystem:bad"],
         "ftp": ["ftp://good/"],
         "import": ["import:bad"],
@@ -1068,10 +1072,13 @@ mod tests {
       import_map.imports.get("https").unwrap(),
       &vec!["https://good/".to_string()]
     );
+    assert_eq!(
+      import_map.imports.get("data").unwrap(),
+      &vec!["data:good".to_string()]
+    );
 
     assert!(import_map.imports.get("about").unwrap().is_empty());
     assert!(import_map.imports.get("blob").unwrap().is_empty());
-    assert!(import_map.imports.get("data").unwrap().is_empty());
     assert!(import_map.imports.get("filesystem").unwrap().is_empty());
     assert!(import_map.imports.get("ftp").unwrap().is_empty());
     assert!(import_map.imports.get("import").unwrap().is_empty());
@@ -2067,6 +2074,17 @@ mod tests {
     assert_resolve(
       import_map.resolve("std:none", base_url),
       "https://example.com/app/none.mjs",
+    );
+  }
+
+  #[test]
+  fn resolve_data_urls() {
+    let base_url = "https://example.com/app/main.ts";
+    let json_map = r#"{}"#;
+    let import_map = ImportMap::from_json(base_url, json_map).unwrap();
+    assert_resolve(
+      import_map.resolve("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", base_url), 
+      "data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=",
     );
   }
 }

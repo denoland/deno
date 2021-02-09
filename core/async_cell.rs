@@ -1,10 +1,14 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::any::type_name;
 use std::any::Any;
 use std::borrow::Borrow;
 use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::collections::VecDeque;
+use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -44,6 +48,17 @@ impl<T: 'static> AsyncRefCell<T> {
 
   pub fn as_ptr(&self) -> *mut T {
     self.value.get()
+  }
+
+  pub fn into_inner(self) -> T {
+    assert!(self.borrow_count.get().is_empty());
+    self.value.into_inner()
+  }
+}
+
+impl<T> Debug for AsyncRefCell<T> {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    write!(f, "AsyncRefCell<{}>", type_name::<T>())
   }
 }
 

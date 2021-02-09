@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -1710,13 +1710,9 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
-     * callers should just use `close()`.
-     *
-     * **Unstable** because of lack of testing and because Deno.shutdown is also
-     * unstable.
-     * */
-    closeWrite(): void;
+    /** Shuts down (`shutdown(2)`) the write side of the connection. Most
+     * callers should just use `close()`. */
+    closeWrite(): Promise<void>;
   }
 
   export interface ListenOptions {
@@ -1808,6 +1804,18 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+
+  /** Shutdown socket send operations.
+   *
+   * Matches behavior of POSIX shutdown(3).
+   *
+   * ```ts
+   * const listener = Deno.listen({ port: 80 });
+   * const conn = await listener.accept();
+   * Deno.shutdown(conn.rid);
+   * ```
+   */
+  export function shutdown(rid: number): Promise<void>;
 
   export interface Metrics {
     opsDispatched: number;
@@ -1902,7 +1910,29 @@ declare namespace Deno {
       : (Reader & Closer) | null;
     readonly stderr: T["stderr"] extends "piped" ? Reader & Closer
       : (Reader & Closer) | null;
-    /** Resolves to the current status of the process. */
+    /** Wait for the process to exit and return its exit status.
+     *
+     * Calling this function multiple times will return the same status.
+     *
+     * Stdin handle to the process will be closed before waiting to avoid
+     * a deadlock.
+     *
+     * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
+     * manually before the process can exit.
+     * 
+     * To run process to completion and collect output from both `stdout` and
+     * `stderr` use:
+     * 
+     * ```ts
+     * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
+     * const [status, stdout, stderr] = await Promise.all([
+     *   p.status(),
+     *   p.output(),
+     *   p.stderrOutput()
+     * ]);
+     * p.close();
+     * ```
+     **/
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *

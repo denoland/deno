@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /*
 SharedQueue Binary Layout
 +-------------------------------+-------------------------------+
@@ -15,6 +15,7 @@ SharedQueue Binary Layout
 |                        RECORDS (*MAX_RECORDS)               ...
 +---------------------------------------------------------------+
  */
+"use strict";
 
 ((window) => {
   const MAX_RECORDS = 100;
@@ -34,16 +35,8 @@ SharedQueue Binary Layout
 
   let asyncHandlers;
 
-  let initialized = false;
   let opsCache = {};
   const errorMap = {};
-
-  function maybeInit() {
-    if (!initialized) {
-      init();
-      initialized = true;
-    }
-  }
 
   function init() {
     const shared = core.shared;
@@ -72,14 +65,12 @@ SharedQueue Binary Layout
   }
 
   function reset() {
-    maybeInit();
     shared32[INDEX_NUM_RECORDS] = 0;
     shared32[INDEX_NUM_SHIFTED_OFF] = 0;
     shared32[INDEX_HEAD] = HEAD_INIT;
   }
 
   function head() {
-    maybeInit();
     return shared32[INDEX_HEAD];
   }
 
@@ -160,7 +151,6 @@ SharedQueue Binary Layout
   }
 
   function setAsyncHandler(opId, cb) {
-    maybeInit();
     assert(opId != null);
     asyncHandlers[opId] = cb;
   }
@@ -273,6 +263,7 @@ SharedQueue Binary Layout
     resources,
     registerErrorClass,
     getErrorClass,
+    sharedQueueInit: init,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
       MAX_RECORDS,

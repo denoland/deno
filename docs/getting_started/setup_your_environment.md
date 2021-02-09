@@ -106,13 +106,50 @@ on YouTrack.
 
 Vim works fairly well for Deno/TypeScript if you install
 [CoC](https://github.com/neoclide/coc.nvim) (intellisense engine and language
-server protocol).
+server protocol) or [ALE](https://github.com/dense-analysis/ale) (syntax checker
+and language server protocol client).
+
+##### CoC
 
 After CoC is installed, from inside Vim, run`:CocInstall coc-tsserver` and
 `:CocInstall coc-deno`. To get autocompletion working for Deno type definitions
 run `:CocCommand deno.types`. Optionally restart the CoC server `:CocRestart`.
 From now on, things like `gd` (go to definition) and `gr` (goto/find references)
 should work.
+
+##### ALE
+
+ALE integrates with Deno's LSP out of the box and should not require any extra
+configuration. However, if your Deno executable is not located in `$PATH`, has a
+different name than `deno` or you want to use unstable features/APIs, you need
+to override ALE's default values. See
+[`:help ale-typescript`](https://github.com/dense-analysis/ale/blob/master/doc/ale-typescript.txt).
+
+ALE provides support for autocompletion, refactoring, going to definition,
+finding references and more, however, key bindings need to be configured
+manually. Copy the snippet below into your `vimrc`/`init.vim` for basic
+configuration or consult the
+[official documentation](https://github.com/dense-analysis/ale#table-of-contents)
+for a more in-depth look at how to configure ALE.
+
+ALE can fix linter issues by running `deno fmt`. To instruct ALE to use the Deno
+formatter the `ale_linter` setting needs to be set either on a per buffer basis
+(`let b:ale_linter = ['deno']`) or globally for all TypeScript files
+(`let g:ale_fixers={'typescript': ['deno']}`)
+
+```vim
+" Use ALE autocompletion with Vim's 'omnifunc' setting (press <C-x><C-o> in insert mode)
+autocmd FileType typescript set omnifunc=ale#completion#OmniFunc
+
+" Make sure to use map instead of noremap when using a <Plug>(...) expression as the {rhs}
+nmap gr <Plug>(ale_rename)
+nmap gR <Plug>(ale_find_reference)
+nmap gd <Plug>(ale_go_to_definition)
+nmap gD <Plug>(ale_go_to_type_definition)
+
+let g:ale_fixers = {'typescript': ['deno']}
+let g:ale_fix_on_save = 1 " run deno fmt when saving a buffer
+```
 
 #### Emacs
 
@@ -147,7 +184,7 @@ project (`npm init -y` as necessary), then add the following block to your
 #### LSP clients
 
 Deno has builtin support for the
-[Language server protocol](https://langserver.org).
+[Language server protocol](https://langserver.org) as of version 1.6.0 or later.
 
 If your editor supports the LSP, you can use Deno as a language server for
 TypeScript and JavaScript.
@@ -182,10 +219,80 @@ if executable("deno")
     \ "name": "deno lsp",
     \ "cmd": {server_info -> ["deno", "lsp"]},
     \ "root_uri": {server_info->lsp#utils#path_to_uri(lsp#utils#find_nearest_parent_file_directory(lsp#utils#get_buffer_path(), "tsconfig.json"))},
-    \ "whitelist": ["typescript", "typescript.tsx"],
+    \ "allowlist": ["typescript", "typescript.tsx"],
+    \ "initialization_options": {
+    \     "enable": v:true,
+    \     "lint": v:true,
+    \     "unstable": v:true,
+    \   },
     \ })
   augroup END
 endif
+```
+
+##### Example for Sublime Text
+
+- Install the [Sublime LSP package](https://packagecontrol.io/packages/LSP)
+- Install the
+  [TypeScript package](https://packagecontrol.io/packages/TypeScript) to get
+  syntax highlighting
+- Add the following `.sublime-project` file to your project folder
+
+```json
+{
+  "settings": {
+    "LSP": {
+      "deno": {
+        "command": [
+          "deno",
+          "lsp"
+        ],
+        "initializationOptions": {
+          // "config": "", // Sets the path for the config file in your project
+          "enable": true,
+          // "importMap": "", // Sets the path for the import-map in your project
+          "lint": true,
+          "unstable": false
+        },
+        "enabled": true,
+        "languages": [
+          {
+            "languageId": "javascript",
+            "scopes": ["source.js"],
+            "syntaxes": [
+              "Packages/Babel/JavaScript (Babel).sublime-syntax",
+              "Packages/JavaScript/JavaScript.sublime-syntax"
+            ]
+          },
+          {
+            "languageId": "javascriptreact",
+            "scopes": ["source.jsx"],
+            "syntaxes": [
+              "Packages/Babel/JavaScript (Babel).sublime-syntax",
+              "Packages/JavaScript/JavaScript.sublime-syntax"
+            ]
+          },
+          {
+            "languageId": "typescript",
+            "scopes": ["source.ts"],
+            "syntaxes": [
+              "Packages/TypeScript-TmLanguage/TypeScript.tmLanguage",
+              "Packages/TypeScript Syntax/TypeScript.tmLanguage"
+            ]
+          },
+          {
+            "languageId": "typescriptreact",
+            "scopes": ["source.tsx"],
+            "syntaxes": [
+              "Packages/TypeScript-TmLanguage/TypeScriptReact.tmLanguage",
+              "Packages/TypeScript Syntax/TypeScriptReact.tmLanguage"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
 ```
 
 If you don't see your favorite IDE on this list, maybe you can develop an

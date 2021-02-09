@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
@@ -15,6 +15,7 @@ fn create_snapshot(
 ) {
   deno_web::init(&mut js_runtime);
   deno_fetch::init(&mut js_runtime);
+  deno_websocket::init(&mut js_runtime);
   deno_crypto::init(&mut js_runtime);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
@@ -62,7 +63,7 @@ fn main() {
   // Main snapshot
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let js_files = get_js_files("rt");
+  let js_files = get_js_files("js");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 }
 

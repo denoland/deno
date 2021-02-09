@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 pub use anyhow::anyhow;
 pub use anyhow::bail;
@@ -193,14 +193,10 @@ impl JsError {
 
       // Access error.stack to ensure that prepareStackTrace() has been called.
       // This should populate error.__callSiteEvals.
+      let stack = get_property(scope, exception, "stack");
       let stack: Option<v8::Local<v8::String>> =
-        get_property(scope, exception, "stack")
-          .unwrap()
-          .try_into()
-          .ok();
+        stack.and_then(|s| s.try_into().ok());
       let stack = stack.map(|s| s.to_rust_string_lossy(scope));
-
-      // FIXME(bartlmieju): the rest of this function is CLI only
 
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
@@ -293,7 +289,7 @@ impl JsError {
               .unwrap();
           let is_promise_all = is_promise_all.is_true();
           let promise_index: Option<v8::Local<v8::Integer>> =
-            get_property(scope, call_site, "columnNumber")
+            get_property(scope, call_site, "promiseIndex")
               .unwrap()
               .try_into()
               .ok();
@@ -383,7 +379,6 @@ pub(crate) fn attach_handle_to_error(
   err: AnyError,
   handle: v8::Local<v8::Value>,
 ) -> AnyError {
-  // TODO(bartomieju): this is a special case...
   ErrWithV8Handle::new(scope, err, handle).into()
 }
 

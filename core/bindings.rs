@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
 use crate::runtime::JsRuntimeState;
@@ -59,24 +59,18 @@ pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let resource_line_offset = v8::Integer::new(s, 0);
-  let resource_column_offset = v8::Integer::new(s, 0);
-  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
-  let script_id = v8::Integer::new(s, 123);
   let source_map_url = v8::String::new(s, "").unwrap();
-  let resource_is_opaque = v8::Boolean::new(s, true);
-  let is_wasm = v8::Boolean::new(s, false);
-  let is_module = v8::Boolean::new(s, false);
   v8::ScriptOrigin::new(
+    s,
     resource_name.into(),
-    resource_line_offset,
-    resource_column_offset,
-    resource_is_shared_cross_origin,
-    script_id,
+    0,
+    0,
+    false,
+    123,
     source_map_url.into(),
-    resource_is_opaque,
-    is_wasm,
-    is_module,
+    true,
+    false,
+    false,
   )
 }
 
@@ -84,24 +78,18 @@ pub fn module_origin<'a>(
   s: &mut v8::HandleScope<'a>,
   resource_name: v8::Local<'a, v8::String>,
 ) -> v8::ScriptOrigin<'a> {
-  let resource_line_offset = v8::Integer::new(s, 0);
-  let resource_column_offset = v8::Integer::new(s, 0);
-  let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
-  let script_id = v8::Integer::new(s, 123);
   let source_map_url = v8::String::new(s, "").unwrap();
-  let resource_is_opaque = v8::Boolean::new(s, true);
-  let is_wasm = v8::Boolean::new(s, false);
-  let is_module = v8::Boolean::new(s, true);
   v8::ScriptOrigin::new(
+    s,
     resource_name.into(),
-    resource_line_offset,
-    resource_column_offset,
-    resource_is_shared_cross_origin,
-    script_id,
+    0,
+    0,
+    false,
+    123,
     source_map_url.into(),
-    resource_is_opaque,
-    is_wasm,
-    is_module,
+    true,
+    false,
+    true,
   )
 }
 
@@ -222,6 +210,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
   specifier: v8::Local<v8::String>,
+  _import_assertions: v8::Local<v8::FixedArray>,
 ) -> *mut v8::Promise {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
@@ -654,6 +643,14 @@ fn decode(
     )
   };
 
+  // Strip BOM
+  let buf =
+    if buf.len() >= 3 && buf[0] == 0xef && buf[1] == 0xbb && buf[2] == 0xbf {
+      &buf[3..]
+    } else {
+      buf
+    };
+
   // If `String::new_from_utf8()` returns `None`, this means that the
   // length of the decoded string would be longer than what V8 can
   // handle. In this case we return `RangeError`.
@@ -718,6 +715,7 @@ fn shared_getter(
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
+  _import_assertions: v8::Local<'s, v8::FixedArray>,
   referrer: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };

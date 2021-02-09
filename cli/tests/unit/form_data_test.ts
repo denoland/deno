@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -78,7 +78,7 @@ unitTest(function formDataParamsSetSuccess(): void {
   assertEquals(formData.get("e"), "null");
 });
 
-unitTest(function fromDataUseDomFile(): void {
+unitTest(function fromDataUseFile(): void {
   const formData = new FormData();
   const file = new File(["foo"], "bar", {
     type: "text/plain",

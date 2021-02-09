@@ -1,11 +1,11 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertThrows,
   fail,
-} from "../../std/testing/asserts.ts";
-import { deferred } from "../../std/async/deferred.ts";
+} from "../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../test_util/std/async/deferred.ts";
 
 Deno.test("invalid scheme", () => {
   assertThrows(() => new WebSocket("foo://localhost:4242"));
@@ -159,7 +159,9 @@ Deno.test("websocket error", async () => {
   ws.onopen = () => fail();
   ws.onerror = (err): void => {
     assert(err instanceof ErrorEvent);
-    assertEquals(err.message, "InvalidData: received corrupt message");
+
+    // Error message got changed because we don't use warp in test_util
+    assertEquals(err.message, "UnexpectedEof: tls handshake eof");
     promise1.resolve();
   };
   await promise1;

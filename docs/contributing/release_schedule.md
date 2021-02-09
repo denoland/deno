@@ -5,9 +5,8 @@ version is released weekly, except in the week before a new minor release.
 
 The release dates for the upcoming minor releases are:
 
-- 1.6.0: December 8th, 2020
-- 1.7.0: January 19th, 2021
 - 1.8.0: March 2nd, 2021
+- 1.9.0: April 13, 2021
 
 Stable releases can be found on the
 [GitHub releases page](https://github.com/denoland/deno/releases).
@@ -22,7 +21,7 @@ canary release by running:
 deno upgrade --canary
 ```
 
-To update to a specific canary, pass the commit has in the `--version` option:
+To update to a specific canary, pass the commit hash in the `--version` option:
 
 ```
 deno upgrade --canary --version=973af61d8bb03c1709f61e456581d58386ed4952

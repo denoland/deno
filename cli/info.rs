@@ -1,9 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::media_type::serialize_media_type;
-use crate::MediaType;
-use crate::ModuleSpecifier;
+use crate::media_type::MediaType;
+use deno_core::ModuleSpecifier;
 
 use serde::Serialize;
 use serde::Serializer;

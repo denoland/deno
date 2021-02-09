@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::metrics::metrics_op;
 use crate::permissions::Permissions;
@@ -14,9 +14,11 @@ use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -53,9 +55,7 @@ pub fn op_open_plugin(
   let rid;
   let deno_plugin_init;
   {
-    rid = state
-      .resource_table
-      .add("plugin", Box::new(plugin_resource));
+    rid = state.resource_table.add(plugin_resource);
     deno_plugin_init = *unsafe {
       state
         .resource_table
@@ -75,6 +75,12 @@ pub fn op_open_plugin(
 
 struct PluginResource {
   lib: Rc<Library>,
+}
+
+impl Resource for PluginResource {
+  fn name(&self) -> Cow<str> {
+    "plugin".into()
+  }
 }
 
 impl PluginResource {

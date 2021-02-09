@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
@@ -7,6 +7,7 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
+/// <reference lib="deno.websocket" />
 
 declare namespace WebAssembly {
   /**
@@ -314,7 +315,7 @@ declare function setInterval(
 /** Cancels a timed, repeating action which was previously started by a call
  * to `setInterval()`
  *
- *     const id = setInterval(()= > {console.log('hello');}, 500);
+ *     const id = setInterval(() => {console.log('hello');}, 500);
  *     ...
  *     clearInterval(id);
  */
@@ -322,7 +323,7 @@ declare function clearInterval(id?: number): void;
 
 /** Cancels a scheduled action initiated by `setTimeout()`
  *
- *     const id = setTimeout(()= > {console.log('hello');}, 500);
+ *     const id = setTimeout(() => {console.log('hello');}, 500);
  *     ...
  *     clearTimeout(id);
  */
@@ -435,175 +436,6 @@ declare interface Crypto {
   ): T;
 }
 
-declare class URLSearchParams {
-  constructor(
-    init?: string[][] | Record<string, string> | string | URLSearchParams,
-  );
-  static toString(): string;
-
-  /** Appends a specified key/value pair as a new search parameter.
-   *
-   * ```ts
-   * let searchParams = new URLSearchParams();
-   * searchParams.append('name', 'first');
-   * searchParams.append('name', 'second');
-   * ```
-   */
-  append(name: string, value: string): void;
-
-  /** Deletes the given search parameter and its associated value,
-   * from the list of all search parameters.
-   *
-   * ```ts
-   * let searchParams = new URLSearchParams([['name', 'value']]);
-   * searchParams.delete('name');
-   * ```
-   */
-  delete(name: string): void;
-
-  /** Returns all the values associated with a given search parameter
-   * as an array.
-   *
-   * ```ts
-   * searchParams.getAll('name');
-   * ```
-   */
-  getAll(name: string): string[];
-
-  /** Returns the first value associated to the given search parameter.
-   *
-   * ```ts
-   * searchParams.get('name');
-   * ```
-   */
-  get(name: string): string | null;
-
-  /** Returns a Boolean that indicates whether a parameter with the
-   * specified name exists.
-   *
-   * ```ts
-   * searchParams.has('name');
-   * ```
-   */
-  has(name: string): boolean;
-
-  /** Sets the value associated with a given search parameter to the
-   * given value. If there were several matching values, this method
-   * deletes the others. If the search parameter doesn't exist, this
-   * method creates it.
-   *
-   * ```ts
-   * searchParams.set('name', 'value');
-   * ```
-   */
-  set(name: string, value: string): void;
-
-  /** Sort all key/value pairs contained in this object in place and
-   * return undefined. The sort order is according to Unicode code
-   * points of the keys.
-   *
-   * ```ts
-   * searchParams.sort();
-   * ```
-   */
-  sort(): void;
-
-  /** Calls a function for each element contained in this object in
-   * place and return undefined. Optionally accepts an object to use
-   * as this when executing callback as second argument.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * params.forEach((value, key, parent) => {
-   *   console.log(value, key, parent);
-   * });
-   * ```
-   *
-   */
-  forEach(
-    callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any,
-  ): void;
-
-  /** Returns an iterator allowing to go through all keys contained
-   * in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const key of params.keys()) {
-   *   console.log(key);
-   * }
-   * ```
-   */
-  keys(): IterableIterator<string>;
-
-  /** Returns an iterator allowing to go through all values contained
-   * in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const value of params.values()) {
-   *   console.log(value);
-   * }
-   * ```
-   */
-  values(): IterableIterator<string>;
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const [key, value] of params.entries()) {
-   *   console.log(key, value);
-   * }
-   * ```
-   */
-  entries(): IterableIterator<[string, string]>;
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const [key, value] of params) {
-   *   console.log(key, value);
-   * }
-   * ```
-   */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-
-  /** Returns a query string suitable for use in a URL.
-   *
-   * ```ts
-   * searchParams.toString();
-   * ```
-   */
-  toString(): string;
-}
-
-/** The URL interface represents an object providing static methods used for creating object URLs. */
-declare class URL {
-  constructor(url: string, base?: string | URL);
-  createObjectURL(object: any): string;
-  revokeObjectURL(url: string): void;
-
-  hash: string;
-  host: string;
-  hostname: string;
-  href: string;
-  toString(): string;
-  readonly origin: string;
-  password: string;
-  pathname: string;
-  port: string;
-  protocol: string;
-  search: string;
-  readonly searchParams: URLSearchParams;
-  username: string;
-  toJSON(): string;
-}
-
 interface MessageEventInit<T = any> extends EventInit {
   data?: T;
   origin?: string;
@@ -643,12 +475,6 @@ interface PostMessageOptions {
   transfer?: any[];
 }
 
-interface ProgressEventInit extends EventInit {
-  lengthComputable?: boolean;
-  loaded?: number;
-  total?: number;
-}
-
 interface AbstractWorkerEventMap {
   "error": ErrorEvent;
 }
@@ -658,62 +484,18 @@ interface WorkerEventMap extends AbstractWorkerEventMap {
   "messageerror": MessageEvent;
 }
 
+interface WorkerOptions {
+  type?: "classic" | "module";
+  name?: string;
+}
+
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
   onmessageerror?: (e: MessageEvent) => void;
   constructor(
     specifier: string,
-    options?: {
-      type?: "classic" | "module";
-      name?: string;
-      /** UNSTABLE: New API. Expect many changes; most likely this
-       * field will be made into an object for more granular
-       * configuration of worker thread (permissions, import map, etc.).
-       *
-       * Set to `true` to make `Deno` namespace and all of its methods
-       * available to worker thread.
-       *
-       * Currently worker inherits permissions from main thread (permissions
-       * given using `--allow-*` flags).
-       * Configurable permissions are on the roadmap to be implemented.
-       *
-       * Example:
-       *
-       * ```ts
-       * // mod.ts
-       * const worker = new Worker(
-       *   new URL("deno_worker.ts", import.meta.url).href,
-       *   { type: "module", deno: true }
-       * );
-       * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
-       *
-       * // deno_worker.ts
-       *
-       *
-       * self.onmessage = async function (e) {
-       *     const { cmd, fileName } = e.data;
-       *     if (cmd !== "readFile") {
-       *         throw new Error("Invalid command");
-       *     }
-       *     const buf = await Deno.readFile(fileName);
-       *     const fileContents = new TextDecoder().decode(buf);
-       *     console.log(fileContents);
-       * }
-       * ```
-       *
-       * // log.txt
-       * hello world
-       * hello world 2
-       *
-       * // run program
-       * $ deno run --allow-read mod.ts
-       * hello world
-       * hello world2
-       *
-       */
-      deno?: boolean;
-    },
+    options?: WorkerOptions,
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;
@@ -840,17 +622,6 @@ declare class PerformanceMeasure extends PerformanceEntry {
   readonly entryType: "measure";
 }
 
-/** Events measuring progress of an underlying process, like an HTTP request
- * (for an XMLHttpRequest, or the loading of the underlying resource of an
- * <img>, <audio>, <video>, <style> or <link>). */
-declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
-  constructor(type: string, eventInitDict?: ProgressEventInit);
-  readonly lengthComputable: boolean;
-  readonly loaded: number;
-  readonly target: T | null;
-  readonly total: number;
-}
-
 declare interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
 }
@@ -869,109 +640,3 @@ interface ErrorConstructor {
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.
 }
-
-interface CloseEventInit extends EventInit {
-  code?: number;
-  reason?: string;
-  wasClean?: boolean;
-}
-
-declare class CloseEvent extends Event {
-  constructor(type: string, eventInitDict?: CloseEventInit);
-  /**
-   * Returns the WebSocket connection close code provided by the server.
-   */
-  readonly code: number;
-  /**
-   * Returns the WebSocket connection close reason provided by the server.
-   */
-  readonly reason: string;
-  /**
-   * Returns true if the connection closed cleanly; false otherwise.
-   */
-  readonly wasClean: boolean;
-}
-
-interface WebSocketEventMap {
-  close: CloseEvent;
-  error: Event;
-  message: MessageEvent;
-  open: Event;
-}
-
-/** Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection. */
-declare class WebSocket extends EventTarget {
-  constructor(url: string, protocols?: string | string[]);
-
-  static readonly CLOSED: number;
-  static readonly CLOSING: number;
-  static readonly CONNECTING: number;
-  static readonly OPEN: number;
-
-  /**
-   * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
-   *
-   * Can be set, to change how binary data is returned. The default is "blob".
-   */
-  binaryType: BinaryType;
-  /**
-   * Returns the number of bytes of application data (UTF-8 text and binary data) that have been queued using send() but not yet been transmitted to the network.
-   *
-   * If the WebSocket connection is closed, this attribute's value will only increase with each call to the send() method. (The number does not reset to zero once the connection closes.)
-   */
-  readonly bufferedAmount: number;
-  /**
-   * Returns the extensions selected by the server, if any.
-   */
-  readonly extensions: string;
-  onclose: ((this: WebSocket, ev: CloseEvent) => any) | null;
-  onerror: ((this: WebSocket, ev: Event | ErrorEvent) => any) | null;
-  onmessage: ((this: WebSocket, ev: MessageEvent) => any) | null;
-  onopen: ((this: WebSocket, ev: Event) => any) | null;
-  /**
-   * Returns the subprotocol selected by the server, if any. It can be used in conjunction with the array form of the constructor's second argument to perform subprotocol negotiation.
-   */
-  readonly protocol: string;
-  /**
-   * Returns the state of the WebSocket object's connection. It can have the values described below.
-   */
-  readonly readyState: number;
-  /**
-   * Returns the URL that was used to establish the WebSocket connection.
-   */
-  readonly url: string;
-  /**
-   * Closes the WebSocket connection, optionally using code as the the WebSocket connection close code and reason as the the WebSocket connection close reason.
-   */
-  close(code?: number, reason?: string): void;
-  /**
-   * Transmits data using the WebSocket connection. data can be a string, a Blob, an ArrayBuffer, or an ArrayBufferView.
-   */
-  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void;
-  readonly CLOSED: number;
-  readonly CLOSING: number;
-  readonly CONNECTING: number;
-  readonly OPEN: number;
-  addEventListener<K extends keyof WebSocketEventMap>(
-    type: K,
-    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  addEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  removeEventListener<K extends keyof WebSocketEventMap>(
-    type: K,
-    listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
-    options?: boolean | EventListenerOptions,
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions,
-  ): void;
-}
-
-type BinaryType = "arraybuffer" | "blob";

@@ -1,9 +1,10 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
+"use strict";
 
 ((window) => {
   const eventData = new WeakMap();
@@ -40,6 +41,13 @@
     value,
   ) {
     event.currentTarget = value;
+  }
+
+  function setIsTrusted(event, value) {
+    const data = eventData.get(event);
+    if (data) {
+      data.isTrusted = value;
+    }
   }
 
   function setDispatched(event, value) {
@@ -661,7 +669,7 @@
       setRelatedTarget(eventImpl, null);
     }
 
-    // TODO: invoke activation targets if HTML nodes will be implemented
+    // TODO(bartlomieju): invoke activation targets if HTML nodes will be implemented
     // if (activationTarget !== null) {
     //   if (!eventImpl.defaultPrevented) {
     //     activationTarget._activationBehavior();
@@ -1184,5 +1192,8 @@
   window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.eventTarget = {
     setEventTargetData,
+  };
+  window.__bootstrap.event = {
+    setIsTrusted,
   };
 })(this);

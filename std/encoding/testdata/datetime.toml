@@ -1,8 +1,0 @@
-[datetime]
-odt1 = 1979-05-27T07:32:00Z # Comment
-odt2 = 1979-05-27T00:32:00-07:00 # Comment
-odt3 = 1979-05-27T00:32:00.999999-07:00 # Comment
-odt4 = 1979-05-27 07:32:00Z # Comment
-ld1 = 1979-05-27 # Comment
-lt1 = 07:32:00 # Comment
-lt2 = 00:32:00.999999 # Comment
