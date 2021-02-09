@@ -1,5 +1,6 @@
-error: Uncaught Error: Hello 2
-    throw new Error(`Hello ${A.C}`);
+[WILDCARD]error: Uncaught Error: Hello 2
+   throw new Error(`Hello ${A.C}`);
          ^
-    at a (72554b3efdc211ba4aa0b62629589f048e7d4afe7b0576f35ff340ce0ea8f9b8.ts:8:10)
-    at import_data_url_error_stack.ts:3:1
+    at a (data:application/typescript;base64,ZW51bSBBIHsKICBBLAogIEIsCiAgQywKIH0KIAogZXhwb3J0IGZ1bmN0aW9uIGEoKSB7CiAgIHRocm93IG5ldyBFcnJvcihgSGVsbG8gJHtBLkN9YCk7CiB9CiA=:8:10)
+    at file:///[WILDCARD]/cli/tests/import_data_url_error_stack.ts:3:1
+[WILDCARD]

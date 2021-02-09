@@ -3012,6 +3012,13 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(error_026_remote_import_error {
+    args: "run error_026_remote_import_error.ts",
+    output: "error_026_remote_import_error.ts.out",
+    exit_code: 1,
+    http_server: true,
+  });
+
   itest!(error_missing_module_named_import {
     args: "run --reload error_missing_module_named_import.ts",
     output: "error_missing_module_named_import.ts.out",
