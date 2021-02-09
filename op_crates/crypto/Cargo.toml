@@ -15,5 +15,5 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.78.0", path = "../../core" }
-rand = "0.8.2"
+rand = "0.8.3"
 
