@@ -326,8 +326,8 @@ mod integration {
     remove_dir_all(deno_dir.path()).unwrap();
   }
 
-  #[tokio::test]
-  async fn cache_test() {
+  #[test]
+  fn cache_test() {
     let _g = util::http_server();
     let deno_dir = TempDir::new().expect("tempdir fail");
     let module_url =
@@ -343,11 +343,10 @@ mod integration {
     assert!(output.status.success());
     let out = std::str::from_utf8(&output.stdout).unwrap();
     assert_eq!(out, "");
-    // TODO(ry) Is there some way to check that the file was actually cached in
-    // DENO_DIR?
 
+    // Check for cached file
     let prg = util::deno_exe_path();
-    let output = Command::new(prg)
+    let output = Command::new(&prg)
       .env("DENO_DIR", deno_dir.path())
       .env("NO_COLOR", "1")
       .current_dir(util::root_path())
@@ -361,17 +360,46 @@ mod integration {
     let cached_file = std::path::PathBuf::from(&str_output[7..max].trim());
     assert!(cached_file.is_file());
 
-    let module_original = reqwest::get(module_url)
-      .await
-      .unwrap()
-      .text()
-      .await
+    let root = util::root_path();
+    let mut module_original_file =
+      fs::File::open(root.join("cli/tests/006_url_imports.ts")).unwrap();
+    let mut module_original_content = String::new();
+    module_original_file
+      .read_to_string(&mut module_original_content)
       .unwrap();
+
     let mut module_cached = String::new();
     let mut module_file = fs::File::open(cached_file).unwrap();
     module_file.read_to_string(&mut module_cached).unwrap();
 
-    assert_eq!(module_original, module_cached);
+    assert_eq!(module_original_content, module_cached);
+
+    // Check for compiled file
+    let compile_path_min = str_output.find("compiled:").unwrap() + 9;
+    let compile_path_max = str_output.rfind("deps").unwrap();
+    let compiled_file_path =
+      &str_output[compile_path_min..compile_path_max].trim();
+    assert!(std::path::PathBuf::from(compiled_file_path).is_file());
+
+    // Check for compiled file output
+    let compiled_output = Command::new(&prg)
+      .arg("run")
+      .arg("-A")
+      .arg(compiled_file_path)
+      .output()
+      .expect("Failed to spawn script");
+    let compiled_str_output =
+      std::str::from_utf8(&compiled_output.stdout).unwrap();
+    eprintln!("{}", compiled_str_output);
+
+    let module_output_path = root.join("cli/tests/006_url_imports.ts.out");
+    let mut module_output = String::new();
+    let mut module_output_file = fs::File::open(module_output_path).unwrap();
+    module_output_file
+      .read_to_string(&mut module_output)
+      .unwrap();
+
+    assert_eq!(module_output, compiled_str_output);
   }
 
   #[test]
