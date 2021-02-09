@@ -89,7 +89,8 @@ this:
     "lib": ["deno.window"],
     "module": "esnext",
     "strict": true,
-    "target": "esnext"
+    "target": "esnext",
+    "useDefineForClassFields": true
   }
 }
 ```

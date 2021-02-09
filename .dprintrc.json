@@ -24,14 +24,13 @@
     "cli/tests/inline_js_source_map*",
     "cli/tests/badly_formatted.md",
     "cli/tsc/*typescript.js",
+    "test_util/std",
     "test_util/wpt",
     "gh-pages",
-    "std/**/testdata",
-    "std/**/vendor",
-    "std/node_modules",
-    "std/hash/_wasm",
     "target",
-    "third_party"
+    "third_party",
+    "tools/wpt/expectation.json",
+    "tools/wpt/manifest.json"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.33.0.wasm",

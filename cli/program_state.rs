@@ -296,12 +296,8 @@ impl SourceMapGetter for ProgramState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
       if let Some((code, maybe_map)) = self.get_emit(&specifier.as_url()) {
-        if maybe_map.is_some() {
-          maybe_map
-        } else {
-          let code = String::from_utf8(code).unwrap();
-          source_map_from_code(code)
-        }
+        let code = String::from_utf8(code).unwrap();
+        source_map_from_code(code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None) {
         source_map_from_code(source.code)
       } else {
@@ -351,8 +347,13 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
   }
 }
 
-#[test]
-fn thread_safe() {
-  fn f<S: Send + Sync>(_: S) {}
-  f(ProgramState::mock(vec![], None));
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn thread_safe() {
+    fn f<S: Send + Sync>(_: S) {}
+    f(ProgramState::mock(vec![], None));
+  }
 }

@@ -78,7 +78,7 @@ unitTest(function formDataParamsSetSuccess(): void {
   assertEquals(formData.get("e"), "null");
 });
 
-unitTest(function fromDataUseDomFile(): void {
+unitTest(function fromDataUseFile(): void {
   const formData = new FormData();
   const file = new File(["foo"], "bar", {
     type: "text/plain",

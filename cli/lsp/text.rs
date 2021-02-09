@@ -1,124 +1,236 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use dissimilar::diff;
 use dissimilar::Chunk;
-use lspower::lsp_types;
-use lspower::lsp_types::TextEdit;
+use lspower::jsonrpc;
+use lspower::lsp;
+use lspower::lsp::TextEdit;
+use std::collections::HashMap;
 use std::ops::Bound;
-use std::ops::Range;
 use std::ops::RangeBounds;
+use text_size::TextRange;
+use text_size::TextSize;
 
-// TODO(@kitson) in general all of these text handling routines don't handle
-// JavaScript encoding in the same way and likely cause issues when trying to
-// arbitrate between chars and Unicode graphemes.  There be dragons.
+fn partition_point<T, P>(slice: &[T], mut predicate: P) -> usize
+where
+  P: FnMut(&T) -> bool,
+{
+  let mut left = 0;
+  let mut right = slice.len();
 
-/// Generate a character position for the start of each line.  For example:
-///
-/// ```rust
-/// let actual = index_lines("a\nb\n");
-/// assert_eq!(actual, vec![0, 2, 4]);
-/// ```
-///
-pub fn index_lines(text: &str) -> Vec<u32> {
-  let mut indexes = vec![0_u32];
-  for (i, c) in text.chars().enumerate() {
-    if c == '\n' {
-      indexes.push((i + 1) as u32);
-    }
-  }
-  indexes
-}
-
-enum IndexValid {
-  All,
-  UpTo(u32),
-}
-
-impl IndexValid {
-  fn covers(&self, line: u32) -> bool {
-    match *self {
-      IndexValid::UpTo(to) => to > line,
-      IndexValid::All => true,
-    }
-  }
-}
-
-fn to_range(line_index: &[u32], range: lsp_types::Range) -> Range<usize> {
-  let start =
-    (line_index[range.start.line as usize] + range.start.character) as usize;
-  let end =
-    (line_index[range.end.line as usize] + range.end.character) as usize;
-  Range { start, end }
-}
-
-pub fn to_position(line_index: &[u32], char_pos: u32) -> lsp_types::Position {
-  let mut line = 0_usize;
-  let mut line_start = 0_u32;
-  for (pos, v) in line_index.iter().enumerate() {
-    if char_pos < *v {
-      break;
-    }
-    line_start = *v;
-    line = pos;
-  }
-
-  lsp_types::Position {
-    line: line as u32,
-    character: char_pos - line_start,
-  }
-}
-
-pub fn to_char_pos(line_index: &[u32], position: lsp_types::Position) -> u32 {
-  if let Some(line_start) = line_index.get(position.line as usize) {
-    line_start + position.character
-  } else {
-    0_u32
-  }
-}
-
-/// Apply a vector of document changes to the supplied string.
-pub fn apply_content_changes(
-  content: &mut String,
-  content_changes: Vec<lsp_types::TextDocumentContentChangeEvent>,
-) {
-  let mut line_index = index_lines(&content);
-  let mut index_valid = IndexValid::All;
-  for change in content_changes {
-    if let Some(range) = change.range {
-      if !index_valid.covers(range.start.line) {
-        line_index = index_lines(&content);
-      }
-      let range = to_range(&line_index, range);
-      content.replace_range(range, &change.text);
+  while left != right {
+    let mid = left + (right - left) / 2;
+    // SAFETY:
+    // When left < right, left <= mid < right.
+    // Therefore left always increases and right always decreases,
+    // and either of them is selected.
+    // In both cases left <= right is satisfied.
+    // Therefore if left < right in a step,
+    // left <= right is satisfied in the next step.
+    // Therefore as long as left != right, 0 <= left < right <= len is satisfied
+    // and if this case 0 <= mid < len is satisfied too.
+    let value = unsafe { slice.get_unchecked(mid) };
+    if predicate(value) {
+      left = mid + 1;
     } else {
-      *content = change.text;
-      index_valid = IndexValid::UpTo(0);
+      right = mid;
     }
+  }
+
+  left
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Utf16Char {
+  pub start: TextSize,
+  pub end: TextSize,
+}
+
+impl Utf16Char {
+  fn len(&self) -> TextSize {
+    self.end - self.start
+  }
+
+  fn len_utf16(&self) -> usize {
+    if self.len() == TextSize::from(4) {
+      2
+    } else {
+      1
+    }
+  }
+}
+
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct LineIndex {
+  utf8_offsets: Vec<TextSize>,
+  utf16_lines: HashMap<u32, Vec<Utf16Char>>,
+  utf16_offsets: Vec<TextSize>,
+}
+
+impl LineIndex {
+  pub fn new(text: &str) -> LineIndex {
+    let mut utf16_lines = HashMap::new();
+    let mut utf16_chars = Vec::new();
+
+    let mut utf8_offsets = vec![0.into()];
+    let mut utf16_offsets = vec![0.into()];
+    let mut curr_row = 0.into();
+    let mut curr_col = 0.into();
+    let mut curr_offset_u16 = 0.into();
+    let mut line = 0;
+    for c in text.chars() {
+      let c_len = TextSize::of(c);
+      curr_row += c_len;
+      curr_offset_u16 += TextSize::from(c.len_utf16() as u32);
+      if c == '\n' {
+        utf8_offsets.push(curr_row);
+        utf16_offsets.push(curr_offset_u16);
+
+        if !utf16_chars.is_empty() {
+          utf16_lines.insert(line, utf16_chars);
+          utf16_chars = Vec::new();
+        }
+
+        curr_col = 0.into();
+        line += 1;
+        continue;
+      }
+
+      if !c.is_ascii() {
+        utf16_chars.push(Utf16Char {
+          start: curr_col,
+          end: curr_col + c_len,
+        });
+      }
+      curr_col += c_len;
+    }
+
+    if !utf16_chars.is_empty() {
+      utf16_lines.insert(line, utf16_chars);
+    }
+
+    LineIndex {
+      utf8_offsets,
+      utf16_lines,
+      utf16_offsets,
+    }
+  }
+
+  /// Convert a u16 based range to a u8 TextRange.
+  pub fn get_text_range(
+    &self,
+    range: lsp::Range,
+  ) -> Result<TextRange, AnyError> {
+    let start = self.offset(range.start)?;
+    let end = self.offset(range.end)?;
+    Ok(TextRange::new(start, end))
+  }
+
+  /// Return a u8 offset based on a u16 position.
+  pub fn offset(&self, position: lsp::Position) -> Result<TextSize, AnyError> {
+    let col = self.utf16_to_utf8_col(position.line, position.character);
+    if let Some(line_offset) = self.utf8_offsets.get(position.line as usize) {
+      Ok(line_offset + col)
+    } else {
+      Err(custom_error("OutOfRange", "The position is out of range."))
+    }
+  }
+
+  /// Convert an lsp Position into a tsc/TypeScript "position", which is really
+  /// an u16 byte offset from the start of the string represented as an u32.
+  pub fn offset_tsc(&self, position: lsp::Position) -> jsonrpc::Result<u32> {
+    self
+      .offset_utf16(position)
+      .map(|ts| ts.into())
+      .map_err(|err| jsonrpc::Error::invalid_params(err.to_string()))
+  }
+
+  fn offset_utf16(
+    &self,
+    position: lsp::Position,
+  ) -> Result<TextSize, AnyError> {
+    if let Some(line_offset) = self.utf16_offsets.get(position.line as usize) {
+      Ok(line_offset + TextSize::from(position.character))
+    } else {
+      Err(custom_error("OutOfRange", "The position is out of range."))
+    }
+  }
+
+  /// Returns a u16 position based on a u16 offset, which TypeScript offsets are
+  /// returned as u16.
+  pub fn position_tsc(&self, offset: TextSize) -> lsp::Position {
+    let line = partition_point(&self.utf16_offsets, |&it| it <= offset) - 1;
+    let line_start_offset = self.utf16_offsets[line];
+    let col = offset - line_start_offset;
+
+    lsp::Position {
+      line: line as u32,
+      character: col.into(),
+    }
+  }
+
+  /// Returns a u16 position based on a u8 offset.
+  pub fn position_utf16(&self, offset: TextSize) -> lsp::Position {
+    let line = partition_point(&self.utf16_offsets, |&it| it <= offset) - 1;
+    let line_start_offset = self.utf16_offsets[line];
+    let col = offset - line_start_offset;
+
+    lsp::Position {
+      line: line as u32,
+      character: col.into(),
+    }
+  }
+
+  fn utf16_to_utf8_col(&self, line: u32, mut col: u32) -> TextSize {
+    if let Some(utf16_chars) = self.utf16_lines.get(&line) {
+      for c in utf16_chars {
+        if col > u32::from(c.start) {
+          col += u32::from(c.len()) - c.len_utf16() as u32;
+        } else {
+          break;
+        }
+      }
+    }
+
+    col.into()
   }
 }
 
 /// Compare two strings and return a vector of text edit records which are
 /// supported by the Language Server Protocol.
-pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
+pub fn get_edits(
+  a: &str,
+  b: &str,
+  maybe_line_index: Option<LineIndex>,
+) -> Vec<TextEdit> {
+  if a == b {
+    return vec![];
+  }
   let chunks = diff(a, b);
   let mut text_edits = Vec::<TextEdit>::new();
-  let line_index = index_lines(a);
+  let line_index = if let Some(line_index) = maybe_line_index {
+    line_index
+  } else {
+    LineIndex::new(a)
+  };
   let mut iter = chunks.iter().peekable();
-  let mut a_pos = 0_u32;
+  let mut a_pos = TextSize::from(0);
   loop {
     let chunk = iter.next();
     match chunk {
       None => break,
       Some(Chunk::Equal(e)) => {
-        a_pos += e.chars().count() as u32;
+        a_pos += TextSize::from(e.encode_utf16().count() as u32);
       }
       Some(Chunk::Delete(d)) => {
-        let start = to_position(&line_index, a_pos);
-        a_pos += d.chars().count() as u32;
-        let end = to_position(&line_index, a_pos);
-        let range = lsp_types::Range { start, end };
+        let start = line_index.position_utf16(a_pos);
+        a_pos += TextSize::from(d.encode_utf16().count() as u32);
+        let end = line_index.position_utf16(a_pos);
+        let range = lsp::Range { start, end };
         match iter.peek() {
           Some(Chunk::Insert(i)) => {
             iter.next();
@@ -134,8 +246,8 @@ pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
         }
       }
       Some(Chunk::Insert(i)) => {
-        let pos = to_position(&line_index, a_pos);
-        let range = lsp_types::Range {
+        let pos = line_index.position_utf16(a_pos);
+        let range = lsp::Range {
           start: pos,
           end: pos,
         };
@@ -153,6 +265,9 @@ pub fn get_edits(a: &str, b: &str) -> Vec<TextEdit> {
 /// Convert a difference between two strings into a change range used by the
 /// TypeScript Language Service.
 pub fn get_range_change(a: &str, b: &str) -> Value {
+  if a == b {
+    return json!(null);
+  }
   let chunks = diff(a, b);
   let mut iter = chunks.iter().peekable();
   let mut started = false;
@@ -162,12 +277,12 @@ pub fn get_range_change(a: &str, b: &str) -> Value {
   let mut equal = 0;
   let mut a_pos = 0;
   loop {
-    let chunk = iter.next();
-    match chunk {
+    let diff = iter.next();
+    match diff {
       None => break,
       Some(Chunk::Equal(e)) => {
-        a_pos += e.chars().count();
-        equal += e.chars().count();
+        a_pos += e.encode_utf16().count();
+        equal += e.encode_utf16().count();
       }
       Some(Chunk::Delete(d)) => {
         if !started {
@@ -175,7 +290,7 @@ pub fn get_range_change(a: &str, b: &str) -> Value {
           started = true;
           equal = 0;
         }
-        a_pos += d.chars().count();
+        a_pos += d.encode_utf16().count();
         if started {
           end = a_pos;
           new_length += equal;
@@ -191,7 +306,7 @@ pub fn get_range_change(a: &str, b: &str) -> Value {
         } else {
           end += equal;
         }
-        new_length += i.chars().count() + equal;
+        new_length += i.encode_utf16().count() + equal;
         equal = 0;
       }
     }
@@ -215,7 +330,7 @@ pub fn slice(s: &str, range: impl RangeBounds<usize>) -> &str {
   let len = match range.end_bound() {
     Bound::Included(bound) => *bound + 1,
     Bound::Excluded(bound) => *bound,
-    Bound::Unbounded => s.len(),
+    Bound::Unbounded => s.encode_utf16().count(),
   } - start;
   substring(s, start, start + len)
 }
@@ -231,7 +346,7 @@ pub fn substring(s: &str, start: usize, end: usize) -> &str {
       break;
     }
     if let Some(c) = it.next() {
-      char_pos += 1;
+      char_pos += c.len_utf16();
       byte_start += c.len_utf8();
     } else {
       break;
@@ -244,7 +359,7 @@ pub fn substring(s: &str, start: usize, end: usize) -> &str {
       break;
     }
     if let Some(c) = it.next() {
-      char_pos += 1;
+      char_pos += c.len_utf16();
       byte_end += c.len_utf8();
     } else {
       break;
@@ -258,41 +373,211 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_apply_content_changes() {
-    let mut content = "a\nb\nc\nd".to_string();
-    let content_changes = vec![lsp_types::TextDocumentContentChangeEvent {
-      range: Some(lsp_types::Range {
-        start: lsp_types::Position {
-          line: 1,
-          character: 0,
-        },
-        end: lsp_types::Position {
-          line: 1,
-          character: 1,
-        },
-      }),
-      range_length: Some(1),
-      text: "e".to_string(),
-    }];
-    apply_content_changes(&mut content, content_changes);
-    assert_eq!(content, "a\ne\nc\nd");
+  fn test_line_index() {
+    let text = "hello\nworld";
+    let index = LineIndex::new(text);
+    assert_eq!(
+      index.position_utf16(0.into()),
+      lsp::Position {
+        line: 0,
+        character: 0
+      }
+    );
+    assert_eq!(
+      index.position_utf16(1.into()),
+      lsp::Position {
+        line: 0,
+        character: 1
+      }
+    );
+    assert_eq!(
+      index.position_utf16(5.into()),
+      lsp::Position {
+        line: 0,
+        character: 5
+      }
+    );
+    assert_eq!(
+      index.position_utf16(6.into()),
+      lsp::Position {
+        line: 1,
+        character: 0
+      }
+    );
+    assert_eq!(
+      index.position_utf16(7.into()),
+      lsp::Position {
+        line: 1,
+        character: 1
+      }
+    );
+    assert_eq!(
+      index.position_utf16(8.into()),
+      lsp::Position {
+        line: 1,
+        character: 2
+      }
+    );
+    assert_eq!(
+      index.position_utf16(10.into()),
+      lsp::Position {
+        line: 1,
+        character: 4
+      }
+    );
+    assert_eq!(
+      index.position_utf16(11.into()),
+      lsp::Position {
+        line: 1,
+        character: 5
+      }
+    );
+    assert_eq!(
+      index.position_utf16(12.into()),
+      lsp::Position {
+        line: 1,
+        character: 6
+      }
+    );
+
+    let text = "\nhello\nworld";
+    let index = LineIndex::new(text);
+    assert_eq!(
+      index.position_utf16(0.into()),
+      lsp::Position {
+        line: 0,
+        character: 0
+      }
+    );
+    assert_eq!(
+      index.position_utf16(1.into()),
+      lsp::Position {
+        line: 1,
+        character: 0
+      }
+    );
+    assert_eq!(
+      index.position_utf16(2.into()),
+      lsp::Position {
+        line: 1,
+        character: 1
+      }
+    );
+    assert_eq!(
+      index.position_utf16(6.into()),
+      lsp::Position {
+        line: 1,
+        character: 5
+      }
+    );
+    assert_eq!(
+      index.position_utf16(7.into()),
+      lsp::Position {
+        line: 2,
+        character: 0
+      }
+    );
+  }
+
+  #[test]
+  fn test_char_len() {
+    assert_eq!('メ'.len_utf8(), 3);
+    assert_eq!('メ'.len_utf16(), 1);
+    assert_eq!('编'.len_utf8(), 3);
+    assert_eq!('编'.len_utf16(), 1);
+    assert_eq!('🦕'.len_utf8(), 4);
+    assert_eq!('🦕'.len_utf16(), 2);
+  }
+
+  #[test]
+  fn test_empty_index() {
+    let col_index = LineIndex::new(
+      "
+const C: char = 'x';
+",
+    );
+    assert_eq!(col_index.utf16_lines.len(), 0);
+  }
+
+  #[test]
+  fn test_single_char() {
+    let col_index = LineIndex::new(
+      "
+const C: char = 'メ';
+",
+    );
+
+    assert_eq!(col_index.utf16_lines.len(), 1);
+    assert_eq!(col_index.utf16_lines[&1].len(), 1);
+    assert_eq!(
+      col_index.utf16_lines[&1][0],
+      Utf16Char {
+        start: 17.into(),
+        end: 20.into()
+      }
+    );
+
+    // UTF-16 to UTF-8, no changes
+    assert_eq!(col_index.utf16_to_utf8_col(1, 15), TextSize::from(15));
+
+    // UTF-16 to UTF-8
+    assert_eq!(col_index.utf16_to_utf8_col(1, 19), TextSize::from(21));
+
+    let col_index = LineIndex::new("a𐐏b");
+    assert_eq!(col_index.utf16_to_utf8_col(0, 3), TextSize::from(5));
+  }
+
+  #[test]
+  fn test_string() {
+    let col_index = LineIndex::new(
+      "
+const C: char = \"メ メ\";
+",
+    );
+
+    assert_eq!(col_index.utf16_lines.len(), 1);
+    assert_eq!(col_index.utf16_lines[&1].len(), 2);
+    assert_eq!(
+      col_index.utf16_lines[&1][0],
+      Utf16Char {
+        start: 17.into(),
+        end: 20.into()
+      }
+    );
+    assert_eq!(
+      col_index.utf16_lines[&1][1],
+      Utf16Char {
+        start: 21.into(),
+        end: 24.into()
+      }
+    );
+
+    // UTF-16 to UTF-8
+    assert_eq!(col_index.utf16_to_utf8_col(1, 15), TextSize::from(15));
+
+    // メ UTF-8: 0xE3 0x83 0xA1, UTF-16: 0x30E1
+    assert_eq!(col_index.utf16_to_utf8_col(1, 17), TextSize::from(17)); // first メ at 17..20
+    assert_eq!(col_index.utf16_to_utf8_col(1, 18), TextSize::from(20)); // space
+    assert_eq!(col_index.utf16_to_utf8_col(1, 19), TextSize::from(21)); // second メ at 21..24
+
+    assert_eq!(col_index.utf16_to_utf8_col(2, 15), TextSize::from(15));
   }
 
   #[test]
   fn test_get_edits() {
     let a = "abcdefg";
     let b = "a\nb\nchije\nfg\n";
-    let actual = get_edits(a, b);
+    let actual = get_edits(a, b, None);
     assert_eq!(
       actual,
       vec![
         TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
+          range: lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 1
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 5
             }
@@ -300,12 +585,12 @@ mod tests {
           new_text: "\nb\nchije\n".to_string()
         },
         TextEdit {
-          range: lsp_types::Range {
-            start: lsp_types::Position {
+          range: lsp::Range {
+            start: lsp::Position {
               line: 0,
               character: 7
             },
-            end: lsp_types::Position {
+            end: lsp::Position {
               line: 0,
               character: 7
             }
@@ -317,7 +602,50 @@ mod tests {
   }
 
   #[test]
+  fn test_get_edits_mbc() {
+    let a = "const bar = \"👍🇺🇸😃\";\nconsole.log('hello deno')\n";
+    let b = "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n";
+    let actual = get_edits(a, b, None);
+    assert_eq!(
+      actual,
+      vec![
+        TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 12
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 13
+            }
+          },
+          new_text: "\"".to_string()
+        },
+        TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 23
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 25
+            }
+          },
+          new_text: "\");".to_string()
+        },
+      ]
+    )
+  }
+
+  #[test]
   fn test_get_range_change() {
+    let a = "abcdefg";
+    let b = "abcdefg";
+    let actual = get_range_change(a, b);
+    assert_eq!(actual, json!(null));
+
     let a = "abcdefg";
     let b = "abedcfg";
     let actual = get_range_change(a, b);
@@ -401,108 +729,56 @@ mod tests {
         "newLength": 3
       })
     );
-  }
 
-  #[test]
-  fn test_index_lines() {
-    let actual = index_lines("a\nb\r\nc");
-    assert_eq!(actual, vec![0, 2, 5]);
-  }
+    let a = "hello 🦕!";
+    let b = "hello deno!";
+    let actual = get_range_change(a, b);
+    assert_eq!(
+      actual,
+      json!({
+        "span": {
+          "start": 6,
+          "length": 2,
+        },
+        "newLength": 4
+      })
+    );
 
-  #[test]
-  fn test_to_position() {
-    let line_index = index_lines("a\nb\r\nc\n");
+    let a = "hello deno!";
+    let b = "hello deno🦕!";
+    let actual = get_range_change(a, b);
     assert_eq!(
-      to_position(&line_index, 6),
-      lsp_types::Position {
-        line: 2,
-        character: 1,
-      }
+      actual,
+      json!({
+        "span": {
+          "start": 10,
+          "length": 0,
+        },
+        "newLength": 2
+      })
     );
-    assert_eq!(
-      to_position(&line_index, 0),
-      lsp_types::Position {
-        line: 0,
-        character: 0,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 3),
-      lsp_types::Position {
-        line: 1,
-        character: 1,
-      }
-    );
-  }
 
-  #[test]
-  fn test_to_position_mbc() {
-    let line_index = index_lines("y̆\n😱🦕\n🤯\n");
-    assert_eq!(
-      to_position(&line_index, 0),
-      lsp_types::Position {
-        line: 0,
-        character: 0,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 2),
-      lsp_types::Position {
-        line: 0,
-        character: 2,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 3),
-      lsp_types::Position {
-        line: 1,
-        character: 0,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 4),
-      lsp_types::Position {
-        line: 1,
-        character: 1,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 5),
-      lsp_types::Position {
-        line: 1,
-        character: 2,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 6),
-      lsp_types::Position {
-        line: 2,
-        character: 0,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 7),
-      lsp_types::Position {
-        line: 2,
-        character: 1,
-      }
-    );
-    assert_eq!(
-      to_position(&line_index, 8),
-      lsp_types::Position {
-        line: 3,
-        character: 0,
-      }
-    );
+    // TODO(@kitsonk): https://github.com/dtolnay/dissimilar/issues/5
+    // let a = r#" 🦕🇺🇸👍 "#;
+    // let b = r#" 🇺🇸👍 "#;
+    // let actual = get_range_change(a, b);
+    // assert_eq!(
+    //   actual,
+    //   json!({
+    //     "span": {
+    //       "start": 1,
+    //       "length": 2,
+    //     },
+    //     "newLength": 0
+    //   })
+    // );
   }
 
   #[test]
   fn test_substring() {
     assert_eq!(substring("Deno", 1, 3), "en");
     assert_eq!(substring("y̆y̆", 2, 4), "y̆");
-    // this doesn't work like JavaScript, as 🦕 is treated as a single char in
-    // Rust, but as two chars in JavaScript.
-    // assert_eq!(substring("🦕🦕", 2, 4), "🦕");
+    assert_eq!(substring("🦕🦕", 2, 4), "🦕");
   }
 
   #[test]
@@ -511,5 +787,6 @@ mod tests {
     assert_eq!(slice("Deno", 1..=3), "eno");
     assert_eq!(slice("Deno Land", 1..), "eno Land");
     assert_eq!(slice("Deno", ..3), "Den");
+    assert_eq!(slice("Hello 🦕", 6..8), "🦕");
   }
 }

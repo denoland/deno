@@ -1,4 +1,4 @@
-import { fromFileUrl } from "../../../std/path/mod.ts";
+import { fromFileUrl } from "../../../test_util/std/path/mod.ts";
 
 const worker = new Worker(
   new URL("./read_check_granular_worker.js", import.meta.url).href,

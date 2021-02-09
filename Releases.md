@@ -6,6 +6,143 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.7.2 / 2021.02.05
+
+- feat(lsp, unstable): add references code lens (#9316)
+- feat(lsp, unstable): add TS quick fix code actions (#9396)
+- fix: improve http client builder error message (#9380)
+- fix(cli): fix handling of non-normalized specifier (#9357)
+- fix(cli/coverage): display mapped instrumentation line counts (#9310)
+- fix(cli/lsp): fix using jsx/tsx when not emitting via tsc (#9407)
+- fix(repl): prevent symbol completion panic (#9400)
+- refactor: rewrite Blob implementation (#9309)
+- refactor: rewrite File implementation (#9334)
+
+Release notes for std version 0.86.0:
+https://github.com/denoland/deno_std/releases/tag/0.86.0
+
+### 1.7.1 / 2021.01.29
+
+- feat(lsp, unstable): add performance measurements (#9209)
+- fix(cli): IO resource types, fix concurrent read/write and graceful close
+  (#9118)
+- fix(cli): Move WorkerOptions::deno types to unstable (#9163)
+- fix(cli): add lib dom.asynciterable (#9288)
+- fix(cli): correctly determine emit state with redirects (#9287)
+- fix(cli): early abort before type checking on missing modules (#9285)
+- fix(cli): enable url wpt (#9299)
+- fix(cli): fix panic in Deno.emit (#9302)
+- fix(cli): fix panic in op_dns_resolve (#9187)
+- fix(cli): fix recursive dispatches of unload event (#9207)
+- fix(cli): fmt command help message (#9280)
+- fix(cli): use DOMException in Performance#measure (#9142)
+- fix(cli/flags): don't panic on invalid location scheme (#9202)
+- fix(compile): fix panic when cross-compiling between windows and unix (#9203)
+- fix(core): Handle prepareStackTrace() throws (#9211)
+- fix(coverage): ignore comments (#8639)
+- fix(coverage): use source maps when printing pretty reports (#9278)
+- fix(lsp): complete list of unused diagnostics (#9274)
+- fix(lsp): fix deadlocks, use one big mutex (#9271)
+- fix(lsp): handle mbc documents properly (#9151)
+- fix(lsp): handle mbc properly when formatting (#9273)
+- fix(lsp): reduce deadlocks with in memory documents (#9259)
+- fix(op_crates/fetch): fix ReadableStream.pipeThrough() (#9265)
+- fix(op_crates/web): Add gb18030 and GBK encodings (#9242)
+- fix(op_crates/web): Improve customInspect for Location (#9290)
+- chore: new typescript WPT runner (#9269)
+
+Changes in std version 0.85.0:
+
+- feat(std/node): Add support for process.on("exit") (#8940)
+- fix(std/async): make pooledMap() errors catchable (#9217)
+- fix(std/node): Stop callbacks being called twice when callback throws error
+  (#8867)
+- fix(std/node): replace uses of `window` with `globalThis` (#9237)
+
+### 1.7.0 / 2021.01.19
+
+- BREAKING(unstable): Use hosts for net allowlists (#8845)
+- BREAKING(unstable): remove CreateHttpClientOptions.caFile (#8928)
+- feat(installer): Add support for MSYS on Windows (#8932)
+- feat(unstable): add Deno.resolveDns API (#8790)
+- feat(unstable): runtime compiler APIs consolidated to Deno.emit() (#8799,
+  #9139)
+- feat: Add WorkerOptions interface to type declarations (#9147)
+- feat: Add configurable permissions for Workers (#8215)
+- feat: Standalone lite binaries and cross compilation (#9141)
+- feat: add --location=<href> and globalThis.location (#7369)
+- feat: add global tls session cache (#8877)
+- feat: add markdown support to deno fmt (#8887)
+- feat: add utf-16 and big5 to TextEncoder/TextDecoder (#8108)
+- feat: denort binary (#9041)
+- feat: stabilize Deno.shutdown() and Conn#closeWrite()(#9181)
+- feat: support data urls (#8866)
+- feat: support runtime flags for deno compile (#8738)
+- feat: upload release zips to dl.deno.land (#9090)
+- fix(cli): dispatch unload on exit (#9088)
+- fix(cli): print a newline after help and version (#9158)
+- fix(coverage): do not store source inline in raw reports (#9025)
+- fix(coverage): merge duplicate reports (#8942)
+- fix(coverage): report partial lines as uncovered (#9033)
+- fix(inspector): kill child process after test (#8986)
+- fix(install): escape % symbols in windows batch files (#9133)
+- fix(install): fix cached-only flag (#9169)
+- fix(lsp): Add textDocument/implementation (#9071)
+- fix(lsp): Respect client capabilities for config and dynamic registration
+  (#8865)
+- fix(lsp): support specifying a tsconfig file (#8926)
+- fix(op_crate/fetch): add back ReadableStream.getIterator and deprecate (#9146)
+- fix(op_crate/fetch): align streams to spec (#9103)
+- fix(op_crate/web): fix atob to throw spec aligned DOMException (#8798)
+- fix(op_crates/fetch): correct regexp for fetch header (#8927)
+- fix(op_crates/fetch): req streaming + 0-copy resp streaming (#9036)
+- fix(op_crates/web) let TextEncoder#encodeInto accept detached ArrayBuffers
+  (#9143)
+- fix(op_crates/web): Use WorkerLocation for location in workers (#9084)
+- fix(op_crates/websocket): respond to ping with pong (#8974)
+- fix(watcher): keep working even when imported file has invalid syntax (#9091)
+- fix: Use "none" instead of false to sandbox Workers (#9034)
+- fix: Worker hangs when posting "undefined" as message (#8920)
+- fix: align DOMException API to the spec and add web platform testing of it.
+  (#9106)
+- fix: don't error on version and help flag (#9064)
+- fix: don't swallow customInspect exceptions (#9095)
+- fix: enable WPT tests (#9072, #9087, #9013, #9016, #9047, #9012, #9007, #9004,
+  #8990)
+- fix: full commit hash in canary compile download (#9166)
+- fix: ignore "use asm" (#9019)
+- fix: implement DOMException#code (#9015)
+- fix: incremental build for deno declaration files (#9138)
+- fix: panic during `deno compile` with no args (#9167)
+- fix: panic on invalid file:// module specifier (#8964)
+- fix: race condition in file watcher (#9105)
+- fix: redirect in --location relative fetch (#9150)
+- fix: stronger input checking for setTimeout; add function overload (#8957)
+- fix: use inline source maps when present in js (#8995)
+- fix: use tokio for async fs ops (#9042)
+- refactor(cli): remove 'js' module, simplify compiler snapshot (#9020)
+- refactor(op_crates/crypto): Prefix ops with "op_crypto_" (#9067)
+- refactor(op_crates/websocket): refactor event loop (#9079)
+- refactor: Print cause chain when downcasting AnyError fails (#9059)
+- refactor: make Process#kill() throw sensible errors on Windows (#9111)
+- refactor: move WebSocket API to an op_crate (#9026)
+- upgrade: Rust 1.49.0 (#8955)
+- upgrade: deno_doc, deno_lint, dprint, swc_ecmascript, swc_bundler (#9003)
+- upgrade: deno_lint to 0.2.16 (#9127)
+- upgrade: rusty_v8 0.16.0, v8 8.9.255.3 (#9180)
+- upgrade: swc_bundler 0.19.2 (#9085)
+- upgrade: tokio 1.0 (#8779)
+
+Changes in std version 0.84.0:
+
+- BREAKING(std/wasi): make implementation details private (#8996)
+- BREAKING(std/wasi): return exit code from start (#9022)
+- feat(std/wasi): allow stdio resources to be specified (#8999)
+- fix(std): Don't use JSDoc syntax for browser-compatibility headers (#8960)
+- fix(std/http): Use ES private fields in server (#8981)
+- fix(std/http): parsing of HTTP version header (#8902)
+- fix(std/node): resolve files in symlinked directories (#8840)
+
 ### 1.6.3 / 2020.12.30
 
 - feat(lsp): Implement textDocument/rename (#8910)

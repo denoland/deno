@@ -2,6 +2,7 @@
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
 //
+"use strict";
 delete Object.prototype.__proto__;
 
 ((window) => {
@@ -27,6 +28,7 @@ delete Object.prototype.__proto__;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
   const webSocket = window.__bootstrap.webSocket;
+  const file = window.__bootstrap.file;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
   const denoNs = window.__bootstrap.denoNs;
@@ -197,7 +199,7 @@ delete Object.prototype.__proto__;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
-    Blob: util.nonEnumerable(fetch.Blob),
+    Blob: util.nonEnumerable(file.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       streams.ByteLengthQueuingStrategy,
     ),
@@ -210,7 +212,7 @@ delete Object.prototype.__proto__;
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
-    File: util.nonEnumerable(fetch.DomFile),
+    File: util.nonEnumerable(file.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
     FormData: util.nonEnumerable(fetch.FormData),
     Headers: util.nonEnumerable(headers.Headers),
@@ -304,6 +306,15 @@ delete Object.prototype.__proto__;
 
     defineEventHandler(window, "load", null);
     defineEventHandler(window, "unload", null);
+
+    const isUnloadDispatched = Symbol.for("isUnloadDispatched");
+    // Stores the flag for checking whether unload is dispatched or not.
+    // This prevents the recursive dispatches of unload events.
+    // See https://github.com/denoland/deno/issues/9201.
+    window[isUnloadDispatched] = false;
+    window.addEventListener("unload", () => {
+      window[isUnloadDispatched] = true;
+    });
 
     runtimeStart(runtimeOptions);
     const {

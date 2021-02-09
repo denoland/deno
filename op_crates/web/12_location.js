@@ -1,4 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const { URL } = window.__bootstrap.url;
@@ -164,6 +165,22 @@
           },
           enumerable: true,
         },
+        [Symbol.for("Deno.customInspect")]: {
+          value: function (inspect) {
+            const object = {
+              hash: this.hash,
+              host: this.host,
+              hostname: this.hostname,
+              href: this.href,
+              origin: this.origin,
+              pathname: this.pathname,
+              port: this.port,
+              protocol: this.protocol,
+              search: this.search,
+            };
+            return `${this.constructor.name} ${inspect(object)}`;
+          },
+        },
       });
     }
   }
@@ -304,6 +321,22 @@
     [Symbol.toStringTag]: {
       value: "WorkerLocation",
       configurable: true,
+    },
+    [Symbol.for("Deno.customInspect")]: {
+      value: function (inspect) {
+        const object = {
+          hash: this.hash,
+          host: this.host,
+          hostname: this.hostname,
+          href: this.href,
+          origin: this.origin,
+          pathname: this.pathname,
+          port: this.port,
+          protocol: this.protocol,
+          search: this.search,
+        };
+        return `${this.constructor.name} ${inspect(object)}`;
+      },
     },
   });
 

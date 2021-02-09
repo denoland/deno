@@ -14,3 +14,4 @@ SRV
 [{"priority":0,"weight":100,"port":1234,"target":"srv.com."}]
 TXT
 [["foo","bar"]]
+Error thrown for not-found-example.com
