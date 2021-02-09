@@ -26,14 +26,17 @@ use tokio::fs;
 
 use crate::deno_dir;
 use crate::import_map::ImportMap;
+use crate::media_type::MediaType;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
+use super::analysis;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
 use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
+use super::analysis::ResolvedDependency;
 use super::capabilities;
 use super::config::Config;
 use super::diagnostics;
@@ -82,7 +85,7 @@ pub(crate) struct Inner {
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  maybe_import_map: Option<ImportMap>,
+  pub maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A map of all the cached navigation trees.
@@ -125,6 +128,33 @@ impl Inner {
       sources,
       ts_fixable_diagnostics: Default::default(),
       ts_server: TsServer::new(),
+    }
+  }
+
+  /// Analyzes dependencies of a document that has been opened in the editor and
+  /// sets the dependencies property on the document.
+  fn analyze_dependencies(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) {
+    if let Some((mut deps, _)) = analysis::analyze_dependencies(
+      specifier,
+      source,
+      &MediaType::from(specifier),
+      &self.maybe_import_map,
+    ) {
+      for (_, dep) in deps.iter_mut() {
+        if dep.maybe_type.is_none() {
+          if let Some(ResolvedDependency::Resolved(resolved)) = &dep.maybe_code
+          {
+            dep.maybe_type = self.sources.get_maybe_types(resolved);
+          }
+        }
+      }
+      if let Err(err) = self.documents.set_dependencies(specifier, Some(deps)) {
+        error!("{}", err);
+      }
     }
   }
 
@@ -633,19 +663,11 @@ impl Inner {
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
-      params.text_document.text,
+      &params.text_document.text,
     );
-    if let Err(err) = self
-      .documents
-      .analyze_dependencies(&specifier, &self.maybe_import_map)
-    {
-      error!("{}", err);
-    }
-    // there are scenarios where local documents with a nav tree are opened in
-    // the editor
-    self.navigation_trees.remove(&specifier);
-
+    self.analyze_dependencies(&specifier, &params.text_document.text);
     self.performance.measure(mark);
+
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
@@ -655,22 +677,17 @@ impl Inner {
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change");
     let specifier = utils::normalize_url(params.text_document.uri);
-    if let Err(err) = self.documents.change(
+    match self.documents.change(
       &specifier,
       params.text_document.version,
       params.content_changes,
     ) {
-      error!("{}", err);
+      Ok(Some(source)) => self.analyze_dependencies(&specifier, &source),
+      Ok(_) => error!("No content returned from change."),
+      Err(err) => error!("{}", err),
     }
-    if let Err(err) = self
-      .documents
-      .analyze_dependencies(&specifier, &self.maybe_import_map)
-    {
-      error!("{}", err);
-    }
-    self.navigation_trees.remove(&specifier);
-
     self.performance.measure(mark);
+
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
@@ -1698,6 +1715,11 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     self.0.lock().await.did_change(params).await
+  }
+
+  async fn did_save(&self, _params: DidSaveTextDocumentParams) {
+    // We don't need to do anything on save at the moment, but if this isn't
+    // implemented, lspower complains about it not being implemented.
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
