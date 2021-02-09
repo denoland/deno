@@ -365,7 +365,7 @@ pub struct GPUImageCopyTexture {
   pub texture: u32,
   pub mip_level: Option<u32>,
   pub origin: Option<GPUOrigin3D>,
-  pub aspect: Option<String>, // not yet implemented
+  pub _aspect: Option<String>, // not yet implemented
 }
 
 #[derive(Deserialize)]

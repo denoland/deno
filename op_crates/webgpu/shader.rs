@@ -23,7 +23,7 @@ struct CreateShaderModuleArgs {
   device_rid: u32,
   label: Option<String>,
   code: Option<String>,
-  _source_map: Option<()>, // not in wgpu
+  _source_map: Option<()>, // not yet implemented
 }
 
 pub fn op_webgpu_create_shader_module(

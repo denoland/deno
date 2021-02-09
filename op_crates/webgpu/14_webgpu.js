@@ -831,10 +831,10 @@
     }
 
     beginOcclusionQuery(_queryIndex) {
-      throw new Error("Not yet implemented"); // wgpu#721
+      throw new Error("Not yet implemented");
     }
     endOcclusionQuery() {
-      throw new Error("Not yet implemented"); // wgpu#721
+      throw new Error("Not yet implemented");
     }
 
     beginPipelineStatisticsQuery(querySet, queryIndex) {
