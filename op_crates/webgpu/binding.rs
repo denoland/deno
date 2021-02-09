@@ -9,14 +9,14 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub(crate) struct WebGPUBindGroupLayout(pub(crate) wgc::id::BindGroupLayoutId);
+pub(crate) struct WebGPUBindGroupLayout(pub(crate) wgpu_core::id::BindGroupLayoutId);
 impl Resource for WebGPUBindGroupLayout {
   fn name(&self) -> Cow<str> {
     "webGPUBindGroupLayout".into()
   }
 }
 
-pub(crate) struct WebGPUBindGroup(pub(crate) wgc::id::BindGroupId);
+pub(crate) struct WebGPUBindGroup(pub(crate) wgpu_core::id::BindGroupId);
 impl Resource for WebGPUBindGroup {
   fn name(&self) -> Cow<str> {
     "webGPUBindGroup".into()
@@ -98,21 +98,21 @@ pub fn op_webgpu_create_bind_group_layout(
   let mut entries = vec![];
 
   for entry in &args.entries {
-    entries.push(wgt::BindGroupLayoutEntry {
+    entries.push(wgpu_types::BindGroupLayoutEntry {
       binding: entry.binding,
-      visibility: wgt::ShaderStage::from_bits(entry.visibility).unwrap(),
+      visibility: wgpu_types::ShaderStage::from_bits(entry.visibility).unwrap(),
       ty: if let Some(buffer) = &entry.buffer {
-        wgt::BindingType::Buffer {
+        wgpu_types::BindingType::Buffer {
           ty: match &buffer.kind {
             Some(kind) => match kind.as_str() {
-              "uniform" => wgt::BufferBindingType::Uniform,
-              "storage" => wgt::BufferBindingType::Storage { read_only: false },
+              "uniform" => wgpu_types::BufferBindingType::Uniform,
+              "storage" => wgpu_types::BufferBindingType::Storage { read_only: false },
               "read-only-storage" => {
-                wgt::BufferBindingType::Storage { read_only: true }
+                wgpu_types::BufferBindingType::Storage { read_only: true }
               }
               _ => unreachable!(),
             },
-            None => wgt::BufferBindingType::Uniform,
+            None => wgpu_types::BufferBindingType::Uniform,
           },
           has_dynamic_offset: buffer.has_dynamic_offset.unwrap_or(false),
           min_binding_size: if let Some(min_binding_size) =
@@ -126,53 +126,53 @@ pub fn op_webgpu_create_bind_group_layout(
       } else if let Some(sampler) = &entry.sampler {
         match &sampler.kind {
           Some(kind) => match kind.as_str() {
-            "filtering" => wgt::BindingType::Sampler {
+            "filtering" => wgpu_types::BindingType::Sampler {
               filtering: true,
               comparison: false,
             },
-            "non-filtering" => wgt::BindingType::Sampler {
+            "non-filtering" => wgpu_types::BindingType::Sampler {
               filtering: false,
               comparison: false,
             },
-            "comparison" => wgt::BindingType::Sampler {
+            "comparison" => wgpu_types::BindingType::Sampler {
               filtering: false,
               comparison: true,
             },
             _ => unreachable!(),
           },
-          None => wgt::BindingType::Sampler {
+          None => wgpu_types::BindingType::Sampler {
             filtering: true,
             comparison: false,
           },
         }
       } else if let Some(texture) = &entry.texture {
-        wgt::BindingType::Texture {
+        wgpu_types::BindingType::Texture {
           sample_type: match &texture.sample_type {
             Some(sample_type) => match sample_type.as_str() {
-              "float" => wgt::TextureSampleType::Float { filterable: true },
+              "float" => wgpu_types::TextureSampleType::Float { filterable: true },
               "unfilterable-float" => {
-                wgt::TextureSampleType::Float { filterable: false }
+                wgpu_types::TextureSampleType::Float { filterable: false }
               }
-              "depth" => wgt::TextureSampleType::Depth,
-              "sint" => wgt::TextureSampleType::Sint,
-              "uint" => wgt::TextureSampleType::Uint,
+              "depth" => wgpu_types::TextureSampleType::Depth,
+              "sint" => wgpu_types::TextureSampleType::Sint,
+              "uint" => wgpu_types::TextureSampleType::Uint,
               _ => unreachable!(),
             },
-            None => wgt::TextureSampleType::Float { filterable: true },
+            None => wgpu_types::TextureSampleType::Float { filterable: true },
           },
           view_dimension: match &texture.view_dimension {
             Some(view_dimension) => {
               super::texture::serialize_dimension(view_dimension)
             }
-            None => wgt::TextureViewDimension::D2,
+            None => wgpu_types::TextureViewDimension::D2,
           },
           multisampled: texture.multisampled.unwrap_or(false),
         }
       } else if let Some(storage_texture) = &entry.storage_texture {
-        wgt::BindingType::StorageTexture {
+        wgpu_types::BindingType::StorageTexture {
           access: match storage_texture.access.as_str() {
-            "read-only" => wgt::StorageTextureAccess::ReadOnly,
-            "write-only" => wgt::StorageTextureAccess::WriteOnly,
+            "read-only" => wgpu_types::StorageTextureAccess::ReadOnly,
+            "write-only" => wgpu_types::StorageTextureAccess::WriteOnly,
             _ => unreachable!(),
           },
           format: super::texture::serialize_texture_format(
@@ -182,7 +182,7 @@ pub fn op_webgpu_create_bind_group_layout(
             Some(view_dimension) => {
               super::texture::serialize_dimension(view_dimension)
             }
-            None => wgt::TextureViewDimension::D2,
+            None => wgpu_types::TextureViewDimension::D2,
           },
         }
       } else {
@@ -192,12 +192,12 @@ pub fn op_webgpu_create_bind_group_layout(
     });
   }
 
-  let descriptor = wgc::binding_model::BindGroupLayoutDescriptor {
+  let descriptor = wgpu_core::binding_model::BindGroupLayoutDescriptor {
     label: args.label.map(Cow::Owned),
     entries: Cow::Owned(entries),
   };
   // TODO
-  let (bind_group_layout, _) = wgc::gfx_select!(device => instance.device_create_bind_group_layout(
+  let (bind_group_layout, _) = gfx_select!(device => instance.device_create_bind_group_layout(
     device,
     &descriptor,
     std::marker::PhantomData
@@ -252,13 +252,13 @@ pub fn op_webgpu_create_pipeline_layout(
     .try_borrow()
     .unwrap();
 
-  let descriptor = wgc::binding_model::PipelineLayoutDescriptor {
+  let descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
     label: args.label.map(Cow::Owned),
     bind_group_layouts: Cow::Owned(bind_group_layouts),
     push_constant_ranges: Default::default(),
   };
   // TODO
-  let (pipeline_layout, _) = wgc::gfx_select!(device => instance.device_create_pipeline_layout(
+  let (pipeline_layout, _) = gfx_select!(device => instance.device_create_pipeline_layout(
     device,
     &descriptor,
     std::marker::PhantomData
@@ -309,7 +309,7 @@ pub fn op_webgpu_create_bind_group(
   let mut entries = vec![];
 
   for entry in &args.entries {
-    let e = wgc::binding_model::BindGroupEntry {
+    let e = wgpu_core::binding_model::BindGroupEntry {
       binding: entry.binding,
       resource: match entry.kind.as_str() {
         "GPUSampler" => {
@@ -317,14 +317,14 @@ pub fn op_webgpu_create_bind_group(
             .resource_table
             .get::<super::sampler::WebGPUSampler>(entry.resource)
             .ok_or_else(bad_resource_id)?;
-          wgc::binding_model::BindingResource::Sampler(sampler_resource.0)
+          wgpu_core::binding_model::BindingResource::Sampler(sampler_resource.0)
         }
         "GPUTextureView" => {
           let texture_view_resource = state
             .resource_table
             .get::<super::texture::WebGPUTextureView>(entry.resource)
             .ok_or_else(bad_resource_id)?;
-          wgc::binding_model::BindingResource::TextureView(
+          wgpu_core::binding_model::BindingResource::TextureView(
             texture_view_resource.0,
           )
         }
@@ -333,8 +333,8 @@ pub fn op_webgpu_create_bind_group(
             .resource_table
             .get::<super::buffer::WebGPUBuffer>(entry.resource)
             .ok_or_else(bad_resource_id)?;
-          wgc::binding_model::BindingResource::Buffer(
-            wgc::binding_model::BufferBinding {
+          wgpu_core::binding_model::BindingResource::Buffer(
+            wgpu_core::binding_model::BufferBinding {
               buffer_id: buffer_resource.0,
               offset: entry.offset.unwrap_or(0),
               size: std::num::NonZeroU64::new(entry.size.unwrap_or(0)),
@@ -352,7 +352,7 @@ pub fn op_webgpu_create_bind_group(
     .get::<WebGPUBindGroupLayout>(args.layout)
     .ok_or_else(bad_resource_id)?;
 
-  let descriptor = wgc::binding_model::BindGroupDescriptor {
+  let descriptor = wgpu_core::binding_model::BindGroupDescriptor {
     label: args.label.map(Cow::Owned),
     layout: bind_group_layout.0,
     entries: Cow::Owned(entries),
@@ -367,7 +367,7 @@ pub fn op_webgpu_create_bind_group(
     .unwrap();
 
   // TODO
-  let (bind_group, _) = wgc::gfx_select!(device => instance.device_create_bind_group(
+  let (bind_group, _) = gfx_select!(device => instance.device_create_bind_group(
     device,
     &descriptor,
     std::marker::PhantomData

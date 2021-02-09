@@ -16,7 +16,7 @@ use deno_core::OpState;
 use deno_core::{serde_json, RcRef, ZeroCopyBuf};
 use deno_core::{BufVec, Resource};
 
-pub(crate) struct WebGPUBuffer(pub(crate) wgc::id::BufferId);
+pub(crate) struct WebGPUBuffer(pub(crate) wgpu_core::id::BufferId);
 impl Resource for WebGPUBuffer {
   fn name(&self) -> Cow<str> {
     "webGPUBuffer".into()
@@ -61,15 +61,15 @@ pub fn op_webgpu_create_buffer(
     .try_borrow()
     .unwrap();
 
-  let descriptor = wgc::resource::BufferDescriptor {
+  let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::Owned),
     size: args.size,
-    usage: wgt::BufferUsage::from_bits(args.usage).unwrap(),
+    usage: wgpu_types::BufferUsage::from_bits(args.usage).unwrap(),
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
 
   // TODO
-  let (buffer, _) = wgc::gfx_select!(device => instance.device_create_buffer(
+  let (buffer, _) = gfx_select!(device => instance.device_create_buffer(
     device,
     &descriptor,
     std::marker::PhantomData
@@ -128,26 +128,26 @@ pub async fn op_webgpu_buffer_get_map_async(
   let sender_ptr = Box::into_raw(boxed_sender) as *mut u8;
 
   extern "C" fn buffer_map_future_wrapper(
-    status: wgc::resource::BufferMapAsyncStatus,
+    status: wgpu_core::resource::BufferMapAsyncStatus,
     user_data: *mut u8,
   ) {
     let sender_ptr = user_data as *mut oneshot::Sender<Result<(), AnyError>>;
     let boxed_sender = unsafe { Box::from_raw(sender_ptr) };
     boxed_sender
       .send(match status {
-        wgc::resource::BufferMapAsyncStatus::Success => Ok(()),
+        wgpu_core::resource::BufferMapAsyncStatus::Success => Ok(()),
         _ => unreachable!(), // TODO
       })
       .unwrap();
   }
 
-  wgc::gfx_select!(buffer => instance.buffer_map_async(
+  gfx_select!(buffer => instance.buffer_map_async(
     buffer,
     args.offset..(args.offset + args.size),
-    wgc::resource::BufferMapOperation {
+    wgpu_core::resource::BufferMapOperation {
       host: match args.mode {
-        1 => wgc::device::HostMap::Read,
-        2 => wgc::device::HostMap::Write,
+        1 => wgpu_core::device::HostMap::Read,
+        2 => wgpu_core::device::HostMap::Write,
         _ => unreachable!(),
       },
       callback: buffer_map_future_wrapper,
@@ -169,7 +169,7 @@ pub async fn op_webgpu_buffer_get_map_async(
         if let Some(instance_resource) = instance_resource {
           let instance =
             RcRef::map(&instance_resource, |r| &r.0).borrow().await;
-          wgc::gfx_select!(device.clone() => instance.device_poll(device, false)).unwrap()
+          gfx_select!(device.clone() => instance.device_poll(device, false)).unwrap()
         } else {
           break;
         }
@@ -220,7 +220,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .try_borrow()
     .unwrap();
 
-  let slice_pointer = wgc::gfx_select!(buffer => instance.buffer_get_mapped_range(
+  let slice_pointer = gfx_select!(buffer => instance.buffer_get_mapped_range(
     buffer,
     args.offset,
     std::num::NonZeroU64::new(args.size)
@@ -277,7 +277,7 @@ pub fn op_webgpu_buffer_unmap(
     .borrow_mut()
     .copy_from_slice(&zero_copy[0]);
 
-  wgc::gfx_select!(buffer => instance.buffer_unmap(buffer))?;
+  gfx_select!(buffer => instance.buffer_unmap(buffer))?;
 
   Ok(json!({}))
 }

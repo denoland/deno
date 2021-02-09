@@ -48,7 +48,7 @@ pub fn op_webgpu_queue_submit(
     ids.push(buffer_resource.0);
   }
 
-  wgc::gfx_select!(queue => instance.queue_submit(queue, &ids))?;
+  gfx_select!(queue => instance.queue_submit(queue, &ids))?;
 
   Ok(json!({}))
 }
@@ -101,7 +101,7 @@ pub fn op_webgpu_write_buffer(
     Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
     None => &zero_copy[0][args.data_offset..],
   };
-  wgc::gfx_select!(queue => instance.queue_write_buffer(
+  gfx_select!(queue => instance.queue_write_buffer(
     queue,
     buffer,
     args.buffer_offset,
@@ -145,30 +145,30 @@ pub fn op_webgpu_write_texture(
     .try_borrow()
     .unwrap();
 
-  let destination = wgc::command::TextureCopyView {
+  let destination = wgpu_core::command::TextureCopyView {
     texture: texture_resource.0,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
       .destination
       .origin
-      .map_or(Default::default(), |origin| wgt::Origin3d {
+      .map_or(Default::default(), |origin| wgpu_types::Origin3d {
         x: origin.x.unwrap_or(0),
         y: origin.y.unwrap_or(0),
         z: origin.z.unwrap_or(0),
       }),
   };
-  let data_layout = wgt::TextureDataLayout {
+  let data_layout = wgpu_types::TextureDataLayout {
     offset: args.data_layout.offset.unwrap_or(0),
     bytes_per_row: args.data_layout.bytes_per_row.unwrap_or(0),
     rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
   };
 
-  wgc::gfx_select!(queue => instance.queue_write_texture(
+  gfx_select!(queue => instance.queue_write_texture(
     queue,
     &destination,
     &*zero_copy[0],
     &data_layout,
-    &wgt::Extent3d {
+    &wgpu_types::Extent3d {
       width: args.size.width.unwrap_or(1),
       height: args.size.height.unwrap_or(1),
       depth: args.size.depth.unwrap_or(1),

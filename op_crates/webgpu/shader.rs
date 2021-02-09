@@ -9,7 +9,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-pub(crate) struct WebGPUShaderModule(pub(crate) wgc::id::ShaderModuleId);
+pub(crate) struct WebGPUShaderModule(pub(crate) wgpu_core::id::ShaderModuleId);
 impl Resource for WebGPUShaderModule {
   fn name(&self) -> Cow<str> {
     "webGPUShaderModule".into()
@@ -47,8 +47,8 @@ pub fn op_webgpu_create_shader_module(
     .unwrap();
 
   let source = match args.code {
-    Some(code) => wgc::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
-    None => wgc::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
+    Some(code) => wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::Owned(code)),
+    None => wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::Borrowed(unsafe {
       let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
       assert!(prefix.is_empty());
       assert!(suffix.is_empty());
@@ -56,13 +56,13 @@ pub fn op_webgpu_create_shader_module(
     })),
   };
 
-  let descriptor = wgc::pipeline::ShaderModuleDescriptor {
+  let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
     label: args.label.map(Cow::Owned),
     flags: Default::default()
   };
 
   // TODO
-  let (shader_module, _) = wgc::gfx_select!(device => instance.device_create_shader_module(
+  let (shader_module, _) = gfx_select!(device => instance.device_create_shader_module(
     device,
     &descriptor,
     source,

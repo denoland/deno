@@ -14,6 +14,27 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[macro_use]
+mod macros {
+  macro_rules! gfx_select {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
+      match $id.backend() {
+        #[cfg(all(not(target_arch = "wasm32"), any(not(any(target_os = "ios", target_os = "macos")), feature = "gfx-backend-vulkan")))]
+        wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::backend::Vulkan>( $($param),* ),
+        #[cfg(all(not(target_arch = "wasm32"), any(target_os = "ios", target_os = "macos")))]
+        wgpu_types::Backend::Metal => $global.$method::<wgpu_core::backend::Metal>( $($param),* ),
+        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        wgpu_types::Backend::Dx12 => $global.$method::<wgpu_core::backend::Dx12>( $($param),* ),
+        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        wgpu_types::Backend::Dx11 => $global.$method::<wgpu_core::backend::Dx11>( $($param),* ),
+        #[cfg(any(target_arch = "wasm32", all(unix, not(any(target_os = "ios", target_os = "macos")))))]
+        wgpu_types::Backend::Gl => $global.$method::<wgpu_core::backend::Gl>( $($param),+ ),
+        other => panic!("Unexpected backend {:?}", other),
+      }
+    };
+  }
+}
+
 pub mod binding;
 pub mod buffer;
 pub mod bundle;
@@ -27,7 +48,7 @@ pub mod shader;
 pub mod texture;
 
 struct WebGPUInstance(
-  AsyncRefCell<wgc::hub::Global<wgc::hub::IdentityManagerFactory>>,
+  AsyncRefCell<wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>>,
 );
 impl Resource for WebGPUInstance {
   fn name(&self) -> Cow<str> {
@@ -35,14 +56,14 @@ impl Resource for WebGPUInstance {
   }
 }
 
-struct WebGPUAdapter(wgc::id::AdapterId);
+struct WebGPUAdapter(wgpu_core::id::AdapterId);
 impl Resource for WebGPUAdapter {
   fn name(&self) -> Cow<str> {
     "webGPUAdapter".into()
   }
 }
 
-struct WebGPUDevice(wgc::id::DeviceId);
+struct WebGPUDevice(wgpu_core::id::DeviceId);
 impl Resource for WebGPUDevice {
   fn name(&self) -> Cow<str> {
     "webGPUDevice".into()
@@ -60,13 +81,13 @@ pub fn init(isolate: &mut deno_core::JsRuntime) {
   }
 }
 
-fn deserialize_features(features: &wgt::Features) -> Vec<&str> {
+fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
   let mut return_features: Vec<&str> = vec![];
 
-  if features.contains(wgt::Features::DEPTH_CLAMPING) {
+  if features.contains(wgpu_types::Features::DEPTH_CLAMPING) {
     return_features.push("depth-clamping");
   }
-  if features.contains(wgt::Features::TEXTURE_COMPRESSION_BC) {
+  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_BC) {
     return_features.push("texture-compression-bc");
   }
 
@@ -78,10 +99,10 @@ pub fn op_webgpu_create_instance(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = wgc::hub::Global::new(
+  let instance = wgpu_core::hub::Global::new(
     "webgpu",
-    wgc::hub::IdentityManagerFactory,
-    wgt::BackendBit::PRIMARY,
+    wgpu_core::hub::IdentityManagerFactory,
+    wgpu_types::BackendBit::PRIMARY,
   );
 
   let rid = state
@@ -114,11 +135,11 @@ pub async fn op_webgpu_request_adapter(
     .ok_or_else(bad_resource_id)?;
   let instance = &RcRef::map(&instance_resource, |r| &r.0).borrow().await;
 
-  let descriptor = wgc::instance::RequestAdapterOptions {
+  let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
       Some(power_preference) => match power_preference.as_str() {
-        "low-power" => wgt::PowerPreference::LowPower,
-        "high-performance" => wgt::PowerPreference::HighPerformance,
+        "low-power" => wgpu_types::PowerPreference::LowPower,
+        "high-performance" => wgpu_types::PowerPreference::HighPerformance,
         _ => unreachable!(),
       },
       None => Default::default(),
@@ -127,18 +148,18 @@ pub async fn op_webgpu_request_adapter(
   };
   let adapter = instance.request_adapter(
     &descriptor,
-    wgc::instance::AdapterInputs::Mask(wgt::BackendBit::PRIMARY, |_| {
+    wgpu_core::instance::AdapterInputs::Mask(wgpu_types::BackendBit::PRIMARY, |_| {
       std::marker::PhantomData
     }),
   )?;
 
   let name =
-    wgc::gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
+    gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
   let adapter_features =
-    wgc::gfx_select!(adapter => instance.adapter_features(adapter))?;
+    gfx_select!(adapter => instance.adapter_features(adapter))?;
   let features = deserialize_features(&adapter_features);
   let adapter_limits =
-    wgc::gfx_select!(adapter => instance.adapter_limits(adapter))?;
+    gfx_select!(adapter => instance.adapter_limits(adapter))?;
 
   let limits = json!({
     "maxBindGroups": adapter_limits.max_bind_groups,
@@ -207,24 +228,24 @@ pub async fn op_webgpu_request_device(
     .try_borrow()
     .unwrap();
 
-  let mut features = wgt::Features::default();
+  let mut features = wgpu_types::Features::default();
 
   if let Some(passed_features) = args.non_guaranteed_features {
     if passed_features.contains(&"depth-clamping".to_string()) {
-      features.set(wgt::Features::DEPTH_CLAMPING, true);
+      features.set(wgpu_types::Features::DEPTH_CLAMPING, true);
     }
     if passed_features.contains(&"texture-compression-bc".to_string()) {
-      features.set(wgt::Features::TEXTURE_COMPRESSION_BC, true);
+      features.set(wgpu_types::Features::TEXTURE_COMPRESSION_BC, true);
     }
     // TODO
   }
 
-  let descriptor = wgt::DeviceDescriptor {
+  let descriptor = wgpu_types::DeviceDescriptor {
     label: args.label.map(Cow::Owned),
     features,
     limits: args
       .non_guaranteed_limits
-      .map_or(Default::default(), |limits| wgt::Limits {
+      .map_or(Default::default(), |limits| wgpu_types::Limits {
         max_bind_groups: limits.max_bind_groups.unwrap_or(4),
         max_dynamic_uniform_buffers_per_pipeline_layout: limits
           .max_dynamic_uniform_buffers_per_pipeline_layout
@@ -254,7 +275,7 @@ pub async fn op_webgpu_request_device(
       }),
   };
   // TODO
-  let (device, _) = wgc::gfx_select!(adapter => instance.adapter_request_device(
+  let (device, _) = gfx_select!(adapter => instance.adapter_request_device(
     adapter,
     &descriptor,
     None,
@@ -262,9 +283,9 @@ pub async fn op_webgpu_request_device(
   ));
 
   let device_features =
-    wgc::gfx_select!(device => instance.device_features(device))?;
+    gfx_select!(device => instance.device_features(device))?;
   let features = deserialize_features(&device_features);
-  let limits = wgc::gfx_select!(device => instance.device_limits(device))?;
+  let limits = gfx_select!(device => instance.device_limits(device))?;
   let json_limits = json!({
      "max_bind_groups": limits.max_bind_groups,
      "max_dynamic_uniform_buffers_per_pipeline_layout": limits.max_dynamic_uniform_buffers_per_pipeline_layout,
