@@ -2686,7 +2686,7 @@ console.log("finish");
   }
 
   itest!(_084_worker_custom_inspect {
-    args: "run 084_worker_custom_inspect.ts",
+    args: "run --allow-read 084_worker_custom_inspect.ts",
     output: "084_worker_custom_inspect.ts.out",
   });
 
