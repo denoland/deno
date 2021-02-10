@@ -89,8 +89,8 @@ impl Resource for WebGPUQuerySet {
 /// Execute this crates' JS source files.
 pub fn init(isolate: &mut deno_core::JsRuntime) {
   let files = vec![(
-    "deno:op_crates/webgpu/14_webgpu.js",
-    include_str!("14_webgpu.js"),
+    "deno:op_crates/webgpu/01_webgpu.js",
+    include_str!("01_webgpu.js"),
   )];
   for (url, source_code) in files {
     isolate.execute(url, source_code).unwrap();
