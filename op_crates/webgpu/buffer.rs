@@ -21,7 +21,7 @@ impl Resource for WebGPUBuffer {
   }
 }
 
-struct WebGPUBufferMapped(RefCell<Vec<u8>>);
+struct WebGPUBufferMapped(*mut u8, usize);
 impl Resource for WebGPUBufferMapped {
   fn name(&self) -> Cow<str> {
     "webGPUBufferMapped".into()
@@ -218,7 +218,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
 
   let rid = state
     .resource_table
-    .add(WebGPUBufferMapped(RefCell::new(slice.to_vec())));
+    .add(WebGPUBufferMapped(slice_pointer, args.size as usize));
 
   Ok(json!({
     "rid": rid,
@@ -255,10 +255,11 @@ pub fn op_webgpu_buffer_unmap(
     .ok_or_else(bad_resource_id)?;
   let instance = &instance_resource.0;
 
-  mapped_resource
-    .0
-    .borrow_mut()
-    .copy_from_slice(&zero_copy[0]);
+  let slice_pointer = mapped_resource.0;
+  let size = mapped_resource.1;
+
+  let slice = unsafe { std::slice::from_raw_parts_mut(slice_pointer, size) };
+  slice.copy_from_slice(&zero_copy[0]);
 
   gfx_select!(buffer => instance.buffer_unmap(buffer))?;
 
