@@ -390,7 +390,6 @@ mod integration {
       .expect("Failed to spawn script");
     let compiled_str_output =
       std::str::from_utf8(&compiled_output.stdout).unwrap();
-    eprintln!("{}", compiled_str_output);
 
     let module_output_path = root.join("cli/tests/006_url_imports.ts.out");
     let mut module_output = String::new();
