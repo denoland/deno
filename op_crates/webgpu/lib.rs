@@ -181,8 +181,15 @@ pub async fn op_webgpu_request_adapter(
       wgpu_types::BackendBit::PRIMARY,
       |_| std::marker::PhantomData,
     ),
-  )?;
+  );
 
+  if adapter.is_err() {
+    return Ok(json!({
+      "error": true
+    }));
+  }
+
+  let adapter = adapter.unwrap();
   let name = gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
   let adapter_features =
     gfx_select!(adapter => instance.adapter_features(adapter))?;

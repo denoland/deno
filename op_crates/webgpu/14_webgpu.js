@@ -54,14 +54,19 @@
 
   const gpu = {
     async requestAdapter(options = {}) {
-      const { rid, ...data } = await core.jsonOpAsync(
+      const { error, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_adapter",
         {
           instanceRid: getInstanceRid(),
           ...options,
         },
       );
-      return new GPUAdapter(rid, data);
+
+      if (error) {
+        return null;
+      } else {
+        return new GPUAdapter(data);
+      }
     },
   };
 
@@ -80,8 +85,8 @@
       return this.#limits;
     }
 
-    constructor(rid, data) {
-      this.#rid = rid;
+    constructor(data) {
+      this.#rid = data.rid;
       this.#name = data.name;
       this.#features = Object.freeze(data.features);
       this.#limits = Object.freeze(data.limits);
