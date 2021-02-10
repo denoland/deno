@@ -74,7 +74,9 @@ declare interface GPUDevice extends EventTarget, GPUObjectBase {
   readonly lost: Promise<GPUDeviceLostInfo>;
   pushErrorScope(filter: GPUErrorFilter): undefined;
   popErrorScope(): Promise<GPUError | null>;
-  onuncapturederror: ((this: GPUDevice, ev: Event) => any) | null;
+  onuncapturederror:
+    | ((this: GPUDevice, ev: GPUUncapturedErrorEvent) => any)
+    | null;
 
   readonly adapter: GPUAdapter;
   readonly features: ReadonlyArray<GPUFeatureName>;
@@ -693,11 +695,6 @@ declare interface GPUImageCopyTexture {
   aspect?: GPUTextureAspect;
 }
 
-declare interface GPUImageCopyImageBitmap {
-  imageBitmap: ImageBitmap; // TODO(@crowlKats)
-  origin?: GPUOrigin2D;
-}
-
 declare interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
@@ -878,12 +875,6 @@ declare interface GPUQueue extends GPUObjectBase {
     dataLayout: GPUImageDataLayout,
     size: GPUExtent3D,
   ): undefined;
-
-  copyImageBitmapToTexture(
-    source: GPUImageCopyImageBitmap,
-    destination: GPUImageCopyTexture,
-    copySize: GPUExtent3D,
-  ): undefined;
 }
 
 declare interface GPUQuerySet extends GPUObjectBase {
@@ -904,22 +895,6 @@ declare type GPUPipelineStatisticName =
   | "clipper-primitives-out"
   | "fragment-shader-invocations"
   | "compute-shader-invocations";
-
-declare interface GPUCanvasContext {
-  configureSwapChain(descriptor: GPUSwapChainDescriptor): GPUSwapChain;
-
-  getSwapChainPreferredFormat(adapter: GPUAdapter): GPUTextureFormat;
-}
-
-declare interface GPUSwapChainDescriptor extends GPUObjectDescriptorBase {
-  device: GPUDevice;
-  format: GPUTextureFormat;
-  usage?: GPUTextureUsageFlags;
-}
-
-declare interface GPUSwapChain extends GPUObjectBase {
-  getCurrentTexture(): GPUTexture;
-}
 
 declare type GPUDeviceLostReason = "destroyed";
 
@@ -961,13 +936,6 @@ declare interface GPUColorDict {
 }
 
 declare type GPUColor = number[] | GPUColorDict;
-
-declare interface GPUOrigin2DDict {
-  x?: number;
-  y?: number;
-}
-
-declare type GPUOrigin2D = number[] | GPUOrigin2DDict;
 
 declare interface GPUOrigin3DDict {
   x?: number;
