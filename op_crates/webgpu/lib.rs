@@ -63,6 +63,20 @@ pub mod sampler;
 pub mod shader;
 pub mod texture;
 
+pub struct Unstable(pub bool);
+
+fn check_unstable(state: &OpState, api_name: &str) {
+  let unstable = state.borrow::<Unstable>();
+
+  if !unstable.0 {
+    eprintln!(
+      "Unstable API '{}'. The --unstable flag must be provided.",
+      api_name
+    );
+    std::process::exit(70);
+  }
+}
+
 type Instance = wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>;
 
 struct WebGPUAdapter(wgpu_core::id::AdapterId);
@@ -134,6 +148,7 @@ pub async fn op_webgpu_request_adapter(
   let args: RequestAdapterArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
+  check_unstable(&state, "navigator.gpu.requestAdapter");
   let instance = state.borrow::<Instance>();
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
