@@ -313,7 +313,7 @@ pub async fn op_webgpu_request_device(
   let device = gfx_select_err!(adapter => instance.adapter_request_device(
     adapter,
     &descriptor,
-    None,
+    Some(std::path::Path::new("./trace")), // TODO: remove
     std::marker::PhantomData
   ))?;
 
