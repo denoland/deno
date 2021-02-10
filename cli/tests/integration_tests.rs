@@ -432,30 +432,43 @@ mod integration {
   fn fmt_test() {
     let t = TempDir::new().expect("tempdir fail");
     let fixed_js = util::root_path().join("cli/tests/badly_formatted_fixed.js");
-    let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
     let badly_formatted_original_js =
       util::root_path().join("cli/tests/badly_formatted.mjs");
-    let badly_formatted_original_md =
-      util::root_path().join("cli/tests/badly_formatted.md");
     let badly_formatted_js = t.path().join("badly_formatted.js");
-    let badly_formatted_md = t.path().join("badly_formatted.md");
     let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
-    let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
     std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
       .expect("Failed to copy file");
+
+    let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
+    let badly_formatted_original_md =
+      util::root_path().join("cli/tests/badly_formatted.md");
+    let badly_formatted_md = t.path().join("badly_formatted.md");
+    let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
     std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
+      .expect("Failed to copy file");
+
+    let fixed_json =
+      util::root_path().join("cli/tests/badly_formatted_fixed.json");
+    let badly_formatted_original_json =
+      util::root_path().join("cli/tests/badly_formatted.json");
+    let badly_formatted_json = t.path().join("badly_formatted.json");
+    let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
+    std::fs::copy(&badly_formatted_original_json, &badly_formatted_json)
       .expect("Failed to copy file");
     // First, check formatting by ignoring the badly formatted file.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
       .arg("fmt")
       .arg(format!(
-        "--ignore={},{}",
-        badly_formatted_js_str, badly_formatted_md_str
+        "--ignore={},{},{}",
+        badly_formatted_js_str,
+        badly_formatted_md_str,
+        badly_formatted_json_str
       ))
       .arg("--check")
       .arg(badly_formatted_js_str)
       .arg(badly_formatted_md_str)
+      .arg(badly_formatted_json_str)
       .spawn()
       .expect("Failed to spawn script")
       .wait()
@@ -468,6 +481,7 @@ mod integration {
       .arg("--check")
       .arg(badly_formatted_js_str)
       .arg(badly_formatted_md_str)
+      .arg(badly_formatted_json_str)
       .spawn()
       .expect("Failed to spawn script")
       .wait()
@@ -479,6 +493,7 @@ mod integration {
       .arg("fmt")
       .arg(badly_formatted_js_str)
       .arg(badly_formatted_md_str)
+      .arg(badly_formatted_json_str)
       .spawn()
       .expect("Failed to spawn script")
       .wait()
@@ -486,10 +501,13 @@ mod integration {
     assert!(status.success());
     let expected_js = std::fs::read_to_string(fixed_js).unwrap();
     let expected_md = std::fs::read_to_string(fixed_md).unwrap();
+    let expected_json = std::fs::read_to_string(fixed_json).unwrap();
     let actual_js = std::fs::read_to_string(badly_formatted_js).unwrap();
     let actual_md = std::fs::read_to_string(badly_formatted_md).unwrap();
+    let actual_json = std::fs::read_to_string(badly_formatted_json).unwrap();
     assert_eq!(expected_js, actual_js);
     assert_eq!(expected_md, actual_md);
+    assert_eq!(expected_json, actual_json);
   }
 
   mod file_watcher {
@@ -2767,7 +2785,7 @@ console.log("finish");
   });
 
   itest!(fmt_check_tests_dir {
-    args: "fmt --check ./",
+    args: "fmt --check ./ --ignore=.test_coverage",
     output: "fmt/expected_fmt_check_tests_dir.out",
     exit_code: 1,
   });
@@ -2779,7 +2797,7 @@ console.log("finish");
   });
 
   itest!(fmt_check_formatted_files {
-    args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md",
+    args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md fmt/formatted4.jsonc",
     output: "fmt/expected_fmt_check_formatted_files.out",
     exit_code: 0,
   });
@@ -2802,6 +2820,12 @@ console.log("finish");
     output_str: Some(
       "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"
     ),
+  });
+
+  itest!(fmt_stdin_json {
+    args: "fmt --ext=json -",
+    input: Some("{    \"key\":   \"value\"}"),
+    output_str: Some("{ \"key\": \"value\" }\n"),
   });
 
   itest!(fmt_stdin_check_formatted {
