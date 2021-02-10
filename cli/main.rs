@@ -470,7 +470,7 @@ async fn cache_command(
 async fn eval_command(
   flags: Flags,
   code: String,
-  as_typescript: bool,
+  ext: String,
   print: bool,
 ) -> Result<(), AnyError> {
   // Force TypeScript compile.
@@ -492,10 +492,14 @@ async fn eval_command(
   let file = File {
     local: main_module_url.to_file_path().unwrap(),
     maybe_types: None,
-    media_type: if as_typescript {
+    media_type: if ext.as_str() == "ts" {
       MediaType::TypeScript
-    } else {
+    } else if ext.as_str() == "tsx" {
+      MediaType::TSX
+    } else if ext.as_str() == "js" {
       MediaType::JavaScript
+    } else {
+      MediaType::JSX
     },
     source: String::from_utf8(source_code)?,
     specifier: ModuleSpecifier::from(main_module_url),
@@ -1160,11 +1164,9 @@ fn get_subcommand(
       filter,
       private,
     } => doc_command(flags, source_file, json, filter, private).boxed_local(),
-    DenoSubcommand::Eval {
-      print,
-      code,
-      as_typescript,
-    } => eval_command(flags, code, as_typescript, print).boxed_local(),
+    DenoSubcommand::Eval { print, code, ext } => {
+      eval_command(flags, code, ext, print).boxed_local()
+    }
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
