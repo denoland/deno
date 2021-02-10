@@ -706,8 +706,9 @@ fn serialize(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let serialize_deserialize = Box::new(SerializeDeserialize { });
-  let mut value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
+  let serialize_deserialize = Box::new(SerializeDeserialize {});
+  let mut value_serializer =
+    v8::ValueSerializer::new(scope, serialize_deserialize);
   match value_serializer.write_value(scope.get_current_context(), args.get(0)) {
     Some(true) => {
       let vector = value_serializer.release();
@@ -757,8 +758,9 @@ fn deserialize(
     )
   };
 
-  let serialize_deserialize = Box::new(SerializeDeserialize { });
-  let mut value_deserializer = v8::ValueDeserializer::new(scope, serialize_deserialize, buf);
+  let serialize_deserialize = Box::new(SerializeDeserialize {});
+  let mut value_deserializer =
+    v8::ValueDeserializer::new(scope, serialize_deserialize, buf);
   let value = value_deserializer.read_value(scope.get_current_context());
 
   match value {
