@@ -33,6 +33,8 @@ declare class WorkerGlobalScope {
   navigator: WorkerNavigator;
 }
 
+declare var navigator: Navigator;
+
 declare interface WorkerNavigator {
   readonly gpu: GPU;
 }
