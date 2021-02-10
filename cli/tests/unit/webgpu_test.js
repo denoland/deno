@@ -1,14 +1,15 @@
 import { assertEquals, unitTest } from "./test_util.ts";
 
+// TODO(lucacasonato): remove when navigator is added to deno-lint
+// deno-lint-ignore no-undef
+const adapter = await navigator.gpu.requestAdapter();
+
 // TODO(lucacasonato): remove sanitizeResources
 unitTest(
-  { perms: { read: true }, sanitizeResources: false },
+  { perms: { read: true } },
   async function webgpuComputePass() {
     const numbers = [1, 4, 3, 295];
 
-    // TODO(lucacasonato): remove when navigator is added to deno-lint
-    // deno-lint-ignore no-undef
-    const adapter = await navigator.gpu.requestAdapter();
     const device = await adapter.requestDevice();
 
     const shaderCode = await Deno.readTextFile("cli/tests/shader.wgsl");
