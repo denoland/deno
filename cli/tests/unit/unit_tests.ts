@@ -76,3 +76,4 @@ import "./write_text_file_test.ts";
 import "./performance_test.ts";
 import "./version_test.ts";
 import "./websocket_test.ts";
+import "./webgpu_test.js";

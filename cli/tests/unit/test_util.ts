@@ -136,6 +136,7 @@ interface UnitTestOptions {
   ignore?: boolean;
   only?: boolean;
   perms?: UnitTestPermissions;
+  sanitizeResources?: boolean;
 }
 
 interface UnitTestDefinition extends Deno.TestDefinition {
@@ -186,6 +187,7 @@ export function unitTest(
     ignore: !!options.ignore,
     only: !!options.only,
     perms: normalizedPerms,
+    sanitizeResources: !!options.sanitizeResources,
   };
 
   REGISTERED_UNIT_TESTS.push(unitTestDefinition);
