@@ -257,7 +257,7 @@
             : undefined,
           sourceMap: descriptor.sourceMap,
         },
-        ...(descriptor.code instanceof Uint32Array ? [descriptor.code] : [])
+        ...(descriptor.code instanceof Uint32Array ? [descriptor.code] : []),
       );
 
       return new GPUShaderModule(rid, descriptor.label);

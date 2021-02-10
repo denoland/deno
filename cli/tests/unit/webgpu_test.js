@@ -1,96 +1,101 @@
 import { assertEquals, unitTest } from "./test_util.ts";
 
 // TODO(lucacasonato): remove sanitizeResources
-unitTest({ perms: { read: true }, sanitizeResources: false }, async function webgpuComputePass() {
-  const numbers = [1, 4, 3, 295];
+unitTest(
+  { perms: { read: true }, sanitizeResources: false },
+  async function webgpuComputePass() {
+    const numbers = [1, 4, 3, 295];
 
-  const adapter = await navigator.gpu.requestAdapter();
-  const device = await adapter.requestDevice();
+    // TODO(lucacasonato): remove when navigator is added to deno-lint
+    // deno-lint-ignore no-undef
+    const adapter = await navigator.gpu.requestAdapter();
+    const device = await adapter.requestDevice();
 
-  const shaderCode = await Deno.readTextFile("cli/tests/shader.wgsl");
+    const shaderCode = await Deno.readTextFile("cli/tests/shader.wgsl");
 
-  const shaderModule = device.createShaderModule({
-    code: shaderCode,
-  });
+    const shaderModule = device.createShaderModule({
+      code: shaderCode,
+    });
 
-  const size = new Uint32Array(numbers).byteLength;
+    const size = new Uint32Array(numbers).byteLength;
 
-  const stagingBuffer = device.createBuffer({
-    size: size,
-    usage: 1 | 8,
-  });
+    const stagingBuffer = device.createBuffer({
+      size: size,
+      usage: 1 | 8,
+    });
 
-  const storageBuffer = device.createBuffer({
-    label: "Storage Buffer",
-    size: size,
-    usage: 0x80 | 8 | 4,
-    mappedAtCreation: true,
-  });
+    const storageBuffer = device.createBuffer({
+      label: "Storage Buffer",
+      size: size,
+      usage: 0x80 | 8 | 4,
+      mappedAtCreation: true,
+    });
 
-  const buf = new Uint32Array(storageBuffer.getMappedRange());
+    const buf = new Uint32Array(storageBuffer.getMappedRange());
 
-  buf.set(numbers);
+    buf.set(numbers);
 
-  storageBuffer.unmap();
+    storageBuffer.unmap();
 
-  const bindGroupLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: 4,
-        buffer: {
-          type: "storage",
-          minBindingSize: 4,
+    const bindGroupLayout = device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: 4,
+          buffer: {
+            type: "storage",
+            minBindingSize: 4,
+          },
         },
-      },
-    ],
-  });
+      ],
+    });
 
-  const bindGroup = device.createBindGroup({
-    layout: bindGroupLayout,
-    entries: [
-      {
-        binding: 0,
-        resource: {
-          buffer: storageBuffer,
+    const bindGroup = device.createBindGroup({
+      layout: bindGroupLayout,
+      entries: [
+        {
+          binding: 0,
+          resource: {
+            buffer: storageBuffer,
+          },
         },
+      ],
+    });
+
+    const pipelineLayout = device.createPipelineLayout({
+      bindGroupLayouts: [bindGroupLayout],
+    });
+
+    const computePipeline = device.createComputePipeline({
+      layout: pipelineLayout,
+      compute: {
+        module: shaderModule,
+        entryPoint: "main",
       },
-    ],
-  });
+    });
 
-  const pipelineLayout = device.createPipelineLayout({
-    bindGroupLayouts: [bindGroupLayout],
-  });
+    const encoder = device.createCommandEncoder();
 
-  const computePipeline = device.createComputePipeline({
-    layout: pipelineLayout,
-    compute: {
-      module: shaderModule,
-      entryPoint: "main",
-    },
-  });
+    const computePass = encoder.beginComputePass();
+    computePass.setPipeline(computePipeline);
+    computePass.setBindGroup(0, bindGroup);
+    computePass.insertDebugMarker("compute collatz iterations");
+    computePass.dispatch(numbers.length);
+    computePass.endPass();
 
-  const encoder = device.createCommandEncoder();
+    encoder.copyBufferToBuffer(storageBuffer, 0, stagingBuffer, 0, size);
 
-  const computePass = encoder.beginComputePass();
-  computePass.setPipeline(computePipeline);
-  computePass.setBindGroup(0, bindGroup);
-  computePass.insertDebugMarker("compute collatz iterations");
-  computePass.dispatch(numbers.length);
-  computePass.endPass();
+    device.queue.submit([encoder.finish()]);
 
-  encoder.copyBufferToBuffer(storageBuffer, 0, stagingBuffer, 0, size);
+    await stagingBuffer.mapAsync(1);
 
-  device.queue.submit([encoder.finish()]);
+    const data = stagingBuffer.getMappedRange();
 
-  await stagingBuffer.mapAsync(1);
+    assertEquals(
+      new Uint32Array(0, 2, 7, 55).entries(),
+      new Uint32Array(data).entries(),
+    );
 
-  const data = stagingBuffer.getMappedRange();
-
-  assertEquals(
-    new Uint32Array(0, 2, 7, 55).entries(),
-    new Uint32Array(data).entries(),
-  );
-
-  stagingBuffer.unmap();
-});
+    stagingBuffer.unmap();
+  },
+);
