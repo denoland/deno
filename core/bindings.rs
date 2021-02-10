@@ -2,7 +2,6 @@
 
 use crate::error::AnyError;
 use crate::runtime::JsRuntimeState;
-use crate::serialize_deserialize;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
@@ -686,13 +685,32 @@ fn decode(
   };
 }
 
+struct SerializeDeserialize {}
+
+impl v8::ValueSerializerImpl for SerializeDeserialize {
+  #[allow(unused_variables)]
+  fn throw_data_clone_error<'s>(
+    &mut self,
+    scope: &mut v8::HandleScope<'s>,
+    message: v8::Local<'s, v8::String>,
+  ) {
+    let error = v8::Exception::error(scope, message);
+    scope.throw_exception(error);
+  }
+}
+
+impl v8::ValueDeserializerImpl for SerializeDeserialize {}
+
 fn serialize(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  match serialize_deserialize::serialize(scope, args.get(0)) {
-    Some(vector) => {
+  let serialize_deserialize = Box::new(SerializeDeserialize { });
+  let mut value_serializer = v8::ValueSerializer::new(scope, serialize_deserialize);
+  match value_serializer.write_value(scope.get_current_context(), args.get(0)) {
+    Some(true) => {
+      let vector = value_serializer.release();
       let buf = {
         let buf_len = vector.len();
         let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
@@ -707,7 +725,7 @@ fn serialize(
 
       rv.set(buf.into());
     }
-    None => {
+    _ => {
       let msg = v8::String::new(scope, "Invalid argument").unwrap();
       let exception = v8::Exception::type_error(scope, msg);
       scope.throw_exception(exception);
@@ -739,7 +757,9 @@ fn deserialize(
     )
   };
 
-  let value = serialize_deserialize::deserialize(scope, buf);
+  let serialize_deserialize = Box::new(SerializeDeserialize { });
+  let mut value_deserializer = v8::ValueDeserializer::new(scope, serialize_deserialize, buf);
+  let value = value_deserializer.read_value(scope.get_current_context());
 
   match value {
     Some(deserialized) => rv.set(deserialized),
