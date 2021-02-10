@@ -106,6 +106,12 @@ jobs:
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
 
+      - name: Install mesa-vulkan (linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update -y -qq
+          sudo apt-get install -y -qq mesa-vulkan-drivers
+
       - name: Setup gcloud (unix)
         if: |
           runner.os != 'Windows' &&
