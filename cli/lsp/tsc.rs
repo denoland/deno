@@ -978,10 +978,12 @@ struct SourceSnapshotArgs {
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
 fn dispose(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let mark = state.state_snapshot.performance.mark("op_dispose");
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   state
     .snapshots
     .remove(&(v.specifier.into(), v.version.into()));
+  state.state_snapshot.performance.measure(mark);
   Ok(json!(true))
 }
 
@@ -997,6 +999,7 @@ struct GetChangeRangeArgs {
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source hash changed.
 fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let mark = state.state_snapshot.performance.mark("op_get_change_range");
   let v: GetChangeRangeArgs = serde_json::from_value(args.clone())?;
   cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
   if let Some(current) = state
@@ -1007,8 +1010,11 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .snapshots
       .get(&(v.specifier.clone().into(), v.old_version.clone().into()))
     {
+      state.state_snapshot.performance.measure(mark);
       Ok(text::get_range_change(prev, current))
     } else {
+      let new_length = current.encode_utf16().count();
+      state.state_snapshot.performance.measure(mark);
       // when a local file is opened up in the editor, the compiler might
       // already have a snapshot of it in memory, and will request it, but we
       // now are working off in memory versions of the document, and so need
@@ -1018,10 +1024,11 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
           "start": 0,
           "length": v.old_length,
         },
-        "newLength": current.encode_utf16().count(),
+        "newLength": new_length,
       }))
     }
   } else {
+    state.state_snapshot.performance.measure(mark);
     Err(custom_error(
       "MissingSnapshot",
       format!(
@@ -1033,6 +1040,7 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
 }
 
 fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let mark = state.state_snapshot.performance.mark("op_get_length");
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
   if state.state_snapshot.documents.contains(&specifier) {
@@ -1041,9 +1049,11 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
       .snapshots
       .get(&(v.specifier.into(), v.version.into()))
       .unwrap();
+    state.state_snapshot.performance.measure(mark);
     Ok(json!(content.encode_utf16().count()))
   } else {
     let sources = &mut state.state_snapshot.sources;
+    state.state_snapshot.performance.measure(mark);
     Ok(json!(sources.get_length_utf16(&specifier).unwrap()))
   }
 }
@@ -1058,6 +1068,7 @@ struct GetTextArgs {
 }
 
 fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let mark = state.state_snapshot.performance.mark("op_get_text");
   let v: GetTextArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
   let content = if state.state_snapshot.documents.contains(&specifier) {
@@ -1071,10 +1082,12 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
     let sources = &mut state.state_snapshot.sources;
     sources.get_text(&specifier).unwrap()
   };
+  state.state_snapshot.performance.measure(mark);
   Ok(json!(text::slice(&content, v.start..v.end)))
 }
 
 fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let mark = state.state_snapshot.performance.mark("op_resolve");
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
@@ -1102,9 +1115,13 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           if let ResolvedDependency::Resolved(resolved_specifier) =
             resolved_import
           {
-            if state.state_snapshot.documents.contains(&resolved_specifier)
-              || sources.contains(&resolved_specifier)
-            {
+            if state.state_snapshot.documents.contains(&resolved_specifier) {
+              let media_type = MediaType::from(&resolved_specifier);
+              resolved.push(Some((
+                resolved_specifier.to_string(),
+                media_type.as_ts_extension(),
+              )));
+            } else if sources.contains(&resolved_specifier) {
               let media_type = if let Some(media_type) =
                 sources.get_media_type(&resolved_specifier)
               {
@@ -1139,6 +1156,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
       }
     }
   } else {
+    state.state_snapshot.performance.measure(mark);
     return Err(custom_error(
       "NotFound",
       format!(
@@ -1148,6 +1166,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
     ));
   }
 
+  state.state_snapshot.performance.measure(mark);
   Ok(json!(resolved))
 }
 
@@ -1167,6 +1186,7 @@ struct ScriptVersionArgs {
 }
 
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
+  let mark = state.state_snapshot.performance.mark("op_script_version");
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
   if let Some(version) = state.state_snapshot.documents.version(&specifier) {
@@ -1178,6 +1198,7 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
     }
   }
 
+  state.state_snapshot.performance.measure(mark);
   Ok(json!(None::<String>))
 }
 
@@ -1480,9 +1501,8 @@ mod tests {
       documents.open(specifier, version, content);
     }
     StateSnapshot {
-      assets: Default::default(),
       documents,
-      sources: Default::default(),
+      ..Default::default()
     }
   }
 

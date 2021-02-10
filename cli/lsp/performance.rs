@@ -49,7 +49,7 @@ impl From<PerformanceMark> for PerformanceMeasure {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Performance {
   counts: Arc<Mutex<HashMap<String, u32>>>,
   max_size: usize,
@@ -127,13 +127,15 @@ impl Performance {
   /// A function which accepts a previously created performance mark which will
   /// be used to finalize the duration of the span being measured, and add the
   /// measurement to the internal buffer.
-  pub fn measure(&self, mark: PerformanceMark) {
+  pub fn measure(&self, mark: PerformanceMark) -> Duration {
     let measure = PerformanceMeasure::from(mark);
+    let duration = measure.duration.clone();
     let mut measures = self.measures.lock().unwrap();
     measures.push_back(measure);
     while measures.len() > self.max_size {
       measures.pop_front();
     }
+    duration
   }
 }
 

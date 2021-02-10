@@ -15,6 +15,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
@@ -150,6 +151,23 @@ pub enum ResolvedDependencyErr {
   InvalidLocalImport,
   InvalidSpecifier(ModuleResolutionError),
   Missing,
+}
+
+impl ResolvedDependencyErr {
+  pub fn as_code(&self) -> lsp::NumberOrString {
+    match self {
+      Self::InvalidDowngrade => {
+        lsp::NumberOrString::String("invalid-downgrade".to_string())
+      }
+      Self::InvalidLocalImport => {
+        lsp::NumberOrString::String("invalid-local-import".to_string())
+      }
+      Self::InvalidSpecifier(_) => {
+        lsp::NumberOrString::String("invalid-specifier".to_string())
+      }
+      Self::Missing => lsp::NumberOrString::String("missing".to_string()),
+    }
+  }
 }
 
 impl fmt::Display for ResolvedDependencyErr {
@@ -351,30 +369,34 @@ fn is_equivalent_code(
 /// action for a given set of actions.
 fn is_preferred(
   action: &tsc::CodeFixAction,
-  actions: &[(lsp::CodeAction, tsc::CodeFixAction)],
+  actions: &[CodeActionKind],
   fix_priority: u32,
   only_one: bool,
 ) -> bool {
-  actions.iter().all(|(_, a)| {
-    if action == a {
-      return true;
-    }
-    if a.fix_id.is_some() {
-      return true;
-    }
-    if let Some((other_fix_priority, _)) =
-      PREFERRED_FIXES.get(a.fix_name.as_str())
-    {
-      match other_fix_priority.cmp(&fix_priority) {
-        Ordering::Less => return true,
-        Ordering::Greater => return false,
-        Ordering::Equal => (),
+  actions.iter().all(|i| {
+    if let CodeActionKind::Tsc(_, a) = i {
+      if action == a {
+        return true;
       }
-      if only_one && action.fix_name == a.fix_name {
-        return false;
+      if a.fix_id.is_some() {
+        return true;
       }
+      if let Some((other_fix_priority, _)) =
+        PREFERRED_FIXES.get(a.fix_name.as_str())
+      {
+        match other_fix_priority.cmp(&fix_priority) {
+          Ordering::Less => return true,
+          Ordering::Greater => return false,
+          Ordering::Equal => (),
+        }
+        if only_one && action.fix_name == a.fix_name {
+          return false;
+        }
+      }
+      true
+    } else {
+      true
     }
-    true
   })
 }
 
@@ -404,13 +426,59 @@ pub struct CodeActionData {
   pub fix_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DenoFixData {
+  pub specifier: ModuleSpecifier,
+}
+
+#[derive(Debug, Clone)]
+enum CodeActionKind {
+  #[allow(unused)]
+  Deno(lsp::CodeAction),
+  Tsc(lsp::CodeAction, tsc::CodeFixAction),
+}
+
+#[derive(Debug, Hash, PartialEq, Eq)]
+enum FixAllKind {
+  Tsc(String),
+}
+
 #[derive(Debug, Default)]
 pub struct CodeActionCollection {
-  actions: Vec<(lsp::CodeAction, tsc::CodeFixAction)>,
-  fix_all_actions: HashMap<String, (lsp::CodeAction, tsc::CodeFixAction)>,
+  actions: Vec<CodeActionKind>,
+  fix_all_actions: HashMap<FixAllKind, CodeActionKind>,
 }
 
 impl CodeActionCollection {
+  pub(crate) fn add_deno_fix_action(
+    &mut self,
+    diagnostic: &lsp::Diagnostic,
+  ) -> Result<(), AnyError> {
+    if let Some(data) = diagnostic.data.clone() {
+      let fix_data: DenoFixData = serde_json::from_value(data)?;
+      let code_action = lsp::CodeAction {
+        title: format!(
+          "Cache \"{}\" and its dependencies.",
+          fix_data.specifier
+        ),
+        kind: Some(lsp::CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        edit: None,
+        command: Some(lsp::Command {
+          title: "".to_string(),
+          command: "deno.cache".to_string(),
+          arguments: Some(vec![json!([fix_data.specifier])]),
+        }),
+        is_preferred: None,
+        disabled: None,
+        data: None,
+      };
+      self.actions.push(CodeActionKind::Deno(code_action));
+    }
+    Ok(())
+  }
+
   /// Add a TypeScript code fix action to the code actions collection.
   pub(crate) async fn add_ts_fix_action(
     &mut self,
@@ -442,19 +510,28 @@ impl CodeActionCollection {
       disabled: None,
       data: None,
     };
-    self.actions.retain(|(c, a)| {
-      !(action.fix_name == a.fix_name && code_action.edit == c.edit)
+    self.actions.retain(|i| match i {
+      CodeActionKind::Tsc(c, a) => {
+        !(action.fix_name == a.fix_name && code_action.edit == c.edit)
+      }
+      _ => true,
     });
-    self.actions.push((code_action, action.clone()));
+    self
+      .actions
+      .push(CodeActionKind::Tsc(code_action, action.clone()));
 
     if let Some(fix_id) = &action.fix_id {
-      if let Some((existing_fix_all, existing_action)) =
-        self.fix_all_actions.get(fix_id)
+      if let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =
+        self.fix_all_actions.get(&FixAllKind::Tsc(fix_id.clone()))
       {
-        self.actions.retain(|(c, _)| c != existing_fix_all);
-        self
-          .actions
-          .push((existing_fix_all.clone(), existing_action.clone()));
+        self.actions.retain(|i| match i {
+          CodeActionKind::Tsc(c, _) => c != existing_fix_all,
+          _ => true,
+        });
+        self.actions.push(CodeActionKind::Tsc(
+          existing_fix_all.clone(),
+          existing_action.clone(),
+        ));
       }
     }
     Ok(())
@@ -488,15 +565,21 @@ impl CodeActionCollection {
       disabled: None,
       data,
     };
-    if let Some((existing, _)) =
-      self.fix_all_actions.get(&action.fix_id.clone().unwrap())
+    if let Some(CodeActionKind::Tsc(existing, _)) = self
+      .fix_all_actions
+      .get(&FixAllKind::Tsc(action.fix_id.clone().unwrap()))
     {
-      self.actions.retain(|(c, _)| c != existing);
+      self.actions.retain(|i| match i {
+        CodeActionKind::Tsc(c, _) => c != existing,
+        _ => true,
+      });
     }
-    self.actions.push((code_action.clone(), action.clone()));
+    self
+      .actions
+      .push(CodeActionKind::Tsc(code_action.clone(), action.clone()));
     self.fix_all_actions.insert(
-      action.fix_id.clone().unwrap(),
-      (code_action, action.clone()),
+      FixAllKind::Tsc(action.fix_id.clone().unwrap()),
+      CodeActionKind::Tsc(code_action, action.clone()),
     );
   }
 
@@ -505,7 +588,10 @@ impl CodeActionCollection {
     self
       .actions
       .into_iter()
-      .map(|(c, _)| lsp::CodeActionOrCommand::CodeAction(c))
+      .map(|i| match i {
+        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
+      })
       .collect()
   }
 
@@ -521,7 +607,7 @@ impl CodeActionCollection {
     if action.fix_id.is_none()
       || self
         .fix_all_actions
-        .contains_key(&action.fix_id.clone().unwrap())
+        .contains_key(&FixAllKind::Tsc(action.fix_id.clone().unwrap()))
     {
       false
     } else {
@@ -543,15 +629,17 @@ impl CodeActionCollection {
   /// when all actions are added to the collection.
   pub fn set_preferred_fixes(&mut self) {
     let actions = self.actions.clone();
-    for (code_action, action) in self.actions.iter_mut() {
-      if action.fix_id.is_some() {
-        continue;
-      }
-      if let Some((fix_priority, only_one)) =
-        PREFERRED_FIXES.get(action.fix_name.as_str())
-      {
-        code_action.is_preferred =
-          Some(is_preferred(action, &actions, *fix_priority, *only_one));
+    for entry in self.actions.iter_mut() {
+      if let CodeActionKind::Tsc(code_action, action) = entry {
+        if action.fix_id.is_some() {
+          continue;
+        }
+        if let Some((fix_priority, only_one)) =
+          PREFERRED_FIXES.get(action.fix_name.as_str())
+        {
+          code_action.is_preferred =
+            Some(is_preferred(action, &actions, *fix_priority, *only_one));
+        }
       }
     }
   }

@@ -28,16 +28,16 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 pub async fn cache(
-  specifier: ModuleSpecifier,
-  maybe_import_map: Option<ImportMap>,
+  specifier: &ModuleSpecifier,
+  maybe_import_map: &Option<ImportMap>,
 ) -> Result<(), AnyError> {
   let program_state = Arc::new(ProgramState::new(Default::default())?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),
   )?));
-  let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
-  builder.add(&specifier, false).await
+  let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
+  builder.add(specifier, false).await
 }
 
 #[derive(Debug, Clone, Default)]
@@ -69,7 +69,7 @@ impl Sources {
 
   pub fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
     if let Some(specifier) = self.resolve_specifier(specifier) {
-      if self.get_metadata(&specifier).is_some() {
+      if self.get_metadata(&specifier, true).is_some() {
         return true;
       }
     }
@@ -85,7 +85,7 @@ impl Sources {
     specifier: &ModuleSpecifier,
   ) -> Option<usize> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(&specifier, false)?;
     Some(metadata.source.encode_utf16().count())
   }
 
@@ -94,7 +94,7 @@ impl Sources {
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(&specifier, true)?;
     Some(metadata.line_index)
   }
 
@@ -102,7 +102,7 @@ impl Sources {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<analysis::ResolvedDependency> {
-    let metadata = self.get_metadata(specifier)?;
+    let metadata = self.get_metadata(specifier, false)?;
     metadata.maybe_types
   }
 
@@ -111,18 +111,30 @@ impl Sources {
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(&specifier, false)?;
     Some(metadata.media_type)
   }
 
-  fn get_metadata(&mut self, specifier: &ModuleSpecifier) -> Option<Metadata> {
+  fn get_metadata(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    check_version: bool,
+  ) -> Option<Metadata> {
     if let Some(metadata) = self.metadata.get(specifier).cloned() {
-      if let Some(current_version) = self.get_script_version(specifier) {
-        if metadata.version == current_version {
+      // we can access this a lot of times in sequence, when it is impossible
+      // or not needed to validate that the version of metadata we have cached
+      // represents the version on the disk, and it can get quite expensive to
+      // repeatedly check this, so we will only do it when this is called by an
+      // api where it might be the start of a sequence
+      if check_version {
+        if metadata.version == self.get_script_version(specifier)? {
           return Some(metadata);
         }
+      } else {
+        return Some(metadata);
       }
     }
+
     // TODO(@kitsonk) this needs to be refactored, lots of duplicate logic and
     // is really difficult to follow.
     let version = self.get_script_version(specifier)?;
@@ -252,18 +264,16 @@ impl Sources {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    if let Some(path) = self.get_path(specifier) {
-      if let Ok(metadata) = fs::metadata(path) {
-        if let Ok(modified) = metadata.modified() {
-          return if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH)
-          {
-            Some(format!("{}", n.as_millis()))
-          } else {
-            Some("1".to_string())
-          };
+    let path = self.get_path(specifier)?;
+    if let Ok(metadata) = fs::metadata(path) {
+      if let Ok(modified) = metadata.modified() {
+        return if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+          Some(format!("{}", n.as_millis()))
         } else {
-          return Some("1".to_string());
-        }
+          Some("1".to_string())
+        };
+      } else {
+        return Some("1".to_string());
       }
     }
     None
@@ -271,7 +281,7 @@ impl Sources {
 
   pub fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(&specifier, true)?;
     Some(metadata.source)
   }
 
@@ -295,7 +305,7 @@ impl Sources {
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let referrer = self.resolve_specifier(referrer)?;
-    let metadata = self.get_metadata(&referrer)?;
+    let metadata = self.get_metadata(&referrer, false)?;
     let dependencies = &metadata.dependencies?;
     let dependency = dependencies.get(specifier)?;
     if let Some(type_dependency) = &dependency.maybe_type {
