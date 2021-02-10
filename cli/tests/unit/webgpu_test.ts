@@ -1,11 +1,23 @@
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 
+let isCI: boolean;
+try {
+  isCI = (Deno.env.get("CI")?.length ?? 0) > 0;
+} catch {
+  isCI = true;
+}
+
 // TODO(lucacasonato): remove when navigator is added to deno-lint
 // deno-lint-ignore no-undef
 const adapter = await navigator.gpu.requestAdapter();
 assert(adapter);
 
-unitTest({ perms: { read: true } }, async function webgpuComputePass() {
+// Skip this test on linux CI, because the vulkan emulator is not good enough
+// yet, and skip on macOS because these do not have virtual GPUs.
+unitTest({
+  perms: { read: true, env: true },
+  ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
+}, async function webgpuComputePass() {
   const numbers = [1, 4, 3, 295];
 
   const device = await adapter.requestDevice();
