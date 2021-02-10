@@ -522,7 +522,7 @@
   class URL {
     #searchParams = null;
 
-    [Symbol.for("Deno.customInspect")]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       const object = {
         href: this.href,
         origin: this.origin,
@@ -536,12 +536,7 @@
         hash: this.hash,
         search: this.search,
       };
-      if (typeof globalThis?.Deno?.inspect == "function") {
-        return `URL ${Deno.inspect(object)}`;
-      }
-      return `URL { ${
-        Object.entries(object).map(([k, v]) => `${k}: ${v}`).join(", ")
-      } }`;
+      return `${this.constructor.name} ${inspect(object)}`;
     }
 
     #updateSearchParams = () => {

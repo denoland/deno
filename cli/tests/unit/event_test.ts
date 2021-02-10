@@ -124,9 +124,6 @@ unitTest(function eventInspectOutput(): void {
   ];
 
   for (const [event, outputProvider] of cases) {
-    assertEquals(
-      event[Symbol.for("Deno.customInspect")](),
-      outputProvider(event),
-    );
+    assertEquals(Deno.inspect(event), outputProvider(event));
   }
 });

@@ -2,6 +2,7 @@
 
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
+use super::analysis::ResolvedDependencyErr;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::text;
@@ -1096,7 +1097,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
             } else if let Some(resolved_import) = &dependency.maybe_code {
               resolved_import.clone()
             } else {
-              ResolvedDependency::Err("missing dependency".to_string())
+              ResolvedDependency::Err(ResolvedDependencyErr::Missing)
             };
           if let ResolvedDependency::Resolved(resolved_specifier) =
             resolved_import
@@ -1476,7 +1477,7 @@ mod tests {
     for (specifier, content, version) in sources {
       let specifier = ModuleSpecifier::resolve_url(specifier)
         .expect("failed to create specifier");
-      documents.open(specifier, version, content.to_string());
+      documents.open(specifier, version, content);
     }
     StateSnapshot {
       assets: Default::default(),
