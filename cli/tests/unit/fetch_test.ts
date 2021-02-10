@@ -23,12 +23,32 @@ unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
 unitTest(
   { perms: { net: true } },
   async function fetchConnectionError(): Promise<void> {
-    await assertThrowsAsync(
-      async (): Promise<void> => {
-        await fetch("http://localhost:4000");
-      },
-      TypeError,
-      "error trying to connect",
+    const initialPort = 4000;
+    const maxPort = 9999;
+    let port = initialPort;
+    let portFound = false;
+
+    while (port < maxPort) {
+      try {
+        const listener = Deno.listen({ port });
+        await assertThrowsAsync(
+          async (): Promise<void> => {
+            listener.close();
+            await fetch(`http://localhost:${port}`);
+          },
+          TypeError,
+          "error trying to connect",
+        );
+        portFound = true;
+        break;
+      } catch (e) {
+        port++;
+      }
+    }
+
+    assert(
+      portFound,
+      `No available ports between ${initialPort} and ${maxPort} to test fetch`,
     );
   },
 );
