@@ -13,7 +13,6 @@ type WebGPUQueue = super::WebGPUDevice;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QueueSubmitArgs {
-  instance_rid: u32,
   queue_rid: u32,
   command_buffers: Vec<u32>,
 }
@@ -25,16 +24,12 @@ pub fn op_webgpu_queue_submit(
 ) -> Result<Value, AnyError> {
   let args: QueueSubmitArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let queue_resource = state
     .resource_table
     .get::<WebGPUQueue>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
   let queue = queue_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let mut ids = vec![];
 
@@ -62,7 +57,6 @@ struct GPUImageDataLayout {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QueueWriteBufferArgs {
-  instance_rid: u32,
   queue_rid: u32,
   buffer: u32,
   buffer_offset: u64,
@@ -77,6 +71,7 @@ pub fn op_webgpu_write_buffer(
 ) -> Result<Value, AnyError> {
   let args: QueueWriteBufferArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.buffer)
@@ -87,11 +82,6 @@ pub fn op_webgpu_write_buffer(
     .get::<WebGPUQueue>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
   let queue = queue_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let data = match args.size {
     Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
@@ -110,7 +100,6 @@ pub fn op_webgpu_write_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QueueWriteTextureArgs {
-  instance_rid: u32,
   queue_rid: u32,
   destination: super::command_encoder::GPUImageCopyTexture,
   data_layout: GPUImageDataLayout,
@@ -124,6 +113,7 @@ pub fn op_webgpu_write_texture(
 ) -> Result<Value, AnyError> {
   let args: QueueWriteTextureArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
     .get::<super::texture::WebGPUTexture>(args.destination.texture)
@@ -133,11 +123,6 @@ pub fn op_webgpu_write_texture(
     .get::<WebGPUQueue>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
   let queue = queue_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let destination = wgpu_core::command::TextureCopyView {
     texture: texture_resource.0,

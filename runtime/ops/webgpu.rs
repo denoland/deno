@@ -1,11 +1,12 @@
 use deno_webgpu::*;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(
-    rt,
-    "op_webgpu_create_instance",
-    op_webgpu_create_instance,
-  );
+  rt.op_state().borrow_mut().put(wgpu_core::hub::Global::new(
+    "webgpu",
+    wgpu_core::hub::IdentityManagerFactory,
+    wgpu_types::BackendBit::PRIMARY,
+  ));
+
   super::reg_json_async(
     rt,
     "op_webgpu_request_adapter",

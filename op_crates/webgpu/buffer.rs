@@ -31,7 +31,6 @@ impl Resource for WebGPUBufferMapped {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateBufferArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   size: u64,
@@ -46,16 +45,12 @@ pub fn op_webgpu_create_buffer(
 ) -> Result<Value, AnyError> {
   let args: CreateBufferArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::from),
@@ -80,7 +75,6 @@ pub fn op_webgpu_create_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BufferGetMapAsyncArgs {
-  instance_rid: u32,
   buffer_rid: u32,
   device_rid: u32,
   mode: u32,
@@ -100,6 +94,7 @@ pub async fn op_webgpu_buffer_get_map_async(
   let device;
   {
     let state_ = state.borrow();
+    let instance = state_.borrow::<super::Instance>();
     let buffer_resource = state_
       .resource_table
       .get::<WebGPUBuffer>(args.buffer_rid)
@@ -110,11 +105,6 @@ pub async fn op_webgpu_buffer_get_map_async(
       .get::<super::WebGPUDevice>(args.device_rid)
       .ok_or_else(bad_resource_id)?;
     device = device_resource.0;
-    let instance_resource = state_
-      .resource_table
-      .get::<super::WebGPUInstance>(args.instance_rid)
-      .ok_or_else(bad_resource_id)?;
-    let instance = &instance_resource.0;
 
     let boxed_sender = Box::new(sender);
     let sender_ptr = Box::into_raw(boxed_sender) as *mut u8;
@@ -150,16 +140,11 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   let done = Rc::new(RefCell::new(false));
   let done_ = done.clone();
-  let instance_rid = args.instance_rid;
   let device_poll_fut = async move {
     while !*done.borrow() {
       {
         let state = state.borrow();
-        let instance_resource = state
-          .resource_table
-          .get::<super::WebGPUInstance>(instance_rid)
-          .ok_or_else(bad_resource_id)?;
-        let instance = &instance_resource.0;
+        let instance = state.borrow::<super::Instance>();
         gfx_select!(device => instance.device_poll(device, false)).unwrap()
       }
       tokio::time::sleep(Duration::from_millis(10)).await;
@@ -182,7 +167,6 @@ pub async fn op_webgpu_buffer_get_map_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BufferGetMappedRangeArgs {
-  instance_rid: u32,
   buffer_rid: u32,
   offset: u64,
   size: u64,
@@ -195,16 +179,12 @@ pub fn op_webgpu_buffer_get_mapped_range(
 ) -> Result<Value, AnyError> {
   let args: BufferGetMappedRangeArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
     .get::<WebGPUBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
   let buffer = buffer_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let slice_pointer = gfx_select!(buffer => instance.buffer_get_mapped_range(
     buffer,
@@ -229,7 +209,6 @@ pub fn op_webgpu_buffer_get_mapped_range(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BufferUnmapArgs {
-  instance_rid: u32,
   buffer_rid: u32,
   mapped_rid: u32,
 }
@@ -241,6 +220,7 @@ pub fn op_webgpu_buffer_unmap(
 ) -> Result<Value, AnyError> {
   let args: BufferUnmapArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
     .get::<WebGPUBuffer>(args.buffer_rid)
@@ -250,11 +230,6 @@ pub fn op_webgpu_buffer_unmap(
     .resource_table
     .get::<WebGPUBufferMapped>(args.mapped_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let slice_pointer = mapped_resource.0;
   let size = mapped_resource.1;

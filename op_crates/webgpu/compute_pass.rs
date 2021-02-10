@@ -216,7 +216,6 @@ pub fn op_webgpu_compute_pass_write_timestamp(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ComputePassEndPassArgs {
-  instance_rid: u32,
   command_encoder_rid: u32,
   compute_pass_rid: u32,
 }
@@ -228,11 +227,7 @@ pub fn op_webgpu_compute_pass_end_pass(
 ) -> Result<Value, AnyError> {
   let args: ComputePassEndPassArgs = serde_json::from_value(args)?;
 
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGPUCommandEncoder>(

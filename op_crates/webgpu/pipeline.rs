@@ -150,7 +150,6 @@ struct GPUProgrammableStage {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateComputePipelineArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   layout: Option<u32>,
@@ -164,16 +163,12 @@ pub fn op_webgpu_create_compute_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateComputePipelineArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let pipeline_layout = if let Some(rid) = args.layout {
     let id = state
@@ -229,7 +224,6 @@ pub fn op_webgpu_create_compute_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ComputePipelineGetBindGroupLayoutArgs {
-  instance_rid: u32,
   compute_pipeline_rid: u32,
   index: u32,
 }
@@ -242,16 +236,12 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   let args: ComputePipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
     .resource_table
     .get::<WebGPUComputePipeline>(args.compute_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
   let compute_pipeline = compute_pipeline_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let bind_group_layout = gfx_select_err!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData))?;
 
@@ -367,7 +357,6 @@ struct GPUFragmentState {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateRenderPipelineArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   layout: Option<u32>,
@@ -385,16 +374,12 @@ pub fn op_webgpu_create_render_pipeline(
 ) -> Result<Value, AnyError> {
   let args: CreateRenderPipelineArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let layout = if let Some(rid) = args.layout {
     let pipeline_layout_resource = state
@@ -636,7 +621,6 @@ pub fn op_webgpu_create_render_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RenderPipelineGetBindGroupLayoutArgs {
-  instance_rid: u32,
   render_pipeline_rid: u32,
   index: u32,
 }
@@ -649,16 +633,12 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   let args: RenderPipelineGetBindGroupLayoutArgs =
     serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table
     .get::<WebGPURenderPipeline>(args.render_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
   let render_pipeline = render_pipeline_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let bind_group_layout = gfx_select_err!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData))?;
 

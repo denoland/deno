@@ -62,7 +62,6 @@ pub fn serialize_compare_function(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateSamplerArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   address_mode_u: Option<String>,
@@ -84,16 +83,12 @@ pub fn op_webgpu_create_sampler(
 ) -> Result<Value, AnyError> {
   let args: CreateSamplerArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::resource::SamplerDescriptor {
     label: args.label.map(Cow::from),

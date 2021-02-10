@@ -71,7 +71,6 @@ struct GPUBindGroupLayoutEntry {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateBindGroupLayoutArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   entries: Vec<GPUBindGroupLayoutEntry>,
@@ -84,16 +83,12 @@ pub fn op_webgpu_create_bind_group_layout(
 ) -> Result<Value, AnyError> {
   let args: CreateBindGroupLayoutArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let mut entries = vec![];
 
@@ -219,7 +214,6 @@ pub fn op_webgpu_create_bind_group_layout(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreatePipelineLayoutArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   bind_group_layouts: Vec<u32>,
@@ -232,6 +226,7 @@ pub fn op_webgpu_create_pipeline_layout(
 ) -> Result<Value, AnyError> {
   let args: CreatePipelineLayoutArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
@@ -247,12 +242,6 @@ pub fn op_webgpu_create_pipeline_layout(
       .ok_or_else(bad_resource_id)?;
     bind_group_layouts.push(bind_group_layout.0);
   }
-
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
     label: args.label.map(Cow::from),
@@ -288,7 +277,6 @@ struct GPUBindGroupEntry {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateBindGroupArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   layout: u32,
@@ -302,6 +290,7 @@ pub fn op_webgpu_create_bind_group(
 ) -> Result<Value, AnyError> {
   let args: CreateBindGroupArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
@@ -359,12 +348,6 @@ pub fn op_webgpu_create_bind_group(
     layout: bind_group_layout.0,
     entries: Cow::from(entries),
   };
-
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let bind_group = gfx_select_err!(device => instance.device_create_bind_group(
     device,

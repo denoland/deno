@@ -299,7 +299,6 @@ pub fn op_webgpu_render_pass_execute_bundles(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RenderPassEndPassArgs {
-  instance_rid: u32,
   command_encoder_rid: u32,
   render_pass_rid: u32,
 }
@@ -311,6 +310,7 @@ pub fn op_webgpu_render_pass_end_pass(
 ) -> Result<Value, AnyError> {
   let args: RenderPassEndPassArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGPUCommandEncoder>(
@@ -318,16 +318,12 @@ pub fn op_webgpu_render_pass_end_pass(
     )
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
   let render_pass = &render_pass_resource.0.borrow();
+
   gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass))?;
 
   Ok(json!({}))

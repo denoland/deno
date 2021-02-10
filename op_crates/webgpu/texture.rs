@@ -132,7 +132,6 @@ pub struct GPUExtent3D {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateTextureArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   size: GPUExtent3D,
@@ -150,16 +149,12 @@ pub fn op_webgpu_create_texture(
 ) -> Result<Value, AnyError> {
   let args: CreateTextureArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::resource::TextureDescriptor {
     label: args.label.map(Cow::from),
@@ -199,7 +194,6 @@ pub fn op_webgpu_create_texture(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateTextureViewArgs {
-  instance_rid: u32,
   texture_rid: u32,
   label: Option<String>,
   format: Option<String>,
@@ -218,16 +212,12 @@ pub fn op_webgpu_create_texture_view(
 ) -> Result<Value, AnyError> {
   let args: CreateTextureViewArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
     .get::<WebGPUTexture>(args.texture_rid)
     .ok_or_else(bad_resource_id)?;
   let texture = texture_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let descriptor = wgpu_core::resource::TextureViewDescriptor {
     label: args.label.map(Cow::from),

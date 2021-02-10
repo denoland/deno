@@ -14,6 +14,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+pub use wgpu_core;
+pub use wgpu_types;
 
 #[macro_use]
 mod macros {
@@ -61,14 +63,7 @@ pub mod sampler;
 pub mod shader;
 pub mod texture;
 
-struct WebGPUInstance(
-  wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>,
-);
-impl Resource for WebGPUInstance {
-  fn name(&self) -> Cow<str> {
-    "webGPUInstance".into()
-  }
-}
+type Instance = wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>;
 
 struct WebGPUAdapter(wgpu_core::id::AdapterId);
 impl Resource for WebGPUAdapter {
@@ -125,28 +120,9 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
   return_features
 }
 
-pub fn op_webgpu_create_instance(
-  state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let instance = wgpu_core::hub::Global::new(
-    "webgpu",
-    wgpu_core::hub::IdentityManagerFactory,
-    wgpu_types::BackendBit::PRIMARY,
-  );
-
-  let rid = state.resource_table.add(WebGPUInstance(instance));
-
-  Ok(json!({
-    "rid": rid,
-  }))
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RequestAdapterArgs {
-  instance_rid: u32,
   power_preference: Option<String>,
 }
 
@@ -158,11 +134,7 @@ pub async fn op_webgpu_request_adapter(
   let args: RequestAdapterArgs = serde_json::from_value(args)?;
 
   let mut state = state.borrow_mut();
-  let instance_resource = state
-    .resource_table
-    .get::<WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = state.borrow::<Instance>();
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
@@ -244,7 +216,6 @@ struct GPULimits {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RequestDeviceArgs {
-  instance_rid: u32,
   adapter_rid: u32,
   label: Option<String>,
   non_guaranteed_features: Option<Vec<String>>,
@@ -264,11 +235,7 @@ pub async fn op_webgpu_request_device(
     .get::<WebGPUAdapter>(args.adapter_rid)
     .ok_or_else(bad_resource_id)?;
   let adapter = adapter_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = state.borrow::<Instance>();
 
   let mut features: wgpu_types::Features = wgpu_types::Features::empty();
 
@@ -357,7 +324,6 @@ pub async fn op_webgpu_request_device(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateQuerySetArgs {
-  instance_rid: u32,
   device_rid: u32,
   _label: Option<String>, // not yet implemented
   #[serde(rename = "type")]
@@ -378,11 +344,7 @@ pub fn op_webgpu_create_query_set(
     .get::<WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = &state.borrow::<Instance>();
 
   let descriptor = wgpu_types::QuerySetDescriptor {
     ty: match args.kind.as_str() {

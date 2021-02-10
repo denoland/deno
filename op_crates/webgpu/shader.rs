@@ -19,7 +19,6 @@ impl Resource for WebGPUShaderModule {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateShaderModuleArgs {
-  instance_rid: u32,
   device_rid: u32,
   label: Option<String>,
   code: Option<String>,
@@ -33,16 +32,12 @@ pub fn op_webgpu_create_shader_module(
 ) -> Result<Value, AnyError> {
   let args: CreateShaderModuleArgs = serde_json::from_value(args)?;
 
+  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
 
   let source = match args.code {
     Some(code) => {

@@ -42,22 +42,11 @@
     }
   }
 
-  let instanceRid;
-
-  function getInstanceRid() {
-    if (!instanceRid) {
-      const { rid } = core.jsonOpSync("op_webgpu_create_instance");
-      instanceRid = rid;
-    }
-    return instanceRid;
-  }
-
   const gpu = {
     async requestAdapter(options = {}) {
       const { error, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_adapter",
         {
-          instanceRid: getInstanceRid(),
           ...options,
         },
       );
@@ -96,7 +85,6 @@
       const { rid, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_device",
         {
-          instanceRid,
           adapterRid: this.#rid,
           ...descriptor,
         },
@@ -146,7 +134,6 @@
 
     createBuffer(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
-        instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
       });
@@ -162,7 +149,6 @@
 
     createTexture(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_texture", {
-        instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
         size: normalizeGPUExtent3D(descriptor.size),
@@ -173,7 +159,6 @@
 
     createSampler(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_sampler", {
-        instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
       });
@@ -195,7 +180,6 @@
       }
 
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group_layout", {
-        instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
       });
@@ -205,7 +189,6 @@
 
     createPipelineLayout(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
-        instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
         bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) =>
@@ -218,7 +201,6 @@
 
     createBindGroup(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
-        instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
         layout: descriptor.layout[ridSymbol],
@@ -254,7 +236,6 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_shader_module",
         {
-          instanceRid,
           deviceRid: this.#rid,
           label: descriptor.label,
           code: (typeof descriptor.code === "string")
@@ -270,7 +251,6 @@
 
     createComputePipeline(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_compute_pipeline", {
-        instanceRid,
         deviceRid: this.#rid,
         label: descriptor.label,
         layout: descriptor.layout ? descriptor.layout[ridSymbol] : undefined,
@@ -285,7 +265,6 @@
 
     createRenderPipeline(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
-        instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
       });
@@ -303,7 +282,6 @@
 
     createCommandEncoder(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
-        instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
       });
@@ -325,7 +303,6 @@
 
     createQuerySet(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_query_set", {
-        instanceRid,
         deviceRid: this.#rid,
         ...descriptor,
       });
@@ -343,7 +320,6 @@
 
     submit(commandBuffers) {
       core.jsonOpSync("op_webgpu_queue_submit", {
-        instanceRid,
         queueRid: this.#rid,
         commandBuffers: commandBuffers.map((buffer) => buffer[ridSymbol]),
       });
@@ -356,7 +332,6 @@
       core.jsonOpSync(
         "op_webgpu_write_texture",
         {
-          instanceRid,
           queueRid: this.#rid,
           buffer: buffer[ridSymbol],
           bufferOffset,
@@ -371,7 +346,6 @@
       core.jsonOpSync(
         "op_webgpu_write_texture",
         {
-          instanceRid,
           queueRid: this.#rid,
           destination: {
             texture: destination.texture[ridSymbol],
@@ -415,7 +389,6 @@
       this.#mappedOffset = offset;
       this.#mappedSize = size ?? (this.#size - offset);
       await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
-        instanceRid,
         bufferRid: this[ridSymbol],
         deviceRid: this.#deviceRid,
         mode,
@@ -429,7 +402,6 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
         {
-          instanceRid,
           bufferRid: this[ridSymbol],
           offset,
           size: size ?? this.#mappedSize,
@@ -444,7 +416,6 @@
 
     unmap() {
       core.jsonOpSync("op_webgpu_buffer_unmap", {
-        instanceRid,
         bufferRid: this[ridSymbol],
         mappedRid: this.#mappedRid,
       }, this.#mappedBuffer);
@@ -463,7 +434,6 @@
 
     createView(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_texture_view", {
-        instanceRid,
         textureRid: this[ridSymbol],
         ...descriptor,
       });
@@ -532,7 +502,6 @@
       const { rid, label } = core.jsonOpSync(
         "op_webgpu_compute_pipeline_get_bind_group_layout",
         {
-          instanceRid,
           computePipelineRid: this[ridSymbol],
           index,
         },
@@ -552,7 +521,6 @@
       const { rid, label } = core.jsonOpSync(
         "op_webgpu_render_pipeline_get_bind_group_layout",
         {
-          instanceRid,
           renderPipelineRid: this[ridSymbol],
           index,
         },
@@ -657,7 +625,6 @@
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_buffer",
         {
-          instanceRid,
           commandEncoderRid: this.#rid,
           source: source[ridSymbol],
           sourceOffset,
@@ -672,7 +639,6 @@
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_texture",
         {
-          instanceRid,
           commandEncoderRid: this.#rid,
           source: {
             ...source,
@@ -693,7 +659,6 @@
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_buffer",
         {
-          instanceRid,
           commandEncoderRid: this.#rid,
           source: {
             texture: source.texture[ridSymbol],
@@ -713,7 +678,6 @@
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_texture",
         {
-          instanceRid,
           commandEncoderRid: this.#rid,
           source: {
             texture: source.texture[ridSymbol],
@@ -733,20 +697,17 @@
 
     pushDebugGroup(groupLabel) {
       core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
-        instanceRid,
         commandEncoderRid: this.#rid,
         groupLabel,
       });
     }
     popDebugGroup() {
       core.jsonOpSync("op_webgpu_command_encoder_pop_debug_group", {
-        instanceRid,
         commandEncoderRid: this.#rid,
       });
     }
     insertDebugMarker(markerLabel) {
       core.jsonOpSync("op_webgpu_command_encoder_insert_debug_marker", {
-        instanceRid,
         commandEncoderRid: this.#rid,
         markerLabel,
       });
@@ -754,7 +715,6 @@
 
     writeTimestamp(querySet, queryIndex) {
       core.jsonOpSync("op_webgpu_command_encoder_write_timestamp", {
-        instanceRid,
         commandEncoderRid: this.#rid,
         querySet: querySet[ridSymbol],
         queryIndex,
@@ -769,7 +729,6 @@
       destinationOffset,
     ) {
       core.jsonOpSync("op_webgpu_command_encoder_resolve_query_set", {
-        instanceRid,
         commandEncoderRid: this.#rid,
         querySet: querySet[ridSymbol],
         firstQuery,
@@ -781,7 +740,6 @@
 
     finish(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
-        instanceRid,
         commandEncoderRid: this.#rid,
         ...descriptor,
       });
@@ -871,7 +829,6 @@
     }
     endPass() {
       core.jsonOpSync("op_webgpu_render_pass_end_pass", {
-        instanceRid,
         commandEncoderRid: this.#commandEncoderRid,
         renderPassRid: this.#rid,
       });
@@ -1054,7 +1011,6 @@
 
     endPass() {
       core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
-        instanceRid,
         commandEncoderRid: this.#commandEncoderRid,
         computePassRid: this.#rid,
       });
@@ -1134,7 +1090,6 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_render_bundle_encoder_finish",
         {
-          instanceRid,
           renderBundleEncoderRid: this.#rid,
           ...descriptor,
         },

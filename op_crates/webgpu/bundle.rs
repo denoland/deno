@@ -84,7 +84,6 @@ pub fn op_webgpu_create_render_bundle_encoder(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RenderBundleEncoderFinishArgs {
-  instance_rid: u32,
   render_bundle_encoder_rid: u32,
   label: Option<String>,
 }
@@ -105,11 +104,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .expect("unwrapping render_bundle_encoder_resource should succeed")
     .0
     .into_inner();
-  let instance_resource = state
-    .resource_table
-    .get::<super::WebGPUInstance>(args.instance_rid)
-    .ok_or_else(bad_resource_id)?;
-  let instance = &instance_resource.0;
+  let instance = state.borrow::<super::Instance>();
 
   let render_bundle = gfx_select_err!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
