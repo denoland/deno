@@ -1,3 +1,12 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-explicit-any no-empty-interface
+
+/// <reference no-default-lib="true" />
+/// <reference lib="esnext" />
+
+// 8cc98b6f10b7f354473a08c3773bb1de839845b9
+
 declare interface GPUObjectBase {
   label: string | null;
 }
@@ -303,7 +312,6 @@ declare interface GPUBindGroupLayoutEntry {
   sampler?: GPUSamplerBindingLayout;
   texture?: GPUTextureBindingLayout;
   storageTexture?: GPUStorageTextureBindingLayout;
-
 }
 
 declare type GPUShaderStageFlags = number;
@@ -327,7 +335,10 @@ declare interface GPUSamplerBindingLayout {
   type?: GPUSamplerBindingType;
 }
 
-declare type GPUSamplerBindingType = "filtering" | "non-filtering" | "comparison";
+declare type GPUSamplerBindingType =
+  | "filtering"
+  | "non-filtering"
+  | "comparison";
 
 declare interface GPUTextureBindingLayout {
   sampleType?: GPUTextureSampleType;
@@ -335,7 +346,12 @@ declare interface GPUTextureBindingLayout {
   multisampled?: boolean;
 }
 
-declare type GPUTextureSampleType = "float" | "unfilterable-float" | "depth" | "sint" | "uint";
+declare type GPUTextureSampleType =
+  | "float"
+  | "unfilterable-float"
+  | "depth"
+  | "sint"
+  | "uint";
 
 declare interface GPUTextureBindingLayout {
   sampleType?: GPUTextureSampleType;
@@ -358,7 +374,10 @@ declare interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
   entries: GPUBindGroupEntry[];
 }
 
-declare type GPUBindingResource = GPUSampler | GPUTextureView | GPUBufferBinding;
+declare type GPUBindingResource =
+  | GPUSampler
+  | GPUTextureView
+  | GPUBufferBinding;
 
 declare interface GPUBindGroupEntry {
   binding: number;
@@ -414,13 +433,15 @@ declare interface GPUProgrammableStage {
 
 declare interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {}
 
-declare interface GPUComputePipelineDescriptor extends GPUPipelineDescriptorBase {
+declare interface GPUComputePipelineDescriptor
+  extends GPUPipelineDescriptorBase {
   compute: GPUProgrammableStage;
 }
 
 declare interface GPURenderPipeline extends GPUObjectBase, GPUPipelineBase {}
 
-declare interface GPURenderPipelineDescriptor extends GPUPipelineDescriptorBase {
+declare interface GPURenderPipelineDescriptor
+  extends GPUPipelineDescriptorBase {
   vertex: GPUVertexState;
   primitive?: GPUPrimitiveState;
   depthStencil?: GPUDepthStencilState;
@@ -467,7 +488,6 @@ declare interface GPUBlendState {
   color: GPUBlendComponent;
   alpha: GPUBlendComponent;
 }
-
 
 declare type GPUColorWriteFlags = number;
 /*
@@ -674,7 +694,7 @@ declare interface GPUImageCopyTexture {
 }
 
 declare interface GPUImageCopyImageBitmap {
-  imageBitmap: ImageBitmap; // TODO
+  imageBitmap: ImageBitmap; // TODO(@crowlKats)
   origin?: GPUOrigin2D;
 }
 
@@ -832,7 +852,8 @@ declare interface GPURenderBundleEncoder
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
 
-declare interface GPURenderBundleEncoderDescriptor extends GPUObjectDescriptorBase {
+declare interface GPURenderBundleEncoderDescriptor
+  extends GPUObjectDescriptorBase {
   colorFormats: GPUTextureFormat[];
   depthStencilFormat?: GPUTextureFormat;
   sampleCount?: number;
@@ -909,22 +930,22 @@ declare interface GPUDeviceLostInfo {
 
 declare type GPUErrorFilter = "out-of-memory" | "validation";
 
-declare interface GPUOutOfMemoryError {
-  constructor(): this;
+declare class GPUOutOfMemoryError {
+  constructor();
 }
 
-declare interface GPUValidationError {
-  constructor(message: string): this;
+declare class GPUValidationError {
+  constructor(message: string);
   readonly message: string;
 }
 
 declare type GPUError = GPUOutOfMemoryError | GPUValidationError;
 
-declare interface GPUUncapturedErrorEvent extends Event {
+declare class GPUUncapturedErrorEvent extends Event {
   constructor(
     type: string,
     gpuUncapturedErrorEventInitDict: GPUUncapturedErrorEventInit,
-  ): this;
+  );
   readonly error: GPUError;
 }
 

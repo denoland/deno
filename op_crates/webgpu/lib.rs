@@ -12,8 +12,8 @@ use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 #[macro_use]
 mod macros {
@@ -105,7 +105,6 @@ pub fn init(isolate: &mut deno_core::JsRuntime) {
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webgpu.d.ts")
 }
-
 
 fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
   let mut return_features: Vec<&str> = vec![];
