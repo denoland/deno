@@ -337,68 +337,41 @@ mod integration {
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::root_path())
       .arg("cache")
+      .arg("-L")
+      .arg("debug")
       .arg(module_url.to_string())
       .output()
       .expect("Failed to spawn script");
     assert!(output.status.success());
-    let out = std::str::from_utf8(&output.stdout).unwrap();
-    assert_eq!(out, "");
 
-    // Check for cached file
+    let out = std::str::from_utf8(&output.stderr).unwrap();
+    // Check if file and dependencies are written successfully
+    assert!(out.contains("host.writeFile(\"deno://subdir/print_hello.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://subdir/mod2.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://006_url_imports.js\")"));
+
     let prg = util::deno_exe_path();
     let output = Command::new(&prg)
       .env("DENO_DIR", deno_dir.path())
+      .env("HTTP_PROXY", "http://nil")
       .env("NO_COLOR", "1")
       .current_dir(util::root_path())
-      .arg("info")
+      .arg("run")
       .arg(module_url.to_string())
       .output()
       .expect("Failed to spawn script");
 
     let str_output = std::str::from_utf8(&output.stdout).unwrap();
-    let max = str_output.find("type").unwrap();
-    let cached_file = std::path::PathBuf::from(&str_output[7..max].trim());
-    assert!(cached_file.is_file());
 
-    let root = util::root_path();
-    let mut module_original_file =
-      fs::File::open(root.join("cli/tests/006_url_imports.ts")).unwrap();
-    let mut module_original_content = String::new();
-    module_original_file
-      .read_to_string(&mut module_original_content)
-      .unwrap();
-
-    let mut module_cached = String::new();
-    let mut module_file = fs::File::open(cached_file).unwrap();
-    module_file.read_to_string(&mut module_cached).unwrap();
-
-    assert_eq!(module_original_content, module_cached);
-
-    // Check for compiled file
-    let compile_path_min = str_output.find("compiled:").unwrap() + 9;
-    let compile_path_max = str_output.rfind("deps").unwrap();
-    let compiled_file_path =
-      &str_output[compile_path_min..compile_path_max].trim();
-    assert!(std::path::PathBuf::from(compiled_file_path).is_file());
-
-    // Check for compiled file output
-    let compiled_output = Command::new(&prg)
-      .arg("run")
-      .arg("-A")
-      .arg(compiled_file_path)
-      .output()
-      .expect("Failed to spawn script");
-    let compiled_str_output =
-      std::str::from_utf8(&compiled_output.stdout).unwrap();
-
-    let module_output_path = root.join("cli/tests/006_url_imports.ts.out");
+    let module_output_path =
+      util::root_path().join("cli/tests/006_url_imports.ts.out");
     let mut module_output = String::new();
     let mut module_output_file = fs::File::open(module_output_path).unwrap();
     module_output_file
       .read_to_string(&mut module_output)
       .unwrap();
 
-    assert_eq!(module_output, compiled_str_output);
+    assert_eq!(module_output, str_output);
   }
 
   #[test]
