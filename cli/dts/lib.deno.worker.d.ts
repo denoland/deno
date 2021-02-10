@@ -3,6 +3,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
+/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 
 declare class WorkerGlobalScope {
@@ -29,6 +30,11 @@ declare class WorkerGlobalScope {
   close: () => void;
   postMessage: (message: any) => void;
   Deno: typeof Deno;
+  navigator: WorkerNavigator;
+}
+
+declare interface WorkerNavigator {
+  readonly gpu: GPU;
 }
 
 declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
