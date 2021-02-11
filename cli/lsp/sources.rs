@@ -134,7 +134,7 @@ impl Inner {
 
   fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
     if let Some(specifier) = self.resolve_specifier(specifier) {
-      if self.get_metadata(&specifier, true).is_some() {
+      if self.get_metadata(&specifier).is_some() {
         return true;
       }
     }
@@ -147,7 +147,7 @@ impl Inner {
   /// UTF-16 string in Rust.
   fn get_length_utf16(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier, false)?;
+    let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source.encode_utf16().count())
   }
 
@@ -156,7 +156,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier, true)?;
+    let metadata = self.get_metadata(&specifier)?;
     Some(metadata.line_index)
   }
 
@@ -164,7 +164,7 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<analysis::ResolvedDependency> {
-    let metadata = self.get_metadata(specifier, false)?;
+    let metadata = self.get_metadata(specifier)?;
     metadata.maybe_types
   }
 
@@ -173,26 +173,13 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier, false)?;
+    let metadata = self.get_metadata(&specifier)?;
     Some(metadata.media_type)
   }
 
-  fn get_metadata(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    check_version: bool,
-  ) -> Option<Metadata> {
+  fn get_metadata(&mut self, specifier: &ModuleSpecifier) -> Option<Metadata> {
     if let Some(metadata) = self.metadata.get(specifier).cloned() {
-      // we can access this a lot of times in sequence, when it is impossible
-      // or not needed to validate that the version of metadata we have cached
-      // represents the version on the disk, and it can get quite expensive to
-      // repeatedly check this, so we will only do it when this is called by an
-      // api where it might be the start of a sequence
-      if check_version {
-        if metadata.version == self.get_script_version(specifier)? {
-          return Some(metadata);
-        }
-      } else {
+      if metadata.version == self.get_script_version(specifier)? {
         return Some(metadata);
       }
     }
@@ -343,7 +330,7 @@ impl Inner {
 
   fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
     let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier, true)?;
+    let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source)
   }
 
@@ -367,7 +354,7 @@ impl Inner {
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let referrer = self.resolve_specifier(referrer)?;
-    let metadata = self.get_metadata(&referrer, false)?;
+    let metadata = self.get_metadata(&referrer)?;
     let dependencies = &metadata.dependencies?;
     let dependency = dependencies.get(specifier)?;
     if let Some(type_dependency) = &dependency.maybe_type {
