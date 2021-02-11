@@ -335,7 +335,7 @@ struct GPUVertexBufferLayout {
 struct GPUVertexState {
   module: u32,
   entry_point: String,
-  vertex_buffers: Option<Vec<Option<GPUVertexBufferLayout>>>,
+  buffers: Option<Vec<Option<GPUVertexBufferLayout>>>,
 }
 
 #[derive(Deserialize)]
@@ -404,7 +404,7 @@ pub fn op_webgpu_create_render_pipeline(
         module: vertex_shader_module_resource.0,
         entry_point: Cow::from(args.vertex.entry_point),
       },
-      buffers: Cow::from(if let Some(buffers) = args.vertex.vertex_buffers {
+      buffers: Cow::from(if let Some(buffers) = args.vertex.buffers {
         let mut return_buffers = vec![];
         for buffer in buffers {
           if let Some(buffer) = buffer {
