@@ -588,6 +588,7 @@ impl swc_bundler::Hook for BundleHook {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::collections::HashMap;
   use swc_ecmascript::dep_graph::DependencyKind;
 
   #[test]
@@ -614,6 +615,7 @@ mod tests {
           specifier: "./test.ts".into(),
           specifier_col: 21,
           specifier_line: 1,
+          import_assertions: HashMap::default(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
@@ -624,6 +626,7 @@ mod tests {
           specifier: "./foo.ts".into(),
           specifier_col: 29,
           specifier_line: 2,
+          import_assertions: HashMap::default(),
         }
       ]
     );
