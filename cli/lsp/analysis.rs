@@ -16,6 +16,7 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
+use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
 use lspower::lsp;
@@ -23,6 +24,7 @@ use lspower::lsp::Position;
 use lspower::lsp::Range;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
 
 lazy_static! {
@@ -143,9 +145,32 @@ pub struct Dependency {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedDependencyErr {
+  InvalidDowngrade,
+  InvalidLocalImport,
+  InvalidSpecifier(ModuleResolutionError),
+  Missing,
+}
+
+impl fmt::Display for ResolvedDependencyErr {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::InvalidDowngrade => {
+        write!(f, "HTTPS modules cannot import HTTP modules.")
+      }
+      Self::InvalidLocalImport => {
+        write!(f, "Remote modules cannot import local modules.")
+      }
+      Self::InvalidSpecifier(err) => write!(f, "{}", err),
+      Self::Missing => write!(f, "The module is unexpectedly missing."),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedDependency {
   Resolved(ModuleSpecifier),
-  Err(String),
+  Err(ResolvedDependencyErr),
 }
 
 pub fn resolve_import(
@@ -170,22 +195,23 @@ pub fn resolve_import(
   } else {
     match ModuleSpecifier::resolve_import(specifier, referrer.as_str()) {
       Ok(resolved) => resolved,
-      Err(err) => return ResolvedDependency::Err(err.to_string()),
+      Err(err) => {
+        return ResolvedDependency::Err(
+          ResolvedDependencyErr::InvalidSpecifier(err),
+        )
+      }
     }
   };
   let referrer_scheme = referrer.as_url().scheme();
   let specifier_scheme = specifier.as_url().scheme();
   if referrer_scheme == "https" && specifier_scheme == "http" {
-    return ResolvedDependency::Err(
-      "Modules imported via https are not allowed to import http modules."
-        .to_string(),
-    );
+    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidDowngrade);
   }
   if (referrer_scheme == "https" || referrer_scheme == "http")
     && !(specifier_scheme == "https" || specifier_scheme == "http")
     && !remapped
   {
-    return ResolvedDependency::Err("Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.".to_string());
+    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidLocalImport);
   }
 
   ResolvedDependency::Resolved(specifier)
@@ -241,8 +267,8 @@ pub fn analyze_dependencies(
       let resolved_import =
         resolve_import(&desc.specifier, specifier, maybe_import_map);
 
-      // Check for `@deno-types` pragmas that effect the import
-      let maybe_resolved_type_import =
+      let maybe_resolved_type_dependency =
+        // Check for `@deno-types` pragmas that affect the import
         if let Some(comment) = desc.leading_comments.last() {
           if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
             Some(resolve_import(deno_types, specifier, maybe_import_map))
@@ -276,8 +302,8 @@ pub fn analyze_dependencies(
           dep.maybe_code = Some(resolved_import);
         }
       }
-      if maybe_resolved_type_import.is_some() && dep.maybe_type.is_none() {
-        dep.maybe_type = maybe_resolved_type_import;
+      if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
+        dep.maybe_type = maybe_resolved_type_dependency;
       }
     }
 

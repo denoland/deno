@@ -17,6 +17,17 @@
     return Object.prototype.hasOwnProperty.call(obj, v);
   }
 
+  function propertyIsEnumerable(obj, prop) {
+    if (
+      obj == null ||
+      typeof obj.propertyIsEnumerable !== "function"
+    ) {
+      return false;
+    }
+
+    return obj.propertyIsEnumerable(prop);
+  }
+
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
 
@@ -159,6 +170,7 @@
     showProxy: false,
     colors: false,
     getters: false,
+    showHidden: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -189,7 +201,8 @@
     return inspectOptions.colors ? fn : (s) => s;
   }
 
-  function inspectFunction(value, _ctx) {
+  function inspectFunction(value, ctx, level, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     if (customInspect in value && typeof value[customInspect] === "function") {
       return String(value[customInspect]());
     }
@@ -200,11 +213,32 @@
       // use generic 'Function' instead.
       cstrName = "Function";
     }
+
+    // Our function may have properties, so we want to format those
+    // as if our function was an object
+    // If we didn't find any properties, we will just append an
+    // empty suffix.
+    let suffix = ``;
+    if (
+      Object.keys(value).length > 0 ||
+      Object.getOwnPropertySymbols(value).length > 0
+    ) {
+      const propString = inspectRawObject(value, ctx, level, inspectOptions);
+      // Filter out the empty string for the case we only have
+      // non-enumerable symbols.
+      if (
+        propString.length > 0 &&
+        propString !== "{}"
+      ) {
+        suffix = ` ${propString}`;
+      }
+    }
+
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
-      return `[${cstrName}: ${value.name}]`;
+      return cyan(`[${cstrName}: ${value.name}]`) + suffix;
     }
-    return `[${cstrName}]`;
+    return cyan(`[${cstrName}]`) + suffix;
   }
 
   function inspectIterable(
@@ -429,7 +463,12 @@
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
-        return cyan(inspectFunction(value, ctx));
+        if (ctx.has(value)) {
+          // Circular string is cyan
+          return cyan("[Circular]");
+        }
+
+        return inspectFunction(value, ctx, level, inspectOptions);
       case "object": // null is bold
         if (value === null) {
           return bold("null");
@@ -797,6 +836,13 @@
     }
 
     for (const key of symbolKeys) {
+      if (
+        !inspectOptions.showHidden &&
+        !propertyIsEnumerable(value, key)
+      ) {
+        continue;
+      }
+
       if (inspectOptions.getters) {
         let propertyValue;
         let error;
@@ -873,7 +919,11 @@
       nonUniqueCustomInspect in value &&
       typeof value[nonUniqueCustomInspect] === "function"
     ) {
-      return String(value[nonUniqueCustomInspect]());
+      // TODO(nayeemrmn): `inspect` is passed as an argument because custom
+      // inspect implementations in `op_crates` need it, but may not have access
+      // to the `Deno` namespace in web workers. Remove when the `Deno`
+      // namespace is always enabled.
+      return String(value[nonUniqueCustomInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);

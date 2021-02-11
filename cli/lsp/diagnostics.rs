@@ -279,14 +279,14 @@ pub async fn generate_dependency_diagnostics(
               &dependency.maybe_code_specifier_range,
             ) {
               match code.clone() {
-                ResolvedDependency::Err(message) => {
+                ResolvedDependency::Err(err) => {
                   diagnostic_list.push(lsp::Diagnostic {
                     range: *range,
                     severity: Some(lsp::DiagnosticSeverity::Error),
                     code: None,
                     code_description: None,
                     source: Some("deno".to_string()),
-                    message,
+                    message: format!("{}", err),
                     related_information: None,
                     tags: None,
                     data: None,
