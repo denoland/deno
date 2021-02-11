@@ -46,9 +46,9 @@
       case "bigint":
         return "BigInt";
       case "object":
-        // Falls through
+      // Falls through
       case "function":
-        // Falls through
+      // Falls through
       default:
         // Per ES spec, typeof returns an implemention-defined value that is not any of the existing ones for
         // uncallable non-standard exotic objects. Yet Type() which the Web IDL spec depends on returns Object for
@@ -70,8 +70,8 @@
     //
     // Branch here for cases 1 and 4
     if (
-      (x > 0 && (x % 1) === +0.5 && (x & 1) === 0) ||
-      (x < 0 && (x % 1) === -0.5 && (x & 1) === 1)
+      (x > 0 && x % 1 === +0.5 && (x & 1) === 0) ||
+      (x < 0 && x % 1 === -0.5 && (x & 1) === 1)
     ) {
       return censorNegativeZero(Math.floor(x));
     }
@@ -334,21 +334,21 @@
     const U = [];
     for (let i = 0; i < n; ++i) {
       const c = S.charCodeAt(i);
-      if (c < 0xD800 || c > 0xDFFF) {
+      if (c < 0xd800 || c > 0xdfff) {
         U.push(String.fromCodePoint(c));
-      } else if (0xDC00 <= c && c <= 0xDFFF) {
-        U.push(String.fromCodePoint(0xFFFD));
+      } else if (0xdc00 <= c && c <= 0xdfff) {
+        U.push(String.fromCodePoint(0xfffd));
       } else if (i === n - 1) {
-        U.push(String.fromCodePoint(0xFFFD));
+        U.push(String.fromCodePoint(0xfffd));
       } else {
         const d = S.charCodeAt(i + 1);
-        if (0xDC00 <= d && d <= 0xDFFF) {
-          const a = c & 0x3FF;
-          const b = d & 0x3FF;
-          U.push(String.fromCodePoint((2 << 15) + ((2 << 9) * a) + b));
+        if (0xdc00 <= d && d <= 0xdfff) {
+          const a = c & 0x3ff;
+          const b = d & 0x3ff;
+          U.push(String.fromCodePoint((2 << 15) + (2 << 9) * a + b));
           ++i;
         } else {
-          U.push(String.fromCodePoint(0xFFFD));
+          U.push(String.fromCodePoint(0xfffd));
         }
       }
     }
@@ -375,8 +375,10 @@
     return V;
   }
 
-  const abByteLengthGetter =
-    Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength").get;
+  const abByteLengthGetter = Object.getOwnPropertyDescriptor(
+    ArrayBuffer.prototype,
+    "byteLength",
+  ).get;
 
   function isNonSharedArrayBuffer(V) {
     try {
@@ -396,11 +398,10 @@
     // TODO(lucacasonato): vulnerable to prototype pollution. Needs to happen
     // here because SharedArrayBuffer is not available during snapshotting.
     if (!sabByteLengthGetter) {
-      sabByteLengthGetter =
-        Object.getOwnPropertyDescriptor(
-          SharedArrayBuffer.prototype,
-          "byteLength",
-        ).get;
+      sabByteLengthGetter = Object.getOwnPropertyDescriptor(
+        SharedArrayBuffer.prototype,
+        "byteLength",
+      ).get;
     }
     try {
       sabByteLengthGetter.call(V);
@@ -438,8 +439,10 @@
     return V;
   };
 
-  const dvByteLengthGetter =
-    Object.getOwnPropertyDescriptor(DataView.prototype, "byteLength").get;
+  const dvByteLengthGetter = Object.getOwnPropertyDescriptor(
+    DataView.prototype,
+    "byteLength",
+  ).get;
   converters.DataView = (V, opts = {}) => {
     try {
       dvByteLengthGetter.call(V);
@@ -570,7 +573,9 @@
       );
     }
     if (
-      opts.allowShared && !isSharedArrayBuffer(V) && !isNonSharedArrayBuffer(V)
+      opts.allowShared &&
+      !isSharedArrayBuffer(V) &&
+      !isNonSharedArrayBuffer(V)
     ) {
       throw makeException(
         TypeError,
@@ -591,11 +596,7 @@
 
   converters.VoidFunction = convertCallbackFunction;
 
-  function requiredArguments(
-    length,
-    required,
-    opts = {},
-  ) {
+  function requiredArguments(length, required, opts = {}) {
     if (length < required) {
       const errMsg = `${
         opts.prefix ? opts.prefix + ": " : ""
