@@ -264,9 +264,29 @@
     }
 
     createRenderPipeline(descriptor) {
+      const d = {
+        label: descriptor.label,
+        layout: descriptor.layout?.[ridSymbol],
+        vertex: {
+          module: descriptor.vertex.module[ridSymbol],
+          entryPoint: descriptor.vertex.entryPoint,
+          buffers: descriptor.vertex.buffers,
+        },
+        primitive: descriptor.primitive,
+        depthStencil: descriptor.depthStencil,
+        multisample: descriptor.multisample,
+        fragment: descriptor.fragment
+          ? {
+            module: descriptor.fragment.module[ridSymbol],
+            entryPoint: descriptor.fragment.entryPoint,
+            targets: descriptor.fragment.targets,
+          }
+          : undefined,
+      };
+
       const { rid } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
         deviceRid: this.#rid,
-        ...descriptor,
+        ...d,
       });
 
       return new GPURenderPipeline(rid, descriptor.label);

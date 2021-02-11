@@ -108,7 +108,7 @@ struct CommandEncoderBeginRenderPassArgs {
   label: Option<String>,
   color_attachments: Vec<GPURenderPassColorAttachment>,
   depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachment>,
-  _occlusion_query_set: u32, // not yet implemented
+  _occlusion_query_set: Option<u32>, // not yet implemented
 }
 
 pub fn op_webgpu_command_encoder_begin_render_pass(

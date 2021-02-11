@@ -603,7 +603,7 @@ declare type GPUVertexFormat =
 declare type GPUInputStepMode = "vertex" | "instance";
 
 declare interface GPUVertexState extends GPUProgrammableStage {
-  buffer?: (GPUVertexBufferLayout | null)[];
+  buffers?: (GPUVertexBufferLayout | null)[];
 }
 
 declare interface GPUVertexBufferLayout {
