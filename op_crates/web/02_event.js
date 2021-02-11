@@ -159,6 +159,12 @@
     set target(_) {
       // this is a no-op because this member is readonly
     }
+    get srcElement() {
+      return null;
+    }
+    set srcElement(_) {
+      // this is a no-op because this member is readonly
+    }
     get currentTarget() {
       return this[_attributes].currentTarget;
     }
@@ -348,8 +354,16 @@
     get cancelable() {
       return this[_attributes].cancelable;
     }
-    set cancelable(_) {
+    set cancelable(value) {
       // this is a no-op because this member is readonly
+    }
+    get returnValue() {
+      return !this[_canceledFlag];
+    }
+    set returnValue(value) {
+      if (!webidl.converters.boolean(value)) {
+        this[_canceledFlag] = true;
+      }
     }
     preventDefault() {
       if (this[_attributes].cancelable && !this[_inPassiveListener]) {
@@ -407,7 +421,9 @@
     "currentTarget",
     "defaultPrevented",
     "eventPhase",
+    "srcElement",
     "target",
+    "returnValue",
     "timeStamp",
     "type",
   ];
