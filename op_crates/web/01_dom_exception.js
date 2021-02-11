@@ -2,6 +2,8 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
+
   const { defineProperty } = Object;
   // Defined in WebIDL 4.3.
   // https://heycam.github.io/webidl/#idl-DOMException
@@ -67,9 +69,15 @@
 
     constructor(message = "", name = "Error") {
       super();
-      this.#message = String(message);
-      this.#name = name;
-      this.#code = nameToCodeMapping[name] ?? 0;
+      this.#message = webidl.converters.DOMString(message, {
+        prefix: "Failed to construct 'DOMException'",
+        context: "Argument 1",
+      });
+      this.#name = webidl.converters.DOMString(name, {
+        prefix: "Failed to construct 'DOMException'",
+        context: "Argument 2",
+      });
+      this.#code = nameToCodeMapping[this.#name] ?? 0;
     }
 
     get message() {
