@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// Adapted from https://github.com/jsdom/converters-conversions.
+// Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
-// Original license at https://github.com/jsdom/converters-conversions/blob/master/LICENSE.md.
+// Original license at https://github.com/jsdom/webidl-conversions/blob/master/LICENSE.md.
 
 "use strict";
 
@@ -217,10 +217,6 @@
     return V;
   };
 
-  converters.void = function () {
-    return undefined;
-  };
-
   converters.boolean = function (val) {
     return !!val;
   };
@@ -240,26 +236,6 @@
   converters["unsigned long long"] = createLongLongConversion(64, {
     unsigned: true,
   });
-
-  converters.double = (V, opts) => {
-    const x = toNumber(V, opts);
-
-    if (!Number.isFinite(x)) {
-      throw makeException(
-        TypeError,
-        "is not a finite floating-point value",
-        opts,
-      );
-    }
-
-    return x;
-  };
-
-  converters["unrestricted double"] = (V, opts) => {
-    const x = toNumber(V, opts);
-
-    return x;
-  };
 
   converters.float = (V, opts) => {
     const x = toNumber(V, opts);
@@ -301,6 +277,26 @@
     }
 
     return Math.fround(x);
+  };
+
+  converters.double = (V, opts) => {
+    const x = toNumber(V, opts);
+
+    if (!Number.isFinite(x)) {
+      throw makeException(
+        TypeError,
+        "is not a finite floating-point value",
+        opts,
+      );
+    }
+
+    return x;
+  };
+
+  converters["unrestricted double"] = (V, opts) => {
+    const x = toNumber(V, opts);
+
+    return x;
   };
 
   converters.DOMString = function (V, opts = {}) {
@@ -394,12 +390,18 @@
     }
   }
 
+  let sabByteLengthGetter;
+
   function isSharedArrayBuffer(V) {
-    // TODO(lucacasonat): voulnrable to prototype polution. Needs to happen
+    // TODO(lucacasonato): vulnerable to prototype pollution. Needs to happen
     // here because SharedArrayBuffer is not available during snapshotting.
-    const sabByteLengthGetter =
-      Object.getOwnPropertyDescriptor(SharedArrayBuffer.prototype, "byteLength")
-        .get;
+    if (!sabByteLengthGetter) {
+      sabByteLengthGetter =
+        Object.getOwnPropertyDescriptor(
+          SharedArrayBuffer.prototype,
+          "byteLength",
+        ).get;
+    }
     try {
       sabByteLengthGetter.call(V);
       return true;
