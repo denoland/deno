@@ -149,14 +149,6 @@ impl Inner {
         if dep.maybe_type.is_none() {
           if let Some(ResolvedDependency::Resolved(resolved)) = &dep.maybe_code
           {
-            let maybe_type = self.sources.get_maybe_types(resolved);
-            if let Some(ResolvedDependency::Resolved(maybe_type_specifier)) =
-              &maybe_type
-            {
-              // this hydrates the sources for the `maybe_types` specifier, as it
-              // might not have been retrieved yet
-              self.sources.contains(maybe_type_specifier);
-            }
             dep.maybe_type = self.sources.get_maybe_types(resolved);
           }
         }
@@ -199,7 +191,7 @@ impl Inner {
   /// Only searches already cached assets and documents for a line index.  If
   /// the line index cannot be found, `None` is returned.
   fn get_line_index_sync(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let mark = self.performance.mark("get_line_index_sync");
@@ -524,7 +516,7 @@ impl Inner {
   }
 
   pub(crate) fn document_version(
-    &mut self,
+    &self,
     specifier: ModuleSpecifier,
   ) -> Option<i32> {
     self.documents.version(&specifier)
@@ -861,7 +853,7 @@ impl Inner {
     }
   }
 
-  async fn hover(&mut self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -1367,7 +1359,7 @@ impl Inner {
   }
 
   async fn document_highlight(
-    &mut self,
+    &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     if !self.enabled() {
@@ -1505,7 +1497,7 @@ impl Inner {
   }
 
   async fn completion(
-    &mut self,
+    &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
     if !self.enabled() {
