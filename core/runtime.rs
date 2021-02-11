@@ -201,7 +201,7 @@ impl JsRuntime {
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
-      assert!(v8::icu::set_common_data(include_bytes!("./icudtl.dat")).is_ok());
+      assert!(v8::icu::set_common_data(include_bytes!("icudtl.dat")).is_ok());
       unsafe { v8_init() };
     });
 
