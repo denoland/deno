@@ -391,7 +391,7 @@ Deno.test({
   fn: async function (): Promise<void> {
     const promise = deferred();
     const worker = new Worker(
-      new URL("./worker_post_undefined.ts", import.meta.url).href,
+      new URL("./workers/post_undefined.ts", import.meta.url).href,
       { type: "module" },
     );
 

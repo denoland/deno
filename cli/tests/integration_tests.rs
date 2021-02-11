@@ -2341,7 +2341,7 @@ console.log("finish");
       .arg("--allow-net")
       .arg("--allow-read")
       .arg("--unstable")
-      .arg("workers_test.ts")
+      .arg("workers/test.ts")
       .spawn()
       .unwrap()
       .wait()
