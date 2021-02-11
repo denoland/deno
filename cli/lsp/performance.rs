@@ -129,7 +129,7 @@ impl Performance {
   /// measurement to the internal buffer.
   pub fn measure(&self, mark: PerformanceMark) -> Duration {
     let measure = PerformanceMeasure::from(mark);
-    let duration = measure.duration.clone();
+    let duration = measure.duration;
     let mut measures = self.measures.lock().unwrap();
     measures.push_back(measure);
     while measures.len() > self.max_size {
