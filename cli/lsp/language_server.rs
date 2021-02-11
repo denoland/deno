@@ -937,7 +937,7 @@ impl Inner {
     for diagnostic in &fixable_diagnostics {
       match diagnostic.source.as_deref() {
         Some("deno-ts") => {
-          let code = match &diagnostic.code.clone().unwrap() {
+          let code = match diagnostic.code.as_ref().unwrap() {
             NumberOrString::String(code) => code.to_string(),
             NumberOrString::Number(code) => code.to_string(),
           };

@@ -314,18 +314,16 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
     let path = self.get_path(specifier)?;
-    if let Ok(metadata) = fs::metadata(path) {
-      if let Ok(modified) = metadata.modified() {
-        return if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
-          Some(format!("{}", n.as_millis()))
-        } else {
-          Some("1".to_string())
-        };
+    let metadata = fs::metadata(path).ok()?;
+    if let Ok(modified) = metadata.modified() {
+      if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+        Some(format!("{}", n.as_millis()))
       } else {
-        return Some("1".to_string());
+        Some("1".to_string())
       }
+    } else {
+      Some("1".to_string())
     }
-    None
   }
 
   fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {

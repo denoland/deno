@@ -434,7 +434,6 @@ pub struct DenoFixData {
 
 #[derive(Debug, Clone)]
 enum CodeActionKind {
-  #[allow(unused)]
   Deno(lsp::CodeAction),
   Tsc(lsp::CodeAction, tsc::CodeFixAction),
 }
