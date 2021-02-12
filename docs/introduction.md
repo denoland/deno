@@ -15,8 +15,8 @@ It's built on V8, Rust, and Tokio.
   formatter (`deno fmt`).
 - Has
   [a set of reviewed (audited) standard
-  modules](https://github.com/denoland/deno/tree/master/std) that are guaranteed
-  to work with Deno.
+  modules](https://github.com/denoland/deno_std) that are guaranteed to work
+  with Deno.
 - Scripts can be bundled into a single JavaScript file.
 
 ## Philosophy
