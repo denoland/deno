@@ -1245,7 +1245,7 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   }
 
   state.state_snapshot.performance.measure(mark);
-  Ok(json!(Null))
+  Ok(json!(null))
 }
 
 #[derive(Debug, Deserialize)]
