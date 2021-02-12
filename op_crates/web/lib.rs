@@ -140,7 +140,7 @@ mod tests {
       if let Err(error) = result {
         let error_string = error.to_string();
         // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-        assert!(error_string.contains("deno:op_crates/web/01_event.js"));
+        assert!(error_string.contains("deno:op_crates/web/02_event.js"));
         assert!(error_string.contains("TypeError"));
       } else {
         unreachable!();
