@@ -396,7 +396,7 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "deno"
-version = "1.7.2"
+version = "1.7.3"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -672,9 +672,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.40.0"
+version = "0.40.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e50f6bfa546cac0c82ff808d532dcac33b9fb16dd931ddad3d96e3b736cc4dc9"
+checksum = "22ab78a112d8e9f2debd76898da1705fe4dfd73a3b93381422578ad4bed13660"
 dependencies = [
  "dprint-core",
  "dprint-swc-ecma-ast-view",
@@ -686,9 +686,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-swc-ecma-ast-view"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5715c419ccc89e7ae0e996191a0b3dd04730ab82526012672c564092bbe5252"
+checksum = "1feab084d494806f38b1387614d4c32841b9b65f5b17b0689855ccd4ffa6b8ac"
 dependencies = [
  "bumpalo",
  "fnv",
