@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.7.2"
+version = "1.7.3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -46,7 +46,7 @@ base64 = "0.13.0"
 byteorder = "1.4.2"
 clap = "2.33.3"
 dissimilar = "1.0.2"
-dprint-plugin-typescript = "0.40.0"
+dprint-plugin-typescript = "0.40.1"
 dprint-plugin-markdown = "0.5.1"
 encoding_rs = "0.8.28"
 env_logger = "0.8.2"
