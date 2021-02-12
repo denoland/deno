@@ -1685,7 +1685,7 @@ impl Inner {
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
-      "deno/performance" => self.get_performance(),
+      "deno/performance" => Ok(Some(self.get_performance())),
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -1902,9 +1902,9 @@ impl Inner {
     Ok(true)
   }
 
-  fn get_performance(&self) -> LspResult<Option<Value>> {
+  fn get_performance(&self) -> Value {
     let averages = self.performance.averages();
-    Ok(Some(json!({ "averages": averages })))
+    json!({ "averages": averages })
   }
 
   async fn virtual_text_document(

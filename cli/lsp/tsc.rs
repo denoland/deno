@@ -1175,6 +1175,7 @@ fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!(true))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn script_names(state: &mut State, _args: Value) -> Result<Value, AnyError> {
   Ok(json!(state.state_snapshot.documents.open_specifiers()))
 }
