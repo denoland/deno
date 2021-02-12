@@ -11,12 +11,12 @@ use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::iter::once;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -156,10 +156,6 @@ where
   })
 }
 
-// Async request from JS that includes a promiseId and json representation of args.
-#[derive(Deserialize)]
-struct AsyncRequest(u64, String);
-
 /// Creates an op that passes data asynchronously using JSON.
 ///
 /// The provided function `op_fn` has the following parameters:
@@ -193,10 +189,11 @@ where
 {
   let try_dispatch_op =
     move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
-      let req: AsyncRequest = serde_json::from_slice(&bufs[0])
-        .map_err(|_| type_error("missing or invalid `promiseId`"))?;
-      let promise_id = req.0;
-      let args = serde_json::from_str(&req.1)?;
+      let promise_id = bufs[0]
+        .get(0..8)
+        .map(|b| u64::from_be_bytes(b.try_into().unwrap()))
+        .ok_or_else(|| type_error("missing or invalid `promiseId`"))?;
+      let args = serde_json::from_slice(&bufs[0][8..])?;
       let bufs = bufs[1..].into();
       use crate::futures::FutureExt;
       let fut = op_fn(state.clone(), args, bufs).map(move |result| {
