@@ -67,8 +67,8 @@ impl Sources {
     Self(Arc::new(Mutex::new(Inner::new(location))))
   }
 
-  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().unwrap().contains(specifier)
+  pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
+    self.0.lock().unwrap().contains_key(specifier)
   }
 
   pub fn get_length_utf16(&self, specifier: &ModuleSpecifier) -> Option<usize> {
@@ -132,7 +132,7 @@ impl Inner {
     }
   }
 
-  fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
+  fn contains_key(&mut self, specifier: &ModuleSpecifier) -> bool {
     if let Some(specifier) = self.resolve_specifier(specifier) {
       if self.get_metadata(&specifier).is_some() {
         return true;

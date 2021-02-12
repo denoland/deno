@@ -52,7 +52,7 @@ macro_rules! inc {
 
 lazy_static! {
   /// Contains static assets that are not preloaded in the compiler snapshot.
-  pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = [
+  pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
     ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),
     ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
     ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
@@ -67,9 +67,9 @@ lazy_static! {
     ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
     ("lib.webworker.importscripts.d.ts", inc!("lib.webworker.importscripts.d.ts")),
     ("lib.webworker.iterable.d.ts", inc!("lib.webworker.iterable.d.ts")),
-  ]
-  .iter()
-  .copied()
+  ])
+  .into_iter()
+  .cloned()
   .collect();
 }
 

@@ -95,9 +95,10 @@ pub struct AssetDocument {
 
 impl AssetDocument {
   pub fn new<T: AsRef<str>>(text: T) -> Self {
+    let text = text.as_ref();
     Self {
-      text: text.as_ref().to_string(),
-      length: text.as_ref().encode_utf16().count(),
+      text: text.to_string(),
+      length: text.encode_utf16().count(),
       line_index: LineIndex::new(text),
     }
   }
@@ -1077,7 +1078,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
   if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
     Ok(json!(asset.length))
-  } else if state.state_snapshot.documents.contains(&specifier) {
+  } else if state.state_snapshot.documents.contains_key(&specifier) {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     let content = state
       .snapshots
@@ -1108,7 +1109,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
       content.text.clone()
-    } else if state.state_snapshot.documents.contains(&specifier) {
+    } else if state.state_snapshot.documents.contains_key(&specifier) {
       cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
       state
         .snapshots
@@ -1130,7 +1131,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
   let sources = &mut state.state_snapshot.sources;
 
-  if state.state_snapshot.documents.contains(&referrer) {
+  if state.state_snapshot.documents.contains_key(&referrer) {
     if let Some(dependencies) =
       state.state_snapshot.documents.dependencies(&referrer)
     {
@@ -1152,13 +1153,17 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           if let ResolvedDependency::Resolved(resolved_specifier) =
             resolved_import
           {
-            if state.state_snapshot.documents.contains(&resolved_specifier) {
+            if state
+              .state_snapshot
+              .documents
+              .contains_key(&resolved_specifier)
+            {
               let media_type = MediaType::from(&resolved_specifier);
               resolved.push(Some((
                 resolved_specifier.to_string(),
                 media_type.as_ts_extension(),
               )));
-            } else if sources.contains(&resolved_specifier) {
+            } else if sources.contains_key(&resolved_specifier) {
               let media_type = if let Some(media_type) =
                 sources.get_media_type(&resolved_specifier)
               {
@@ -1179,7 +1184,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         }
       }
     }
-  } else if sources.contains(&referrer) {
+  } else if sources.contains_key(&referrer) {
     for specifier in &v.specifiers {
       if let Some((resolved_specifier, media_type)) =
         sources.resolve_import(specifier, &referrer)

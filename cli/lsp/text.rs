@@ -72,7 +72,7 @@ pub struct LineIndex {
 }
 
 impl LineIndex {
-  pub fn new<T: AsRef<str>>(text: T) -> LineIndex {
+  pub fn new(text: &str) -> LineIndex {
     let mut utf16_lines = HashMap::new();
     let mut utf16_chars = Vec::new();
 
@@ -82,7 +82,7 @@ impl LineIndex {
     let mut curr_col = 0.into();
     let mut curr_offset_u16 = 0.into();
     let mut line = 0;
-    for c in text.as_ref().chars() {
+    for c in text.chars() {
       let c_len = TextSize::of(c);
       curr_row += c_len;
       curr_offset_u16 += TextSize::from(c.len_utf16() as u32);

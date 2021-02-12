@@ -204,7 +204,7 @@ impl Inner {
       }
     } else {
       let documents = &self.documents;
-      if documents.contains(specifier) {
+      if documents.contains_key(specifier) {
         documents.line_index(specifier)
       } else {
         self.sources.get_line_index(specifier)
@@ -1886,7 +1886,7 @@ impl Inner {
     }
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
-    if self.documents.contains(&referrer) {
+    if self.documents.contains_key(&referrer) {
       if let Some(source) = self.documents.content(&referrer).unwrap() {
         self.analyze_dependencies(&referrer, &source);
       }

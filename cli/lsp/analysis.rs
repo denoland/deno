@@ -32,14 +32,14 @@ lazy_static! {
   /// Diagnostic error codes which actually are the same, and so when grouping
   /// fixes we treat them the same.
   static ref FIX_ALL_ERROR_CODES: HashMap<&'static str, &'static str> =
-    [("2339", "2339"), ("2345", "2339"),]
-      .iter()
-      .copied()
+    (&[("2339", "2339"), ("2345", "2339"),])
+      .into_iter()
+      .cloned()
       .collect();
 
   /// Fixes which help determine if there is a preferred fix when there are
   /// multiple fixes available.
-  static ref PREFERRED_FIXES: HashMap<&'static str, (u32, bool)> = [
+  static ref PREFERRED_FIXES: HashMap<&'static str, (u32, bool)> = (&[
     ("annotateWithTypeFromJSDoc", (1, false)),
     ("constructorForDerivedNeedSuperCall", (1, false)),
     ("extendsInterfaceBecomesImplements", (1, false)),
@@ -52,9 +52,9 @@ lazy_static! {
     ("spelling", (2, false)),
     ("addMissingAwait", (1, false)),
     ("fixImport", (0, true)),
-  ]
-  .iter()
-  .copied()
+  ])
+  .into_iter()
+  .cloned()
   .collect();
 }
 
