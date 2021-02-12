@@ -31,7 +31,7 @@
   }
 
   function setIsTrusted(event, value) {
-    event[_attributes].isTrusted = value;
+    event[_isTrusted] = value;
   }
 
   function setDispatched(event, value) {
@@ -78,7 +78,7 @@
 
   const isTrusted = Object.getOwnPropertyDescriptor({
     get isTrusted() {
-      return this[this].isTrusted;
+      return this[_isTrusted];
     },
   }, "isTrusted").get;
 
