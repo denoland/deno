@@ -250,6 +250,27 @@ delete Object.prototype.__proto__;
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+
+    GPUAdapter: util.nonEnumerable(webGPU.GPUAdapter),
+    GPUDevice: util.nonEnumerable(webGPU.GPUDevice),
+    GPUQueue: util.nonEnumerable(webGPU.GPUQueue),
+    GPUBuffer: util.nonEnumerable(webGPU.GPUBuffer),
+    GPUTexture: util.nonEnumerable(webGPU.GPUTexture),
+    GPUTextureView: util.nonEnumerable(webGPU.GPUTextureView),
+    GPUSampler: util.nonEnumerable(webGPU.GPUSampler),
+    GPUBindGroupLayout: util.nonEnumerable(webGPU.GPUBindGroupLayout),
+    GPUPipelineLayout: util.nonEnumerable(webGPU.GPUPipelineLayout),
+    GPUBindGroup: util.nonEnumerable(webGPU.GPUBindGroup),
+    GPUShaderModule: util.nonEnumerable(webGPU.GPUShaderModule),
+    GPUComputePipeline: util.nonEnumerable(webGPU.GPUComputePipeline),
+    GPURenderPipeline: util.nonEnumerable(webGPU.GPURenderPipeline),
+    GPUCommandEncoder: util.nonEnumerable(webGPU.GPUCommandEncoder),
+    GPURenderPassEncoder: util.nonEnumerable(webGPU.GPURenderPassEncoder),
+    GPUComputePassEncoder: util.nonEnumerable(webGPU.GPUComputePassEncoder),
+    GPUCommandBuffer: util.nonEnumerable(webGPU.GPUCommandBuffer),
+    GPURenderBundleEncoder: util.nonEnumerable(webGPU.GPURenderBundleEncoder),
+    GPURenderBundle: util.nonEnumerable(webGPU.GPURenderBundle),
+    GPUQuerySet: util.nonEnumerable(webGPU.GPUQuerySet),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable

@@ -5,6 +5,13 @@
 
   const ridSymbol = Symbol("rid");
 
+  const keySymbol = Symbol("key");
+  function checkKey(key) {
+    if (key !== keySymbol) {
+      throw new TypeError("Illegal constructor");
+    }
+  }
+
   function normalizeGPUExtent3D(data) {
     if (Array.isArray(data)) {
       return {
@@ -54,7 +61,7 @@
       if (error) {
         return null;
       } else {
-        return new GPUAdapter(data);
+        return new GPUAdapter(keySymbol, data);
       }
     },
   };
@@ -74,7 +81,9 @@
       return this.#limits;
     }
 
-    constructor(data) {
+    constructor(key, data) {
+      checkKey(key);
+
       this.#rid = data.rid;
       this.#name = data.name;
       this.#features = Object.freeze(data.features);
@@ -90,7 +99,7 @@
         },
       );
 
-      return new GPUDevice(this, rid, {
+      return new GPUDevice(keySymbol, this, rid, {
         label: descriptor.label,
         ...data,
       });
@@ -117,14 +126,16 @@
       return this.#queue;
     }
 
-    constructor(adapter, rid, data) {
+    constructor(key, adapter, rid, data) {
+      checkKey(key);
+
       super();
 
       this.#adapter = adapter;
       this.#rid = rid;
       this.#features = Object.freeze(data.features);
       this.#limits = data.limits;
-      this.#queue = new GPUQueue(rid, data.label);
+      this.#queue = new GPUQueue(keySymbol, rid, data.label);
       this.label = data.label;
     }
 
@@ -139,6 +150,7 @@
       });
 
       return new GPUBuffer(
+        keySymbol,
         rid,
         this.#rid,
         descriptor.label,
@@ -154,7 +166,7 @@
         size: normalizeGPUExtent3D(descriptor.size),
       });
 
-      return new GPUTexture(rid, descriptor.label);
+      return new GPUTexture(keySymbol, rid, descriptor.label);
     }
 
     createSampler(descriptor = {}) {
@@ -163,7 +175,7 @@
         ...descriptor,
       });
 
-      return new GPUSampler(rid, descriptor.label);
+      return new GPUSampler(keySymbol, rid, descriptor.label);
     }
 
     createBindGroupLayout(descriptor) {
@@ -184,7 +196,7 @@
         ...descriptor,
       });
 
-      return new GPUBindGroupLayout(rid, descriptor.label);
+      return new GPUBindGroupLayout(keySymbol, rid, descriptor.label);
     }
 
     createPipelineLayout(descriptor) {
@@ -196,7 +208,7 @@
         ),
       });
 
-      return new GPUPipelineLayout(rid, descriptor.label);
+      return new GPUPipelineLayout(keySymbol, rid, descriptor.label);
     }
 
     createBindGroup(descriptor) {
@@ -229,7 +241,7 @@
         }),
       });
 
-      return new GPUBindGroup(rid, descriptor.label);
+      return new GPUBindGroup(keySymbol, rid, descriptor.label);
     }
 
     createShaderModule(descriptor) {
@@ -246,7 +258,7 @@
         ...(descriptor.code instanceof Uint32Array ? [descriptor.code] : []),
       );
 
-      return new GPUShaderModule(rid, descriptor.label);
+      return new GPUShaderModule(keySymbol, rid, descriptor.label);
     }
 
     createComputePipeline(descriptor) {
@@ -260,7 +272,7 @@
         },
       });
 
-      return new GPUComputePipeline(rid, descriptor.label);
+      return new GPUComputePipeline(keySymbol, rid, descriptor.label);
     }
 
     createRenderPipeline(descriptor) {
@@ -289,7 +301,7 @@
         ...d,
       });
 
-      return new GPURenderPipeline(rid, descriptor.label);
+      return new GPURenderPipeline(keySymbol, rid, descriptor.label);
     }
 
     createComputePipelineAsync(_descriptor) {
@@ -306,7 +318,7 @@
         ...descriptor,
       });
 
-      return new GPUCommandEncoder(rid, descriptor.label);
+      return new GPUCommandEncoder(keySymbol, rid, descriptor.label);
     }
 
     createRenderBundleEncoder(descriptor) {
@@ -318,7 +330,7 @@
         },
       );
 
-      return new GPURenderBundleEncoder(rid, descriptor.label);
+      return new GPURenderBundleEncoder(keySymbol, rid, descriptor.label);
     }
 
     createQuerySet(descriptor) {
@@ -327,13 +339,15 @@
         ...descriptor,
       });
 
-      return new GPUQuerySet(rid, descriptor.label);
+      return new GPUQuerySet(keySymbol, rid, descriptor.label);
     }
   }
 
   class GPUQueue {
     #rid;
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this.#rid = rid;
       this.label = label ?? null;
     }
@@ -393,7 +407,9 @@
     #mappedRid;
     #mappedBuffer;
 
-    constructor(rid, deviceRid, label, size, mappedAtCreation) {
+    constructor(key, rid, deviceRid, label, size, mappedAtCreation) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.#deviceRid = deviceRid;
       this.label = label ?? null;
@@ -447,7 +463,9 @@
   }
 
   class GPUTexture {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
@@ -458,7 +476,7 @@
         ...descriptor,
       });
 
-      return new GPUTextureView(rid, descriptor.label);
+      return new GPUTextureView(keySymbol, rid, descriptor.label);
     }
 
     destroy() {
@@ -467,42 +485,54 @@
   }
 
   class GPUTextureView {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
   }
 
   class GPUSampler {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
   }
 
   class GPUBindGroupLayout {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
   }
 
   class GPUPipelineLayout {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
   }
 
   class GPUBindGroup {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
   }
 
   class GPUShaderModule {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
@@ -513,7 +543,9 @@
   }
 
   class GPUComputePipeline {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
@@ -527,12 +559,14 @@
         },
       );
 
-      return new GPUBindGroupLayout(rid, label);
+      return new GPUBindGroupLayout(keySymbol, rid, label);
     }
   }
 
   class GPURenderPipeline {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
@@ -546,14 +580,16 @@
         },
       );
 
-      return new GPUBindGroupLayout(rid, label);
+      return new GPUBindGroupLayout(keySymbol, rid, label);
     }
   }
 
   class GPUCommandEncoder {
     #rid;
 
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this.#rid = rid;
       this.label = label ?? null;
     }
@@ -620,7 +656,12 @@
         },
       );
 
-      return new GPURenderPassEncoder(this.#rid, rid, descriptor.label);
+      return new GPURenderPassEncoder(
+        keySymbol,
+        this.#rid,
+        rid,
+        descriptor.label,
+      );
     }
 
     beginComputePass(descriptor = {}) {
@@ -632,7 +673,12 @@
         },
       );
 
-      return new GPUComputePassEncoder(this.#rid, rid, descriptor.label);
+      return new GPUComputePassEncoder(
+        keySymbol,
+        this.#rid,
+        rid,
+        descriptor.label,
+      );
     }
 
     copyBufferToBuffer(
@@ -764,7 +810,7 @@
         ...descriptor,
       });
 
-      return new GPUCommandBuffer(rid, descriptor.label);
+      return new GPUCommandBuffer(keySymbol, rid, descriptor.label);
     }
   }
 
@@ -772,7 +818,9 @@
     #commandEncoderRid;
     #rid;
 
-    constructor(commandEncoderRid, rid, label) {
+    constructor(key, commandEncoderRid, rid, label) {
+      checkKey(key);
+
       this.#commandEncoderRid = commandEncoderRid;
       this.#rid = rid;
       this.label = label ?? null;
@@ -977,7 +1025,9 @@
     #commandEncoderRid;
     #rid;
 
-    constructor(commandEncoderRid, rid, label) {
+    constructor(key, commandEncoderRid, rid, label) {
+      checkKey(key);
+
       this.#commandEncoderRid = commandEncoderRid;
       this.#rid = rid;
       this.label = label ?? null;
@@ -1089,7 +1139,9 @@
   }
 
   class GPUCommandBuffer {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
@@ -1101,7 +1153,9 @@
 
   class GPURenderBundleEncoder {
     #rid;
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this.#rid = rid;
       this.label = label ?? null;
     }
@@ -1115,7 +1169,7 @@
         },
       );
 
-      return new GPURenderBundle(rid, descriptor.label);
+      return new GPURenderBundle(keySymbol, rid, descriptor.label);
     }
 
     setBindGroup(
@@ -1234,14 +1288,18 @@
   }
 
   class GPURenderBundle {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
   }
 
   class GPUQuerySet {
-    constructor(rid, label) {
+    constructor(key, rid, label) {
+      checkKey(key);
+
       this[ridSymbol] = rid;
       this.label = label ?? null;
     }
@@ -1253,5 +1311,25 @@
 
   window.__bootstrap.webGPU = {
     gpu,
+    GPUAdapter,
+    GPUDevice,
+    GPUQueue,
+    GPUBuffer,
+    GPUTexture,
+    GPUTextureView,
+    GPUSampler,
+    GPUBindGroupLayout,
+    GPUPipelineLayout,
+    GPUBindGroup,
+    GPUShaderModule,
+    GPUComputePipeline,
+    GPURenderPipeline,
+    GPUCommandEncoder,
+    GPURenderPassEncoder,
+    GPUComputePassEncoder,
+    GPUCommandBuffer,
+    GPURenderBundleEncoder,
+    GPURenderBundle,
+    GPUQuerySet,
   };
 })(this);
