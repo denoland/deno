@@ -33,7 +33,7 @@ lazy_static! {
   /// fixes we treat them the same.
   static ref FIX_ALL_ERROR_CODES: HashMap<&'static str, &'static str> =
     (&[("2339", "2339"), ("2345", "2339"),])
-      .into_iter()
+      .iter()
       .cloned()
       .collect();
 
@@ -53,7 +53,7 @@ lazy_static! {
     ("addMissingAwait", (1, false)),
     ("fixImport", (0, true)),
   ])
-  .into_iter()
+  .iter()
   .cloned()
   .collect();
 }

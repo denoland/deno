@@ -68,7 +68,7 @@ lazy_static! {
     ("lib.webworker.importscripts.d.ts", inc!("lib.webworker.importscripts.d.ts")),
     ("lib.webworker.iterable.d.ts", inc!("lib.webworker.iterable.d.ts")),
   ])
-  .into_iter()
+  .iter()
   .cloned()
   .collect();
 }
