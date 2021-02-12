@@ -201,7 +201,13 @@ impl JsRuntime {
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
-      assert!(v8::icu::set_common_data(include_bytes!("icudtl.dat")).is_ok());
+      // Include 10MB ICU data file.
+      assert!(v8::icu::set_common_data(align_data::include_aligned!(
+        align_data::Align16,
+        "icudtl.dat"
+      ))
+      .is_ok());
+
       unsafe { v8_init() };
     });
 
