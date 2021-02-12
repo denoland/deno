@@ -294,7 +294,7 @@ pub async fn generate_dependency_diagnostics(
                   })
                 }
                 ResolvedDependency::Resolved(specifier) => {
-                  if !(state_snapshot.documents.contains(&specifier) || sources.contains(&specifier)) {
+                  if !(state_snapshot.documents.contains_key(&specifier) || sources.contains_key(&specifier)) {
                     let is_local = specifier.as_url().scheme() == "file";
                     let (code, message) = if is_local {
                       (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier))

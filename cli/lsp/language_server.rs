@@ -50,6 +50,7 @@ use super::text;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
+use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::utils;
 
@@ -63,7 +64,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
-  pub assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
+  pub assets: Assets,
   pub documents: DocumentCache,
   pub performance: Performance,
   pub sources: Sources,
@@ -73,7 +74,7 @@ pub struct StateSnapshot {
 pub(crate) struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
-  assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
+  assets: Assets,
   /// The LSP client that this LSP server is connected to.
   client: Client,
   /// Configuration information.
@@ -86,7 +87,7 @@ pub(crate) struct Inner {
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  pub maybe_import_map: Option<ImportMap>,
+  pub(crate) maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A map of all the cached navigation trees.
@@ -203,7 +204,7 @@ impl Inner {
       }
     } else {
       let documents = &self.documents;
-      if documents.contains(specifier) {
+      if documents.contains_key(specifier) {
         documents.line_index(specifier)
       } else {
         self.sources.get_line_index(specifier)
@@ -529,10 +530,8 @@ impl Inner {
     if let Some(maybe_asset) = self.assets.get(specifier) {
       return Ok(maybe_asset.clone());
     } else {
-      let mut state_snapshot = self.snapshot();
       let maybe_asset =
-        tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
-          .await?;
+        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()).await?;
       self.assets.insert(specifier.clone(), maybe_asset.clone());
       Ok(maybe_asset)
     }
@@ -1887,7 +1886,7 @@ impl Inner {
     }
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
-    if self.documents.contains(&referrer) {
+    if self.documents.contains_key(&referrer) {
       if let Some(source) = self.documents.content(&referrer).unwrap() {
         self.analyze_dependencies(&referrer, &source);
       }

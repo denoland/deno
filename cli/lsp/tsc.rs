@@ -89,7 +89,55 @@ impl TsServer {
 #[derive(Debug, Clone)]
 pub struct AssetDocument {
   pub text: String,
+  pub length: usize,
   pub line_index: LineIndex,
+}
+
+impl AssetDocument {
+  pub fn new<T: AsRef<str>>(text: T) -> Self {
+    let text = text.as_ref();
+    Self {
+      text: text.to_string(),
+      length: text.encode_utf16().count(),
+      line_index: LineIndex::new(text),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct Assets(HashMap<ModuleSpecifier, Option<AssetDocument>>);
+
+impl Default for Assets {
+  fn default() -> Self {
+    let assets = tsc::STATIC_ASSETS
+      .iter()
+      .map(|(k, v)| {
+        let url_str = format!("asset:///{}", k);
+        let specifier = ModuleSpecifier::resolve_url(&url_str).unwrap();
+        let asset = AssetDocument::new(v);
+        (specifier, Some(asset))
+      })
+      .collect();
+    Self(assets)
+  }
+}
+
+impl Assets {
+  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
+    self.0.contains_key(k)
+  }
+
+  pub fn get(&self, k: &ModuleSpecifier) -> Option<&Option<AssetDocument>> {
+    self.0.get(k)
+  }
+
+  pub fn insert(
+    &mut self,
+    k: ModuleSpecifier,
+    v: Option<AssetDocument>,
+  ) -> Option<Option<AssetDocument>> {
+    self.0.insert(k, v)
+  }
 }
 
 /// Optionally returns an internal asset, first checking for any static assets
@@ -98,37 +146,22 @@ pub struct AssetDocument {
 pub async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
-  state_snapshot: &mut StateSnapshot,
+  state_snapshot: StateSnapshot,
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
-    let maybe_asset = Some(AssetDocument {
-      line_index: LineIndex::new(text),
-      text: text.to_string(),
-    });
-    state_snapshot
-      .assets
-      .insert(specifier.clone(), maybe_asset.clone());
+    let maybe_asset = Some(AssetDocument::new(text));
     Ok(maybe_asset)
   } else {
     let res = ts_server
-      .request(
-        state_snapshot.clone(),
-        RequestMethod::GetAsset(specifier.clone()),
-      )
+      .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
       .await?;
     let maybe_text: Option<String> = serde_json::from_value(res)?;
     let maybe_asset = if let Some(text) = maybe_text {
-      Some(AssetDocument {
-        line_index: LineIndex::new(&text),
-        text,
-      })
+      Some(AssetDocument::new(text))
     } else {
       None
     };
-    state_snapshot
-      .assets
-      .insert(specifier.clone(), maybe_asset.clone());
     Ok(maybe_asset)
   }
 }
@@ -1043,7 +1076,9 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_length");
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if state.state_snapshot.documents.contains(&specifier) {
+  if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
+    Ok(json!(asset.length))
+  } else if state.state_snapshot.documents.contains_key(&specifier) {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
     let content = state
       .snapshots
@@ -1071,17 +1106,20 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_text");
   let v: GetTextArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  let content = if state.state_snapshot.documents.contains(&specifier) {
-    cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
-    state
-      .snapshots
-      .get(&(v.specifier.into(), v.version.into()))
-      .unwrap()
-      .clone()
-  } else {
-    let sources = &mut state.state_snapshot.sources;
-    sources.get_text(&specifier).unwrap()
-  };
+  let content =
+    if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
+      content.text.clone()
+    } else if state.state_snapshot.documents.contains_key(&specifier) {
+      cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
+      state
+        .snapshots
+        .get(&(v.specifier.into(), v.version.into()))
+        .unwrap()
+        .clone()
+    } else {
+      let sources = &mut state.state_snapshot.sources;
+      sources.get_text(&specifier).unwrap()
+    };
   state.state_snapshot.performance.measure(mark);
   Ok(json!(text::slice(&content, v.start..v.end)))
 }
@@ -1093,7 +1131,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let referrer = ModuleSpecifier::resolve_url(&v.base)?;
   let sources = &mut state.state_snapshot.sources;
 
-  if state.state_snapshot.documents.contains(&referrer) {
+  if state.state_snapshot.documents.contains_key(&referrer) {
     if let Some(dependencies) =
       state.state_snapshot.documents.dependencies(&referrer)
     {
@@ -1115,13 +1153,17 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           if let ResolvedDependency::Resolved(resolved_specifier) =
             resolved_import
           {
-            if state.state_snapshot.documents.contains(&resolved_specifier) {
+            if state
+              .state_snapshot
+              .documents
+              .contains_key(&resolved_specifier)
+            {
               let media_type = MediaType::from(&resolved_specifier);
               resolved.push(Some((
                 resolved_specifier.to_string(),
                 media_type.as_ts_extension(),
               )));
-            } else if sources.contains(&resolved_specifier) {
+            } else if sources.contains_key(&resolved_specifier) {
               let media_type = if let Some(media_type) =
                 sources.get_media_type(&resolved_specifier)
               {
@@ -1142,7 +1184,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         }
       }
     }
-  } else if sources.contains(&referrer) {
+  } else if sources.contains_key(&referrer) {
     for specifier in &v.specifiers {
       if let Some((resolved_specifier, media_type)) =
         sources.resolve_import(specifier, &referrer)
@@ -1190,7 +1232,15 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_script_version");
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
   let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if let Some(version) = state.state_snapshot.documents.version(&specifier) {
+  if specifier.as_url().scheme() == "asset" {
+    return if state.state_snapshot.assets.contains_key(&specifier) {
+      Ok(json!("1"))
+    } else {
+      Ok(json!(null))
+    };
+  } else if let Some(version) =
+    state.state_snapshot.documents.version(&specifier)
+  {
     return Ok(json!(version.to_string()));
   } else {
     let sources = &mut state.state_snapshot.sources;
@@ -1200,7 +1250,7 @@ fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   }
 
   state.state_snapshot.performance.measure(mark);
-  Ok(json!(None::<String>))
+  Ok(json!(null))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1624,6 +1674,31 @@ mod tests {
         ]
       })
     );
+  }
+
+  #[test]
+  fn test_get_diagnostics_lib() {
+    let (mut runtime, state_snapshot) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "jsx": "react",
+        "lib": ["esnext", "dom", "deno.ns"],
+        "noEmit": true,
+      }),
+      vec![("file:///a.ts", r#"console.log(document.location);"#, 1)],
+    );
+    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
+      .expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      state_snapshot,
+      RequestMethod::GetDiagnostics(vec![specifier]),
+    );
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response, json!({ "file:///a.ts": [] }));
   }
 
   #[test]
