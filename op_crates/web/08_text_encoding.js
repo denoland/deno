@@ -26,6 +26,7 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
   const core = Deno.core;
 
   const CONTINUE = null;
