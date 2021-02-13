@@ -1034,5 +1034,12 @@
     "file": {
       "File-constructor.any.js": true
     }
+  },
+  "html": {
+    "webappapis": {
+      "atob": {
+        "base64.any.js": true
+      }
+    }
   }
 }
