@@ -297,9 +297,9 @@ fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
   let mut m = HashMap::<String, f64>::new();
 
   m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
-  m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100)?);
+  m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100));
   m.insert("10M_tcp".to_string(), throughput::tcp(deno_exe, 10)?);
-  m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10)?);
+  m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10));
 
   Ok(m)
 }
