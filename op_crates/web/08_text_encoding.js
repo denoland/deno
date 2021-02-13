@@ -127,15 +127,14 @@
   function btoa(s) {
     s = webidl.converters.DOMString(s, {
       prefix: "Failed to execute 'bota'",
-      context: "Argument 1"
+      context: "Argument 1",
     });
     const byteArray = [];
     for (let i = 0; i < s.length; i++) {
       const charCode = s[i].charCodeAt(0);
       if (charCode > 0xff) {
         throw new DOMException(
-          "The string to be encoded contains characters " +
-            "outside of the Latin1 range.",
+          "The string to be encoded contains characters outside of the Latin1 range.",
           "InvalidCharacterError",
         );
       }
