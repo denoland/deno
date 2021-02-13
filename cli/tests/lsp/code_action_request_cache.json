@@ -1,0 +1,46 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "textDocument/codeAction",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 19
+      },
+      "end": {
+        "line": 0,
+        "character": 49
+      }
+    },
+    "context": {
+      "diagnostics": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 19
+            },
+            "end": {
+              "line": 0,
+              "character": 49
+            }
+          },
+          "severity": 1,
+          "code": "no-cache",
+          "source": "deno",
+          "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
+          "data": {
+            "specifier": "https://deno.land/x/a/mod.ts"
+          }
+        }
+      ],
+      "only": [
+        "quickfix"
+      ]
+    }
+  }
+}

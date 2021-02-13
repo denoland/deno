@@ -26,14 +26,17 @@ use tokio::fs;
 
 use crate::deno_dir;
 use crate::import_map::ImportMap;
+use crate::media_type::MediaType;
 use crate::tsc_config::parse_config;
 use crate::tsc_config::TsConfig;
 
+use super::analysis;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
 use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
+use super::analysis::ResolvedDependency;
 use super::capabilities;
 use super::config::Config;
 use super::diagnostics;
@@ -47,6 +50,7 @@ use super::text;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
+use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::utils;
 
@@ -60,8 +64,9 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
-  pub assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
+  pub assets: Assets,
   pub documents: DocumentCache,
+  pub performance: Performance,
   pub sources: Sources,
 }
 
@@ -69,7 +74,7 @@ pub struct StateSnapshot {
 pub(crate) struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
-  assets: HashMap<ModuleSpecifier, Option<AssetDocument>>,
+  assets: Assets,
   /// The LSP client that this LSP server is connected to.
   client: Client,
   /// Configuration information.
@@ -82,7 +87,7 @@ pub(crate) struct Inner {
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  maybe_import_map: Option<ImportMap>,
+  pub(crate) maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A map of all the cached navigation trees.
@@ -128,6 +133,33 @@ impl Inner {
     }
   }
 
+  /// Analyzes dependencies of a document that has been opened in the editor and
+  /// sets the dependencies property on the document.
+  fn analyze_dependencies(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) {
+    if let Some((mut deps, _)) = analysis::analyze_dependencies(
+      specifier,
+      source,
+      &MediaType::from(specifier),
+      &self.maybe_import_map,
+    ) {
+      for (_, dep) in deps.iter_mut() {
+        if dep.maybe_type.is_none() {
+          if let Some(ResolvedDependency::Resolved(resolved)) = &dep.maybe_code
+          {
+            dep.maybe_type = self.sources.get_maybe_types(resolved);
+          }
+        }
+      }
+      if let Err(err) = self.documents.set_dependencies(specifier, Some(deps)) {
+        error!("{}", err);
+      }
+    }
+  }
+
   fn enabled(&self) -> bool {
     self.config.settings.enable
   }
@@ -160,7 +192,7 @@ impl Inner {
   /// Only searches already cached assets and documents for a line index.  If
   /// the line index cannot be found, `None` is returned.
   fn get_line_index_sync(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let mark = self.performance.mark("get_line_index_sync");
@@ -172,7 +204,7 @@ impl Inner {
       }
     } else {
       let documents = &self.documents;
-      if documents.contains(specifier) {
+      if documents.contains_key(specifier) {
         documents.line_index(specifier)
       } else {
         self.sources.get_line_index(specifier)
@@ -359,6 +391,7 @@ impl Inner {
     StateSnapshot {
       assets: self.assets.clone(),
       documents: self.documents.clone(),
+      performance: self.performance.clone(),
       sources: self.sources.clone(),
     }
   }
@@ -484,7 +517,7 @@ impl Inner {
   }
 
   pub(crate) fn document_version(
-    &mut self,
+    &self,
     specifier: ModuleSpecifier,
   ) -> Option<i32> {
     self.documents.version(&specifier)
@@ -497,10 +530,8 @@ impl Inner {
     if let Some(maybe_asset) = self.assets.get(specifier) {
       return Ok(maybe_asset.clone());
     } else {
-      let mut state_snapshot = self.snapshot();
       let maybe_asset =
-        tsc::get_asset(&specifier, &self.ts_server, &mut state_snapshot)
-          .await?;
+        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()).await?;
       self.assets.insert(specifier.clone(), maybe_asset.clone());
       Ok(maybe_asset)
     }
@@ -633,19 +664,11 @@ impl Inner {
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
-      params.text_document.text,
+      &params.text_document.text,
     );
-    if let Err(err) = self
-      .documents
-      .analyze_dependencies(&specifier, &self.maybe_import_map)
-    {
-      error!("{}", err);
-    }
-    // there are scenarios where local documents with a nav tree are opened in
-    // the editor
-    self.navigation_trees.remove(&specifier);
-
+    self.analyze_dependencies(&specifier, &params.text_document.text);
     self.performance.measure(mark);
+
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
@@ -655,22 +678,17 @@ impl Inner {
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change");
     let specifier = utils::normalize_url(params.text_document.uri);
-    if let Err(err) = self.documents.change(
+    match self.documents.change(
       &specifier,
       params.text_document.version,
       params.content_changes,
     ) {
-      error!("{}", err);
+      Ok(Some(source)) => self.analyze_dependencies(&specifier, &source),
+      Ok(_) => error!("No content returned from change."),
+      Err(err) => error!("{}", err),
     }
-    if let Err(err) = self
-      .documents
-      .analyze_dependencies(&specifier, &self.maybe_import_map)
-    {
-      error!("{}", err);
-    }
-    self.navigation_trees.remove(&specifier);
-
     self.performance.measure(mark);
+
     // TODO(@kitsonk): how to better lazily do this?
     if let Err(err) = self.prepare_diagnostics().await {
       error!("{}", err);
@@ -834,7 +852,7 @@ impl Inner {
     }
   }
 
-  async fn hover(&mut self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     if !self.enabled() {
       return Ok(None);
     }
@@ -895,7 +913,10 @@ impl Inner {
             }
             _ => false,
           },
-          // currently only processing `deno-ts` quick fixes
+          "deno" => match &d.code {
+            Some(NumberOrString::String(code)) => code == "no-cache",
+            _ => false,
+          },
           _ => false,
         },
         None => false,
@@ -906,53 +927,65 @@ impl Inner {
       return Ok(None);
     }
     let line_index = self.get_line_index_sync(&specifier).unwrap();
+    let mut code_actions = CodeActionCollection::default();
     let file_diagnostics: Vec<Diagnostic> = self
       .diagnostics
       .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
       .cloned()
       .collect();
-    let mut code_actions = CodeActionCollection::default();
     for diagnostic in &fixable_diagnostics {
-      let code = match &diagnostic.code.clone().unwrap() {
-        NumberOrString::String(code) => code.to_string(),
-        NumberOrString::Number(code) => code.to_string(),
-      };
-      let codes = vec![code];
-      let req = tsc::RequestMethod::GetCodeFixes((
-        specifier.clone(),
-        line_index.offset_tsc(diagnostic.range.start)?,
-        line_index.offset_tsc(diagnostic.range.end)?,
-        codes,
-      ));
-      let res =
-        self
-          .ts_server
-          .request(self.snapshot(), req)
-          .await
-          .map_err(|err| {
-            error!("Error getting actions from TypeScript: {}", err);
-            LspError::internal_error()
-          })?;
-      let actions: Vec<tsc::CodeFixAction> =
-        from_value(res).map_err(|err| {
-          error!("Cannot decode actions from TypeScript: {}", err);
-          LspError::internal_error()
-        })?;
-      for action in actions {
-        code_actions
-          .add_ts_fix_action(&action, diagnostic, self)
-          .await
-          .map_err(|err| {
-            error!("Unable to convert fix: {}", err);
-            LspError::internal_error()
-          })?;
-        if code_actions.is_fix_all_action(
-          &action,
-          diagnostic,
-          &file_diagnostics,
-        ) {
-          code_actions.add_ts_fix_all_action(&action, &specifier, diagnostic);
+      match diagnostic.source.as_deref() {
+        Some("deno-ts") => {
+          let code = match diagnostic.code.as_ref().unwrap() {
+            NumberOrString::String(code) => code.to_string(),
+            NumberOrString::Number(code) => code.to_string(),
+          };
+          let codes = vec![code];
+          let req = tsc::RequestMethod::GetCodeFixes((
+            specifier.clone(),
+            line_index.offset_tsc(diagnostic.range.start)?,
+            line_index.offset_tsc(diagnostic.range.end)?,
+            codes,
+          ));
+          let res =
+            self.ts_server.request(self.snapshot(), req).await.map_err(
+              |err| {
+                error!("Error getting actions from TypeScript: {}", err);
+                LspError::internal_error()
+              },
+            )?;
+          let actions: Vec<tsc::CodeFixAction> =
+            from_value(res).map_err(|err| {
+              error!("Cannot decode actions from TypeScript: {}", err);
+              LspError::internal_error()
+            })?;
+          for action in actions {
+            code_actions
+              .add_ts_fix_action(&action, diagnostic, self)
+              .await
+              .map_err(|err| {
+                error!("Unable to convert fix: {}", err);
+                LspError::internal_error()
+              })?;
+            if code_actions.is_fix_all_action(
+              &action,
+              diagnostic,
+              &file_diagnostics,
+            ) {
+              code_actions
+                .add_ts_fix_all_action(&action, &specifier, diagnostic);
+            }
+          }
         }
+        Some("deno") => {
+          code_actions
+            .add_deno_fix_action(diagnostic)
+            .map_err(|err| {
+              error!("{}", err);
+              LspError::internal_error()
+            })?
+        }
+        _ => (),
       }
     }
     code_actions.set_preferred_fixes();
@@ -1003,9 +1036,8 @@ impl Inner {
           Ok(code_action)
         }
       } else {
-        Err(LspError::invalid_params(
-          "The CodeAction's data is missing.",
-        ))
+        // The code action doesn't need to be resolved
+        Ok(params)
       };
     self.performance.measure(mark);
     result
@@ -1326,7 +1358,7 @@ impl Inner {
   }
 
   async fn document_highlight(
-    &mut self,
+    &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     if !self.enabled() {
@@ -1464,7 +1496,7 @@ impl Inner {
   }
 
   async fn completion(
-    &mut self,
+    &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
     if !self.enabled() {
@@ -1652,7 +1684,7 @@ impl Inner {
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
-      "deno/performance" => self.get_performance(),
+      "deno/performance" => Ok(Some(self.get_performance())),
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -1698,6 +1730,11 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     self.0.lock().await.did_change(params).await
+  }
+
+  async fn did_save(&self, _params: DidSaveTextDocumentParams) {
+    // We don't need to do anything on save at the moment, but if this isn't
+    // implemented, lspower complains about it not being implemented.
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -1808,7 +1845,12 @@ impl lspower::LanguageServer for LanguageServer {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CacheParams {
-  text_document: TextDocumentIdentifier,
+  /// The document currently open in the editor.  If there are no `uris`
+  /// supplied, the referrer will be cached.
+  referrer: TextDocumentIdentifier,
+  /// Any documents that have been specifically asked to be cached via the
+  /// command.
+  uris: Vec<TextDocumentIdentifier>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1819,19 +1861,38 @@ struct VirtualTextDocumentParams {
 
 // These are implementations of custom commands supported by the LSP
 impl Inner {
+  /// Similar to `deno cache` on the command line, where modules will be cached
+  /// in the Deno cache, including any of their dependencies.
   async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
     let mark = self.performance.mark("cache");
-    let specifier = utils::normalize_url(params.text_document.uri);
-    let maybe_import_map = self.maybe_import_map.clone();
-    sources::cache(specifier.clone(), maybe_import_map)
-      .await
-      .map_err(|err| {
-        error!("{}", err);
-        LspError::internal_error()
-      })?;
-    if self.documents.contains(&specifier) {
-      self.diagnostics.invalidate(&specifier);
+    let referrer = utils::normalize_url(params.referrer.uri);
+    if !params.uris.is_empty() {
+      for identifier in &params.uris {
+        let specifier = utils::normalize_url(identifier.uri.clone());
+        sources::cache(&specifier, &self.maybe_import_map)
+          .await
+          .map_err(|err| {
+            error!("{}", err);
+            LspError::internal_error()
+          })?;
+      }
+    } else {
+      sources::cache(&referrer, &self.maybe_import_map)
+        .await
+        .map_err(|err| {
+          error!("{}", err);
+          LspError::internal_error()
+        })?;
     }
+    // now that we have dependencies loaded, we need to re-analyze them and
+    // invalidate some diagnostics
+    if self.documents.contains_key(&referrer) {
+      if let Some(source) = self.documents.content(&referrer).unwrap() {
+        self.analyze_dependencies(&referrer, &source);
+      }
+      self.diagnostics.invalidate(&referrer);
+    }
+
     self.prepare_diagnostics().await.map_err(|err| {
       error!("{}", err);
       LspError::internal_error()
@@ -1840,9 +1901,9 @@ impl Inner {
     Ok(true)
   }
 
-  fn get_performance(&self) -> LspResult<Option<Value>> {
+  fn get_performance(&self) -> Value {
     let averages = self.performance.averages();
-    Ok(Some(json!({ "averages": averages })))
+    json!({ "averages": averages })
   }
 
   async fn virtual_text_document(
@@ -2663,6 +2724,28 @@ mod tests {
     harness.run().await;
   }
 
+  #[tokio::test]
+  async fn test_code_actions_deno_cache() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_cache.json", LspResponse::None),
+      (
+        "code_action_request_cache.json",
+        LspResponse::RequestFixture(
+          2,
+          "code_action_response_cache.json".to_string(),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
   #[derive(Deserialize)]
   struct PerformanceAverages {
     averages: Vec<PerformanceAverage>,
@@ -2708,7 +2791,7 @@ mod tests {
         LspResponse::RequestAssert(|value| {
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
-          assert_eq!(resp.result.averages.len(), 10);
+          assert_eq!(resp.result.averages.len(), 12);
         }),
       ),
       (
