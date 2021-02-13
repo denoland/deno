@@ -1034,5 +1034,17 @@
     "file": {
       "File-constructor.any.js": true
     }
+  },
+  "html": {
+    "webappapis": {
+      "timers": {
+        "cleartimeout-clearinterval.any.js": true,
+        "missing-timeout-setinterval.any.js": true,
+        "negative-setinterval.any.js": true,
+        "negative-settimeout.any.js": true,
+        "type-long-setinterval.any.js": true,
+        "type-long-settimeout.any.js": true
+      }
+    }
   }
 }
