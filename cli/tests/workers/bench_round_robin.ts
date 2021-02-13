@@ -22,7 +22,7 @@ async function main(): Promise<void> {
   const workers: Array<[Map<number, Deferred<string>>, Worker]> = [];
   for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker(
-      new URL("workers/bench_worker.ts", import.meta.url).href,
+      new URL("bench_worker.ts", import.meta.url).href,
       { type: "module" },
     );
     const promise = deferred();
