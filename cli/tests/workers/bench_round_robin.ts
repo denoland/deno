@@ -5,7 +5,7 @@ const data = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n";
 const workerCount = 4;
 const cmdsPerWorker = 400;
 
-import { Deferred, deferred } from "../../test_util/std/async/deferred.ts";
+import { Deferred, deferred } from "../../../test_util/std/async/deferred.ts";
 
 function handleAsyncMsgFromWorker(
   promiseTable: Map<number, Deferred<string>>,
