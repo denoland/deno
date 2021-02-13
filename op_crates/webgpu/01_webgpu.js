@@ -217,13 +217,13 @@
         label: descriptor.label,
         layout: descriptor.layout[ridSymbol],
         entries: descriptor.entries.map((entry) => {
-          if (entry instanceof GPUSampler) {
+          if (entry.resource instanceof GPUSampler) {
             return {
               binding: entry.binding,
               kind: "GPUSampler",
               resource: entry.resource[ridSymbol],
             };
-          } else if (entry instanceof GPUTextureView) {
+          } else if (entry.resource instanceof GPUTextureView) {
             return {
               binding: entry.binding,
               kind: "GPUTextureView",
