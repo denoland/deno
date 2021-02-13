@@ -1034,5 +1034,13 @@
     "file": {
       "File-constructor.any.js": true
     }
+  },
+  "html": {
+    "webappapis": {
+      "microtask-queuing": {
+        "queue-microtask-exceptions.any.js": true,
+        "queue-microtask.any.js": true
+      }
+    }
   }
 }
