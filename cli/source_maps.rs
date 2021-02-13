@@ -110,12 +110,8 @@ pub fn get_orig_position<G: SourceMapGetter>(
   getter: Arc<G>,
 ) -> (String, i64, i64, Option<String>) {
   let maybe_source_map = get_mappings(&file_name, mappings_map, getter.clone());
-  let default_pos = (
-    file_name.clone(),
-    line_number,
-    column_number,
-    source_line.clone(),
-  );
+  let default_pos =
+    (file_name.clone(), line_number, column_number, source_line);
 
   // Lookup expects 0-based line and column numbers, but ours are 1-based.
   let line_number = line_number - 1;
