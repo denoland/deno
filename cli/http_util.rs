@@ -3,9 +3,11 @@
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::HeaderMap;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
+use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::header::USER_AGENT;
@@ -13,6 +15,56 @@ use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+struct AuthToken {
+  host: String,
+  token: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthTokens(Vec<AuthToken>);
+
+impl AuthTokens {
+  pub fn new(maybe_token_str: Option<String>) -> Self {
+    let mut tokens = Vec::new();
+    if let Some(tokens_str) = maybe_token_str {
+      for token_str in tokens_str.split(';') {
+        if token_str.contains('@') {
+          let pair: Vec<&str> = token_str.split('@').collect();
+          if pair.len() == 2 {
+            let token = pair[0].to_string();
+            let host = pair[1].to_lowercase();
+            tokens.push(AuthToken { host, token });
+          } else {
+            error!("Badly formed auth token discarded.");
+          }
+        } else {
+          error!("Badly formed auth token discarded.");
+        }
+      }
+      debug!("Parsed {} auth token(s).", tokens.len());
+    }
+
+    Self(tokens)
+  }
+
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.0.iter().find_map(|t| {
+      let url = specifier.as_url();
+      let hostname = if let Some(port) = url.port() {
+        format!("{}:{}", url.host_str()?, port)
+      } else {
+        url.host_str()?.to_string()
+      };
+      if hostname.to_lowercase().ends_with(&t.host) {
+        Some(t.token.clone())
+      } else {
+        None
+      }
+    })
+  }
+}
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
@@ -84,15 +136,22 @@ pub enum FetchOnceResult {
 pub async fn fetch_once(
   client: Client,
   url: &Url,
-  cached_etag: Option<String>,
+  maybe_etag: Option<String>,
+  maybe_auth_token: Option<String>,
 ) -> Result<FetchOnceResult, AnyError> {
   let url = url.clone();
 
   let mut request = client.get(url.clone());
 
-  if let Some(etag) = cached_etag {
+  if let Some(etag) = maybe_etag {
     let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
     request = request.header(IF_NONE_MATCH, if_none_match_val);
+  }
+  if let Some(auth_token) = maybe_auth_token {
+    let authorization_val_str = format!("Bearer {}", auth_token);
+    let authorization_val =
+      HeaderValue::from_str(&authorization_val_str).unwrap();
+    request = request.header(AUTHORIZATION, authorization_val);
   }
   let response = request.send().await?;
 
@@ -165,7 +224,7 @@ mod tests {
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(headers.get("content-type").unwrap(), "application/json");
@@ -185,7 +244,7 @@ mod tests {
     )
     .unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
@@ -204,7 +263,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client.clone(), &url, None).await;
+    let result = fetch_once(client.clone(), &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
@@ -218,7 +277,8 @@ mod tests {
     }
 
     let res =
-      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
+      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string()), None)
+        .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -231,7 +291,7 @@ mod tests {
     )
     .unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
@@ -256,7 +316,7 @@ mod tests {
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
       assert_eq!(url, target_url);
     } else {
@@ -322,7 +382,7 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(headers.get("content-type").unwrap(), "application/json");
@@ -354,7 +414,7 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
@@ -385,7 +445,7 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client.clone(), &url, None).await;
+    let result = fetch_once(client.clone(), &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
@@ -400,7 +460,8 @@ mod tests {
     }
 
     let res =
-      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
+      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string()), None)
+        .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -425,7 +486,7 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
@@ -446,10 +507,55 @@ mod tests {
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(client, &url, None, None).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     // Check that the error message contains the original URL
     assert!(err.to_string().contains(url_str));
+  }
+
+  #[test]
+  fn test_auth_token() {
+    let auth_tokens = AuthTokens::new(Some("abc123@deno.land".to_string()));
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), Some("abc123".to_string()));
+    let fixture =
+      ModuleSpecifier::resolve_url("https://www.deno.land/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), Some("abc123".to_string()));
+    let fixture =
+      ModuleSpecifier::resolve_url("http://127.0.0.1:8080/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), None);
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land.example.com/x/mod.ts")
+        .unwrap();
+    assert_eq!(auth_tokens.get(&fixture), None);
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land:8080/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), None);
+  }
+
+  #[test]
+  fn test_auth_tokens_multiple() {
+    let auth_tokens =
+      AuthTokens::new(Some("abc123@deno.land;def456@example.com".to_string()));
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), Some("abc123".to_string()));
+    let fixture =
+      ModuleSpecifier::resolve_url("http://example.com/a/file.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), Some("def456".to_string()));
+  }
+
+  #[test]
+  fn test_auth_tokens_port() {
+    let auth_tokens =
+      AuthTokens::new(Some("abc123@deno.land:8080".to_string()));
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), None);
+    let fixture =
+      ModuleSpecifier::resolve_url("http://deno.land:8080/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), Some("abc123".to_string()));
   }
 }

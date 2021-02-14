@@ -4,6 +4,7 @@ use crate::colors;
 use crate::http_cache::HttpCache;
 use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
+use crate::http_util::AuthTokens;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
 use crate::text_encoding;
@@ -19,6 +20,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::future::Future;
 use std::io::Read;
@@ -27,6 +29,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+static DENO_AUTH_TOKENS: &str = "DENO_AUTH_TOKENS";
 pub const SUPPORTED_SCHEMES: [&str; 4] = ["data", "file", "http", "https"];
 
 /// A structure representing a source file.
@@ -308,6 +311,7 @@ fn strip_shebang(mut value: String) -> String {
 /// A structure for resolving, fetching and caching source files.
 #[derive(Clone)]
 pub struct FileFetcher {
+  auth_tokens: AuthTokens,
   allow_remote: bool,
   cache: FileCache,
   cache_setting: CacheSetting,
@@ -323,8 +327,9 @@ impl FileFetcher {
     ca_data: Option<Vec<u8>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
+      auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
       allow_remote,
-      cache: FileCache::default(),
+      cache: Default::default(),
       cache_setting,
       http_cache,
       http_client: create_http_client(get_user_agent(), ca_data)?,
@@ -488,17 +493,25 @@ impl FileFetcher {
 
     info!("{} {}", colors::green("Download"), specifier);
 
-    let file_fetcher = self.clone();
-    let cached_etag = match self.http_cache.get(specifier.as_url()) {
+    let maybe_etag = match self.http_cache.get(specifier.as_url()) {
       Ok((_, headers)) => headers.get("etag").cloned(),
       _ => None,
     };
+    let maybe_auth_token = self.auth_tokens.get(&specifier);
     let specifier = specifier.clone();
     let permissions = permissions.clone();
     let http_client = self.http_client.clone();
+    let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
     async move {
-      match fetch_once(http_client, specifier.as_url(), cached_etag).await? {
+      match fetch_once(
+        http_client,
+        specifier.as_url(),
+        maybe_etag,
+        maybe_auth_token,
+      )
+      .await?
+      {
         FetchOnceResult::NotModified => {
           let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
           Ok(file)
