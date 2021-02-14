@@ -131,6 +131,53 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
     return_features.push("timestamp-query");
   }
 
+  // extended from spec
+  if features.contains(wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS) {
+    return_features.push("mappable-primary-buffers");
+  }
+  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY) {
+    return_features.push("sampled-texture-binding-array");
+  }
+  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING) {
+    return_features.push("sampled-texture-array-dynamic-indexing");
+  }
+  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING) {
+    return_features.push("sampled-texture-array-non-uniform-indexing");
+  }
+  if features.contains(wgpu_types::Features::UNSIZED_BINDING_ARRAY) {
+    return_features.push("unsized-binding-array");
+  }
+  if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT) {
+    return_features.push("multi-draw-indirect");
+  }
+  if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT) {
+    return_features.push("multi-draw-indirect-count");
+  }
+  if features.contains(wgpu_types::Features::PUSH_CONSTANTS) {
+    return_features.push("push-constants");
+  }
+  if features.contains(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER) {
+    return_features.push("address-mode-clamp-to-border");
+  }
+  if features.contains(wgpu_types::Features::NON_FILL_POLYGON_MODE) {
+    return_features.push("non-fill-polygon-mode");
+  }
+  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2) {
+    return_features.push("texture-compression-etc2");
+  }
+  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR) {
+    return_features.push("texture-compression-astc-ldr");
+  }
+  if features.contains(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES) {
+    return_features.push("texture-adapter-specific-format-features");
+  }
+  if features.contains(wgpu_types::Features::SHADER_FLOAT64) {
+    return_features.push("shader-float64");
+  }
+  if features.contains(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT) {
+    return_features.push("vertex-attribute-64bit");
+  }
+
   return_features
 }
 
@@ -266,6 +313,53 @@ pub async fn op_webgpu_request_device(
     }
     if passed_features.contains(&"timestamp-query".to_string()) {
       features.set(wgpu_types::Features::TIMESTAMP_QUERY, true);
+    }
+
+    // extended from spec
+    if passed_features.contains(&"mappable-primary-buffers".to_string()) {
+      features.set(wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS, true);
+    }
+    if passed_features.contains(&"sampled-texture-binding-array".to_string()) {
+      features.set(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY, true);
+    }
+    if passed_features.contains(&"sampled-texture-array-dynamic-indexing".to_string()) {
+      features.set(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING, true);
+    }
+    if passed_features.contains(&"sampled-texture-array-non-uniform-indexing".to_string()) {
+      features.set(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING, true);
+    }
+    if passed_features.contains(&"unsized-binding-array".to_string()) {
+      features.set(wgpu_types::Features::UNSIZED_BINDING_ARRAY, true);
+    }
+    if passed_features.contains(&"multi-draw-indirect".to_string()) {
+      features.set(wgpu_types::Features::MULTI_DRAW_INDIRECT, true);
+    }
+    if passed_features.contains(&"multi-draw-indirect-count".to_string()) {
+      features.set(wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT, true);
+    }
+    if passed_features.contains(&"push-constants".to_string()) {
+      features.set(wgpu_types::Features::PUSH_CONSTANTS, true);
+    }
+    if passed_features.contains(&"address-mode-clamp-to-border".to_string()) {
+      features.set(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER, true);
+    }
+    if passed_features.contains(&"non-fill-polygon-mode".to_string()) {
+      features.set(wgpu_types::Features::NON_FILL_POLYGON_MODE, true);
+    }
+    if passed_features.contains(&"texture-compression-etc2".to_string()) {
+      features.set(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2, true);
+    }
+    if passed_features.contains(&"texture-compression-astc-ldr".to_string()) {
+      features.set(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR, true);
+    }
+    if passed_features.contains(&"texture-adapter-specific-format-features".to_string()) {
+      features.set(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES, true);
+    }
+    if passed_features.contains(&"shader-float64".to_string()) {
+      features.set(wgpu_types::Features::SHADER_FLOAT64, true);
+    }
+    if passed_features.contains(&"vertex-attribute-64bit".to_string()) {
+      features.set(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT, true);
     }
   }
 
