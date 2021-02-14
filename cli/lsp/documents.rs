@@ -96,7 +96,7 @@ impl DocumentCache {
     version: i32,
     content_changes: Vec<TextDocumentContentChangeEvent>,
   ) -> Result<Option<String>, AnyError> {
-    if !self.contains(specifier) {
+    if !self.contains_key(specifier) {
       return Err(custom_error(
         "NotFound",
         format!(
@@ -119,7 +119,7 @@ impl DocumentCache {
     }
   }
 
-  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
     self.docs.contains_key(specifier)
   }
 
@@ -213,8 +213,8 @@ mod tests {
     let missing_specifier =
       ModuleSpecifier::resolve_url("file:///a/c.ts").unwrap();
     document_cache.open(specifier.clone(), 1, "console.log(\"Hello Deno\");\n");
-    assert!(document_cache.contains(&specifier));
-    assert!(!document_cache.contains(&missing_specifier));
+    assert!(document_cache.contains_key(&specifier));
+    assert!(!document_cache.contains_key(&missing_specifier));
   }
 
   #[test]
