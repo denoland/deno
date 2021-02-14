@@ -662,31 +662,20 @@
     };
   }
 
-  function createPrimitiveEnum(name, opts) {
-    const Enum = new Set(opts.enumValues);
+  function createEnumeration(name, ...values) {
+    const E = new Set(values);
 
-    let defaultValue;
+    return function (V, opts = {}) {
+      const S = String(V);
 
-    const hasDefault = "defaultValue" in opts;
-
-    if (hasDefault) {
-      defaultValue = opts.defaultValue;
-    }
-
-    const { converter } = ops;
-
-    return (V, opts = {}) => {
-      V = converter(V);
-
-      if (Enum.has(V)) {
-        return V;
-      } else if (hasDefault) {
-        return defaultValue;
-      } else {
+      if (false === E.has(V)) {
         throw makeException(
           TypeError,
           `The provided value '${V}' is not a valid enum value of type ${name}.`,
+          opts,
         );
+      } else {
+        return V;
       }
     };
   }
