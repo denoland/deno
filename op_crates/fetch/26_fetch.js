@@ -18,7 +18,7 @@
   const { getLocationHref } = window.__bootstrap.location;
 
   const { webidl } = window.__bootstrap;
-  const { createDictionaryConverter } = webidl;
+  const { createDictionaryConverter, createPrimitiveEnum } = webidl;
 
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -188,12 +188,13 @@
     }
   }
 
+  const TypedArray = Reflect.getPrototypeOf(Int8Array);
   /** 
    * @param {unknown} x
    * @returns {x is ArrayBufferView}
    */
   function isTypedArray(x) {
-    return ArrayBuffer.isView(x) && !(x instanceof DataView);
+    return x instanceof TypedArray;
   }
 
   /** 
@@ -944,8 +945,102 @@
     return m;
   }
 
+  // Headers should be able to convert values to HeadersInit,
+  // internally work with Headers directly
+  const HeadersInit = (v) => new Headers(v);
+
+  // TODO: Fill these in
+  // https://fetch.spec.whatwg.org/#bodyinit
+  const BodyInit = () => {};
+
+  // https://w3c.github.io/webappsec-referrer-policy/#enumdef-referrerpolicy
+  const ReferrerPolicy = () => {};
+
+  // https://fetch.spec.whatwg.org/#requestmode
+  const RequestMode = createPrimitiveEnum("RequestMode", {
+    converter: webidl.converter.DOMString,
+    enumValues: ["navigate", "same-origin", "no-cors", "cors"],
+  });
+
+  // https://fetch.spec.whatwg.org/#requestcredentials
+  const RequestCredentials = createPrimitiveEnum("RequestCredentials", {
+    converter: webidl.converter.DOMString,
+    enumValues: ["omit", "same-origin", "include"],
+  });
+
+  // https://fetch.spec.whatwg.org/#requestcache
+  const RequestCache = createPrimitiveEnum("RequestCache", {
+    converter: webidl.converter.DOMString,
+    enumValues: [
+      "default",
+      "no-store",
+      "reload",
+      "no-cache",
+      "force-cache",
+      "only-if-cached",
+    ],
+  });
+
+  // https://fetch.spec.whatwg.org/#requestredirect
+  const RequestRedirect = createPrimitiveEnum("RequestRedirect", {
+    converter: webidl.converter.DOMString,
+    enumValues: ["follow", "error", "manual"],
+  });
+
+  // TODO: make this
+  const AbortSignal = () => {};
+
   const requestInitConverter = createDictionaryConverter("RequestInit", [
-    // {},
+    {
+      converter: webidl.converter.ByteString,
+      key: "method",
+    },
+    {
+      converter: HeadersInit,
+      key: "headers",
+    },
+    {
+      converter: BodyInit,
+      key: "body",
+      defaultValue: null,
+    },
+    {
+      converter: webidl.converter.USVString,
+      key: "referrer",
+    },
+    {
+      converter: ReferrerPolicy,
+      key: "referrerPolicy",
+    },
+    {
+      converter: RequestMode,
+      key: "mode",
+    },
+    {
+      converter: RequestCredentials,
+      key: "credentials",
+    },
+    {
+      converter: RequestCache,
+      key: "cache",
+    },
+    {
+      converter: RequestRedirect,
+      key: "redirect",
+    },
+    {
+      converter: webidl.converter.DOMString,
+      key: "integrity",
+    },
+    {
+      converter: webidl.converter.boolean,
+      key: "keepalive",
+    },
+    {
+      converter: AbortSignal,
+      key: "signal",
+      defaultValue: null,
+    },
   ]);
 
   const responseInitConverter = createDictionaryConverter("ResponseInit", [{
