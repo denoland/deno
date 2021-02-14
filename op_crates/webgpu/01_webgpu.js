@@ -72,14 +72,17 @@
     get name() {
       return this.#name;
     }
+    set name(_) {}
     #features;
     get features() {
       return this.#features;
     }
+    set features(_) {}
     #limits;
     get limits() {
       return this.#limits;
     }
+    set limits(_) {}
 
     constructor(key, data) {
       checkKey(key);
@@ -113,18 +116,22 @@
     get adapter() {
       return this.#adapter;
     }
+    set adapter(_) {}
     #features;
     get features() {
       return this.#features;
     }
+    set features(_) {}
     #limits;
     get limits() {
       return this.#limits;
     }
+    set limits(_) {}
     #queue;
     get queue() {
       return this.#queue;
     }
+    set queue(_) {}
 
     constructor(key, adapter, rid, data) {
       checkKey(key);
@@ -1149,6 +1156,7 @@
     get executionTime() {
       throw new Error("Not yet implemented");
     }
+    set executionTime(_) {}
   }
 
   class GPURenderBundleEncoder {
