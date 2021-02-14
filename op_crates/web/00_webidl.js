@@ -662,7 +662,7 @@
     };
   }
 
-  function makePrimitiveEnum(name, opts) {
+  function createPrimitiveEnum(name, opts) {
     const Enum = new Set(opts.enumValues);
 
     let defaultValue;
@@ -696,5 +696,6 @@
     converters,
     requiredArguments,
     createDictionaryConverter,
+    createPrimitiveEnum
   };
 })(this);
