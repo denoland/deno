@@ -7,95 +7,65 @@
 "use strict";
 
 ((window) => {
-  const eventData = new WeakMap();
-
-  function requiredArguments(
-    name,
-    length,
-    required,
-  ) {
-    if (length < required) {
-      const errMsg = `${name} requires at least ${required} argument${
-        required === 1 ? "" : "s"
-      }, but only ${length} present`;
-      throw new TypeError(errMsg);
-    }
-  }
+  const webidl = window.__bootstrap.webidl;
 
   // accessors for non runtime visible data
 
   function getDispatched(event) {
-    return Boolean(eventData.get(event)?.dispatched);
+    return Boolean(event[_dispatched]);
   }
 
   function getPath(event) {
-    return eventData.get(event)?.path ?? [];
+    return event[_path] ?? [];
   }
 
   function getStopImmediatePropagation(event) {
-    return Boolean(eventData.get(event)?.stopImmediatePropagation);
+    return Boolean(event[_stopImmediatePropagationFlag]);
   }
 
   function setCurrentTarget(
     event,
     value,
   ) {
-    event.currentTarget = value;
+    event[_attributes].currentTarget = value;
   }
 
   function setIsTrusted(event, value) {
-    const data = eventData.get(event);
-    if (data) {
-      data.isTrusted = value;
-    }
+    event[_isTrusted] = value;
   }
 
   function setDispatched(event, value) {
-    const data = eventData.get(event);
-    if (data) {
-      data.dispatched = value;
-    }
+    event[_dispatched] = value;
   }
 
   function setEventPhase(event, value) {
-    event.eventPhase = value;
+    event[_attributes].eventPhase = value;
   }
 
   function setInPassiveListener(event, value) {
-    const data = eventData.get(event);
-    if (data) {
-      data.inPassiveListener = value;
-    }
+    event[_inPassiveListener] = value;
   }
 
   function setPath(event, value) {
-    const data = eventData.get(event);
-    if (data) {
-      data.path = value;
-    }
+    event[_path] = value;
   }
 
   function setRelatedTarget(
     event,
     value,
   ) {
-    if ("relatedTarget" in event) {
-      event.relatedTarget = value;
-    }
+    event[_attributes].relatedTarget = value;
   }
 
   function setTarget(event, value) {
-    event.target = value;
+    event[_attributes].target = value;
   }
 
   function setStopImmediatePropagation(
     event,
     value,
   ) {
-    const data = eventData.get(event);
-    if (data) {
-      data.stopImmediatePropagation = value;
-    }
+    event[_stopImmediatePropagationFlag] = value;
   }
 
   // Type guards that widen the event type
@@ -108,35 +78,65 @@
 
   const isTrusted = Object.getOwnPropertyDescriptor({
     get isTrusted() {
-      return eventData.get(this).isTrusted;
+      return this[_isTrusted];
     },
   }, "isTrusted").get;
 
+  const eventInitConverter = webidl.createDictionaryConverter("EventInit", [{
+    key: "bubbles",
+    defaultValue: false,
+    converter: webidl.converters.boolean,
+  }, {
+    key: "cancelable",
+    defaultValue: false,
+    converter: webidl.converters.boolean,
+  }, {
+    key: "composed",
+    defaultValue: false,
+    converter: webidl.converters.boolean,
+  }]);
+
+  const _attributes = Symbol("[[attributes]]");
+  const _canceledFlag = Symbol("[[canceledFlag]]");
+  const _stopPropagationFlag = Symbol("[[stopPropagationFlag]]");
+  const _stopImmediatePropagationFlag = Symbol(
+    "[[stopImmediatePropagationFlag]]",
+  );
+  const _inPassiveListener = Symbol("[[inPassiveListener]]");
+  const _dispatched = Symbol("[[dispatched]]");
+  const _isTrusted = Symbol("[[isTrusted]]");
+  const _path = Symbol("[[path]]");
+
   class Event {
-    #canceledFlag = false;
-    #stopPropagationFlag = false;
-    #attributes = {};
+    [_attributes] = {};
+    [_canceledFlag] = false;
+    [_stopPropagationFlag] = false;
+    [_stopImmediatePropagationFlag] = false;
+    [_inPassiveListener] = false;
+    [_dispatched] = false;
+    [_isTrusted] = false;
+    [_path] = [];
 
     constructor(type, eventInitDict = {}) {
-      requiredArguments("Event", arguments.length, 1);
-      type = String(type);
-      this.#attributes = {
+      webidl.requiredArguments(arguments.length, 1, {
+        prefix: "Failed to construct 'Event'",
+      });
+      type = webidl.converters.DOMString(type, {
+        prefix: "Failed to construct 'Event'",
+        context: "Argument 1",
+      });
+      const eventInit = eventInitConverter(eventInitDict, {
+        prefix: "Failed to construct 'Event'",
+        context: "Argument 2",
+      });
+      this[_attributes] = {
         type,
-        bubbles: eventInitDict.bubbles ?? false,
-        cancelable: eventInitDict.cancelable ?? false,
-        composed: eventInitDict.composed ?? false,
+        ...eventInit,
         currentTarget: null,
         eventPhase: Event.NONE,
         target: null,
         timeStamp: Date.now(),
       };
-      eventData.set(this, {
-        dispatched: false,
-        inPassiveListener: false,
-        isTrusted: false,
-        path: [],
-        stopImmediatePropagation: false,
-      });
       Reflect.defineProperty(this, "isTrusted", {
         enumerable: true,
         get: isTrusted,
@@ -147,95 +147,32 @@
       return buildCustomInspectOutput(this, EVENT_PROPS, inspect);
     }
 
-    get bubbles() {
-      return this.#attributes.bubbles;
-    }
-
-    get cancelBubble() {
-      return this.#stopPropagationFlag;
-    }
-
-    set cancelBubble(value) {
-      this.#stopPropagationFlag = value;
-    }
-
-    get cancelable() {
-      return this.#attributes.cancelable;
-    }
-
-    get composed() {
-      return this.#attributes.composed;
-    }
-
-    get currentTarget() {
-      return this.#attributes.currentTarget;
-    }
-
-    set currentTarget(value) {
-      this.#attributes = {
-        type: this.type,
-        bubbles: this.bubbles,
-        cancelable: this.cancelable,
-        composed: this.composed,
-        currentTarget: value,
-        eventPhase: this.eventPhase,
-        target: this.target,
-        timeStamp: this.timeStamp,
-      };
-    }
-
-    get defaultPrevented() {
-      return this.#canceledFlag;
-    }
-
-    get eventPhase() {
-      return this.#attributes.eventPhase;
-    }
-
-    set eventPhase(value) {
-      this.#attributes = {
-        type: this.type,
-        bubbles: this.bubbles,
-        cancelable: this.cancelable,
-        composed: this.composed,
-        currentTarget: this.currentTarget,
-        eventPhase: value,
-        target: this.target,
-        timeStamp: this.timeStamp,
-      };
-    }
-
-    get initialized() {
-      return true;
-    }
-
-    get target() {
-      return this.#attributes.target;
-    }
-
-    set target(value) {
-      this.#attributes = {
-        type: this.type,
-        bubbles: this.bubbles,
-        cancelable: this.cancelable,
-        composed: this.composed,
-        currentTarget: this.currentTarget,
-        eventPhase: this.eventPhase,
-        target: value,
-        timeStamp: this.timeStamp,
-      };
-    }
-
-    get timeStamp() {
-      return this.#attributes.timeStamp;
-    }
-
     get type() {
-      return this.#attributes.type;
+      return this[_attributes].type;
     }
-
+    set type(_) {
+      // this is a no-op because this member is readonly
+    }
+    get target() {
+      return this[_attributes].target;
+    }
+    set target(_) {
+      // this is a no-op because this member is readonly
+    }
+    get srcElement() {
+      return null;
+    }
+    set srcElement(_) {
+      // this is a no-op because this member is readonly
+    }
+    get currentTarget() {
+      return this[_attributes].currentTarget;
+    }
+    set currentTarget(_) {
+      // this is a no-op because this member is readonly
+    }
     composedPath() {
-      const path = eventData.get(this).path;
+      const path = this[_path];
       if (path.length === 0) {
         return [];
       }
@@ -339,51 +276,122 @@
       return composedPath.map((p) => p.item);
     }
 
-    preventDefault() {
-      if (this.cancelable && !eventData.get(this).inPassiveListener) {
-        this.#canceledFlag = true;
-      }
-    }
-
-    stopPropagation() {
-      this.#stopPropagationFlag = true;
-    }
-
-    stopImmediatePropagation() {
-      this.#stopPropagationFlag = true;
-      eventData.get(this).stopImmediatePropagation = true;
-    }
-
     get NONE() {
       return Event.NONE;
     }
-
+    set NONE(_) {
+      // this is a no-op because this member is readonly
+    }
     get CAPTURING_PHASE() {
       return Event.CAPTURING_PHASE;
     }
-
+    set CAPTURING_PHASE(_) {
+      // this is a no-op because this member is readonly
+    }
     get AT_TARGET() {
       return Event.AT_TARGET;
     }
-
+    set AT_TARGET(_) {
+      // this is a no-op because this member is readonly
+    }
     get BUBBLING_PHASE() {
       return Event.BUBBLING_PHASE;
     }
-
+    set BUBBLING_PHASE(_) {
+      // this is a no-op because this member is readonly
+    }
     static get NONE() {
       return 0;
     }
-
+    static set NONE(_) {
+      // this is a no-op because this member is readonly
+    }
     static get CAPTURING_PHASE() {
       return 1;
     }
-
+    static set CAPTURING_PHASE(_) {
+      // this is a no-op because this member is readonly
+    }
     static get AT_TARGET() {
       return 2;
     }
-
+    static set AT_TARGET(_) {
+      // this is a no-op because this member is readonly
+    }
     static get BUBBLING_PHASE() {
       return 3;
+    }
+    static set BUBBLING_PHASE(_) {
+      // this is a no-op because this member is readonly
+    }
+    get eventPhase() {
+      return this[_attributes].eventPhase;
+    }
+    set eventPhase(_) {
+      // this is a no-op because this member is readonly
+    }
+
+    stopPropagation() {
+      this[_stopPropagationFlag] = true;
+    }
+    get cancelBubble() {
+      return this[_stopPropagationFlag];
+    }
+    set cancelBubble(value) {
+      this[_stopPropagationFlag] = webidl.converters.boolean(value);
+    }
+    stopImmediatePropagation() {
+      this[_stopPropagationFlag] = true;
+      this[_stopImmediatePropagationFlag] = true;
+    }
+
+    get bubbles() {
+      return this[_attributes].bubbles;
+    }
+    set bubbles(_) {
+      // this is a no-op because this member is readonly
+    }
+    get cancelable() {
+      return this[_attributes].cancelable;
+    }
+    set cancelable(value) {
+      // this is a no-op because this member is readonly
+    }
+    get returnValue() {
+      return !this[_canceledFlag];
+    }
+    set returnValue(value) {
+      if (!webidl.converters.boolean(value)) {
+        this[_canceledFlag] = true;
+      }
+    }
+    preventDefault() {
+      if (this[_attributes].cancelable && !this[_inPassiveListener]) {
+        this[_canceledFlag] = true;
+      }
+    }
+    get defaultPrevented() {
+      return this[_canceledFlag];
+    }
+    set defaultPrevented(_) {
+      // this is a no-op because this member is readonly
+    }
+    get composed() {
+      return this[_attributes].composed;
+    }
+    set composed(_) {
+      // this is a no-op because this member is readonly
+    }
+
+    get initialized() {
+      return true;
+    }
+
+    get timeStamp() {
+      return this[_attributes].timeStamp;
+    }
+    set timeStamp(_) {
+      // this is a no-op because this member is readonly
     }
   }
 
@@ -408,7 +416,9 @@
     "currentTarget",
     "defaultPrevented",
     "eventPhase",
+    "srcElement",
     "target",
+    "returnValue",
     "timeStamp",
     "type",
   ];
@@ -875,7 +885,9 @@
       callback,
       options,
     ) {
-      requiredArguments("EventTarget.addEventListener", arguments.length, 2);
+      webidl.requiredArguments(arguments.length, 2, {
+        prefix: "Failed to execute 'addEventListener' on 'EventTarget'",
+      });
       if (callback === null) {
         return;
       }
@@ -919,7 +931,9 @@
       callback,
       options,
     ) {
-      requiredArguments("EventTarget.removeEventListener", arguments.length, 2);
+      webidl.requiredArguments(arguments.length, 2, {
+        prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
+      });
 
       const listeners = eventTargetData.get(this ?? globalThis).listeners;
       if (callback !== null && type in listeners) {
@@ -948,7 +962,9 @@
     }
 
     dispatchEvent(event) {
-      requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
+      webidl.requiredArguments(arguments.length, 1, {
+        prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
+      });
       const self = this ?? globalThis;
 
       const listeners = eventTargetData.get(self).listeners;
@@ -1128,7 +1144,9 @@
 
     constructor(type, eventInitDict = {}) {
       super(type, eventInitDict);
-      requiredArguments("CustomEvent", arguments.length, 1);
+      webidl.requiredArguments(arguments.length, 1, {
+        prefix: "Failed to construct 'CustomEvent'",
+      });
       const { detail } = eventInitDict;
       this.#detail = detail;
     }

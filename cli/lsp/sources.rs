@@ -28,16 +28,16 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 pub async fn cache(
-  specifier: ModuleSpecifier,
-  maybe_import_map: Option<ImportMap>,
+  specifier: &ModuleSpecifier,
+  maybe_import_map: &Option<ImportMap>,
 ) -> Result<(), AnyError> {
   let program_state = Arc::new(ProgramState::new(Default::default())?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),
   )?));
-  let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
-  builder.add(&specifier, false).await
+  let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
+  builder.add(specifier, false).await
 }
 
 #[derive(Debug, Clone, Default)]
@@ -51,7 +51,7 @@ struct Metadata {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Sources {
+struct Inner {
   http_cache: HttpCache,
   maybe_import_map: Option<ImportMap>,
   metadata: HashMap<ModuleSpecifier, Metadata>,
@@ -59,15 +59,80 @@ pub struct Sources {
   remotes: HashMap<ModuleSpecifier, PathBuf>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Sources(Arc<Mutex<Inner>>);
+
 impl Sources {
   pub fn new(location: &Path) -> Self {
+    Self(Arc::new(Mutex::new(Inner::new(location))))
+  }
+
+  pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
+    self.0.lock().unwrap().contains_key(specifier)
+  }
+
+  pub fn get_length_utf16(&self, specifier: &ModuleSpecifier) -> Option<usize> {
+    self.0.lock().unwrap().get_length_utf16(specifier)
+  }
+
+  pub fn get_line_index(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<LineIndex> {
+    self.0.lock().unwrap().get_line_index(specifier)
+  }
+
+  pub fn get_maybe_types(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<analysis::ResolvedDependency> {
+    self.0.lock().unwrap().get_maybe_types(specifier)
+  }
+
+  pub fn get_media_type(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    self.0.lock().unwrap().get_media_type(specifier)
+  }
+
+  pub fn get_script_version(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    self.0.lock().unwrap().get_script_version(specifier)
+  }
+
+  pub fn get_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.0.lock().unwrap().get_text(specifier)
+  }
+
+  pub fn resolve_import(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    self.0.lock().unwrap().resolve_import(specifier, referrer)
+  }
+
+  #[cfg(test)]
+  fn resolve_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    self.0.lock().unwrap().resolve_specifier(specifier)
+  }
+}
+
+impl Inner {
+  fn new(location: &Path) -> Self {
     Self {
       http_cache: HttpCache::new(location),
       ..Default::default()
     }
   }
 
-  pub fn contains(&mut self, specifier: &ModuleSpecifier) -> bool {
+  fn contains_key(&mut self, specifier: &ModuleSpecifier) -> bool {
     if let Some(specifier) = self.resolve_specifier(specifier) {
       if self.get_metadata(&specifier).is_some() {
         return true;
@@ -80,16 +145,13 @@ impl Sources {
   /// match the behavior of JavaScript, where strings are stored effectively as
   /// `&[u16]` and when counting "chars" we need to represent the string as a
   /// UTF-16 string in Rust.
-  pub fn get_length_utf16(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<usize> {
+  fn get_length_utf16(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source.encode_utf16().count())
   }
 
-  pub fn get_line_index(
+  fn get_line_index(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
@@ -98,7 +160,7 @@ impl Sources {
     Some(metadata.line_index)
   }
 
-  pub fn get_maybe_types(
+  fn get_maybe_types(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<analysis::ResolvedDependency> {
@@ -106,7 +168,7 @@ impl Sources {
     metadata.maybe_types
   }
 
-  pub fn get_media_type(
+  fn get_media_type(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
@@ -117,12 +179,11 @@ impl Sources {
 
   fn get_metadata(&mut self, specifier: &ModuleSpecifier) -> Option<Metadata> {
     if let Some(metadata) = self.metadata.get(specifier).cloned() {
-      if let Some(current_version) = self.get_script_version(specifier) {
-        if metadata.version == current_version {
-          return Some(metadata);
-        }
+      if metadata.version == self.get_script_version(specifier)? {
+        return Some(metadata);
       }
     }
+
     // TODO(@kitsonk) this needs to be refactored, lots of duplicate logic and
     // is really difficult to follow.
     let version = self.get_script_version(specifier)?;
@@ -248,28 +309,24 @@ impl Sources {
     None
   }
 
-  pub fn get_script_version(
+  fn get_script_version(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    if let Some(path) = self.get_path(specifier) {
-      if let Ok(metadata) = fs::metadata(path) {
-        if let Ok(modified) = metadata.modified() {
-          return if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH)
-          {
-            Some(format!("{}", n.as_millis()))
-          } else {
-            Some("1".to_string())
-          };
-        } else {
-          return Some("1".to_string());
-        }
+    let path = self.get_path(specifier)?;
+    let metadata = fs::metadata(path).ok()?;
+    if let Ok(modified) = metadata.modified() {
+      if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+        Some(format!("{}", n.as_millis()))
+      } else {
+        Some("1".to_string())
       }
+    } else {
+      Some("1".to_string())
     }
-    None
   }
 
-  pub fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
     let specifier = self.resolve_specifier(specifier)?;
     let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source)
@@ -289,7 +346,7 @@ impl Sources {
     Some((resolved_specifier, media_type))
   }
 
-  pub fn resolve_import(
+  fn resolve_import(
     &mut self,
     specifier: &str,
     referrer: &ModuleSpecifier,
@@ -385,7 +442,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_script_version() {
-    let (mut sources, _) = setup();
+    let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -398,7 +455,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_text() {
-    let (mut sources, _) = setup();
+    let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -413,7 +470,7 @@ mod tests {
 
   #[test]
   fn test_sources_get_length_utf16() {
-    let (mut sources, _) = setup();
+    let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
     let specifier = ModuleSpecifier::resolve_path(
@@ -428,7 +485,7 @@ mod tests {
 
   #[test]
   fn test_sources_resolve_specifier_non_supported_schema() {
-    let (mut sources, _) = setup();
+    let (sources, _) = setup();
     let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
       .expect("could not create specifier");
     let actual = sources.resolve_specifier(&specifier);

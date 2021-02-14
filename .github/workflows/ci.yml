@@ -17,14 +17,23 @@ jobs:
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
-            kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
-            kind: test_debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             kind: bench
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
+          # TODO(ry) Ideally we could use ubuntu-latest-xl for lint but there's
+          # a bug with dprint that is preventing this from running.
+          - os: ubuntu-latest
             kind: lint
+          # TODO(ry) Ideally we would use ubuntu-latest-xl for test_debug too,
+          # but there are race conditions in our test we are working around by
+          # using the slower runner.
+          - os: ubuntu-latest
+            kind: test_debug
+          # Warning: Do not upgrade test_release to newer version of ubuntu
+          # runners. We need to link against older version of glibc in order to
+          # run on older systems. glibc in 20.04 is not compatible with 18.04.
+          # See #9484.
+          - os: ubuntu-18.04
+            kind: test_release
 
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
@@ -65,7 +74,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.49.0
+          rust-version: 1.50.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'

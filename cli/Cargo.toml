@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.7.2"
+version = "1.7.4"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -24,10 +24,10 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.78.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.21.0" }
-deno_web = { path = "../op_crates/web", version = "0.29.0" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.4.0" }
+deno_core = { path = "../core", version = "0.79.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.22.0" }
+deno_web = { path = "../op_crates/web", version = "0.30.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.5.0" }
 deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 regex = "1.4.3"
 serde = { version = "1.0.123", features = ["derive"] }
@@ -37,17 +37,17 @@ winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.78.0" }
-deno_doc = "0.1.21"
-deno_lint = "0.2.17"
-deno_runtime = { path = "../runtime", version = "0.8.0" }
+deno_core = { path = "../core", version = "0.79.0" }
+deno_doc = "0.1.22"
+deno_lint = "0.2.18"
+deno_runtime = { path = "../runtime", version = "0.9.0" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
 byteorder = "1.4.2"
 clap = "2.33.3"
 dissimilar = "1.0.2"
-dprint-plugin-typescript = "0.39.1"
+dprint-plugin-typescript = "0.40.1"
 dprint-plugin-markdown = "0.5.1"
 encoding_rs = "0.8.28"
 env_logger = "0.8.2"
@@ -70,9 +70,9 @@ semver-parser = "0.10.2"
 serde = { version = "1.0.123", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_bundler = "0.20.9"
+swc_bundler = "0.21.0"
 swc_common = { version = "0.10.9", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.18.8", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
+swc_ecmascript = { version = "0.20.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"
