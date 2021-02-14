@@ -1207,7 +1207,6 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
     ));
   }
 
-  info!("{} {}", referrer, json!(resolved));
   state.state_snapshot.performance.measure(mark);
   Ok(json!(resolved))
 }
