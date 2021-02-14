@@ -1333,6 +1333,7 @@
    * @returns {Promise<Response>}
    */
   async function fetch(input, init) {
+    requiredArguments("fetch", arguments.length, 1);
     init = makeWebIdlDictionary(init, "fetch");
 
     /** @type {string | null} */
