@@ -949,7 +949,6 @@
   // internally work with Headers directly
   const HeadersInit = (v) => new Headers(v);
 
-  // TODO: Fill these in
   // https://fetch.spec.whatwg.org/#bodyinit
   const BodyInit = () => {};
 
@@ -992,7 +991,6 @@
     "manual",
   );
 
-  // TODO: make this
   const AbortSignal = () => {};
 
   const requestInitConverter = createDictionaryConverter("RequestInit", [
