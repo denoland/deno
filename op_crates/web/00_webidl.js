@@ -686,6 +686,6 @@
     converters,
     requiredArguments,
     createDictionaryConverter,
-    createEnumConverter
+    createEnumConverter,
   };
 })(this);
