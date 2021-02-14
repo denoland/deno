@@ -178,7 +178,7 @@
      */
     grow(n) {
       if (n < 0) {
-        throw Error("Buffer.grow: negative count");
+        throw new Error("Buffer.grow: negative count");
       }
       const m = this.#grow(n);
       this.#reslice(m);
@@ -941,6 +941,49 @@
     return m;
   }
 
+  /**
+   * @param {unknown} dict
+   * @param {string} callee
+   * @param {boolean} isConstructor
+   * @returns {object}
+   */
+  function makeWebIdlDictionary(dict, callee, isConstructor = false) {
+    if (null === dict) {
+      return {};
+    } else {
+      switch (typeof dict) {
+        default: {
+          const unreachable = new Error("unreachable");
+          throw unreachable;
+        }
+        case "object":
+        // fallthrough
+        case "function": {
+          return dict;
+        }
+        case "undefined": {
+          return {};
+        }
+        // and the following fail:
+        case "number":
+        // fallthrough
+        case "bigint":
+        // fallthrough
+        case "string":
+        // fallthrough
+        case "boolean":
+        // fallthrough
+        case "symbol": {
+          const action = isConstructor ? "construct" : "execute";
+
+          throw new TypeError(
+            `TypeError: Failed to ${action} "${callee}": cannot convert to dictionary.`,
+          );
+        }
+      }
+    }
+  }
+
   class Request extends Body {
     /** @type {string} */
     #method = "GET";
@@ -958,12 +1001,12 @@
     // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init) {
       if (arguments.length < 1) {
-        throw TypeError("Not enough arguments");
+        throw new TypeError(
+          `Failed to construct "Request," requires at least 1 argument, received ${arguments.length}`,
+        );
       }
 
-      if (!init) {
-        init = {};
-      }
+      init = makeWebIdlDictionary(init, "Request", true);
 
       let b;
 
@@ -972,12 +1015,12 @@
         b = init.body;
       } else if (input instanceof Request) {
         if (input.bodyUsed) {
-          throw TypeError(BodyUsedError);
+          throw new TypeError(BodyUsedError);
         }
         b = input[teeBody]();
       } else if (typeof input === "object" && "body" in input && input.body) {
         if (input.bodyUsed) {
-          throw TypeError(BodyUsedError);
+          throw new TypeError(BodyUsedError);
         }
         b = input.body;
       } else {
@@ -989,18 +1032,18 @@
       if (init.headers) {
         headers = new Headers(init.headers);
       } else if (input instanceof Request) {
-        headers = input.headers;
+        ({ headers } = input);
       } else {
         headers = new Headers();
       }
 
-      const contentType = headers.get("content-type") || "";
+      const contentType = headers.get("content-type") ?? "";
       super(b, { contentType });
       this.#headers = headers;
 
       if (input instanceof Request) {
         if (input.bodyUsed) {
-          throw TypeError(BodyUsedError);
+          throw new TypeError(BodyUsedError);
         }
         this.#method = input.method;
         this.#url = input.url;
@@ -1027,7 +1070,7 @@
         init &&
         "credentials" in init &&
         init.credentials &&
-        ["omit", "same-origin", "include"].indexOf(init.credentials) !== -1
+        ["omit", "same-origin", "include"].includes(init.credentials)
       ) {
         this.credentials = init.credentials;
       }
@@ -1035,14 +1078,11 @@
 
     clone() {
       if (this.bodyUsed) {
-        throw TypeError(BodyUsedError);
+        throw new TypeError(BodyUsedError);
       }
 
       const iterators = this.headers.entries();
-      const headersList = [];
-      for (const header of iterators) {
-        headersList.push(header);
-      }
+      const headersList = [...iterators];
 
       const body = this[teeBody]();
 
@@ -1094,13 +1134,9 @@
      * @param {ResponseInit} [init]
      */
     constructor(body = null, init) {
-      init = init ?? {};
+      init = makeWebIdlDictionary(init, "Response", true);
 
-      if (typeof init !== "object") {
-        throw new TypeError(`'init' is not an object`);
-      }
-
-      const extraInit = responseData.get(init) || {};
+      const extraInit = responseData.get(init) ?? {};
       let { type = "default", url = "" } = extraInit;
 
       let status = init.status === undefined ? 200 : Number(init.status || 0);
@@ -1195,7 +1231,7 @@
 
     clone() {
       if (this.bodyUsed) {
-        throw TypeError(BodyUsedError);
+        throw new TypeError(BodyUsedError);
       }
 
       const iterators = this.headers.entries();
@@ -1297,6 +1333,8 @@
    * @returns {Promise<Response>}
    */
   async function fetch(input, init) {
+    init = makeWebIdlDictionary(init, "fetch");
+
     /** @type {string | null} */
     let url;
     let method = null;
