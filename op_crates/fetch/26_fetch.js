@@ -17,6 +17,8 @@
   const { URLSearchParams } = window.__bootstrap.url;
   const { getLocationHref } = window.__bootstrap.location;
 
+  const { createDictionaryConverter } = window.__bootstrap.webidl;
+
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
     window.__bootstrap.streams;
@@ -947,6 +949,8 @@
    * @param {boolean} isConstructor
    * @returns {object}
    */
+  const makeInitializer = createDictionaryConverter();
+
   function makeWebIdlDictionary(dict, callee, isConstructor = false) {
     if (null === dict) {
       return {};
@@ -1000,11 +1004,7 @@
      */
     // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init) {
-      if (arguments.length < 1) {
-        throw new TypeError(
-          `Failed to construct "Request," requires at least 1 argument, received ${arguments.length}`,
-        );
-      }
+      requiredArguments("Request", arguments.length, 1);
 
       init = makeWebIdlDictionary(init, "Request", true);
 
