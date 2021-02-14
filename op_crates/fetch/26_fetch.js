@@ -18,7 +18,7 @@
   const { getLocationHref } = window.__bootstrap.location;
 
   const { webidl } = window.__bootstrap;
-  const { createDictionaryConverter, createPrimitiveEnum } = webidl;
+  const { createDictionaryConverter, createEnumeration } = webidl;
 
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -957,35 +957,40 @@
   const ReferrerPolicy = () => {};
 
   // https://fetch.spec.whatwg.org/#requestmode
-  const RequestMode = createPrimitiveEnum("RequestMode", {
-    converter: webidl.converter.DOMString,
-    enumValues: ["navigate", "same-origin", "no-cors", "cors"],
-  });
+  const RequestMode = createEnumeration(
+    "RequestMode",
+    "navigate",
+    "same-origin",
+    "no-cors",
+    "cors",
+  );
 
   // https://fetch.spec.whatwg.org/#requestcredentials
-  const RequestCredentials = createPrimitiveEnum("RequestCredentials", {
-    converter: webidl.converter.DOMString,
-    enumValues: ["omit", "same-origin", "include"],
-  });
+  const RequestCredentials = createEnumeration(
+    "RequestCredentials",
+    "omit",
+    "same-origin",
+    "include",
+  );
 
   // https://fetch.spec.whatwg.org/#requestcache
-  const RequestCache = createPrimitiveEnum("RequestCache", {
-    converter: webidl.converter.DOMString,
-    enumValues: [
-      "default",
-      "no-store",
-      "reload",
-      "no-cache",
-      "force-cache",
-      "only-if-cached",
-    ],
-  });
+  const RequestCache = createEnumeration(
+    "RequestCache",
+    "default",
+    "no-store",
+    "reload",
+    "no-cache",
+    "force-cache",
+    "only-if-cached",
+  );
 
   // https://fetch.spec.whatwg.org/#requestredirect
-  const RequestRedirect = createPrimitiveEnum("RequestRedirect", {
-    converter: webidl.converter.DOMString,
-    enumValues: ["follow", "error", "manual"],
-  });
+  const RequestRedirect = createEnumeration(
+    "RequestRedirect",
+    "follow",
+    "error",
+    "manual",
+  );
 
   // TODO: make this
   const AbortSignal = () => {};
