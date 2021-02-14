@@ -115,7 +115,12 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "print", print);
   set_func(scope, core_val, "recv", recv);
   set_func(scope, core_val, "send", send);
-  set_func(scope, core_val, "setMacrotaskCallback", set_macrotask_callback);
+  set_func(
+    scope,
+    core_val,
+    "setMacrotaskCallback",
+    set_macrotask_callback,
+  );
   set_func(scope, core_val, "evalContext", eval_context);
   set_func(scope, core_val, "encode", encode);
   set_func(scope, core_val, "decode", decode);
@@ -136,7 +141,7 @@ pub fn set_func(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
   name: &'static str,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>
+  callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let tmpl = v8::FunctionTemplate::new(scope, callback);
