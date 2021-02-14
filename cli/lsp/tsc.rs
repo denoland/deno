@@ -1117,8 +1117,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
         .unwrap()
         .clone()
     } else {
-      let sources = &mut state.state_snapshot.sources;
-      sources.get_text(&specifier).unwrap()
+      state.state_snapshot.sources.get_source(&specifier).unwrap()
     };
   state.state_snapshot.performance.measure(mark);
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -1208,6 +1207,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
     ));
   }
 
+  info!("{} {}", referrer, json!(resolved));
   state.state_snapshot.performance.measure(mark);
   Ok(json!(resolved))
 }

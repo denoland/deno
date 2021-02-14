@@ -40,14 +40,106 @@ pub async fn cache(
   builder.add(specifier, false).await
 }
 
+fn get_remote_headers(
+  cache_filename: &Path,
+) -> Option<HashMap<String, String>> {
+  let metadata_path = http_cache::Metadata::filename(cache_filename);
+  let metadata_str = fs::read_to_string(metadata_path).ok()?;
+  let metadata: http_cache::Metadata =
+    serde_json::from_str(&metadata_str).ok()?;
+  Some(metadata.headers)
+}
+
+fn resolve_remote_specifier(
+  specifier: &ModuleSpecifier,
+  http_cache: &HttpCache,
+  redirect_limit: isize,
+) -> Option<ModuleSpecifier> {
+  let cache_filename = http_cache.get_cache_filename(specifier.as_url());
+  if redirect_limit >= 0 && cache_filename.is_file() {
+    let headers = get_remote_headers(&cache_filename)?;
+    if let Some(location) = headers.get("location") {
+      let redirect =
+        ModuleSpecifier::resolve_import(location, specifier.as_str()).ok()?;
+      resolve_remote_specifier(&redirect, http_cache, redirect_limit - 1)
+    } else {
+      Some(specifier.clone())
+    }
+  } else {
+    None
+  }
+}
+
+fn resolve_specifier(
+  specifier: &ModuleSpecifier,
+  redirects: &mut HashMap<ModuleSpecifier, ModuleSpecifier>,
+  http_cache: &HttpCache,
+) -> Option<ModuleSpecifier> {
+  let scheme = specifier.as_url().scheme();
+  if !SUPPORTED_SCHEMES.contains(&scheme) {
+    return None;
+  }
+
+  if scheme == "data" {
+    Some(specifier.clone())
+  } else if scheme == "file" {
+    let path = specifier.as_url().to_file_path().ok()?;
+    if path.is_file() {
+      Some(specifier.clone())
+    } else {
+      None
+    }
+  } else if let Some(specifier) = redirects.get(specifier) {
+    Some(specifier.clone())
+  } else {
+    let redirect = resolve_remote_specifier(specifier, http_cache, 10)?;
+    redirects.insert(specifier.clone(), redirect.clone());
+    Some(redirect)
+  }
+}
+
 #[derive(Debug, Clone, Default)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
+  length_utf16: usize,
   line_index: LineIndex,
   maybe_types: Option<analysis::ResolvedDependency>,
   media_type: MediaType,
   source: String,
   version: String,
+}
+
+impl Metadata {
+  fn new(
+    specifier: &ModuleSpecifier,
+    source: &str,
+    version: &str,
+    media_type: &MediaType,
+    maybe_import_map: &Option<ImportMap>,
+  ) -> Self {
+    let (dependencies, maybe_types) = if let Some((dependencies, maybe_types)) =
+      analysis::analyze_dependencies(
+        specifier,
+        source,
+        media_type,
+        maybe_import_map,
+      ) {
+      (Some(dependencies), maybe_types)
+    } else {
+      (None, None)
+    };
+    let line_index = LineIndex::new(source);
+
+    Self {
+      dependencies,
+      length_utf16: source.encode_utf16().count(),
+      line_index,
+      maybe_types,
+      media_type: media_type.to_owned(),
+      source: source.to_string(),
+      version: version.to_string(),
+    }
+  }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,6 +163,10 @@ impl Sources {
     self.0.lock().unwrap().contains_key(specifier)
   }
 
+  /// Provides the length of the source content, calculated in a way that should
+  /// match the behavior of JavaScript, where strings are stored effectively as
+  /// `&[u16]` and when counting "chars" we need to represent the string as a
+  /// UTF-16 string in Rust.
   pub fn get_length_utf16(&self, specifier: &ModuleSpecifier) -> Option<usize> {
     self.0.lock().unwrap().get_length_utf16(specifier)
   }
@@ -103,8 +199,8 @@ impl Sources {
     self.0.lock().unwrap().get_script_version(specifier)
   }
 
-  pub fn get_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.0.lock().unwrap().get_text(specifier)
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.0.lock().unwrap().get_source(specifier)
   }
 
   pub fn resolve_import(
@@ -113,14 +209,6 @@ impl Sources {
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     self.0.lock().unwrap().resolve_import(specifier, referrer)
-  }
-
-  #[cfg(test)]
-  fn resolve_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    self.0.lock().unwrap().resolve_specifier(specifier)
   }
 }
 
@@ -132,184 +220,7 @@ impl Inner {
     }
   }
 
-  fn contains_key(&mut self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(specifier) = self.resolve_specifier(specifier) {
-      if self.get_metadata(&specifier).is_some() {
-        return true;
-      }
-    }
-    false
-  }
-
-  /// Provides the length of the source content, calculated in a way that should
-  /// match the behavior of JavaScript, where strings are stored effectively as
-  /// `&[u16]` and when counting "chars" we need to represent the string as a
-  /// UTF-16 string in Rust.
-  fn get_length_utf16(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
-    let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.source.encode_utf16().count())
-  }
-
-  fn get_line_index(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<LineIndex> {
-    let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.line_index)
-  }
-
-  fn get_maybe_types(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<analysis::ResolvedDependency> {
-    let metadata = self.get_metadata(specifier)?;
-    metadata.maybe_types
-  }
-
-  fn get_media_type(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    let specifier = self.resolve_specifier(specifier)?;
-    let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.media_type)
-  }
-
-  fn get_metadata(&mut self, specifier: &ModuleSpecifier) -> Option<Metadata> {
-    if let Some(metadata) = self.metadata.get(specifier).cloned() {
-      if metadata.version == self.get_script_version(specifier)? {
-        return Some(metadata);
-      }
-    }
-
-    // TODO(@kitsonk) this needs to be refactored, lots of duplicate logic and
-    // is really difficult to follow.
-    let version = self.get_script_version(specifier)?;
-    let path = self.get_path(specifier)?;
-    if let Ok(bytes) = fs::read(path) {
-      if specifier.as_url().scheme() == "file" {
-        let charset = text_encoding::detect_charset(&bytes).to_string();
-        if let Ok(source) = get_source_from_bytes(bytes, Some(charset)) {
-          let media_type = MediaType::from(specifier);
-          let mut maybe_types = None;
-          let maybe_import_map = self.maybe_import_map.clone();
-          let dependencies = if let Some((dependencies, mt)) =
-            analysis::analyze_dependencies(
-              &specifier,
-              &source,
-              &media_type,
-              &maybe_import_map,
-            ) {
-            maybe_types = mt;
-            Some(dependencies)
-          } else {
-            None
-          };
-          let line_index = LineIndex::new(&source);
-          let metadata = Metadata {
-            dependencies,
-            line_index,
-            maybe_types,
-            media_type,
-            source,
-            version,
-          };
-          self.metadata.insert(specifier.clone(), metadata.clone());
-          Some(metadata)
-        } else {
-          None
-        }
-      } else {
-        let headers = self.get_remote_headers(specifier)?;
-        let maybe_content_type = headers.get("content-type").cloned();
-        let (media_type, maybe_charset) =
-          map_content_type(specifier, maybe_content_type);
-        if let Ok(source) = get_source_from_bytes(bytes, maybe_charset) {
-          let mut maybe_types =
-            if let Some(types) = headers.get("x-typescript-types") {
-              Some(analysis::resolve_import(
-                types,
-                &specifier,
-                &self.maybe_import_map,
-              ))
-            } else {
-              None
-            };
-          let maybe_import_map = self.maybe_import_map.clone();
-          let dependencies = if let Some((dependencies, mt)) =
-            analysis::analyze_dependencies(
-              &specifier,
-              &source,
-              &media_type,
-              &maybe_import_map,
-            ) {
-            if maybe_types.is_none() {
-              maybe_types = mt;
-            }
-            Some(dependencies)
-          } else {
-            None
-          };
-          let line_index = LineIndex::new(&source);
-          let metadata = Metadata {
-            dependencies,
-            line_index,
-            maybe_types,
-            media_type,
-            source,
-            version,
-          };
-          self.metadata.insert(specifier.clone(), metadata.clone());
-          Some(metadata)
-        } else {
-          None
-        }
-      }
-    } else {
-      None
-    }
-  }
-
-  fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    let specifier = self.resolve_specifier(specifier)?;
-    if specifier.as_url().scheme() == "file" {
-      if let Ok(path) = specifier.as_url().to_file_path() {
-        Some(path)
-      } else {
-        None
-      }
-    } else if let Some(path) = self.remotes.get(&specifier) {
-      Some(path.clone())
-    } else {
-      let path = self.http_cache.get_cache_filename(&specifier.as_url());
-      if path.is_file() {
-        self.remotes.insert(specifier.clone(), path.clone());
-        Some(path)
-      } else {
-        None
-      }
-    }
-  }
-
-  fn get_remote_headers(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<HashMap<String, String>> {
-    let cache_filename = self.http_cache.get_cache_filename(specifier.as_url());
-    let metadata_path = http_cache::Metadata::filename(&cache_filename);
-    if let Ok(metadata) = fs::read_to_string(metadata_path) {
-      if let Ok(metadata) =
-        serde_json::from_str::<'_, http_cache::Metadata>(&metadata)
-      {
-        return Some(metadata.headers);
-      }
-    }
-    None
-  }
-
-  fn get_script_version(
+  fn calculate_script_version(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
@@ -326,24 +237,142 @@ impl Inner {
     }
   }
 
-  fn get_text(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
-    let specifier = self.resolve_specifier(specifier)?;
+  fn contains_key(&mut self, specifier: &ModuleSpecifier) -> bool {
+    if let Some(specifier) =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)
+    {
+      if self.get_metadata(&specifier).is_some() {
+        return true;
+      }
+    }
+    false
+  }
+
+  fn get_length_utf16(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(metadata.length_utf16)
+  }
+
+  fn get_line_index(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<LineIndex> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(metadata.line_index)
+  }
+
+  fn get_maybe_types(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<analysis::ResolvedDependency> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let metadata = self.get_metadata(&specifier)?;
+    metadata.maybe_types
+  }
+
+  fn get_media_type(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(metadata.media_type)
+  }
+
+  fn get_metadata(&mut self, specifier: &ModuleSpecifier) -> Option<Metadata> {
+    if let Some(metadata) = self.metadata.get(specifier).cloned() {
+      if metadata.version == self.calculate_script_version(specifier)? {
+        return Some(metadata);
+      }
+    }
+
+    let version = self.calculate_script_version(specifier)?;
+    let path = self.get_path(specifier)?;
+    let bytes = fs::read(path).ok()?;
+    let scheme = specifier.as_url().scheme();
+    let (source, media_type, maybe_types) = if scheme == "file" {
+      let maybe_charset =
+        Some(text_encoding::detect_charset(&bytes).to_string());
+      let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      (source, MediaType::from(specifier), None)
+    } else {
+      let cache_filename =
+        self.http_cache.get_cache_filename(specifier.as_url());
+      let headers = get_remote_headers(&cache_filename)?;
+      let maybe_content_type = headers.get("content-type").cloned();
+      let (media_type, maybe_charset) =
+        map_content_type(specifier, maybe_content_type);
+      let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
+      let maybe_types = headers.get("x-typescript-types").map(|s| {
+        analysis::resolve_import(s, &specifier, &self.maybe_import_map)
+      });
+      (source, media_type, maybe_types)
+    };
+    let mut metadata = Metadata::new(
+      specifier,
+      &source,
+      &version,
+      &media_type,
+      &self.maybe_import_map,
+    );
+    if metadata.maybe_types.is_none() {
+      metadata.maybe_types = maybe_types;
+    }
+    self.metadata.insert(specifier.clone(), metadata.clone());
+    Some(metadata)
+  }
+
+  fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    if specifier.as_url().scheme() == "file" {
+      specifier.as_url().to_file_path().ok()
+    } else if let Some(path) = self.remotes.get(&specifier) {
+      Some(path.clone())
+    } else {
+      let path = self.http_cache.get_cache_filename(&specifier.as_url());
+      if path.is_file() {
+        self.remotes.insert(specifier.clone(), path.clone());
+        Some(path)
+      } else {
+        None
+      }
+    }
+  }
+
+  fn get_script_version(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let metadata = self.get_metadata(&specifier)?;
+    Some(metadata.version)
+  }
+
+  fn get_source(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
     Some(metadata.source)
   }
 
   fn resolution_result(
     &mut self,
-    resolved_specifier: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    let resolved_specifier = self.resolve_specifier(resolved_specifier)?;
-    let media_type =
-      if let Some(metadata) = self.metadata.get(&resolved_specifier) {
-        metadata.media_type
-      } else {
-        MediaType::from(&resolved_specifier)
-      };
-    Some((resolved_specifier, media_type))
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let media_type = if let Some(metadata) = self.metadata.get(&specifier) {
+      metadata.media_type
+    } else {
+      MediaType::from(&specifier)
+    };
+    Some((specifier, media_type))
   }
 
   fn resolve_import(
@@ -351,7 +380,8 @@ impl Inner {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    let referrer = self.resolve_specifier(referrer)?;
+    let referrer =
+      resolve_specifier(referrer, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&referrer)?;
     let dependencies = &metadata.dependencies?;
     let dependency = dependencies.get(specifier)?;
@@ -368,62 +398,38 @@ impl Inner {
       if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         code_dependency
       {
-        self.resolution_result(resolved_specifier)
+        if let Some(type_dependency) = self.get_maybe_types(resolved_specifier)
+        {
+          self.set_maybe_type(specifier, &referrer, &type_dependency);
+          if let analysis::ResolvedDependency::Resolved(type_specifier) =
+            type_dependency
+          {
+            self.resolution_result(&type_specifier)
+          } else {
+            self.resolution_result(resolved_specifier)
+          }
+        } else {
+          self.resolution_result(resolved_specifier)
+        }
       } else {
         None
       }
     }
   }
 
-  fn resolve_specifier(
+  fn set_maybe_type(
     &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    let scheme = specifier.as_url().scheme();
-    if !SUPPORTED_SCHEMES.contains(&scheme) {
-      return None;
-    }
-
-    if scheme == "file" {
-      if let Ok(path) = specifier.as_url().to_file_path() {
-        if path.is_file() {
-          return Some(specifier.clone());
-        }
-      }
-    } else {
-      if let Some(specifier) = self.redirects.get(specifier) {
-        return Some(specifier.clone());
-      }
-      if let Some(redirect) = self.resolve_remote_specifier(specifier, 10) {
-        self.redirects.insert(specifier.clone(), redirect.clone());
-        return Some(redirect);
-      }
-    }
-    None
-  }
-
-  fn resolve_remote_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-    redirect_limit: isize,
-  ) -> Option<ModuleSpecifier> {
-    let cached_filename =
-      self.http_cache.get_cache_filename(specifier.as_url());
-    if redirect_limit >= 0 && cached_filename.is_file() {
-      if let Some(headers) = self.get_remote_headers(specifier) {
-        if let Some(redirect_to) = headers.get("location") {
-          if let Ok(redirect) =
-            ModuleSpecifier::resolve_import(redirect_to, specifier.as_str())
-          {
-            return self
-              .resolve_remote_specifier(&redirect, redirect_limit - 1);
-          }
-        } else {
-          return Some(specifier.clone());
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+    dependency: &analysis::ResolvedDependency,
+  ) {
+    if let Some(metadata) = self.metadata.get_mut(referrer) {
+      if let Some(dependencies) = &mut metadata.dependencies {
+        if let Some(dep) = dependencies.get_mut(specifier) {
+          dep.maybe_type = Some(dependency.clone());
         }
       }
     }
-    None
   }
 }
 
@@ -462,7 +468,7 @@ mod tests {
       &tests.join("001_hello.js").to_string_lossy(),
     )
     .unwrap();
-    let actual = sources.get_text(&specifier);
+    let actual = sources.get_source(&specifier);
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual, "console.log(\"Hello World\");\n");
@@ -488,7 +494,10 @@ mod tests {
     let (sources, _) = setup();
     let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
       .expect("could not create specifier");
-    let actual = sources.resolve_specifier(&specifier);
+    let sources = sources.0.lock().unwrap();
+    let mut redirects = sources.redirects.clone();
+    let http_cache = sources.http_cache.clone();
+    let actual = resolve_specifier(&specifier, &mut redirects, &http_cache);
     assert!(actual.is_none());
   }
 }
