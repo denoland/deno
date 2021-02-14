@@ -662,7 +662,36 @@
     };
   }
 
-  window.__bootstrap = window.__bootstrap || {};
+  function makePrimitiveEnum(name, opts) {
+    const Enum = new Set(opts.enumValues);
+
+    let defaultValue;
+
+    const hasDefault = "defaultValue" in opts;
+
+    if (hasDefault) {
+      defaultValue = opts.defaultValue;
+    }
+
+    const { converter } = ops;
+
+    return (V, opts = {}) => {
+      V = converter(V);
+
+      if (Enum.has(V)) {
+        return V;
+      } else if (hasDefault) {
+        return defaultValue;
+      } else {
+        throw makeException(
+          TypeError,
+          `The provided value '${V}' is not a valid enum value of type ${name}.`,
+        );
+      }
+    };
+  }
+
+  window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     converters,
     requiredArguments,
