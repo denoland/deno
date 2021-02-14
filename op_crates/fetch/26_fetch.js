@@ -17,7 +17,8 @@
   const { URLSearchParams } = window.__bootstrap.url;
   const { getLocationHref } = window.__bootstrap.location;
 
-  const { createDictionaryConverter } = window.__bootstrap.webidl;
+  const { webidl } = window.__bootstrap;
+  const { createDictionaryConverter } = webidl;
 
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -943,50 +944,23 @@
     return m;
   }
 
-  /**
-   * @param {unknown} dict
-   * @param {string} callee
-   * @param {boolean} isConstructor
-   * @returns {object}
-   */
-  const makeInitializer = createDictionaryConverter();
+  const requestInitConverter = createDictionaryConverter("RequestInit", [
+    // {},
+  ]);
 
-  function makeWebIdlDictionary(dict, callee, isConstructor = false) {
-    if (null === dict) {
-      return {};
-    } else {
-      switch (typeof dict) {
-        default: {
-          const unreachable = new Error("unreachable");
-          throw unreachable;
-        }
-        case "object":
-        // fallthrough
-        case "function": {
-          return dict;
-        }
-        case "undefined": {
-          return {};
-        }
-        // and the following fail:
-        case "number":
-        // fallthrough
-        case "bigint":
-        // fallthrough
-        case "string":
-        // fallthrough
-        case "boolean":
-        // fallthrough
-        case "symbol": {
-          const action = isConstructor ? "construct" : "execute";
-
-          throw new TypeError(
-            `TypeError: Failed to ${action} "${callee}": cannot convert to dictionary.`,
-          );
-        }
-      }
-    }
-  }
+  const responseInitConverter = createDictionaryConverter("ResponseInit", [{
+    key: "status",
+    defaultValue: 200,
+    converter: webidl.converters["unsigned short"],
+  }, {
+    key: "cancelable",
+    defaultValue: "",
+    converter: webidl.converters.ByteString,
+  }, {
+    key: "headers",
+    // defaultValue: new Headers(),
+    converter: (v) => new Headers(v),
+  }]);
 
   class Request extends Body {
     /** @type {string} */
@@ -1003,10 +977,11 @@
      * @param {RequestInit} init 
      */
     // @ts-expect-error because the use of super in this constructor is valid.
-    constructor(input, init) {
+    constructor(input, init = {}) {
       requiredArguments("Request", arguments.length, 1);
-
-      init = makeWebIdlDictionary(init, "Request", true);
+      init = requestInitConverter(init, {
+        prefix: "Failed to construct 'Request'",
+      });
 
       let b;
 
@@ -1133,8 +1108,10 @@
      * @param {BodyInit | null} body 
      * @param {ResponseInit} [init]
      */
-    constructor(body = null, init) {
-      init = makeWebIdlDictionary(init, "Response", true);
+    constructor(body = null, init = {}) {
+      init = responseInitConverter(init, {
+        prefix: "Failed to construct 'Response'",
+      });
 
       const extraInit = responseData.get(init) ?? {};
       let { type = "default", url = "" } = extraInit;
@@ -1334,7 +1311,7 @@
    */
   async function fetch(input, init) {
     requiredArguments("fetch", arguments.length, 1);
-    init = makeWebIdlDictionary(init, "fetch");
+    init = requestInitConverter(init, { prefix: "Failed to call 'fetch'" });
 
     /** @type {string | null} */
     let url;
