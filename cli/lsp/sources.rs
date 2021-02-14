@@ -493,15 +493,38 @@ mod tests {
   fn test_resolve_dependency_types() {
     let (sources, location) = setup();
     let cache = HttpCache::new(&location);
-    let specifier_dep = ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
-    cache.set(specifier_dep.as_url(), Default::default(), b"export * from \"https://deno.land/x/lib.js\";").unwrap();
-    let specifier_code = ModuleSpecifier::resolve_url("https://deno.land/x/lib.js").unwrap();
+    let specifier_dep =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        specifier_dep.as_url(),
+        Default::default(),
+        b"export * from \"https://deno.land/x/lib.js\";",
+      )
+      .unwrap();
+    let specifier_code =
+      ModuleSpecifier::resolve_url("https://deno.land/x/lib.js").unwrap();
     let mut headers_code = HashMap::new();
-    headers_code.insert("x-typescript-types".to_string(), "./lib.d.ts".to_string());
-    cache.set(specifier_code.as_url(), headers_code, b"export const a = 1;").unwrap();
-    let specifier_type = ModuleSpecifier::resolve_url("https://deno.land/x/lib.d.ts").unwrap();
-    cache.set(specifier_type.as_url(), Default::default(), b"export const a: number;").unwrap();
-    let actual = sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
+    headers_code
+      .insert("x-typescript-types".to_string(), "./lib.d.ts".to_string());
+    cache
+      .set(
+        specifier_code.as_url(),
+        headers_code,
+        b"export const a = 1;",
+      )
+      .unwrap();
+    let specifier_type =
+      ModuleSpecifier::resolve_url("https://deno.land/x/lib.d.ts").unwrap();
+    cache
+      .set(
+        specifier_type.as_url(),
+        Default::default(),
+        b"export const a: number;",
+      )
+      .unwrap();
+    let actual =
+      sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
     assert_eq!(actual, Some((specifier_type, MediaType::Dts)))
   }
 
