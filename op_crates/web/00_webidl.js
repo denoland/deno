@@ -685,6 +685,6 @@
     converters,
     requiredArguments,
     createDictionaryConverter,
-    createPrimitiveEnum
+    createEnumeration
   };
 })(this);
