@@ -341,9 +341,9 @@ impl FileFetcher {
     let local = self
       .http_cache
       .get_cache_filename(specifier.as_url())
-      .ok_or(generic_error(
-        "Cannot convert specifier to cached filename.",
-      ))?;
+      .ok_or_else(|| {
+        generic_error("Cannot convert specifier to cached filename.")
+      })?;
     let maybe_content_type = headers.get("content-type").cloned();
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
@@ -424,9 +424,9 @@ impl FileFetcher {
     let local = self
       .http_cache
       .get_cache_filename(specifier.as_url())
-      .ok_or(generic_error(
-        "Cannot convert specifier to cached filename.",
-      ))?;
+      .ok_or_else(|| {
+        generic_error("Cannot convert specifier to cached filename.")
+      })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
     self

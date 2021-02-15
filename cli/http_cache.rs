@@ -142,7 +142,7 @@ impl HttpCache {
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), AnyError> {
     let cache_filename = self.location.join(
       url_to_filename(url)
-        .ok_or(generic_error("Can't convert url to filename."))?,
+        .ok_or_else(|| generic_error("Can't convert url to filename."))?,
     );
     let metadata_filename = Metadata::filename(&cache_filename);
     let file = File::open(cache_filename)?;
@@ -159,7 +159,7 @@ impl HttpCache {
   ) -> Result<(), AnyError> {
     let cache_filename = self.location.join(
       url_to_filename(url)
-        .ok_or(generic_error("Can't convert url to filename."))?,
+        .ok_or_else(|| generic_error("Can't convert url to filename."))?,
     );
     // Create parent directory
     let parent_filename = cache_filename
