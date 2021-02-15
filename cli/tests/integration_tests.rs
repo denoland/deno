@@ -2369,13 +2369,25 @@ console.log("finish");
       .arg("--allow-net")
       .arg("--allow-read")
       .arg("--unstable")
-      .arg("workers_test.ts")
+      .arg("workers/test.ts")
       .spawn()
       .unwrap()
       .wait()
       .unwrap();
     assert!(status.success());
   }
+
+  itest!(worker_error {
+    args: "run -A workers/worker_error.ts",
+    output: "workers/worker_error.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(worker_nested_error {
+    args: "run -A workers/worker_nested_error.ts",
+    output: "workers/worker_nested_error.ts.out",
+    exit_code: 1,
+  });
 
   #[test]
   fn compiler_api() {
@@ -2624,18 +2636,6 @@ console.log("finish");
     args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
     output: "072_location_relative_fetch.ts.out",
     http_server: true,
-  });
-
-  itest!(_073_worker_error {
-    args: "run -A 073_worker_error.ts",
-    output: "073_worker_error.ts.out",
-    exit_code: 1,
-  });
-
-  itest!(_074_worker_nested_error {
-    args: "run -A 074_worker_nested_error.ts",
-    output: "074_worker_nested_error.ts.out",
-    exit_code: 1,
   });
 
   itest!(_075_import_local_query_hash {
