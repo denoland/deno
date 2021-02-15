@@ -11,7 +11,7 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  const { rid } = Deno.core.jsonOpSync("listen", {});
+  const { rid } = Deno.core.jsonOpSync("listen");
   return rid;
 }
 

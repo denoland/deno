@@ -6,7 +6,7 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-### 1.7.3 / 2021.02.12
+### 1.7.4 / 2021.02.13
 
 - feat(unstable, lsp): add deno cache code actions (#9471)
 - feat(unstable, lsp): add implementations code lens (#9441)
@@ -27,6 +27,8 @@ https://github.com/denoland/deno_install
 
 Release notes for std version 0.87.0:
 https://github.com/denoland/deno_std/releases/tag/0.87.0
+
+v1.7.3 was released but quickly removed due to bug #9484.
 
 ### 1.7.2 / 2021.02.05
 

@@ -41,20 +41,24 @@ pub fn op_domain_to_ascii(
 pub fn init(isolate: &mut JsRuntime) {
   let files = vec![
     (
-      "deno:op_crates/web/00_dom_exception.js",
-      include_str!("00_dom_exception.js"),
+      "deno:op_crates/web/00_webidl.js",
+      include_str!("00_webidl.js"),
     ),
     (
-      "deno:op_crates/web/01_event.js",
-      include_str!("01_event.js"),
+      "deno:op_crates/web/01_dom_exception.js",
+      include_str!("01_dom_exception.js"),
     ),
     (
-      "deno:op_crates/web/02_abort_signal.js",
-      include_str!("02_abort_signal.js"),
+      "deno:op_crates/web/02_event.js",
+      include_str!("02_event.js"),
     ),
     (
-      "deno:op_crates/web/03_global_interfaces.js",
-      include_str!("03_global_interfaces.js"),
+      "deno:op_crates/web/03_abort_signal.js",
+      include_str!("03_abort_signal.js"),
+    ),
+    (
+      "deno:op_crates/web/04_global_interfaces.js",
+      include_str!("04_global_interfaces.js"),
     ),
     (
       "deno:op_crates/web/08_text_encoding.js",
@@ -136,7 +140,7 @@ mod tests {
       if let Err(error) = result {
         let error_string = error.to_string();
         // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-        assert!(error_string.contains("deno:op_crates/web/01_event.js"));
+        assert!(error_string.contains("deno:op_crates/web/02_event.js"));
         assert!(error_string.contains("TypeError"));
       } else {
         unreachable!();
