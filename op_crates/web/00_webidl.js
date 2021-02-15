@@ -669,16 +669,22 @@
     return function (V, opts = {}) {
       const S = String(V);
 
-      if (false === E.has(V)) {
+      if (E.has(V)) {
+        return V;
+      } else {
         throw makeException(
           TypeError,
           `The provided value '${V}' is not a valid enum value of type ${name}.`,
           opts,
         );
-      } else {
-        return V;
       }
     };
+  }
+
+  function createNullableEnumConverter(name, ...values) {
+    const converter = createEnumConverter(name, ...values);
+
+    return (V, opts = {}) => null === V ? null : converter(V, opts);
   }
 
   window.__bootstrap ??= {};
