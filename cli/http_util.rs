@@ -31,14 +31,10 @@ impl AuthTokens {
     if let Some(tokens_str) = maybe_token_str {
       for token_str in tokens_str.split(';') {
         if token_str.contains('@') {
-          let pair: Vec<&str> = token_str.split('@').collect();
-          if pair.len() == 2 {
-            let token = pair[0].to_string();
-            let host = pair[1].to_lowercase();
-            tokens.push(AuthToken { host, token });
-          } else {
-            error!("Badly formed auth token discarded.");
-          }
+          let pair: Vec<&str> = token_str.rsplitn(2, '@').collect();
+          let token = pair[1].to_string();
+          let host = pair[0].to_lowercase();
+          tokens.push(AuthToken { host, token });
         } else {
           error!("Badly formed auth token discarded.");
         }
@@ -557,5 +553,13 @@ mod tests {
     let fixture =
       ModuleSpecifier::resolve_url("http://deno.land:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), Some("abc123".to_string()));
+  }
+
+  #[test]
+  fn test_auth_tokens_contain_at() {
+    let auth_tokens = AuthTokens::new(Some("abc@123@deno.land".to_string()));
+    let fixture =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), Some("abc@123".to_string()));
   }
 }
