@@ -991,6 +991,11 @@ async fn coverage_command(
     exit_unstable("compile");
   }
 
+  if files.is_empty() {
+    println!("No matching coverage profiles found");
+    std::process::exit(1);
+  }
+
   tools::coverage::cover_files(
     flags.clone(),
     files,
