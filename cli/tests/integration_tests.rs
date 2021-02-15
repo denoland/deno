@@ -225,6 +225,7 @@ mod integration {
     let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
     assert!(stdout_str.is_empty());
     let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+    eprintln!("{}", stderr_str);
     assert!(stderr_str.contains("Import 'http://127.0.0.1:4551/cli/tests/001_hello.js' failed: 404 Not Found"));
 
     let output = util::deno_cmd()

@@ -1,10 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::auth_tokens::AuthTokens;
 use crate::colors;
 use crate::http_cache::HttpCache;
 use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
-use crate::http_util::AuthTokens;
+use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
 use crate::text_encoding;
@@ -500,16 +501,16 @@ impl FileFetcher {
     let maybe_auth_token = self.auth_tokens.get(&specifier);
     let specifier = specifier.clone();
     let permissions = permissions.clone();
-    let http_client = self.http_client.clone();
+    let client = self.http_client.clone();
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
     async move {
-      match fetch_once(
-        http_client,
-        specifier.as_url(),
+      match fetch_once(FetchOnceArgs {
+        client,
+        url: specifier.as_url().clone(),
         maybe_etag,
         maybe_auth_token,
-      )
+      })
       .await?
       {
         FetchOnceResult::NotModified => {
