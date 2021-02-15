@@ -209,13 +209,28 @@ declare namespace globalThis {
         required?: boolean;
       }
 
-      /**ie 
-       * Assert that the a function has at least a required amount of arguments.
+      /**
+       * Create a converter for dictionaries.
        */
       declare function createDictionaryConverter<T>(
         name: string,
         ...dictionaries: Dictionary[]
       ): (v: any, opts: ValueConverterOpts) => T;
+
+      /**
+       * Create a converter for enums.
+       */
+      declare function createEnumConverter(
+        name: string,
+        values: string[],
+      ): (v: any, opts: ValueConverterOpts) => string;
+
+      /**
+       * Create a converter that makes the contained type nullable.
+       */
+      declare function createNullableConverter<T>(
+        converter: (v: any, opts: ValueConverterOpts) => T,
+      ): (v: any, opts: ValueConverterOpts) => T | null;
     }
 
     declare var url: {
