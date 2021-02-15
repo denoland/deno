@@ -334,6 +334,7 @@ Deno.test({
     assert(diagnostics);
     assertEquals(diagnostics.length, 0);
     assertEquals(Object.keys(files).length, 1);
-    assert(files["deno:///bundle.js"].startsWith("function() {\n"));
+    assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
+    assert(files["deno:///bundle.js"].endsWith("})();\n"));
   },
 });
