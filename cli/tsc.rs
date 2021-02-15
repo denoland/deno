@@ -44,32 +44,38 @@ pub fn compiler_snapshot() -> Snapshot {
   Snapshot::Static(COMPILER_SNAPSHOT)
 }
 
-/// Provide static assets that are not preloaded in the compiler snapshot.
+macro_rules! inc {
+  ($e:expr) => {
+    include_str!(concat!("dts/", $e))
+  };
+}
+
+lazy_static! {
+  /// Contains static assets that are not preloaded in the compiler snapshot.
+  pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
+    ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),
+    ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+    ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+    ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+    ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+    ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+    ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+    ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+    ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+    ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+    ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+    ("lib.webworker.importscripts.d.ts", inc!("lib.webworker.importscripts.d.ts")),
+    ("lib.webworker.iterable.d.ts", inc!("lib.webworker.iterable.d.ts")),
+  ])
+  .iter()
+  .cloned()
+  .collect();
+}
+
+/// Retrieve a static asset that are included in the binary.
 pub fn get_asset(asset: &str) -> Option<&'static str> {
-  macro_rules! inc {
-    ($e:expr) => {
-      Some(include_str!(concat!("dts/", $e)))
-    };
-  }
-  match asset {
-    "lib.dom.asynciterable.d.ts" => inc!("lib.dom.asynciterable.d.ts"),
-    "lib.dom.d.ts" => inc!("lib.dom.d.ts"),
-    "lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
-    "lib.es6.d.ts" => inc!("lib.es6.d.ts"),
-    "lib.es2016.full.d.ts" => inc!("lib.es2016.full.d.ts"),
-    "lib.es2017.full.d.ts" => inc!("lib.es2017.full.d.ts"),
-    "lib.es2018.full.d.ts" => inc!("lib.es2018.full.d.ts"),
-    "lib.es2019.full.d.ts" => inc!("lib.es2019.full.d.ts"),
-    "lib.es2020.full.d.ts" => inc!("lib.es2020.full.d.ts"),
-    "lib.esnext.full.d.ts" => inc!("lib.esnext.full.d.ts"),
-    "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
-    "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
-    "lib.webworker.importscripts.d.ts" => {
-      inc!("lib.webworker.importscripts.d.ts")
-    }
-    "lib.webworker.iterable.d.ts" => inc!("lib.webworker.iterable.d.ts"),
-    _ => None,
-  }
+  STATIC_ASSETS.get(asset).map(|s| s.to_owned())
 }
 
 fn get_maybe_hash(
@@ -294,7 +300,7 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     Some("declare const __: any;\nexport = __;\n".to_string())
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
-    let maybe_source = get_asset(&name).map(|s| s.to_string());
+    let maybe_source = get_asset(&name).map(String::from);
     hash = get_maybe_hash(&maybe_source, &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source
