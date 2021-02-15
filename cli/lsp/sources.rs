@@ -55,7 +55,7 @@ fn resolve_remote_specifier(
   http_cache: &HttpCache,
   redirect_limit: isize,
 ) -> Option<ModuleSpecifier> {
-  let cache_filename = http_cache.get_cache_filename(specifier.as_url());
+  let cache_filename = http_cache.get_cache_filename(specifier.as_url())?;
   if redirect_limit >= 0 && cache_filename.is_file() {
     let headers = get_remote_headers(&cache_filename)?;
     if let Some(location) = headers.get("location") {
@@ -303,7 +303,7 @@ impl Inner {
       (source, MediaType::from(specifier), None)
     } else {
       let cache_filename =
-        self.http_cache.get_cache_filename(specifier.as_url());
+        self.http_cache.get_cache_filename(specifier.as_url())?;
       let headers = get_remote_headers(&cache_filename)?;
       let maybe_content_type = headers.get("content-type").cloned();
       let (media_type, maybe_charset) =
@@ -334,7 +334,7 @@ impl Inner {
     } else if let Some(path) = self.remotes.get(&specifier) {
       Some(path.clone())
     } else {
-      let path = self.http_cache.get_cache_filename(&specifier.as_url());
+      let path = self.http_cache.get_cache_filename(&specifier.as_url())?;
       if path.is_file() {
         self.remotes.insert(specifier.clone(), path.clone());
         Some(path)
@@ -526,6 +526,31 @@ mod tests {
     let actual =
       sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
     assert_eq!(actual, Some((specifier_type, MediaType::Dts)))
+  }
+
+  #[test]
+  fn test_resolve_dependency_evil_redirect() {
+    let (sources, location) = setup();
+    let cache = HttpCache::new(&location);
+    let evil_specifier =
+      ModuleSpecifier::resolve_url("https://deno.land/x/evil.ts").unwrap();
+    let mut evil_headers = HashMap::new();
+    evil_headers
+      .insert("location".to_string(), "file:///etc/passwd".to_string());
+    cache
+      .set(evil_specifier.as_url(), evil_headers, b"")
+      .unwrap();
+    let remote_specifier =
+      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        remote_specifier.as_url(),
+        Default::default(),
+        b"export * from \"./evil.ts\";",
+      )
+      .unwrap();
+    let actual = sources.resolve_import("./evil.ts", &remote_specifier);
+    assert_eq!(actual, None);
   }
 
   #[test]

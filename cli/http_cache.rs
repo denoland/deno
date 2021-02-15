@@ -6,6 +6,7 @@
 /// at hand.
 use crate::fs_util;
 use crate::http_util::HeadersMap;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -23,7 +24,7 @@ pub const CACHE_PERM: u32 = 0o644;
 /// This method replaces port part with a special string token (because
 /// ":" cannot be used in filename on some platforms).
 /// Ex: $DENO_DIR/deps/https/deno.land/
-fn base_url_to_filename(url: &Url) -> PathBuf {
+fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
   let mut out = PathBuf::new();
 
   let scheme = url.scheme();
@@ -40,14 +41,12 @@ fn base_url_to_filename(url: &Url) -> PathBuf {
     }
     "data" => (),
     scheme => {
-      unimplemented!(
-        "Don't know how to create cache name for scheme: {}",
-        scheme
-      );
+      error!("Don't know how to create cache name for scheme: {}", scheme);
+      return None;
     }
   };
 
-  out
+  Some(out)
 }
 
 /// Turn provided `url` into a hashed filename.
@@ -57,8 +56,8 @@ fn base_url_to_filename(url: &Url) -> PathBuf {
 /// strings.
 ///
 /// NOTE: this method is `pub` because it's used in integration_tests
-pub fn url_to_filename(url: &Url) -> PathBuf {
-  let mut cache_filename = base_url_to_filename(url);
+pub fn url_to_filename(url: &Url) -> Option<PathBuf> {
+  let mut cache_filename = base_url_to_filename(url)?;
 
   let mut rest_str = url.path().to_string();
   if let Some(query) = url.query() {
@@ -70,7 +69,7 @@ pub fn url_to_filename(url: &Url) -> PathBuf {
   // in case of static resources doesn't make much sense
   let hashed_filename = crate::checksum::gen(&[rest_str.as_bytes()]);
   cache_filename.push(hashed_filename);
-  cache_filename
+  Some(cache_filename)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -133,15 +132,18 @@ impl HttpCache {
     })
   }
 
-  pub(crate) fn get_cache_filename(&self, url: &Url) -> PathBuf {
-    self.location.join(url_to_filename(url))
+  pub(crate) fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
+    Some(self.location.join(url_to_filename(url)?))
   }
 
   // TODO(bartlomieju): this method should check headers file
   // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), AnyError> {
-    let cache_filename = self.location.join(url_to_filename(url));
+    let cache_filename = self.location.join(
+      url_to_filename(url)
+        .ok_or(generic_error("Can't convert url to filename."))?,
+    );
     let metadata_filename = Metadata::filename(&cache_filename);
     let file = File::open(cache_filename)?;
     let metadata = fs::read_to_string(metadata_filename)?;
@@ -155,7 +157,10 @@ impl HttpCache {
     headers_map: HeadersMap,
     content: &[u8],
   ) -> Result<(), AnyError> {
-    let cache_filename = self.location.join(url_to_filename(url));
+    let cache_filename = self.location.join(
+      url_to_filename(url)
+        .ok_or(generic_error("Can't convert url to filename."))?,
+    );
     // Create parent directory
     let parent_filename = cache_filename
       .parent()
@@ -266,7 +271,7 @@ mod tests {
 
     for (url, expected) in test_cases.iter() {
       let u = Url::parse(url).unwrap();
-      let p = url_to_filename(&u);
+      let p = url_to_filename(&u).unwrap();
       assert_eq!(p, PathBuf::from(expected));
     }
   }
