@@ -618,6 +618,7 @@
         ) {
           depthStencilAttachment.stencilLoadOp =
             descriptor.depthStencilAttachment.stencilLoadValue;
+          depthStencilAttachment.stencilLoadValue = undefined;
         } else {
           depthStencilAttachment.stencilLoadOp = "clear";
           depthStencilAttachment.stencilLoadValue =
