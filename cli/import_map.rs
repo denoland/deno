@@ -473,8 +473,131 @@ impl ImportMap {
 
 #[cfg(test)]
 mod tests {
+
   use super::*;
   use deno_core::serde_json::json;
+
+  struct TestCase {
+    
+  }
+
+
+  #[derive(Debug)]
+  struct ResolutionTestCase {
+    name: String,
+    import_map: String,
+    import_map_base_url: String,
+    base_url: String,
+
+    given_specifier: String,
+    expected_specifier: Option<String>,
+  }
+
+  fn parse_tests() -> Vec<ResolutionTestCase> {
+    let test_str = r#"{
+      "importMap": {},
+      "importMapBaseURL": "https://example.com/app/index.html",
+      "baseURL": "https://example.com/js/app.mjs",
+      "tests": {
+        "valid relative specifiers": {
+          "expectedResults": {
+            "./foo": "https://example.com/js/foo",
+            "./foo/bar": "https://example.com/js/foo/bar",
+            "./foo/../bar": "https://example.com/js/bar",
+            "./foo/../../bar": "https://example.com/bar",
+            "../foo": "https://example.com/foo",
+            "../foo/bar": "https://example.com/foo/bar",
+            "../../../foo/bar": "https://example.com/foo/bar",
+            "/foo": "https://example.com/foo",
+            "/foo/bar": "https://example.com/foo/bar",
+            "/../../foo/bar": "https://example.com/foo/bar",
+            "/../foo/../bar": "https://example.com/bar"
+          }
+        },
+        "HTTPS scheme absolute URLs": {
+          "expectedResults": {
+            "https://fetch-scheme.net": "https://fetch-scheme.net/",
+            "https:fetch-scheme.org": "https://fetch-scheme.org/",
+            "https://fetch%2Dscheme.com/": "https://fetch-scheme.com/",
+            "https://///fetch-scheme.com///": "https://fetch-scheme.com///"
+          }
+        },
+        "valid relative URLs that are invalid as specifiers should fail": {
+          "expectedResults": {
+            "invalid-specifier": null,
+            "\\invalid-specifier": null,
+            ":invalid-specifier": null,
+            "@invalid-specifier": null,
+            "%2E/invalid-specifier": null,
+            "%2E%2E/invalid-specifier": null,
+            ".%2Finvalid-specifier": null
+          }
+        },
+        "invalid absolute URLs should fail": {
+          "expectedResults": {
+            "https://invalid-url.com:demo": null,
+            "http://[invalid-url.com]/": null
+          }
+        }
+      }
+    }"#;
+    let mut final_tests: Vec<ResolutionTestCase> = vec![];
+    let val: serde_json::Value = serde_json::from_str(test_str).unwrap();
+    let tests = val["tests"].as_object().unwrap();
+    for (name, case) in tests {
+      let expected_results = case["expectedResults"].as_object().unwrap();
+      for (given, expected) in expected_results {
+        let import_map = if let Some(str) = val["importMap"].as_str() {
+          str.to_string()
+        } else {
+          serde_json::to_string(&val["importMap"]).unwrap()
+        };
+
+        let test_case = ResolutionTestCase {
+          name: format!("{}: {}", name, given),
+          base_url: val["baseURL"].as_str().unwrap().to_string(),
+          import_map_base_url: val["importMapBaseURL"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+          import_map,
+          given_specifier: given.to_string(),
+          expected_specifier: expected.as_str().map(|str| str.to_string()),
+        };
+
+        final_tests.push(test_case);
+      }
+    }
+    final_tests
+  }
+
+  #[test]
+  fn load123123123() {
+    let tests = parse_tests();
+
+    for test in tests {
+      let import_map =
+        ImportMap::from_json(&test.import_map_base_url, &test.import_map)
+          .unwrap();
+
+      let maybe_resolved = import_map
+        .resolve(&test.given_specifier, &test.base_url)
+        .ok()
+        .map(|maybe_resolved| {
+          if let Some(specifier) = maybe_resolved {
+            specifier.to_string()
+          } else {
+            ModuleSpecifier::resolve_import(
+              &test.given_specifier,
+              &test.base_url,
+            )
+            .unwrap()
+            .to_string()
+          }
+        });
+      assert_eq!(maybe_resolved, test.expected_specifier, "{}", test.name);
+    }
+  }
 
   #[test]
   fn load_nonexistent() {
