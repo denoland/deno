@@ -663,7 +663,7 @@
   }
 
   // https://heycam.github.io/webidl/#es-enumeration
-  function createEnumConverter(name, ...values) {
+  function createEnumConverter(name, values) {
     const E = new Set(values);
 
     return function (V, opts = {}) {
