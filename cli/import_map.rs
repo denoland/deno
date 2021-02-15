@@ -477,8 +477,6 @@ mod tests {
   use super::*;
   use deno_core::serde_json::json;
 
-  struct TestCase {}
-
   #[derive(Debug)]
   struct ResolutionTestCase {
     name: String,
@@ -539,11 +537,13 @@ mod tests {
       }
     }"#;
     let json_file: serde_json::Value = serde_json::from_str(test_str).unwrap();
-    let maybe_name = json_file.get("name").map(|s| s.as_str().unwrap().to_string());
-    return parse_test_object(json_file, maybe_name, None, None, None);
+    let maybe_name = json_file
+      .get("name")
+      .map(|s| s.as_str().unwrap().to_string());
+    return parse_test_object(&json_file, maybe_name, None, None, None);
 
     fn parse_test_object(
-      test_obj: Value,
+      test_obj: &Value,
       maybe_name_prefix: Option<String>,
       maybe_import_map: Option<String>,
       maybe_base_url: Option<String>,
@@ -577,17 +577,17 @@ mod tests {
         let nested_tests_obj = nested_tests.as_object().unwrap();
         let mut collected = vec![];
         for (name, test_obj) in nested_tests_obj {
-          let nested_name = if let Some(name_prefix) = maybe_name_prefix {
+          let nested_name = if let Some(ref name_prefix) = maybe_name_prefix {
             format!("{}: {}", name_prefix, name)
           } else {
-            name
+            name.to_string()
           };
           let parsed_nested_tests = parse_test_object(
             test_obj,
             Some(nested_name),
-            maybe_import_map,
-            maybe_base_url,
-            maybe_import_map_base_url,
+            maybe_import_map.clone(),
+            maybe_base_url.clone(),
+            maybe_import_map_base_url.clone(),
           );
           collected.extend(parsed_nested_tests)
         }
@@ -597,19 +597,19 @@ mod tests {
       let expected_results = test_obj["expectedResults"].as_object().unwrap();
       let mut collected_cases = vec![];
       for (given, expected) in expected_results {
-        let name = if let Some(name_prefix) = maybe_name_prefix {
+        let name = if let Some(ref name_prefix) = maybe_name_prefix {
           format!("{}: {}", name_prefix, given)
         } else {
-          given
+          given.to_string()
         };
         let given_specifier = given.to_string();
         let expected_specifier = expected.as_str().map(|str| str.to_string());
 
         let test_case = ResolutionTestCase {
           name,
-          base_url: maybe_base_url.unwrap(),
-          import_map_base_url: maybe_import_map_base_url.unwrap(),
-          import_map: maybe_import_map.unwrap(),
+          base_url: maybe_base_url.clone().unwrap(),
+          import_map_base_url: maybe_import_map_base_url.clone().unwrap(),
+          import_map: maybe_import_map.clone().unwrap(),
           given_specifier,
           expected_specifier,
         };
