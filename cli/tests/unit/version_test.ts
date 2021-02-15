@@ -4,5 +4,9 @@ unitTest(function version(): void {
   const pattern = /^\d+\.\d+\.\d+/;
   assert(pattern.test(Deno.version.deno));
   assert(pattern.test(Deno.version.v8));
-  assert(pattern.test(Deno.version.typescript));
+  // Unreleased version of TypeScript now set the version to 0-dev
+  assert(
+    pattern.test(Deno.version.typescript) ||
+      DelayNode.version.typescript === "0-dev",
+  );
 });
