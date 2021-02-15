@@ -1140,6 +1140,7 @@ Generate html reports from lcov:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
+        .default_value(r"test\.(js|ts)$")
         .help("Exclude source files from the report"),
     )
     .arg(
@@ -3494,7 +3495,7 @@ mod tests {
           files: vec![PathBuf::from("foo.json")],
           ignore: vec![],
           include: vec![],
-          exclude: vec![],
+          exclude: vec![r"test\.(js|ts)$".to_string()],
           lcov: false,
         },
         ..Flags::default()

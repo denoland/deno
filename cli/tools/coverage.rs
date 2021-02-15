@@ -584,45 +584,23 @@ fn filter_coverages(
   include: Vec<String>,
   exclude: Vec<String>,
 ) -> Vec<ScriptCoverage> {
-  let include_regexes: Vec<Regex> =
+  let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
 
-  let exclude_regexes: Vec<Regex> =
+  let exclude: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
   coverages
     .into_iter()
     .filter(|e| {
-      // Include must take precedence so it can override default exclusions and less specific
-      // exclude matches.
-      if include_regexes.iter().any(|p| p.is_match(&e.url)) {
-        return true;
-      }
+        let is_internal = e.url.starts_with("deno:") ||
+            e.url.ends_with("__anonymous__") ||
+            e.url.ends_with("$deno$test.ts");
 
-      if e.url.ends_with("test.js") || e.url.ends_with("test.ts") {
-        return false;
-      }
+        let is_included = include.iter().any(|p| p.is_match(&e.url));
+        let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
 
-      if exclude_regexes.iter().any(|p| p.is_match(&e.url)) {
-        return false;
-      }
-
-      // TODO(caspervonb) support this so we can collect coverage for internal sources.
-      if e.url.starts_with("deno") {
-        return false;
-      }
-
-      // TODO(caspervonb) we should give these fake virtual urls a custom schema because they look
-      // like urls from an inspector client's point of view.
-      if e.url.ends_with("$deno$test.ts") {
-        return false;
-      }
-
-      if e.url.ends_with("__anonymous__") {
-        return false;
-      }
-
-      true
+        (include.is_empty() || is_included) && !is_excluded && !is_internal
     })
     .collect::<Vec<ScriptCoverage>>()
 }
