@@ -364,7 +364,7 @@
 
     writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {
       core.jsonOpSync(
-        "op_webgpu_write_texture",
+        "op_webgpu_write_buffer",
         {
           queueRid: this.#rid,
           buffer: buffer[ridSymbol],
