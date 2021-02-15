@@ -477,10 +477,7 @@ mod tests {
   use super::*;
   use deno_core::serde_json::json;
 
-  struct TestCase {
-    
-  }
-
+  struct TestCase {}
 
   #[derive(Debug)]
   struct ResolutionTestCase {
@@ -493,7 +490,7 @@ mod tests {
     expected_specifier: Option<String>,
   }
 
-  fn parse_tests() -> Vec<ResolutionTestCase> {
+  fn parse_resolution_tests() -> Vec<ResolutionTestCase> {
     let test_str = r#"{
       "importMap": {},
       "importMapBaseURL": "https://example.com/app/index.html",
@@ -541,39 +538,91 @@ mod tests {
         }
       }
     }"#;
-    let mut final_tests: Vec<ResolutionTestCase> = vec![];
-    let val: serde_json::Value = serde_json::from_str(test_str).unwrap();
-    let tests = val["tests"].as_object().unwrap();
-    for (name, case) in tests {
-      let expected_results = case["expectedResults"].as_object().unwrap();
-      for (given, expected) in expected_results {
-        let import_map = if let Some(str) = val["importMap"].as_str() {
-          str.to_string()
+    let json_file: serde_json::Value = serde_json::from_str(test_str).unwrap();
+    let maybe_name = json_file.get("name").map(|s| s.as_str().unwrap().to_string());
+    return parse_test_object(json_file, maybe_name, None, None, None);
+
+    fn parse_test_object(
+      test_obj: Value,
+      maybe_name_prefix: Option<String>,
+      maybe_import_map: Option<String>,
+      maybe_base_url: Option<String>,
+      maybe_import_map_base_url: Option<String>,
+    ) -> Vec<ResolutionTestCase> {
+      let maybe_import_map_base_url =
+        if let Some(base_url) = test_obj.get("importMapBaseURL") {
+          Some(base_url.as_str().unwrap().to_string())
         } else {
-          serde_json::to_string(&val["importMap"]).unwrap()
+          maybe_import_map_base_url
         };
+
+      let maybe_base_url = if let Some(base_url) = test_obj.get("baseURL") {
+        Some(base_url.as_str().unwrap().to_string())
+      } else {
+        maybe_base_url
+      };
+
+      let maybe_import_map = if let Some(import_map) = test_obj.get("importMap")
+      {
+        Some(if import_map.is_string() {
+          import_map.as_str().unwrap().to_string()
+        } else {
+          serde_json::to_string(import_map).unwrap()
+        })
+      } else {
+        maybe_import_map
+      };
+
+      if let Some(nested_tests) = test_obj.get("tests") {
+        let nested_tests_obj = nested_tests.as_object().unwrap();
+        let mut collected = vec![];
+        for (name, test_obj) in nested_tests_obj {
+          let nested_name = if let Some(name_prefix) = maybe_name_prefix {
+            format!("{}: {}", name_prefix, name)
+          } else {
+            name
+          };
+          let parsed_nested_tests = parse_test_object(
+            test_obj,
+            Some(nested_name),
+            maybe_import_map,
+            maybe_base_url,
+            maybe_import_map_base_url,
+          );
+          collected.extend(parsed_nested_tests)
+        }
+        return collected;
+      }
+
+      let expected_results = test_obj["expectedResults"].as_object().unwrap();
+      let mut collected_cases = vec![];
+      for (given, expected) in expected_results {
+        let name = if let Some(name_prefix) = maybe_name_prefix {
+          format!("{}: {}", name_prefix, given)
+        } else {
+          given
+        };
+        let given_specifier = given.to_string();
+        let expected_specifier = expected.as_str().map(|str| str.to_string());
 
         let test_case = ResolutionTestCase {
-          name: format!("{}: {}", name, given),
-          base_url: val["baseURL"].as_str().unwrap().to_string(),
-          import_map_base_url: val["importMapBaseURL"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-          import_map,
-          given_specifier: given.to_string(),
-          expected_specifier: expected.as_str().map(|str| str.to_string()),
+          name,
+          base_url: maybe_base_url.unwrap(),
+          import_map_base_url: maybe_import_map_base_url.unwrap(),
+          import_map: maybe_import_map.unwrap(),
+          given_specifier,
+          expected_specifier,
         };
 
-        final_tests.push(test_case);
+        collected_cases.push(test_case);
       }
+      collected_cases
     }
-    final_tests
   }
 
   #[test]
   fn load123123123() {
-    let tests = parse_tests();
+    let tests = parse_resolution_tests();
 
     for test in tests {
       let import_map =
