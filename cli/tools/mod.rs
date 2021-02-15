@@ -6,5 +6,5 @@ pub mod installer;
 pub mod lint;
 pub mod repl;
 pub mod standalone;
-pub mod test_runner;
+pub mod test;
 pub mod upgrade;

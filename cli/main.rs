@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
+// #![deny(warnings)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -57,6 +57,7 @@ use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
+use crate::tools::test::TestReporter;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -222,6 +223,7 @@ pub fn create_main_worker(
     // above
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
+    ops::test_reporter::init(js_runtime);
   }
   worker.bootstrap(&options);
 
@@ -1008,93 +1010,68 @@ async fn coverage_command(
 
 async fn test_command(
   flags: Flags,
-  include: Option<Vec<String>>,
+  files: Vec<PathBuf>,
   no_run: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
+  let program_state = Arc::new(ProgramState::build(flags.clone()).await?);
   let permissions = Permissions::from_options(&flags.clone().into());
-  let cwd = std::env::current_dir().expect("No current directory");
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules =
-    tools::test_runner::prepare_test_modules_urls(include, &cwd)?;
 
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(());
-  }
-  let main_module = deno_core::resolve_path("$deno$test.ts")?;
-  // Create a dummy source file.
-  let source_file = File {
-    local: main_module.to_file_path().unwrap(),
-    maybe_types: None,
-    media_type: MediaType::TypeScript,
-    source: tools::test_runner::render_test_file(
-      test_modules.clone(),
-      fail_fast,
-      quiet,
-      filter,
-    ),
-    specifier: main_module.clone(),
+  let test_callback = move |file_path: PathBuf,
+                            test_reporter: Arc<Mutex<TestReporter>>|
+        -> Result<(), AnyError> {
+    let join_handle = std::thread::spawn(move || -> Result<(), AnyError> {
+      tokio_util::run_basic(async move {
+        let main_module = resolve_url_or_path(&file_path.to_str().unwrap())?;
+
+        let mut worker = create_main_worker(
+          &program_state.clone(),
+          main_module.clone(),
+          permissions.clone(),
+        );
+
+        {
+          let js_runtime = &mut worker.js_runtime;
+          js_runtime
+            .op_state()
+            .borrow_mut()
+            .put::<Arc<Mutex<TestReporter>>>(test_reporter);
+        }
+
+        let execution_result = worker.execute_module(&main_module);
+        execution_result.await?;
+
+        worker.execute("window.dispatchEvent(new Event('load'))")?;
+        worker.run_event_loop().await?;
+
+        worker.execute("Deno[Deno.internal].runTests({});")?;
+        worker.run_event_loop().await?;
+
+        worker.execute("window.dispatchEvent(new Event('unload'))")?;
+        worker.run_event_loop().await?;
+
+        Ok(())
+      })
+    });
+
+    join_handle.join().expect("Failed to join test thread");
+
+    Ok(())
   };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  program_state.file_fetcher.insert_cached(source_file);
 
-  if no_run {
-    let lib = if flags.unstable {
-      module_graph::TypeLib::UnstableDenoWindow
-    } else {
-      module_graph::TypeLib::DenoWindow
-    };
-    program_state
-      .prepare_module_load(
-        main_module.clone(),
-        lib,
-        Permissions::allow_all(),
-        false,
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
-    return Ok(());
-  }
-
-  let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions);
-
-  if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
-  }
-
-  let mut maybe_coverage_collector =
-    if let Some(ref coverage_dir) = program_state.coverage_dir {
-      let session = worker.create_inspector_session();
-      let coverage_dir = PathBuf::from(coverage_dir);
-      let mut coverage_collector =
-        tools::coverage::CoverageCollector::new(coverage_dir, session);
-      coverage_collector.start_collecting().await?;
-
-      Some(coverage_collector)
-    } else {
-      None
-    };
-
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  worker.run_event_loop().await?;
-
-  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
-  }
+  let ignore: Vec<PathBuf> = Vec::new();
+  tools::test::test_files(
+    files,
+    ignore,
+    no_run,
+    fail_fast,
+    allow_none,
+    test_callback,
+  )
+  .await?;
 
   Ok(())
 }
@@ -1221,14 +1198,14 @@ fn get_subcommand(
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
+      files,
       no_run,
       fail_fast,
       quiet,
-      include,
       allow_none,
       filter,
     } => {
-      test_command(flags, include, no_run, fail_fast, quiet, allow_none, filter)
+      test_command(flags, files, no_run, fail_fast, quiet, allow_none, filter)
         .boxed_local()
     }
     DenoSubcommand::Completions { buf } => {

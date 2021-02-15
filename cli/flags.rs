@@ -81,11 +81,11 @@ pub enum DenoSubcommand {
     script: String,
   },
   Test {
+    files: Vec<PathBuf>,
     no_run: bool,
     fail_fast: bool,
     quiet: bool,
     allow_none: bool,
-    include: Option<Vec<String>>,
     filter: Option<String>,
   },
   Types,
@@ -720,23 +720,24 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     }
   }
 
-  let include = if matches.is_present("files") {
-    let files: Vec<String> = matches
+  let files = if matches.is_present("files") {
+    let files = matches
       .values_of("files")
       .unwrap()
-      .map(String::from)
+      .map(PathBuf::from)
       .collect();
-    Some(files)
+
+    files
   } else {
-    None
+    vec![]
   };
 
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
+    files,
     no_run,
     fail_fast,
     quiet,
-    include,
     filter,
     allow_none,
   };
@@ -3248,7 +3249,7 @@ mod tests {
           filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,
-          include: Some(svec!["dir1/", "dir2/"]),
+          files: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
         },
         unstable: true,
         coverage_dir: Some("cov".to_string()),
