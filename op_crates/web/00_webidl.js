@@ -669,22 +669,29 @@
     return function (V, opts = {}) {
       const S = String(V);
 
-      if (E.has(V)) {
-        return V;
-      } else {
+      if (!E.has(S)) {
         throw makeException(
           TypeError,
           `The provided value '${V}' is not a valid enum value of type ${name}.`,
           opts,
         );
       }
+
+      return S;
     };
   }
 
-  function createNullableEnumConverter(name, ...values) {
-    const converter = createEnumConverter(name, ...values);
+  function createNullableConverter(converter) {
+    return (V, opts = {}) => {
+      // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
+      // being performed due to V being assigned to an attribute whose type is a
+      // nullable callback function that is annotated with
+      // [LegacyTreatNonObjectAsNull], then return the IDL nullable type T?
+      // value null.
 
-    return (V, opts = {}) => null === V ? null : converter(V, opts);
+      if (V === null || V === undefined) return null;
+      return converter(V, opts);
+    };
   }
 
   window.__bootstrap ??= {};
@@ -693,5 +700,6 @@
     requiredArguments,
     createDictionaryConverter,
     createEnumConverter,
+    createNullableConverter,
   };
 })(this);
