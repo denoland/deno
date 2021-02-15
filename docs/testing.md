@@ -216,21 +216,21 @@ This coverage information is acquired directly from the JavaScript engine (V8)
 which is very accurate.
 
 This can then be further processed from the internal format into well known
-formats by the `deno cover` tool.
+formats by the `deno coverage` tool.
 
 ```
 # Go into your project's working directory
 git clone https://github.com/denoland/deno_std && cd deno_std
 
-# Collect your coverage once
-deno test --coverage=coverage --unstable
+# Collect your coverage profile with deno test --coverage=<output_directory>
+deno test --coverage=cov_profile --unstable
 
 # From this you can get a pretty printed diff of uncovered lines
-deno cover --unstable coverage
+deno coverage --unstable cov_profile
 
 # Or generate an lcov report
-deno cover --unstable coverage --lcov > coverage.lcov
+deno coverage --unstable cov_profile --lcov > cov_profile.lcov
 
 # Which can then be further processed by tools like genhtml
-genhtml -o coverage_html coverage.lcov
+genhtml -o cov_profile/html cov_profile.lcov
 ```
