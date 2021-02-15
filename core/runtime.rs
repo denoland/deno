@@ -201,6 +201,13 @@ impl JsRuntime {
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
+      // Include 10MB ICU data file.
+      assert!(v8::icu::set_common_data(align_data::include_aligned!(
+        align_data::Align16,
+        "icudtl.dat"
+      ))
+      .is_ok());
+
       unsafe { v8_init() };
     });
 
@@ -693,9 +700,15 @@ impl JsRuntime {
     let module = maybe_module.unwrap();
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
-    for i in 0..module.get_module_requests_length() {
-      let import_specifier =
-        module.get_module_request(i).to_rust_string_lossy(tc_scope);
+    let module_requests = module.get_module_requests();
+    for i in 0..module_requests.length() {
+      let module_request = v8::Local::<v8::ModuleRequest>::try_from(
+        module_requests.get(tc_scope, i).unwrap(),
+      )
+      .unwrap();
+      let import_specifier = module_request
+        .get_specifier()
+        .to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
       let module_specifier = state.loader.resolve(
         state.op_state.clone(),

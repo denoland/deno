@@ -26,6 +26,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "align-data"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1926655ba000b19e21f0402be09a1d52d318c8a8a68622870bfb7af2a71315cd"
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -454,6 +460,7 @@ dependencies = [
 name = "deno_core"
 version = "0.79.0"
 dependencies = [
+ "align-data",
  "anyhow",
  "futures",
  "indexmap",
@@ -2139,9 +2146,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "029c60c2201e621acadbe386987e02babf56d25bd8557f82ca926f01c7a0b085"
+checksum = "a931537fc7d79e62dbb11457ca92b51a906089ece0aabc46e5387ddd9a20ac66"
 dependencies = [
  "bitflags",
  "fslock",

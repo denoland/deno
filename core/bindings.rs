@@ -109,104 +109,52 @@ pub fn initialize_context<'s>(
 
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  // global.Deno = { core: {} };
   let deno_key = v8::String::new(scope, "Deno").unwrap();
   let deno_val = v8::Object::new(scope);
   global.set(scope, deno_key.into(), deno_val.into());
-
   let core_key = v8::String::new(scope, "core").unwrap();
   let core_val = v8::Object::new(scope);
   deno_val.set(scope, core_key.into(), core_val.into());
 
-  let print_key = v8::String::new(scope, "print").unwrap();
-  let print_tmpl = v8::FunctionTemplate::new(scope, print);
-  let print_val = print_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, print_key.into(), print_val.into());
-
-  let recv_key = v8::String::new(scope, "recv").unwrap();
-  let recv_tmpl = v8::FunctionTemplate::new(scope, recv);
-  let recv_val = recv_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, recv_key.into(), recv_val.into());
-
-  let send_key = v8::String::new(scope, "send").unwrap();
-  let send_tmpl = v8::FunctionTemplate::new(scope, send);
-  let send_val = send_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, send_key.into(), send_val.into());
-
-  let set_macrotask_callback_key =
-    v8::String::new(scope, "setMacrotaskCallback").unwrap();
-  let set_macrotask_callback_tmpl =
-    v8::FunctionTemplate::new(scope, set_macrotask_callback);
-  let set_macrotask_callback_val =
-    set_macrotask_callback_tmpl.get_function(scope).unwrap();
-  core_val.set(
+  // Bind functions to Deno.core.*
+  set_func(scope, core_val, "print", print);
+  set_func(scope, core_val, "recv", recv);
+  set_func(scope, core_val, "send", send);
+  set_func(
     scope,
-    set_macrotask_callback_key.into(),
-    set_macrotask_callback_val.into(),
+    core_val,
+    "setMacrotaskCallback",
+    set_macrotask_callback,
   );
-
-  let eval_context_key = v8::String::new(scope, "evalContext").unwrap();
-  let eval_context_tmpl = v8::FunctionTemplate::new(scope, eval_context);
-  let eval_context_val = eval_context_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, eval_context_key.into(), eval_context_val.into());
-
-  let encode_key = v8::String::new(scope, "encode").unwrap();
-  let encode_tmpl = v8::FunctionTemplate::new(scope, encode);
-  let encode_val = encode_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, encode_key.into(), encode_val.into());
-
-  let decode_key = v8::String::new(scope, "decode").unwrap();
-  let decode_tmpl = v8::FunctionTemplate::new(scope, decode);
-  let decode_val = decode_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, decode_key.into(), decode_val.into());
-
-  let serialize_key = v8::String::new(scope, "serialize").unwrap();
-  let serialize_tmpl = v8::FunctionTemplate::new(scope, serialize);
-  let serialize_val = serialize_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, serialize_key.into(), serialize_val.into());
-
-  let deserialize_key = v8::String::new(scope, "deserialize").unwrap();
-  let deserialize_tmpl = v8::FunctionTemplate::new(scope, deserialize);
-  let deserialize_val = deserialize_tmpl.get_function(scope).unwrap();
-  core_val.set(scope, deserialize_key.into(), deserialize_val.into());
-
-  let get_promise_details_key =
-    v8::String::new(scope, "getPromiseDetails").unwrap();
-  let get_promise_details_tmpl =
-    v8::FunctionTemplate::new(scope, get_promise_details);
-  let get_promise_details_val =
-    get_promise_details_tmpl.get_function(scope).unwrap();
-  core_val.set(
-    scope,
-    get_promise_details_key.into(),
-    get_promise_details_val.into(),
-  );
-
-  let get_proxy_details_key =
-    v8::String::new(scope, "getProxyDetails").unwrap();
-  let get_proxy_details_tmpl =
-    v8::FunctionTemplate::new(scope, get_proxy_details);
-  let get_proxy_details_val =
-    get_proxy_details_tmpl.get_function(scope).unwrap();
-  core_val.set(
-    scope,
-    get_proxy_details_key.into(),
-    get_proxy_details_val.into(),
-  );
+  set_func(scope, core_val, "evalContext", eval_context);
+  set_func(scope, core_val, "encode", encode);
+  set_func(scope, core_val, "decode", decode);
+  set_func(scope, core_val, "serialize", serialize);
+  set_func(scope, core_val, "deserialize", deserialize);
+  set_func(scope, core_val, "getPromiseDetails", get_promise_details);
+  set_func(scope, core_val, "getProxyDetails", get_proxy_details);
 
   let shared_key = v8::String::new(scope, "shared").unwrap();
   core_val.set_accessor(scope, shared_key.into(), shared_getter);
 
   // Direct bindings on `window`.
-  let queue_microtask_key = v8::String::new(scope, "queueMicrotask").unwrap();
-  let queue_microtask_tmpl = v8::FunctionTemplate::new(scope, queue_microtask);
-  let queue_microtask_val = queue_microtask_tmpl.get_function(scope).unwrap();
-  global.set(
-    scope,
-    queue_microtask_key.into(),
-    queue_microtask_val.into(),
-  );
+  set_func(scope, global, "queueMicrotask", queue_microtask);
 
   scope.escape(context)
+}
+
+#[inline(always)]
+pub fn set_func(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  name: &'static str,
+  callback: impl v8::MapFnTo<v8::FunctionCallback>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let tmpl = v8::FunctionTemplate::new(scope, callback);
+  let val = tmpl.get_function(scope).unwrap();
+  obj.set(scope, key.into(), val.into());
 }
 
 pub fn boxed_slice_to_uint8array<'sc>(

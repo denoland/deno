@@ -338,7 +338,12 @@ impl FileFetcher {
     bytes: Vec<u8>,
     headers: &HashMap<String, String>,
   ) -> Result<File, AnyError> {
-    let local = self.http_cache.get_cache_filename(specifier.as_url());
+    let local = self
+      .http_cache
+      .get_cache_filename(specifier.as_url())
+      .ok_or_else(|| {
+        generic_error("Cannot convert specifier to cached filename.")
+      })?;
     let maybe_content_type = headers.get("content-type").cloned();
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
@@ -416,7 +421,12 @@ impl FileFetcher {
 
     let (source, media_type, content_type) =
       get_source_from_data_url(specifier)?;
-    let local = self.http_cache.get_cache_filename(specifier.as_url());
+    let local = self
+      .http_cache
+      .get_cache_filename(specifier.as_url())
+      .ok_or_else(|| {
+        generic_error("Cannot convert specifier to cached filename.")
+      })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
     self
@@ -995,7 +1005,8 @@ mod tests {
 
     let cache_filename = file_fetcher
       .http_cache
-      .get_cache_filename(specifier.as_url());
+      .get_cache_filename(specifier.as_url())
+      .unwrap();
     let mut metadata =
       crate::http_cache::Metadata::read(&cache_filename).unwrap();
     metadata.headers = HashMap::new();
@@ -1079,7 +1090,8 @@ mod tests {
     .unwrap();
     let cache_filename = file_fetcher_01
       .http_cache
-      .get_cache_filename(specifier.as_url());
+      .get_cache_filename(specifier.as_url())
+      .unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, &Permissions::allow_all())
@@ -1128,14 +1140,16 @@ mod tests {
     .unwrap();
     let cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(specifier.as_url());
+      .get_cache_filename(specifier.as_url())
+      .unwrap();
     let redirected_specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(redirected_specifier.as_url());
+      .get_cache_filename(redirected_specifier.as_url())
+      .unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, &Permissions::allow_all())
@@ -1179,21 +1193,24 @@ mod tests {
     .unwrap();
     let cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(specifier.as_url());
+      .get_cache_filename(specifier.as_url())
+      .unwrap();
     let redirected_01_specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_01_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(redirected_01_specifier.as_url());
+      .get_cache_filename(redirected_01_specifier.as_url())
+      .unwrap();
     let redirected_02_specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_02_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(redirected_02_specifier.as_url());
+      .get_cache_filename(redirected_02_specifier.as_url())
+      .unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, &Permissions::allow_all())
@@ -1265,7 +1282,8 @@ mod tests {
     .unwrap();
     let redirected_cache_filename = file_fetcher_01
       .http_cache
-      .get_cache_filename(redirected_specifier.as_url());
+      .get_cache_filename(redirected_specifier.as_url())
+      .unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, &Permissions::allow_all())
@@ -1340,14 +1358,16 @@ mod tests {
     .unwrap();
     let cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(specifier.as_url());
+      .get_cache_filename(specifier.as_url())
+      .unwrap();
     let redirected_specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4550/cli/tests/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(redirected_specifier.as_url());
+      .get_cache_filename(redirected_specifier.as_url())
+      .unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, &Permissions::allow_all())
