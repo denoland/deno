@@ -1132,6 +1132,7 @@ Generate html reports from lcov:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
+        .default_value(r"^file:")
         .help("Include source files in the report"),
     )
     .arg(
