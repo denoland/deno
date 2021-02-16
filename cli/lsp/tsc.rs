@@ -989,7 +989,7 @@ impl SignatureHelpItem {
       .join(", ");
     let suffix_text = display_parts_to_string(self.suffix_display_parts);
     lsp::SignatureInformation {
-      label: prefix_text + &params_text + &suffix_text,
+      label: format!("{}{}{}", prefix_text, params_text, suffix_text),
       documentation: Some(lsp::Documentation::String(display_parts_to_string(
         self.documentation,
       ))),
@@ -1442,17 +1442,37 @@ pub struct UserPreferences {
   pub provide_refactor_not_applicable_reason: Option<bool>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItemsOptions {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub trigger_reason: Option<SignatureHelpTriggerReason>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Serialize)]
+pub enum SignatureHelpTriggerKind {
+  #[serde(rename = "characterTyped")]
+  CharacterTyped,
+  #[serde(rename = "invoked")]
+  Invoked,
+  #[serde(rename = "retrigger")]
+  Retrigger,
+}
+
+impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
+  fn from(kind: lsp::SignatureHelpTriggerKind) -> Self {
+    match kind {
+      lsp::SignatureHelpTriggerKind::Invoked => Self::Invoked,
+      lsp::SignatureHelpTriggerKind::TriggerCharacter => Self::CharacterTyped,
+      lsp::SignatureHelpTriggerKind::ContentChange => Self::Retrigger,
+    }
+  }
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpTriggerReason {
-  pub kind: String,
+  pub kind: SignatureHelpTriggerKind,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub trigger_character: Option<String>,
 }

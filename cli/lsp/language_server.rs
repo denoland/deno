@@ -1727,14 +1727,9 @@ impl Inner {
         )));
       };
     let options = if let Some(context) = params.context {
-      let trigger_kind = match context.trigger_kind {
-        SignatureHelpTriggerKind::Invoked => "invoked",
-        SignatureHelpTriggerKind::TriggerCharacter => "characterTyped",
-        SignatureHelpTriggerKind::ContentChange => "retrigger",
-      };
       tsc::SignatureHelpItemsOptions {
         trigger_reason: Some(tsc::SignatureHelpTriggerReason {
-          kind: trigger_kind.to_string(),
+          kind: context.trigger_kind.into(),
           trigger_character: context.trigger_character,
         }),
       }
@@ -1754,12 +1749,12 @@ impl Inner {
         .request(self.snapshot(), req)
         .await
         .map_err(|err| {
-          error!("Failed to request to tsserver {:#?}", err);
+          error!("Failed to request to tsserver: {}", err);
           LspError::invalid_request()
         })?;
-    let maybe_signature_help_items = serde_json::from_value::<Option<tsc::SignatureHelpItems>>(res)
-      .map_err(|err| {
-        error!("Failed to deserialize tsserver response to Vec<SignatureHelpItems> {:#?}", err);
+    let maybe_signature_help_items: Option<tsc::SignatureHelpItems> =
+      serde_json::from_value(res).map_err(|err| {
+        error!("Failed to deserialize tsserver response: {}", err);
         LspError::internal_error()
       })?;
 
@@ -2646,7 +2641,8 @@ mod tests {
             "activeParameter": 0
           }),
         ),
-      )(
+      ),
+      (
         "signature_help_did_change_notification.json",
         LspResponse::None,
       ),
@@ -2675,7 +2671,8 @@ mod tests {
             "activeParameter": 1
           }),
         ),
-      )(
+      ),
+      (
         "shutdown_request.json",
         LspResponse::Request(3, json!(null)),
       ),
