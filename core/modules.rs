@@ -80,6 +80,7 @@ pub trait ModuleLoader {
     op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    import_assertions: HashMap<String, String>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>>;
 
@@ -97,6 +98,7 @@ pub trait ModuleLoader {
     _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
+    _import_assertions: HashMap<String, String>,
     _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     async { Ok(()) }.boxed_local()
@@ -123,6 +125,7 @@ impl ModuleLoader for NoopModuleLoader {
     _op_state: Rc<RefCell<OpState>>,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
+    _import_assertions: HashMap<String, String>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
     async { Err(generic_error("Module loading is not supported")) }
@@ -153,6 +156,7 @@ impl ModuleLoader for FsModuleLoader {
     _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
+    _import_assertions: HashMap<String, String>,
     _is_dynamic: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
@@ -183,8 +187,10 @@ enum Kind {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum LoadState {
+  // Specifier, maybe code
   ResolveMain(String, Option<String>),
-  ResolveImport(String, String),
+  // Specifier, referrer, import assertions
+  ResolveImport(String, String, HashMap<String, String>),
   LoadingRoot,
   LoadingImports,
   Done,
@@ -221,11 +227,15 @@ impl RecursiveModuleLoad {
     op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
+    import_assertions: HashMap<String, String>,
     loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     let kind = Kind::DynamicImport;
-    let state =
-      LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
+    let state = LoadState::ResolveImport(
+      specifier.to_owned(),
+      referrer.to_owned(),
+      import_assertions,
+    );
     Self::new(op_state, kind, state, loader)
   }
 
@@ -252,7 +262,8 @@ impl RecursiveModuleLoad {
   }
 
   pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
-    let (module_specifier, maybe_referrer) = match self.state {
+    let (module_specifier, maybe_referrer, import_assertions) = match self.state
+    {
       LoadState::ResolveMain(ref specifier, _) => {
         let spec =
           match self
@@ -262,9 +273,9 @@ impl RecursiveModuleLoad {
             Ok(spec) => spec,
             Err(e) => return (self.id, Err(e)),
           };
-        (spec, None)
+        (spec, None, HashMap::default())
       }
-      LoadState::ResolveImport(ref specifier, ref referrer) => {
+      LoadState::ResolveImport(ref specifier, ref referrer, ref assertions) => {
         let spec = match self.loader.resolve(
           self.op_state.clone(),
           specifier,
@@ -274,7 +285,7 @@ impl RecursiveModuleLoad {
           Ok(spec) => spec,
           Err(e) => return (self.id, Err(e)),
         };
-        (spec, Some(referrer.to_string()))
+        (spec, Some(referrer.to_string()), assertions.clone())
       }
       _ => unreachable!(),
     };
@@ -286,6 +297,7 @@ impl RecursiveModuleLoad {
         self.id,
         &module_specifier,
         maybe_referrer,
+        import_assertions,
         self.is_dynamic_import(),
       )
       .await;
@@ -297,16 +309,23 @@ impl RecursiveModuleLoad {
   }
 
   fn add_root(&mut self) -> Result<(), AnyError> {
-    let module_specifier = match self.state {
+    let (module_specifier, import_assertions) = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
-        self
-          .loader
-          .resolve(self.op_state.clone(), specifier, ".", true)?
+        let spec =
+          self
+            .loader
+            .resolve(self.op_state.clone(), specifier, ".", true)?;
+        (spec, HashMap::default())
       }
-      LoadState::ResolveImport(ref specifier, ref referrer) => self
-        .loader
-        .resolve(self.op_state.clone(), specifier, referrer, false)?,
-
+      LoadState::ResolveImport(ref specifier, ref referrer, ref assertions) => {
+        let spec = self.loader.resolve(
+          self.op_state.clone(),
+          specifier,
+          referrer,
+          false,
+        )?;
+        (spec, assertions.clone())
+      }
       _ => unreachable!(),
     };
 
@@ -325,6 +344,7 @@ impl RecursiveModuleLoad {
           self.op_state.clone(),
           &module_specifier,
           None,
+          import_assertions,
           self.is_dynamic_import(),
         )
         .boxed_local(),
@@ -340,12 +360,14 @@ impl RecursiveModuleLoad {
     &mut self,
     specifier: ModuleSpecifier,
     referrer: ModuleSpecifier,
+    import_assertions: HashMap<String, String>,
   ) {
     if !self.is_pending.contains(&specifier) {
       let fut = self.loader.load(
         self.op_state.clone(),
         &specifier,
         Some(referrer),
+        import_assertions,
         self.is_dynamic_import(),
       );
       self.pending.push(fut.boxed_local());
@@ -381,11 +403,17 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModuleImport {
+  pub specifier: ModuleSpecifier,
+  pub assertions: HashMap<String, String>,
+}
+
 pub struct ModuleInfo {
   pub id: ModuleId,
   pub main: bool,
   pub name: String,
-  pub import_specifiers: Vec<ModuleSpecifier>,
+  pub imports: Vec<ModuleImport>,
 }
 
 /// A symbolic module entity.
@@ -470,8 +498,8 @@ impl Modules {
     self.by_name.get(name)
   }
 
-  pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
-    self.info.get(&id).map(|i| &i.import_specifiers)
+  pub fn get_imports(&self, id: ModuleId) -> Option<&Vec<ModuleImport>> {
+    self.info.get(&id).map(|i| &i.imports)
   }
 
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
@@ -483,7 +511,7 @@ impl Modules {
     name: &str,
     main: bool,
     handle: v8::Global<v8::Module>,
-    import_specifiers: Vec<ModuleSpecifier>,
+    imports: Vec<ModuleImport>,
   ) -> ModuleId {
     let name = String::from(name);
     let id = self.next_module_id;
@@ -497,7 +525,7 @@ impl Modules {
         id,
         main,
         name,
-        import_specifiers,
+        imports,
       },
     );
     id
@@ -667,6 +695,7 @@ mod tests {
       _op_state: Rc<RefCell<OpState>>,
       module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
+      _import_assertions: HashMap<String, String>,
       _is_dyn_import: bool,
     ) -> Pin<Box<ModuleSourceFuture>> {
       let mut loads = self.loads.lock().unwrap();
@@ -739,21 +768,33 @@ mod tests {
     let c_id = modules.get_id("file:///c.js").unwrap();
     let d_id = modules.get_id("file:///d.js").unwrap();
     assert_eq!(
-      modules.get_children(a_id),
+      modules.get_imports(a_id),
       Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+        ModuleImport {
+          specifier: ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
+          assertions: HashMap::default()
+        },
+        ModuleImport {
+          specifier: ModuleSpecifier::resolve_url("file:///c.js").unwrap(),
+          assertions: HashMap::default()
+        },
       ])
     );
     assert_eq!(
-      modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+      modules.get_imports(b_id),
+      Some(&vec![ModuleImport {
+        specifier: ModuleSpecifier::resolve_url("file:///c.js").unwrap(),
+        assertions: HashMap::default(),
+      }])
     );
     assert_eq!(
-      modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+      modules.get_imports(c_id),
+      Some(&vec![ModuleImport {
+        specifier: ModuleSpecifier::resolve_url("file:///d.js").unwrap(),
+        assertions: HashMap::default(),
+      }])
     );
-    assert_eq!(modules.get_children(d_id), Some(&vec![]));
+    assert_eq!(modules.get_imports(d_id), Some(&vec![]));
   }
 
   const CIRCULAR1_SRC: &str = r#"
@@ -806,26 +847,38 @@ mod tests {
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
 
       assert_eq!(
-        modules.get_children(circular1_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
-        ])
+        modules.get_imports(circular1_id),
+        Some(&vec![ModuleImport {
+          specifier: ModuleSpecifier::resolve_url("file:///circular2.js")
+            .unwrap(),
+          assertions: HashMap::default(),
+        }])
       );
 
       assert_eq!(
-        modules.get_children(circular2_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular3.js").unwrap()
-        ])
+        modules.get_imports(circular2_id),
+        Some(&vec![ModuleImport {
+          specifier: ModuleSpecifier::resolve_url("file:///circular3.js")
+            .unwrap(),
+          assertions: HashMap::default(),
+        }])
       );
 
       assert!(modules.get_id("file:///circular3.js").is_some());
       let circular3_id = modules.get_id("file:///circular3.js").unwrap();
       assert_eq!(
-        modules.get_children(circular3_id),
+        modules.get_imports(circular3_id),
         Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular1.js").unwrap(),
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
+          ModuleImport {
+            specifier: ModuleSpecifier::resolve_url("file:///circular1.js")
+              .unwrap(),
+            assertions: HashMap::default(),
+          },
+          ModuleImport {
+            specifier: ModuleSpecifier::resolve_url("file:///circular2.js")
+              .unwrap(),
+            assertions: HashMap::default(),
+          }
         ])
       );
     }
@@ -1031,20 +1084,32 @@ mod tests {
     let d_id = modules.get_id("file:///d.js").unwrap();
 
     assert_eq!(
-      modules.get_children(main_id),
+      modules.get_imports(main_id),
       Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+        ModuleImport {
+          specifier: ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
+          assertions: HashMap::default(),
+        },
+        ModuleImport {
+          specifier: ModuleSpecifier::resolve_url("file:///c.js").unwrap(),
+          assertions: HashMap::default(),
+        }
       ])
     );
     assert_eq!(
-      modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+      modules.get_imports(b_id),
+      Some(&vec![ModuleImport {
+        specifier: ModuleSpecifier::resolve_url("file:///c.js").unwrap(),
+        assertions: HashMap::default(),
+      }])
     );
     assert_eq!(
-      modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+      modules.get_imports(c_id),
+      Some(&vec![ModuleImport {
+        specifier: ModuleSpecifier::resolve_url("file:///d.js").unwrap(),
+        assertions: HashMap::default(),
+      }])
     );
-    assert_eq!(modules.get_children(d_id), Some(&vec![]));
+    assert_eq!(modules.get_imports(d_id), Some(&vec![]));
   }
 }

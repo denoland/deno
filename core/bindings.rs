@@ -10,6 +10,7 @@ use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rusty_v8 as v8;
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io::{stdout, Write};
 use std::option::Option;
@@ -166,7 +167,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
   specifier: v8::Local<v8::String>,
-  _import_assertions: v8::Local<v8::FixedArray>,
+  import_assertions: v8::Local<v8::FixedArray>,
 ) -> *mut v8::Promise {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
@@ -190,11 +191,32 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
+  let mut assertions = HashMap::default();
+  // "type" keyword, value
+  let no_of_assertions = import_assertions.length() / 2;
+  for i in 0..no_of_assertions {
+    let assert_key = import_assertions.get(scope, 2 * i).unwrap();
+    let assert_key_val = v8::Local::<v8::Value>::try_from(assert_key).unwrap();
+    let assert_value = import_assertions.get(scope, (2 * i) + 1).unwrap();
+    let assert_value_val =
+      v8::Local::<v8::Value>::try_from(assert_value).unwrap();
+    // skip parsing offset from assertion
+    assertions.insert(
+      assert_key_val.to_rust_string_lossy(scope),
+      assert_value_val.to_rust_string_lossy(scope),
+    );
+  }
+
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
-    state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
+    state.dyn_import_cb(
+      resolver_handle,
+      &specifier_str,
+      &referrer_name_str,
+      assertions,
+    );
   }
 
   &*promise as *const _ as *mut _

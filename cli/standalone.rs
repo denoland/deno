@@ -20,6 +20,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::Level;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env::current_exe;
 use std::fs::File;
@@ -131,6 +132,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
+    _import_assertions: HashMap<String, String>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();

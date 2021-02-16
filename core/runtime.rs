@@ -12,6 +12,7 @@ use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
 use crate::modules::ModuleId;
+use crate::modules::ModuleImport;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleSource;
@@ -610,6 +611,7 @@ impl JsRuntimeState {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     specifier: &str,
     referrer: &str,
+    import_assertions: HashMap<String, String>,
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
@@ -617,6 +619,7 @@ impl JsRuntimeState {
       self.op_state.clone(),
       specifier,
       referrer,
+      import_assertions,
       self.loader.clone(),
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
@@ -699,7 +702,7 @@ impl JsRuntime {
 
     let module = maybe_module.unwrap();
 
-    let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
+    let mut module_imports: Vec<ModuleImport> = vec![];
     let module_requests = module.get_module_requests();
     for i in 0..module_requests.length() {
       let module_request = v8::Local::<v8::ModuleRequest>::try_from(
@@ -710,20 +713,43 @@ impl JsRuntime {
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
-      let module_specifier = state.loader.resolve(
+      let resolved_import_specifier = state.loader.resolve(
         state.op_state.clone(),
         &import_specifier,
         name,
         false,
       )?;
-      import_specifiers.push(module_specifier);
+      let import_assertions = module_request.get_import_assertions();
+
+      let mut assertions = HashMap::default();
+      // "type" keyword, value and source offset of assertion
+      let no_of_assertions = import_assertions.length() / 3;
+      for i in 0..no_of_assertions {
+        let assert_key = import_assertions.get(tc_scope, 3 * i).unwrap();
+        let assert_key_val =
+          v8::Local::<v8::Value>::try_from(assert_key).unwrap();
+        let assert_value =
+          import_assertions.get(tc_scope, (3 * i) + 1).unwrap();
+        let assert_value_val =
+          v8::Local::<v8::Value>::try_from(assert_value).unwrap();
+        // skip parsing offset from assertion
+        assertions.insert(
+          assert_key_val.to_rust_string_lossy(tc_scope),
+          assert_value_val.to_rust_string_lossy(tc_scope),
+        );
+      }
+
+      module_imports.push(ModuleImport {
+        specifier: resolved_import_specifier,
+        assertions,
+      });
     }
 
     let id = state_rc.borrow_mut().modules.register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),
-      import_specifiers,
+      module_imports,
     );
 
     Ok(id)
@@ -1265,21 +1291,24 @@ impl JsRuntime {
     };
 
     // Now we must iterate over all imports of the module and load them.
-    let imports = {
+    let module_imports = {
       let state_rc = Self::state(self.v8_isolate());
       let state = state_rc.borrow();
-      state.modules.get_children(module_id).unwrap().clone()
+      state.modules.get_imports(module_id).unwrap().clone()
     };
 
-    for module_specifier in imports {
+    for module_import in module_imports {
       let is_registered = {
         let state_rc = Self::state(self.v8_isolate());
         let state = state_rc.borrow();
-        state.modules.is_registered(&module_specifier)
+        state.modules.is_registered(&module_import.specifier)
       };
       if !is_registered {
-        load
-          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
+        load.add_import(
+          module_import.specifier.to_owned(),
+          referrer_specifier.clone(),
+          module_import.assertions.clone(),
+        );
       }
     }
 
@@ -2193,6 +2222,7 @@ pub mod tests {
         _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _import_assertions: HashMap<String, String>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()
@@ -2253,10 +2283,13 @@ pub mod tests {
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     {
       let state = state_rc.borrow();
-      let imports = state.modules.get_children(mod_a);
+      let imports = state.modules.get_imports(mod_a);
       assert_eq!(
         imports,
-        Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
+        Some(&vec![ModuleImport {
+          specifier: ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
+          assertions: HashMap::default(),
+        }])
       );
     }
     let mod_b = runtime
@@ -2264,7 +2297,7 @@ pub mod tests {
       .unwrap();
     {
       let state = state_rc.borrow();
-      let imports = state.modules.get_children(mod_b).unwrap();
+      let imports = state.modules.get_imports(mod_b).unwrap();
       assert_eq!(imports.len(), 0);
     }
 
@@ -2306,6 +2339,7 @@ pub mod tests {
         _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _import_assertions: HashMap<String, String>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         async { Err(io::Error::from(io::ErrorKind::NotFound).into()) }.boxed()
@@ -2370,6 +2404,7 @@ pub mod tests {
       _op_state: Rc<RefCell<OpState>>,
       specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
+      _import_assertions: HashMap<String, String>,
       _is_dyn_import: bool,
     ) -> Pin<Box<ModuleSourceFuture>> {
       self.load_count.fetch_add(1, Ordering::Relaxed);
@@ -2387,6 +2422,7 @@ pub mod tests {
       _load_id: ModuleLoadId,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
+      _import_assertions: HashMap<String, String>,
       _is_dyn_import: bool,
     ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
       self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
@@ -2497,6 +2533,7 @@ pub mod tests {
         _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
+        _import_assertions: HashMap<String, String>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         unreachable!()

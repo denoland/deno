@@ -12,6 +12,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -101,6 +102,7 @@ impl ModuleLoader for CliModuleLoader {
     _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    _import_assertions: HashMap<String, String>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
@@ -119,6 +121,7 @@ impl ModuleLoader for CliModuleLoader {
     _load_id: ModuleLoadId,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
+    _import_assertions: HashMap<String, String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     let specifier = specifier.clone();
