@@ -1,7 +1,0 @@
-[WILDCARD]error: Uncaught (in worker "bar") Error: foo[WILDCARD]
-    at foo ([WILDCARD])
-    at [WILDCARD]
-error: Uncaught (in promise) Error: Unhandled error event reached main worker.
-              throw new Error("Unhandled error event reached main worker.");
-                    ^
-    at Worker.#poll ([WILDCARD])

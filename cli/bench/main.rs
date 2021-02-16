@@ -55,7 +55,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "workers_startup",
-    &["run", "--allow-read", "cli/tests/workers_startup_bench.ts"],
+    &["run", "--allow-read", "cli/tests/workers/bench_startup.ts"],
     None,
   ),
   (
@@ -63,7 +63,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers_round_robin_bench.ts",
+      "cli/tests/workers/bench_round_robin.ts",
     ],
     None,
   ),

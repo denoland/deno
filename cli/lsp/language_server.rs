@@ -1946,8 +1946,8 @@ impl Inner {
           }
         }
         _ => {
-          if let Some(text) = self.sources.get_text(&specifier) {
-            Some(text)
+          if let Some(source) = self.sources.get_source(&specifier) {
+            Some(source)
           } else {
             error!("The cached sources was not found: {}", specifier);
             None
