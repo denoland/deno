@@ -36,6 +36,7 @@ fn op_main_module(
   Ok(json!(&main))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_metrics(
   state: &mut OpState,
   _args: Value,

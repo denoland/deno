@@ -55,7 +55,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "workers_startup",
-    &["run", "--allow-read", "cli/tests/workers_startup_bench.ts"],
+    &["run", "--allow-read", "cli/tests/workers/bench_startup.ts"],
     None,
   ),
   (
@@ -63,7 +63,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers_round_robin_bench.ts",
+      "cli/tests/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -297,9 +297,9 @@ fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
   let mut m = HashMap::<String, f64>::new();
 
   m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
-  m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100)?);
+  m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100));
   m.insert("10M_tcp".to_string(), throughput::tcp(deno_exe, 10)?);
-  m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10)?);
+  m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10));
 
   Ok(m)
 }

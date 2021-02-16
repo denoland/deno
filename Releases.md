@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.7.4 / 2021.02.13
+
+- feat(unstable, lsp): add deno cache code actions (#9471)
+- feat(unstable, lsp): add implementations code lens (#9441)
+- fix(cli): check for inline source maps before external ones (#9394)
+- fix(cli): fix WebSocket close (#8776)
+- fix(cli): import maps handles data URLs (#9437)
+- fix(console): log function object properties / do not log non-enumerable props
+  by default (#9363)
+- fix(lsp): handle code lenses for non-documents (#9454)
+- fix(lsp): handle type deps properly (#9436)
+- fix(lsp): prepare diagnostics when the config changes (#9438)
+- fix(lsp): properly handle static assets (#9476)
+- fix(lsp): support codeAction/resolve (#9405)
+- fix(op_crates): Don't use `Deno.inspect` in op crates (#9332)
+- fix(runtime/tls): handle invalid host for connectTls/startTls (#9453)
+- upgrade: rusty_v8 0.17.0, v8 9.0.123 (#9413)
+- upgrade: deno_doc, deno_lint, dprint, swc_ecmascript, swc_bundler (#9474)
+
+Release notes for std version 0.87.0:
+https://github.com/denoland/deno_std/releases/tag/0.87.0
+
+v1.7.3 was released but quickly removed due to bug #9484.
+
 ### 1.7.2 / 2021.02.05
 
 - feat(lsp, unstable): add references code lens (#9316)

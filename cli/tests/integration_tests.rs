@@ -5,7 +5,8 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
-use std::io::{BufRead, Write};
+use std::fs;
+use std::io::{BufRead, Read, Write};
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -207,6 +208,42 @@ mod integration {
     assert_eq!("noColor false", util::strip_ansi_codes(stdout_str));
   }
 
+  #[test]
+  fn auth_tokens() {
+    let _g = util::http_server();
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("http://127.0.0.1:4551/cli/tests/001_hello.js")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+    assert!(stdout_str.is_empty());
+    let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+    eprintln!("{}", stderr_str);
+    assert!(stderr_str.contains("Import 'http://127.0.0.1:4551/cli/tests/001_hello.js' failed: 404 Not Found"));
+
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("http://127.0.0.1:4551/cli/tests/001_hello.js")
+      .env("DENO_AUTH_TOKENS", "abcdef123456789@127.0.0.1:4551")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+    assert_eq!(util::strip_ansi_codes(stdout_str), "Hello World");
+  }
+
   #[cfg(unix)]
   #[test]
   pub fn test_raw_tty() {
@@ -336,14 +373,41 @@ mod integration {
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::root_path())
       .arg("cache")
+      .arg("-L")
+      .arg("debug")
       .arg(module_url.to_string())
       .output()
       .expect("Failed to spawn script");
     assert!(output.status.success());
-    let out = std::str::from_utf8(&output.stdout).unwrap();
-    assert_eq!(out, "");
-    // TODO(ry) Is there some way to check that the file was actually cached in
-    // DENO_DIR?
+
+    let out = std::str::from_utf8(&output.stderr).unwrap();
+    // Check if file and dependencies are written successfully
+    assert!(out.contains("host.writeFile(\"deno://subdir/print_hello.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://subdir/mod2.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://006_url_imports.js\")"));
+
+    let prg = util::deno_exe_path();
+    let output = Command::new(&prg)
+      .env("DENO_DIR", deno_dir.path())
+      .env("HTTP_PROXY", "http://nil")
+      .env("NO_COLOR", "1")
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg(module_url.to_string())
+      .output()
+      .expect("Failed to spawn script");
+
+    let str_output = std::str::from_utf8(&output.stdout).unwrap();
+
+    let module_output_path =
+      util::root_path().join("cli/tests/006_url_imports.ts.out");
+    let mut module_output = String::new();
+    let mut module_output_file = fs::File::open(module_output_path).unwrap();
+    module_output_file
+      .read_to_string(&mut module_output)
+      .unwrap();
+
+    assert_eq!(module_output, str_output);
   }
 
   #[test]
@@ -2359,13 +2423,25 @@ console.log("finish");
       .arg("--allow-net")
       .arg("--allow-read")
       .arg("--unstable")
-      .arg("workers_test.ts")
+      .arg("workers/test.ts")
       .spawn()
       .unwrap()
       .wait()
       .unwrap();
     assert!(status.success());
   }
+
+  itest!(worker_error {
+    args: "run -A workers/worker_error.ts",
+    output: "workers/worker_error.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(worker_nested_error {
+    args: "run -A workers/worker_nested_error.ts",
+    output: "workers/worker_nested_error.ts.out",
+    exit_code: 1,
+  });
 
   #[test]
   fn compiler_api() {
@@ -2614,18 +2690,6 @@ console.log("finish");
     args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
     output: "072_location_relative_fetch.ts.out",
     http_server: true,
-  });
-
-  itest!(_073_worker_error {
-    args: "run -A 073_worker_error.ts",
-    output: "073_worker_error.ts.out",
-    exit_code: 1,
-  });
-
-  itest!(_074_worker_nested_error {
-    args: "run -A 074_worker_nested_error.ts",
-    output: "074_worker_nested_error.ts.out",
-    exit_code: 1,
   });
 
   itest!(_075_import_local_query_hash {
@@ -3006,6 +3070,13 @@ console.log("finish");
     args: "run error_025_tab_indent",
     output: "error_025_tab_indent.out",
     exit_code: 1,
+  });
+
+  itest!(error_026_remote_import_error {
+    args: "run error_026_remote_import_error.ts",
+    output: "error_026_remote_import_error.ts.out",
+    exit_code: 1,
+    http_server: true,
   });
 
   itest!(error_missing_module_named_import {
