@@ -18,7 +18,11 @@
   const { getLocationHref } = window.__bootstrap.location;
 
   const { webidl } = window.__bootstrap;
-  const { createDictionaryConverter, createEnumeration } = webidl;
+  const {
+    createDictionaryConverter,
+    createEnumConverter,
+    createNullableConverter,
+  } = webidl;
 
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -947,88 +951,89 @@
 
   // Headers should be able to convert values to HeadersInit,
   // internally work with Headers directly
-  const HeadersInit = (v) => new Headers(v);
+  const headersInitConverter = (v) => new Headers(v);
 
   // https://fetch.spec.whatwg.org/#bodyinit
-  const BodyInit = () => {};
+  const bodyInitConverter = () => {};
 
   // https://w3c.github.io/webappsec-referrer-policy/#enumdef-referrerpolicy
-  const ReferrerPolicy = () => {};
+  const referrerPolicyConverter = () => {};
 
   // https://fetch.spec.whatwg.org/#requestmode
-  const RequestMode = createEnumeration(
+  const requestModeConverter = createEnumConverter(
     "RequestMode",
-    "navigate",
-    "same-origin",
-    "no-cors",
-    "cors",
+    ["navigate", "same-origin", "no-cors", "cors"],
   );
-
+  // createEnumConverter
+  // createNullableConverter,
   // https://fetch.spec.whatwg.org/#requestcredentials
-  const RequestCredentials = createEnumeration(
+  const requestCredentialsConverter = createEnumConverter(
     "RequestCredentials",
-    "omit",
-    "same-origin",
-    "include",
+    ["omit", "same-origin", "include"],
   );
 
   // https://fetch.spec.whatwg.org/#requestcache
-  const RequestCache = createEnumeration(
+  const requestCacheConverter = createEnumConverter(
     "RequestCache",
-    "default",
-    "no-store",
-    "reload",
-    "no-cache",
-    "force-cache",
-    "only-if-cached",
+    [
+      "default",
+      "no-store",
+      "reload",
+      "no-cache",
+      "force-cache",
+      "only-if-cached",
+    ],
   );
 
   // https://fetch.spec.whatwg.org/#requestredirect
-  const RequestRedirect = createEnumeration(
+  const requestRedirectConverter = createEnumConverter(
     "RequestRedirect",
-    "follow",
-    "error",
-    "manual",
+    [
+      "follow",
+      "error",
+      "manual",
+    ],
   );
 
-  const AbortSignal = () => {};
+  const abortSignalConverter = () => {};
 
+  // https://fetch.spec.whatwg.org/#requestinit
   const requestInitConverter = createDictionaryConverter("RequestInit", [
     {
       converter: webidl.converter.ByteString,
       key: "method",
     },
     {
-      converter: HeadersInit,
+      converter: headersInitConverter,
       key: "headers",
     },
     {
-      converter: BodyInit,
+      // BodyInit?
+      converter: createNullableConverter(bodyInitConverter),
       key: "body",
-      defaultValue: null,
     },
     {
       converter: webidl.converter.USVString,
       key: "referrer",
     },
     {
-      converter: ReferrerPolicy,
+      converter: referrerPolicyConverter,
       key: "referrerPolicy",
     },
     {
-      converter: RequestMode,
+      converter: requestModeConverter,
       key: "mode",
     },
     {
-      converter: RequestCredentials,
+      converter: requestCredentialsConverter,
       key: "credentials",
     },
     {
-      converter: RequestCache,
+      converter: requestCacheConverter,
       key: "cache",
     },
     {
-      converter: RequestRedirect,
+      converter: requestRedirectConverter,
       key: "redirect",
     },
     {
@@ -1040,12 +1045,13 @@
       key: "keepalive",
     },
     {
-      converter: AbortSignal,
+      // AbortSignal?
+      converter: createNullableConverter(abortSignalConverter),
       key: "signal",
-      defaultValue: null,
     },
   ]);
 
+  // https://fetch.spec.whatwg.org/#responseinit
   const responseInitConverter = createDictionaryConverter("ResponseInit", [{
     key: "status",
     defaultValue: 200,
@@ -1056,7 +1062,6 @@
     converter: webidl.converters.ByteString,
   }, {
     key: "headers",
-    // defaultValue: new Headers(),
     converter: (v) => new Headers(v),
   }]);
 
@@ -1075,8 +1080,9 @@
      * @param {RequestInit} init 
      */
     // @ts-expect-error because the use of super in this constructor is valid.
-    constructor(input, init = {}) {
+    constructor(input, init) {
       requiredArguments("Request", arguments.length, 1);
+      init ??= {};
       init = requestInitConverter(init, {
         prefix: "Failed to construct 'Request'",
       });
@@ -1409,82 +1415,71 @@
    */
   async function fetch(input, init) {
     requiredArguments("fetch", arguments.length, 1);
-    init = requestInitConverter(init, { prefix: "Failed to call 'fetch'" });
+    if (null === init) {
+      // nop
+    } else if (undefined === init) {
+      init = {};
+    } else {
+      init = requestInitConverter(init, { prefix: "Failed to call 'fetch'" });
+    }
 
-    /** @type {string | null} */
-    let url;
-    let method = null;
-    let headers = null;
-    let body;
     let clientRid = null;
     let redirected = false;
     let remRedirectCount = 20; // TODO(bartlomieju): use a better way to handle
 
-    if (typeof input === "string" || input instanceof URL) {
-      url = typeof input === "string" ? input : input.href;
-      if (init != null) {
-        method = init.method || null;
-        if (init.headers) {
-          headers = init.headers instanceof Headers
-            ? init.headers
-            : new Headers(init.headers);
+    let {
+      url,
+      method,
+      headers,
+      body,
+    } = new Request(input, init);
+
+    // ref: https://fetch.spec.whatwg.org/#body-mixin
+    // Body should have been a mixin
+    // but we are treating it as a separate class
+    if (init.body) {
+      let contentType = "";
+      if (
+        typeof init.body === "string" || init.body instanceof String ||
+        init.body instanceof URL || init.body instanceof URLSearchParams
+      ) {
+        body = new TextEncoder().encode(String(init.body));
+        if (init.body instanceof URLSearchParams) {
+          contentType = "application/x-www-form-urlencoded;charset=UTF-8";
         } else {
-          headers = null;
+          contentType = "text/plain;charset=UTF-8";
         }
-
-        // ref: https://fetch.spec.whatwg.org/#body-mixin
-        // Body should have been a mixin
-        // but we are treating it as a separate class
-        if (init.body) {
-          if (!headers) {
-            headers = new Headers();
-          }
-          let contentType = "";
-          if (typeof init.body === "string") {
-            body = new TextEncoder().encode(init.body);
-            contentType = "text/plain;charset=UTF-8";
-          } else if (isTypedArray(init.body)) {
-            body = init.body;
-          } else if (init.body instanceof ArrayBuffer) {
-            body = new Uint8Array(init.body);
-          } else if (init.body instanceof URLSearchParams) {
-            body = new TextEncoder().encode(init.body.toString());
-            contentType = "application/x-www-form-urlencoded;charset=UTF-8";
-          } else if (init.body instanceof Blob) {
-            body = init.body[_byteSequence];
-            contentType = init.body.type;
-          } else if (init.body instanceof FormData) {
-            let boundary;
-            if (headers.has("content-type")) {
-              const params = getHeaderValueParams("content-type");
-              boundary = params.get("boundary");
-            }
-            const multipartBuilder = new MultipartBuilder(
-              init.body,
-              boundary,
-            );
-            body = multipartBuilder.getBody();
-            contentType = multipartBuilder.getContentType();
-          } else if (init.body instanceof ReadableStream) {
-            body = init.body;
-          }
-          if (contentType && !headers.has("content-type")) {
-            headers.set("content-type", contentType);
-          }
+      } else if (isTypedArray(init.body)) {
+        body = init.body;
+      } else if (init.body instanceof ArrayBuffer) {
+        body = new Uint8Array(init.body);
+      } else if (init.body instanceof Blob) {
+        ({
+          [_byteSequence]: body,
+          type: contentType,
+        }) = init.body;
+      } else if (init.body instanceof FormData) {
+        let boundary;
+        if (headers.has("content-type")) {
+          const params = getHeaderValueParams("content-type");
+          boundary = params.get("boundary");
         }
-
-        if (init.client instanceof HttpClient) {
-          clientRid = init.client.rid;
-        }
+        const multipartBuilder = new MultipartBuilder(
+          init.body,
+          boundary,
+        );
+        body = multipartBuilder.getBody();
+        contentType = multipartBuilder.getContentType();
+      } else if (init.body instanceof ReadableStream) {
+        body = init.body;
       }
-    } else {
-      url = input.url;
-      method = input.method;
-      headers = input.headers;
-
-      if (input.body) {
-        body = input.body;
+      if (contentType && !headers.has("content-type")) {
+        headers.set("content-type", contentType);
       }
+    }
+
+    if (init.client instanceof HttpClient) {
+      clientRid = init.client.rid;
     }
 
     let responseBody;
