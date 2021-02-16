@@ -3505,7 +3505,7 @@ mod tests {
         subcommand: DenoSubcommand::Coverage {
           files: vec![PathBuf::from("foo.json")],
           ignore: vec![],
-          include: vec![],
+          include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|ts)$".to_string()],
           lcov: false,
         },
