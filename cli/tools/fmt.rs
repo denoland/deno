@@ -75,7 +75,14 @@ fn format_markdown(
       let tag = tag.to_lowercase();
       if matches!(
         tag.as_str(),
-        "ts" | "tsx" | "js" | "jsx" | "javascript" | "typescript"
+        "ts"
+          | "tsx"
+          | "js"
+          | "jsx"
+          | "javascript"
+          | "typescript"
+          | "json"
+          | "jsonc"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -84,16 +91,22 @@ fn format_markdown(
           "typescript" => "ts",
           rest => rest,
         };
-        let fake_filename =
-          PathBuf::from(format!("deno_fmt_stdin.{}", extension));
 
-        let mut codeblock_config = ts_config.clone();
-        codeblock_config.line_width = line_width;
-        dprint_plugin_typescript::format_text(
-          &fake_filename,
-          &text,
-          &codeblock_config,
-        )
+        if matches!(extension, "json" | "jsonc") {
+          let mut json_config = get_json_config();
+          json_config.line_width = line_width;
+          dprint_plugin_json::format_text(&text, &json_config)
+        } else {
+          let fake_filename =
+            PathBuf::from(format!("deno_fmt_stdin.{}", extension));
+          let mut codeblock_config = ts_config.clone();
+          codeblock_config.line_width = line_width;
+          dprint_plugin_typescript::format_text(
+            &fake_filename,
+            &text,
+            &codeblock_config,
+          )
+        }
       } else {
         Ok(text.to_string())
       }
