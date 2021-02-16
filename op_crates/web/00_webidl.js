@@ -662,25 +662,7 @@
     };
   }
 
-  function createEnumeration(name, ...values) {
-    const E = new Set(values);
-
-    return function (V, opts = {}) {
-      const S = String(V);
-
-      if (false === E.has(V)) {
-        throw makeException(
-          TypeError,
-          `The provided value '${V}' is not a valid enum value of type ${name}.`,
-          opts,
-        );
-      } else {
-        return V;
-      }
-    };
-  }
-
-  window.__bootstrap ??= {};
+  window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.webidl = {
     converters,
     requiredArguments,
