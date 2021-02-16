@@ -87,16 +87,6 @@ pub struct FetchOnceArgs {
   pub maybe_auth_token: Option<AuthToken>,
 }
 
-impl Default for FetchOnceArgs {
-  fn default() -> Self {
-    let url = Url::parse("http://deno.land").unwrap();
-    Self {
-      url,
-      ..Default::default()
-    }
-  }
-}
-
 /// Asynchronously fetches the given HTTP URL one pass only.
 /// If no redirect is present and no error occurs,
 /// yields Code(ResultPayload).
@@ -162,7 +152,7 @@ pub async fn fetch_once(
   {
     let err = generic_error(format!(
       "Import '{}' failed: {}",
-      &args.url,
+      args.url,
       response.status()
     ));
     return Err(err);
@@ -193,7 +183,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -218,7 +209,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -242,7 +234,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client: client.clone(),
       url: url.clone(),
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -261,7 +254,7 @@ mod tests {
       client,
       url,
       maybe_etag: Some("33a64df551425fcc55e".to_string()),
-      ..Default::default()
+      maybe_auth_token: None,
     })
     .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
@@ -279,7 +272,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -309,7 +303,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
@@ -380,7 +375,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -417,7 +413,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -453,7 +450,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client: client.clone(),
       url: url.clone(),
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -473,7 +471,7 @@ mod tests {
       client,
       url,
       maybe_etag: Some("33a64df551425fcc55e".to_string()),
-      ..Default::default()
+      maybe_auth_token: None,
     })
     .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
@@ -503,7 +501,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
@@ -529,7 +528,8 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
-      ..Default::default()
+      maybe_etag: None,
+      maybe_auth_token: None,
     })
     .await;
     assert!(result.is_err());
