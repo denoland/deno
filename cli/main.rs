@@ -313,7 +313,7 @@ async fn compile_command(
     tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let program_state = ProgramState::new(flags.clone()).await?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let deno_dir = &program_state.dir;
 
   let output = output.or_else(|| {
@@ -367,7 +367,7 @@ async fn info_command(
   if json && !flags.unstable {
     exit_unstable("--json");
   }
-  let program_state = ProgramState::new(flags).await?;
+  let program_state = ProgramState::build(flags).await?;
   if let Some(specifier) = maybe_specifier {
     let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
     let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
@@ -409,7 +409,7 @@ async fn install_command(
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
   let permissions = Permissions::from_options(&preload_flags.clone().into());
-  let program_state = ProgramState::new(preload_flags).await?;
+  let program_state = ProgramState::build(preload_flags).await?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
@@ -450,7 +450,7 @@ async fn cache_command(
   } else {
     module_graph::TypeLib::DenoWindow
   };
-  let program_state = ProgramState::new(flags).await?;
+  let program_state = ProgramState::build(flags).await?;
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
@@ -478,7 +478,7 @@ async fn eval_command(
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let program_state = ProgramState::new(flags).await?;
+  let program_state = ProgramState::build(flags).await?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
   let main_module_url = main_module.as_url().to_owned();
@@ -596,7 +596,7 @@ async fn bundle_command(
         ModuleSpecifier::resolve_url_or_path(&source_file1)?;
 
       debug!(">>>>> bundle START");
-      let program_state = ProgramState::new(flags.clone()).await?;
+      let program_state = ProgramState::build(flags.clone()).await?;
 
       info!(
         "{} {}",
@@ -742,7 +742,7 @@ async fn doc_command(
   maybe_filter: Option<String>,
   private: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone()).await?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   let loader = Box::new(DocLoader {
@@ -822,7 +822,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let program_state = ProgramState::new(flags).await?;
+  let program_state = ProgramState::build(flags).await?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
@@ -831,7 +831,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone()).await?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
@@ -871,7 +871,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     let flags = flags.clone();
     async move {
       let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
-      let program_state = ProgramState::new(flags).await?;
+      let program_state = ProgramState::build(flags).await?;
       let handler = Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         Permissions::allow_all(),
@@ -916,7 +916,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     let permissions = Permissions::from_options(&flags.clone().into());
     async move {
       let main_module = main_module.clone();
-      let program_state = ProgramState::new(flags).await?;
+      let program_state = ProgramState::build(flags).await?;
       let mut worker =
         create_main_worker(&program_state, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
@@ -948,7 +948,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   }
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let program_state = ProgramState::new(flags.clone()).await?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
@@ -989,7 +989,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone()).await?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);

@@ -56,7 +56,7 @@ pub struct ProgramState {
 }
 
 impl ProgramState {
-  pub async fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+  pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
