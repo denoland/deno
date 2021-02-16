@@ -205,7 +205,7 @@ declare namespace globalThis {
       declare interface DictionaryMember {
         key: string;
         converter: (v: any, opts: ValueConverterOpts) => any;
-        defaultValue?: boolean;
+        defaultValue?: any;
         required?: boolean;
       }
 

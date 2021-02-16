@@ -1,7 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// @ts-check
+/// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../web/internal.d.ts" />
+
 ((window) => {
   const core = window.Deno.core;
+  const webidl = window.__bootstrap.webidl;
 
   const ridSymbol = Symbol("rid");
 
@@ -49,8 +54,185 @@
     }
   }
 
+  const wgpuEnums = {
+    GPUPowerPreference: webidl.createEnumConverter("GPUPowerPreference", [
+      "low-power",
+      "high-performance",
+    ]),
+    GPUTextureDimension: webidl.createEnumConverter("GPUTextureDimension", [
+      "1d",
+      "2d",
+      "3d",
+    ]),
+    GPUTextureFormat: webidl.createEnumConverter("GPUTextureFormat", [
+      // 8-bit formats
+      "r8unorm",
+      "r8snorm",
+      "r8uint",
+      "r8sint",
+
+      // 16-bit formats
+      "r16uint",
+      "r16sint",
+      "r16float",
+      "rg8unorm",
+      "rg8snorm",
+      "rg8uint",
+      "rg8sint",
+
+      // 32-bit formats
+      "r32uint",
+      "r32sint",
+      "r32float",
+      "rg16uint",
+      "rg16sint",
+      "rg16float",
+      "rgba8unorm",
+      "rgba8unorm-srgb",
+      "rgba8snorm",
+      "rgba8uint",
+      "rgba8sint",
+      "bgra8unorm",
+      "bgra8unorm-srgb",
+      // Packed 32-bit formats
+      "rgb9e5ufloat",
+      "rgb10a2unorm",
+      "rg11b10ufloat",
+
+      // 64-bit formats
+      "rg32uint",
+      "rg32sint",
+      "rg32float",
+      "rgba16uint",
+      "rgba16sint",
+      "rgba16float",
+
+      // 128-bit formats
+      "rgba32uint",
+      "rgba32sint",
+      "rgba32float",
+
+      // Depth and stencil formats
+      "stencil8",
+      "depth16unorm",
+      "depth24plus",
+      "depth24plus-stencil8",
+      "depth32float",
+
+      // BC compressed formats usable if "texture-compression-bc" is both
+      // supported by the device/user agent and enabled in requestDevice.
+      "bc1-rgba-unorm",
+      "bc1-rgba-unorm-srgb",
+      "bc2-rgba-unorm",
+      "bc2-rgba-unorm-srgb",
+      "bc3-rgba-unorm",
+      "bc3-rgba-unorm-srgb",
+      "bc4-r-unorm",
+      "bc4-r-snorm",
+      "bc5-rg-unorm",
+      "bc5-rg-snorm",
+      "bc6h-rgb-ufloat",
+      "bc6h-rgb-float",
+      "bc7-rgba-unorm",
+      "bc7-rgba-unorm-srgb",
+
+      // "depth24unorm-stencil8" feature
+      "depth24unorm-stencil8",
+
+      // "depth32float-stencil8" feature
+      "depth32float-stencil8",
+    ]),
+  };
+  const wgpuTypedefs = {
+    GPUSize64: (v, opts) =>
+      webidl.converters["unsigned long long"](v, {
+        ...opts,
+        enforceRange: true,
+      }),
+    GPUSize32: (v, opts) =>
+      webidl.converters["unsigned long"](v, {
+        ...opts,
+        enforceRange: true,
+      }),
+    GPUBufferUsageFlags: (v, opts) =>
+      webidl.converters["unsigned long"](v, {
+        ...opts,
+        enforceRange: true,
+      }),
+    GPUIntegerCoordinate: (v, opts) =>
+      webidl.converters["unsigned long"](v, {
+        ...opts,
+        enforceRange: true,
+      }),
+    GPUTextureUsageFlags: (v, opts) =>
+      webidl.converters["unsigned long"](v, {
+        ...opts,
+        enforceRange: true,
+      }),
+    // TODO(lucacasonato): fixme when we implement WebIDL union and sequence
+    GPUExtent3D: webidl.converters.any,
+  };
+  const wgpuDicts = {
+    GPURequestAdapterOptions: webidl.createDictionaryConverter(
+      "GPURequestAdapterOptions",
+      [{ converter: wgpuEnums.GPUPowerPreference, key: "powerPreference" }],
+    ),
+    GPUBufferDescriptor: webidl.createDictionaryConverter(
+      "GPUBufferDescriptor",
+      [
+        { key: "size", converter: wgpuTypedefs.GPUSize64, required: true },
+        {
+          key: "usage",
+          converter: wgpuTypedefs.GPUBufferUsageFlags,
+          required: true,
+        },
+        {
+          key: "mappedAtCreation",
+          converter: webidl.converters.boolean,
+          defaultValue: false,
+        },
+      ],
+    ),
+    GPUTextureDescriptor: webidl.createDictionaryConverter(
+      "GPUTextureDescriptor",
+      [
+        { key: "size", converter: webidl.converters.any, required: true },
+        {
+          key: "mipLevelCount",
+          converter: wgpuTypedefs.GPUIntegerCoordinate,
+          defaultValue: 1,
+        },
+        {
+          key: "sampleCount",
+          converter: wgpuTypedefs.GPUSize64,
+          defaultValue: 1,
+        },
+        {
+          key: "dimension",
+          converter: wgpuEnums.GPUTextureDimension,
+          defaultValue: "2d",
+        },
+        {
+          key: "format",
+          converter: wgpuEnums.GPUTextureFormat,
+          required: true,
+        },
+        {
+          key: "usage",
+          converter: wgpuTypedefs.GPUTextureUsageFlags,
+          required: true,
+        },
+      ],
+    ),
+  };
+
   const gpu = {
     async requestAdapter(options = {}) {
+      options = wgpuDicts.GPURequestAdapterOptions(options, {
+        prefix: "Failed to execute 'requestAdapter' on 'GPU'",
+        context: "Argument 1",
+      });
+
       const { error, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_adapter",
         {
@@ -144,6 +326,10 @@
     }
 
     createBuffer(descriptor) {
+      descriptor = wgpuDicts.GPUBufferDescriptor(descriptor, {
+        prefix: "Failed to execute 'createBuffer' on 'GPUDevice'",
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
         deviceRid: this.#rid,
         ...descriptor,
@@ -160,6 +346,10 @@
     }
 
     createTexture(descriptor) {
+      descriptor = wgpuDicts.GPUTextureDescriptor(descriptor, {
+        prefix: "Failed to execute 'createTexture' on 'GPUDevice'",
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_create_texture", {
         deviceRid: this.#rid,
         ...descriptor,

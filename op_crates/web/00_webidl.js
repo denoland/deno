@@ -14,7 +14,7 @@
     return new ErrorType(
       `${opts.prefix ? opts.prefix + ": " : ""}${
         opts.context ? opts.context : "Value"
-      } ${message}.`,
+      } ${message}`,
     );
   }
 
@@ -637,13 +637,15 @@
             esMemberValue = esDict[key];
           }
 
+          const context = `'${key}' of '${name}'${
+            opts.context ? ` (${opts.context})` : ""
+          }`;
+
           if (esMemberValue !== undefined) {
             const converter = member.converter;
             const idlMemberValue = converter(esMemberValue, {
               ...opts,
-              context: `${key} of '${name}'${
-                opts.context ? `(${opts.context})` : ""
-              }`,
+              context,
             });
             idlDict[key] = idlMemberValue;
           } else if ("defaultValue" in member) {
@@ -651,8 +653,10 @@
             const idlMemberValue = defaultValue;
             idlDict[key] = idlMemberValue;
           } else if (member.required) {
-            throw new TypeError(
-              `can not be converted to '${name}' because ${key} is required in '${name}'.`,
+            throw makeException(
+              TypeError,
+              `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
+              { ...opts },
             );
           }
         }
@@ -670,10 +674,10 @@
       const S = String(V);
 
       if (!E.has(S)) {
-        throw makeException(
-          TypeError,
-          `The provided value '${V}' is not a valid enum value of type ${name}.`,
-          opts,
+        throw new TypeError(
+          `${
+            opts.prefix ? opts.prefix + ": " : ""
+          }The provided value '${S}' is not a valid enum value of type ${name}.`,
         );
       }
 
