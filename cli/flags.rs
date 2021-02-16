@@ -1117,6 +1117,10 @@ Include urls that start with the file schema:
 Exclude urls ending with test.ts and test.js:
   deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
+Include urls that start with the file schema and exclude files ending with test.ts and test.js, for
+an url to match it must match the include pattern and not match the exclude pattern:
+  deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
+
 Write a report using the lcov format:
   deno coverage --lcov cov_profile > cov.lcov
 
