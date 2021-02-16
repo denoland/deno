@@ -1066,7 +1066,7 @@
     converter: converters.ByteString,
   }, {
     key: "headers",
-    converter: (v) => new Headers(v),
+    converter: headersInitConverter,
   }]);
 
   class Request extends Body {
@@ -1415,15 +1415,9 @@
    * @param {RequestInit & {client: Deno.HttpClient}} [init] 
    * @returns {Promise<Response>}
    */
-  async function fetch(input, init) {
+  async function fetch(input, init = {}) {
     requiredArguments("fetch", arguments.length, 1);
-    if (null === init) {
-      // nop
-    } else if (undefined === init) {
-      init = {};
-    } else {
-      init = requestInitConverter(init, { prefix: "Failed to call 'fetch'" });
-    }
+    init = requestInitConverter(init, { prefix: "Failed to execute 'fetch'" });
 
     let clientRid = null;
     let redirected = false;
