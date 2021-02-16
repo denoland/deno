@@ -1112,10 +1112,10 @@ Print a report to stdout:
   deno coverage cov_profile
 
 Include urls that start with the file schema:
-  deno coverage --include="^file:" cov_profile
+  deno coverage --include=\"^file:\" cov_profile
 
 Exclude urls ending with test.ts and test.js:
-  deno coverage --exclude="test\.(ts|js)" cov_profile
+  deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
 Write a report using the lcov format:
   deno coverage --lcov cov_profile > cov.lcov
@@ -1136,7 +1136,7 @@ Generate html reports from lcov:
       Arg::with_name("include")
         .long("include")
         .takes_value(true)
-        .use_delimiter(true)
+        .multiple(true)
         .require_equals(true)
         .default_value(r"^file:")
         .help("Include source files in the report"),
@@ -1145,7 +1145,7 @@ Generate html reports from lcov:
       Arg::with_name("exclude")
         .long("exclude")
         .takes_value(true)
-        .use_delimiter(true)
+        .multiple(true)
         .require_equals(true)
         .default_value(r"test\.(js|ts)$")
         .help("Exclude source files from the report"),
