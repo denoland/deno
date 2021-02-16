@@ -949,7 +949,7 @@
     return m;
   }
 
-  // FIXME: "referrer", "referrerPolicy", "mode", "cache", "signal" are all un-used in current fetch implementation
+  // FIXME: "referrer", "referrerPolicy", "mode", "cache", "signal", and "cancelable" are all un-used in current implementation
 
   // Headers should be able to convert values to HeadersInit,
   // internally work with Headers directly
@@ -1056,18 +1056,22 @@
   ]);
 
   // https://fetch.spec.whatwg.org/#responseinit
-  const responseInitConverter = createDictionaryConverter("ResponseInit", [{
-    key: "status",
-    defaultValue: 200,
-    converter: converters["unsigned short"],
-  }, {
-    key: "cancelable",
-    defaultValue: "",
-    converter: converters.ByteString,
-  }, {
-    key: "headers",
-    converter: headersInitConverter,
-  }]);
+  const responseInitConverter = createDictionaryConverter("ResponseInit", [
+    {
+      key: "status",
+      defaultValue: 200,
+      converter: converters["unsigned short"],
+    },
+    /*{
+      key: "cancelable",
+      defaultValue: "",
+      converter: converters.ByteString,
+    }*/
+    {
+      key: "headers",
+      converter: headersInitConverter,
+    },
+  ]);
 
   class Request extends Body {
     /** @type {string} */
@@ -1453,7 +1457,7 @@
         ({
           [_byteSequence]: body,
           type: contentType,
-        }) = init.body;
+        } = init.body);
       } else if (init.body instanceof FormData) {
         let boundary;
         if (headers.has("content-type")) {
