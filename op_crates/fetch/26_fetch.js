@@ -17,12 +17,12 @@
   const { URLSearchParams } = window.__bootstrap.url;
   const { getLocationHref } = window.__bootstrap.location;
 
-  const { webidl } = window.__bootstrap;
   const {
     createDictionaryConverter,
     createEnumConverter,
     createNullableConverter,
-  } = webidl;
+    converters,
+  } = window.__bootstrap.webidl;
 
   const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
@@ -949,6 +949,8 @@
     return m;
   }
 
+  // FIXME: "referrer", "referrerPolicy", "mode", "cache", "signal" are all un-used in current fetch implementation
+
   // Headers should be able to convert values to HeadersInit,
   // internally work with Headers directly
   const headersInitConverter = (v) => new Headers(v);
@@ -956,16 +958,19 @@
   // https://fetch.spec.whatwg.org/#bodyinit
   const bodyInitConverter = () => {};
 
+  const todo = () => {
+    throw new Error("todo!");
+  };
+
   // https://w3c.github.io/webappsec-referrer-policy/#enumdef-referrerpolicy
-  const referrerPolicyConverter = () => {};
+  const referrerPolicyConverter = todo;
 
   // https://fetch.spec.whatwg.org/#requestmode
   const requestModeConverter = createEnumConverter(
     "RequestMode",
     ["navigate", "same-origin", "no-cors", "cors"],
   );
-  // createEnumConverter
-  // createNullableConverter,
+
   // https://fetch.spec.whatwg.org/#requestcredentials
   const requestCredentialsConverter = createEnumConverter(
     "RequestCredentials",
@@ -995,12 +1000,13 @@
     ],
   );
 
-  const abortSignalConverter = () => {};
+  // https://dom.spec.whatwg.org/#abortsignal
+  const abortSignalConverter = todo;
 
   // https://fetch.spec.whatwg.org/#requestinit
   const requestInitConverter = createDictionaryConverter("RequestInit", [
     {
-      converter: webidl.converter.ByteString,
+      converter: converters.ByteString,
       key: "method",
     },
     {
@@ -1008,58 +1014,56 @@
       key: "headers",
     },
     {
-      // BodyInit?
       converter: createNullableConverter(bodyInitConverter),
       key: "body",
     },
-    {
-      converter: webidl.converter.USVString,
+    /*{
+      converter: converters.USVString,
       key: "referrer",
-    },
-    {
+    }*/
+    /*{
       converter: referrerPolicyConverter,
       key: "referrerPolicy",
-    },
-    {
+    }*/
+    /*{
       converter: requestModeConverter,
       key: "mode",
-    },
+    }*/
     {
       converter: requestCredentialsConverter,
       key: "credentials",
     },
-    {
+    /*{
       converter: requestCacheConverter,
       key: "cache",
-    },
+    }*/
     {
       converter: requestRedirectConverter,
       key: "redirect",
     },
-    {
-      converter: webidl.converter.DOMString,
+    /*{
+      converter: converters.DOMString,
       key: "integrity",
-    },
-    {
-      converter: webidl.converter.boolean,
+    }*/
+    /*{
+      converter: converters.boolean,
       key: "keepalive",
-    },
-    {
-      // AbortSignal?
+    }*/
+    /*{
       converter: createNullableConverter(abortSignalConverter),
       key: "signal",
-    },
+	}*/
   ]);
 
   // https://fetch.spec.whatwg.org/#responseinit
   const responseInitConverter = createDictionaryConverter("ResponseInit", [{
     key: "status",
     defaultValue: 200,
-    converter: webidl.converters["unsigned short"],
+    converter: converters["unsigned short"],
   }, {
     key: "cancelable",
     defaultValue: "",
-    converter: webidl.converters.ByteString,
+    converter: converters.ByteString,
   }, {
     key: "headers",
     converter: (v) => new Headers(v),
@@ -1080,9 +1084,8 @@
      * @param {RequestInit} init 
      */
     // @ts-expect-error because the use of super in this constructor is valid.
-    constructor(input, init) {
+    constructor(input, init = {}) {
       requiredArguments("Request", arguments.length, 1);
-      init ??= {};
       init = requestInitConverter(init, {
         prefix: "Failed to construct 'Request'",
       });
@@ -1148,8 +1151,7 @@
       if (
         init &&
         "credentials" in init &&
-        init.credentials &&
-        ["omit", "same-origin", "include"].includes(init.credentials)
+        init.credentials
       ) {
         this.credentials = init.credentials;
       }
