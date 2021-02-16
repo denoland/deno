@@ -435,9 +435,7 @@ fn eval_context(
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
@@ -558,9 +556,7 @@ fn encode(
   let text = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
@@ -591,9 +587,7 @@ fn decode(
   let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
     Ok(view) => view,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
@@ -675,9 +669,7 @@ fn serialize(
       rv.set(buf.into());
     }
     _ => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
     }
   }
 }
@@ -690,9 +682,7 @@ fn deserialize(
   let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
     Ok(view) => view,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
@@ -729,9 +719,7 @@ fn queue_microtask(
   match v8::Local::<v8::Function>::try_from(args.get(0)) {
     Ok(f) => scope.enqueue_microtask(f),
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
     }
   };
 }
@@ -821,9 +809,7 @@ fn get_promise_details(
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
