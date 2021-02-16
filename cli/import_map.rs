@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
@@ -10,8 +9,6 @@ use indexmap::IndexMap;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
-use std::fs;
-use std::io;
 
 #[derive(Debug)]
 pub struct ImportMapError {
@@ -49,30 +46,6 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn load(file_path: &str) -> Result<Self, AnyError> {
-    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
-    let resolved_path = std::env::current_dir().unwrap().join(file_path);
-    debug!(
-      "Attempt to load import map: {}",
-      resolved_path.to_str().unwrap()
-    );
-
-    // Load the contents of import map
-    let json_string = fs::read_to_string(&resolved_path).map_err(|err| {
-      io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!(
-          "Error retrieving import map file at \"{}\": {}",
-          resolved_path.to_str().unwrap(),
-          err.to_string()
-        )
-        .as_str(),
-      )
-    })?;
-    // The URL of the import map is the base URL for its values.
-    ImportMap::from_json(&file_url, &json_string).map_err(AnyError::from)
-  }
-
   pub fn from_json(
     base_url: &str,
     json_string: &str,
@@ -475,12 +448,6 @@ impl ImportMap {
 mod tests {
   use super::*;
   use deno_core::serde_json::json;
-
-  #[test]
-  fn load_nonexistent() {
-    let file_path = "nonexistent_import_map.json";
-    assert!(ImportMap::load(file_path).is_err());
-  }
 
   #[test]
   fn from_json_1() {

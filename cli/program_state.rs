@@ -56,7 +56,7 @@ pub struct ProgramState {
 }
 
 impl ProgramState {
-  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+  pub async fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -94,11 +94,20 @@ impl ProgramState {
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => {
+        Some(import_map_url) => {
           if !flags.unstable {
             exit_unstable("--import-map")
           }
-          Some(ImportMap::load(file_path)?)
+          let import_map_specifier =
+            ModuleSpecifier::resolve_url_or_path(&import_map_url).context(
+              format!("Bad URL (\"{}\") for import map.", import_map_url),
+            )?;
+          let file = file_fetcher
+            .fetch(&import_map_specifier, &Permissions::allow_all())
+            .await?;
+          let import_map =
+            ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
+          Some(import_map)
         }
       };
 
@@ -276,18 +285,6 @@ impl ProgramState {
       None
     }
   }
-
-  #[cfg(test)]
-  pub fn mock(
-    argv: Vec<String>,
-    maybe_flags: Option<flags::Flags>,
-  ) -> Arc<ProgramState> {
-    ProgramState::new(flags::Flags {
-      argv,
-      ..maybe_flags.unwrap_or_default()
-    })
-    .unwrap()
-  }
 }
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
@@ -344,16 +341,5 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
     }
   } else {
     None
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn thread_safe() {
-    fn f<S: Send + Sync>(_: S) {}
-    f(ProgramState::mock(vec![], None));
   }
 }
