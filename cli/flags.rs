@@ -1109,13 +1109,19 @@ fn coverage_subcommand<'a, 'b>() -> App<'a, 'b> {
       "Print coverage reports from coverage profiles.
 
 Print a report to stdout:
-  deno coverage coverage_profile
+  deno coverage cov_profile
+
+Include urls that start with the file schema:
+  deno coverage --include="^file:" cov_profile
+
+Exclude urls ending with test.ts and test.js:
+  deno coverage --exclude="test\.(ts|js)" cov_profile
 
 Write a report using the lcov format:
-  deno coverage --lcov coverage_profile > coverage.lcov
+  deno coverage --lcov cov_profile > cov.lcov
 
 Generate html reports from lcov:
-  genhtml -o html_coverage coverage.lcov
+  genhtml -o html_cov cov.lcov
 ",
     )
     .arg(
