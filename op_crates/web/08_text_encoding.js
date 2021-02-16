@@ -126,7 +126,7 @@
 
   function btoa(s) {
     s = webidl.converters.DOMString(s, {
-      prefix: "Failed to execute 'bota'",
+      prefix: "Failed to execute 'btoa'",
       context: "Argument 1",
     });
     const byteArray = [];
