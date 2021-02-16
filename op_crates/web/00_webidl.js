@@ -667,6 +667,5 @@
     converters,
     requiredArguments,
     createDictionaryConverter,
-    createEnumeration
   };
 })(this);
