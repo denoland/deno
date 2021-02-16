@@ -35,6 +35,8 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 enum RuntimeBundleType {
   #[serde(rename = "esm")]
   Esm,
+  #[serde(rename = "iife")]
+  Iife,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,7 +108,8 @@ async fn op_emit(
     })?;
   let bundle_type = match args.bundle {
     Some(RuntimeBundleType::Esm) => BundleType::Esm,
-    _ => BundleType::None,
+    Some(RuntimeBundleType::Iife) => BundleType::Iife,
+    None => BundleType::None,
   };
   let graph = builder.get_graph();
   let debug = program_state.flags.log_level == Some(log::Level::Debug);

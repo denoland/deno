@@ -555,6 +555,45 @@ delete Object.prototype.__proto__;
         );
         return respond(id, sourceFile && sourceFile.text);
       }
+      case "getCodeFixes": {
+        return respond(
+          id,
+          languageService.getCodeFixesAtPosition(
+            request.specifier,
+            request.startPosition,
+            request.endPosition,
+            request.errorCodes.map((v) => Number(v)),
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Block,
+              semicolons: ts.SemicolonPreference.Insert,
+            },
+            {
+              quotePreference: "double",
+            },
+          ),
+        );
+      }
+      case "getCombinedCodeFix": {
+        return respond(
+          id,
+          languageService.getCombinedCodeFix(
+            {
+              type: "file",
+              fileName: request.specifier,
+            },
+            request.fixId,
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Block,
+              semicolons: ts.SemicolonPreference.Insert,
+            },
+            {
+              quotePreference: "double",
+            },
+          ),
+        );
+      }
       case "getCompletions": {
         return respond(
           id,
@@ -646,6 +685,12 @@ delete Object.prototype.__proto__;
             request.position,
             request.options,
           ),
+        );
+      }
+      case "getSupportedCodeFixes": {
+        return respond(
+          id,
+          ts.getSupportedCodeFixes(),
         );
       }
       default:

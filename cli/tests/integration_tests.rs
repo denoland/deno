@@ -5,7 +5,8 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
-use std::io::{BufRead, Write};
+use std::fs;
+use std::io::{BufRead, Read, Write};
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -336,14 +337,41 @@ mod integration {
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::root_path())
       .arg("cache")
+      .arg("-L")
+      .arg("debug")
       .arg(module_url.to_string())
       .output()
       .expect("Failed to spawn script");
     assert!(output.status.success());
-    let out = std::str::from_utf8(&output.stdout).unwrap();
-    assert_eq!(out, "");
-    // TODO(ry) Is there some way to check that the file was actually cached in
-    // DENO_DIR?
+
+    let out = std::str::from_utf8(&output.stderr).unwrap();
+    // Check if file and dependencies are written successfully
+    assert!(out.contains("host.writeFile(\"deno://subdir/print_hello.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://subdir/mod2.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://006_url_imports.js\")"));
+
+    let prg = util::deno_exe_path();
+    let output = Command::new(&prg)
+      .env("DENO_DIR", deno_dir.path())
+      .env("HTTP_PROXY", "http://nil")
+      .env("NO_COLOR", "1")
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg(module_url.to_string())
+      .output()
+      .expect("Failed to spawn script");
+
+    let str_output = std::str::from_utf8(&output.stdout).unwrap();
+
+    let module_output_path =
+      util::root_path().join("cli/tests/006_url_imports.ts.out");
+    let mut module_output = String::new();
+    let mut module_output_file = fs::File::open(module_output_path).unwrap();
+    module_output_file
+      .read_to_string(&mut module_output)
+      .unwrap();
+
+    assert_eq!(module_output, str_output);
   }
 
   #[test]
@@ -1751,6 +1779,31 @@ mod integration {
       }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn pty_complete_symbol() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b"Deno.internal\t\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
+
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
+
+        assert!(output.contains("Symbol(Deno.internal)"));
+
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
+
     #[test]
     fn console_log() {
       let (out, err) = util::run_and_collect_output(
@@ -2316,13 +2369,25 @@ console.log("finish");
       .arg("--allow-net")
       .arg("--allow-read")
       .arg("--unstable")
-      .arg("workers_test.ts")
+      .arg("workers/test.ts")
       .spawn()
       .unwrap()
       .wait()
       .unwrap();
     assert!(status.success());
   }
+
+  itest!(worker_error {
+    args: "run -A workers/worker_error.ts",
+    output: "workers/worker_error.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(worker_nested_error {
+    args: "run -A workers/worker_nested_error.ts",
+    output: "workers/worker_nested_error.ts.out",
+    exit_code: 1,
+  });
 
   #[test]
   fn compiler_api() {
@@ -2573,18 +2638,6 @@ console.log("finish");
     http_server: true,
   });
 
-  itest!(_073_worker_error {
-    args: "run -A 073_worker_error.ts",
-    output: "073_worker_error.ts.out",
-    exit_code: 1,
-  });
-
-  itest!(_074_worker_nested_error {
-    args: "run -A 074_worker_nested_error.ts",
-    output: "074_worker_nested_error.ts.out",
-    exit_code: 1,
-  });
-
   itest!(_075_import_local_query_hash {
     args: "run 075_import_local_query_hash.ts",
     output: "075_import_local_query_hash.ts.out",
@@ -2629,6 +2682,40 @@ console.log("finish");
     args: "run 082_prepare_stack_trace_throw.js",
     output: "082_prepare_stack_trace_throw.js.out",
     exit_code: 1,
+  });
+
+  #[test]
+  fn _083_legacy_external_source_map() {
+    let _g = util::http_server();
+    let deno_dir = TempDir::new().expect("tempdir fail");
+    let module_url = url::Url::parse(
+      "http://localhost:4545/cli/tests/083_legacy_external_source_map.ts",
+    )
+    .unwrap();
+    // Write a faulty old external source map.
+    let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
+    std::fs::create_dir_all(faulty_map_path.parent().unwrap())
+      .expect("Failed to create faulty source map dir.");
+    std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/cli/tests/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+    let output = Command::new(util::deno_exe_path())
+      .env("DENO_DIR", deno_dir.path())
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg(module_url.to_string())
+      .output()
+      .expect("Failed to spawn script");
+    // Before https://github.com/denoland/deno/issues/6965 was fixed, the faulty
+    // old external source map would cause a panic while formatting the error
+    // and the exit code would be 101. The external source map should be ignored
+    // in favor of the inline one.
+    assert_eq!(output.status.code(), Some(1));
+    let out = std::str::from_utf8(&output.stdout).unwrap();
+    assert_eq!(out, "");
+  }
+
+  itest!(_084_worker_custom_inspect {
+    args: "run --allow-read 084_worker_custom_inspect.ts",
+    output: "084_worker_custom_inspect.ts.out",
   });
 
   itest!(js_import_detect {
@@ -2700,6 +2787,11 @@ console.log("finish");
   itest!(bundle {
     args: "bundle subdir/mod1.ts",
     output: "bundle.test.out",
+  });
+
+  itest!(bundle_jsx {
+    args: "bundle jsx_import_from_ts.ts",
+    output: "bundle_jsx.out",
   });
 
   itest!(fmt_check_tests_dir {
@@ -2918,6 +3010,13 @@ console.log("finish");
     args: "run error_025_tab_indent",
     output: "error_025_tab_indent.out",
     exit_code: 1,
+  });
+
+  itest!(error_026_remote_import_error {
+    args: "run error_026_remote_import_error.ts",
+    output: "error_026_remote_import_error.ts.out",
+    exit_code: 1,
+    http_server: true,
   });
 
   itest!(error_missing_module_named_import {
@@ -3516,6 +3615,11 @@ console.log("finish");
     args: "run --quiet --reload import_data_url_import_relative.ts",
     output: "import_data_url_import_relative.ts.out",
     exit_code: 1,
+  });
+
+  itest!(import_data_url_import_map {
+    args: "run --quiet --reload --unstable --import-map import_maps/import_map.json import_data_url.ts",
+    output: "import_data_url.ts.out",
   });
 
   itest!(import_data_url_imports {

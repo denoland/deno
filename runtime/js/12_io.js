@@ -3,6 +3,7 @@
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
+"use strict";
 
 ((window) => {
   const DEFAULT_BUFFER_SIZE = 32 * 1024;
