@@ -63,7 +63,7 @@ jobs:
         with:
           use-cross: false
           command: build
-          args: --locked --all-targets ${{ matrix.kind == 'release' && '--release -vv' }}
+          args: --locked --all-targets ${{ matrix.kind == 'release' && '--release -vv' || '' }}
 
       - name: Prep linux release
         if: matrix.kind == 'release' && runner.os == 'Linux'
@@ -218,7 +218,7 @@ jobs:
         with:
           use-cross: false
           command: build
-          args: --locked --all-targets ${{ matrix.kind == 'release' && '--release -vv' }}
+          args: --locked --all-targets ${{ matrix.kind == 'release' && '--release -vv' || '' }}
 
       - name: Test release
         if: matrix.kind == 'release'
@@ -243,7 +243,7 @@ jobs:
       - name: Run web platform tests (${{ matrix.kind }})
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet ${{ matrix.kind == 'release' && '--release' }}
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet ${{ matrix.kind == 'release' && '--release' || '' }}
 
   lint:
     runs-on: ubuntu-latest
