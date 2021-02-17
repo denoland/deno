@@ -456,8 +456,7 @@ impl CodeActionCollection {
   ) -> Result<(), AnyError> {
     if let Some(data) = diagnostic.data.clone() {
       let fix_data: DenoFixData = serde_json::from_value(data)?;
-      let title = if diagnostic.code
-        == Some(lsp::NumberOrString::String("no-cache-data".to_string()))
+      let title = if matches!(&diagnostic.code, Some(lsp::NumberOrString::String(code)) if code == "no-cache-data")
       {
         "Cache the data URL and its dependencies.".to_string()
       } else {
