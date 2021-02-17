@@ -100,7 +100,11 @@
     /** @type {GPUAdapter} */
     const adapter = webidl.createBranded(GPUAdapter);
     adapter[_name] = name;
-    adapter[_adapter] = inner;
+    adapter[_adapter] = {
+      ...inner,
+      features: createGPUAdapterFeatures(inner.features),
+      limits: createGPUAdapterLimits(inner.limits),
+    };
     return adapter;
   }
 
@@ -154,7 +158,7 @@
         {
           rid,
           adapter: this,
-          features: createGPUAdapterFeatures(features),
+          features: Object.freeze(features),
           limits: Object.freeze(limits),
           queue: createGPUQueue(descriptor.label ?? null, rid),
         },
@@ -162,7 +166,97 @@
     }
   }
 
-  const _features = Symbol("[[set]]");
+  const _limits = Symbol("[[limits]]");
+
+  function createGPUAdapterLimits(features) {
+    /** @type {GPUAdapterLimits} */
+    const adapterFeatures = webidl.createBranded(GPUAdapterLimits);
+    adapterFeatures[_limits] = features;
+    return adapterFeatures;
+  }
+
+  /**
+   * @typedef InnerAdapterLimits
+   * @property {number} maxTextureDimension1D
+   * @property {number} maxTextureDimension2D
+   * @property {number} maxTextureDimension3D
+   * @property {number} maxTextureArrayLayers
+   * @property {number} maxBindGroups
+   * @property {number} maxDynamicUniformBuffersPerPipelineLayout
+   * @property {number} maxDynamicStorageBuffersPerPipelineLayout
+   * @property {number} maxSampledTexturesPerShaderStage
+   * @property {number} maxSamplersPerShaderStage
+   * @property {number} maxStorageBuffersPerShaderStage
+   * @property {number} maxStorageTexturesPerShaderStage
+   * @property {number} maxUniformBuffersPerShaderStage
+   * @property {number} maxUniformBufferBindingSize
+   * @property {number} maxStorageBufferBindingSize
+   * @property {number} maxVertexBuffers
+   * @property {number} maxVertexAttributes
+   * @property {number} maxVertexBufferArrayStride
+   */
+
+  class GPUAdapterLimits {
+    /** @type {InnerAdapterLimits} */
+    [_limits];
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    get maxTextureDimension1D() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxTextureDimension2D() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxTextureDimension3D() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxTextureArrayLayers() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxBindGroups() {
+      return this[_limits].maxBindGroups;
+    }
+    get maxDynamicUniformBuffersPerPipelineLayout() {
+      return this[_limits].maxDynamicUniformBuffersPerPipelineLayout;
+    }
+    get maxDynamicStorageBuffersPerPipelineLayout() {
+      return this[_limits].maxDynamicStorageBuffersPerPipelineLayout;
+    }
+    get maxSampledTexturesPerShaderStage() {
+      return this[_limits].maxSampledTexturesPerShaderStage;
+    }
+    get maxSamplersPerShaderStage() {
+      return this[_limits].maxSamplersPerShaderStage;
+    }
+    get maxStorageBuffersPerShaderStage() {
+      return this[_limits].maxStorageBuffersPerShaderStage;
+    }
+    get maxStorageTexturesPerShaderStage() {
+      return this[_limits].maxStorageTexturesPerShaderStage;
+    }
+    get maxUniformBuffersPerShaderStage() {
+      return this[_limits].maxUniformBuffersPerShaderStage;
+    }
+    get maxUniformBufferBindingSize() {
+      return this[_limits].maxUniformBufferBindingSize;
+    }
+    get maxStorageBufferBindingSize() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxVertexBuffers() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxVertexAttributes() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxVertexBufferArrayStride() {
+      throw new TypeError("Not yet implemented");
+    }
+  }
+
+  const _features = Symbol("[[features]]");
 
   function createGPUAdapterFeatures(features) {
     /** @type {GPUAdapterFeatures} */
@@ -2793,6 +2887,7 @@
     gpu: webidl.createBranded(GPU),
     GPU,
     GPUAdapter,
+    GPUAdapterLimits,
     GPUAdapterFeatures,
     GPUDevice,
     GPUQueue,
