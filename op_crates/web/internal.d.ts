@@ -158,7 +158,7 @@ declare namespace globalThis {
          */
         Uint8ClampedArray(
           v: any,
-          opts?: BufferConverterOpts
+          opts?: BufferConverterOpts,
         ): Uint8ClampedArray;
         /**
          * Convert a value into a `Float32Array` (Float32Array).
@@ -177,7 +177,7 @@ declare namespace globalThis {
          */
         BufferSource(
           v: any,
-          opts?: BufferConverterOpts
+          opts?: BufferConverterOpts,
         ): ArrayBuffer | ArrayBufferView;
         /**
          * Convert a value into a `DOMTimeStamp` (u64). Alias for unsigned long long
@@ -201,7 +201,7 @@ declare namespace globalThis {
       declare function requiredArguments(
         length: number,
         required: number,
-        opts: ConverterOpts
+        opts: ConverterOpts,
       ): void;
       declare type Dictionary = DictionaryMember[];
       declare interface DictionaryMember {
@@ -224,14 +224,14 @@ declare namespace globalThis {
        */
       declare function createEnumConverter(
         name: string,
-        values: string[]
+        values: string[],
       ): (v: any, opts: ValueConverterOpts) => string;
 
       /**
        * Create a converter that makes the contained type nullable.
        */
       declare function createNullableConverter<T>(
-        converter: (v: any, opts: ValueConverterOpts) => T
+        converter: (v: any, opts: ValueConverterOpts) => T,
       ): (v: any, opts: ValueConverterOpts) => T | null;
 
       /**
@@ -259,7 +259,7 @@ declare namespace globalThis {
        */
       declare function createInterfaceConverter(
         name: string,
-        prototype: any
+        prototype: any,
       ): (v: any, opts: ValueConverterOpts) => any;
     }
 
