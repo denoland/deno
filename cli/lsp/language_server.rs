@@ -1488,7 +1488,6 @@ impl Inner {
     if let Some(definition) = maybe_definition {
       let results = definition.to_definition(&line_index, self).await;
       self.performance.measure(mark);
-      info!("goto_definition {:#?}", json!(results));
       Ok(results)
     } else {
       self.performance.measure(mark);
@@ -1589,7 +1588,6 @@ impl Inner {
           links.push(link)
         }
       }
-      info!("links: {:#?}", json!(links));
       Some(GotoDefinitionResponse::Link(links))
     } else {
       None
