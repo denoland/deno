@@ -1726,9 +1726,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("signature_help");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
