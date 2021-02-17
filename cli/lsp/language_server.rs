@@ -2,6 +2,7 @@
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -172,7 +173,7 @@ impl Inner {
     specifier: ModuleSpecifier,
   ) -> Result<LineIndex, AnyError> {
     let mark = self.performance.mark("get_line_index");
-    let result = if specifier.as_url().scheme() == "asset" {
+    let result = if specifier.scheme() == "asset" {
       if let Some(asset) = self.get_asset(&specifier).await? {
         Ok(asset.line_index)
       } else {
@@ -196,7 +197,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let mark = self.performance.mark("get_line_index_sync");
-    let maybe_line_index = if specifier.as_url().scheme() == "asset" {
+    let maybe_line_index = if specifier.scheme() == "asset" {
       if let Some(Some(asset)) = self.assets.get(specifier) {
         Some(asset.line_index.clone())
       } else {
@@ -374,7 +375,7 @@ impl Inner {
               .cloned(),
           );
         }
-        let uri = specifier.as_url().clone();
+        let uri = specifier.clone();
         let version = self.documents.version(&specifier);
         self
           .client
@@ -1200,7 +1201,7 @@ impl Inner {
           if let Some(implementations) = maybe_implementations {
             let mut locations = Vec::new();
             for implementation in implementations {
-              let implementation_specifier = ModuleSpecifier::resolve_url(
+              let implementation_specifier = resolve_url(
                 &implementation.document_span.file_name,
               )
               .map_err(|err| {
@@ -1285,7 +1286,7 @@ impl Inner {
               if reference.is_definition {
                 continue;
               }
-              let reference_specifier = ModuleSpecifier::resolve_url(
+              let reference_specifier = resolve_url(
                 &reference.document_span.file_name,
               )
               .map_err(|err| {
@@ -1439,8 +1440,7 @@ impl Inner {
           continue;
         }
         let reference_specifier =
-          ModuleSpecifier::resolve_url(&reference.document_span.file_name)
-            .unwrap();
+          resolve_url(&reference.document_span.file_name).unwrap();
         // TODO(lucacasonato): handle error correctly
         let line_index =
           self.get_line_index(reference_specifier).await.unwrap();
@@ -1977,8 +1977,7 @@ impl Inner {
   ) -> LspResult<Option<String>> {
     let mark = self.performance.mark("virtual_text_document");
     let specifier = utils::normalize_url(params.text_document.uri);
-    let url = specifier.as_url();
-    let contents = if url.as_str() == "deno:/status.md" {
+    let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
 
       contents.push_str(&format!(
@@ -1997,7 +1996,7 @@ impl Inner {
       }
       Some(contents)
     } else {
-      match url.scheme() {
+      match specifier.scheme() {
         "asset" => {
           if let Some(asset) = self
             .get_asset(&specifier)

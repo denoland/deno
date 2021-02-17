@@ -4,6 +4,7 @@ use crate::media_type::MediaType;
 use crate::tsc_config;
 
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
@@ -78,7 +79,7 @@ impl Into<Location> for swc_common::Loc {
 
 impl Into<ModuleSpecifier> for Location {
   fn into(self) -> ModuleSpecifier {
-    ModuleSpecifier::resolve_url_or_path(&self.filename).unwrap()
+    resolve_url_or_path(&self.filename).unwrap()
   }
 }
 
@@ -593,9 +594,7 @@ mod tests {
 
   #[test]
   fn test_parsed_module_analyze_dependencies() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.js")
-        .unwrap();
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.js").unwrap();
     let source = r#"import * as bar from "./test.ts";
     const foo = await import("./foo.ts");
     "#;
@@ -634,9 +633,8 @@ mod tests {
 
   #[test]
   fn test_transpile() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     enum D {
       A,
@@ -668,9 +666,8 @@ mod tests {
 
   #[test]
   fn test_transpile_tsx() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     export class A {
       render() {
@@ -688,9 +685,8 @@ mod tests {
 
   #[test]
   fn test_transpile_decorators() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     function enumerable(value: boolean) {
       return function (
@@ -701,7 +697,7 @@ mod tests {
         descriptor.enumerable = value;
       };
     }
-    
+
     export class A {
       @enumerable(false)
       a() {
