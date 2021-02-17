@@ -8,7 +8,6 @@ use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
-use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
@@ -589,15 +588,11 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 // Related to module loading
 impl JsRuntime {
-  /// Low-level module creation.
-  ///
-  /// Called during module loading or dynamic import loading.
-  fn create_module(
+  fn compile_module(
     &mut self,
     specifier: &str,
     source: &str,
   ) -> Result<v8::Global<v8::Module>, AnyError> {
-    let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
@@ -626,7 +621,7 @@ impl JsRuntime {
   /// Low-level module creation.
   ///
   /// Called during module loading or dynamic import loading.
-  fn mod_new(
+  pub fn create_module(
     &mut self,
     info: ModuleSource,
     main: bool,
@@ -653,7 +648,7 @@ impl JsRuntime {
     }
 
     let module_handle =
-      self.create_module(&info.module_url_found, &info.code)?;
+      self.compile_module(&info.module_url_found, &info.code)?;
     let id = state_rc.borrow_mut().module_map.register(
       &info.module_url_found,
       main,
@@ -697,31 +692,23 @@ impl JsRuntime {
     }
   }
 
-  /// Evaluates an already instantiated ES module.
-  ///
-  /// `AnyError` can be downcast to a type that exposes additional information
-  /// about the V8 exception. By default this type is `JsError`, however it may
-  /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  fn mod_evaluate_inner(
-    &mut self,
-    id: ModuleId,
-  ) -> mpsc::Receiver<Result<(), AnyError>> {
-    let state_rc = Self::state(self.v8_isolate());
-    let context = self.global_context();
+  pub async fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
+    let (sender, mut receiver) = mpsc::channel(1);
 
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    {
+      let state_rc = Self::state(self.v8_isolate());
+      let context = self.global_context();
+      let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+  
+      let module = state_rc
+        .borrow()
+        .module_map
+        .get_handle(id)
+        .map(|handle| v8::Local::new(scope, handle))
+        .expect("ModuleInfo not found");
+      let mut status = module.get_status();
+      assert_eq!(status, v8::ModuleStatus::Instantiated);
 
-    let module = state_rc
-      .borrow()
-      .module_map
-      .get_handle(id)
-      .map(|handle| v8::Local::new(scope, handle))
-      .expect("ModuleInfo not found");
-    let mut status = module.get_status();
-
-    let (sender, receiver) = mpsc::channel(1);
-
-    if status == v8::ModuleStatus::Instantiated {
       // IMPORTANT: Top-level-await is enabled, which means that return value
       // of module evaluation is a promise.
       //
@@ -752,28 +739,23 @@ impl JsRuntime {
           .expect("Expected to get promise as module evaluation result");
         let promise_global = v8::Global::new(scope, promise);
         let mut state = state_rc.borrow_mut();
+        // FIXME(bartlomieju): comment above
         state.pending_promise_exceptions.remove(&promise_global);
-        let promise_global = v8::Global::new(scope, promise);
         assert!(
           state.pending_mod_evaluate.is_none(),
           "There is already pending top level module evaluation"
         );
-
         state.pending_mod_evaluate = Some(ModEvaluate {
           promise: promise_global,
           sender,
         });
         scope.perform_microtask_checkpoint();
       } else {
+        // FIXME(bartlomieju): this path depends on the comment above and
+        // promise rejection being added to `state.pending_promise_expcetions`
         assert!(status == v8::ModuleStatus::Errored);
       }
     }
-
-    receiver
-  }
-
-  pub async fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
-    let mut receiver = self.mod_evaluate_inner(id);
 
     poll_fn(|cx| {
       if let Poll::Ready(maybe_result) = receiver.poll_next_unpin(cx) {
@@ -841,40 +823,6 @@ impl JsRuntime {
         }
       }
     };
-  }
-
-  /// Asynchronously load specified module and all of its dependencies
-  ///
-  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
-  /// manually after load is finished.
-  pub async fn load_module(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    code: Option<String>,
-  ) -> Result<ModuleId, AnyError> {
-    let loader = {
-      let state_rc = Self::state(self.v8_isolate());
-      let state = state_rc.borrow();
-      state.loader.clone()
-    };
-
-    // let load = RecursiveModuleLoad::main(
-    //   self.op_state(),
-    //   &specifier.to_string(),
-    //   code,
-    //   loader,
-    // );
-    // let (_load_id, prepare_result) = load.prepare().await;
-
-    // let mut load = prepare_result?;
-
-    // while let Some(info_result) = load.next().await {
-    //   let info = info_result?;
-    //   // self.register_during_load(info, &mut load)?;
-    // }
-
-    let root_id = 1;
-    self.mod_instantiate(root_id).map(|_| root_id)
   }
 
   fn poll_pending_ops(
@@ -1045,12 +993,9 @@ impl JsRuntime {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use crate::modules::ModuleLoadId;
-  use crate::modules::ModuleSourceFuture;
   use crate::BufVec;
   use futures::future::lazy;
   use futures::FutureExt;
-  use std::io;
   use std::ops::FnOnce;
   use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1728,366 +1673,6 @@ pub mod tests {
     );
     assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
     assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
-  }
-
-  #[test]
-  fn test_mods() {
-    #[derive(Default)]
-    struct ModsLoader {
-      pub count: Arc<AtomicUsize>,
-    }
-
-    impl ModuleLoader for ModsLoader {
-      fn resolve(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        specifier: &str,
-        referrer: &str,
-        _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
-        self.count.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(specifier, "./b.js");
-        assert_eq!(referrer, "file:///a.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
-        Ok(s)
-      }
-
-      fn load(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        _module_specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<ModuleSourceFuture>> {
-        unreachable!()
-      }
-    }
-
-    let loader = Rc::new(ModsLoader::default());
-
-    let resolve_count = loader.count.clone();
-    let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let dispatch_count_ = dispatch_count.clone();
-
-    let dispatcher = move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      assert_eq!(bufs.len(), 1);
-      assert_eq!(bufs[0].len(), 1);
-      assert_eq!(bufs[0][0], 42);
-      let buf = [43u8, 0, 0, 0][..].into();
-      Op::Async(futures::future::ready(buf).boxed())
-    };
-
-    let mut runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader),
-      ..Default::default()
-    });
-    runtime.register_op("test", dispatcher);
-
-    runtime
-      .execute(
-        "setup.js",
-        r#"
-        function assert(cond) {
-          if (!cond) {
-            throw Error("assert");
-          }
-        }
-        "#,
-      )
-      .unwrap();
-
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-
-    let specifier_a = "file:///a.js".to_string();
-    let info = ModuleSource {
-      module_url_specified: "file:///a.js".to_string(),
-      module_url_found: "file:///a.js".to_string(),
-      code: r#"
-      import { b } from './b.js'
-      if (b() != 'b') throw Error();
-      let control = new Uint8Array([42]);
-      Deno.core.send(1, control);
-    "#
-      .to_string(),
-    };
-    let mod_a = runtime.mod_new(info, true).unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-
-    let state_rc = JsRuntime::state(runtime.v8_isolate());
-    // {
-    //   let state = state_rc.borrow();
-    //   let imports = state.module_map.get_children(mod_a);
-    //   assert_eq!(
-    //     imports,
-    //     Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
-    //   );
-    // }
-    let info = ModuleSource {
-      module_url_specified: "file:///b.js".to_string(),
-      module_url_found: "file:///b.js".to_string(),
-      code: "export function b() { return 'b' }".to_string(),
-    };
-    let mod_b = runtime.mod_new(info, false).unwrap();
-    // {
-    //   let state = state_rc.borrow();
-    //   let imports = state.module_map.get_children(mod_b).unwrap();
-    //   assert_eq!(imports.len(), 0);
-    // }
-
-    runtime.mod_instantiate(mod_b).unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
-
-    runtime.mod_instantiate(mod_a).unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-
-    runtime.mod_evaluate_inner(mod_a);
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-  }
-
-  #[test]
-  fn dyn_import_err() {
-    #[derive(Clone, Default)]
-    struct DynImportErrLoader {
-      pub count: Arc<AtomicUsize>,
-    }
-
-    impl ModuleLoader for DynImportErrLoader {
-      fn resolve(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        specifier: &str,
-        referrer: &str,
-        _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
-        self.count.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(specifier, "/foo.js");
-        assert_eq!(referrer, "file:///dyn_import2.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
-        Ok(s)
-      }
-
-      fn load(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        _module_specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<ModuleSourceFuture>> {
-        async { Err(io::Error::from(io::ErrorKind::NotFound).into()) }.boxed()
-      }
-    }
-
-    // Test an erroneous dynamic import where the specified module isn't found.
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportErrLoader::default());
-      let count = loader.count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
-
-      runtime
-        .execute(
-          "file:///dyn_import2.js",
-          r#"
-        (async () => {
-          await import("/foo.js");
-        })();
-        "#,
-        )
-        .unwrap();
-
-      assert_eq!(count.load(Ordering::Relaxed), 0);
-      // We should get an error here.
-      let result = runtime.poll_event_loop(cx);
-      if let Poll::Ready(Ok(_)) = result {
-        unreachable!();
-      }
-      assert_eq!(count.load(Ordering::Relaxed), 2);
-    })
-  }
-
-  #[derive(Clone, Default)]
-  struct DynImportOkLoader {
-    pub prepare_load_count: Arc<AtomicUsize>,
-    pub resolve_count: Arc<AtomicUsize>,
-    pub load_count: Arc<AtomicUsize>,
-  }
-
-  impl ModuleLoader for DynImportOkLoader {
-    fn resolve(
-      &self,
-      _op_state: Rc<RefCell<OpState>>,
-      specifier: &str,
-      referrer: &str,
-      _is_main: bool,
-    ) -> Result<ModuleSpecifier, AnyError> {
-      let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
-      assert!(c < 4);
-      assert_eq!(specifier, "./b.js");
-      assert_eq!(referrer, "file:///dyn_import3.js");
-      let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
-      Ok(s)
-    }
-
-    fn load(
-      &self,
-      _op_state: Rc<RefCell<OpState>>,
-      specifier: &ModuleSpecifier,
-      _maybe_referrer: Option<ModuleSpecifier>,
-      _is_dyn_import: bool,
-    ) -> Pin<Box<ModuleSourceFuture>> {
-      self.load_count.fetch_add(1, Ordering::Relaxed);
-      let info = ModuleSource {
-        module_url_specified: specifier.to_string(),
-        module_url_found: specifier.to_string(),
-        code: "export function b() { return 'b' }".to_owned(),
-      };
-      async move { Ok(info) }.boxed()
-    }
-
-    fn prepare_load(
-      &self,
-      _op_state: Rc<RefCell<OpState>>,
-      _load_id: ModuleLoadId,
-      _module_specifier: &ModuleSpecifier,
-      _maybe_referrer: Option<String>,
-      _is_dyn_import: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-      self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
-      async { Ok(()) }.boxed_local()
-    }
-  }
-
-  #[test]
-  fn dyn_import_ok() {
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let resolve_count = loader.resolve_count.clone();
-      let load_count = loader.load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
-
-      // Dynamically import mod_b
-      runtime
-        .execute(
-          "file:///dyn_import3.js",
-          r#"
-          (async () => {
-            let mod = await import("./b.js");
-            if (mod.b() !== 'b') {
-              throw Error("bad1");
-            }
-            // And again!
-            mod = await import("./b.js");
-            if (mod.b() !== 'b') {
-              throw Error("bad2");
-            }
-          })();
-          "#,
-        )
-        .unwrap();
-
-      // First poll runs `prepare_load` hook.
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Pending));
-      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
-
-      // Second poll actually loads modules into the isolate.
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
-      assert_eq!(load_count.load(Ordering::Relaxed), 2);
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
-      assert_eq!(load_count.load(Ordering::Relaxed), 2);
-    })
-  }
-
-  #[test]
-  fn dyn_import_borrow_mut_error() {
-    // https://github.com/denoland/deno/issues/6054
-    run_in_task(|cx| {
-      let loader = Rc::new(DynImportOkLoader::default());
-      let prepare_load_count = loader.prepare_load_count.clone();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        ..Default::default()
-      });
-      runtime
-        .execute(
-          "file:///dyn_import3.js",
-          r#"
-          (async () => {
-            let mod = await import("./b.js");
-            if (mod.b() !== 'b') {
-              throw Error("bad");
-            }
-            // Now do any op
-            Deno.core.ops();
-          })();
-          "#,
-        )
-        .unwrap();
-      // First poll runs `prepare_load` hook.
-      let _ = runtime.poll_event_loop(cx);
-      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
-      // Second poll triggers error
-      let _ = runtime.poll_event_loop(cx);
-    })
-  }
-
-  #[test]
-  fn es_snapshot() {
-    #[derive(Default)]
-    struct ModsLoader;
-
-    impl ModuleLoader for ModsLoader {
-      fn resolve(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        specifier: &str,
-        referrer: &str,
-        _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
-        assert_eq!(specifier, "file:///main.js");
-        assert_eq!(referrer, ".");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
-        Ok(s)
-      }
-
-      fn load(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        _module_specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<ModuleSourceFuture>> {
-        unreachable!()
-      }
-    }
-
-    let loader = std::rc::Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader),
-      will_snapshot: true,
-      ..Default::default()
-    });
-
-    let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
-    let source_code = "Deno.core.print('hello\\n')".to_string();
-
-    let module_id = futures::executor::block_on(
-      runtime.load_module(&specifier, Some(source_code)),
-    )
-    .unwrap();
-
-    futures::executor::block_on(runtime.mod_evaluate(module_id)).unwrap();
-
-    let _snapshot = runtime.snapshot();
   }
 
   #[test]
