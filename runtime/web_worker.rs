@@ -476,8 +476,7 @@ mod tests {
   use deno_core::serde_json::json;
 
   fn create_test_web_worker() -> WebWorker {
-    let main_module =
-      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let main_module = deno_core::resolve_url_or_path("./hello.js").unwrap();
     let module_loader = Rc::new(deno_core::NoopModuleLoader);
     let create_web_worker_cb = Arc::new(|_| unreachable!());
 

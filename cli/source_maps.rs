@@ -3,7 +3,6 @@
 //! This mod provides functions to remap a `JsError` based on a source map.
 
 use deno_core::error::JsError;
-use deno_core::ModuleSpecifier;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
@@ -129,8 +128,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
             // sometimes only the basename of the URL, or has unwanted `<`/`>`
             // around it. Use the `file_name` we get from V8 if
             // `source_file_name` does not parse as a URL.
-            let file_name = match ModuleSpecifier::resolve_url(source_file_name)
-            {
+            let file_name = match deno_core::resolve_url(source_file_name) {
               Ok(m) => m.to_string(),
               Err(_) => file_name,
             };

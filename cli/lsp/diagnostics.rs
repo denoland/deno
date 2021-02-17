@@ -248,7 +248,7 @@ pub async fn generate_ts_diagnostics(
     let res = ts_server.request(state_snapshot.clone(), req).await?;
     let ts_diagnostic_map: TsDiagnostics = serde_json::from_value(res)?;
     for (specifier_str, ts_diagnostics) in ts_diagnostic_map.iter() {
-      let specifier = ModuleSpecifier::resolve_url(specifier_str)?;
+      let specifier = deno_core::resolve_url(specifier_str)?;
       let version = state_snapshot.documents.version(&specifier);
       diagnostics.push((
         specifier,
@@ -295,7 +295,7 @@ pub async fn generate_dependency_diagnostics(
                 }
                 ResolvedDependency::Resolved(specifier) => {
                   if !(state_snapshot.documents.contains_key(&specifier) || sources.contains_key(&specifier)) {
-                    let is_local = specifier.as_url().scheme() == "file";
+                    let is_local = specifier.scheme() == "file";
                     let (code, message) = if is_local {
                       (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier))
                     } else {
