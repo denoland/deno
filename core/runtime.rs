@@ -1211,8 +1211,7 @@ impl JsRuntime {
 
     let is_main =
       load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_specifier =
-      ModuleSpecifier::resolve_url(&module_url_found).unwrap();
+    let referrer_specifier = crate::resolve_url(&module_url_found).unwrap();
 
     let state_rc = Self::state(self.v8_isolate());
     // #A There are 3 cases to handle at this moment:
@@ -2171,7 +2170,7 @@ pub mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2243,7 +2242,7 @@ pub mod tests {
       let imports = state.modules.get_children(mod_a);
       assert_eq!(
         imports,
-        Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
+        Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
       );
     }
     let mod_b = runtime
@@ -2284,7 +2283,7 @@ pub mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2348,7 +2347,7 @@ pub mod tests {
       assert!(c < 4);
       assert_eq!(specifier, "./b.js");
       assert_eq!(referrer, "file:///dyn_import3.js");
-      let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+      let s = crate::resolve_import(specifier, referrer).unwrap();
       Ok(s)
     }
 
@@ -2475,7 +2474,7 @@ pub mod tests {
       ) -> Result<ModuleSpecifier, AnyError> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2497,7 +2496,7 @@ pub mod tests {
       ..Default::default()
     });
 
-    let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+    let specifier = crate::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
     let module_id = futures::executor::block_on(

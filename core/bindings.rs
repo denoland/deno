@@ -448,9 +448,11 @@ fn eval_context(
      }
   */
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let name =
-    v8::String::new(tc_scope, url.as_ref().map_or("<unknown>", Url::as_str))
-      .unwrap();
+  let name = v8::String::new(
+    tc_scope,
+    url.as_ref().map_or(crate::DUMMY_SPECIFIER, Url::as_str),
+  )
+  .unwrap();
   let origin = script_origin(tc_scope, name);
   let maybe_script = v8::Script::compile(tc_scope, source, Some(&origin));
 
