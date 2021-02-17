@@ -116,7 +116,7 @@ impl LspUrlMap {
     if let Some(specifier) = self.get_specifier(url) {
       specifier.clone()
     } else {
-      ModuleSpecifier::from(url.clone())
+      url.clone()
     }
   }
 }
