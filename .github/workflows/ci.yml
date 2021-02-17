@@ -283,3 +283,60 @@ jobs:
 
       - name: test_format.js
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
+
+  bench:
+    runs-on: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Configure git
+        run: git config --global core.symlinks true
+
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.50.0
+
+      - name: Install Deno
+        run: |
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
+          echo "$HOME/.deno/bin" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH
+
+      - name: Log versions
+        run: |
+          rustc --version
+          cargo --version
+          deno --version
+
+      - name: Run Benchmarks
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: bench
+
+      - name: Post Benchmarks
+        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+        env:
+          DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
+        run: |
+          git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
+          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
+          cd gh-pages
+          git config user.email "propelml@gmail.com"
+          git config user.name "denobot"
+          git add .
+          git commit --message "Update benchmarks"
+          git push origin gh-pages
+
+      - name: Worker info
+        run: |
+          cat /proc/cpuinfo
+          cat /proc/meminfo
