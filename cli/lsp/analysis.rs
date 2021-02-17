@@ -456,11 +456,15 @@ impl CodeActionCollection {
   ) -> Result<(), AnyError> {
     if let Some(data) = diagnostic.data.clone() {
       let fix_data: DenoFixData = serde_json::from_value(data)?;
+      let title = if diagnostic.code
+        == Some(lsp::NumberOrString::String("no-cache-data".to_string()))
+      {
+        format!("Cache the data URL and its dependencies.")
+      } else {
+        format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
+      };
       let code_action = lsp::CodeAction {
-        title: format!(
-          "Cache \"{}\" and its dependencies.",
-          fix_data.specifier
-        ),
+        title,
         kind: Some(lsp::CodeActionKind::QUICKFIX),
         diagnostics: Some(vec![diagnostic.clone()]),
         edit: None,

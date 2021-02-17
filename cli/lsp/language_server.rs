@@ -52,7 +52,7 @@ use super::tsc;
 use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::TsServer;
-use super::utils;
+use super::urls;
 
 lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -100,6 +100,8 @@ pub(crate) struct Inner {
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
   ts_server: TsServer,
+  /// A map of specifiers and URLs used to translate over the LSP.
+  pub url_map: urls::LspUrlMap,
 }
 
 impl LanguageServer {
@@ -130,6 +132,7 @@ impl Inner {
       sources,
       ts_fixable_diagnostics: Default::default(),
       ts_server: TsServer::new(),
+      url_map: urls::LspUrlMap::new(),
     }
   }
 
@@ -660,7 +663,7 @@ impl Inner {
       // already managed by the language service
       return;
     }
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -677,7 +680,7 @@ impl Inner {
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change");
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     match self.documents.change(
       &specifier,
       params.text_document.version,
@@ -703,7 +706,7 @@ impl Inner {
       // already managed by the language service
       return;
     }
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     self.documents.close(&specifier);
     self.navigation_trees.remove(&specifier);
 
@@ -801,7 +804,7 @@ impl Inner {
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let mark = self.performance.mark("formatting");
-    let specifier = utils::normalize_url(params.text_document.uri.clone());
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let file_text = self
       .documents
       .content(&specifier)
@@ -857,9 +860,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("hover");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -897,7 +900,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_action");
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let fixable_diagnostics: Vec<&Diagnostic> = params
       .context
       .diagnostics
@@ -914,7 +917,9 @@ impl Inner {
             _ => false,
           },
           "deno" => match &d.code {
-            Some(NumberOrString::String(code)) => code == "no-cache",
+            Some(NumberOrString::String(code)) => {
+              code == "no-cache" || code == "no-cache-data"
+            }
             _ => false,
           },
           _ => false,
@@ -1052,7 +1057,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens");
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let line_index = self.get_line_index_sync(&specifier).unwrap();
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
@@ -1208,7 +1213,7 @@ impl Inner {
                 LspError::internal_error()
               })?;
               let implementation_location =
-                implementation.to_location(&line_index);
+                implementation.to_location(&line_index, self);
               if !(implementation_specifier == code_lens_data.specifier
                 && implementation_location.range.start == params.range.start)
               {
@@ -1221,11 +1226,13 @@ impl Inner {
               } else {
                 "1 implementation".to_string()
               };
-              let url = utils::normalize_specifier(&code_lens_data.specifier)
+              let url = self
+                .url_map
+                .normalize_specifier(&code_lens_data.specifier)
                 .map_err(|err| {
-                error!("{}", err);
-                LspError::internal_error()
-              })?;
+                  error!("{}", err);
+                  LspError::internal_error()
+                })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
@@ -1299,7 +1306,7 @@ impl Inner {
                 error!("Unable to get line index: {}", err);
                 LspError::internal_error()
               })?;
-              locations.push(reference.to_location(&line_index));
+              locations.push(reference.to_location(&line_index, self));
             }
             let command = if !locations.is_empty() {
               let title = if locations.len() > 1 {
@@ -1307,11 +1314,13 @@ impl Inner {
               } else {
                 "1 reference".to_string()
               };
-              let url = utils::normalize_specifier(&code_lens_data.specifier)
+              let url = self
+                .url_map
+                .normalize_specifier(&code_lens_data.specifier)
                 .map_err(|err| {
-                error!("{}", err);
-                LspError::internal_error()
-              })?;
+                  error!("{}", err);
+                  LspError::internal_error()
+                })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
@@ -1365,9 +1374,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("document_highlight");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1411,8 +1420,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("references");
-    let specifier =
-      utils::normalize_url(params.text_document_position.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1444,7 +1454,7 @@ impl Inner {
         // TODO(lucacasonato): handle error correctly
         let line_index =
           self.get_line_index(reference_specifier).await.unwrap();
-        results.push(reference.to_location(&line_index));
+        results.push(reference.to_location(&line_index, self));
       }
 
       self.performance.measure(mark);
@@ -1463,9 +1473,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("goto_definition");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1503,8 +1513,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("completion");
-    let specifier =
-      utils::normalize_url(params.text_document_position.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1548,9 +1559,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("goto_implementation");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1609,8 +1620,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("rename");
-    let specifier =
-      utils::normalize_url(params.text_document_position.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1934,10 +1946,10 @@ impl Inner {
   /// in the Deno cache, including any of their dependencies.
   async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
     let mark = self.performance.mark("cache");
-    let referrer = utils::normalize_url(params.referrer.uri);
+    let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !params.uris.is_empty() {
       for identifier in &params.uris {
-        let specifier = utils::normalize_url(identifier.uri.clone());
+        let specifier = self.url_map.normalize_url(&identifier.uri);
         sources::cache(&specifier, &self.maybe_import_map)
           .await
           .map_err(|err| {
@@ -1980,7 +1992,7 @@ impl Inner {
     params: VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
     let mark = self.performance.mark("virtual_text_document");
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let url = specifier.as_url();
     let contents = if url.as_str() == "deno:/status.md" {
       let mut contents = String::new();
