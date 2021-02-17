@@ -178,7 +178,8 @@
    * @param {any} type
    */
   function GPUObjectBaseMixin(name, type) {
-    let mixin = {
+    type.prototype[_label] = null;
+    Object.defineProperty(type.prototype, "label", {
       /**
        * @return {string | null}
        */
@@ -197,9 +198,7 @@
         });
         this[_label] = label;
       },
-    };
-    type.prototype[_label] = null;
-    Object.defineProperty(type.prototype, "label", mixin);
+    });
   }
 
   const _device = Symbol("[[device]]");
@@ -509,12 +508,13 @@
       commandBuffers = webidl.converters.any(commandBuffers);
       core.jsonOpSync("op_webgpu_queue_submit", {
         queueRid: this[_device],
-        commandBuffers: commandBuffers.map((buffer) => buffer[ridSymbol]),
+        commandBuffers: commandBuffers.map((buffer) => buffer[_rid]),
       });
     }
 
-    async onSubmittedWorkDone() {
+    onSubmittedWorkDone() {
       webidl.assertBranded(this, GPUQueue);
+      return Promise.resolve();
     }
 
     /**
