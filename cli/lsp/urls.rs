@@ -25,9 +25,8 @@ const LSP_ENCODING: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'|');
 
 fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
-  let url = specifier.as_url();
-  let mut file_name_str = url.path().to_string();
-  if let Some(query) = url.query() {
+  let mut file_name_str = specifier.path().to_string();
+  if let Some(query) = specifier.query() {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
@@ -35,8 +34,7 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
 }
 
 fn data_url_media_type(specifier: &ModuleSpecifier) -> MediaType {
-  let url = specifier.as_url();
-  let path = url.path();
+  let path = specifier.path();
   let mut parts = path.splitn(2, ',');
   let media_type_part =
     percent_encoding::percent_decode_str(parts.next().unwrap())
@@ -84,11 +82,10 @@ impl LspUrlMap {
     if let Some(url) = self.get_url(specifier) {
       Ok(url.clone())
     } else {
-      let url = specifier.as_url();
-      let url = if url.scheme() == "file" {
-        url.clone()
+      let url = if specifier.scheme() == "file" {
+        specifier.clone()
       } else {
-        let specifier_str = if url.scheme() == "data" {
+        let specifier_str = if specifier.scheme() == "data" {
           let media_type = data_url_media_type(specifier);
           let extension = if media_type == MediaType::Unknown {
             ""
@@ -101,7 +98,7 @@ impl LspUrlMap {
             extension
           )
         } else {
-          let path = url.as_str().replacen("://", "/", 1);
+          let path = specifier.as_str().replacen("://", "/", 1);
           let path = percent_encoding::utf8_percent_encode(&path, LSP_ENCODING);
           format!("deno:/{}", path)
         };
@@ -127,10 +124,11 @@ impl LspUrlMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url;
 
   #[test]
   fn test_hash_data_specifier() {
-    let fixture = ModuleSpecifier::resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    let fixture = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual = hash_data_specifier(&fixture);
     assert_eq!(
       actual,
@@ -140,15 +138,15 @@ mod tests {
 
   #[test]
   fn test_data_url_media_type() {
-    let fixture = ModuleSpecifier::resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    let fixture = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual = data_url_media_type(&fixture);
     assert_eq!(actual, MediaType::TypeScript);
 
-    let fixture = ModuleSpecifier::resolve_url("data:application/javascript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    let fixture = resolve_url("data:application/javascript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual = data_url_media_type(&fixture);
     assert_eq!(actual, MediaType::JavaScript);
 
-    let fixture = ModuleSpecifier::resolve_url("data:text/plain;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    let fixture = resolve_url("data:text/plain;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual = data_url_media_type(&fixture);
     assert_eq!(actual, MediaType::Unknown);
   }
@@ -156,9 +154,7 @@ mod tests {
   #[test]
   fn test_lsp_url_map() {
     let mut map = LspUrlMap::new();
-    let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land/x/pkg@1.0.0/mod.ts")
-        .unwrap();
+    let fixture = resolve_url("https://deno.land/x/pkg@1.0.0/mod.ts").unwrap();
     let actual_url = map
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");
@@ -173,7 +169,7 @@ mod tests {
   #[test]
   fn test_lsp_url_map_data() {
     let mut map = LspUrlMap::new();
-    let fixture = ModuleSpecifier::resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    let fixture = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual_url = map
       .normalize_specifier(&fixture)
       .expect("could not handle specifier");

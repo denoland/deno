@@ -63,15 +63,14 @@ impl<'a> From<&'a String> for MediaType {
 
 impl<'a> From<&'a ModuleSpecifier> for MediaType {
   fn from(specifier: &'a ModuleSpecifier) -> Self {
-    let url = specifier.as_url();
-    let path = if url.scheme() == "file" {
-      if let Ok(path) = url.to_file_path() {
+    let path = if specifier.scheme() == "file" {
+      if let Ok(path) = specifier.to_file_path() {
         path
       } else {
-        PathBuf::from(url.path())
+        PathBuf::from(specifier.path())
       }
     } else {
-      PathBuf::from(url.path())
+      PathBuf::from(specifier.path())
     };
     MediaType::from_path(&path)
   }
@@ -243,7 +242,7 @@ mod tests {
     ];
 
     for (specifier, expected) in fixtures {
-      let actual = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      let actual = deno_core::resolve_url_or_path(specifier).unwrap();
       assert_eq!(MediaType::from(&actual), expected);
     }
   }

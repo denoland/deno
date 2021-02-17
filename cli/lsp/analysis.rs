@@ -211,7 +211,7 @@ pub fn resolve_import(
   let specifier = if let Some(remapped) = maybe_mapped {
     remapped
   } else {
-    match ModuleSpecifier::resolve_import(specifier, referrer.as_str()) {
+    match deno_core::resolve_import(specifier, referrer.as_str()) {
       Ok(resolved) => resolved,
       Err(err) => {
         return ResolvedDependency::Err(
@@ -220,8 +220,8 @@ pub fn resolve_import(
       }
     }
   };
-  let referrer_scheme = referrer.as_url().scheme();
-  let specifier_scheme = specifier.as_url().scheme();
+  let referrer_scheme = referrer.scheme();
+  let specifier_scheme = specifier.scheme();
   if referrer_scheme == "https" && specifier_scheme == "http" {
     return ResolvedDependency::Err(ResolvedDependencyErr::InvalidDowngrade);
   }
@@ -650,6 +650,7 @@ impl CodeActionCollection {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url;
 
   #[test]
   fn test_as_lsp_range() {
@@ -683,8 +684,7 @@ mod tests {
 
   #[test]
   fn test_analyze_dependencies() {
-    let specifier =
-      ModuleSpecifier::resolve_url("file:///a.ts").expect("bad specifier");
+    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = r#"import {
       Application,
       Context,
@@ -706,14 +706,10 @@ mod tests {
       Some(Dependency {
         is_dynamic: false,
         maybe_code: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url("https://cdn.skypack.dev/react")
-            .unwrap()
+          resolve_url("https://cdn.skypack.dev/react").unwrap()
         )),
         maybe_type: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url(
-            "https://deno.land/x/types/react/index.d.ts"
-          )
-          .unwrap()
+          resolve_url("https://deno.land/x/types/react/index.d.ts").unwrap()
         )),
         maybe_code_specifier_range: Some(Range {
           start: Position {
@@ -732,8 +728,7 @@ mod tests {
       Some(Dependency {
         is_dynamic: false,
         maybe_code: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url("https://deno.land/x/oak@v6.3.2/mod.ts")
-            .unwrap()
+          resolve_url("https://deno.land/x/oak@v6.3.2/mod.ts").unwrap()
         )),
         maybe_type: None,
         maybe_code_specifier_range: Some(Range {
