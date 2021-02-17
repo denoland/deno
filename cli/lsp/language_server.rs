@@ -133,7 +133,7 @@ impl Inner {
       sources,
       ts_fixable_diagnostics: Default::default(),
       ts_server: TsServer::new(),
-      url_map: urls::LspUrlMap::new(),
+      url_map: Default::default(),
     }
   }
 

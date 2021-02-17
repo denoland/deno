@@ -52,10 +52,6 @@ pub struct LspUrlMap {
 }
 
 impl LspUrlMap {
-  pub fn new() -> Self {
-    Default::default()
-  }
-
   fn put(&mut self, specifier: ModuleSpecifier, url: Url) {
     self.specifier_to_url.insert(specifier.clone(), url.clone());
     self.url_to_specifier.insert(url, specifier);
@@ -149,7 +145,7 @@ mod tests {
 
   #[test]
   fn test_lsp_url_map() {
-    let mut map = LspUrlMap::new();
+    let mut map = LspUrlMap::default();
     let fixture = resolve_url("https://deno.land/x/pkg@1.0.0/mod.ts").unwrap();
     let actual_url = map
       .normalize_specifier(&fixture)
@@ -164,7 +160,7 @@ mod tests {
 
   #[test]
   fn test_lsp_url_map_data() {
-    let mut map = LspUrlMap::new();
+    let mut map = LspUrlMap::default();
     let fixture = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual_url = map
       .normalize_specifier(&fixture)
