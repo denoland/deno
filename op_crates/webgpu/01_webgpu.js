@@ -58,7 +58,7 @@
     }
 
     /**
-     * @param {GPURequestAdapterOptions} options 
+     * @param {GPURequestAdapterOptions} options
      */
     async requestAdapter(options = {}) {
       webidl.assertBranded(this, GPU);
@@ -93,7 +93,7 @@
    */
 
   /**
-    * @param {string} name 
+    * @param {string} name
     * @param {InnerGPUAdapter} inner
     * @returns {GPUAdapter}
     */
@@ -101,7 +101,11 @@
     /** @type {GPUAdapter} */
     const adapter = webidl.createBranded(GPUAdapter);
     adapter[_name] = name;
-    adapter[_adapter] = inner;
+    adapter[_adapter] = {
+      ...inner,
+      features: createGPUAdapterFeatures(inner.features),
+      limits: createGPUAdapterLimits(inner.limits),
+    };
     return adapter;
   }
 
@@ -160,6 +164,148 @@
           queue: createGPUQueue(descriptor.label ?? null, rid),
         },
       );
+    }
+  }
+
+  const _limits = Symbol("[[limits]]");
+
+  function createGPUAdapterLimits(features) {
+    /** @type {GPUAdapterLimits} */
+    const adapterFeatures = webidl.createBranded(GPUAdapterLimits);
+    adapterFeatures[_limits] = features;
+    return adapterFeatures;
+  }
+
+  /**
+   * @typedef InnerAdapterLimits
+   * @property {number} maxTextureDimension1D
+   * @property {number} maxTextureDimension2D
+   * @property {number} maxTextureDimension3D
+   * @property {number} maxTextureArrayLayers
+   * @property {number} maxBindGroups
+   * @property {number} maxDynamicUniformBuffersPerPipelineLayout
+   * @property {number} maxDynamicStorageBuffersPerPipelineLayout
+   * @property {number} maxSampledTexturesPerShaderStage
+   * @property {number} maxSamplersPerShaderStage
+   * @property {number} maxStorageBuffersPerShaderStage
+   * @property {number} maxStorageTexturesPerShaderStage
+   * @property {number} maxUniformBuffersPerShaderStage
+   * @property {number} maxUniformBufferBindingSize
+   * @property {number} maxStorageBufferBindingSize
+   * @property {number} maxVertexBuffers
+   * @property {number} maxVertexAttributes
+   * @property {number} maxVertexBufferArrayStride
+   */
+
+  class GPUAdapterLimits {
+    /** @type {InnerAdapterLimits} */
+    [_limits];
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    get maxTextureDimension1D() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxTextureDimension2D() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxTextureDimension3D() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxTextureArrayLayers() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxBindGroups() {
+      return this[_limits].maxBindGroups;
+    }
+    get maxDynamicUniformBuffersPerPipelineLayout() {
+      return this[_limits].maxDynamicUniformBuffersPerPipelineLayout;
+    }
+    get maxDynamicStorageBuffersPerPipelineLayout() {
+      return this[_limits].maxDynamicStorageBuffersPerPipelineLayout;
+    }
+    get maxSampledTexturesPerShaderStage() {
+      return this[_limits].maxSampledTexturesPerShaderStage;
+    }
+    get maxSamplersPerShaderStage() {
+      return this[_limits].maxSamplersPerShaderStage;
+    }
+    get maxStorageBuffersPerShaderStage() {
+      return this[_limits].maxStorageBuffersPerShaderStage;
+    }
+    get maxStorageTexturesPerShaderStage() {
+      return this[_limits].maxStorageTexturesPerShaderStage;
+    }
+    get maxUniformBuffersPerShaderStage() {
+      return this[_limits].maxUniformBuffersPerShaderStage;
+    }
+    get maxUniformBufferBindingSize() {
+      return this[_limits].maxUniformBufferBindingSize;
+    }
+    get maxStorageBufferBindingSize() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxVertexBuffers() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxVertexAttributes() {
+      throw new TypeError("Not yet implemented");
+    }
+    get maxVertexBufferArrayStride() {
+      throw new TypeError("Not yet implemented");
+    }
+  }
+
+  const _features = Symbol("[[features]]");
+
+  function createGPUAdapterFeatures(features) {
+    /** @type {GPUAdapterFeatures} */
+    const adapterFeatures = webidl.createBranded(GPUAdapterFeatures);
+    adapterFeatures[_features] = new Set(features);
+    return adapterFeatures;
+  }
+
+  class GPUAdapterFeatures {
+    /** @type {Set<string>} */
+    [_features];
+
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    /** @return {IterableIterator<[string, string]>} */
+    entries() {
+      return this[_features].entries();
+    }
+
+    /** @return {void} */
+    forEach(callbackfn, thisArg) {
+      this[_features].forEach(callbackfn, thisArg);
+    }
+
+    /** @return {boolean} */
+    has(value) {
+      return this[_features].has(value);
+    }
+
+    /** @return {string[]} */
+    keys() {
+      return this[_features].keys();
+    }
+
+    /** @return {IterableIterator<string>} */
+    values() {
+      return this[_features].values();
+    }
+
+    /** @return {number} */
+    get size() {
+      return this[_features].size;
+    }
+
+    [Symbol.iterator]() {
+      return this[_features][Symbol.iterator]();
     }
   }
 
@@ -253,7 +399,7 @@
     }
 
     /**
-     * @param {GPUBufferDescriptor} descriptor 
+     * @param {GPUBufferDescriptor} descriptor
      */
     createBuffer(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -295,7 +441,7 @@
     }
 
     /**
-     * @param {GPUTextureDescriptor} descriptor 
+     * @param {GPUTextureDescriptor} descriptor
      */
     createTexture(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -315,7 +461,7 @@
     }
 
     /**
-     * @param {GPUSamplerDescriptor} descriptor 
+     * @param {GPUSamplerDescriptor} descriptor
      */
     createSampler(descriptor = {}) {
       webidl.assertBranded(this, GPUDevice);
@@ -334,7 +480,7 @@
     }
 
     /**
-     * @param {GPUBindGroupLayoutDescriptor} descriptor 
+     * @param {GPUBindGroupLayoutDescriptor} descriptor
      */
     createBindGroupLayout(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -365,7 +511,7 @@
     }
 
     /**
-     * @param {GPUPipelineLayoutDescriptor} descriptor 
+     * @param {GPUPipelineLayoutDescriptor} descriptor
      */
     createPipelineLayout(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -387,7 +533,7 @@
     }
 
     /**
-     * @param {GPUBindGroupDescriptor} descriptor 
+     * @param {GPUBindGroupDescriptor} descriptor
      */
     createBindGroup(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -430,7 +576,7 @@
     }
 
     /**
-     * @param {GPUShaderModuleDescriptor} descriptor 
+     * @param {GPUShaderModuleDescriptor} descriptor
      */
     createShaderModule(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -459,7 +605,7 @@
     }
 
     /**
-     * @param {GPUComputePipelineDescriptor} descriptor 
+     * @param {GPUComputePipelineDescriptor} descriptor
      */
     createComputePipeline(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -574,7 +720,7 @@
     }
 
     /**
-     * @param {GPUQuerySetDescriptor} descriptor 
+     * @param {GPUQuerySetDescriptor} descriptor
      */
     createQuerySet(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -612,7 +758,7 @@
 
   class GPUQueue {
     /**
-     * The rid of the related device. 
+     * The rid of the related device.
      * @type {number}
      */
     [_device];
@@ -622,7 +768,7 @@
     }
 
     /**
-     * @param {GPUCommandBuffer[]} commandBuffers 
+     * @param {GPUCommandBuffer[]} commandBuffers
      */
     submit(commandBuffers) {
       webidl.assertBranded(this, GPUQueue);
@@ -643,11 +789,11 @@
     }
 
     /**
-     * @param {GPUBuffer} buffer 
-     * @param {number} bufferOffset 
-     * @param {BufferSource} data 
-     * @param {number} [dataOffset] 
-     * @param {number} [size] 
+     * @param {GPUBuffer} buffer
+     * @param {number} bufferOffset
+     * @param {BufferSource} data
+     * @param {number} [dataOffset]
+     * @param {number} [size]
      */
     writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {
       webidl.assertBranded(this, GPUQueue);
@@ -689,10 +835,10 @@
     }
 
     /**
-     * @param {GPUImageCopyTexture} destination 
-     * @param {BufferSource} data 
-     * @param {GPUImageDataLayout} dataLayout 
-     * @param {GPUExtent3D} size 
+     * @param {GPUImageCopyTexture} destination
+     * @param {BufferSource} data
+     * @param {GPUImageDataLayout} dataLayout
+     * @param {GPUExtent3D} size
      */
     writeTexture(destination, data, dataLayout, size) {
       webidl.assertBranded(this, GPUQueue);
@@ -1036,6 +1182,48 @@
     }
   }
 
+  class GPUBufferUsage {
+    static get MAP_READ() {
+      return 0x0001;
+    }
+    static get MAP_WRITE() {
+      return 0x0002;
+    }
+    static get COPY_SRC() {
+      return 0x0004;
+    }
+    static get COPY_DST() {
+      return 0x0008;
+    }
+    static get INDEX() {
+      return 0x0010;
+    }
+    static get VERTEX() {
+      return 0x0020;
+    }
+    static get UNIFORM() {
+      return 0x0040;
+    }
+    static get STORAGE() {
+      return 0x0080;
+    }
+    static get INDIRECT() {
+      return 0x0100;
+    }
+    static get QUERY_RESOLVE() {
+      return 0x0200;
+    }
+  }
+
+  class GPUMapMode {
+    static get READ() {
+      return 0x0001;
+    }
+    static get WRITE() {
+      return 0x0002;
+    }
+  }
+
   /**
    * @param {string | null} label
    * @param {number} rid
@@ -1058,7 +1246,7 @@
     }
 
     /**
-     * @param {GPUTextureViewDescriptor} descriptor 
+     * @param {GPUTextureViewDescriptor} descriptor
      */
     createView(descriptor = {}) {
       webidl.assertBranded(this, GPUTexture);
@@ -1082,6 +1270,24 @@
     }
   }
   GPUObjectBaseMixin("GPUTexture", GPUTexture);
+
+  class GPUTextureUsage {
+    static get COPY_SRC() {
+      return 0x01;
+    }
+    static get COPY_DST() {
+      return 0x02;
+    }
+    static get SAMPLED() {
+      return 0x04;
+    }
+    static get STORAGE() {
+      return 0x08;
+    }
+    static get RENDER_ATTACHMENT() {
+      return 0x10;
+    }
+  }
 
   /**
    * @param {string | null} label
@@ -1240,7 +1446,7 @@
     }
 
     /**
-     * @param {number} index 
+     * @param {number} index
      */
     getBindGroupLayout(index) {
       webidl.assertBranded(this, GPURenderPipeline);
@@ -1285,7 +1491,7 @@
     }
 
     /**
-     * @param {number} index 
+     * @param {number} index
      */
     getBindGroupLayout(index) {
       webidl.assertBranded(this, GPURenderPipeline);
@@ -1308,6 +1514,24 @@
     }
   }
   GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
+
+  class GPUColorWrite {
+    static get RED() {
+      return 0x1;
+    }
+    static get GREEN() {
+      return 0x2;
+    }
+    static get BLUE() {
+      return 0x4;
+    }
+    static get ALPHA() {
+      return 0x8;
+    }
+    static get ALL() {
+      return 0xF;
+    }
+  }
 
   /**
    * @param {string | null} label
@@ -1414,7 +1638,7 @@
     }
 
     /**
-     * @param {GPUComputePassDescriptor} descriptor 
+     * @param {GPUComputePassDescriptor} descriptor
      */
     beginComputePass(descriptor = {}) {
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1441,11 +1665,11 @@
     }
 
     /**
-     * @param {GPUBuffer} source 
-     * @param {number} sourceOffset 
-     * @param {GPUBuffer} destination 
-     * @param {number} destinationOffset 
-     * @param {number} size 
+     * @param {GPUBuffer} source
+     * @param {number} sourceOffset
+     * @param {GPUBuffer} destination
+     * @param {number} destinationOffset
+     * @param {number} size
      */
     copyBufferToBuffer(
       source,
@@ -1616,7 +1840,7 @@
     }
 
     /**
-     * @param {string} groupLabel 
+     * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1641,7 +1865,7 @@
     }
 
     /**
-     * @param {string} markerLabel 
+     * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1659,8 +1883,8 @@
     }
 
     /**
-     * @param {GPUQuerySet} querySet 
-     * @param {number} queryIndex 
+     * @param {GPUQuerySet} querySet
+     * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1683,11 +1907,11 @@
     }
 
     /**
-     * @param {GPUQuerySet} querySet 
-     * @param {number} firstQuery 
-     * @param {number} queryCount 
-     * @param {GPUBuffer} destination 
-     * @param {number} destinationOffset 
+     * @param {GPUQuerySet} querySet
+     * @param {number} firstQuery
+     * @param {number} queryCount
+     * @param {GPUBuffer} destination
+     * @param {number} destinationOffset
      */
     resolveQuerySet(
       querySet,
@@ -1731,7 +1955,7 @@
     }
 
     /**
-     * @param {GPUCommandBufferDescriptor} descriptor 
+     * @param {GPUCommandBufferDescriptor} descriptor
      * @returns {GPUCommandBuffer}
      */
     finish(descriptor = {}) {
@@ -1779,12 +2003,12 @@
     }
 
     /**
-     * @param {number} x 
-     * @param {number} y 
-     * @param {number} width 
-     * @param {number} height 
-     * @param {number} minDepth 
-     * @param {number} maxDepth 
+     * @param {number} x
+     * @param {number} y
+     * @param {number} width
+     * @param {number} height
+     * @param {number} minDepth
+     * @param {number} maxDepth
      */
     setViewport(x, y, width, height, minDepth, maxDepth) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -1818,11 +2042,11 @@
     }
 
     /**
-     * 
-     * @param {number} x 
-     * @param {number} y 
-     * @param {number} width 
-     * @param {number} height 
+     *
+     * @param {number} x
+     * @param {number} y
+     * @param {number} width
+     * @param {number} height
      */
     setScissorRect(x, y, width, height) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -1855,7 +2079,7 @@
     }
 
     /**
-     * @param {GPUColor} color 
+     * @param {GPUColor} color
      */
     setBlendColor(color) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -1873,7 +2097,7 @@
     }
 
     /**
-     * @param {number} reference 
+     * @param {number} reference
      */
     setStencilReference(reference) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -1899,8 +2123,8 @@
     }
 
     /**
-     * @param {GPUQuerySet} querySet 
-     * @param {number} queryIndex 
+     * @param {GPUQuerySet} querySet
+     * @param {number} queryIndex
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -1930,8 +2154,8 @@
     }
 
     /**
-     * @param {GPUQuerySet} querySet 
-     * @param {number} queryIndex 
+     * @param {GPUQuerySet} querySet
+     * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -1954,7 +2178,7 @@
     }
 
     /**
-     * @param {GPURenderBundle[]} bundles 
+     * @param {GPURenderBundle[]} bundles
      */
     executeBundles(bundles) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2014,7 +2238,7 @@
     }
 
     /**
-     * @param {string} groupLabel 
+     * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2039,7 +2263,7 @@
     }
 
     /**
-     * @param {string} markerLabel 
+     * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2057,7 +2281,7 @@
     }
 
     /**
-     * @param {GPURenderPipeline} pipeline 
+     * @param {GPURenderPipeline} pipeline
      */
     setPipeline(pipeline) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2075,10 +2299,10 @@
     }
 
     /**
-     * @param {GPUBuffer} buffer 
-     * @param {GPUIndexFormat} indexFormat 
-     * @param {number} offset 
-     * @param {number} size 
+     * @param {GPUBuffer} buffer
+     * @param {GPUIndexFormat} indexFormat
+     * @param {number} offset
+     * @param {number} size
      */
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2111,10 +2335,10 @@
     }
 
     /**
-     * @param {number} slot 
-     * @param {GPUBuffer} buffer 
-     * @param {number} offset 
-     * @param {number} size 
+     * @param {number} slot
+     * @param {GPUBuffer} buffer
+     * @param {number} offset
+     * @param {number} size
      */
     setVertexBuffer(slot, buffer, offset = 0, size = 0) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2147,10 +2371,10 @@
     }
 
     /**
-     * @param {number} vertexCount 
-     * @param {number} instanceCount 
-     * @param {number} firstVertex 
-     * @param {number} firstInstance 
+     * @param {number} vertexCount
+     * @param {number} instanceCount
+     * @param {number} firstVertex
+     * @param {number} firstInstance
      */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2182,11 +2406,11 @@
     }
 
     /**
-     * @param {number} indexCount 
-     * @param {number} instanceCount 
-     * @param {number} firstIndex 
-     * @param {number} baseVertex 
-     * @param {number} firstInstance 
+     * @param {number} indexCount
+     * @param {number} instanceCount
+     * @param {number} firstIndex
+     * @param {number} baseVertex
+     * @param {number} firstInstance
      */
     drawIndexed(
       indexCount,
@@ -2230,8 +2454,8 @@
     }
 
     /**
-     * @param {GPUBuffer} indirectBuffer 
-     * @param {number} indirectOffset 
+     * @param {GPUBuffer} indirectBuffer
+     * @param {number} indirectOffset
      */
     drawIndirect(indirectBuffer, indirectOffset) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2254,8 +2478,8 @@
     }
 
     /**
-     * @param {GPUBuffer} indirectBuffer 
-     * @param {number} indirectOffset 
+     * @param {GPUBuffer} indirectBuffer
+     * @param {number} indirectOffset
      */
     drawIndexedIndirect(indirectBuffer, indirectOffset) {
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2306,7 +2530,7 @@
     }
 
     /**
-     * @param {GPUComputePipeline} pipeline 
+     * @param {GPUComputePipeline} pipeline
      */
     setPipeline(pipeline) {
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2324,9 +2548,9 @@
     }
 
     /**
-     * @param {number} x 
-     * @param {number} y 
-     * @param {number} z 
+     * @param {number} x
+     * @param {number} y
+     * @param {number} z
      */
     dispatch(x, y = 1, z = 1) {
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2344,8 +2568,8 @@
     }
 
     /**
-     * @param {GPUBuffer} indirectBuffer 
-     * @param {number} indirectOffset 
+     * @param {GPUBuffer} indirectBuffer
+     * @param {number} indirectOffset
      */
     dispatchIndirect(indirectBuffer, indirectOffset) {
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2368,8 +2592,8 @@
     }
 
     /**
-     * @param {GPUQuerySet} querySet 
-     * @param {number} queryIndex 
+     * @param {GPUQuerySet} querySet
+     * @param {number} queryIndex
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2402,8 +2626,8 @@
     }
 
     /**
-     * @param {GPUQuerySet} querySet 
-     * @param {number} queryIndex 
+     * @param {GPUQuerySet} querySet
+     * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2468,7 +2692,7 @@
     }
 
     /**
-     * @param {string} groupLabel 
+     * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2493,7 +2717,7 @@
     }
 
     /**
-     * @param {string} markerLabel 
+     * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2561,7 +2785,7 @@
     }
 
     /**
-     * @param {GPURenderBundleDescriptor} descriptor 
+     * @param {GPURenderBundleDescriptor} descriptor
      */
     finish(descriptor = {}) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2615,7 +2839,7 @@
     }
 
     /**
-     * @param {string} groupLabel 
+     * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2640,7 +2864,7 @@
     }
 
     /**
-     * @param {string} markerLabel 
+     * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2658,7 +2882,7 @@
     }
 
     /**
-     * @param {GPURenderPipeline} pipeline 
+     * @param {GPURenderPipeline} pipeline
      */
     setPipeline(pipeline) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2676,10 +2900,10 @@
     }
 
     /**
-     * @param {GPUBuffer} buffer 
-     * @param {GPUIndexFormat} indexFormat 
-     * @param {number} offset 
-     * @param {number} size 
+     * @param {GPUBuffer} buffer
+     * @param {GPUIndexFormat} indexFormat
+     * @param {number} offset
+     * @param {number} size
      */
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2712,10 +2936,10 @@
     }
 
     /**
-     * @param {number} slot 
-     * @param {GPUBuffer} buffer 
-     * @param {number} offset 
-     * @param {number} size 
+     * @param {number} slot
+     * @param {GPUBuffer} buffer
+     * @param {number} offset
+     * @param {number} size
      */
     setVertexBuffer(slot, buffer, offset = 0, size = 0) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2748,10 +2972,10 @@
     }
 
     /**
-     * @param {number} vertexCount 
-     * @param {number} instanceCount 
-     * @param {number} firstVertex 
-     * @param {number} firstInstance 
+     * @param {number} vertexCount
+     * @param {number} instanceCount
+     * @param {number} firstVertex
+     * @param {number} firstInstance
      */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2783,11 +3007,11 @@
     }
 
     /**
-     * @param {number} indexCount 
-     * @param {number} instanceCount 
-     * @param {number} firstIndex 
-     * @param {number} baseVertex 
-     * @param {number} firstInstance 
+     * @param {number} indexCount
+     * @param {number} instanceCount
+     * @param {number} firstIndex
+     * @param {number} baseVertex
+     * @param {number} firstInstance
      */
     drawIndexed(
       indexCount,
@@ -2831,8 +3055,8 @@
     }
 
     /**
-     * @param {GPUBuffer} indirectBuffer 
-     * @param {number} indirectOffset 
+     * @param {GPUBuffer} indirectBuffer
+     * @param {number} indirectOffset
      */
     drawIndirect(indirectBuffer, indirectOffset) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -2915,9 +3139,14 @@
     gpu: webidl.createBranded(GPU),
     GPU,
     GPUAdapter,
+    GPUAdapterLimits,
+    GPUAdapterFeatures,
     GPUDevice,
     GPUQueue,
     GPUBuffer,
+    GPUBufferUsage,
+    GPUMapMode,
+    GPUTextureUsage,
     GPUTexture,
     GPUTextureView,
     GPUSampler,
@@ -2927,6 +3156,7 @@
     GPUShaderModule,
     GPUComputePipeline,
     GPURenderPipeline,
+    GPUColorWrite,
     GPUCommandEncoder,
     GPURenderPassEncoder,
     GPUComputePassEncoder,
