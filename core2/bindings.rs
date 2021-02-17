@@ -743,15 +743,11 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let resolved_specifier = state
-    .loader
-    .resolve(
-      state.op_state.clone(),
-      &specifier_str,
-      &referrer_name,
-      false,
-    )
-    .expect("Module should have been already resolved");
+  use crate::ModuleSpecifier;
+  // FIXME(bartlomieju): import map support
+  let resolved_specifier =
+    ModuleSpecifier::resolve_import(&specifier_str, &referrer_name)
+      .expect("Module should have been already resolved");
 
   if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
     if let Some(handle) = state.module_map.get_handle(id) {
