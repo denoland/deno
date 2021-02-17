@@ -2473,6 +2473,13 @@ console.log("finish");
     output: "033_import_map.out",
   });
 
+  itest!(_033_import_map_remote {
+    args:
+      "run --quiet --reload --import-map=http://127.0.0.1:4545/cli/tests/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
+    output: "033_import_map_remote.out",
+    http_server: true,
+  });
+
   itest!(_034_onload {
     args: "run --quiet --reload 034_onload/main.ts",
     output: "034_onload.out",
