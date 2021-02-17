@@ -146,3 +146,108 @@ jobs:
             artifacts/lib.deno.d.ts
             artifacts/deno_src.tar.gz
           draft: true
+
+  test:
+    name: test / ${{ matrix.kind }} / ${{ runner.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        kind: ["debug", "release"]
+        os:
+          - ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - windows-2019
+          - macos-10.15
+
+    env:
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: full
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Configure git
+        run: git config --global core.symlinks true
+
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 5
+          submodules: true
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.50.0
+
+      - name: Install Deno (unix)
+        if: runner.os != 'Windows'
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
+          echo "$HOME/.deno/bin" >> $GITHUB_PATH
+
+      - name: Install Deno (windows)
+        if: runner.os == 'Windows'
+        run: |-
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
+          echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
+
+      - name: Install Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "3.8"
+          architecture: x64
+
+      - name: Install Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+          check-latest: true
+
+      - name: Remove unused Python
+        if: runner.os == 'Windows'
+        run: |-
+          $env:PATH -split ";" |
+            Where-Object { Test-Path "$_\python.exe" } |
+            Select-Object -Skip 1 |
+            ForEach-Object { Move-Item "$_" "$_.disabled" }
+
+      - name: Log versions
+        run: |
+          node -v
+          python --version
+          rustc --version
+          cargo --version
+          deno --version
+
+      - name: Build (${{ matrix.kind }})
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --locked --all-targets ${{ matrix.kind == 'release' && '--release -vv' }}
+
+      - name: Test release
+        if: matrix.kind == 'release'
+        run: cargo test --release --locked --all-targets
+
+      - name: Test debug
+        if: matrix.kind == 'debug'
+        run: |
+          cargo test --locked --doc
+          cargo test --locked --all-targets
+
+      - name: Configure hosts file for WPT (unix)
+        if: runner.os != 'Windows'
+        working-directory: test_util/wpt/
+        run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
+
+      - name: Configure hosts file for WPT (windows)
+        if: runner.os == 'Windows'
+        working-directory: test_util/wpt/
+        run: python wpt make-hosts-file | Out-File $env:SystemRoot\System32\drivers\etc\hosts -Encoding ascii -Append
+
+      - name: Run web platform tests (${{ matrix.kind }})
+        run: |
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet ${{ matrix.kind == 'release' && '--release' }}
