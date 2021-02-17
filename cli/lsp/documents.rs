@@ -204,14 +204,14 @@ impl DocumentCache {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url;
   use lspower::lsp;
 
   #[test]
   fn test_document_cache_contains() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
-    let missing_specifier =
-      ModuleSpecifier::resolve_url("file:///a/c.ts").unwrap();
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
+    let missing_specifier = resolve_url("file:///a/c.ts").unwrap();
     document_cache.open(specifier.clone(), 1, "console.log(\"Hello Deno\");\n");
     assert!(document_cache.contains_key(&specifier));
     assert!(!document_cache.contains_key(&missing_specifier));
@@ -220,7 +220,7 @@ mod tests {
   #[test]
   fn test_document_cache_change() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
     document_cache.open(specifier.clone(), 1, "console.log(\"Hello deno\");\n");
     document_cache
       .change(
@@ -251,7 +251,7 @@ mod tests {
   #[test]
   fn test_document_cache_change_utf16() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
     document_cache.open(specifier.clone(), 1, "console.log(\"Hello 🦕\");\n");
     document_cache
       .change(

@@ -19,6 +19,7 @@ use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::json_op_sync;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -113,7 +114,7 @@ impl Default for Assets {
       .iter()
       .map(|(k, v)| {
         let url_str = format!("asset:///{}", k);
-        let specifier = ModuleSpecifier::resolve_url(&url_str).unwrap();
+        let specifier = resolve_url(&url_str).unwrap();
         let asset = AssetDocument::new(v);
         (specifier, Some(asset))
       })
@@ -478,8 +479,7 @@ impl DocumentSpan {
     line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    let target_specifier =
-      ModuleSpecifier::resolve_url(&self.file_name).unwrap();
+    let target_specifier = resolve_url(&self.file_name).unwrap();
     if let Ok(target_line_index) =
       language_server.get_line_index(target_specifier).await
     {
@@ -615,8 +615,7 @@ impl RenameLocations {
       HashMap::new();
     for location in self.locations.iter() {
       let uri = utils::normalize_file_name(&location.document_span.file_name)?;
-      let specifier =
-        ModuleSpecifier::resolve_url(&location.document_span.file_name)?;
+      let specifier = resolve_url(&location.document_span.file_name)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -778,7 +777,7 @@ impl FileTextChanges {
     &self,
     language_server: &mut language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
-    let specifier = ModuleSpecifier::resolve_url(&self.file_name)?;
+    let specifier = resolve_url(&self.file_name)?;
     let line_index = language_server.get_line_index(specifier.clone()).await?;
     let edits = self
       .text_changes
@@ -787,7 +786,7 @@ impl FileTextChanges {
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.as_url().clone(),
+        uri: specifier.clone(),
         version: language_server.document_version(specifier),
       },
       edits,
@@ -1063,7 +1062,7 @@ fn cache_snapshot(
     .snapshots
     .contains_key(&(specifier.clone().into(), version.clone().into()))
   {
-    let s = ModuleSpecifier::resolve_url(&specifier)?;
+    let s = resolve_url(&specifier)?;
     let content = state.state_snapshot.documents.content(&s)?.unwrap();
     state
       .snapshots
@@ -1156,7 +1155,7 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
 fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_length");
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
-  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
+  let specifier = resolve_url(&v.specifier)?;
   if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
     Ok(json!(asset.length))
   } else if state.state_snapshot.documents.contains_key(&specifier) {
@@ -1186,7 +1185,7 @@ struct GetTextArgs {
 fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_text");
   let v: GetTextArgs = serde_json::from_value(args)?;
-  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
+  let specifier = resolve_url(&v.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
       content.text.clone()
@@ -1208,7 +1207,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_resolve");
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
-  let referrer = ModuleSpecifier::resolve_url(&v.base)?;
+  let referrer = resolve_url(&v.base)?;
   let sources = &mut state.state_snapshot.sources;
 
   if state.state_snapshot.documents.contains_key(&referrer) {
@@ -1311,8 +1310,8 @@ struct ScriptVersionArgs {
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_script_version");
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
-  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if specifier.as_url().scheme() == "asset" {
+  let specifier = resolve_url(&v.specifier)?;
+  if specifier.scheme() == "asset" {
     return if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(json!("1"))
     } else {
@@ -1673,8 +1672,8 @@ mod tests {
   fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
     let mut documents = DocumentCache::default();
     for (specifier, content, version) in sources {
-      let specifier = ModuleSpecifier::resolve_url(specifier)
-        .expect("failed to create specifier");
+      let specifier =
+        resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, version, content);
     }
     StateSnapshot {
@@ -1769,8 +1768,7 @@ mod tests {
       }),
       vec![("file:///a.ts", r#"console.log("hello deno");"#, 1)],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1815,8 +1813,7 @@ mod tests {
       }),
       vec![("file:///a.ts", r#"console.log(document.location);"#, 1)],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1849,8 +1846,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1879,8 +1875,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1933,8 +1928,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1970,8 +1964,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -2028,8 +2021,7 @@ mod tests {
       }),
       vec![("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -2052,8 +2044,8 @@ mod tests {
       }),
       vec![],
     );
-    let specifier = ModuleSpecifier::resolve_url("asset:///lib.esnext.d.ts")
-      .expect("could not resolve url");
+    let specifier =
+      resolve_url("asset:///lib.esnext.d.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,

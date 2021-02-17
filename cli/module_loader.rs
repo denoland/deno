@@ -90,8 +90,7 @@ impl ModuleLoader for CliModuleLoader {
       }
     }
 
-    let module_specifier =
-      ModuleSpecifier::resolve_import(specifier, referrer)?;
+    let module_specifier = deno_core::resolve_import(specifier, referrer)?;
 
     Ok(module_specifier)
   }
