@@ -698,6 +698,33 @@
     };
   }
 
+  function illegalConstructor() {
+    throw new TypeError("Illegal constructor");
+  }
+
+  const brand = Symbol("[[webidl.brand]]");
+
+  function createBranded(Type) {
+    const t = Object.create(Type.prototype);
+    t[brand] = brand;
+    return t;
+  }
+
+  function assertBranded(self, prototype) {
+    if (!(self instanceof prototype) || self[brand] !== brand) {
+      throw new TypeError("Illegal invocation");
+    }
+  }
+
+  function createInterfaceConverter(name, prototype) {
+    return (V, opts) => {
+      if (!(V instanceof prototype) || V[brand] !== brand) {
+        throw makeException(TypeError, `is not of type ${name}.`, opts);
+      }
+      return V;
+    };
+  }
+
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     converters,
@@ -705,5 +732,10 @@
     createDictionaryConverter,
     createEnumConverter,
     createNullableConverter,
+    illegalConstructor,
+    brand,
+    createBranded,
+    assertBranded,
+    createInterfaceConverter,
   };
 })(this);

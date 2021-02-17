@@ -3,10 +3,14 @@
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
+/// <reference path="./lib.deno_webgpu.d.ts" />
+
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const eventTarget = window.__bootstrap.eventTarget;
 
   const ridSymbol = Symbol("rid");
 
@@ -54,181 +58,9 @@
     }
   }
 
-  const wgpuEnums = {
-    GPUPowerPreference: webidl.createEnumConverter("GPUPowerPreference", [
-      "low-power",
-      "high-performance",
-    ]),
-    GPUTextureDimension: webidl.createEnumConverter("GPUTextureDimension", [
-      "1d",
-      "2d",
-      "3d",
-    ]),
-    GPUTextureFormat: webidl.createEnumConverter("GPUTextureFormat", [
-      // 8-bit formats
-      "r8unorm",
-      "r8snorm",
-      "r8uint",
-      "r8sint",
-
-      // 16-bit formats
-      "r16uint",
-      "r16sint",
-      "r16float",
-      "rg8unorm",
-      "rg8snorm",
-      "rg8uint",
-      "rg8sint",
-
-      // 32-bit formats
-      "r32uint",
-      "r32sint",
-      "r32float",
-      "rg16uint",
-      "rg16sint",
-      "rg16float",
-      "rgba8unorm",
-      "rgba8unorm-srgb",
-      "rgba8snorm",
-      "rgba8uint",
-      "rgba8sint",
-      "bgra8unorm",
-      "bgra8unorm-srgb",
-      // Packed 32-bit formats
-      "rgb9e5ufloat",
-      "rgb10a2unorm",
-      "rg11b10ufloat",
-
-      // 64-bit formats
-      "rg32uint",
-      "rg32sint",
-      "rg32float",
-      "rgba16uint",
-      "rgba16sint",
-      "rgba16float",
-
-      // 128-bit formats
-      "rgba32uint",
-      "rgba32sint",
-      "rgba32float",
-
-      // Depth and stencil formats
-      "stencil8",
-      "depth16unorm",
-      "depth24plus",
-      "depth24plus-stencil8",
-      "depth32float",
-
-      // BC compressed formats usable if "texture-compression-bc" is both
-      // supported by the device/user agent and enabled in requestDevice.
-      "bc1-rgba-unorm",
-      "bc1-rgba-unorm-srgb",
-      "bc2-rgba-unorm",
-      "bc2-rgba-unorm-srgb",
-      "bc3-rgba-unorm",
-      "bc3-rgba-unorm-srgb",
-      "bc4-r-unorm",
-      "bc4-r-snorm",
-      "bc5-rg-unorm",
-      "bc5-rg-snorm",
-      "bc6h-rgb-ufloat",
-      "bc6h-rgb-float",
-      "bc7-rgba-unorm",
-      "bc7-rgba-unorm-srgb",
-
-      // "depth24unorm-stencil8" feature
-      "depth24unorm-stencil8",
-
-      // "depth32float-stencil8" feature
-      "depth32float-stencil8",
-    ]),
-  };
-  const wgpuTypedefs = {
-    GPUSize64: (v, opts) =>
-      webidl.converters["unsigned long long"](v, {
-        ...opts,
-        enforceRange: true,
-      }),
-    GPUSize32: (v, opts) =>
-      webidl.converters["unsigned long"](v, {
-        ...opts,
-        enforceRange: true,
-      }),
-    GPUBufferUsageFlags: (v, opts) =>
-      webidl.converters["unsigned long"](v, {
-        ...opts,
-        enforceRange: true,
-      }),
-    GPUIntegerCoordinate: (v, opts) =>
-      webidl.converters["unsigned long"](v, {
-        ...opts,
-        enforceRange: true,
-      }),
-    GPUTextureUsageFlags: (v, opts) =>
-      webidl.converters["unsigned long"](v, {
-        ...opts,
-        enforceRange: true,
-      }),
-    // TODO(lucacasonato): fixme when we implement WebIDL union and sequence
-    GPUExtent3D: webidl.converters.any,
-  };
-  const wgpuDicts = {
-    GPURequestAdapterOptions: webidl.createDictionaryConverter(
-      "GPURequestAdapterOptions",
-      [{ converter: wgpuEnums.GPUPowerPreference, key: "powerPreference" }],
-    ),
-    GPUBufferDescriptor: webidl.createDictionaryConverter(
-      "GPUBufferDescriptor",
-      [
-        { key: "size", converter: wgpuTypedefs.GPUSize64, required: true },
-        {
-          key: "usage",
-          converter: wgpuTypedefs.GPUBufferUsageFlags,
-          required: true,
-        },
-        {
-          key: "mappedAtCreation",
-          converter: webidl.converters.boolean,
-          defaultValue: false,
-        },
-      ],
-    ),
-    GPUTextureDescriptor: webidl.createDictionaryConverter(
-      "GPUTextureDescriptor",
-      [
-        { key: "size", converter: webidl.converters.any, required: true },
-        {
-          key: "mipLevelCount",
-          converter: wgpuTypedefs.GPUIntegerCoordinate,
-          defaultValue: 1,
-        },
-        {
-          key: "sampleCount",
-          converter: wgpuTypedefs.GPUSize64,
-          defaultValue: 1,
-        },
-        {
-          key: "dimension",
-          converter: wgpuEnums.GPUTextureDimension,
-          defaultValue: "2d",
-        },
-        {
-          key: "format",
-          converter: wgpuEnums.GPUTextureFormat,
-          required: true,
-        },
-        {
-          key: "usage",
-          converter: wgpuTypedefs.GPUTextureUsageFlags,
-          required: true,
-        },
-      ],
-    ),
-  };
-
   const gpu = {
     async requestAdapter(options = {}) {
-      options = wgpuDicts.GPURequestAdapterOptions(options, {
+      options = webidl.converters.GPURequestAdapterOptions(options, {
         prefix: "Failed to execute 'requestAdapter' on 'GPU'",
         context: "Argument 1",
       });
@@ -243,102 +75,192 @@
       if (error) {
         return null;
       } else {
-        return new GPUAdapter(keySymbol, data);
+        return createGPUAdapter(data.name, data);
       }
     },
   };
 
+  const _name = Symbol("[[name]]");
+  const _adapter = Symbol("[[adapter]]");
+
+  /**
+   * @typedef InnerGPUAdapter
+   * @property {number} rid
+   * @property {GPUAdapterFeatures} features
+   * @property {GPUAdapterLimits} limits
+   */
+
+  /**
+    * @param {string} name 
+    * @param {InnerGPUAdapter} inner
+    * @returns {GPUAdapter}
+    */
+  function createGPUAdapter(name, inner) {
+    /** @type {GPUAdapter} */
+    const adapter = webidl.createBranded(GPUAdapter);
+    adapter[_name] = name;
+    adapter[_adapter] = inner;
+    return adapter;
+  }
+
   class GPUAdapter {
-    #rid;
-    #name;
+    /** @type {string} */
+    [_name];
+    /** @type {InnerGPUAdapter} */
+    [_adapter];
+
+    /** @returns {string} */
     get name() {
-      return this.#name;
+      webidl.assertBranded(this, GPUAdapter);
+      return this[_name];
     }
-    #features;
+    /** @returns {GPUAdapterFeatures} */
     get features() {
-      return this.#features;
+      webidl.assertBranded(this, GPUAdapter);
+      return this[_adapter].features;
     }
-    #limits;
+    /** @returns {GPUAdapterLimits} */
     get limits() {
-      return this.#limits;
+      webidl.assertBranded(this, GPUAdapter);
+      return this[_adapter].limits;
     }
 
-    constructor(key, data) {
-      checkKey(key);
-
-      this.#rid = data.rid;
-      this.#name = data.name;
-      this.#features = Object.freeze(data.features);
-      this.#limits = Object.freeze(data.limits);
+    constructor() {
+      webidl.illegalConstructor();
     }
 
+    /**
+     * @param {GPUDeviceDescriptor} descriptor
+     * @returns {Promise<GPUDevice>}
+     */
     async requestDevice(descriptor = {}) {
-      const { rid, ...data } = await core.jsonOpAsync(
+      webidl.assertBranded(this, GPUAdapter);
+      descriptor = webidl.converters.GPUDeviceDescriptor(descriptor, {
+        prefix: "Failed to execute 'requestDevice' on 'GPUAdapter'",
+        context: "Argument 1",
+      });
+
+      const { rid, features, limits } = await core.jsonOpAsync(
         "op_webgpu_request_device",
         {
-          adapterRid: this.#rid,
+          adapterRid: this[_adapter].rid,
           ...descriptor,
         },
       );
 
-      return new GPUDevice(keySymbol, this, rid, {
-        label: descriptor.label,
-        ...data,
-      });
+      return createGPUDevice(
+        descriptor.label ?? null,
+        {
+          rid,
+          adapter: this,
+          features: Object.freeze(features),
+          limits: Object.freeze(limits),
+          queue: createGPUQueue(descriptor.label ?? null, rid),
+        },
+      );
     }
   }
 
+  const _label = Symbol("[[label]]");
+  const _device = Symbol("[[device]]");
+
+  /**
+   * @typedef InnerGPUDevice
+   * @property {GPUAdapter} adapter
+   * @property {number} rid
+   * @property {GPUFeatureName[]} features
+   * @property {object} limits
+   * @property {GPUQueue} queue
+   */
+
+  /**
+   * @param {string | null} label
+   * @param {InnerGPUDevice} inner
+   * @returns {GPUDevice}
+   */
+  function createGPUDevice(label, inner) {
+    /** @type {GPUDevice} */
+    const device = webidl.createBranded(GPUDevice);
+    device[_label] = label;
+    device[_device] = inner;
+    return device;
+  }
+
+  webidl.converters["UVString?"] = webidl.createNullableConverter(
+    webidl.converters.USVString,
+  );
+
   // TODO(@crowlKats): https://gpuweb.github.io/gpuweb/#errors-and-debugging
-  class GPUDevice extends EventTarget {
-    #rid;
-    #adapter;
+  class GPUDevice extends eventTarget.EventTarget {
+    // TODO(lucacasonato): why does tsc complain about incorrect types here?
+    /** @type {string | null} */
+    [_label];
+
+    /**
+     * @return {string | null}
+     */
+    get label() {
+      webidl.assertBranded(this, GPUDevice);
+      return this[_label];
+    }
+    /**
+     * @param {string | null} label
+     */
+    set label(label) {
+      webidl.assertBranded(this, GPUDevice);
+      label = webidl.converters["UVString?"](label, {
+        prefix: "Failed to set 'label' on 'GPUDevice'",
+        context: "Argument 1",
+      });
+      this[_label] = label;
+    }
+
+    /** @type {InnerGPUDevice} */
+    [_device];
+
     get adapter() {
-      return this.#adapter;
+      webidl.assertBranded(this, GPUDevice);
+      return this[_device].adapter;
     }
-    #features;
     get features() {
-      return this.#features;
+      webidl.assertBranded(this, GPUDevice);
+      return this[_device].features;
     }
-    #limits;
     get limits() {
-      return this.#limits;
+      webidl.assertBranded(this, GPUDevice);
+      return this[_device].limits;
     }
-    #queue;
     get queue() {
-      return this.#queue;
+      webidl.assertBranded(this, GPUDevice);
+      return this[_device].queue;
     }
 
-    constructor(key, adapter, rid, data) {
-      checkKey(key);
-
+    constructor() {
+      webidl.illegalConstructor();
       super();
-
-      this.#adapter = adapter;
-      this.#rid = rid;
-      this.#features = Object.freeze(data.features);
-      this.#limits = data.limits;
-      this.#queue = new GPUQueue(keySymbol, rid, data.label);
-      this.label = data.label;
     }
 
     destroy() {
       throw new Error("Not yet implemented");
     }
 
+    /**
+     * @param {GPUBufferDescriptor} descriptor 
+     */
     createBuffer(descriptor) {
-      descriptor = wgpuDicts.GPUBufferDescriptor(descriptor, {
+      webidl.assertBranded(this, GPUDevice);
+      descriptor = webidl.converters.GPUBufferDescriptor(descriptor, {
         prefix: "Failed to execute 'createBuffer' on 'GPUDevice'",
         context: "Argument 1",
       });
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         ...descriptor,
       });
-
       return new GPUBuffer(
         keySymbol,
         rid,
-        this.#rid,
+        this[_device].rid,
         descriptor.label,
         descriptor.size,
         descriptor.mappedAtCreation,
@@ -346,12 +268,12 @@
     }
 
     createTexture(descriptor) {
-      descriptor = wgpuDicts.GPUTextureDescriptor(descriptor, {
+      descriptor = webidl.converters.GPUTextureDescriptor(descriptor, {
         prefix: "Failed to execute 'createTexture' on 'GPUDevice'",
         context: "Argument 1",
       });
       const { rid } = core.jsonOpSync("op_webgpu_create_texture", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         ...descriptor,
         size: normalizeGPUExtent3D(descriptor.size),
       });
@@ -361,7 +283,7 @@
 
     createSampler(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_sampler", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         ...descriptor,
       });
 
@@ -382,7 +304,7 @@
       }
 
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group_layout", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         ...descriptor,
       });
 
@@ -391,7 +313,7 @@
 
     createPipelineLayout(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         label: descriptor.label,
         bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) =>
           bindGroupLayout[ridSymbol]
@@ -403,7 +325,7 @@
 
     createBindGroup(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         label: descriptor.label,
         layout: descriptor.layout[ridSymbol],
         entries: descriptor.entries.map((entry) => {
@@ -438,7 +360,7 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_shader_module",
         {
-          deviceRid: this.#rid,
+          deviceRid: this[_device].rid,
           label: descriptor.label,
           code: (typeof descriptor.code === "string")
             ? descriptor.code
@@ -453,7 +375,7 @@
 
     createComputePipeline(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_compute_pipeline", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         label: descriptor.label,
         layout: descriptor.layout ? descriptor.layout[ridSymbol] : undefined,
         compute: {
@@ -487,7 +409,7 @@
       };
 
       const { rid } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         ...d,
       });
 
@@ -504,7 +426,7 @@
 
     createCommandEncoder(descriptor = {}) {
       const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         ...descriptor,
       });
 
@@ -515,7 +437,7 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_render_bundle_encoder",
         {
-          deviceRid: this.#rid,
+          deviceRid: this[_device].rid,
           ...descriptor,
         },
       );
@@ -525,7 +447,7 @@
 
     createQuerySet(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_query_set", {
-        deviceRid: this.#rid,
+        deviceRid: this[_device].rid,
         ...descriptor,
       });
 
@@ -533,18 +455,65 @@
     }
   }
 
-  class GPUQueue {
-    #rid;
-    constructor(key, rid, label) {
-      checkKey(key);
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUQueue}
+   */
+  function createGPUQueue(label, rid) {
+    /** @type {GPUQueue} */
+    const queue = webidl.createBranded(GPUQueue);
+    queue[_label] = label;
+    queue[_device] = rid;
+    return queue;
+  }
 
-      this.#rid = rid;
-      this.label = label ?? null;
+  class GPUQueue {
+    // TODO(lucacasonato): why does tsc complain about incorrect types here?
+    /** @type {string | null} */
+    [_label];
+
+    /**
+     * @return {string | null}
+     */
+    get label() {
+      webidl.assertBranded(this, GPUDevice);
+      return this[_label];
+    }
+    /**
+     * @param {string | null} label
+     */
+    set label(label) {
+      webidl.assertBranded(this, GPUDevice);
+      label = webidl.converters["UVString?"](label, {
+        prefix: "Failed to set 'label' on 'GPUQueue'",
+        context: "Argument 1",
+      });
+      this[_label] = label;
     }
 
+    /**
+     * The rid of the related device. 
+     * @type {number}
+     */
+    [_device];
+
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    /**
+     * @param {GPUCommandBuffer[]} commandBuffers 
+     */
     submit(commandBuffers) {
+      webidl.assertBranded(this, GPUQueue);
+      webidl.requiredArguments(arguments.length, 1, {
+        prefix: "Failed to execute 'submit' on 'GPUQueue'",
+      });
+      // TODO(lucacasonato): should be real converter
+      commandBuffers = webidl.converters.any(commandBuffers);
       core.jsonOpSync("op_webgpu_queue_submit", {
-        queueRid: this.#rid,
+        queueRid: this[_device],
         commandBuffers: commandBuffers.map((buffer) => buffer[ridSymbol]),
       });
     }
@@ -552,11 +521,43 @@
     async onSubmittedWorkDone() {
     }
 
+    /**
+     * @param {GPUBuffer} buffer 
+     * @param {number} bufferOffset 
+     * @param {BufferSource} data 
+     * @param {number} [dataOffset] 
+     * @param {number} [size] 
+     */
     writeBuffer(buffer, bufferOffset, data, dataOffset = 0, size) {
+      webidl.assertBranded(this, GPUQueue);
+      const prefix = "Failed to execute 'writeBuffer' on 'GPUQueue'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      buffer = webidl.converters["GPUBuffer"](buffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      bufferOffset = webidl.converters["GPUSize64"](bufferOffset, {
+        prefix,
+        context: "Argument 2",
+      });
+      data = webidl.converters.BufferSource(data, {
+        prefix,
+        context: "Argument 3",
+      });
+      dataOffset = webidl.converters["GPUSize64"](dataOffset, {
+        prefix,
+        context: "Argument 4",
+      });
+      size = size === undefined
+        ? undefined
+        : webidl.converters["GPUSize64"](size, {
+          prefix,
+          context: "Argument 5",
+        });
       core.jsonOpSync(
         "op_webgpu_write_buffer",
         {
-          queueRid: this.#rid,
+          queueRid: this[_device],
           buffer: buffer[ridSymbol],
           bufferOffset,
           dataOffset,
@@ -570,7 +571,7 @@
       core.jsonOpSync(
         "op_webgpu_write_texture",
         {
-          queueRid: this.#rid,
+          queueRid: this[_device],
           destination: {
             texture: destination.texture[ridSymbol],
             mipLevel: destination.mipLevel,
@@ -590,6 +591,8 @@
   }
 
   class GPUBuffer {
+    [webidl.brand] = webidl.brand;
+
     #deviceRid;
     #size;
     #mappedSize;
@@ -651,6 +654,11 @@
       throw new Error("Not yet implemented");
     }
   }
+
+  webidl.converters["GPUBuffer"] = webidl.createInterfaceConverter(
+    "GPUBuffer",
+    GPUBuffer,
+  );
 
   class GPUTexture {
     constructor(key, rid, label) {

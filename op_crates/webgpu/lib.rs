@@ -102,10 +102,16 @@ impl Resource for WebGPUQuerySet {
 
 /// Execute this crates' JS source files.
 pub fn init(isolate: &mut deno_core::JsRuntime) {
-  let files = vec![(
-    "deno:op_crates/webgpu/01_webgpu.js",
-    include_str!("01_webgpu.js"),
-  )];
+  let files = vec![
+    (
+      "deno:op_crates/webgpu/01_idl_types.js",
+      include_str!("01_idl_types.js"),
+    ),
+    (
+      "deno:op_crates/webgpu/02_webgpu.js",
+      include_str!("02_webgpu.js"),
+    ),
+  ];
   for (url, source_code) in files {
     isolate.execute(url, source_code).unwrap();
   }
@@ -138,10 +144,14 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
   if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY) {
     return_features.push("sampled-texture-binding-array");
   }
-  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING) {
+  if features
+    .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING)
+  {
     return_features.push("sampled-texture-array-dynamic-indexing");
   }
-  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING) {
+  if features
+    .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING)
+  {
     return_features.push("sampled-texture-array-non-uniform-indexing");
   }
   if features.contains(wgpu_types::Features::UNSIZED_BINDING_ARRAY) {
@@ -168,7 +178,9 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR) {
     return_features.push("texture-compression-astc-ldr");
   }
-  if features.contains(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES) {
+  if features
+    .contains(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+  {
     return_features.push("texture-adapter-specific-format-features");
   }
   if features.contains(wgpu_types::Features::SHADER_FLOAT64) {
@@ -322,11 +334,21 @@ pub async fn op_webgpu_request_device(
     if passed_features.contains(&"sampled-texture-binding-array".to_string()) {
       features.set(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY, true);
     }
-    if passed_features.contains(&"sampled-texture-array-dynamic-indexing".to_string()) {
-      features.set(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING, true);
+    if passed_features
+      .contains(&"sampled-texture-array-dynamic-indexing".to_string())
+    {
+      features.set(
+        wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING,
+        true,
+      );
     }
-    if passed_features.contains(&"sampled-texture-array-non-uniform-indexing".to_string()) {
-      features.set(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING, true);
+    if passed_features
+      .contains(&"sampled-texture-array-non-uniform-indexing".to_string())
+    {
+      features.set(
+        wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+        true,
+      );
     }
     if passed_features.contains(&"unsized-binding-array".to_string()) {
       features.set(wgpu_types::Features::UNSIZED_BINDING_ARRAY, true);
@@ -352,8 +374,13 @@ pub async fn op_webgpu_request_device(
     if passed_features.contains(&"texture-compression-astc-ldr".to_string()) {
       features.set(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR, true);
     }
-    if passed_features.contains(&"texture-adapter-specific-format-features".to_string()) {
-      features.set(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES, true);
+    if passed_features
+      .contains(&"texture-adapter-specific-format-features".to_string())
+    {
+      features.set(
+        wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+        true,
+      );
     }
     if passed_features.contains(&"shader-float64".to_string()) {
       features.set(wgpu_types::Features::SHADER_FLOAT64, true);
