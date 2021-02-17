@@ -2187,15 +2187,15 @@ mod tests {
       ("initialize_request.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification_asset.json", LspResponse::None),
-      ("hover_request_asset_01.json", LspResponse::RequestAny),
+      ("definition_request_asset.json", LspResponse::RequestAny),
       (
         "virtual_text_document_request.json",
         LspResponse::RequestAny,
       ),
       (
-        "hover_request_asset_02.json",
+        "hover_request_asset.json",
         LspResponse::Request(
-          4,
+          5,
           json!({
             "contents": [
               {
@@ -2824,6 +2824,7 @@ mod tests {
       ("initialize_request.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification_asset.json", LspResponse::None),
+      ("references_request_asset.json", LspResponse::RequestAny),
       (
         "virtual_text_document_request.json",
         LspResponse::RequestAny,

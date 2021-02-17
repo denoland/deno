@@ -1,6 +1,6 @@
 {
   "jsonrpc": "2.0",
-  "id": 4,
+  "id": 5,
   "method": "textDocument/hover",
   "params": {
     "textDocument": {
