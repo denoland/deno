@@ -356,23 +356,36 @@ pub fn op_webgpu_render_pass_set_bind_group(
     .get::<WebGPURenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::render_ffi::wgpu_render_pass_set_bind_group(
-      &mut render_pass_resource.0.borrow_mut(),
-      args.index,
-      bind_group_resource.0,
-      match args.dynamic_offsets_data {
-        Some(data) => data.as_ptr(),
-        None => {
-          let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
-          assert!(prefix.is_empty());
-          assert!(suffix.is_empty());
-          data[args.dynamic_offsets_data_start..].as_ptr()
-        }
-      },
-      args.dynamic_offsets_data_length,
-    );
-  }
+  // I know this might look like it can be easily deduplicated, but it can not
+  // be due to the lifetime of the args.dynamic_offsets_data slice. Because we
+  // need to use a raw pointer here the slice can be freed before the pointer
+  // is used in wgpu_render_pass_set_bind_group. See
+  // https://matrix.to/#/!XFRnMvAfptAHthwBCx:matrix.org/$HgrlhD-Me1DwsGb8UdMu2Hqubgks8s7ILwWRwigOUAg
+  match args.dynamic_offsets_data {
+    Some(data) => unsafe {
+      wgpu_core::command::render_ffi::wgpu_render_pass_set_bind_group(
+        &mut render_pass_resource.0.borrow_mut(),
+        args.index,
+        bind_group_resource.0,
+        data.as_slice().as_ptr(),
+        args.dynamic_offsets_data_length,
+      );
+    },
+    None => {
+      let (prefix, data, suffix) = unsafe { zero_copy[0].align_to::<u32>() };
+      assert!(prefix.is_empty());
+      assert!(suffix.is_empty());
+      unsafe {
+        wgpu_core::command::render_ffi::wgpu_render_pass_set_bind_group(
+          &mut render_pass_resource.0.borrow_mut(),
+          args.index,
+          bind_group_resource.0,
+          data[args.dynamic_offsets_data_start..].as_ptr(),
+          args.dynamic_offsets_data_length,
+        );
+      }
+    }
+  };
 
   Ok(json!({}))
 }
