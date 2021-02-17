@@ -961,7 +961,6 @@ pub mod tests {
   use super::*;
   use crate::modules::*;
   use crate::BufVec;
-  use crate::ModuleSpecifier;
   use futures::future::lazy;
   use futures::FutureExt;
   use std::ops::FnOnce;
@@ -1645,40 +1644,7 @@ pub mod tests {
 
   #[test]
   fn test_mods() {
-    #[derive(Default)]
-    struct ModsLoader {
-      pub count: Arc<AtomicUsize>,
-    }
-
-    impl ModuleLoader for ModsLoader {
-      fn resolve(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        specifier: &str,
-        referrer: &str,
-        _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
-        self.count.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(specifier, "./b.js");
-        assert_eq!(referrer, "file:///a.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
-        Ok(s)
-      }
-
-      fn load(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        _module_specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<ModuleSourceFuture>> {
-        unreachable!()
-      }
-    }
-
     run_in_task(|cx| {
-      let loader = Rc::new(ModsLoader::default());
-
       let dispatch_count = Arc::new(AtomicUsize::new(0));
       let dispatch_count_ = dispatch_count.clone();
 
@@ -1692,9 +1658,7 @@ pub mod tests {
           Op::Async(futures::future::ready(buf).boxed())
         };
 
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        ..Default::default()
-      });
+      let mut runtime = JsRuntime::new(RuntimeOptions::default());
       runtime.register_op("test", dispatcher);
 
       runtime
