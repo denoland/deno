@@ -7,8 +7,6 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::Arc;
 
 /// This is a partial guess as how URLs get encoded from the LSP.  We want to
 /// encode URLs sent to the LSP in the same way that they would be encoded back
@@ -49,8 +47,8 @@ fn data_url_media_type(specifier: &ModuleSpecifier) -> MediaType {
 /// to allow the Deno language server to manage these as virtual documents.
 #[derive(Debug, Default)]
 pub struct LspUrlMap {
-  specifier_to_url: HashMap<Arc<ModuleSpecifier>, Arc<Url>>,
-  url_to_specifier: HashMap<Arc<Url>, Arc<ModuleSpecifier>>,
+  specifier_to_url: HashMap<ModuleSpecifier, Url>,
+  url_to_specifier: HashMap<Url, ModuleSpecifier>,
 }
 
 impl LspUrlMap {
@@ -59,18 +57,16 @@ impl LspUrlMap {
   }
 
   fn put(&mut self, specifier: ModuleSpecifier, url: Url) {
-    let specifier = Arc::new(specifier);
-    let url = Arc::new(url);
     self.specifier_to_url.insert(specifier.clone(), url.clone());
     self.url_to_specifier.insert(url, specifier);
   }
 
   fn get_url(&self, specifier: &ModuleSpecifier) -> Option<&Url> {
-    self.specifier_to_url.get(specifier).map(Deref::deref)
+    self.specifier_to_url.get(specifier)
   }
 
   fn get_specifier(&self, url: &Url) -> Option<&ModuleSpecifier> {
-    self.url_to_specifier.get(url).map(Deref::deref)
+    self.url_to_specifier.get(url)
   }
 
   /// Normalize a specifier that is used internally within Deno (or tsc) to a
