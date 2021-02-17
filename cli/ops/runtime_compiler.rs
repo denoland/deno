@@ -75,19 +75,22 @@ async fn op_emit(
       is_dynamic = true;
       Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
-        runtime_permissions,
+        runtime_permissions.clone(),
       )?))
     };
   let maybe_import_map = if let Some(import_map_str) = args.import_map_path {
     let import_map_specifier =
-      ModuleSpecifier::resolve_url_or_path(&import_map_str).context(
-        format!("Bad file path (\"{}\") for import map.", import_map_str),
-      )?;
+      ModuleSpecifier::resolve_url_or_path(&import_map_str)
+        .context(format!("Bad URL (\"{}\") for import map.", import_map_str))?;
     let import_map_url = import_map_specifier.as_url();
     let import_map = if let Some(value) = args.import_map {
       ImportMap::from_json(&import_map_url.to_string(), &value.to_string())?
     } else {
-      ImportMap::load(&import_map_str)?
+      let file = program_state
+        .file_fetcher
+        .fetch(&import_map_specifier, &runtime_permissions)
+        .await?;
+      ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
     Some(import_map)
   } else if args.import_map.is_some() {
