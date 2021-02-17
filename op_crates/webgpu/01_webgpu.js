@@ -256,8 +256,10 @@
      */
     createBuffer(descriptor) {
       webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createBuffer' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUBufferDescriptor(descriptor, {
-        prefix: "Failed to execute 'createBuffer' on 'GPUDevice'",
+        prefix,
         context: "Argument 1",
       });
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
@@ -273,9 +275,15 @@
       );
     }
 
+    /**
+     * @param {GPUTextureDescriptor} descriptor 
+     */
     createTexture(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createTexture' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUTextureDescriptor(descriptor, {
-        prefix: "Failed to execute 'createTexture' on 'GPUDevice'",
+        prefix,
         context: "Argument 1",
       });
       const { rid } = core.jsonOpSync("op_webgpu_create_texture", {
@@ -287,7 +295,17 @@
       return createGPUTexture(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPUSamplerDescriptor} descriptor 
+     */
     createSampler(descriptor = {}) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createSampler' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPUSamplerDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_create_sampler", {
         deviceRid: this[_device].rid,
         ...descriptor,
@@ -296,7 +314,17 @@
       return createGPUSampler(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPUBindGroupLayoutDescriptor} descriptor 
+     */
     createBindGroupLayout(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createBindGroupLayout' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPUBindGroupLayoutDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       for (const entry of descriptor.entries) {
         let i = 0;
         if (entry.buffer) i++;
@@ -317,7 +345,17 @@
       return createGPUBindGroupLayout(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPUPipelineLayoutDescriptor} descriptor 
+     */
     createPipelineLayout(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createPipelineLayout' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPUPipelineLayoutDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
         deviceRid: this[_device].rid,
         label: descriptor.label,
@@ -329,7 +367,17 @@
       return createGPUPipelineLayout(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPUBindGroupDescriptor} descriptor 
+     */
     createBindGroup(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createBindGroup' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPUBindGroupDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
         deviceRid: this[_device].rid,
         label: descriptor.label,
@@ -362,7 +410,17 @@
       return createGPUBindGroup(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPUShaderModuleDescriptor} descriptor 
+     */
     createShaderModule(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createShaderModule' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPUShaderModuleDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_shader_module",
         {
@@ -373,13 +431,25 @@
             : undefined,
           sourceMap: descriptor.sourceMap,
         },
-        ...(descriptor.code instanceof Uint32Array ? [descriptor.code] : []),
+        ...(descriptor.code instanceof Uint32Array
+          ? [new Uint8Array(descriptor.code.buffer)]
+          : []),
       );
 
       return createGPUShaderModule(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPUComputePipelineDescriptor} descriptor 
+     */
     createComputePipeline(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createComputePipeline' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPUComputePipelineDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_create_compute_pipeline", {
         deviceRid: this[_device].rid,
         label: descriptor.label,
@@ -393,7 +463,17 @@
       return createGPUComputePipeline(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPURenderPipelineDescriptor} descriptor
+     */
     createRenderPipeline(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createRenderPipeline' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPURenderPipelineDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const d = {
         label: descriptor.label,
         layout: descriptor.layout?.[_rid],
@@ -430,7 +510,16 @@
       throw new Error("Not yet implemented"); // easy polyfill
     }
 
+    /**
+     * @param {GPUCommandEncoderDescriptor} descriptor
+     */
     createCommandEncoder(descriptor = {}) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createCommandEncoder' on 'GPUDevice'";
+      descriptor = webidl.converters.GPUCommandEncoderDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
         deviceRid: this[_device].rid,
         ...descriptor,
@@ -439,7 +528,21 @@
       return createGPUCommandEncoder(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPURenderBundleEncoderDescriptor} descriptor
+     */
     createRenderBundleEncoder(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix =
+        "Failed to execute 'createRenderBundleEncoder' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPURenderBundleEncoderDescriptor(
+        descriptor,
+        {
+          prefix,
+          context: "Argument 1",
+        },
+      );
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_render_bundle_encoder",
         {
@@ -451,7 +554,20 @@
       return createGPURenderBundleEncoder(descriptor.label ?? null, rid);
     }
 
+    /**
+     * @param {GPUQuerySetDescriptor} descriptor 
+     */
     createQuerySet(descriptor) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'createQuerySet' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPUQuerySetDescriptor(
+        descriptor,
+        {
+          prefix,
+          context: "Argument 1",
+        },
+      );
       const { rid } = core.jsonOpSync("op_webgpu_create_query_set", {
         deviceRid: this[_device].rid,
         ...descriptor,
