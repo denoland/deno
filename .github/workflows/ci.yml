@@ -188,9 +188,7 @@ jobs:
 
       - name: Install Deno (windows)
         if: runner.os == 'Windows'
-        run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
-          echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
+        run: $v="1.7.2"; iwr https://deno.land/x/install/install.ps1 -useb | iex
 
       - name: Install Python
         uses: actions/setup-python@v1
@@ -282,9 +280,7 @@ jobs:
 
       - name: Install Deno (windows)
         if: runner.os == 'Windows'
-        run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
-          echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
+        run: $v="1.7.2"; iwr https://deno.land/x/install/install.ps1 -useb | iex
 
       - name: Log versions
         run: |
