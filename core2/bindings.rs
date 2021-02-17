@@ -171,41 +171,12 @@ pub fn boxed_slice_to_uint8array<'sc>(
 }
 
 pub extern "C" fn host_import_module_dynamically_callback(
-  context: v8::Local<v8::Context>,
-  referrer: v8::Local<v8::ScriptOrModule>,
-  specifier: v8::Local<v8::String>,
+  _context: v8::Local<v8::Context>,
+  _referrer: v8::Local<v8::ScriptOrModule>,
+  _specifier: v8::Local<v8::String>,
   _import_assertions: v8::Local<v8::FixedArray>,
 ) -> *mut v8::Promise {
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
-  // NOTE(bartlomieju): will crash for non-UTF-8 specifier
-  let specifier_str = specifier
-    .to_string(scope)
-    .unwrap()
-    .to_rust_string_lossy(scope);
-  let referrer_name = referrer.get_resource_name();
-  let referrer_name_str = referrer_name
-    .to_string(scope)
-    .unwrap()
-    .to_rust_string_lossy(scope);
-
-  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
-  // to use it. For now we check that it is not used. This check may need to be
-  // changed in the future.
-  let host_defined_options = referrer.get_host_defined_options();
-  assert_eq!(host_defined_options.length(), 0);
-
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-
-  let resolver_handle = v8::Global::new(scope, resolver);
-  {
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
-    state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
-  }
-
-  &*promise as *const _ as *mut _
+  todo!()
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(
@@ -219,7 +190,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 
   let module_global = v8::Global::new(scope, module);
   let info = state
-    .modules
+    .module_map
     .get_info(&module_global)
     .expect("Module not found");
 
@@ -765,7 +736,7 @@ pub fn module_resolve_callback<'s>(
 
   let referrer_global = v8::Global::new(scope, referrer);
   let referrer_info = state
-    .modules
+    .module_map
     .get_info(&referrer_global)
     .expect("ModuleInfo not found");
   let referrer_name = referrer_info.name.to_string();
@@ -782,8 +753,8 @@ pub fn module_resolve_callback<'s>(
     )
     .expect("Module should have been already resolved");
 
-  if let Some(id) = state.modules.get_id(resolved_specifier.as_str()) {
-    if let Some(handle) = state.modules.get_handle(id) {
+  if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
+    if let Some(handle) = state.module_map.get_handle(id) {
       return Some(v8::Local::new(scope, handle));
     }
   }

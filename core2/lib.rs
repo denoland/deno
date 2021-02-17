@@ -51,7 +51,6 @@ pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
-pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::json_op_async;
 pub use crate::ops::json_op_sync;

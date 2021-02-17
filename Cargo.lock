@@ -477,6 +477,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_core2"
+version = "0.79.0"
+dependencies = [
+ "align-data",
+ "anyhow",
+ "futures",
+ "indexmap",
+ "lazy_static",
+ "libc",
+ "log",
+ "pin-project 1.0.5",
+ "rusty_v8",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "deno_crypto"
 version = "0.13.0"
 dependencies = [

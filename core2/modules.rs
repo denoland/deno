@@ -7,23 +7,12 @@ use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
 use crate::OpState;
 use futures::future::FutureExt;
-use futures::stream::FuturesUnordered;
-use futures::stream::Stream;
 use futures::stream::TryStreamExt;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
-use std::task::Context;
-use std::task::Poll;
-
-lazy_static! {
-  pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
-}
 
 pub type ModuleId = i32;
 pub type ModuleLoadId = i32;
@@ -50,8 +39,6 @@ pub struct ModuleSource {
   pub module_url_found: String,
 }
 
-pub type PrepareLoadFuture =
-  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, AnyError>)>;
 pub type ModuleSourceFuture =
   dyn Future<Output = Result<ModuleSource, AnyError>>;
 
@@ -175,217 +162,10 @@ impl ModuleLoader for FsModuleLoader {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum Kind {
-  Main,
-  DynamicImport,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum LoadState {
-  ResolveMain(String, Option<String>),
-  ResolveImport(String, String),
-  LoadingRoot,
-  LoadingImports,
-  Done,
-}
-
-/// This future is used to implement parallel async module loading.
-pub struct RecursiveModuleLoad {
-  op_state: Rc<RefCell<OpState>>,
-  kind: Kind,
-  // TODO(bartlomieju): in future this value should
-  // be randomized
-  pub id: ModuleLoadId,
-  pub root_module_id: Option<ModuleId>,
-  pub state: LoadState,
-  pub loader: Rc<dyn ModuleLoader>,
-  pub pending: FuturesUnordered<Pin<Box<ModuleSourceFuture>>>,
-  pub is_pending: HashSet<ModuleSpecifier>,
-}
-
-impl RecursiveModuleLoad {
-  /// Starts a new parallel load of the given URL of the main module.
-  pub fn main(
-    op_state: Rc<RefCell<OpState>>,
-    specifier: &str,
-    code: Option<String>,
-    loader: Rc<dyn ModuleLoader>,
-  ) -> Self {
-    let kind = Kind::Main;
-    let state = LoadState::ResolveMain(specifier.to_owned(), code);
-    Self::new(op_state, kind, state, loader)
-  }
-
-  pub fn dynamic_import(
-    op_state: Rc<RefCell<OpState>>,
-    specifier: &str,
-    referrer: &str,
-    loader: Rc<dyn ModuleLoader>,
-  ) -> Self {
-    let kind = Kind::DynamicImport;
-    let state =
-      LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(op_state, kind, state, loader)
-  }
-
-  pub fn is_dynamic_import(&self) -> bool {
-    self.kind != Kind::Main
-  }
-
-  fn new(
-    op_state: Rc<RefCell<OpState>>,
-    kind: Kind,
-    state: LoadState,
-    loader: Rc<dyn ModuleLoader>,
-  ) -> Self {
-    Self {
-      id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
-      root_module_id: None,
-      op_state,
-      kind,
-      state,
-      loader,
-      pending: FuturesUnordered::new(),
-      is_pending: HashSet::new(),
-    }
-  }
-
-  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
-    let (module_specifier, maybe_referrer) = match self.state {
-      LoadState::ResolveMain(ref specifier, _) => {
-        let spec =
-          match self
-            .loader
-            .resolve(self.op_state.clone(), specifier, ".", true)
-          {
-            Ok(spec) => spec,
-            Err(e) => return (self.id, Err(e)),
-          };
-        (spec, None)
-      }
-      LoadState::ResolveImport(ref specifier, ref referrer) => {
-        let spec = match self.loader.resolve(
-          self.op_state.clone(),
-          specifier,
-          referrer,
-          false,
-        ) {
-          Ok(spec) => spec,
-          Err(e) => return (self.id, Err(e)),
-        };
-        (spec, Some(referrer.to_string()))
-      }
-      _ => unreachable!(),
-    };
-
-    let prepare_result = self
-      .loader
-      .prepare_load(
-        self.op_state.clone(),
-        self.id,
-        &module_specifier,
-        maybe_referrer,
-        self.is_dynamic_import(),
-      )
-      .await;
-
-    match prepare_result {
-      Ok(()) => (self.id, Ok(self)),
-      Err(e) => (self.id, Err(e)),
-    }
-  }
-
-  fn add_root(&mut self) -> Result<(), AnyError> {
-    let module_specifier = match self.state {
-      LoadState::ResolveMain(ref specifier, _) => {
-        self
-          .loader
-          .resolve(self.op_state.clone(), specifier, ".", true)?
-      }
-      LoadState::ResolveImport(ref specifier, ref referrer) => self
-        .loader
-        .resolve(self.op_state.clone(), specifier, referrer, false)?,
-
-      _ => unreachable!(),
-    };
-
-    let load_fut = match &self.state {
-      LoadState::ResolveMain(_, Some(code)) => {
-        futures::future::ok(ModuleSource {
-          code: code.to_owned(),
-          module_url_specified: module_specifier.to_string(),
-          module_url_found: module_specifier.to_string(),
-        })
-        .boxed()
-      }
-      _ => self
-        .loader
-        .load(
-          self.op_state.clone(),
-          &module_specifier,
-          None,
-          self.is_dynamic_import(),
-        )
-        .boxed_local(),
-    };
-
-    self.pending.push(load_fut);
-
-    self.state = LoadState::LoadingRoot;
-    Ok(())
-  }
-
-  pub fn add_import(
-    &mut self,
-    specifier: ModuleSpecifier,
-    referrer: ModuleSpecifier,
-  ) {
-    if !self.is_pending.contains(&specifier) {
-      let fut = self.loader.load(
-        self.op_state.clone(),
-        &specifier,
-        Some(referrer),
-        self.is_dynamic_import(),
-      );
-      self.pending.push(fut.boxed_local());
-      self.is_pending.insert(specifier);
-    }
-  }
-}
-
-impl Stream for RecursiveModuleLoad {
-  type Item = Result<ModuleSource, AnyError>;
-
-  fn poll_next(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> Poll<Option<Self::Item>> {
-    let inner = self.get_mut();
-    match inner.state {
-      LoadState::ResolveMain(..) | LoadState::ResolveImport(..) => {
-        if let Err(e) = inner.add_root() {
-          return Poll::Ready(Some(Err(e)));
-        }
-        inner.try_poll_next_unpin(cx)
-      }
-      LoadState::LoadingRoot | LoadState::LoadingImports => {
-        match inner.pending.try_poll_next_unpin(cx)? {
-          Poll::Ready(None) => unreachable!(),
-          Poll::Ready(Some(info)) => Poll::Ready(Some(Ok(info))),
-          Poll::Pending => Poll::Pending,
-        }
-      }
-      LoadState::Done => Poll::Ready(None),
-    }
-  }
-}
-
 pub struct ModuleInfo {
   pub id: ModuleId,
   pub main: bool,
   pub name: String,
-  pub import_specifiers: Vec<ModuleSpecifier>,
 }
 
 /// A symbolic module entity.
@@ -398,26 +178,34 @@ enum SymbolicModule {
   Mod(ModuleId),
 }
 
+/// A collection of JS modules.
 #[derive(Default)]
-/// Alias-able module name map
-struct ModuleNameMap {
-  inner: HashMap<String, SymbolicModule>,
+pub struct ModuleMap {
+  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
+  info: HashMap<ModuleId, ModuleInfo>,
+  by_name: HashMap<String, SymbolicModule>,
+  next_module_id: ModuleId,
 }
 
-impl ModuleNameMap {
-  pub fn new() -> Self {
-    ModuleNameMap {
-      inner: HashMap::new(),
+impl ModuleMap {
+  pub fn new() -> ModuleMap {
+    Self {
+      handles_by_id: HashMap::new(),
+      ids_by_handle: HashMap::new(),
+      info: HashMap::new(),
+      by_name: HashMap::new(),
+      next_module_id: 1,
     }
   }
 
   /// Get the id of a module.
   /// If this module is internally represented as an alias,
   /// follow the alias chain to get the final module id.
-  pub fn get(&self, name: &str) -> Option<ModuleId> {
+  pub fn get_id(&self, name: &str) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
-      let symbolic_module = self.inner.get(mod_name)?;
+      let symbolic_module = self.by_name.get(mod_name)?;
       match symbolic_module {
         SymbolicModule::Alias(target) => {
           mod_name = target;
@@ -427,89 +215,32 @@ impl ModuleNameMap {
     }
   }
 
-  /// Insert a name associated module id.
-  pub fn insert(&mut self, name: String, id: ModuleId) {
-    self.inner.insert(name, SymbolicModule::Mod(id));
-  }
-
-  /// Create an alias to another module.
-  pub fn alias(&mut self, name: String, target: String) {
-    self.inner.insert(name, SymbolicModule::Alias(target));
-  }
-
-  /// Check if a name is an alias to another module.
-  #[cfg(test)]
-  pub fn is_alias(&self, name: &str) -> bool {
-    let cond = self.inner.get(name);
-    matches!(cond, Some(SymbolicModule::Alias(_)))
-  }
-}
-
-/// A collection of JS modules.
-#[derive(Default)]
-pub struct Modules {
-  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
-  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
-  info: HashMap<ModuleId, ModuleInfo>,
-  by_name: ModuleNameMap,
-  next_module_id: ModuleId,
-}
-
-impl Modules {
-  pub fn new() -> Modules {
-    Self {
-      handles_by_id: HashMap::new(),
-      ids_by_handle: HashMap::new(),
-      info: HashMap::new(),
-      by_name: ModuleNameMap::new(),
-      next_module_id: 1,
-    }
-  }
-
-  pub fn get_id(&self, name: &str) -> Option<ModuleId> {
-    self.by_name.get(name)
-  }
-
-  pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
-    self.info.get(&id).map(|i| &i.import_specifiers)
-  }
-
-  pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
-    self.by_name.get(&specifier.to_string()).is_some()
-  }
-
   pub fn register(
     &mut self,
     name: &str,
     main: bool,
     handle: v8::Global<v8::Module>,
-    import_specifiers: Vec<ModuleSpecifier>,
   ) -> ModuleId {
     let name = String::from(name);
     let id = self.next_module_id;
     self.next_module_id += 1;
-    self.by_name.insert(name.clone(), id);
+    self.by_name.insert(name.clone(), SymbolicModule::Mod(id));
     self.handles_by_id.insert(id, handle.clone());
     self.ids_by_handle.insert(handle, id);
-    self.info.insert(
-      id,
-      ModuleInfo {
-        id,
-        main,
-        name,
-        import_specifiers,
-      },
-    );
+    self.info.insert(id, ModuleInfo { id, main, name });
     id
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {
-    self.by_name.alias(name.to_owned(), target.to_owned());
+    self
+      .by_name
+      .insert(name.to_owned(), SymbolicModule::Alias(target.to_string()));
   }
 
   #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
-    self.by_name.is_alias(name)
+    let cond = self.by_name.get(name);
+    matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
   pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
@@ -539,6 +270,8 @@ mod tests {
   use std::future::Future;
   use std::sync::Arc;
   use std::sync::Mutex;
+  use std::task::Context;
+  use std::task::Poll;
 
   // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
   // even though we are only using poll() in these tests and not Tokio, we must
@@ -733,27 +466,27 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
     let d_id = modules.get_id("file:///d.js").unwrap();
-    assert_eq!(
-      modules.get_children(a_id),
-      Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
-      ])
-    );
-    assert_eq!(
-      modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
-    );
-    assert_eq!(
-      modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
-    );
-    assert_eq!(modules.get_children(d_id), Some(&vec![]));
+    // assert_eq!(
+    //   modules.get_children(a_id),
+    //   Some(&vec![
+    //     ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
+    //     ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+    //   ])
+    // );
+    // assert_eq!(
+    //   modules.get_children(b_id),
+    //   Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+    // );
+    // assert_eq!(
+    //   modules.get_children(c_id),
+    //   Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+    // );
+    // assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
 
   const CIRCULAR1_SRC: &str = r#"
@@ -800,34 +533,34 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
 
-      assert_eq!(
-        modules.get_children(circular1_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
-        ])
-      );
+      // assert_eq!(
+      //   modules.get_children(circular1_id),
+      //   Some(&vec![
+      //     ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
+      //   ])
+      // );
 
-      assert_eq!(
-        modules.get_children(circular2_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular3.js").unwrap()
-        ])
-      );
+      // assert_eq!(
+      //   modules.get_children(circular2_id),
+      //   Some(&vec![
+      //     ModuleSpecifier::resolve_url("file:///circular3.js").unwrap()
+      //   ])
+      // );
 
-      assert!(modules.get_id("file:///circular3.js").is_some());
-      let circular3_id = modules.get_id("file:///circular3.js").unwrap();
-      assert_eq!(
-        modules.get_children(circular3_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular1.js").unwrap(),
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
-        ])
-      );
+      // assert!(modules.get_id("file:///circular3.js").is_some());
+      // let circular3_id = modules.get_id("file:///circular3.js").unwrap();
+      // assert_eq!(
+      //   modules.get_children(circular3_id),
+      //   Some(&vec![
+      //     ModuleSpecifier::resolve_url("file:///circular1.js").unwrap(),
+      //     ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
+      //   ])
+      // );
     }
     .boxed_local();
 
@@ -876,7 +609,7 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -1023,28 +756,28 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
     let d_id = modules.get_id("file:///d.js").unwrap();
 
-    assert_eq!(
-      modules.get_children(main_id),
-      Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
-      ])
-    );
-    assert_eq!(
-      modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
-    );
-    assert_eq!(
-      modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
-    );
-    assert_eq!(modules.get_children(d_id), Some(&vec![]));
+    // assert_eq!(
+    //   modules.get_children(main_id),
+    //   Some(&vec![
+    //     ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
+    //     ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+    //   ])
+    // );
+    // assert_eq!(
+    //   modules.get_children(b_id),
+    //   Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+    // );
+    // assert_eq!(
+    //   modules.get_children(c_id),
+    //   Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+    // );
+    // assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
 }
