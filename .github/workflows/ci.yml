@@ -12,7 +12,7 @@ jobs:
       matrix:
         kind: ["debug", "release"]
         os:
-          - ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - ubuntu-18.04
           - windows-2019
           - macos-10.15
 
@@ -156,7 +156,7 @@ jobs:
       matrix:
         kind: ["debug", "release"]
         os:
-          - ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-18.04' }}
+          - ubuntu-18.04
           - windows-2019
           - macos-10.15
 
