@@ -103,3 +103,47 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           retention-days: 7
+
+  release:
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload canary Builds
+        run: |
+          gsutil cp ./artifacts/*.zip gs://dl.deno.land/canary/${{ needs.build.outputs.commit }}/
+          echo ${{ needs.build.outputs.commit }} > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
+      - name: Upload release Builds
+        if: startsWith(needs.build.outputs.tag, 'v')
+        run: |
+          gsutil cp ./artifacts/*.zip gs://dl.deno.land/canary/${{ needs.build.outputs.tag }}/
+          echo ${{ needs.build.outputs.tag }} > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
+      - name: Upload release to GitHub
+        uses: softprops/action-gh-release@v1
+        if: startsWith(needs.build.outputs.tag, 'v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            artifacts/deno-x86_64-unknown-linux-gnu.zip
+            artifacts/deno-x86_64-pc-windows-msvc.zip
+            artifacts/deno-x86_64-apple-darwin.zip
+            artifacts/lib.deno.d.ts
+            artifacts/deno_src.tar.gz
+          draft: true
