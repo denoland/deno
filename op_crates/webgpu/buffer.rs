@@ -234,8 +234,10 @@ pub fn op_webgpu_buffer_unmap(
   let slice_pointer = mapped_resource.0;
   let size = mapped_resource.1;
 
-  let slice = unsafe { std::slice::from_raw_parts_mut(slice_pointer, size) };
-  slice.copy_from_slice(&zero_copy[0]);
+  if let Some(buffer) = zero_copy.get(0) {
+    let slice = unsafe { std::slice::from_raw_parts_mut(slice_pointer, size) };
+    slice.copy_from_slice(&buffer);
+  }
 
   gfx_select!(buffer => instance.buffer_unmap(buffer))?;
 

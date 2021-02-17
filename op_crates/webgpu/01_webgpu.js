@@ -3,6 +3,7 @@
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./lib.deno_webgpu.d.ts" />
 
 "use strict";
@@ -266,12 +267,30 @@
         deviceRid: this[_device].rid,
         ...descriptor,
       });
-      return new GPUBuffer(
-        rid,
+      /** @type {CreateGPUBufferOptions} */
+      let options;
+      if (descriptor.mappedAtCreation) {
+        options = {
+          mapping: new ArrayBuffer(descriptor.size),
+          mappingRange: [0, descriptor.size],
+          mappedRanges: [],
+          state: "mapped at creation",
+        };
+      } else {
+        options = {
+          mapping: null,
+          mappedRanges: null,
+          mappingRange: null,
+          state: "unmapped",
+        };
+      }
+      return createGPUBuffer(
+        descriptor.label ?? null,
         this[_device].rid,
-        descriptor.label,
+        rid,
         descriptor.size,
-        descriptor.mappedAtCreation,
+        descriptor.usage,
+        options,
       );
     }
 
@@ -721,62 +740,295 @@
 
   const _rid = Symbol("[[rid]]");
 
+  const _size = Symbol("[[size]]");
+  const _usage = Symbol("[[usage]]");
+  const _state = Symbol("[[state]]");
+  const _mappingRange = Symbol("[[mapping_range]]");
+  const _mappedRanges = Symbol("[[mapped_ranges]]");
+  const _mapMode = Symbol("[[map_mode]]");
+
+  /**
+   * @typedef CreateGPUBufferOptions
+   * @property {ArrayBuffer | null} mapping
+   * @property {number[] | null} mappingRange
+   * @property {[ArrayBuffer, number, number][] | null} mappedRanges
+   * @property {"mapped" | "mapped at creation" | "mapped pending" | "unmapped" | "destroy" } state
+   */
+
+  /**
+   * @param {string | null} label
+   * @param {number} deviceRid
+   * @param {number} rid
+   * @param {number} size
+   * @param {number} usage
+   * @param {CreateGPUBufferOptions} options
+   * @returns {GPUBuffer}
+   */
+  function createGPUBuffer(label, deviceRid, rid, size, usage, options) {
+    /** @type {GPUBuffer} */
+    const buffer = webidl.createBranded(GPUBuffer);
+    buffer[_label] = label;
+    buffer[_device] = deviceRid;
+    buffer[_rid] = rid;
+    buffer[_size] = size;
+    buffer[_usage] = usage;
+    buffer[_mappingRange] = options.mappingRange;
+    buffer[_mappedRanges] = options.mappedRanges;
+    buffer[_state] = options.state;
+    return buffer;
+  }
+
   class GPUBuffer {
-    [webidl.brand] = webidl.brand;
+    /** @type {number} */
+    [_device];
 
-    #deviceRid;
-    #size;
-    #mappedSize;
-    #mappedOffset;
-    #mappedRid;
-    #mappedBuffer;
+    /** @type {number} */
+    [_rid];
 
-    constructor(rid, deviceRid, label, size, mappedAtCreation) {
-      this[_rid] = rid;
-      this.#deviceRid = deviceRid;
-      this.label = label ?? null;
-      this.#size = size;
+    /** @type {number} */
+    [_size];
 
-      if (mappedAtCreation) {
-        this.#mappedSize = size;
-        this.#mappedOffset = 0;
-      }
+    /** @type {number} */
+    [_usage];
+
+    /** @type {"mapped" | "mapped at creation" | "mapped pending" | "unmapped" | "destroy"} */
+    [_state];
+
+    /** @type {[number, number] | null} */
+    [_mappingRange];
+
+    /** @type {[ArrayBuffer, number, number][] | null} */
+    [_mappedRanges];
+
+    /** @type {number} */
+    [_mapMode];
+
+    constructor() {
+      webidl.illegalConstructor();
     }
 
-    async mapAsync(mode, offset = 0, size = undefined) {
-      this.#mappedOffset = offset;
-      this.#mappedSize = size ?? (this.#size - offset);
-      await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
-        bufferRid: this[_rid],
-        deviceRid: this.#deviceRid,
-        mode,
-        offset,
-        size: this.#mappedSize,
+    /**
+     * @param {number} mode 
+     * @param {number} offset 
+     * @param {number} [size] 
+     */
+    async mapAsync(mode, offset = 0, size) {
+      webidl.assertBranded(this, GPUBuffer);
+      const prefix = "Failed to execute 'mapAsync' on 'GPUBuffer'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      mode = webidl.converters.GPUMapModeFlags(mode, {
+        prefix,
+        context: "Argument 1",
       });
+      offset = webidl.converters.GPUSize64(offset, {
+        prefix,
+        context: "Argument 2",
+      });
+      size = size === undefined
+        ? undefined
+        : webidl.converters.GPUSize64(size, {
+          prefix,
+          context: "Argument 3",
+        });
+      /** @type {number} */
+      let rangeSize;
+      if (size === undefined) {
+        rangeSize = Math.max(0, this[_size] - offset);
+      } else {
+        rangeSize = this[_size];
+      }
+      if ((offset % 8) !== 0) {
+        throw new DOMException(
+          `${prefix}: offset must be a multiple of 8.`,
+          "OperationError",
+        );
+      }
+      if ((rangeSize % 4) !== 0) {
+        throw new DOMException(
+          `${prefix}: rangeSize must be a multiple of 4.`,
+          "OperationError",
+        );
+      }
+      if ((offset + rangeSize) <= this[_size]) {
+        throw new DOMException(
+          `${prefix}: offset + rangeSize must be less or equal to buffer size.`,
+          "OperationError",
+        );
+      }
+      if (this[_state] !== "unmapped") {
+        throw new DOMException(
+          `${prefix}: GPUBuffer is not currently unmapped.`,
+          "OperationError",
+        );
+      }
+      const readMode = (mode & 0x0001) === 0x0001;
+      const writeMode = (mode & 0x0002) === 0x0002;
+      if (readMode && writeMode) {
+        throw new DOMException(
+          `${prefix}: only one of READ or WRITE map mode may be set.`,
+          "OperationError",
+        );
+      }
+      if (readMode && !((this[_usage] && 0x0001) === 0x0001)) {
+        throw new DOMException(
+          `${prefix}: READ map mode not valid because buffer does not have MAP_READ usage.`,
+          "OperationError",
+        );
+      }
+      if (writeMode && !((this[_usage] && 0x0002) === 0x0002)) {
+        throw new DOMException(
+          `${prefix}: WRITE map mode not valid because buffer does not have MAP_WRITE usage.`,
+          "OperationError",
+        );
+      }
+
+      this[_mapMode] = mode;
+      this[_state] = "mapping pending";
+      await core.jsonOpAsync(
+        "op_webgpu_buffer_get_map_async",
+        {
+          bufferRid: this[_rid],
+          deviceRid: this[_device],
+          mode,
+          offset,
+          size: rangeSize,
+        },
+      );
+      this[_state] = "mapped";
+      this[_mappingRange] = [offset, offset + rangeSize];
+      /** @type {[ArrayBuffer, number, number][] | null} */
+      this[_mappedRanges] = [];
     }
 
-    getMappedRange(offset = 0, size = undefined) {
-      const buffer = new Uint8Array(size ?? this.#mappedSize);
+    /**
+     * @param {number} offset 
+     * @param {number} size 
+     */
+    getMappedRange(offset = 0, size) {
+      webidl.assertBranded(this, GPUBuffer);
+      const prefix = "Failed to execute 'getMappedRange' on 'GPUBuffer'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      offset = webidl.converters.GPUSize64(offset, {
+        prefix,
+        context: "Argument 1",
+      });
+      size = size === undefined
+        ? undefined
+        : webidl.converters.GPUSize64(size, {
+          prefix,
+          context: "Argument 2",
+        });
+      /** @type {number} */
+      let rangeSize;
+      if (size === undefined) {
+        rangeSize = Math.max(0, this[_size] - offset);
+      } else {
+        rangeSize = this[_size];
+      }
+      if (this[_state] !== "mapped" && this[_state] !== "mapped at creation") {
+        throw new DOMException(
+          `${prefix}: buffer is not mapped.`,
+          "OperationError",
+        );
+      }
+      if ((offset % 8) !== 0) {
+        throw new DOMException(
+          `${prefix}: offset must be a multiple of 8.`,
+          "OperationError",
+        );
+      }
+      if ((rangeSize % 4) !== 0) {
+        throw new DOMException(
+          `${prefix}: rangeSize must be a multiple of 4.`,
+          "OperationError",
+        );
+      }
+      const mappingRange = this[_mappingRange];
+      if (!mappingRange) {
+        throw new DOMException(`${prefix}: invalid state.`, "OperationError");
+      }
+      if (offset >= mappingRange[0]) {
+        throw new DOMException(
+          `${prefix}: offset is out of bounds.`,
+          "OperationError",
+        );
+      }
+      if ((offset + rangeSize) <= mappingRange[1]) {
+        throw new DOMException(
+          `${prefix}: offset is out of bounds.`,
+          "OperationError",
+        );
+      }
+      const mappedRanges = this[_mappedRanges];
+      if (!mappedRanges) {
+        throw new DOMException(`${prefix}: invalid state.`, "OperationError");
+      }
+      for (const [buffer, _rid, start] of mappedRanges) {
+        // TODO(lucacasonato): is this logic correct?
+        const end = start + buffer.byteLength;
+        if (
+          (start >= offset && start < (offset + rangeSize)) ||
+          (end >= offset && end < (offset + rangeSize))
+        ) {
+          throw new DOMException(
+            `${prefix}: requested buffer overlaps with another mapped range.`,
+            "OperationError",
+          );
+        }
+      }
+
+      const buffer = new ArrayBuffer(rangeSize);
       const { rid } = core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
         {
           bufferRid: this[_rid],
-          offset,
-          size: size ?? this.#mappedSize,
+          offset: offset - mappingRange[0],
+          size: rangeSize,
         },
-        buffer,
+        new Uint8Array(buffer),
       );
 
-      this.#mappedRid = rid;
-      this.#mappedBuffer = buffer;
-      return this.#mappedBuffer.buffer;
+      mappedRanges.push([buffer, rid, offset]);
+
+      return buffer;
     }
 
     unmap() {
-      core.jsonOpSync("op_webgpu_buffer_unmap", {
-        bufferRid: this[_rid],
-        mappedRid: this.#mappedRid,
-      }, this.#mappedBuffer);
+      webidl.assertBranded(this, GPUBuffer);
+      const prefix = "Failed to execute 'unmap' on 'GPUBuffer'";
+      if (this[_state] === "unmapped" || this[_state] === "destroyed") {
+        throw new DOMException(
+          `${prefix}: buffer is not ready to be unmapped.`,
+          "OperationError",
+        );
+      }
+      if (this[_state] === "mapping pending") {
+        // TODO(lucacasonato): this is not spec compliant.
+        throw new DOMException(
+          `${prefix}: can not unmap while mapping. This is a Deno limitation.`,
+          "OperationError",
+        );
+      } else if (
+        this[_state] === "mapped" || this[_state] === "mapped at creation"
+      ) {
+        const mappedRanges = this[_mappedRanges];
+        const mapMode = this[_mapMode];
+        if (!mappedRanges || !mapMode) {
+          throw new DOMException(`${prefix}: invalid state.`, "OperationError");
+        }
+        for (const [buffer, rid] of mappedRanges) {
+          const write = this[_state] === "mapped at creation" ||
+            (this[_state] === "mapped" && (mapMode & 0x0002) === 0x0002);
+          core.jsonOpSync("op_webgpu_buffer_unmap", {
+            bufferRid: this[_rid],
+            mappedRid: rid,
+          }, ...(write ? [new Uint8Array(buffer)] : []));
+        }
+        this[_mappingRange] = null;
+        this[_mappedRanges] = null;
+      }
+
+      this[_state] = "unmapped";
     }
 
     destroy() {
