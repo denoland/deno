@@ -320,11 +320,23 @@ jobs:
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH
 
+      - name: Install Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "3.8"
+          architecture: x64
+
       - name: Log versions
         run: |
+          python --version
           rustc --version
           cargo --version
           deno --version
+
+      - name: Configure hosts file for WPT
+        if: runner.os != 'Windows'
+        working-directory: test_util/wpt/
+        run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
 
       - name: Run Benchmarks
         uses: actions-rs/cargo@v1
