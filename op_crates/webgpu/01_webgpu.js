@@ -154,11 +154,63 @@
         {
           rid,
           adapter: this,
-          features: Object.freeze(features),
+          features: createGPUAdapterFeatures(features),
           limits: Object.freeze(limits),
           queue: createGPUQueue(descriptor.label ?? null, rid),
         },
       );
+    }
+  }
+
+  const _features = Symbol("[[set]]");
+
+  function createGPUAdapterFeatures(features) {
+    /** @type {GPUAdapterFeatures} */
+    const adapterFeatures = webidl.createBranded(GPUAdapterFeatures);
+    adapterFeatures[_features] = new Set(features);
+    return adapterFeatures;
+  }
+
+  class GPUAdapterFeatures {
+    /** @type {Set<string>} */
+    [_features];
+
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    /** @return {IterableIterator<[string, string]>} */
+    entries() {
+      return this[_features].entries();
+    }
+
+    /** @return {void} */
+    forEach(callbackfn, thisArg) {
+      this[_features].forEach(callbackfn, thisArg);
+    }
+
+    /** @return {boolean} */
+    has(value) {
+      return this[_features].has(value);
+    }
+
+    /** @return {string[]} */
+    keys() {
+      return this[_features].keys();
+    }
+
+    /** @return {IterableIterator<string>} */
+    values() {
+      return this[_features].values();
+    }
+
+    /** @return {number} */
+    get size() {
+      return this[_features].size;
+    }
+
+    [Symbol.iterator]() {
+      return this[_features][Symbol.iterator]();
     }
   }
 
@@ -2741,6 +2793,7 @@
     gpu: webidl.createBranded(GPU),
     GPU,
     GPUAdapter,
+    GPUAdapterFeatures,
     GPUDevice,
     GPUQueue,
     GPUBuffer,

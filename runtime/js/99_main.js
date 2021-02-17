@@ -253,6 +253,7 @@ delete Object.prototype.__proto__;
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
+    GPUAdapterFeatures: util.nonEnumerable(webgpu.GPUAdapterFeatures),
     GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
     GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
     GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
