@@ -180,15 +180,10 @@ jobs:
         with:
           toolchain: 1.50.0
 
-      - name: Install Deno (unix)
-        if: runner.os != 'Windows'
-        run: |-
+      - name: Install Deno
+        run: |
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
-          echo "$HOME/.deno/bin" >> $GITHUB_PATH
-
-      - name: Install Deno (windows)
-        if: runner.os == 'Windows'
-        run: $v="1.7.2"; iwr https://deno.land/x/install/install.ps1 -useb | iex
+          echo "$HOME/.deno/bin" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH
 
       - name: Install Python
         uses: actions/setup-python@v1
@@ -272,15 +267,10 @@ jobs:
           toolchain: 1.50.0
           components: rustfmt, clippy
 
-      - name: Install Deno (unix)
-        if: runner.os != 'Windows'
-        run: |-
+      - name: Install Deno
+        run: |
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
-          echo "$HOME/.deno/bin" >> $GITHUB_PATH
-
-      - name: Install Deno (windows)
-        if: runner.os == 'Windows'
-        run: $v="1.7.2"; iwr https://deno.land/x/install/install.ps1 -useb | iex
+          echo "$HOME/.deno/bin" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH
 
       - name: Log versions
         run: |
