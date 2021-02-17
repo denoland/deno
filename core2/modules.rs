@@ -2,20 +2,341 @@
 
 use rusty_v8 as v8;
 
+use crate::bindings::throw_type_error;
+use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
-use crate::OpState;
-use futures::future::FutureExt;
-use futures::stream::TryStreamExt;
-use std::cell::RefCell;
+use crate::runtime::exception_to_err_result;
+use crate::JsRuntime;
+use futures::future::poll_fn;
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
+use std::convert::TryFrom;
+use std::task::Poll;
+
+pub extern "C" fn host_import_module_dynamically_callback(
+  _context: v8::Local<v8::Context>,
+  _referrer: v8::Local<v8::ScriptOrModule>,
+  _specifier: v8::Local<v8::String>,
+  _import_assertions: v8::Local<v8::FixedArray>,
+) -> *mut v8::Promise {
+  todo!()
+}
+
+pub extern "C" fn host_initialize_import_meta_object_callback(
+  context: v8::Local<v8::Context>,
+  module: v8::Local<v8::Module>,
+  meta: v8::Local<v8::Object>,
+) {
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+
+  let module_global = v8::Global::new(scope, module);
+  let info = state
+    .module_map
+    .get_info(&module_global)
+    .expect("Module not found");
+
+  let url_key = v8::String::new(scope, "url").unwrap();
+  let url_val = v8::String::new(scope, &info.name).unwrap();
+  meta.create_data_property(scope, url_key.into(), url_val.into());
+
+  let main_key = v8::String::new(scope, "main").unwrap();
+  let main_val = v8::Boolean::new(scope, info.main);
+  meta.create_data_property(scope, main_key.into(), main_val.into());
+}
+
+// Called by V8 during `Isolate::mod_instantiate`.
+pub fn module_resolve_callback<'s>(
+  context: v8::Local<'s, v8::Context>,
+  specifier: v8::Local<'s, v8::String>,
+  _import_assertions: v8::Local<'s, v8::FixedArray>,
+  referrer: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Module>> {
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+
+  let referrer_global = v8::Global::new(scope, referrer);
+  let referrer_info = state
+    .module_map
+    .get_info(&referrer_global)
+    .expect("ModuleInfo not found");
+  let referrer_name = referrer_info.name.to_string();
+
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+
+  // FIXME(bartlomieju): import map support
+  let resolved_specifier =
+    ModuleSpecifier::resolve_import(&specifier_str, &referrer_name)
+      .expect("Module should have been already resolved");
+
+  if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
+    if let Some(handle) = state.module_map.get_handle(id) {
+      return Some(v8::Local::new(scope, handle));
+    }
+  }
+
+  let msg = format!(
+    r#"Cannot resolve module "{}" from "{}""#,
+    specifier_str, referrer_name
+  );
+  throw_type_error(scope, msg);
+  None
+}
+
+// TODO(bartlomieju): this can be a method on the `ModuleMap`
+/// Low-level module creation.
+///
+/// Called during module loading or dynamic import loading.
+pub fn create_module(
+  js_runtime: &mut JsRuntime,
+  info: ModuleSource,
+  main: bool,
+) -> Result<ModuleId, AnyError> {
+  let state_rc = JsRuntime::state(js_runtime.v8_isolate());
+
+  if info.module_url_specified != info.module_url_found {
+    state_rc
+      .borrow_mut()
+      .module_map
+      .alias(&info.module_url_specified, &info.module_url_found);
+  }
+
+  let maybe_module_id =
+    state_rc.borrow().module_map.get_id(&info.module_url_found);
+
+  if let Some(id) = maybe_module_id {
+    // Module has already been registered.
+    debug!(
+      "Already-registered module fetched again: {}",
+      info.module_url_found
+    );
+    return Ok(id);
+  }
+
+  let module_handle =
+    compile_module(js_runtime, &info.module_url_found, &info.code)?;
+  let id = state_rc.borrow_mut().module_map.register(
+    &info.module_url_found,
+    main,
+    module_handle,
+  );
+
+  Ok(id)
+}
+
+pub fn compile_module(
+  js_runtime: &mut JsRuntime,
+  specifier: &str,
+  source: &str,
+) -> Result<v8::Global<v8::Module>, AnyError> {
+  let context = js_runtime.global_context();
+  let scope =
+    &mut v8::HandleScope::with_context(js_runtime.v8_isolate(), context);
+
+  let specifier_str = v8::String::new(scope, specifier).unwrap();
+  let source_str = v8::String::new(scope, source).unwrap();
+
+  let origin = crate::bindings::module_origin(scope, specifier_str);
+  let source = v8::script_compiler::Source::new(source_str, &origin);
+
+  let tc_scope = &mut v8::TryCatch::new(scope);
+
+  let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
+
+  if tc_scope.has_caught() {
+    assert!(maybe_module.is_none());
+    let e = tc_scope.exception().unwrap();
+    return exception_to_err_result(tc_scope, e, false);
+  }
+
+  let module = maybe_module.unwrap();
+  let module_handle = v8::Global::<v8::Module>::new(tc_scope, module);
+  Ok(module_handle)
+}
+
+/// Instantiates a ES module
+///
+/// `AnyError` can be downcast to a type that exposes additional information
+/// about the V8 exception. By default this type is `JsError`, however it may
+/// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+pub fn mod_instantiate(
+  js_runtime: &mut JsRuntime,
+  id: ModuleId,
+) -> Result<(), AnyError> {
+  let state_rc = JsRuntime::state(js_runtime.v8_isolate());
+  let context = js_runtime.global_context();
+
+  let scope =
+    &mut v8::HandleScope::with_context(js_runtime.v8_isolate(), context);
+  let tc_scope = &mut v8::TryCatch::new(scope);
+
+  let module = state_rc
+    .borrow()
+    .module_map
+    .get_handle(id)
+    .map(|handle| v8::Local::new(tc_scope, handle))
+    .expect("ModuleInfo not found");
+
+  if module.get_status() == v8::ModuleStatus::Errored {
+    exception_to_err_result(tc_scope, module.get_exception(), false)?
+  }
+
+  let result = module.instantiate_module(tc_scope, module_resolve_callback);
+  match result {
+    Some(_) => Ok(()),
+    None => {
+      let exception = tc_scope.exception().unwrap();
+      exception_to_err_result(tc_scope, exception, false)
+    }
+  }
+}
+
+pub async fn mod_evaluate(
+  js_runtime: &mut JsRuntime,
+  id: ModuleId,
+) -> Result<(), AnyError> {
+  let state_rc = JsRuntime::state(js_runtime.v8_isolate());
+
+  let maybe_promise_handle = {
+    let context = js_runtime.global_context();
+    let scope =
+      &mut v8::HandleScope::with_context(js_runtime.v8_isolate(), context);
+
+    let module = state_rc
+      .borrow()
+      .module_map
+      .get_handle(id)
+      .map(|handle| v8::Local::new(scope, handle))
+      .expect("ModuleInfo not found");
+    let mut status = module.get_status();
+    assert_eq!(status, v8::ModuleStatus::Instantiated);
+
+    // IMPORTANT: Top-level-await is enabled, which means that return value
+    // of module evaluation is a promise.
+    //
+    // Because that promise is created internally by V8, when error occurs during
+    // module evaluation the promise is rejected, and since the promise has no rejection
+    // handler it will result in call to `bindings::promise_reject_callback` adding
+    // the promise to pending promise rejection table - meaning JsRuntime will return
+    // error on next poll().
+    //
+    // This situation is not desirable as we want to manually return error at the
+    // end of this function to handle it further. It means we need to manually
+    // remove this promise from pending promise rejection table.
+    //
+    // For more details see:
+    // https://github.com/denoland/deno/issues/4908
+    // https://v8.dev/features/top-level-await#module-execution-order
+    let maybe_value = module.evaluate(scope);
+
+    // Update status after evaluating.
+    status = module.get_status();
+
+    if let Some(value) = maybe_value {
+      assert!(
+        status == v8::ModuleStatus::Evaluated
+          || status == v8::ModuleStatus::Errored
+      );
+      let promise = v8::Local::<v8::Promise>::try_from(value)
+        .expect("Expected to get promise as module evaluation result");
+      let promise_global = v8::Global::new(scope, promise);
+      // FIXME(bartlomieju): comment above
+      state_rc
+        .borrow_mut()
+        .pending_promise_exceptions
+        .remove(&promise_global);
+      scope.perform_microtask_checkpoint();
+      Some(promise_global)
+    } else {
+      // FIXME(bartlomieju): this path depends on the comment above and
+      // promise rejection being added to `state.pending_promise_expcetions`
+      assert!(status == v8::ModuleStatus::Errored);
+      None
+    }
+  };
+
+  // FIXME(bartlomieju): this path depends on the comment above and
+  // promise rejection being added to `state.pending_promise_expcetions`
+  if maybe_promise_handle.is_none() {
+    let err = js_runtime.check_promise_exceptions().unwrap_err();
+    return Err(err);
+  }
+
+  let promise_handle = maybe_promise_handle.unwrap();
+
+  poll_fn(|cx| {
+    let _r = js_runtime.poll_event_loop(cx)?;
+
+    // Top level module
+    let maybe_result = evaluate_pending_module(js_runtime, promise_handle.clone());
+
+    if let Some(result) = maybe_result {
+      // TODO(bartlomieju): is it ok?
+      return Poll::Ready(result);
+    }
+
+    let state = state_rc.borrow();
+    if state.pending_ops.is_empty() {
+      let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
+      return Poll::Ready(Err(generic_error(msg)));
+    }
+
+    Poll::Pending
+  })
+  .await
+}
+
+// TODO(bartlomieju): rename me
+/// "deno_core" runs V8 with "--harmony-top-level-await"
+/// flag on - it means that each module evaluation returns a promise
+/// from V8.
+///
+/// This promise resolves after all dependent modules have also
+/// resolved. Each dependent module may perform calls to "import()" and APIs
+/// using async ops will add futures to the runtime's event loop.
+/// It means that the promise returned from module evaluation will
+/// resolve only after all futures in the event loop are done.
+///
+/// Thus during turn of event loop we need to check if V8 has
+/// resolved or rejected the promise. If the promise is still pending
+/// then another turn of event loop must be performed.
+fn evaluate_pending_module(
+  js_runtime: &mut JsRuntime,
+  promise_handle: v8::Global<v8::Promise>,
+) -> Option<Result<(), AnyError>> {
+  let context = js_runtime.global_context();
+  let scope =
+    &mut v8::HandleScope::with_context(js_runtime.v8_isolate(), context);
+
+  let promise = promise_handle.get(scope);
+  let promise_state = promise.state();
+
+  match promise_state {
+    v8::PromiseState::Pending => {
+      // pass, poll_event_loop will decide if
+      // runtime would be woken soon
+      None
+    }
+    v8::PromiseState::Fulfilled => {
+      scope.perform_microtask_checkpoint();
+      Some(Ok(()))
+    }
+    v8::PromiseState::Rejected => {
+      let exception = promise.result(scope);
+      scope.perform_microtask_checkpoint();
+      let err1 = exception_to_err_result::<()>(scope, exception, false)
+        .map_err(|err| attach_handle_to_error(scope, err, exception))
+        .unwrap_err();
+      Some(Err(err1))
+    }
+  }
+}
 
 pub type ModuleId = i32;
-pub type ModuleLoadId = i32;
 
 /// EsModule source code that will be loaded into V8.
 ///
@@ -37,129 +358,6 @@ pub struct ModuleSource {
   pub code: String,
   pub module_url_specified: String,
   pub module_url_found: String,
-}
-
-pub type ModuleSourceFuture =
-  dyn Future<Output = Result<ModuleSource, AnyError>>;
-
-pub trait ModuleLoader {
-  /// Returns an absolute URL.
-  /// When implementing an spec-complaint VM, this should be exactly the
-  /// algorithm described here:
-  /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  ///
-  /// `is_main` can be used to resolve from current working directory or
-  /// apply import map for child imports.
-  fn resolve(
-    &self,
-    op_state: Rc<RefCell<OpState>>,
-    specifier: &str,
-    referrer: &str,
-    _is_main: bool,
-  ) -> Result<ModuleSpecifier, AnyError>;
-
-  /// Given ModuleSpecifier, load its source code.
-  ///
-  /// `is_dyn_import` can be used to check permissions or deny
-  /// dynamic imports altogether.
-  fn load(
-    &self,
-    op_state: Rc<RefCell<OpState>>,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-    is_dyn_import: bool,
-  ) -> Pin<Box<ModuleSourceFuture>>;
-
-  /// This hook can be used by implementors to do some preparation
-  /// work before starting loading of modules.
-  ///
-  /// For example implementor might download multiple modules in
-  /// parallel and transpile them to final JS sources before
-  /// yielding control back to the runtime.
-  ///
-  /// It's not required to implement this method.
-  fn prepare_load(
-    &self,
-    _op_state: Rc<RefCell<OpState>>,
-    _load_id: ModuleLoadId,
-    _module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<String>,
-    _is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    async { Ok(()) }.boxed_local()
-  }
-}
-
-/// Placeholder structure used when creating
-/// a runtime that doesn't support module loading.
-pub struct NoopModuleLoader;
-
-impl ModuleLoader for NoopModuleLoader {
-  fn resolve(
-    &self,
-    _op_state: Rc<RefCell<OpState>>,
-    _specifier: &str,
-    _referrer: &str,
-    _is_main: bool,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    Err(generic_error("Module loading is not supported"))
-  }
-
-  fn load(
-    &self,
-    _op_state: Rc<RefCell<OpState>>,
-    _module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
-    _is_dyn_import: bool,
-  ) -> Pin<Box<ModuleSourceFuture>> {
-    async { Err(generic_error("Module loading is not supported")) }
-      .boxed_local()
-  }
-}
-
-/// Basic file system module loader.
-///
-/// Note that this loader will **block** event loop
-/// when loading file as it uses synchronous FS API
-/// from standard library.
-pub struct FsModuleLoader;
-
-impl ModuleLoader for FsModuleLoader {
-  fn resolve(
-    &self,
-    _op_state: Rc<RefCell<OpState>>,
-    specifier: &str,
-    referrer: &str,
-    _is_main: bool,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    Ok(ModuleSpecifier::resolve_import(specifier, referrer)?)
-  }
-
-  fn load(
-    &self,
-    _op_state: Rc<RefCell<OpState>>,
-    module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
-    _is_dynamic: bool,
-  ) -> Pin<Box<ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-    async move {
-      let path = module_specifier.as_url().to_file_path().map_err(|_| {
-        generic_error(format!(
-          "Provided module specifier \"{}\" is not a file URL.",
-          module_specifier
-        ))
-      })?;
-      let code = std::fs::read_to_string(path)?;
-      let module = ModuleSource {
-        code,
-        module_url_specified: module_specifier.to_string(),
-        module_url_found: module_specifier.to_string(),
-      };
-      Ok(module)
-    }
-    .boxed_local()
-  }
 }
 
 pub struct ModuleInfo {
@@ -258,526 +456,3 @@ impl ModuleMap {
     matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 }
-
-// #[cfg(test)]
-// mod tests {
-//   use super::*;
-//   use crate::JsRuntime;
-//   use crate::RuntimeOptions;
-//   use futures::future::FutureExt;
-//   use std::error::Error;
-//   use std::fmt;
-//   use std::future::Future;
-//   use std::sync::Arc;
-//   use std::sync::Mutex;
-//   use std::task::Context;
-//   use std::task::Poll;
-
-//   // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
-//   // even though we are only using poll() in these tests and not Tokio, we must
-//   // nevertheless run it in the tokio executor. Ideally run_in_task can be
-//   // removed in the future.
-//   use crate::runtime::tests::run_in_task;
-
-//   #[derive(Default)]
-//   struct MockLoader {
-//     pub loads: Arc<Mutex<Vec<String>>>,
-//   }
-
-//   impl MockLoader {
-//     fn new() -> Rc<Self> {
-//       Default::default()
-//     }
-//   }
-
-//   fn mock_source_code(url: &str) -> Option<(&'static str, &'static str)> {
-//     // (code, real_module_name)
-//     let spec: Vec<&str> = url.split("file://").collect();
-//     match spec[1] {
-//       "/a.js" => Some((A_SRC, "file:///a.js")),
-//       "/b.js" => Some((B_SRC, "file:///b.js")),
-//       "/c.js" => Some((C_SRC, "file:///c.js")),
-//       "/d.js" => Some((D_SRC, "file:///d.js")),
-//       "/circular1.js" => Some((CIRCULAR1_SRC, "file:///circular1.js")),
-//       "/circular2.js" => Some((CIRCULAR2_SRC, "file:///circular2.js")),
-//       "/circular3.js" => Some((CIRCULAR3_SRC, "file:///circular3.js")),
-//       "/redirect1.js" => Some((REDIRECT1_SRC, "file:///redirect1.js")),
-//       // pretend redirect - real module name is different than one requested
-//       "/redirect2.js" => Some((REDIRECT2_SRC, "file:///dir/redirect2.js")),
-//       "/dir/redirect3.js" => Some((REDIRECT3_SRC, "file:///redirect3.js")),
-//       "/slow.js" => Some((SLOW_SRC, "file:///slow.js")),
-//       "/never_ready.js" => {
-//         Some(("should never be Ready", "file:///never_ready.js"))
-//       }
-//       "/main.js" => Some((MAIN_SRC, "file:///main.js")),
-//       "/bad_import.js" => Some((BAD_IMPORT_SRC, "file:///bad_import.js")),
-//       // deliberately empty code.
-//       "/main_with_code.js" => Some(("", "file:///main_with_code.js")),
-//       _ => None,
-//     }
-//   }
-
-//   #[derive(Debug, PartialEq)]
-//   enum MockError {
-//     ResolveErr,
-//     LoadErr,
-//   }
-
-//   impl fmt::Display for MockError {
-//     fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
-//       unimplemented!()
-//     }
-//   }
-
-//   impl Error for MockError {
-//     fn cause(&self) -> Option<&dyn Error> {
-//       unimplemented!()
-//     }
-//   }
-
-//   struct DelayedSourceCodeFuture {
-//     url: String,
-//     counter: u32,
-//   }
-
-//   impl Future for DelayedSourceCodeFuture {
-//     type Output = Result<ModuleSource, AnyError>;
-
-//     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-//       let inner = self.get_mut();
-//       inner.counter += 1;
-//       if inner.url == "file:///never_ready.js" {
-//         return Poll::Pending;
-//       }
-//       if inner.url == "file:///slow.js" && inner.counter < 2 {
-//         // TODO(ry) Hopefully in the future we can remove current task
-//         // notification. See comment above run_in_task.
-//         cx.waker().wake_by_ref();
-//         return Poll::Pending;
-//       }
-//       match mock_source_code(&inner.url) {
-//         Some(src) => Poll::Ready(Ok(ModuleSource {
-//           code: src.0.to_owned(),
-//           module_url_specified: inner.url.clone(),
-//           module_url_found: src.1.to_owned(),
-//         })),
-//         None => Poll::Ready(Err(MockError::LoadErr.into())),
-//       }
-//     }
-//   }
-
-//   impl ModuleLoader for MockLoader {
-//     fn resolve(
-//       &self,
-//       _op_state: Rc<RefCell<OpState>>,
-//       specifier: &str,
-//       referrer: &str,
-//       _is_root: bool,
-//     ) -> Result<ModuleSpecifier, AnyError> {
-//       let referrer = if referrer == "." {
-//         "file:///"
-//       } else {
-//         referrer
-//       };
-
-//       eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
-
-//       let output_specifier =
-//         match ModuleSpecifier::resolve_import(specifier, referrer) {
-//           Ok(specifier) => specifier,
-//           Err(..) => return Err(MockError::ResolveErr.into()),
-//         };
-
-//       if mock_source_code(&output_specifier.to_string()).is_some() {
-//         Ok(output_specifier)
-//       } else {
-//         Err(MockError::ResolveErr.into())
-//       }
-//     }
-
-//     fn load(
-//       &self,
-//       _op_state: Rc<RefCell<OpState>>,
-//       module_specifier: &ModuleSpecifier,
-//       _maybe_referrer: Option<ModuleSpecifier>,
-//       _is_dyn_import: bool,
-//     ) -> Pin<Box<ModuleSourceFuture>> {
-//       let mut loads = self.loads.lock().unwrap();
-//       loads.push(module_specifier.to_string());
-//       let url = module_specifier.to_string();
-//       DelayedSourceCodeFuture { url, counter: 0 }.boxed()
-//     }
-//   }
-
-//   const A_SRC: &str = r#"
-//     import { b } from "/b.js";
-//     import { c } from "/c.js";
-//     if (b() != 'b') throw Error();
-//     if (c() != 'c') throw Error();
-//     if (!import.meta.main) throw Error();
-//     if (import.meta.url != 'file:///a.js') throw Error();
-//   "#;
-
-//   const B_SRC: &str = r#"
-//     import { c } from "/c.js";
-//     if (c() != 'c') throw Error();
-//     export function b() { return 'b'; }
-//     if (import.meta.main) throw Error();
-//     if (import.meta.url != 'file:///b.js') throw Error();
-//   "#;
-
-//   const C_SRC: &str = r#"
-//     import { d } from "/d.js";
-//     export function c() { return 'c'; }
-//     if (d() != 'd') throw Error();
-//     if (import.meta.main) throw Error();
-//     if (import.meta.url != 'file:///c.js') throw Error();
-//   "#;
-
-//   const D_SRC: &str = r#"
-//     export function d() { return 'd'; }
-//     if (import.meta.main) throw Error();
-//     if (import.meta.url != 'file:///d.js') throw Error();
-//   "#;
-
-//   #[test]
-//   fn test_recursive_load() {
-//     let loader = MockLoader::new();
-//     let loads = loader.loads.clone();
-//     let mut runtime = JsRuntime::new(RuntimeOptions {
-//       module_loader: Some(loader),
-//       ..Default::default()
-//     });
-//     let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
-//     let a_id_fut = runtime.load_module(&spec, None);
-//     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
-
-//     futures::executor::block_on(runtime.mod_evaluate(a_id)).unwrap();
-//     let l = loads.lock().unwrap();
-//     assert_eq!(
-//       l.to_vec(),
-//       vec![
-//         "file:///a.js",
-//         "file:///b.js",
-//         "file:///c.js",
-//         "file:///d.js"
-//       ]
-//     );
-
-//     let state_rc = JsRuntime::state(runtime.v8_isolate());
-//     let state = state_rc.borrow();
-//     let modules = &state.module_map;
-//     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
-//     let b_id = modules.get_id("file:///b.js").unwrap();
-//     let c_id = modules.get_id("file:///c.js").unwrap();
-//     let d_id = modules.get_id("file:///d.js").unwrap();
-//     // assert_eq!(
-//     //   modules.get_children(a_id),
-//     //   Some(&vec![
-//     //     ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-//     //     ModuleSpecifier::resolve_url("file:///c.js").unwrap()
-//     //   ])
-//     // );
-//     // assert_eq!(
-//     //   modules.get_children(b_id),
-//     //   Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
-//     // );
-//     // assert_eq!(
-//     //   modules.get_children(c_id),
-//     //   Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
-//     // );
-//     // assert_eq!(modules.get_children(d_id), Some(&vec![]));
-//   }
-
-//   const CIRCULAR1_SRC: &str = r#"
-//     import "/circular2.js";
-//     Deno.core.print("circular1");
-//   "#;
-
-//   const CIRCULAR2_SRC: &str = r#"
-//     import "/circular3.js";
-//     Deno.core.print("circular2");
-//   "#;
-
-//   const CIRCULAR3_SRC: &str = r#"
-//     import "/circular1.js";
-//     import "/circular2.js";
-//     Deno.core.print("circular3");
-//   "#;
-
-//   #[test]
-//   fn test_circular_load() {
-//     let loader = MockLoader::new();
-//     let loads = loader.loads.clone();
-//     let mut runtime = JsRuntime::new(RuntimeOptions {
-//       module_loader: Some(loader),
-//       ..Default::default()
-//     });
-
-//     let fut = async move {
-//       let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
-//       let result = runtime.load_module(&spec, None).await;
-//       assert!(result.is_ok());
-//       let circular1_id = result.unwrap();
-//       runtime.mod_evaluate(circular1_id).await.unwrap();
-
-//       let l = loads.lock().unwrap();
-//       assert_eq!(
-//         l.to_vec(),
-//         vec![
-//           "file:///circular1.js",
-//           "file:///circular2.js",
-//           "file:///circular3.js"
-//         ]
-//       );
-
-//       let state_rc = JsRuntime::state(runtime.v8_isolate());
-//       let state = state_rc.borrow();
-//       let modules = &state.module_map;
-
-//       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
-//       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
-
-//       // assert_eq!(
-//       //   modules.get_children(circular1_id),
-//       //   Some(&vec![
-//       //     ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
-//       //   ])
-//       // );
-
-//       // assert_eq!(
-//       //   modules.get_children(circular2_id),
-//       //   Some(&vec![
-//       //     ModuleSpecifier::resolve_url("file:///circular3.js").unwrap()
-//       //   ])
-//       // );
-
-//       // assert!(modules.get_id("file:///circular3.js").is_some());
-//       // let circular3_id = modules.get_id("file:///circular3.js").unwrap();
-//       // assert_eq!(
-//       //   modules.get_children(circular3_id),
-//       //   Some(&vec![
-//       //     ModuleSpecifier::resolve_url("file:///circular1.js").unwrap(),
-//       //     ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
-//       //   ])
-//       // );
-//     }
-//     .boxed_local();
-
-//     futures::executor::block_on(fut);
-//   }
-
-//   const REDIRECT1_SRC: &str = r#"
-//     import "./redirect2.js";
-//     Deno.core.print("redirect1");
-//   "#;
-
-//   const REDIRECT2_SRC: &str = r#"
-//     import "./redirect3.js";
-//     Deno.core.print("redirect2");
-//   "#;
-
-//   const REDIRECT3_SRC: &str = r#"
-//     Deno.core.print("redirect3");
-//   "#;
-
-//   #[test]
-//   fn test_redirect_load() {
-//     let loader = MockLoader::new();
-//     let loads = loader.loads.clone();
-//     let mut runtime = JsRuntime::new(RuntimeOptions {
-//       module_loader: Some(loader),
-//       ..Default::default()
-//     });
-
-//     let fut = async move {
-//       let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
-//       let result = runtime.load_module(&spec, None).await;
-//       println!(">> result {:?}", result);
-//       assert!(result.is_ok());
-//       let redirect1_id = result.unwrap();
-//       runtime.mod_evaluate(redirect1_id).await.unwrap();
-//       let l = loads.lock().unwrap();
-//       assert_eq!(
-//         l.to_vec(),
-//         vec![
-//           "file:///redirect1.js",
-//           "file:///redirect2.js",
-//           "file:///dir/redirect3.js"
-//         ]
-//       );
-
-//       let state_rc = JsRuntime::state(runtime.v8_isolate());
-//       let state = state_rc.borrow();
-//       let modules = &state.module_map;
-
-//       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
-
-//       let redirect2_id = modules.get_id("file:///dir/redirect2.js").unwrap();
-//       assert!(modules.is_alias("file:///redirect2.js"));
-//       assert!(!modules.is_alias("file:///dir/redirect2.js"));
-//       assert_eq!(modules.get_id("file:///redirect2.js"), Some(redirect2_id));
-
-//       let redirect3_id = modules.get_id("file:///redirect3.js").unwrap();
-//       assert!(modules.is_alias("file:///dir/redirect3.js"));
-//       assert!(!modules.is_alias("file:///redirect3.js"));
-//       assert_eq!(
-//         modules.get_id("file:///dir/redirect3.js"),
-//         Some(redirect3_id)
-//       );
-//     }
-//     .boxed_local();
-
-//     futures::executor::block_on(fut);
-//   }
-
-//   // main.js
-//   const MAIN_SRC: &str = r#"
-//     // never_ready.js never loads.
-//     import "/never_ready.js";
-//     // slow.js resolves after one tick.
-//     import "/slow.js";
-//   "#;
-
-//   // slow.js
-//   const SLOW_SRC: &str = r#"
-//     // Circular import of never_ready.js
-//     // Does this trigger two ModuleLoader calls? It shouldn't.
-//     import "/never_ready.js";
-//     import "/a.js";
-//   "#;
-
-//   #[test]
-//   fn slow_never_ready_modules() {
-//     run_in_task(|mut cx| {
-//       let loader = MockLoader::new();
-//       let loads = loader.loads.clone();
-//       let mut runtime = JsRuntime::new(RuntimeOptions {
-//         module_loader: Some(loader),
-//         ..Default::default()
-//       });
-//       let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
-//       let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
-
-//       let result = recursive_load.poll_unpin(&mut cx);
-//       assert!(result.is_pending());
-
-//       // TODO(ry) Arguably the first time we poll only the following modules
-//       // should be loaded:
-//       //      "file:///main.js",
-//       //      "file:///never_ready.js",
-//       //      "file:///slow.js"
-//       // But due to current task notification in DelayedSourceCodeFuture they
-//       // all get loaded in a single poll. Also see the comment above
-//       // run_in_task.
-
-//       for _ in 0..10 {
-//         let result = recursive_load.poll_unpin(&mut cx);
-//         assert!(result.is_pending());
-//         let l = loads.lock().unwrap();
-//         assert_eq!(
-//           l.to_vec(),
-//           vec![
-//             "file:///main.js",
-//             "file:///never_ready.js",
-//             "file:///slow.js",
-//             "file:///a.js",
-//             "file:///b.js",
-//             "file:///c.js",
-//             "file:///d.js"
-//           ]
-//         );
-//       }
-//     })
-//   }
-
-//   // bad_import.js
-//   const BAD_IMPORT_SRC: &str = r#"
-//     import "foo";
-//   "#;
-
-//   #[test]
-//   fn loader_disappears_after_error() {
-//     run_in_task(|mut cx| {
-//       let loader = MockLoader::new();
-//       let mut runtime = JsRuntime::new(RuntimeOptions {
-//         module_loader: Some(loader),
-//         ..Default::default()
-//       });
-//       let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
-//       let mut load_fut = runtime.load_module(&spec, None).boxed_local();
-//       let result = load_fut.poll_unpin(&mut cx);
-//       if let Poll::Ready(Err(err)) = result {
-//         assert_eq!(
-//           err.downcast_ref::<MockError>().unwrap(),
-//           &MockError::ResolveErr
-//         );
-//       } else {
-//         unreachable!();
-//       }
-//     })
-//   }
-
-//   const MAIN_WITH_CODE_SRC: &str = r#"
-//     import { b } from "/b.js";
-//     import { c } from "/c.js";
-//     if (b() != 'b') throw Error();
-//     if (c() != 'c') throw Error();
-//     if (!import.meta.main) throw Error();
-//     if (import.meta.url != 'file:///main_with_code.js') throw Error();
-//   "#;
-
-//   #[test]
-//   fn recursive_load_main_with_code() {
-//     let loader = MockLoader::new();
-//     let loads = loader.loads.clone();
-//     let mut runtime = JsRuntime::new(RuntimeOptions {
-//       module_loader: Some(loader),
-//       ..Default::default()
-//     });
-//     // In default resolution code should be empty.
-//     // Instead we explicitly pass in our own code.
-//     // The behavior should be very similar to /a.js.
-//     let spec =
-//       ModuleSpecifier::resolve_url("file:///main_with_code.js").unwrap();
-//     let main_id_fut = runtime
-//       .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
-//       .boxed_local();
-//     let main_id =
-//       futures::executor::block_on(main_id_fut).expect("Failed to load");
-
-//     futures::executor::block_on(runtime.mod_evaluate(main_id)).unwrap();
-
-//     let l = loads.lock().unwrap();
-//     assert_eq!(
-//       l.to_vec(),
-//       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
-//     );
-
-//     let state_rc = JsRuntime::state(runtime.v8_isolate());
-//     let state = state_rc.borrow();
-//     let modules = &state.module_map;
-
-//     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
-//     let b_id = modules.get_id("file:///b.js").unwrap();
-//     let c_id = modules.get_id("file:///c.js").unwrap();
-//     let d_id = modules.get_id("file:///d.js").unwrap();
-
-//     // assert_eq!(
-//     //   modules.get_children(main_id),
-//     //   Some(&vec![
-//     //     ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-//     //     ModuleSpecifier::resolve_url("file:///c.js").unwrap()
-//     //   ])
-//     // );
-//     // assert_eq!(
-//     //   modules.get_children(b_id),
-//     //   Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
-//     // );
-//     // assert_eq!(
-//     //   modules.get_children(c_id),
-//     //   Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
-//     // );
-//     // assert_eq!(modules.get_children(d_id), Some(&vec![]));
-//   }
-// }
