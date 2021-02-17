@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: build / ${{ matrix.kind }} / ${{ runner.os }}
+    name: build / ${{ matrix.kind }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -148,7 +148,7 @@ jobs:
           draft: true
 
   test:
-    name: test / ${{ matrix.kind }} / ${{ runner.os }}
+    name: test / ${{ matrix.kind }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
