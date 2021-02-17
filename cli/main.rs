@@ -8,6 +8,7 @@ extern crate lazy_static;
 extern crate log;
 
 mod ast;
+mod auth_tokens;
 mod checksum;
 mod colors;
 mod deno_dir;

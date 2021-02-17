@@ -219,19 +219,23 @@ impl From<Flags> for PermissionsOptions {
   }
 }
 
-static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
+static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
+    DENO_AUTH_TOKENS     A semi-colon separated list of bearer tokens and
+                         hostnames to use when fetching remote modules from
+                         private repositories
+                         (e.g. "abcde12345@deno.land;54321edcba@github.com")
+    DENO_CERT            Load certificate authority from PEM encoded file
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_CERT            Load certificate authority from PEM encoded file
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
-    NO_COLOR             Set to disable color
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
                          (module downloads, fetch)
+    NO_COLOR             Set to disable color
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)";
+                         (module downloads, fetch)"#;
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 

@@ -1,11 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::auth_tokens::AuthToken;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::HeaderMap;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
+use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::header::USER_AGENT;
@@ -76,23 +79,32 @@ pub enum FetchOnceResult {
   Redirect(Url, HeadersMap),
 }
 
+#[derive(Debug)]
+pub struct FetchOnceArgs {
+  pub client: Client,
+  pub url: Url,
+  pub maybe_etag: Option<String>,
+  pub maybe_auth_token: Option<AuthToken>,
+}
+
 /// Asynchronously fetches the given HTTP URL one pass only.
 /// If no redirect is present and no error occurs,
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
 pub async fn fetch_once(
-  client: Client,
-  url: &Url,
-  cached_etag: Option<String>,
+  args: FetchOnceArgs,
 ) -> Result<FetchOnceResult, AnyError> {
-  let url = url.clone();
+  let mut request = args.client.get(args.url.clone());
 
-  let mut request = client.get(url.clone());
-
-  if let Some(etag) = cached_etag {
+  if let Some(etag) = args.maybe_etag {
     let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
     request = request.header(IF_NONE_MATCH, if_none_match_val);
+  }
+  if let Some(auth_token) = args.maybe_auth_token {
+    let authorization_val =
+      HeaderValue::from_str(&auth_token.to_string()).unwrap();
+    request = request.header(AUTHORIZATION, authorization_val);
   }
   let response = request.send().await?;
 
@@ -126,20 +138,23 @@ pub async fn fetch_once(
     if let Some(location) = response.headers().get(LOCATION) {
       let location_string = location.to_str().unwrap();
       debug!("Redirecting to {:?}...", &location_string);
-      let new_url = resolve_url_from_location(&url, location_string);
+      let new_url = resolve_url_from_location(&args.url, location_string);
       return Ok(FetchOnceResult::Redirect(new_url, headers_));
     } else {
       return Err(generic_error(format!(
         "Redirection from '{}' did not provide location header",
-        url
+        args.url
       )));
     }
   }
 
   if response.status().is_client_error() || response.status().is_server_error()
   {
-    let err =
-      generic_error(format!("Import '{}' failed: {}", &url, response.status()));
+    let err = generic_error(format!(
+      "Import '{}' failed: {}",
+      args.url,
+      response.status()
+    ));
     return Err(err);
   }
 
@@ -165,7 +180,13 @@ mod tests {
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(headers.get("content-type").unwrap(), "application/json");
@@ -185,7 +206,13 @@ mod tests {
     )
     .unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
@@ -204,7 +231,13 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client.clone(), &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client: client.clone(),
+      url: url.clone(),
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
@@ -217,8 +250,13 @@ mod tests {
       panic!();
     }
 
-    let res =
-      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
+    let res = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: Some("33a64df551425fcc55e".to_string()),
+      maybe_auth_token: None,
+    })
+    .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -231,7 +269,13 @@ mod tests {
     )
     .unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
@@ -256,7 +300,13 @@ mod tests {
     let target_url =
       Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
       assert_eq!(url, target_url);
     } else {
@@ -322,7 +372,13 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(headers.get("content-type").unwrap(), "application/json");
@@ -354,7 +410,13 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
       assert_eq!(
@@ -385,7 +447,13 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client.clone(), &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client: client.clone(),
+      url: url.clone(),
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
@@ -399,8 +467,13 @@ mod tests {
       panic!();
     }
 
-    let res =
-      fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
+    let res = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: Some("33a64df551425fcc55e".to_string()),
+      maybe_auth_token: None,
+    })
+    .await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
   }
 
@@ -425,7 +498,13 @@ mod tests {
       ),
     )
     .unwrap();
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     if let Ok(FetchOnceResult::Code(body, headers)) = result {
       assert!(!body.is_empty());
       assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
@@ -446,7 +525,13 @@ mod tests {
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client(None);
-    let result = fetch_once(client, &url, None).await;
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     // Check that the error message contains the original URL

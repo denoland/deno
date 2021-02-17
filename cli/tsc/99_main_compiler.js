@@ -677,6 +677,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getSignatureHelpItems": {
+        return respond(
+          id,
+          languageService.getSignatureHelpItems(
+            request.specifier,
+            request.position,
+            request.options,
+          ),
+        );
+      }
       case "getSupportedCodeFixes": {
         return respond(
           id,
