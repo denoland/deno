@@ -4,6 +4,7 @@
 members = [
   "cli",
   "core",
+  "core2",
   "runtime",
   "test_plugin",
   "test_util",
