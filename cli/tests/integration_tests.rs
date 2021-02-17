@@ -1602,7 +1602,6 @@ mod integration {
       .arg("bundle")
       .arg("--import-map")
       .arg(import_map_path)
-      .arg("--unstable")
       .arg(import)
       .arg(&bundle)
       .spawn()
@@ -1648,7 +1647,6 @@ mod integration {
       .arg("--no-check")
       .arg("--import-map")
       .arg(import_map_path)
-      .arg("--unstable")
       .arg(import)
       .arg(&bundle)
       .spawn()
@@ -2471,7 +2469,7 @@ console.log("finish");
 
   itest!(_033_import_map {
     args:
-      "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+      "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
     output: "033_import_map.out",
   });
 
@@ -2490,7 +2488,7 @@ console.log("finish");
 
   itest!(_036_import_map_fetch {
     args:
-      "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+      "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
     output: "036_import_map_fetch.out",
   });
 
@@ -2636,7 +2634,7 @@ console.log("finish");
 
   itest!(_065_import_map_info {
     args:
-      "info --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+      "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
     output: "065_import_map_info.out",
   });
 
@@ -3636,8 +3634,7 @@ console.log("finish");
   });
 
   itest!(deno_doc_import_map {
-    args:
-      "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
+    args: "doc --import-map=doc/import_map.json doc/use_import_map.js",
     output: "doc/use_import_map.out",
   });
 
@@ -3654,7 +3651,7 @@ console.log("finish");
   });
 
   itest!(import_data_url_import_map {
-    args: "run --quiet --reload --unstable --import-map import_maps/import_map.json import_data_url.ts",
+    args: "run --quiet --reload --import-map import_maps/import_map.json import_data_url.ts",
     output: "import_data_url.ts.out",
   });
 

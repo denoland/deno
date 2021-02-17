@@ -1,8 +1,5 @@
 ## Import maps
 
-> This is an unstable feature. Learn more about
-> [unstable features](../runtime/stability.md).
-
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
 You can use import maps with the `--import-map=<FILE>` CLI flag.
@@ -37,7 +34,7 @@ console.log(red("hello world"));
 Then:
 
 ```shell
-$ deno run --import-map=import_map.json --unstable color.ts
+$ deno run --import-map=import_map.json color.ts
 ```
 
 To use starting directory for absolute imports:

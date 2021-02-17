@@ -1586,8 +1586,7 @@ fn import_map_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long("import-map")
     .alias("importmap")
     .value_name("FILE")
-    .requires("unstable")
-    .help("UNSTABLE: Load import map file")
+    .help("Load import map file")
     .long_help(
       "UNSTABLE:
 Load import map file
@@ -2360,7 +2359,7 @@ mod tests {
   #[test]
   fn eval_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "eval", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
+    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2369,7 +2368,6 @@ mod tests {
           code: "42".to_string(),
           as_typescript: false,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -2448,13 +2446,12 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl,
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -2687,7 +2684,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2697,7 +2693,6 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2709,7 +2704,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "info",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2720,7 +2714,6 @@ mod tests {
           file: Some("script.ts".to_string()),
           json: false,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2732,7 +2725,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "cache",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2742,7 +2734,6 @@ mod tests {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2754,7 +2745,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "doc",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2767,7 +2757,6 @@ mod tests {
           json: false,
           filter: None,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2853,7 +2842,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2864,7 +2853,6 @@ mod tests {
           root: Some(PathBuf::from("/foo")),
           force: true,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -3385,7 +3373,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3396,7 +3384,6 @@ mod tests {
           target: None,
           lite: false,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),

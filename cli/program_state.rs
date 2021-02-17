@@ -94,12 +94,7 @@ impl ProgramState {
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => {
-          if !flags.unstable {
-            exit_unstable("--import-map")
-          }
-          Some(ImportMap::load(file_path)?)
-        }
+        Some(file_path) => Some(ImportMap::load(file_path)?),
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
