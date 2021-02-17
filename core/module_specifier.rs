@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
 
+pub const DUMMY_SPECIFIER: &str = "<unknown>";
+
 /// Error indicating the reason resolving a module specifier failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModuleResolutionError {
@@ -82,7 +84,7 @@ pub fn resolve_import(
     // 3. Return the result of applying the URL parser to specifier with base
     //    URL as the base URL.
     Err(ParseError::RelativeUrlWithoutBase) => {
-      let base = if base == "<unknown>" {
+      let base = if base == DUMMY_SPECIFIER {
         // Handle <unknown> case, happening under e.g. repl.
         // Use CWD for such case.
 

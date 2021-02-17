@@ -48,6 +48,7 @@ pub use crate::module_specifier::resolve_url;
 pub use crate::module_specifier::resolve_url_or_path;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
+pub use crate::module_specifier::DUMMY_SPECIFIER;
 pub use crate::modules::FsModuleLoader;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoadId;

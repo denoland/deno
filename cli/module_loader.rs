@@ -76,7 +76,7 @@ impl ModuleLoader for CliModuleLoader {
   ) -> Result<ModuleSpecifier, AnyError> {
     // FIXME(bartlomieju): hacky way to provide compatibility with repl
     let referrer = if referrer.is_empty() && self.program_state.flags.repl {
-      "<unknown>"
+      deno_core::DUMMY_SPECIFIER
     } else {
       referrer
     };
