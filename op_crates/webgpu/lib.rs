@@ -104,12 +104,12 @@ impl Resource for WebGPUQuerySet {
 pub fn init(isolate: &mut deno_core::JsRuntime) {
   let files = vec![
     (
-      "deno:op_crates/webgpu/01_idl_types.js",
-      include_str!("01_idl_types.js"),
+      "deno:op_crates/webgpu/01_webgpu.js",
+      include_str!("01_webgpu.js"),
     ),
     (
-      "deno:op_crates/webgpu/02_webgpu.js",
-      include_str!("02_webgpu.js"),
+      "deno:op_crates/webgpu/02_idl_types.js",
+      include_str!("02_idl_types.js"),
     ),
   ];
   for (url, source_code) in files {

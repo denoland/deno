@@ -27,7 +27,7 @@ delete Object.prototype.__proto__;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
-  const webGPU = window.__bootstrap.webGPU;
+  const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
   const file = window.__bootstrap.file;
   const fetch = window.__bootstrap.fetch;
@@ -251,26 +251,27 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
 
-    GPUAdapter: util.nonEnumerable(webGPU.GPUAdapter),
-    GPUDevice: util.nonEnumerable(webGPU.GPUDevice),
-    GPUQueue: util.nonEnumerable(webGPU.GPUQueue),
-    GPUBuffer: util.nonEnumerable(webGPU.GPUBuffer),
-    GPUTexture: util.nonEnumerable(webGPU.GPUTexture),
-    GPUTextureView: util.nonEnumerable(webGPU.GPUTextureView),
-    GPUSampler: util.nonEnumerable(webGPU.GPUSampler),
-    GPUBindGroupLayout: util.nonEnumerable(webGPU.GPUBindGroupLayout),
-    GPUPipelineLayout: util.nonEnumerable(webGPU.GPUPipelineLayout),
-    GPUBindGroup: util.nonEnumerable(webGPU.GPUBindGroup),
-    GPUShaderModule: util.nonEnumerable(webGPU.GPUShaderModule),
-    GPUComputePipeline: util.nonEnumerable(webGPU.GPUComputePipeline),
-    GPURenderPipeline: util.nonEnumerable(webGPU.GPURenderPipeline),
-    GPUCommandEncoder: util.nonEnumerable(webGPU.GPUCommandEncoder),
-    GPURenderPassEncoder: util.nonEnumerable(webGPU.GPURenderPassEncoder),
-    GPUComputePassEncoder: util.nonEnumerable(webGPU.GPUComputePassEncoder),
-    GPUCommandBuffer: util.nonEnumerable(webGPU.GPUCommandBuffer),
-    GPURenderBundleEncoder: util.nonEnumerable(webGPU.GPURenderBundleEncoder),
-    GPURenderBundle: util.nonEnumerable(webGPU.GPURenderBundle),
-    GPUQuerySet: util.nonEnumerable(webGPU.GPUQuerySet),
+    GPU: util.nonEnumerable(webgpu.GPU),
+    GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
+    GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
+    GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
+    GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
+    GPUTexture: util.nonEnumerable(webgpu.GPUTexture),
+    GPUTextureView: util.nonEnumerable(webgpu.GPUTextureView),
+    GPUSampler: util.nonEnumerable(webgpu.GPUSampler),
+    GPUBindGroupLayout: util.nonEnumerable(webgpu.GPUBindGroupLayout),
+    GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
+    GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
+    GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
+    GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
+    GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
+    GPUCommandEncoder: util.nonEnumerable(webgpu.GPUCommandEncoder),
+    GPURenderPassEncoder: util.nonEnumerable(webgpu.GPURenderPassEncoder),
+    GPUComputePassEncoder: util.nonEnumerable(webgpu.GPUComputePassEncoder),
+    GPUCommandBuffer: util.nonEnumerable(webgpu.GPUCommandBuffer),
+    GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
+    GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
+    GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable
@@ -279,7 +280,7 @@ delete Object.prototype.__proto__;
   windowOrWorkerGlobalScope.console.enumerable = false;
 
   const windowNavigatorProperties = {
-    gpu: webGPU.gpu,
+    gpu: webgpu.gpu,
   };
 
   const mainRuntimeGlobalProperties = {
@@ -301,7 +302,7 @@ delete Object.prototype.__proto__;
   };
 
   const workerNavigatorProperties = {
-    gpu: webGPU.gpu,
+    gpu: webgpu.gpu,
   };
 
   const workerRuntimeGlobalProperties = {
