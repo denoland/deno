@@ -53,6 +53,8 @@ jobs:
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
+          default: true
+          override: true
           toolchain: 1.50.0
 
       - name: Configure canary build
@@ -180,6 +182,8 @@ jobs:
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
+          default: true
+          override: true
           toolchain: 1.50.0
 
       - name: Install Deno
@@ -267,6 +271,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.50.0
+          default: true
+          override: true
           components: rustfmt, clippy
 
       - name: Install Deno
@@ -305,6 +311,8 @@ jobs:
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
+          default: true
+          override: true
           toolchain: 1.50.0
 
       - name: Install Deno
