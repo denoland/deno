@@ -324,8 +324,15 @@ jobs:
           python-version: "3.8"
           architecture: x64
 
+      - name: Install Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14"
+          check-latest: true
+
       - name: Log versions
         run: |
+          node -v
           python --version
           rustc --version
           cargo --version
