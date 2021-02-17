@@ -12,15 +12,6 @@
   const webidl = window.__bootstrap.webidl;
   const eventTarget = window.__bootstrap.eventTarget;
 
-  const ridSymbol = Symbol("rid");
-
-  const keySymbol = Symbol("key");
-  function checkKey(key) {
-    if (key !== keySymbol) {
-      throw new TypeError("Illegal constructor");
-    }
-  }
-
   function normalizeGPUExtent3D(data) {
     if (Array.isArray(data)) {
       return {
@@ -274,7 +265,6 @@
         ...descriptor,
       });
       return new GPUBuffer(
-        keySymbol,
         rid,
         this[_device].rid,
         descriptor.label,
@@ -294,7 +284,7 @@
         size: normalizeGPUExtent3D(descriptor.size),
       });
 
-      return new GPUTexture(keySymbol, rid, descriptor.label);
+      return createGPUTexture(descriptor.label ?? null, rid);
     }
 
     createSampler(descriptor = {}) {
@@ -303,7 +293,7 @@
         ...descriptor,
       });
 
-      return new GPUSampler(keySymbol, rid, descriptor.label);
+      return createGPUSampler(descriptor.label ?? null, rid);
     }
 
     createBindGroupLayout(descriptor) {
@@ -324,7 +314,7 @@
         ...descriptor,
       });
 
-      return new GPUBindGroupLayout(keySymbol, rid, descriptor.label);
+      return createGPUBindGroupLayout(descriptor.label ?? null, rid);
     }
 
     createPipelineLayout(descriptor) {
@@ -332,36 +322,36 @@
         deviceRid: this[_device].rid,
         label: descriptor.label,
         bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) =>
-          bindGroupLayout[ridSymbol]
+          bindGroupLayout[_rid]
         ),
       });
 
-      return new GPUPipelineLayout(keySymbol, rid, descriptor.label);
+      return createGPUPipelineLayout(descriptor.label ?? null, rid);
     }
 
     createBindGroup(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
         deviceRid: this[_device].rid,
         label: descriptor.label,
-        layout: descriptor.layout[ridSymbol],
+        layout: descriptor.layout[_rid],
         entries: descriptor.entries.map((entry) => {
           if (entry.resource instanceof GPUSampler) {
             return {
               binding: entry.binding,
               kind: "GPUSampler",
-              resource: entry.resource[ridSymbol],
+              resource: entry.resource[_rid],
             };
           } else if (entry.resource instanceof GPUTextureView) {
             return {
               binding: entry.binding,
               kind: "GPUTextureView",
-              resource: entry.resource[ridSymbol],
+              resource: entry.resource[_rid],
             };
           } else {
             return {
               binding: entry.binding,
               kind: "GPUBufferBinding",
-              resource: entry.resource.buffer[ridSymbol],
+              resource: entry.resource.buffer[_rid],
               offset: entry.resource.offset,
               size: entry.resource.size,
             };
@@ -369,7 +359,7 @@
         }),
       });
 
-      return new GPUBindGroup(keySymbol, rid, descriptor.label);
+      return createGPUBindGroup(descriptor.label ?? null, rid);
     }
 
     createShaderModule(descriptor) {
@@ -386,29 +376,29 @@
         ...(descriptor.code instanceof Uint32Array ? [descriptor.code] : []),
       );
 
-      return new GPUShaderModule(keySymbol, rid, descriptor.label);
+      return createGPUShaderModule(descriptor.label ?? null, rid);
     }
 
     createComputePipeline(descriptor) {
       const { rid } = core.jsonOpSync("op_webgpu_create_compute_pipeline", {
         deviceRid: this[_device].rid,
         label: descriptor.label,
-        layout: descriptor.layout ? descriptor.layout[ridSymbol] : undefined,
+        layout: descriptor.layout ? descriptor.layout[_rid] : undefined,
         compute: {
-          module: descriptor.compute.module[ridSymbol],
+          module: descriptor.compute.module[_rid],
           entryPoint: descriptor.compute.entryPoint,
         },
       });
 
-      return new GPUComputePipeline(keySymbol, rid, descriptor.label);
+      return createGPUComputePipeline(descriptor.label ?? null, rid);
     }
 
     createRenderPipeline(descriptor) {
       const d = {
         label: descriptor.label,
-        layout: descriptor.layout?.[ridSymbol],
+        layout: descriptor.layout?.[_rid],
         vertex: {
-          module: descriptor.vertex.module[ridSymbol],
+          module: descriptor.vertex.module[_rid],
           entryPoint: descriptor.vertex.entryPoint,
           buffers: descriptor.vertex.buffers,
         },
@@ -417,7 +407,7 @@
         multisample: descriptor.multisample,
         fragment: descriptor.fragment
           ? {
-            module: descriptor.fragment.module[ridSymbol],
+            module: descriptor.fragment.module[_rid],
             entryPoint: descriptor.fragment.entryPoint,
             targets: descriptor.fragment.targets,
           }
@@ -429,7 +419,7 @@
         ...d,
       });
 
-      return new GPURenderPipeline(keySymbol, rid, descriptor.label);
+      return createGPURenderPipeline(descriptor.label ?? null, rid);
     }
 
     createComputePipelineAsync(_descriptor) {
@@ -446,7 +436,7 @@
         ...descriptor,
       });
 
-      return new GPUCommandEncoder(keySymbol, rid, descriptor.label);
+      return createGPUCommandEncoder(descriptor.label ?? null, rid);
     }
 
     createRenderBundleEncoder(descriptor) {
@@ -554,7 +544,7 @@
         "op_webgpu_write_buffer",
         {
           queueRid: this[_device],
-          buffer: buffer[ridSymbol],
+          buffer: buffer[_rid],
           bufferOffset,
           dataOffset,
           size,
@@ -595,7 +585,7 @@
         {
           queueRid: this[_device],
           destination: {
-            texture: destination.texture[ridSymbol],
+            texture: destination.texture[_rid],
             mipLevel: destination.mipLevel,
             origin: destination.origin ??
               normalizeGPUOrigin3D(destination.origin),
@@ -625,10 +615,8 @@
     #mappedRid;
     #mappedBuffer;
 
-    constructor(key, rid, deviceRid, label, size, mappedAtCreation) {
-      checkKey(key);
-
-      this[ridSymbol] = rid;
+    constructor(rid, deviceRid, label, size, mappedAtCreation) {
+      this[_rid] = rid;
       this.#deviceRid = deviceRid;
       this.label = label ?? null;
       this.#size = size;
@@ -643,7 +631,7 @@
       this.#mappedOffset = offset;
       this.#mappedSize = size ?? (this.#size - offset);
       await core.jsonOpAsync("op_webgpu_buffer_get_map_async", {
-        bufferRid: this[ridSymbol],
+        bufferRid: this[_rid],
         deviceRid: this.#deviceRid,
         mode,
         offset,
@@ -656,7 +644,7 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
         {
-          bufferRid: this[ridSymbol],
+          bufferRid: this[_rid],
           offset,
           size: size ?? this.#mappedSize,
         },
@@ -670,7 +658,7 @@
 
     unmap() {
       core.jsonOpSync("op_webgpu_buffer_unmap", {
-        bufferRid: this[ridSymbol],
+        bufferRid: this[_rid],
         mappedRid: this.#mappedRid,
       }, this.#mappedBuffer);
     }
@@ -679,148 +667,320 @@
       throw new Error("Not yet implemented");
     }
   }
-  class GPUTexture {
-    constructor(key, rid, label) {
-      checkKey(key);
 
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUTexture}
+   */
+  function createGPUTexture(label, rid) {
+    /** @type {GPUTexture} */
+    const texture = webidl.createBranded(GPUTexture);
+    texture[_label] = label;
+    texture[_rid] = rid;
+    return texture;
+  }
+
+  class GPUTexture {
+    /** @type {number} */
+    [_rid];
+
+    constructor() {
+      webidl.illegalConstructor();
     }
 
+    /**
+     * @param {GPUTextureViewDescriptor} descriptor 
+     */
     createView(descriptor = {}) {
+      webidl.assertBranded(this, GPUTexture);
+      const prefix = "Failed to execute 'createView' on 'GPUTexture'";
+      webidl.requiredArguments(arguments.length, 0, { prefix });
+      descriptor = webidl.converters.GPUTextureViewDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
+
       const { rid } = core.jsonOpSync("op_webgpu_create_texture_view", {
-        textureRid: this[ridSymbol],
+        textureRid: this[_rid],
         ...descriptor,
       });
 
-      return new GPUTextureView(keySymbol, rid, descriptor.label);
+      return createGPUTextureView(descriptor.label ?? null, rid);
     }
 
     destroy() {
       throw new Error("Not yet implemented");
     }
   }
+  GPUObjectBaseMixin("GPUTexture", GPUTexture);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUTextureView}
+   */
+  function createGPUTextureView(label, rid) {
+    /** @type {GPUTextureView} */
+    const textureView = webidl.createBranded(GPUTextureView);
+    textureView[_label] = label;
+    textureView[_rid] = rid;
+    return textureView;
+  }
   class GPUTextureView {
-    constructor(key, rid, label) {
-      checkKey(key);
+    /** @type {number} */
+    [_rid];
 
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
   }
+  GPUObjectBaseMixin("GPUTextureView", GPUTextureView);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUSampler}
+   */
+  function createGPUSampler(label, rid) {
+    /** @type {GPUSampler} */
+    const sampler = webidl.createBranded(GPUSampler);
+    sampler[_label] = label;
+    sampler[_rid] = rid;
+    return sampler;
+  }
   class GPUSampler {
-    constructor(key, rid, label) {
-      checkKey(key);
+    /** @type {number} */
+    [_rid];
 
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
   }
+  GPUObjectBaseMixin("GPUSampler", GPUSampler);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUBindGroupLayout}
+   */
+  function createGPUBindGroupLayout(label, rid) {
+    /** @type {GPUBindGroupLayout} */
+    const bindGroupLayout = webidl.createBranded(GPUBindGroupLayout);
+    bindGroupLayout[_label] = label;
+    bindGroupLayout[_rid] = rid;
+    return bindGroupLayout;
+  }
   class GPUBindGroupLayout {
-    constructor(key, rid, label) {
-      checkKey(key);
+    /** @type {number} */
+    [_rid];
 
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
   }
+  GPUObjectBaseMixin("GPUBindGroupLayout", GPUBindGroupLayout);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUPipelineLayout}
+   */
+  function createGPUPipelineLayout(label, rid) {
+    /** @type {GPUPipelineLayout} */
+    const pipelineLayout = webidl.createBranded(GPUPipelineLayout);
+    pipelineLayout[_label] = label;
+    pipelineLayout[_rid] = rid;
+    return pipelineLayout;
+  }
   class GPUPipelineLayout {
-    constructor(key, rid, label) {
-      checkKey(key);
+    /** @type {number} */
+    [_rid];
 
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
   }
+  GPUObjectBaseMixin("GPUPipelineLayout", GPUPipelineLayout);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUBindGroup}
+   */
+  function createGPUBindGroup(label, rid) {
+    /** @type {GPUBindGroup} */
+    const bindGroup = webidl.createBranded(GPUBindGroup);
+    bindGroup[_label] = label;
+    bindGroup[_rid] = rid;
+    return bindGroup;
+  }
   class GPUBindGroup {
-    constructor(key, rid, label) {
-      checkKey(key);
+    /** @type {number} */
+    [_rid];
 
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
   }
+  GPUObjectBaseMixin("GPUBindGroup", GPUBindGroup);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUShaderModule}
+   */
+  function createGPUShaderModule(label, rid) {
+    /** @type {GPUShaderModule} */
+    const bindGroup = webidl.createBranded(GPUShaderModule);
+    bindGroup[_label] = label;
+    bindGroup[_rid] = rid;
+    return bindGroup;
+  }
   class GPUShaderModule {
-    constructor(key, rid, label) {
-      checkKey(key);
+    /** @type {number} */
+    [_rid];
 
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     compilationInfo() {
       throw new Error("Not yet implemented");
     }
   }
+  GPUObjectBaseMixin("GPUShaderModule", GPUShaderModule);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUComputePipeline}
+   */
+  function createGPUComputePipeline(label, rid) {
+    /** @type {GPUComputePipeline} */
+    const pipeline = webidl.createBranded(GPUComputePipeline);
+    pipeline[_label] = label;
+    pipeline[_rid] = rid;
+    return pipeline;
+  }
   class GPUComputePipeline {
-    [webidl.brand] = webidl.brand;
+    /** @type {number} */
+    [_rid];
 
-    constructor(key, rid, label) {
-      checkKey(key);
-
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
+    /**
+     * @param {number} index 
+     */
     getBindGroupLayout(index) {
+      webidl.assertBranded(this, GPURenderPipeline);
+      const prefix =
+        "Failed to execute 'getBindGroupLayout' on 'GPUComputePipeline'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      index = webidl.converters["unsigned long"](index, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid, label } = core.jsonOpSync(
         "op_webgpu_compute_pipeline_get_bind_group_layout",
         {
-          computePipelineRid: this[ridSymbol],
+          computePipelineRid: this[_rid],
           index,
         },
       );
 
-      return new GPUBindGroupLayout(keySymbol, rid, label);
+      return createGPUBindGroupLayout(label, rid);
     }
   }
+  GPUObjectBaseMixin("GPUComputePipeline", GPUComputePipeline);
 
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPURenderPipeline}
+   */
+  function createGPURenderPipeline(label, rid) {
+    /** @type {GPURenderPipeline} */
+    const pipeline = webidl.createBranded(GPURenderPipeline);
+    pipeline[_label] = label;
+    pipeline[_rid] = rid;
+    return pipeline;
+  }
   class GPURenderPipeline {
-    [webidl.brand] = webidl.brand;
+    /** @type {number} */
+    [_rid];
 
-    constructor(key, rid, label) {
-      checkKey(key);
-
-      this[ridSymbol] = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
+    /**
+     * @param {number} index 
+     */
     getBindGroupLayout(index) {
+      webidl.assertBranded(this, GPURenderPipeline);
+      const prefix =
+        "Failed to execute 'getBindGroupLayout' on 'GPURenderPipeline'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      index = webidl.converters["unsigned long"](index, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid, label } = core.jsonOpSync(
         "op_webgpu_render_pipeline_get_bind_group_layout",
         {
-          renderPipelineRid: this[ridSymbol],
+          renderPipelineRid: this[_rid],
           index,
         },
       );
 
-      return new GPUBindGroupLayout(keySymbol, rid, label);
+      return createGPUBindGroupLayout(label, rid);
     }
+  }
+  GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
+
+  /**
+   * @param {string | null} label
+   * @param {number} rid
+   * @returns {GPUCommandEncoder}
+   */
+  function createGPUCommandEncoder(label, rid) {
+    /** @type {GPUCommandEncoder} */
+    const encoder = webidl.createBranded(GPUCommandEncoder);
+    encoder[_label] = label;
+    encoder[_rid] = rid;
+    return encoder;
   }
 
   class GPUCommandEncoder {
-    #rid;
+    /** @type {number} */
+    [_rid];
 
-    constructor(key, rid, label) {
-      checkKey(key);
-
-      this.#rid = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
+    /**
+     * @param {GPURenderPassDescriptor} descriptor
+     * @return {GPURenderPassEncoder}
+     */
     beginRenderPass(descriptor) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      descriptor = webidl.converters.GPURenderPassDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
+
       let depthStencilAttachment;
       if (descriptor.depthStencilAttachment) {
         depthStencilAttachment = {
           ...descriptor.depthStencilAttachment,
-          view: descriptor.depthStencilAttachment.view[ridSymbol],
+          view: descriptor.depthStencilAttachment.view[_rid],
         };
 
         if (
@@ -850,14 +1010,14 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_render_pass",
         {
-          commandEncoderRid: this.#rid,
+          commandEncoderRid: this[_rid],
           ...descriptor,
           colorAttachments: descriptor.colorAttachments.map(
             (colorAttachment) => {
               const attachment = {
-                view: colorAttachment.view[ridSymbol],
+                view: colorAttachment.view[_rid],
                 resolveTarget: colorAttachment.resolveTarget
-                  ? colorAttachment.resolveTarget[ridSymbol]
+                  ? colorAttachment.resolveTarget[_rid]
                   : undefined,
                 storeOp: colorAttachment.storeOp,
               };
@@ -878,30 +1038,47 @@
         },
       );
 
-      return new GPURenderPassEncoder(
-        keySymbol,
-        this.#rid,
+      return createGPURenderPassEncoder(
+        descriptor.label ?? null,
+        this[_rid],
         rid,
-        descriptor.label,
       );
     }
 
+    /**
+     * @param {GPUComputePassDescriptor} descriptor 
+     */
     beginComputePass(descriptor = {}) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'beginComputePass' on 'GPUCommandEncoder'";
+      descriptor = webidl.converters.GPUComputePassDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
+
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_compute_pass",
         {
-          commandEncoderRid: this.#rid,
+          commandEncoderRid: this[_rid],
           ...descriptor,
         },
       );
 
       return createGPUComputePassEncoder(
         descriptor.label ?? null,
-        this.#rid,
+        this[_rid],
         rid,
       );
     }
 
+    /**
+     * @param {GPUBuffer} source 
+     * @param {number} sourceOffset 
+     * @param {GPUBuffer} destination 
+     * @param {number} destinationOffset 
+     * @param {number} size 
+     */
     copyBufferToBuffer(
       source,
       sourceOffset,
@@ -909,30 +1086,76 @@
       destinationOffset,
       size,
     ) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 5, { prefix });
+      source = webidl.converters.GPUBuffer(source, {
+        prefix,
+        context: "Argument 1",
+      });
+      sourceOffset = webidl.converters.GPUSize64(sourceOffset, {
+        prefix,
+        context: "Argument 2",
+      });
+      destination = webidl.converters.GPUBuffer(destination, {
+        prefix,
+        context: "Argument 3",
+      });
+      destinationOffset = webidl.converters.GPUSize64(destinationOffset, {
+        prefix,
+        context: "Argument 4",
+      });
+      size = webidl.converters.GPUSize64(size, {
+        prefix,
+        context: "Argument 5",
+      });
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_buffer",
         {
-          commandEncoderRid: this.#rid,
-          source: source[ridSymbol],
+          commandEncoderRid: this[_rid],
+          source: source[_rid],
           sourceOffset,
-          destination: destination[ridSymbol],
+          destination: destination[_rid],
           destinationOffset,
           size,
         },
       );
     }
 
+    /**
+     * @param {GPUImageCopyBuffer} source
+     * @param {GPUImageCopyTexture} destination
+     * @param {GPUExtent3D} copySize
+     */
     copyBufferToTexture(source, destination, copySize) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      source = webidl.converters.GPUImageCopyBuffer(source, {
+        prefix,
+        context: "Argument 1",
+      });
+      destination = webidl.converters.GPUImageCopyTexture(destination, {
+        prefix,
+        context: "Argument 2",
+      });
+      copySize = webidl.converters.GPUExtent3D(copySize, {
+        prefix,
+        context: "Argument 3",
+      });
+
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_texture",
         {
-          commandEncoderRid: this.#rid,
+          commandEncoderRid: this[_rid],
           source: {
             ...source,
-            buffer: source.buffer[ridSymbol],
+            buffer: source.buffer[_rid],
           },
           destination: {
-            texture: destination.texture[ridSymbol],
+            texture: destination.texture[_rid],
             mipLevel: destination.mipLevel,
             origin: destination.origin ??
               normalizeGPUOrigin3D(destination.origin),
@@ -942,37 +1165,79 @@
       );
     }
 
+    /**
+     * @param {GPUImageCopyTexture} source
+     * @param {GPUImageCopyBuffer} destination
+     * @param {GPUExtent3D} copySize
+     */
     copyTextureToBuffer(source, destination, copySize) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      source = webidl.converters.GPUImageCopyTexture(source, {
+        prefix,
+        context: "Argument 1",
+      });
+      destination = webidl.converters.GPUImageCopyBuffer(destination, {
+        prefix,
+        context: "Argument 2",
+      });
+      copySize = webidl.converters.GPUExtent3D(copySize, {
+        prefix,
+        context: "Argument 3",
+      });
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_buffer",
         {
-          commandEncoderRid: this.#rid,
+          commandEncoderRid: this[_rid],
           source: {
-            texture: source.texture[ridSymbol],
+            texture: source.texture[_rid],
             mipLevel: source.mipLevel,
             origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
           },
           destination: {
             ...destination,
-            buffer: destination.buffer[ridSymbol],
+            buffer: destination.buffer[_rid],
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
       );
     }
 
+    /**
+     * @param {GPUImageCopyTexture} source
+     * @param {GPUImageCopyTexture} destination
+     * @param {GPUExtent3D} copySize
+     */
     copyTextureToTexture(source, destination, copySize) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      source = webidl.converters.GPUImageCopyTexture(source, {
+        prefix,
+        context: "Argument 1",
+      });
+      destination = webidl.converters.GPUImageCopyTexture(destination, {
+        prefix,
+        context: "Argument 2",
+      });
+      copySize = webidl.converters.GPUExtent3D(copySize, {
+        prefix,
+        context: "Argument 3",
+      });
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_texture",
         {
-          commandEncoderRid: this.#rid,
+          commandEncoderRid: this[_rid],
           source: {
-            texture: source.texture[ridSymbol],
+            texture: source.texture[_rid],
             mipLevel: source.mipLevel,
             origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
           },
           destination: {
-            texture: destination.texture[ridSymbol],
+            texture: destination.texture[_rid],
             mipLevel: destination.mipLevel,
             origin: destination.origin ??
               normalizeGPUOrigin3D(destination.origin),
@@ -982,32 +1247,80 @@
       );
     }
 
+    /**
+     * @param {string} groupLabel 
+     */
     pushDebugGroup(groupLabel) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      groupLabel = webidl.converters.USVString(groupLabel, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
-        commandEncoderRid: this.#rid,
+        commandEncoderRid: this[_rid],
         groupLabel,
       });
     }
+
     popDebugGroup() {
+      webidl.assertBranded(this, GPUCommandEncoder);
       core.jsonOpSync("op_webgpu_command_encoder_pop_debug_group", {
-        commandEncoderRid: this.#rid,
+        commandEncoderRid: this[_rid],
       });
     }
+
+    /**
+     * @param {string} markerLabel 
+     */
     insertDebugMarker(markerLabel) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      markerLabel = webidl.converters.USVString(markerLabel, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_insert_debug_marker", {
-        commandEncoderRid: this.#rid,
+        commandEncoderRid: this[_rid],
         markerLabel,
       });
     }
 
+    /**
+     * @param {GPUQuerySet} querySet 
+     * @param {number} queryIndex 
+     */
     writeTimestamp(querySet, queryIndex) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      querySet = webidl.converters.GPUQuerySet(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      queryIndex = webidl.converters.GPUSize32(queryIndex, {
+        prefix,
+        context: "Argument 2",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_write_timestamp", {
-        commandEncoderRid: this.#rid,
-        querySet: querySet[ridSymbol],
+        commandEncoderRid: this[_rid],
+        querySet: querySet[_rid],
         queryIndex,
       });
     }
 
+    /**
+     * @param {GPUQuerySet} querySet 
+     * @param {number} firstQuery 
+     * @param {number} queryCount 
+     * @param {GPUBuffer} destination 
+     * @param {number} destinationOffset 
+     */
     resolveQuerySet(
       querySet,
       firstQuery,
@@ -1015,41 +1328,118 @@
       destination,
       destinationOffset,
     ) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 5, { prefix });
+      querySet = webidl.converters.GPUQuerySet(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      firstQuery = webidl.converters.GPUSize32(firstQuery, {
+        prefix,
+        context: "Argument 2",
+      });
+      queryCount = webidl.converters.GPUSize32(queryCount, {
+        prefix,
+        context: "Argument 3",
+      });
+      destination = webidl.converters.GPUQuerySet(destination, {
+        prefix,
+        context: "Argument 4",
+      });
+      destinationOffset = webidl.converters.GPUSize64(destinationOffset, {
+        prefix,
+        context: "Argument 5",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_resolve_query_set", {
-        commandEncoderRid: this.#rid,
-        querySet: querySet[ridSymbol],
+        commandEncoderRid: this[_rid],
+        querySet: querySet[_rid],
         firstQuery,
         queryCount,
-        destination: destination[ridSymbol],
+        destination: destination[_rid],
         destinationOffset,
       });
     }
 
+    /**
+     * @param {GPUCommandBufferDescriptor} descriptor 
+     * @returns {GPUCommandBuffer}
+     */
     finish(descriptor = {}) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix = "Failed to execute 'finish' on 'GPUCommandEncoder'";
+      descriptor = webidl.converters.GPUCommandBufferDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
-        commandEncoderRid: this.#rid,
+        commandEncoderRid: this[_rid],
         ...descriptor,
       });
 
       return createGPUCommandBuffer(descriptor.label ?? null, rid);
     }
   }
+  GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
+
+  const _encoder = Symbol("[[encoder]]");
+
+  /**
+   * @param {string | null} label
+   * @param {number} encoderRid
+   * @param {number} rid
+   * @returns {GPURenderPassEncoder}
+   */
+  function createGPURenderPassEncoder(label, encoderRid, rid) {
+    /** @type {GPURenderPassEncoder} */
+    const encoder = webidl.createBranded(GPURenderPassEncoder);
+    encoder[_label] = label;
+    encoder[_encoder] = encoderRid;
+    encoder[_rid] = rid;
+    return encoder;
+  }
 
   class GPURenderPassEncoder {
-    #commandEncoderRid;
-    #rid;
+    /** @type {number} */
+    [_encoder];
+    /** @type {number} */
+    [_rid];
 
-    constructor(key, commandEncoderRid, rid, label) {
-      checkKey(key);
-
-      this.#commandEncoderRid = commandEncoderRid;
-      this.#rid = rid;
-      this.label = label ?? null;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
+    /**
+     * @param {number} x 
+     * @param {number} y 
+     * @param {number} width 
+     * @param {number} height 
+     * @param {number} minDepth 
+     * @param {number} maxDepth 
+     */
     setViewport(x, y, width, height, minDepth, maxDepth) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
+      webidl.requiredArguments(arguments.length, 6, { prefix });
+      x = webidl.converters.float(x, { prefix, context: "Argument 1" });
+      y = webidl.converters.float(y, { prefix, context: "Argument 2" });
+      width = webidl.converters.float(width, { prefix, context: "Argument 3" });
+      height = webidl.converters.float(height, {
+        prefix,
+        context: "Argument 4",
+      });
+      minDepth = webidl.converters.float(minDepth, {
+        prefix,
+        context: "Argument 5",
+      });
+      maxDepth = webidl.converters.float(maxDepth, {
+        prefix,
+        context: "Argument 6",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_viewport", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         x,
         y,
         width,
@@ -1059,9 +1449,36 @@
       });
     }
 
+    /**
+     * 
+     * @param {number} x 
+     * @param {number} y 
+     * @param {number} width 
+     * @param {number} height 
+     */
     setScissorRect(x, y, width, height) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'setScissorRect' on 'GPUComputePassEncoder'";
+      webidl.requiredArguments(arguments.length, 4, { prefix });
+      x = webidl.converters.GPUIntegerCoordinate(x, {
+        prefix,
+        context: "Argument 1",
+      });
+      y = webidl.converters.GPUIntegerCoordinate(y, {
+        prefix,
+        context: "Argument 2",
+      });
+      width = webidl.converters.GPUIntegerCoordinate(width, {
+        prefix,
+        context: "Argument 3",
+      });
+      height = webidl.converters.GPUIntegerCoordinate(height, {
+        prefix,
+        context: "Argument 4",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_scissor_rect", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         x,
         y,
         width,
@@ -1069,15 +1486,38 @@
       });
     }
 
+    /**
+     * @param {GPUColor} color 
+     */
     setBlendColor(color) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'setBlendColor' on 'GPUComputePassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      color = webidl.converters.GPUColor(color, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_blend_color", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         color: normalizeGPUColor(color),
       });
     }
+
+    /**
+     * @param {number} reference 
+     */
     setStencilReference(reference) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'setStencilReference' on 'GPUComputePassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      reference = webidl.converters.GPUStencilValue(reference, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_stencil_reference", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         reference,
       });
     }
@@ -1085,44 +1525,93 @@
     beginOcclusionQuery(_queryIndex) {
       throw new Error("Not yet implemented");
     }
+
     endOcclusionQuery() {
       throw new Error("Not yet implemented");
     }
 
+    /**
+     * @param {GPUQuerySet} querySet 
+     * @param {number} queryIndex 
+     */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      querySet = webidl.converters.GPUQuerySet(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      queryIndex = webidl.converters.GPUSize32(queryIndex, {
+        prefix,
+        context: "Argument 2",
+      });
       core.jsonOpSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
-        renderPassRid: this.#rid,
-        querySet: querySet[ridSymbol],
+        renderPassRid: this[_rid],
+        querySet: querySet[_rid],
         queryIndex,
       });
     }
+
     endPipelineStatisticsQuery() {
+      webidl.assertBranded(this, GPURenderPassEncoder);
       core.jsonOpSync("op_webgpu_render_pass_end_pipeline_statistics_query", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
       });
     }
 
+    /**
+     * @param {GPUQuerySet} querySet 
+     * @param {number} queryIndex 
+     */
     writeTimestamp(querySet, queryIndex) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      querySet = webidl.converters.GPUQuerySet(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      queryIndex = webidl.converters.GPUSize32(queryIndex, {
+        prefix,
+        context: "Argument 2",
+      });
       core.jsonOpSync("op_webgpu_render_pass_write_timestamp", {
-        renderPassRid: this.#rid,
-        querySet: querySet[ridSymbol],
+        renderPassRid: this[_rid],
+        querySet: querySet[_rid],
         queryIndex,
       });
     }
 
+    /**
+     * @param {GPURenderBundle[]} bundles 
+     */
     executeBundles(bundles) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'executeBundles' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      // TODO(lucacasonato): missing sequence
+      // bundles = webidl.converters.any(bundles, {
+      //   prefix,
+      //   context: "Argument 1",
+      // });
       core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
-        renderPassRid: this.#rid,
-        bundles: bundles.map((bundle) => bundle[ridSymbol]),
+        renderPassRid: this[_rid],
+        bundles: bundles.map((bundle) => bundle[_rid]),
       });
     }
+
     endPass() {
       core.jsonOpSync("op_webgpu_render_pass_end_pass", {
-        commandEncoderRid: this.#commandEncoderRid,
-        renderPassRid: this.#rid,
+        commandEncoderRid: this[_encoder],
+        renderPassRid: this[_rid],
       });
     }
 
+    // TODO(lucacasonato): has an overload
     setBindGroup(
       index,
       bindGroup,
@@ -1130,12 +1619,12 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      const bind = bindGroup[ridSymbol];
+      const bind = bindGroup[_rid];
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_render_pass_set_bind_group",
           {
-            renderPassRid: this.#rid,
+            renderPassRid: this[_rid],
             index,
             bindGroup: bind,
             dynamicOffsetsDataStart,
@@ -1146,7 +1635,7 @@
       } else {
         dynamicOffsetsData ??= [];
         core.jsonOpSync("op_webgpu_render_pass_set_bind_group", {
-          renderPassRid: this.#rid,
+          renderPassRid: this[_rid],
           index,
           bindGroup: bind,
           dynamicOffsetsData,
@@ -1156,59 +1645,181 @@
       }
     }
 
+    /**
+     * @param {string} groupLabel 
+     */
     pushDebugGroup(groupLabel) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      groupLabel = webidl.converters.USVString(groupLabel, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_render_pass_push_debug_group", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         groupLabel,
       });
     }
+
     popDebugGroup() {
+      webidl.assertBranded(this, GPURenderPassEncoder);
       core.jsonOpSync("op_webgpu_render_pass_pop_debug_group", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
       });
     }
+
+    /**
+     * @param {string} markerLabel 
+     */
     insertDebugMarker(markerLabel) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      markerLabel = webidl.converters.USVString(markerLabel, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_render_pass_insert_debug_marker", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         markerLabel,
       });
     }
 
+    /**
+     * @param {GPURenderPipeline} pipeline 
+     */
     setPipeline(pipeline) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'setPipeline' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      pipeline = webidl.converters.GPURenderPipeline(pipeline, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_pipeline", {
-        renderPassRid: this.#rid,
-        pipeline: pipeline[ridSymbol],
+        renderPassRid: this[_rid],
+        pipeline: pipeline[_rid],
       });
     }
 
+    /**
+     * @param {GPUBuffer} buffer 
+     * @param {GPUIndexFormat} indexFormat 
+     * @param {number} offset 
+     * @param {number} size 
+     */
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      buffer = webidl.converters.GPUBuffer(buffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      indexFormat = webidl.converters.GPUIndexFormat(indexFormat, {
+        prefix,
+        context: "Argument 2",
+      });
+      offset = webidl.converters.GPUSize64(offset, {
+        prefix,
+        context: "Argument 3",
+      });
+      size = webidl.converters.GPUSize64(size, {
+        prefix,
+        context: "Argument 4",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_index_buffer", {
-        renderPassRid: this.#rid,
-        buffer: buffer[ridSymbol],
+        renderPassRid: this[_rid],
+        buffer: buffer[_rid],
         indexFormat,
         offset,
         size,
       });
     }
+
+    /**
+     * @param {number} slot 
+     * @param {GPUBuffer} buffer 
+     * @param {number} offset 
+     * @param {number} size 
+     */
     setVertexBuffer(slot, buffer, offset = 0, size = 0) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      slot = webidl.converters.GPUSize32(slot, {
+        prefix,
+        context: "Argument 2",
+      });
+      buffer = webidl.converters.GPUBuffer(buffer, {
+        prefix,
+        context: "Argument 2",
+      });
+      offset = webidl.converters.GPUSize64(offset, {
+        prefix,
+        context: "Argument 3",
+      });
+      size = webidl.converters.GPUSize64(size, {
+        prefix,
+        context: "Argument 4",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_vertex_buffer", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         slot,
-        buffer: buffer[ridSymbol],
+        buffer: buffer[_rid],
         offset,
         size,
       });
     }
 
+    /**
+     * @param {number} vertexCount 
+     * @param {number} instanceCount 
+     * @param {number} firstVertex 
+     * @param {number} firstInstance 
+     */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix = "Failed to execute 'draw' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      vertexCount = webidl.converters.GPUSize32(vertexCount, {
+        prefix,
+        context: "Argument 1",
+      });
+      instanceCount = webidl.converters.GPUSize32(instanceCount, {
+        prefix,
+        context: "Argument 2",
+      });
+      firstVertex = webidl.converters.GPUSize32(firstVertex, {
+        prefix,
+        context: "Argument 3",
+      });
+      firstInstance = webidl.converters.GPUSize32(firstInstance, {
+        prefix,
+        context: "Argument 4",
+      });
       core.jsonOpSync("op_webgpu_render_pass_draw", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         vertexCount,
         instanceCount,
         firstVertex,
         firstInstance,
       });
     }
+
+    /**
+     * @param {number} indexCount 
+     * @param {number} instanceCount 
+     * @param {number} firstIndex 
+     * @param {number} baseVertex 
+     * @param {number} firstInstance 
+     */
     drawIndexed(
       indexCount,
       instanceCount = 1,
@@ -1216,8 +1827,32 @@
       baseVertex = 0,
       firstInstance = 0,
     ) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      indexCount = webidl.converters.GPUSize32(indexCount, {
+        prefix,
+        context: "Argument 1",
+      });
+      instanceCount = webidl.converters.GPUSize32(instanceCount, {
+        prefix,
+        context: "Argument 2",
+      });
+      firstIndex = webidl.converters.GPUSize32(firstIndex, {
+        prefix,
+        context: "Argument 3",
+      });
+      baseVertex = webidl.converters.GPUSignedOffset32(baseVertex, {
+        prefix,
+        context: "Argument 4",
+      });
+      firstInstance = webidl.converters.GPUSize32(firstInstance, {
+        prefix,
+        context: "Argument 5",
+      });
       core.jsonOpSync("op_webgpu_render_pass_draw_indexed", {
-        renderPassRid: this.#rid,
+        renderPassRid: this[_rid],
         indexCount,
         instanceCount,
         firstIndex,
@@ -1226,23 +1861,55 @@
       });
     }
 
+    /**
+     * @param {GPUBuffer} indirectBuffer 
+     * @param {number} indirectOffset 
+     */
     drawIndirect(indirectBuffer, indirectOffset) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      indirectOffset = webidl.converters.GPUSize64(indirectOffset, {
+        prefix,
+        context: "Argument 2",
+      });
       core.jsonOpSync("op_webgpu_render_pass_draw_indirect", {
-        renderPassRid: this.#rid,
-        indirectBuffer: indirectBuffer[ridSymbol],
+        renderPassRid: this[_rid],
+        indirectBuffer: indirectBuffer[_rid],
         indirectOffset,
       });
     }
+
+    /**
+     * @param {GPUBuffer} indirectBuffer 
+     * @param {number} indirectOffset 
+     */
     drawIndexedIndirect(indirectBuffer, indirectOffset) {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix =
+        "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      indirectOffset = webidl.converters.GPUSize64(indirectOffset, {
+        prefix,
+        context: "Argument 2",
+      });
       core.jsonOpSync("op_webgpu_render_pass_draw_indexed_indirect", {
-        renderPassRid: this.#rid,
-        indirectBuffer: indirectBuffer[ridSymbol],
+        renderPassRid: this[_rid],
+        indirectBuffer: indirectBuffer[_rid],
         indirectOffset,
       });
     }
   }
-
-  const _encoder = Symbol("[[encoder]]");
+  GPUObjectBaseMixin("GPURenderPassEncoder", GPURenderPassEncoder);
 
   /**
    * @param {string | null} label
@@ -1284,7 +1951,7 @@
       });
       core.jsonOpSync("op_webgpu_compute_pass_set_pipeline", {
         computePassRid: this[_rid],
-        pipeline: pipeline[ridSymbol],
+        pipeline: pipeline[_rid],
       });
     }
 
@@ -1327,7 +1994,7 @@
       });
       core.jsonOpSync("op_webgpu_compute_pass_dispatch_indirect", {
         computePassRid: this[_rid],
-        indirectBuffer: indirectBuffer[ridSymbol],
+        indirectBuffer: indirectBuffer[_rid],
         indirectOffset,
       });
     }
@@ -1406,7 +2073,7 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      const bind = bindGroup[ridSymbol];
+      const bind = bindGroup[_rid];
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_compute_pass_set_bind_group",
@@ -1440,7 +2107,7 @@
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      groupLabel = webidl.converters.GPURenderBundleDescriptor(groupLabel, {
+      groupLabel = webidl.converters.USVString(groupLabel, {
         prefix,
         context: "Argument 1",
       });
@@ -1451,6 +2118,7 @@
     }
 
     popDebugGroup() {
+      webidl.assertBranded(this, GPUComputePassEncoder);
       core.jsonOpSync("op_webgpu_compute_pass_pop_debug_group", {
         computePassRid: this[_rid],
       });
@@ -1464,7 +2132,7 @@
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      markerLabel = webidl.converters.GPURenderBundleDescriptor(markerLabel, {
+      markerLabel = webidl.converters.USVString(markerLabel, {
         prefix,
         context: "Argument 1",
       });
@@ -1552,7 +2220,7 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      const bind = bindGroup[ridSymbol];
+      const bind = bindGroup[_rid];
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_render_bundle_encoder_set_bind_group",
@@ -1586,7 +2254,7 @@
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPURenderBundleEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      groupLabel = webidl.converters.GPURenderBundleDescriptor(groupLabel, {
+      groupLabel = webidl.converters.USVString(groupLabel, {
         prefix,
         context: "Argument 1",
       });
@@ -1611,7 +2279,7 @@
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPURenderBundleEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      markerLabel = webidl.converters.GPURenderBundleDescriptor(markerLabel, {
+      markerLabel = webidl.converters.USVString(markerLabel, {
         prefix,
         context: "Argument 1",
       });
@@ -1635,7 +2303,7 @@
       });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_pipeline", {
         renderBundleEncoderRid: this[_rid],
-        pipeline: pipeline[ridSymbol],
+        pipeline: pipeline[_rid],
       });
     }
 
@@ -1668,7 +2336,7 @@
       });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
         renderBundleEncoderRid: this[_rid],
-        buffer: buffer[ridSymbol],
+        buffer: buffer[_rid],
         indexFormat,
         offset,
         size,
@@ -1705,7 +2373,7 @@
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
         renderBundleEncoderRid: this[_rid],
         slot,
-        buffer: buffer[ridSymbol],
+        buffer: buffer[_rid],
         offset,
         size,
       });
@@ -1720,7 +2388,7 @@
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix = "Failed to execute 'draw' on 'GPURenderBundleEncoder'";
-      webidl.requiredArguments(arguments.length, 2, { prefix });
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       vertexCount = webidl.converters.GPUSize32(vertexCount, {
         prefix,
         context: "Argument 1",
@@ -1763,7 +2431,7 @@
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'drawIndexed' on 'GPURenderBundleEncoder'";
-      webidl.requiredArguments(arguments.length, 2, { prefix });
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       indexCount = webidl.converters.GPUSize32(indexCount, {
         prefix,
         context: "Argument 1",
@@ -1813,7 +2481,7 @@
       });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indirect", {
         renderBundleEncoderRid: this[_rid],
-        indirectBuffer: indirectBuffer[ridSymbol],
+        indirectBuffer: indirectBuffer[_rid],
         indirectOffset,
       });
     }

@@ -602,7 +602,7 @@
         opts.prefix ? opts.prefix + ": " : ""
       }${required} argument${
         required === 1 ? "" : "s"
-      }, but only ${length} present.`;
+      } required, but only ${length} present.`;
       throw new TypeError(errMsg);
     }
   }
