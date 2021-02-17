@@ -428,7 +428,7 @@ pub async fn op_webgpu_request_device(
   let device = gfx_select_err!(adapter => instance.adapter_request_device(
     adapter,
     &descriptor,
-    option_env!("DENO_WEBGPU_TRACE").map(std::path::Path::new),
+    std::env::var("DENO_WEBGPU_TRACE").ok().as_ref().map(std::path::Path::new),
     std::marker::PhantomData
   ))?;
 
