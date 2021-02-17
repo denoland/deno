@@ -1,0 +1,19 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_webusb"
+version = "0.13.0"
+edition = "2018"
+description = "The WebUSB API"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { version = "0.79.0", path = "../../core" }
+rusb = "0.7.0"
+
