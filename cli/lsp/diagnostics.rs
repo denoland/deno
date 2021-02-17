@@ -299,7 +299,7 @@ pub async fn generate_dependency_diagnostics(
                     let (code, message) = if scheme == "file" {
                       (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier))
                     } else if scheme == "data" {
-                      (Some(lsp::NumberOrString::String("no-cache-data".to_string())), format!("Uncached data URL."))
+                      (Some(lsp::NumberOrString::String("no-cache-data".to_string())), "Uncached data URL.".to_string())
                     } else {
                       (Some(lsp::NumberOrString::String("no-cache".to_string())), format!("Unable to load the remote module: \"{}\".", specifier))
                     };

@@ -459,7 +459,7 @@ impl CodeActionCollection {
       let title = if diagnostic.code
         == Some(lsp::NumberOrString::String("no-cache-data".to_string()))
       {
-        format!("Cache the data URL and its dependencies.")
+        "Cache the data URL and its dependencies.".to_string()
       } else {
         format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
       };
