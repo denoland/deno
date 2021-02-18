@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -31,7 +31,7 @@ impl Resource for WebGPURenderBundle {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateRenderBundleEncoderArgs {
+pub struct CreateRenderBundleEncoderArgs {
   device_rid: u32,
   label: Option<String>,
   color_formats: Vec<String>,
@@ -41,11 +41,9 @@ struct CreateRenderBundleEncoderArgs {
 
 pub fn op_webgpu_create_render_bundle_encoder(
   state: &mut OpState,
-  args: Value,
+  args: CreateRenderBundleEncoderArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateRenderBundleEncoderArgs = serde_json::from_value(args)?;
-
   let device_resource = state
     .resource_table
     .get::<super::WebGPUDevice>(args.device_rid)
@@ -83,18 +81,16 @@ pub fn op_webgpu_create_render_bundle_encoder(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderFinishArgs {
+pub struct RenderBundleEncoderFinishArgs {
   render_bundle_encoder_rid: u32,
   label: Option<String>,
 }
 
 pub fn op_webgpu_render_bundle_encoder_finish(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderFinishArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderFinishArgs = serde_json::from_value(args)?;
-
   let render_bundle_encoder_resource = state
     .resource_table
     .take::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -123,7 +119,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderSetBindGroupArgs {
+pub struct RenderBundleEncoderSetBindGroupArgs {
   render_bundle_encoder_rid: u32,
   index: u32,
   bind_group: u32,
@@ -134,11 +130,9 @@ struct RenderBundleEncoderSetBindGroupArgs {
 
 pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderSetBindGroupArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderSetBindGroupArgs = serde_json::from_value(args)?;
-
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGPUBindGroup>(args.bind_group)
@@ -184,19 +178,16 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderPushDebugGroupArgs {
+pub struct RenderBundleEncoderPushDebugGroupArgs {
   render_bundle_encoder_rid: u32,
   group_label: String,
 }
 
 pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderPushDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderPushDebugGroupArgs =
-    serde_json::from_value(args)?;
-
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -215,18 +206,15 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderPopDebugGroupArgs {
+pub struct RenderBundleEncoderPopDebugGroupArgs {
   render_bundle_encoder_rid: u32,
 }
 
 pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderPopDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderPopDebugGroupArgs =
-    serde_json::from_value(args)?;
-
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -243,19 +231,16 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderInsertDebugMarkerArgs {
+pub struct RenderBundleEncoderInsertDebugMarkerArgs {
   render_bundle_encoder_rid: u32,
   marker_label: String,
 }
 
 pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderInsertDebugMarkerArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderInsertDebugMarkerArgs =
-    serde_json::from_value(args)?;
-
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -274,18 +259,16 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderSetPipelineArgs {
+pub struct RenderBundleEncoderSetPipelineArgs {
   render_bundle_encoder_rid: u32,
   pipeline: u32,
 }
 
 pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderSetPipelineArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderSetPipelineArgs = serde_json::from_value(args)?;
-
   let render_pipeline_resource = state
     .resource_table
     .get::<super::pipeline::WebGPURenderPipeline>(args.pipeline)
@@ -305,7 +288,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderSetIndexBufferArgs {
+pub struct RenderBundleEncoderSetIndexBufferArgs {
   render_bundle_encoder_rid: u32,
   buffer: u32,
   index_format: String,
@@ -315,12 +298,9 @@ struct RenderBundleEncoderSetIndexBufferArgs {
 
 pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderSetIndexBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderSetIndexBufferArgs =
-    serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.buffer)
@@ -345,7 +325,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderSetVertexBufferArgs {
+pub struct RenderBundleEncoderSetVertexBufferArgs {
   render_bundle_encoder_rid: u32,
   slot: u32,
   buffer: u32,
@@ -355,12 +335,9 @@ struct RenderBundleEncoderSetVertexBufferArgs {
 
 pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderSetVertexBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderSetVertexBufferArgs =
-    serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.buffer)
@@ -383,7 +360,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderDrawArgs {
+pub struct RenderBundleEncoderDrawArgs {
   render_bundle_encoder_rid: u32,
   vertex_count: u32,
   instance_count: u32,
@@ -393,11 +370,9 @@ struct RenderBundleEncoderDrawArgs {
 
 pub fn op_webgpu_render_bundle_encoder_draw(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderDrawArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderDrawArgs = serde_json::from_value(args)?;
-
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -416,7 +391,7 @@ pub fn op_webgpu_render_bundle_encoder_draw(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderDrawIndexedArgs {
+pub struct RenderBundleEncoderDrawIndexedArgs {
   render_bundle_encoder_rid: u32,
   index_count: u32,
   instance_count: u32,
@@ -427,11 +402,9 @@ struct RenderBundleEncoderDrawIndexedArgs {
 
 pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderDrawIndexedArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderDrawIndexedArgs = serde_json::from_value(args)?;
-
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -451,7 +424,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderBundleEncoderDrawIndirectArgs {
+pub struct RenderBundleEncoderDrawIndirectArgs {
   render_bundle_encoder_rid: u32,
   indirect_buffer: u32,
   indirect_offset: u64,
@@ -459,11 +432,9 @@ struct RenderBundleEncoderDrawIndirectArgs {
 
 pub fn op_webgpu_render_bundle_encoder_draw_indirect(
   state: &mut OpState,
-  args: Value,
+  args: RenderBundleEncoderDrawIndirectArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderBundleEncoderDrawIndirectArgs = serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)

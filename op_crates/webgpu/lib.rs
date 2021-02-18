@@ -7,7 +7,7 @@ use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -195,17 +195,15 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RequestAdapterArgs {
+pub struct RequestAdapterArgs {
   power_preference: Option<String>,
 }
 
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: RequestAdapterArgs,
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: RequestAdapterArgs = serde_json::from_value(args)?;
-
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
   let instance = state.borrow::<Instance>();
@@ -289,7 +287,7 @@ struct GPULimits {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RequestDeviceArgs {
+pub struct RequestDeviceArgs {
   adapter_rid: u32,
   label: Option<String>,
   non_guaranteed_features: Option<Vec<String>>,
@@ -298,11 +296,9 @@ struct RequestDeviceArgs {
 
 pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: RequestDeviceArgs,
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: RequestDeviceArgs = serde_json::from_value(args)?;
-
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
@@ -459,7 +455,7 @@ pub async fn op_webgpu_request_device(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateQuerySetArgs {
+pub struct CreateQuerySetArgs {
   device_rid: u32,
   _label: Option<String>, // not yet implemented
   #[serde(rename = "type")]
@@ -470,11 +466,9 @@ struct CreateQuerySetArgs {
 
 pub fn op_webgpu_create_query_set(
   state: &mut OpState,
-  args: Value,
+  args: CreateQuerySetArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateQuerySetArgs = serde_json::from_value(args)?;
-
   let device_resource = state
     .resource_table
     .get::<WebGPUDevice>(args.device_rid)

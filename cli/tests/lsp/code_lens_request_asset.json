@@ -4,7 +4,7 @@
   "method": "textDocument/codeLens",
   "params": {
     "textDocument": {
-      "uri": "deno:/asset//lib.es2015.symbol.wellknown.d.ts"
+      "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
     }
   }
 }

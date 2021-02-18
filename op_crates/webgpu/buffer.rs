@@ -6,7 +6,7 @@ use deno_core::futures::channel::oneshot;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -30,7 +30,7 @@ impl Resource for WebGPUBufferMapped {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateBufferArgs {
+pub struct CreateBufferArgs {
   device_rid: u32,
   label: Option<String>,
   size: u64,
@@ -40,11 +40,9 @@ struct CreateBufferArgs {
 
 pub fn op_webgpu_create_buffer(
   state: &mut OpState,
-  args: Value,
+  args: CreateBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateBufferArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -74,7 +72,7 @@ pub fn op_webgpu_create_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct BufferGetMapAsyncArgs {
+pub struct BufferGetMapAsyncArgs {
   buffer_rid: u32,
   device_rid: u32,
   mode: u32,
@@ -84,11 +82,9 @@ struct BufferGetMapAsyncArgs {
 
 pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: BufferGetMapAsyncArgs,
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: BufferGetMapAsyncArgs = serde_json::from_value(args)?;
-
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
   let device;
@@ -166,7 +162,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct BufferGetMappedRangeArgs {
+pub struct BufferGetMappedRangeArgs {
   buffer_rid: u32,
   offset: u64,
   size: u64,
@@ -174,11 +170,9 @@ struct BufferGetMappedRangeArgs {
 
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
-  args: Value,
+  args: BufferGetMappedRangeArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: BufferGetMappedRangeArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
@@ -208,18 +202,16 @@ pub fn op_webgpu_buffer_get_mapped_range(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct BufferUnmapArgs {
+pub struct BufferUnmapArgs {
   buffer_rid: u32,
   mapped_rid: u32,
 }
 
 pub fn op_webgpu_buffer_unmap(
   state: &mut OpState,
-  args: Value,
+  args: BufferUnmapArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: BufferUnmapArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table

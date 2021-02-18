@@ -4,7 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -131,7 +131,7 @@ pub struct GPUExtent3D {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateTextureArgs {
+pub struct CreateTextureArgs {
   device_rid: u32,
   label: Option<String>,
   size: GPUExtent3D,
@@ -144,11 +144,9 @@ struct CreateTextureArgs {
 
 pub fn op_webgpu_create_texture(
   state: &mut OpState,
-  args: Value,
+  args: CreateTextureArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateTextureArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -193,7 +191,7 @@ pub fn op_webgpu_create_texture(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateTextureViewArgs {
+pub struct CreateTextureViewArgs {
   texture_rid: u32,
   label: Option<String>,
   format: Option<String>,
@@ -207,11 +205,9 @@ struct CreateTextureViewArgs {
 
 pub fn op_webgpu_create_texture_view(
   state: &mut OpState,
-  args: Value,
+  args: CreateTextureViewArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateTextureViewArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table

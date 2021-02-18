@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -149,7 +149,7 @@ struct GPUProgrammableStage {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateComputePipelineArgs {
+pub struct CreateComputePipelineArgs {
   device_rid: u32,
   label: Option<String>,
   layout: Option<u32>,
@@ -158,11 +158,9 @@ struct CreateComputePipelineArgs {
 
 pub fn op_webgpu_create_compute_pipeline(
   state: &mut OpState,
-  args: Value,
+  args: CreateComputePipelineArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateComputePipelineArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -223,19 +221,16 @@ pub fn op_webgpu_create_compute_pipeline(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePipelineGetBindGroupLayoutArgs {
+pub struct ComputePipelineGetBindGroupLayoutArgs {
   compute_pipeline_rid: u32,
   index: u32,
 }
 
 pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   state: &mut OpState,
-  args: Value,
+  args: ComputePipelineGetBindGroupLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePipelineGetBindGroupLayoutArgs =
-    serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
     .resource_table
@@ -356,7 +351,7 @@ struct GPUFragmentState {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateRenderPipelineArgs {
+pub struct CreateRenderPipelineArgs {
   device_rid: u32,
   label: Option<String>,
   layout: Option<u32>,
@@ -369,11 +364,9 @@ struct CreateRenderPipelineArgs {
 
 pub fn op_webgpu_create_render_pipeline(
   state: &mut OpState,
-  args: Value,
+  args: CreateRenderPipelineArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateRenderPipelineArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -620,19 +613,16 @@ pub fn op_webgpu_create_render_pipeline(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPipelineGetBindGroupLayoutArgs {
+pub struct RenderPipelineGetBindGroupLayoutArgs {
   render_pipeline_rid: u32,
   index: u32,
 }
 
 pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   state: &mut OpState,
-  args: Value,
+  args: RenderPipelineGetBindGroupLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPipelineGetBindGroupLayoutArgs =
-    serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table

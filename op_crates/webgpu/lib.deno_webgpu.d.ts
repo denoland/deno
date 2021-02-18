@@ -156,28 +156,24 @@ declare interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
 }
 
 declare type GPUBufferUsageFlags = number;
-/*
-declare interface GPUBufferUsage {
-    const GPUFlagsConstant MAP_READ      = 0x0001;
-    const GPUFlagsConstant MAP_WRITE     = 0x0002;
-    const GPUFlagsConstant COPY_SRC      = 0x0004;
-    const GPUFlagsConstant COPY_DST      = 0x0008;
-    const GPUFlagsConstant INDEX         = 0x0010;
-    const GPUFlagsConstant VERTEX        = 0x0020;
-    const GPUFlagsConstant UNIFORM       = 0x0040;
-    const GPUFlagsConstant STORAGE       = 0x0080;
-    const GPUFlagsConstant INDIRECT      = 0x0100;
-    const GPUFlagsConstant QUERY_RESOLVE = 0x0200;
-};
-*/
+declare class GPUBufferUsage {
+    static MAP_READ: 0x0001;
+    static MAP_WRITE: 0x0002;
+    static COPY_SRC: 0x0004;
+    static COPY_DST: 0x0008;
+    static INDEX: 0x0010;
+    static VERTEX: 0x0020;
+    static UNIFORM: 0x0040;
+    static STORAGE: 0x0080;
+    static INDIRECT: 0x0100;
+    static QUERY_RESOLVE: 0x0200;
+}
 
 declare type GPUMapModeFlags = number;
-/*
-declare interface GPUMapMode {
-    const GPUFlagsConstant READ  = 0x0001;
-    const GPUFlagsConstant WRITE = 0x0002;
-};
-*/
+declare class GPUMapMode {
+    static READ: 0x0001;
+    static WRITE: 0x0002;
+}
 
 declare interface GPUTexture extends GPUObjectBase {
   createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
@@ -196,15 +192,13 @@ declare interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
 declare type GPUTextureDimension = "1d" | "2d" | "3d";
 
 declare type GPUTextureUsageFlags = number;
-/*
-declare interface GPUTextureUsage {
-    const GPUFlagsConstant COPY_SRC          = 0x01;
-    const GPUFlagsConstant COPY_DST          = 0x02;
-    const GPUFlagsConstant SAMPLED           = 0x04;
-    const GPUFlagsConstant STORAGE           = 0x08;
-    const GPUFlagsConstant RENDER_ATTACHMENT = 0x10;
-};
-*/
+declare class GPUTextureUsage {
+    static COPY_SRC: 0x01;
+    static COPY_DST: 0x02;
+    static SAMPLED: 0x04;
+    static STORAGE: 0x08;
+    static RENDER_ATTACHMENT: 0x10;
+}
 
 declare interface GPUTextureView extends GPUObjectBase {}
 
@@ -333,13 +327,11 @@ declare interface GPUBindGroupLayoutEntry {
 }
 
 declare type GPUShaderStageFlags = number;
-/*
-declare interface GPUShaderStage {
-    const GPUFlagsConstant VERTEX   = 0x1;
-    const GPUFlagsConstant FRAGMENT = 0x2;
-    const GPUFlagsConstant COMPUTE  = 0x4;
-};
-*/
+declare class GPUShaderStage {
+  static VERTEX: 0x1;
+  static FRAGMENT: 0x2;
+  static COMPUTE: 0x4;
+}
 
 declare interface GPUBufferBindingLayout {
   type?: GPUBufferBindingType;
