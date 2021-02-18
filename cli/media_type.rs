@@ -121,8 +121,8 @@ impl MediaType {
   ///
   /// *NOTE* This is defined in TypeScript as a string based enum.  Changes to
   /// that enum in TypeScript should be reflected here.
-  pub fn as_ts_extension(&self) -> String {
-    let ext = match self {
+  pub fn as_ts_extension(&self) -> &str {
+    match self {
       MediaType::JavaScript => ".js",
       MediaType::JSX => ".jsx",
       MediaType::TypeScript => ".ts",
@@ -138,13 +138,11 @@ impl MediaType {
       // JS for mapping purposes, though in reality, it is unlikely to ever be
       // passed to the compiler.
       MediaType::SourceMap => ".js",
-      // TypeScript doesn't have an "unknown", so we will treat WASM as JS for
-      // mapping purposes, though in reality, it is unlikely to ever be passed
-      // to the compiler.
+      // TypeScript doesn't have an "unknown", so we will treat unknowns as JS
+      // for mapping purposes, though in reality, it is unlikely to ever be
+      // passed to the compiler.
       MediaType::Unknown => ".js",
-    };
-
-    ext.into()
+    }
   }
 
   /// Map the media type to a `ts.ScriptKind`
