@@ -338,6 +338,13 @@ jobs:
           cargo --version
           deno --version
 
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --locked --all-targets --release -vv
+
       - name: Configure hosts file for WPT
         if: runner.os != 'Windows'
         working-directory: test_util/wpt/
