@@ -1710,9 +1710,9 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
+    /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
-    closeWrite(): void;
+    closeWrite(): Promise<void>;
   }
 
   export interface ListenOptions {
@@ -1910,7 +1910,29 @@ declare namespace Deno {
       : (Reader & Closer) | null;
     readonly stderr: T["stderr"] extends "piped" ? Reader & Closer
       : (Reader & Closer) | null;
-    /** Resolves to the current status of the process. */
+    /** Wait for the process to exit and return its exit status.
+     *
+     * Calling this function multiple times will return the same status.
+     *
+     * Stdin handle to the process will be closed before waiting to avoid
+     * a deadlock.
+     *
+     * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
+     * manually before the process can exit.
+     * 
+     * To run process to completion and collect output from both `stdout` and
+     * `stderr` use:
+     * 
+     * ```ts
+     * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
+     * const [status, stdout, stderr] = await Promise.all([
+     *   p.status(),
+     *   p.output(),
+     *   p.stderrOutput()
+     * ]);
+     * p.close();
+     * ```
+     **/
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *
@@ -2012,6 +2034,8 @@ declare namespace Deno {
     trailingComma?: boolean;
     /*** Evaluate the result of calling getters. Defaults to false. */
     getters?: boolean;
+    /** Show an object's non-enumerable properties. Defaults to false. */
+    showHidden?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

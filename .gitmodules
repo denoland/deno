@@ -2,11 +2,11 @@
 	path = third_party
 	url = https://github.com/denoland/deno_third_party.git
 	shallow = true
-[submodule "std/wasi/testdata"]
-	path = std/wasi/testdata
-	url = https://github.com/khronosproject/wasi-test-suite.git
-	shallow = true
 [submodule "test_util/wpt"]
 	path = test_util/wpt
-	url = https://github.com/web-platform-tests/wpt.git
+	url = https://github.com/denoland/wpt.git
+	shallow = true
+[submodule "test_util/std"]
+	path = test_util/std
+	url = https://github.com/denoland/deno_std
 	shallow = true

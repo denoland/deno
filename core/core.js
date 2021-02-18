@@ -15,6 +15,7 @@ SharedQueue Binary Layout
 |                        RECORDS (*MAX_RECORDS)               ...
 +---------------------------------------------------------------+
  */
+"use strict";
 
 ((window) => {
   const MAX_RECORDS = 100;
@@ -212,12 +213,13 @@ SharedQueue Binary Layout
     throw new ErrorClass(res.err.message);
   }
 
-  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
+  async function jsonOpAsync(opName, args = null, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
-    args.promiseId = nextPromiseId++;
-    const argsBuf = encodeJson(args);
-    dispatch(opName, argsBuf, ...zeroCopy);
+    const promiseId = nextPromiseId++;
+    const reqBuf = core.encode("\0".repeat(8) + JSON.stringify(args));
+    new DataView(reqBuf.buffer).setBigUint64(0, BigInt(promiseId));
+    dispatch(opName, reqBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
@@ -225,11 +227,11 @@ SharedQueue Binary Layout
     });
     promise.resolve = resolve;
     promise.reject = reject;
-    promiseTable[args.promiseId] = promise;
+    promiseTable[promiseId] = promise;
     return processResponse(await promise);
   }
 
-  function jsonOpSync(opName, args = {}, ...zeroCopy) {
+  function jsonOpSync(opName, args = null, ...zeroCopy) {
     const argsBuf = encodeJson(args);
     const res = dispatch(opName, argsBuf, ...zeroCopy);
     return processResponse(decodeJson(res));

@@ -9,10 +9,11 @@ mod config;
 mod diagnostics;
 mod documents;
 mod language_server;
+mod performance;
 mod sources;
 mod text;
 mod tsc;
-mod utils;
+mod urls;
 
 pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();

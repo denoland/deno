@@ -28,7 +28,7 @@ pub fn create_http_client(
 
   builder
     .build()
-    .map_err(|_| generic_error("Unable to build http client"))
+    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
 }
 
 #[cfg(test)]

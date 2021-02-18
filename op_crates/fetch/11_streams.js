@@ -4,10 +4,9 @@
 /// <reference path="./11_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
+"use strict";
 
 ((window) => {
-  const customInspect = Symbol.for("Deno.customInspect");
-
   class AssertionError extends Error {
     constructor(msg) {
       super(msg);
@@ -3136,11 +3135,25 @@
      * @returns {ReadableStream<T>}
      */
     pipeThrough(
-      { readable, writable },
+      transform,
       { preventClose, preventAbort, preventCancel, signal } = {},
     ) {
+      if (!isReadableStream(this)) {
+        throw new TypeError("this must be a ReadableStream");
+      }
+      const { readable } = transform;
+      if (!isReadableStream(readable)) {
+        throw new TypeError("readable must be a ReadableStream");
+      }
+      const { writable } = transform;
+      if (!isWritableStream(writable)) {
+        throw new TypeError("writable must be a WritableStream");
+      }
       if (isReadableStreamLocked(this)) {
         throw new TypeError("ReadableStream is already locked.");
+      }
+      if (signal !== undefined && !(signal instanceof AbortSignal)) {
+        throw new TypeError("signal must be an AbortSignal");
       }
       if (isWritableStreamLocked(writable)) {
         throw new TypeError("Target WritableStream is already locked.");
@@ -3148,9 +3161,9 @@
       const promise = readableStreamPipeTo(
         this,
         writable,
-        preventClose,
-        preventAbort,
-        preventCancel,
+        Boolean(preventClose),
+        Boolean(preventAbort),
+        Boolean(preventCancel),
         signal,
       );
       setPromiseIsHandledToTrue(promise);
@@ -3209,10 +3222,8 @@
       return iterator;
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} ${
-        Deno.inspect({ locked: this.locked })
-      }`;
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
   }
 
@@ -3293,8 +3304,8 @@
       readableStreamReaderGenericRelease(this);
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} { closed: ${String(this.closed)} }`;
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
     }
   }
 
@@ -3582,12 +3593,9 @@
       return this[_writable];
     }
 
-    [customInspect]() {
+    [Symbol.for("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${
-        Deno.inspect(
-          { readable: this.readable, writable: this.writable },
-          { depth: 1 },
-        )
+        inspect({ readable: this.readable, writable: this.writable })
       }`;
     }
   }
@@ -3721,10 +3729,8 @@
       return acquireWritableStreamDefaultWriter(this);
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} ${
-        Deno.inspect({ locked: this.locked })
-      }`;
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
   }
 

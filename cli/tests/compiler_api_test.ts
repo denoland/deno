@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
   assertThrowsAsync,
-} from "../../std/testing/asserts.ts";
+} from "../../test_util/std/testing/asserts.ts";
 
 Deno.test({
   name: "Deno.emit() - sources provided",
@@ -189,7 +189,7 @@ Deno.test({
     assert(!ignoredOptions);
     assertEquals(stats.length, 12);
     assertEquals(Object.keys(files), ["deno:///bundle.js"]);
-    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
   },
 });
 
@@ -227,7 +227,7 @@ Deno.test({
     assert(!ignoredOptions);
     assertEquals(stats.length, 12);
     assertEquals(Object.keys(files), ["deno:///bundle.js"]);
-    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
   },
 });
 
@@ -290,5 +290,51 @@ Deno.test({
     assertEquals(diagnostics.length, 1);
     assert(diagnostics[0].messageText);
     assert(diagnostics[0].messageText.includes("This import is never used"));
+  },
+});
+
+Deno.test({
+  name: "Deno.emit() - Unknown media type does not panic",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.emit("https://example.com/foo", {
+        sources: {
+          "https://example.com/foo": `let foo: string = "foo";`,
+        },
+      });
+    });
+  },
+});
+
+Deno.test({
+  name: "Deno.emit() - non-normalized specifier and source can compile",
+  async fn() {
+    const specifier = "https://example.com/foo//bar.ts";
+    const { files } = await Deno.emit(specifier, {
+      sources: {
+        [specifier]: `export let foo: string = "foo";`,
+      },
+    });
+    assertEquals(files[`${specifier}.js`], 'export let foo = "foo";\n');
+    assert(typeof files[`${specifier}.js.map`] === "string");
+  },
+});
+
+Deno.test({
+  name: `Deno.emit() - bundle supports iife`,
+  async fn() {
+    const { diagnostics, files } = await Deno.emit("/a.ts", {
+      bundle: "iife",
+      sources: {
+        "/a.ts": `import { b } from "./b.ts";
+          console.log(b);`,
+        "/b.ts": `export const b = "b";`,
+      },
+    });
+    assert(diagnostics);
+    assertEquals(diagnostics.length, 0);
+    assertEquals(Object.keys(files).length, 1);
+    assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
+    assert(files["deno:///bundle.js"].endsWith("})();\n"));
   },
 });

@@ -158,6 +158,7 @@ pub unsafe fn v8_init() {
     // See https://github.com/denoland/deno/issues/2544
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
+    "--harmony-import-assertions".to_string(),
     "--no-validate-asm".to_string(),
   ];
   v8::V8::set_flags_from_command_line(argv);
@@ -200,6 +201,13 @@ impl JsRuntime {
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
+      // Include 10MB ICU data file.
+      assert!(v8::icu::set_common_data(align_data::include_aligned!(
+        align_data::Align16,
+        "icudtl.dat"
+      ))
+      .is_ok());
+
       unsafe { v8_init() };
     });
 
@@ -692,9 +700,15 @@ impl JsRuntime {
     let module = maybe_module.unwrap();
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
-    for i in 0..module.get_module_requests_length() {
-      let import_specifier =
-        module.get_module_request(i).to_rust_string_lossy(tc_scope);
+    let module_requests = module.get_module_requests();
+    for i in 0..module_requests.length() {
+      let module_request = v8::Local::<v8::ModuleRequest>::try_from(
+        module_requests.get(tc_scope, i).unwrap(),
+      )
+      .unwrap();
+      let import_specifier = module_request
+        .get_specifier()
+        .to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
       let module_specifier = state.loader.resolve(
         state.op_state.clone(),
@@ -1210,8 +1224,7 @@ impl JsRuntime {
 
     let is_main =
       load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_specifier =
-      ModuleSpecifier::resolve_url(&module_url_found).unwrap();
+    let referrer_specifier = crate::resolve_url(&module_url_found).unwrap();
 
     let state_rc = Self::state(self.v8_isolate());
     // #A There are 3 cases to handle at this moment:
@@ -2025,6 +2038,22 @@ pub mod tests {
   }
 
   #[test]
+  fn test_serialize_deserialize() {
+    run_in_task(|mut cx| {
+      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+      runtime
+        .execute(
+          "serialize_deserialize_test.js",
+          include_str!("serialize_deserialize_test.js"),
+        )
+        .unwrap();
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
   fn will_snapshot() {
     let snapshot = {
       let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2170,7 +2199,7 @@ pub mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2242,7 +2271,7 @@ pub mod tests {
       let imports = state.modules.get_children(mod_a);
       assert_eq!(
         imports,
-        Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
+        Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
       );
     }
     let mod_b = runtime
@@ -2283,7 +2312,7 @@ pub mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2347,7 +2376,7 @@ pub mod tests {
       assert!(c < 4);
       assert_eq!(specifier, "./b.js");
       assert_eq!(referrer, "file:///dyn_import3.js");
-      let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+      let s = crate::resolve_import(specifier, referrer).unwrap();
       Ok(s)
     }
 
@@ -2474,7 +2503,7 @@ pub mod tests {
       ) -> Result<ModuleSpecifier, AnyError> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2496,7 +2525,7 @@ pub mod tests {
       ..Default::default()
     });
 
-    let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+    let specifier = crate::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
     let module_id = futures::executor::block_on(
