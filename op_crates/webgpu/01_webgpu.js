@@ -1196,6 +1196,10 @@
   }
 
   class GPUBufferUsage {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     static get MAP_READ() {
       return 0x0001;
     }
@@ -1229,6 +1233,10 @@
   }
 
   class GPUMapMode {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     static get READ() {
       return 0x0001;
     }
@@ -1285,6 +1293,10 @@
   GPUObjectBaseMixin("GPUTexture", GPUTexture);
 
   class GPUTextureUsage {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     static get COPY_SRC() {
       return 0x01;
     }
@@ -1438,6 +1450,24 @@
   }
   GPUObjectBaseMixin("GPUShaderModule", GPUShaderModule);
 
+  class GPUShaderStage {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    static get VERTEX() {
+      return 0x1;
+    }
+
+    static get FRAGMENT() {
+      return 0x2;
+    }
+
+    static get COMPUTE() {
+      return 0x4;
+    }
+  }
+
   /**
    * @param {string | null} label
    * @param {number} rid
@@ -1529,6 +1559,10 @@
   GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
 
   class GPUColorWrite {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     static get RED() {
       return 0x1;
     }
@@ -3167,6 +3201,7 @@
     GPUPipelineLayout,
     GPUBindGroup,
     GPUShaderModule,
+    GPUShaderStage,
     GPUComputePipeline,
     GPURenderPipeline,
     GPUColorWrite,
