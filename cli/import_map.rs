@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
@@ -10,8 +9,6 @@ use indexmap::IndexMap;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
-use std::fs;
-use std::io;
 
 #[derive(Debug)]
 pub struct ImportMapError {
@@ -49,30 +46,6 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn load(file_path: &str) -> Result<Self, AnyError> {
-    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
-    let resolved_path = std::env::current_dir().unwrap().join(file_path);
-    debug!(
-      "Attempt to load import map: {}",
-      resolved_path.to_str().unwrap()
-    );
-
-    // Load the contents of import map
-    let json_string = fs::read_to_string(&resolved_path).map_err(|err| {
-      io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!(
-          "Error retrieving import map file at \"{}\": {}",
-          resolved_path.to_str().unwrap(),
-          err.to_string()
-        )
-        .as_str(),
-      )
-    })?;
-    // The URL of the import map is the base URL for its values.
-    ImportMap::from_json(&file_url, &json_string).map_err(AnyError::from)
-  }
-
   pub fn from_json(
     base_url: &str,
     json_string: &str,
@@ -199,7 +172,7 @@ impl ImportMap {
         continue;
       }
 
-      normalized_addresses.push(url.into());
+      normalized_addresses.push(url);
     }
 
     normalized_addresses
@@ -394,13 +367,13 @@ impl ImportMap {
         if address_vec.is_empty() {
           return Err(ImportMapError::new(&format!("Specifier {:?} was mapped to no addresses (via prefix specifier key {:?}).", normalized_specifier, specifier_key)));
         } else if address_vec.len() == 1 {
-          let address = address_vec.first().unwrap();
+          let base_url = address_vec.first().unwrap();
           let after_prefix = &normalized_specifier[specifier_key.len()..];
 
-          let base_url = address.as_url();
           if let Ok(url) = base_url.join(after_prefix) {
-            debug!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).", normalized_specifier, url, address);
-            return Ok(Some(ModuleSpecifier::from(url)));
+            debug!("Specifier {:?} was mapped to {:?} (via prefix specifier key {:?}).",
+              normalized_specifier, url, base_url);
+            return Ok(Some(url));
           }
 
           unreachable!();
@@ -461,7 +434,7 @@ impl ImportMap {
 
     // no match in import map but we got resolvable URL
     if let Some(resolved_url) = resolved_url {
-      return Ok(Some(ModuleSpecifier::from(resolved_url)));
+      return Ok(Some(resolved_url));
     }
 
     Err(ImportMapError::new(&format!(
@@ -475,12 +448,6 @@ impl ImportMap {
 mod tests {
   use super::*;
   use deno_core::serde_json::json;
-
-  #[test]
-  fn load_nonexistent() {
-    let file_path = "nonexistent_import_map.json";
-    assert!(ImportMap::load(file_path).is_err());
-  }
 
   #[test]
   fn from_json_1() {
@@ -546,18 +513,18 @@ mod tests {
         .imports
         .get("https://base.example/path1/path2/foo")
         .unwrap()[0],
-      "https://base.example/dotslash".to_string()
+      Url::parse("https://base.example/dotslash").unwrap()
     );
     assert_eq!(
       import_map
         .imports
         .get("https://base.example/path1/foo")
         .unwrap()[0],
-      "https://base.example/dotdotslash".to_string()
+      Url::parse("https://base.example/dotdotslash").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://base.example/foo").unwrap()[0],
-      "https://base.example/slash".to_string()
+      Url::parse("https://base.example/slash").unwrap()
     );
 
     // Should absolutize the literal strings ./, ../, or / with no suffix..
@@ -576,18 +543,18 @@ mod tests {
         .imports
         .get("https://base.example/path1/path2/")
         .unwrap()[0],
-      "https://base.example/dotslash/".to_string()
+      Url::parse("https://base.example/dotslash/").unwrap()
     );
     assert_eq!(
       import_map
         .imports
         .get("https://base.example/path1/")
         .unwrap()[0],
-      "https://base.example/dotdotslash/".to_string()
+      Url::parse("https://base.example/dotdotslash/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://base.example/").unwrap()[0],
-      "https://base.example/slash/".to_string()
+      Url::parse("https://base.example/slash/").unwrap()
     );
 
     // Should treat percent-encoded variants of ./, ../, or / as bare specifiers..
@@ -607,31 +574,31 @@ mod tests {
         .unwrap();
     assert_eq!(
       import_map.imports.get("%2E/").unwrap()[0],
-      "https://base.example/dotSlash1/".to_string()
+      Url::parse("https://base.example/dotSlash1/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("%2E%2E/").unwrap()[0],
-      "https://base.example/dotDotSlash1/".to_string()
+      Url::parse("https://base.example/dotDotSlash1/").unwrap()
     );
     assert_eq!(
       import_map.imports.get(".%2F").unwrap()[0],
-      "https://base.example/dotSlash2".to_string()
+      Url::parse("https://base.example/dotSlash2").unwrap()
     );
     assert_eq!(
       import_map.imports.get("..%2F").unwrap()[0],
-      "https://base.example/dotDotSlash2".to_string()
+      Url::parse("https://base.example/dotDotSlash2").unwrap()
     );
     assert_eq!(
       import_map.imports.get("%2F").unwrap()[0],
-      "https://base.example/slash2".to_string()
+      Url::parse("https://base.example/slash2").unwrap()
     );
     assert_eq!(
       import_map.imports.get("%2E%2F").unwrap()[0],
-      "https://base.example/dotSlash3".to_string()
+      Url::parse("https://base.example/dotSlash3").unwrap()
     );
     assert_eq!(
       import_map.imports.get("%2E%2E%2F").unwrap()[0],
-      "https://base.example/dotDotSlash3".to_string()
+      Url::parse("https://base.example/dotDotSlash3").unwrap()
     );
   }
 
@@ -660,47 +627,47 @@ mod tests {
         .unwrap();
     assert_eq!(
       import_map.imports.get("http://good/").unwrap()[0],
-      "https://base.example/http/".to_string()
+      Url::parse("https://base.example/http/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://good/").unwrap()[0],
-      "https://base.example/https/".to_string()
+      Url::parse("https://base.example/https/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("file:///good").unwrap()[0],
-      "https://base.example/file".to_string()
+      Url::parse("https://base.example/file").unwrap()
     );
     assert_eq!(
       import_map.imports.get("http://good/").unwrap()[0],
-      "https://base.example/http/".to_string()
+      Url::parse("https://base.example/http/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("import:bad").unwrap()[0],
-      "https://base.example/import".to_string()
+      Url::parse("https://base.example/import").unwrap()
     );
     assert_eq!(
       import_map.imports.get("mailto:bad").unwrap()[0],
-      "https://base.example/mailto".to_string()
+      Url::parse("https://base.example/mailto").unwrap()
     );
     assert_eq!(
       import_map.imports.get("javascript:bad").unwrap()[0],
-      "https://base.example/javascript".to_string()
+      Url::parse("https://base.example/javascript").unwrap()
     );
     assert_eq!(
       import_map.imports.get("wss:bad").unwrap()[0],
-      "https://base.example/wss".to_string()
+      Url::parse("https://base.example/wss").unwrap()
     );
     assert_eq!(
       import_map.imports.get("about:bad").unwrap()[0],
-      "https://base.example/about".to_string()
+      Url::parse("https://base.example/about").unwrap()
     );
     assert_eq!(
       import_map.imports.get("blob:bad").unwrap()[0],
-      "https://base.example/blob".to_string()
+      Url::parse("https://base.example/blob").unwrap()
     );
     assert_eq!(
       import_map.imports.get("data:bad").unwrap()[0],
-      "https://base.example/data".to_string()
+      Url::parse("https://base.example/data").unwrap()
     );
 
     // Should parse absolute URLs, treating unparseable ones as bare specifiers..
@@ -721,35 +688,35 @@ mod tests {
         .unwrap();
     assert_eq!(
       import_map.imports.get("https://ex ample.org/").unwrap()[0],
-      "https://base.example/unparseable1/".to_string()
+      Url::parse("https://base.example/unparseable1/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://example.com:demo").unwrap()[0],
-      "https://base.example/unparseable2".to_string()
+      Url::parse("https://base.example/unparseable2").unwrap()
     );
     assert_eq!(
       import_map.imports.get("http://[www.example.com]/").unwrap()[0],
-      "https://base.example/unparseable3/".to_string()
+      Url::parse("https://base.example/unparseable3/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://example.org/").unwrap()[0],
-      "https://base.example/invalidButParseable1/".to_string()
+      Url::parse("https://base.example/invalidButParseable1/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://example.com///").unwrap()[0],
-      "https://base.example/invalidButParseable2/".to_string()
+      Url::parse("https://base.example/invalidButParseable2/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://example.net/").unwrap()[0],
-      "https://base.example/prettyNormal/".to_string()
+      Url::parse("https://base.example/prettyNormal/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://example.com/").unwrap()[0],
-      "https://base.example/percentDecoding/".to_string()
+      Url::parse("https://base.example/percentDecoding/").unwrap()
     );
     assert_eq!(
       import_map.imports.get("https://example.com/%41").unwrap()[0],
-      "https://base.example/noPercentDecoding".to_string()
+      Url::parse("https://base.example/noPercentDecoding").unwrap()
     );
   }
 
@@ -926,15 +893,15 @@ mod tests {
 
     assert_eq!(
       import_map.imports.get("dotSlash").unwrap(),
-      &vec!["https://base.example/path1/path2/foo".to_string()]
+      &vec![Url::parse("https://base.example/path1/path2/foo").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("dotDotSlash").unwrap(),
-      &vec!["https://base.example/path1/foo".to_string()]
+      &vec![Url::parse("https://base.example/path1/foo").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("slash").unwrap(),
-      &vec!["https://base.example/foo".to_string()]
+      &vec![Url::parse("https://base.example/foo").unwrap()]
     );
 
     // Should accept the literal strings ./, ../, or / with no suffix..
@@ -951,15 +918,15 @@ mod tests {
 
     assert_eq!(
       import_map.imports.get("dotSlash").unwrap(),
-      &vec!["https://base.example/path1/path2/".to_string()]
+      &vec![Url::parse("https://base.example/path1/path2/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("dotDotSlash").unwrap(),
-      &vec!["https://base.example/path1/".to_string()]
+      &vec![Url::parse("https://base.example/path1/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("slash").unwrap(),
-      &vec!["https://base.example/".to_string()]
+      &vec![Url::parse("https://base.example/").unwrap()]
     );
 
     // Should ignore percent-encoded variants of ./, ../, or /..
@@ -1012,19 +979,19 @@ mod tests {
 
     assert_eq!(
       import_map.imports.get("file").unwrap(),
-      &vec!["file:///good".to_string()]
+      &vec![Url::parse("file:///good").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("http").unwrap(),
-      &vec!["http://good/".to_string()]
+      &vec![Url::parse("http://good/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("https").unwrap(),
-      &vec!["https://good/".to_string()]
+      &vec![Url::parse("https://good/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("data").unwrap(),
-      &vec!["data:good".to_string()]
+      &vec![Url::parse("data:good").unwrap()]
     );
 
     assert!(import_map.imports.get("about").unwrap().is_empty());
@@ -1062,19 +1029,19 @@ mod tests {
 
     assert_eq!(
       import_map.imports.get("file").unwrap(),
-      &vec!["file:///good".to_string()]
+      &vec![Url::parse("file:///good").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("http").unwrap(),
-      &vec!["http://good/".to_string()]
+      &vec![Url::parse("http://good/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("https").unwrap(),
-      &vec!["https://good/".to_string()]
+      &vec![Url::parse("https://good/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("data").unwrap(),
-      &vec!["data:good".to_string()]
+      &vec![Url::parse("data:good").unwrap()]
     );
 
     assert!(import_map.imports.get("about").unwrap().is_empty());
@@ -1108,23 +1075,23 @@ mod tests {
 
     assert_eq!(
       import_map.imports.get("invalidButParseable1").unwrap(),
-      &vec!["https://example.org/".to_string()]
+      &vec![Url::parse("https://example.org/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("invalidButParseable2").unwrap(),
-      &vec!["https://example.com///".to_string()]
+      &vec![Url::parse("https://example.com///").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("prettyNormal").unwrap(),
-      &vec!["https://example.net/".to_string()]
+      &vec![Url::parse("https://example.net/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("percentDecoding").unwrap(),
-      &vec!["https://example.com/".to_string()]
+      &vec![Url::parse("https://example.com/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("noPercentDecoding").unwrap(),
-      &vec!["https://example.com/%41".to_string()]
+      &vec![Url::parse("https://example.com/%41").unwrap()]
     );
 
     assert!(import_map.imports.get("unparseable1").unwrap().is_empty());
@@ -1153,23 +1120,23 @@ mod tests {
 
     assert_eq!(
       import_map.imports.get("invalidButParseable1").unwrap(),
-      &vec!["https://example.org/".to_string()]
+      &vec![Url::parse("https://example.org/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("invalidButParseable2").unwrap(),
-      &vec!["https://example.com///".to_string()]
+      &vec![Url::parse("https://example.com///").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("prettyNormal").unwrap(),
-      &vec!["https://example.net/".to_string()]
+      &vec![Url::parse("https://example.net/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("percentDecoding").unwrap(),
-      &vec!["https://example.com/".to_string()]
+      &vec![Url::parse("https://example.com/").unwrap()]
     );
     assert_eq!(
       import_map.imports.get("noPercentDecoding").unwrap(),
-      &vec!["https://example.com/%41".to_string()]
+      &vec![Url::parse("https://example.com/%41").unwrap()]
     );
 
     assert!(import_map.imports.get("unparseable1").unwrap().is_empty());
@@ -1223,7 +1190,7 @@ mod tests {
 
     assert_eq!(
       import_map.imports.get("trailer/").unwrap(),
-      &vec!["https://base.example/atrailer/".to_string()]
+      &vec![Url::parse("https://base.example/atrailer/").unwrap()]
     );
     // TODO: I'd be good to assert that warning was shown
   }
@@ -1263,7 +1230,7 @@ mod tests {
       .unwrap_or_else(|err| panic!("ImportMap::resolve failed: {:?}", err));
     let resolved_url =
       maybe_url.unwrap_or_else(|| panic!("Unexpected None resolved URL"));
-    assert_eq!(resolved_url, expected_url.to_string());
+    assert_eq!(resolved_url.as_str(), expected_url);
   }
 
   #[test]

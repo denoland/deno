@@ -61,6 +61,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
@@ -312,12 +313,12 @@ async fn compile_command(
   let run_flags =
     tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
 
-  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let program_state = ProgramState::new(flags.clone())?;
+  let module_specifier = resolve_url_or_path(&source_file)?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let deno_dir = &program_state.dir;
 
   let output = output.or_else(|| {
-    infer_name_from_url(module_specifier.as_url()).map(PathBuf::from)
+    infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   ))?;
@@ -367,9 +368,9 @@ async fn info_command(
   if json && !flags.unstable {
     exit_unstable("--json");
   }
-  let program_state = ProgramState::new(flags)?;
+  let program_state = ProgramState::build(flags).await?;
   if let Some(specifier) = maybe_specifier {
-    let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)?;
+    let specifier = resolve_url_or_path(&specifier)?;
     let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
       &program_state,
       // info accesses dynamically imported modules just for their information
@@ -409,8 +410,8 @@ async fn install_command(
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
   let permissions = Permissions::from_options(&preload_flags.clone().into());
-  let program_state = ProgramState::new(preload_flags)?;
-  let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
+  let program_state = ProgramState::build(preload_flags).await?;
+  let main_module = resolve_url_or_path(&module_url)?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
   // First, fetch and compile the module; this step ensures that the module exists.
@@ -450,10 +451,10 @@ async fn cache_command(
   } else {
     module_graph::TypeLib::DenoWindow
   };
-  let program_state = ProgramState::new(flags)?;
+  let program_state = ProgramState::build(flags).await?;
 
   for file in files {
-    let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
+    let specifier = resolve_url_or_path(&file)?;
     program_state
       .prepare_module_load(
         specifier,
@@ -475,13 +476,11 @@ async fn eval_command(
   print: bool,
 ) -> Result<(), AnyError> {
   // Force TypeScript compile.
-  let main_module =
-    ModuleSpecifier::resolve_url_or_path("./$deno$eval.ts").unwrap();
+  let main_module = resolve_url_or_path("./$deno$eval.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let program_state = ProgramState::new(flags)?;
+  let program_state = ProgramState::build(flags).await?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
-  let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
     format!("console.log({})", code)
@@ -491,7 +490,7 @@ async fn eval_command(
   .into_bytes();
 
   let file = File {
-    local: main_module_url.to_file_path().unwrap(),
+    local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: if as_typescript {
       MediaType::TypeScript
@@ -499,7 +498,7 @@ async fn eval_command(
       MediaType::JavaScript
     },
     source: String::from_utf8(source_code)?,
-    specifier: ModuleSpecifier::from(main_module_url),
+    specifier: main_module.clone(),
   };
 
   // Save our fake file into file fetcher cache
@@ -592,11 +591,10 @@ async fn bundle_command(
     let source_file1 = source_file.clone();
     let source_file2 = source_file.clone();
     async move {
-      let module_specifier =
-        ModuleSpecifier::resolve_url_or_path(&source_file1)?;
+      let module_specifier = resolve_url_or_path(&source_file1)?;
 
       debug!(">>>>> bundle START");
-      let program_state = ProgramState::new(flags.clone())?;
+      let program_state = ProgramState::build(flags.clone()).await?;
 
       info!(
         "{} {}",
@@ -614,7 +612,7 @@ async fn bundle_command(
       let mut paths_to_watch: Vec<PathBuf> = module_graph
         .get_modules()
         .iter()
-        .filter_map(|specifier| specifier.as_url().to_file_path().ok())
+        .filter_map(|specifier| specifier.to_file_path().ok())
         .collect();
 
       if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
@@ -705,7 +703,7 @@ impl DocFileLoader for DocLoader {
     let resolved_specifier = if let Some(resolved) = maybe_resolved {
       resolved
     } else {
-      ModuleSpecifier::resolve_import(specifier, referrer)
+      deno_core::resolve_import(specifier, referrer)
         .map_err(|e| doc::DocError::Resolve(e.to_string()))?
     };
 
@@ -717,8 +715,8 @@ impl DocFileLoader for DocLoader {
     specifier: &str,
   ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
     let fetcher = self.fetcher.clone();
-    let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
-      .expect("Expected valid specifier");
+    let specifier =
+      resolve_url_or_path(specifier).expect("Expected valid specifier");
     async move {
       let source_file = fetcher
         .fetch(&specifier, &Permissions::allow_all())
@@ -742,7 +740,7 @@ async fn doc_command(
   maybe_filter: Option<String>,
   private: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone())?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   let loader = Box::new(DocLoader {
@@ -762,8 +760,7 @@ async fn doc_command(
     let path = PathBuf::from(&source_file);
     let media_type = MediaType::from(&path);
     let syntax = ast::get_syntax(&media_type);
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
+    let module_specifier = resolve_url_or_path(&source_file).unwrap();
     doc_parser
       .parse_with_reexports(&module_specifier.to_string(), syntax)
       .await
@@ -819,10 +816,9 @@ async fn format_command(
 }
 
 async fn run_repl(flags: Flags) -> Result<(), AnyError> {
-  let main_module =
-    ModuleSpecifier::resolve_url_or_path("./$deno$repl.ts").unwrap();
+  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let program_state = ProgramState::new(flags)?;
+  let program_state = ProgramState::build(flags).await?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
   worker.run_event_loop().await?;
@@ -831,10 +827,9 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone())?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
-  let main_module =
-    ModuleSpecifier::resolve_url_or_path("./$deno$stdin.ts").unwrap();
+  let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker = create_main_worker(
     &program_state.clone(),
     main_module.clone(),
@@ -843,10 +838,9 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
-  let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_file = File {
-    local: main_module_url.to_file_path().unwrap(),
+    local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
     source: String::from_utf8(source)?,
@@ -870,8 +864,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     let script2 = script.clone();
     let flags = flags.clone();
     async move {
-      let main_module = ModuleSpecifier::resolve_url_or_path(&script1)?;
-      let program_state = ProgramState::new(flags)?;
+      let main_module = resolve_url_or_path(&script1)?;
+      let program_state = ProgramState::build(flags).await?;
       let handler = Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         Permissions::allow_all(),
@@ -888,7 +882,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       let mut paths_to_watch: Vec<PathBuf> = module_graph
         .get_modules()
         .iter()
-        .filter_map(|specifier| specifier.as_url().to_file_path().ok())
+        .filter_map(|specifier| specifier.to_file_path().ok())
         .collect();
 
       if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
@@ -916,7 +910,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     let permissions = Permissions::from_options(&flags.clone().into());
     async move {
       let main_module = main_module.clone();
-      let program_state = ProgramState::new(flags)?;
+      let program_state = ProgramState::build(flags).await?;
       let mut worker =
         create_main_worker(&program_state, main_module.clone(), permissions);
       debug!("main_module {}", main_module);
@@ -947,8 +941,8 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
     return run_with_watch(flags, script).await;
   }
 
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script)?;
-  let program_state = ProgramState::new(flags.clone())?;
+  let main_module = resolve_url_or_path(&script)?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
@@ -989,7 +983,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::new(flags.clone())?;
+  let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
@@ -1003,10 +997,10 @@ async fn test_command(
     }
     return Ok(());
   }
-  let main_module = ModuleSpecifier::resolve_path("$deno$test.ts")?;
+  let main_module = deno_core::resolve_path("$deno$test.ts")?;
   // Create a dummy source file.
   let source_file = File {
-    local: main_module.as_url().to_file_path().unwrap(),
+    local: main_module.to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
     source: tools::test_runner::render_test_file(
@@ -1074,8 +1068,7 @@ async fn test_command(
     // For now, we'll only report for the command that passed --coverage as a flag.
     if flags.coverage_dir.is_some() {
       let mut exclude = test_modules.clone();
-      let main_module_url = main_module.as_url().to_owned();
-      exclude.push(main_module_url);
+      exclude.push(main_module.clone());
       tools::coverage::report_coverages(
         program_state.clone(),
         &coverage_collector.dir,
