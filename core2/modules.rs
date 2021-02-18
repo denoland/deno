@@ -29,12 +29,12 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   meta: v8::Local<v8::Object>,
 ) {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let op_state_rc = JsRuntime::state(scope).borrow().op_state();
+  let op_state = op_state_rc.borrow();
+  let module_map = op_state.borrow::<ModuleMap>();
 
   let module_global = v8::Global::new(scope, module);
-  let info = state
-    .module_map
+  let info = module_map
     .get_info(&module_global)
     .expect("Module not found");
 
@@ -56,12 +56,12 @@ pub fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let op_state_rc = JsRuntime::state(scope).borrow().op_state();
+  let op_state = op_state_rc.borrow();
+  let module_map = op_state.borrow::<ModuleMap>();
 
   let referrer_global = v8::Global::new(scope, referrer);
-  let referrer_info = state
-    .module_map
+  let referrer_info = module_map
     .get_info(&referrer_global)
     .expect("ModuleInfo not found");
   let referrer_name = referrer_info.name.to_string();
@@ -73,8 +73,8 @@ pub fn module_resolve_callback<'s>(
     ModuleSpecifier::resolve_import(&specifier_str, &referrer_name)
       .expect("Module should have been already resolved");
 
-  if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
-    if let Some(handle) = state.module_map.get_handle(id) {
+  if let Some(id) = module_map.get_id(resolved_specifier.as_str()) {
+    if let Some(handle) = module_map.get_handle(id) {
       return Some(v8::Local::new(scope, handle));
     }
   }
@@ -96,17 +96,18 @@ pub fn create_module(
   info: ModuleSource,
   main: bool,
 ) -> Result<ModuleId, AnyError> {
-  let state_rc = JsRuntime::state(js_runtime.v8_isolate());
+  let op_state_rc = JsRuntime::state(js_runtime.v8_isolate())
+    .borrow()
+    .op_state();
+  let mut op_state = op_state_rc.borrow_mut();
+  let module_map = op_state.borrow_mut::<ModuleMap>();
 
   if info.module_url_specified != info.module_url_found {
-    state_rc
-      .borrow_mut()
-      .module_map
-      .alias(&info.module_url_specified, &info.module_url_found);
+    module_map.alias(&info.module_url_specified, &info.module_url_found);
   }
 
-  let maybe_module_id =
-    state_rc.borrow().module_map.get_id(&info.module_url_found);
+  let maybe_module_id = module_map.get_id(&info.module_url_found);
+  drop(op_state);
 
   if let Some(id) = maybe_module_id {
     // Module has already been registered.
@@ -119,11 +120,10 @@ pub fn create_module(
 
   let module_handle =
     compile_module(js_runtime, &info.module_url_found, &info.code)?;
-  let id = state_rc.borrow_mut().module_map.register(
-    &info.module_url_found,
-    main,
-    module_handle,
-  );
+
+  let mut op_state = op_state_rc.borrow_mut();
+  let module_map = op_state.borrow_mut::<ModuleMap>();
+  let id = module_map.register(&info.module_url_found, main, module_handle);
 
   Ok(id)
 }
@@ -167,19 +167,23 @@ pub fn mod_instantiate(
   js_runtime: &mut JsRuntime,
   id: ModuleId,
 ) -> Result<(), AnyError> {
-  let state_rc = JsRuntime::state(js_runtime.v8_isolate());
+  let op_state_rc = JsRuntime::state(js_runtime.v8_isolate())
+    .borrow()
+    .op_state();
+  let op_state = op_state_rc.borrow();
+  let module_map = op_state.borrow::<ModuleMap>();
   let context = js_runtime.global_context();
 
   let scope =
     &mut v8::HandleScope::with_context(js_runtime.v8_isolate(), context);
   let tc_scope = &mut v8::TryCatch::new(scope);
 
-  let module = state_rc
-    .borrow()
-    .module_map
+  let module = module_map
     .get_handle(id)
     .map(|handle| v8::Local::new(tc_scope, handle))
     .expect("ModuleInfo not found");
+
+  drop(op_state);
 
   if module.get_status() == v8::ModuleStatus::Errored {
     exception_to_err_result(tc_scope, module.get_exception(), false)?
@@ -200,15 +204,16 @@ pub async fn mod_evaluate(
   id: ModuleId,
 ) -> Result<(), AnyError> {
   let state_rc = JsRuntime::state(js_runtime.v8_isolate());
+  let op_state_rc = state_rc.borrow().op_state();
 
   let maybe_promise_handle = {
     let context = js_runtime.global_context();
     let scope =
       &mut v8::HandleScope::with_context(js_runtime.v8_isolate(), context);
 
-    let module = state_rc
+    let module = op_state_rc
       .borrow()
-      .module_map
+      .borrow::<ModuleMap>()
       .get_handle(id)
       .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");

@@ -84,8 +84,15 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: Cell<bool>,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  pub module_map: ModuleMap,
   waker: AtomicWaker,
+}
+
+impl JsRuntimeState {
+  /// Returns the runtime's op state, which can be used to maintain ops
+  /// and access resources between op calls.
+  pub fn op_state(&self) -> Rc<RefCell<OpState>> {
+    self.op_state.clone()
+  }
 }
 
 impl Drop for JsRuntime {
@@ -241,7 +248,6 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: Cell::new(false),
-      module_map: ModuleMap::new(),
       waker: AtomicWaker::new(),
     })));
 
@@ -259,6 +265,8 @@ impl JsRuntime {
     if !options.will_snapshot {
       js_runtime.shared_queue_init();
     }
+
+    js_runtime.op_state().borrow_mut().put(ModuleMap::new());
 
     js_runtime
   }
@@ -378,7 +386,8 @@ impl JsRuntime {
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
-    std::mem::take(&mut state.borrow_mut().module_map);
+    // TODO(bartlomieju): this should be enforced somehow
+    state.borrow_mut().op_state.borrow_mut().take::<ModuleMap>();
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
