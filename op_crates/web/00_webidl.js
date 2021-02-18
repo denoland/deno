@@ -708,15 +708,14 @@
           opts,
         );
       }
-      const method = V?.[Symbol.iterator];
-      if (method === undefined) {
+      const iter = V?.[Symbol.iterator]?.();
+      if (iter === undefined) {
         throw makeException(
           TypeError,
           "can not be converted to sequence.",
           opts,
         );
       }
-      const iter = method();
       const array = [];
       while (true) {
         const res = iter?.next?.();
@@ -728,7 +727,7 @@
           );
         }
         if (res.done === true) break;
-        const val = converter(val, {
+        const val = converter(res.value, {
           ...opts,
           context: `${opts.context}, index ${array.length}`,
         });
