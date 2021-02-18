@@ -178,6 +178,14 @@
         },
       );
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        name: this.name,
+        features: this.features,
+        limits: this.limits,
+      })}`;
+    }
   }
 
   const _limits = Symbol("[[limits]]");
@@ -268,6 +276,10 @@
     get maxVertexBufferArrayStride() {
       throw new TypeError("Not yet implemented");
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect(this[_limits])}`;
+    }
   }
 
   const _features = Symbol("[[features]]");
@@ -302,7 +314,7 @@
       return this[_features].has(value);
     }
 
-    /** @return {string[]} */
+    /** @return {IterableIterator<string>} */
     keys() {
       return this[_features].keys();
     }
@@ -319,6 +331,10 @@
 
     [Symbol.iterator]() {
       return this[_features][Symbol.iterator]();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect([...this.values()])}`;
     }
   }
 
@@ -749,6 +765,16 @@
 
       return createGPUQuerySet(descriptor.label ?? null, rid, descriptor);
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        adapter: this.adapter,
+        features: this.features,
+        label: this.label,
+        limits: this.limits,
+        queue: this.queue,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPUDevice", GPUDevice);
 
@@ -892,6 +918,12 @@
 
     copyImageBitmapToTexture(_source, _destination, _copySize) {
       throw new Error("Not yet implemented");
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPUQueue", GPUQueue);
