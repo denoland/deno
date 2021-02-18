@@ -692,12 +692,12 @@
       return createGPURenderPipeline(descriptor.label ?? null, rid);
     }
 
-    createComputePipelineAsync(_descriptor) {
-      throw new Error("Not yet implemented"); // easy polyfill
+    async createComputePipelineAsync(descriptor) {
+      return this.createComputePipeline(descriptor);
     }
 
-    createRenderPipelineAsync(_descriptor) {
-      throw new Error("Not yet implemented"); // easy polyfill
+    async createRenderPipelineAsync(descriptor) {
+      return this.createRenderPipeline(descriptor);
     }
 
     /**
