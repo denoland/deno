@@ -141,16 +141,29 @@
      */
     async requestDevice(descriptor = {}) {
       webidl.assertBranded(this, GPUAdapter);
+      const prefix = "Failed to execute 'requestDevice' on 'GPUAdapter'";
       descriptor = webidl.converters.GPUDeviceDescriptor(descriptor, {
-        prefix: "Failed to execute 'requestDevice' on 'GPUAdapter'",
+        prefix,
         context: "Argument 1",
       });
+      const nonGuaranteedFeatures = descriptor.nonGuaranteedFeatures ?? [];
+      for (const feature of nonGuaranteedFeatures) {
+        if (!this[_adapter].features.has(feature)) {
+          throw new TypeError(
+            `${prefix}: nonGuaranteedFeatures must be a subset of the adapter features.`,
+          );
+        }
+      }
+      const nonGuaranteedLimits = descriptor.nonGuaranteedLimits ?? [];
+      // TODO(lucacasonato): validate nonGuaranteedLimits
 
       const { rid, features, limits } = await core.jsonOpAsync(
         "op_webgpu_request_device",
         {
           adapterRid: this[_adapter].rid,
-          ...descriptor,
+          labe: descriptor.label,
+          nonGuaranteedFeatures,
+          nonGuaranteedLimits,
         },
       );
 
@@ -362,10 +375,6 @@
     device[_device] = inner;
     return device;
   }
-
-  webidl.converters["UVString?"] = webidl.createNullableConverter(
-    webidl.converters.USVString,
-  );
 
   // TODO(@crowlKats): https://gpuweb.github.io/gpuweb/#errors-and-debugging
   class GPUDevice extends eventTarget.EventTarget {
@@ -772,11 +781,14 @@
      */
     submit(commandBuffers) {
       webidl.assertBranded(this, GPUQueue);
+      const prefix = "Failed to execute 'submit' on 'GPUQueue'";
       webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to execute 'submit' on 'GPUQueue'",
+        prefix,
       });
-      // TODO(lucacasonato): should be real converter
-      commandBuffers = webidl.converters.any(commandBuffers);
+      commandBuffers = webidl.converters["sequence<GPUCommandBuffer>"](
+        commandBuffers,
+        { prefix, context: "Argument 1" },
+      );
       core.jsonOpSync("op_webgpu_queue_submit", {
         queueRid: this[_device],
         commandBuffers: commandBuffers.map((buffer) => buffer[_rid]),
@@ -2232,11 +2244,10 @@
       const prefix =
         "Failed to execute 'executeBundles' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      // TODO(lucacasonato): missing sequence
-      // bundles = webidl.converters.any(bundles, {
-      //   prefix,
-      //   context: "Argument 1",
-      // });
+      bundles = webidl.converters["sequence<GPURenderBundle>"](bundles, {
+        prefix,
+        context: "Argument 1",
+      });
       core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
         renderPassRid: this[_rid],
         bundles: bundles.map((bundle) => bundle[_rid]),

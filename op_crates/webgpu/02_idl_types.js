@@ -1787,4 +1787,12 @@
     "GPUExtent3DDict",
     dictMembersGPUExtent3DDict,
   );
+
+  webidl.converters["sequence<GPURenderBundle>"] = webidl
+    .createSequenceConverter(webidl.converters["GPURenderBundle"]);
+  webidl.converters["sequence<GPUCommandBuffer>"] = webidl
+    .createSequenceConverter(webidl.converters["GPUCommandBuffer"]);
+  webidl.converters["UVString?"] = webidl.createNullableConverter(
+    webidl.converters.USVString,
+  );
 })(this);
