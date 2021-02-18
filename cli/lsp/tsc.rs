@@ -500,8 +500,16 @@ impl DocumentSpan {
             self.text_span.to_range(&target_line_index),
           )
         };
+      let origin_selection_range =
+        if let Some(original_context_span) = &self.original_context_span {
+          Some(original_context_span.to_range(line_index))
+        } else if let Some(original_text_span) = &self.original_text_span {
+          Some(original_text_span.to_range(line_index))
+        } else {
+          None
+        };
       let link = lsp::LocationLink {
-        origin_selection_range: Some(self.text_span.to_range(line_index)),
+        origin_selection_range,
         target_uri,
         target_range,
         target_selection_range,
@@ -592,6 +600,17 @@ impl ImplementationLocation {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
+  }
+
+  pub(crate) async fn to_link(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+  ) -> Option<lsp::LocationLink> {
+    self
+      .document_span
+      .to_link(line_index, language_server)
+      .await
   }
 }
 

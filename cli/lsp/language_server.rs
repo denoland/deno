@@ -1575,29 +1575,26 @@ impl Inner {
           LspError::invalid_request()
         })?;
 
-    let maybe_implementations = serde_json::from_value::<Option<Vec<tsc::ImplementationLocation>>>(res)
+    let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = serde_json::from_value(res)
       .map_err(|err| {
         error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {}", err);
         LspError::internal_error()
       })?;
 
-    if let Some(implementations) = maybe_implementations {
-      let mut results = Vec::new();
-      for impl_ in implementations {
-        let document_span = impl_.document_span;
-        let impl_specifier = resolve_url(&document_span.file_name).unwrap();
-        let impl_line_index =
-          &self.get_line_index(impl_specifier).await.unwrap();
-        if let Some(link) = document_span.to_link(impl_line_index, self).await {
-          results.push(link);
+    let result = if let Some(implementations) = maybe_implementations {
+      let mut links = Vec::new();
+      for implementation in implementations {
+        if let Some(link) = implementation.to_link(&line_index, self).await {
+          links.push(link)
         }
       }
-      self.performance.measure(mark);
-      Ok(Some(GotoDefinitionResponse::Link(results)))
+      Some(GotoDefinitionResponse::Link(links))
     } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
+      None
+    };
+
+    self.performance.measure(mark);
+    Ok(result)
   }
 
   async fn rename(
