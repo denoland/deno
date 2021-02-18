@@ -19,9 +19,23 @@ exclude = [
 [profile.release]
 codegen-units = 1
 lto = true
-opt-level = 3 # Optimize for performance
+opt-level = 'z' # Optimize for size
 
 [profile.bench]
 codegen-units = 1
 lto = true
-opt-level = 3 # Optimize for performance
+opt-level = 'z' # Optimize for size
+
+# Optimize these packages for perf
+[profile.release.package.rand]
+opt-level = 3
+[profile.release.package.flate2]
+opt-level = 3
+[profile.release.package.brotli]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+[profile.release.package.async-compression]
+opt-level = 3
+[profile.release.package.brotli-decompressor]
+opt-level = 3
