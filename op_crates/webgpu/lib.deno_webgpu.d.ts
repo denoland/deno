@@ -157,22 +157,22 @@ declare interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
 
 declare type GPUBufferUsageFlags = number;
 declare class GPUBufferUsage {
-    static MAP_READ: 0x0001;
-    static MAP_WRITE: 0x0002;
-    static COPY_SRC: 0x0004;
-    static COPY_DST: 0x0008;
-    static INDEX: 0x0010;
-    static VERTEX: 0x0020;
-    static UNIFORM: 0x0040;
-    static STORAGE: 0x0080;
-    static INDIRECT: 0x0100;
-    static QUERY_RESOLVE: 0x0200;
+  static MAP_READ: 0x0001;
+  static MAP_WRITE: 0x0002;
+  static COPY_SRC: 0x0004;
+  static COPY_DST: 0x0008;
+  static INDEX: 0x0010;
+  static VERTEX: 0x0020;
+  static UNIFORM: 0x0040;
+  static STORAGE: 0x0080;
+  static INDIRECT: 0x0100;
+  static QUERY_RESOLVE: 0x0200;
 }
 
 declare type GPUMapModeFlags = number;
 declare class GPUMapMode {
-    static READ: 0x0001;
-    static WRITE: 0x0002;
+  static READ: 0x0001;
+  static WRITE: 0x0002;
 }
 
 declare interface GPUTexture extends GPUObjectBase {
@@ -193,11 +193,11 @@ declare type GPUTextureDimension = "1d" | "2d" | "3d";
 
 declare type GPUTextureUsageFlags = number;
 declare class GPUTextureUsage {
-    static COPY_SRC: 0x01;
-    static COPY_DST: 0x02;
-    static SAMPLED: 0x04;
-    static STORAGE: 0x08;
-    static RENDER_ATTACHMENT: 0x10;
+  static COPY_SRC: 0x01;
+  static COPY_DST: 0x02;
+  static SAMPLED: 0x04;
+  static STORAGE: 0x08;
+  static RENDER_ATTACHMENT: 0x10;
 }
 
 declare interface GPUTextureView extends GPUObjectBase {}
