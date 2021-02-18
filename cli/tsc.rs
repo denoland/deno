@@ -11,6 +11,7 @@ use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::json_op_sync;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -97,11 +98,11 @@ fn hash_data_url(
   media_type: &MediaType,
 ) -> String {
   assert_eq!(
-    specifier.as_url().scheme(),
+    specifier.scheme(),
     "data",
     "Specifier must be a data: specifier."
   );
-  let hash = crate::checksum::gen(&[specifier.as_url().path().as_bytes()]);
+  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
   format!("data:///{}{}", hash, media_type.as_ts_extension())
 }
 
@@ -109,15 +110,14 @@ fn hash_data_url(
 /// and so we have to detect the apparent media type based on extensions it
 /// supports.
 fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
-  let url = specifier.as_url();
-  let path = if url.scheme() == "file" {
-    if let Ok(path) = url.to_file_path() {
+  let path = if specifier.scheme() == "file" {
+    if let Ok(path) = specifier.to_file_path() {
       path
     } else {
-      PathBuf::from(url.path())
+      PathBuf::from(specifier.path())
     }
   } else {
-    PathBuf::from(url.path())
+    PathBuf::from(specifier.path())
   };
   match path.extension() {
     None => MediaType::Unknown,
@@ -263,7 +263,7 @@ fn emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
             } else if let Some(remapped_specifier) = state.root_map.get(s) {
               remapped_specifier.clone()
             } else {
-              ModuleSpecifier::resolve_url_or_path(s).unwrap()
+              resolve_url_or_path(s).unwrap()
             }
           })
           .collect();
@@ -287,7 +287,7 @@ struct LoadArgs {
 fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = ModuleSpecifier::resolve_url_or_path(&v.specifier)
+  let specifier = resolve_url_or_path(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -350,7 +350,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   } else if let Some(remapped_base) = state.root_map.get(&v.base) {
     remapped_base.clone()
   } else {
-    ModuleSpecifier::resolve_url_or_path(&v.base).context(
+    resolve_url_or_path(&v.base).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
@@ -374,8 +374,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               resolved_specifier
             )
           };
-          let resolved_specifier_str = if resolved_specifier.as_url().scheme()
-            == "data"
+          let resolved_specifier_str = if resolved_specifier.scheme() == "data"
           {
             let specifier_str = hash_data_url(&resolved_specifier, &media_type);
             state
@@ -385,7 +384,10 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           } else {
             resolved_specifier.to_string()
           };
-          resolved.push((resolved_specifier_str, media_type.as_ts_extension()));
+          resolved.push((
+            resolved_specifier_str,
+            media_type.as_ts_extension().into(),
+          ));
         }
         // in certain situations, like certain dynamic imports, we won't have
         // the source file in the graph, so we will return a fake module to
@@ -434,7 +436,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .root_names
     .iter()
     .map(|(s, mt)| {
-      if s.as_url().scheme() == "data" {
+      if s.scheme() == "data" {
         let specifier_str = hash_data_url(s, mt);
         data_url_map.insert(specifier_str.clone(), s.clone());
         specifier_str
@@ -521,9 +523,8 @@ mod tests {
     maybe_hash_data: Option<Vec<Vec<u8>>>,
     maybe_tsbuildinfo: Option<String>,
   ) -> State {
-    let specifier = maybe_specifier.unwrap_or_else(|| {
-      ModuleSpecifier::resolve_url_or_path("file:///main.ts").unwrap()
-    });
+    let specifier = maybe_specifier
+      .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/tsc2");
@@ -620,7 +621,7 @@ mod tests {
 
   #[test]
   fn test_hash_data_url() {
-    let specifier = ModuleSpecifier::resolve_url(
+    let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
@@ -643,7 +644,7 @@ mod tests {
       ("file:///.tsbuildinfo", MediaType::Unknown),
     ];
     for (specifier, media_type) in fixtures {
-      let specifier = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      let specifier = resolve_url_or_path(specifier).unwrap();
       assert_eq!(get_tsc_media_type(&specifier), media_type);
     }
   }
@@ -667,7 +668,7 @@ mod tests {
       state.emitted_files[0],
       EmittedFile {
         data: "some file content".to_string(),
-        maybe_specifiers: Some(vec![ModuleSpecifier::resolve_url_or_path(
+        maybe_specifiers: Some(vec![resolve_url_or_path(
           "file:///some/file.ts"
         )
         .unwrap()]),
@@ -698,10 +699,7 @@ mod tests {
   #[tokio::test]
   async fn test_load() {
     let mut state = setup(
-      Some(
-        ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-          .unwrap(),
-      ),
+      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -732,10 +730,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_asset() {
     let mut state = setup(
-      Some(
-        ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-          .unwrap(),
-      ),
+      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -754,10 +749,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_tsbuildinfo() {
     let mut state = setup(
-      Some(
-        ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-          .unwrap(),
-      ),
+      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
       None,
       Some("some content".to_string()),
     )
@@ -796,10 +788,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve() {
     let mut state = setup(
-      Some(
-        ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a.ts")
-          .unwrap(),
-      ),
+      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -815,10 +804,7 @@ mod tests {
   #[tokio::test]
   async fn test_resolve_empty() {
     let mut state = setup(
-      Some(
-        ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a.ts")
-          .unwrap(),
-      ),
+      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
       None,
       None,
     )
@@ -875,8 +861,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_basic() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
+    let specifier = resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -888,8 +873,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_exec_reexport_dts() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///reexports.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///reexports.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
@@ -901,8 +885,7 @@ mod tests {
 
   #[tokio::test]
   async fn fix_lib_ref() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///libref.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///libref.ts").unwrap();
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
