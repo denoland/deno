@@ -21,6 +21,7 @@ use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
@@ -99,7 +100,7 @@ impl ProgramState {
             exit_unstable("--import-map")
           }
           let import_map_specifier =
-            ModuleSpecifier::resolve_url_or_path(&import_map_url).context(
+            deno_core::resolve_url_or_path(&import_map_url).context(
               format!("Bad URL (\"{}\") for import map.", import_map_url),
             )?;
           let file = file_fetcher
@@ -291,8 +292,8 @@ impl ProgramState {
 // else, like a refactored file_fetcher.
 impl SourceMapGetter for ProgramState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
-      if let Some((code, maybe_map)) = self.get_emit(&specifier.as_url()) {
+    if let Ok(specifier) = resolve_url(file_name) {
+      if let Some((code, maybe_map)) = self.get_emit(&specifier) {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None) {
@@ -310,7 +311,7 @@ impl SourceMapGetter for ProgramState {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
+    if let Ok(specifier) = resolve_url(file_name) {
       self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
