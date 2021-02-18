@@ -15,12 +15,46 @@ use std::convert::TryFrom;
 use std::task::Poll;
 
 pub extern "C" fn host_import_module_dynamically_callback(
-  _context: v8::Local<v8::Context>,
-  _referrer: v8::Local<v8::ScriptOrModule>,
-  _specifier: v8::Local<v8::String>,
+  context: v8::Local<v8::Context>,
+  referrer: v8::Local<v8::ScriptOrModule>,
+  specifier: v8::Local<v8::String>,
   _import_assertions: v8::Local<v8::FixedArray>,
 ) -> *mut v8::Promise {
-  todo!()
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+
+  // NOTE(bartlomieju): will crash for non-UTF-8 specifier
+  let specifier_str = specifier
+    .to_string(scope)
+    .unwrap()
+    .to_rust_string_lossy(scope);
+  let referrer_name = referrer.get_resource_name();
+  let referrer_name_str = referrer_name
+    .to_string(scope)
+    .unwrap()
+    .to_rust_string_lossy(scope);
+
+  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
+  // to use it. For now we check that it is not used. This check may need to be
+  // changed in the future.
+  let host_defined_options = referrer.get_host_defined_options();
+  assert_eq!(host_defined_options.length(), 0);
+
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+
+  let resolver_handle = v8::Global::new(scope, resolver);
+  {
+    let op_state_rc = JsRuntime::state(scope).borrow().op_state();
+    let mut op_state = op_state_rc.borrow_mut();
+    let module_map = op_state.borrow_mut::<ModuleMap>();
+    module_map.add_dynamic_import(
+      resolver_handle,
+      &specifier_str,
+      &referrer_name_str,
+    );
+  }
+
+  &*promise as *const _ as *mut _
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(
@@ -453,6 +487,15 @@ impl ModuleMap {
     }
 
     None
+  }
+
+  pub fn add_dynamic_import(
+    &mut self,
+    resolver_handle: v8::Global<v8::PromiseResolver>,
+    specifier: &str,
+    referrer: &str,
+  ) {
+    todo!()
   }
 
   #[cfg(test)]
