@@ -279,6 +279,8 @@ delete Object.prototype.__proto__;
     GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
     GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
     GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
+    GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
+    GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable

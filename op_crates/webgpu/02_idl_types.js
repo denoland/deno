@@ -36,6 +36,8 @@
     GPURenderBundleEncoder,
     GPURenderBundle,
     GPUQuerySet,
+    GPUOutOfMemoryError,
+    GPUValidationError,
   } = window.__bootstrap.webgpu;
 
   // This needs to be initalized after all of the base classes are implmented,
@@ -1663,17 +1665,17 @@
     ],
   );
 
-  // // INTERFACE: GPUOutOfMemoryError
-  // webidl.converters.GPUOutOfMemoryError = webidl.createInterfaceConverter(
-  //   "GPUOutOfMemoryError",
-  //   GPUOutOfMemoryError,
-  // );
+  // INTERFACE: GPUOutOfMemoryError
+  webidl.converters.GPUOutOfMemoryError = webidl.createInterfaceConverter(
+    "GPUOutOfMemoryError",
+    GPUOutOfMemoryError,
+  );
 
-  // // INTERFACE: GPUValidationError
-  // webidl.converters.GPUValidationError = webidl.createInterfaceConverter(
-  //   "GPUValidationError",
-  //   GPUValidationError,
-  // );
+  // INTERFACE: GPUValidationError
+  webidl.converters.GPUValidationError = webidl.createInterfaceConverter(
+    "GPUValidationError",
+    GPUValidationError,
+  );
 
   // TYPEDEF: GPUError
   webidl.converters["GPUError"] = webidl.converters.any;

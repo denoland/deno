@@ -50,6 +50,25 @@
     }
   }
 
+  class GPUOutOfMemoryError extends Error {
+    constructor() {
+      super();
+    }
+  }
+
+  class GPUValidationError extends Error {
+    /** @param {string} message */
+    constructor(message) {
+      const prefix = "Failed to construct 'GPUValidationError'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      message = webidl.converters.DOMString(message, {
+        prefix,
+        context: "Argument 1",
+      });
+      super(message);
+    }
+  }
+
   class GPU {
     [webidl.brand] = webidl.brand;
 
@@ -84,6 +103,7 @@
 
   const _name = Symbol("[[name]]");
   const _adapter = Symbol("[[adapter]]");
+  const _cleanup = Symbol("[[cleanup]]");
 
   /**
    * @typedef InnerGPUAdapter
@@ -409,6 +429,7 @@
 
     /**
      * @param {GPUBufferDescriptor} descriptor
+     * @returns {GPUBuffer}
      */
     createBuffer(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -2700,6 +2721,11 @@
         prefix,
         context: "Argument 2",
       });
+      const querySetRid = querySet[_rid];
+      if (querySetRid === undefined) {
+        throw new GPUValidationError(`${prefix}: GPUQuerySet is not valid.`);
+      }
+
       core.jsonOpSync("op_webgpu_compute_pass_write_timestamp", {
         computePassRid: this[_rid],
         querySet: querySet[_rid],
@@ -3156,8 +3182,17 @@
   }
 
   class GPURenderBundle {
-    /** @type {number} */
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -3179,8 +3214,17 @@
   }
 
   class GPUQuerySet {
-    /** @type {number} */
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -3188,7 +3232,7 @@
 
     destroy() {
       webidl.assertBranded(this, GPUQuerySet);
-      throw new Error("Not yet implemented");
+      this[_cleanup]();
     }
   }
   GPUObjectBaseMixin("GPUQuerySet", GPUQuerySet);
@@ -3223,5 +3267,7 @@
     GPURenderBundleEncoder,
     GPURenderBundle,
     GPUQuerySet,
+    GPUOutOfMemoryError,
+    GPUValidationError,
   };
 })(this);
