@@ -47,7 +47,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: actions-rs/toolchain@v1
