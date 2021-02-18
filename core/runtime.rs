@@ -809,6 +809,12 @@ impl JsRuntime {
         );
         let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
+        let empty_fn = |_scope: &mut v8::HandleScope,
+                        _args: v8::FunctionCallbackArguments,
+                        _rv: v8::ReturnValue| {};
+        let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
+        let empty_fn = empty_fn.get_function(scope).unwrap();
+        promise.catch(scope, empty_fn);
         let promise_global = v8::Global::new(scope, promise);
         let mut state = state_rc.borrow_mut();
         state.pending_promise_exceptions.remove(&promise_global);
