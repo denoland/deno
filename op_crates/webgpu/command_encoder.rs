@@ -699,12 +699,12 @@ pub fn op_webgpu_command_encoder_finish(
   args: CommandEncoderFinishArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .take::<WebGPUCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
+  let instance = state.borrow::<super::Instance>();
 
   let descriptor = wgpu_types::CommandBufferDescriptor {
     label: args.label.map(Cow::from),
