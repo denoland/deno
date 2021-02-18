@@ -5,25 +5,23 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 
 type WebGPUQueue = super::WebGPUDevice;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct QueueSubmitArgs {
+pub struct QueueSubmitArgs {
   queue_rid: u32,
   command_buffers: Vec<u32>,
 }
 
 pub fn op_webgpu_queue_submit(
   state: &mut OpState,
-  args: Value,
+  args: QueueSubmitArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: QueueSubmitArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let queue_resource = state
     .resource_table
@@ -56,7 +54,7 @@ struct GPUImageDataLayout {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct QueueWriteBufferArgs {
+pub struct QueueWriteBufferArgs {
   queue_rid: u32,
   buffer: u32,
   buffer_offset: u64,
@@ -66,11 +64,9 @@ struct QueueWriteBufferArgs {
 
 pub fn op_webgpu_write_buffer(
   state: &mut OpState,
-  args: Value,
+  args: QueueWriteBufferArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: QueueWriteBufferArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
@@ -99,7 +95,7 @@ pub fn op_webgpu_write_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct QueueWriteTextureArgs {
+pub struct QueueWriteTextureArgs {
   queue_rid: u32,
   destination: super::command_encoder::GPUImageCopyTexture,
   data_layout: GPUImageDataLayout,
@@ -108,11 +104,9 @@ struct QueueWriteTextureArgs {
 
 pub fn op_webgpu_write_texture(
   state: &mut OpState,
-  args: Value,
+  args: QueueWriteTextureArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: QueueWriteTextureArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table

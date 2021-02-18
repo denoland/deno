@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -21,18 +21,16 @@ impl Resource for WebGPUComputePass {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassSetPipelineArgs {
+pub struct ComputePassSetPipelineArgs {
   compute_pass_rid: u32,
   pipeline: u32,
 }
 
 pub fn op_webgpu_compute_pass_set_pipeline(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassSetPipelineArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassSetPipelineArgs = serde_json::from_value(args)?;
-
   let compute_pipeline_resource = state
     .resource_table
     .get::<super::pipeline::WebGPUComputePipeline>(args.pipeline)
@@ -52,7 +50,7 @@ pub fn op_webgpu_compute_pass_set_pipeline(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassDispatchArgs {
+pub struct ComputePassDispatchArgs {
   compute_pass_rid: u32,
   x: u32,
   y: u32,
@@ -61,11 +59,9 @@ struct ComputePassDispatchArgs {
 
 pub fn op_webgpu_compute_pass_dispatch(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassDispatchArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassDispatchArgs = serde_json::from_value(args)?;
-
   let compute_pass_resource = state
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)
@@ -83,7 +79,7 @@ pub fn op_webgpu_compute_pass_dispatch(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassDispatchIndirectArgs {
+pub struct ComputePassDispatchIndirectArgs {
   compute_pass_rid: u32,
   indirect_buffer: u32,
   indirect_offset: u64,
@@ -91,11 +87,9 @@ struct ComputePassDispatchIndirectArgs {
 
 pub fn op_webgpu_compute_pass_dispatch_indirect(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassDispatchIndirectArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassDispatchIndirectArgs = serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)
@@ -116,7 +110,7 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassBeginPipelineStatisticsQueryArgs {
+pub struct ComputePassBeginPipelineStatisticsQueryArgs {
   compute_pass_rid: u32,
   query_set: u32,
   query_index: u32,
@@ -124,12 +118,9 @@ struct ComputePassBeginPipelineStatisticsQueryArgs {
 
 pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassBeginPipelineStatisticsQueryArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassBeginPipelineStatisticsQueryArgs =
-    serde_json::from_value(args)?;
-
   let compute_pass_resource = state
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)
@@ -152,18 +143,15 @@ pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassEndPipelineStatisticsQueryArgs {
+pub struct ComputePassEndPipelineStatisticsQueryArgs {
   compute_pass_rid: u32,
 }
 
 pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassEndPipelineStatisticsQueryArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassEndPipelineStatisticsQueryArgs =
-    serde_json::from_value(args)?;
-
   let compute_pass_resource = state
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)
@@ -180,7 +168,7 @@ pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassWriteTimestampArgs {
+pub struct ComputePassWriteTimestampArgs {
   compute_pass_rid: u32,
   query_set: u32,
   query_index: u32,
@@ -188,11 +176,9 @@ struct ComputePassWriteTimestampArgs {
 
 pub fn op_webgpu_compute_pass_write_timestamp(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassWriteTimestampArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassWriteTimestampArgs = serde_json::from_value(args)?;
-
   let compute_pass_resource = state
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)
@@ -215,18 +201,16 @@ pub fn op_webgpu_compute_pass_write_timestamp(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassEndPassArgs {
+pub struct ComputePassEndPassArgs {
   command_encoder_rid: u32,
   compute_pass_rid: u32,
 }
 
 pub fn op_webgpu_compute_pass_end_pass(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassEndPassArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassEndPassArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -251,7 +235,7 @@ pub fn op_webgpu_compute_pass_end_pass(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassSetBindGroupArgs {
+pub struct ComputePassSetBindGroupArgs {
   compute_pass_rid: u32,
   index: u32,
   bind_group: u32,
@@ -262,11 +246,9 @@ struct ComputePassSetBindGroupArgs {
 
 pub fn op_webgpu_compute_pass_set_bind_group(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassSetBindGroupArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassSetBindGroupArgs = serde_json::from_value(args)?;
-
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGPUBindGroup>(args.bind_group)
@@ -299,18 +281,16 @@ pub fn op_webgpu_compute_pass_set_bind_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassPushDebugGroupArgs {
+pub struct ComputePassPushDebugGroupArgs {
   compute_pass_rid: u32,
   group_label: String,
 }
 
 pub fn op_webgpu_compute_pass_push_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassPushDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassPushDebugGroupArgs = serde_json::from_value(args)?;
-
   let compute_pass_resource = state
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)
@@ -330,17 +310,15 @@ pub fn op_webgpu_compute_pass_push_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassPopDebugGroupArgs {
+pub struct ComputePassPopDebugGroupArgs {
   compute_pass_rid: u32,
 }
 
 pub fn op_webgpu_compute_pass_pop_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassPopDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassPopDebugGroupArgs = serde_json::from_value(args)?;
-
   let compute_pass_resource = state
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)
@@ -355,18 +333,16 @@ pub fn op_webgpu_compute_pass_pop_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ComputePassInsertDebugMarkerArgs {
+pub struct ComputePassInsertDebugMarkerArgs {
   compute_pass_rid: u32,
   marker_label: String,
 }
 
 pub fn op_webgpu_compute_pass_insert_debug_marker(
   state: &mut OpState,
-  args: Value,
+  args: ComputePassInsertDebugMarkerArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ComputePassInsertDebugMarkerArgs = serde_json::from_value(args)?;
-
   let compute_pass_resource = state
     .resource_table
     .get::<WebGPUComputePass>(args.compute_pass_rid)

@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -70,7 +70,7 @@ struct GPUBindGroupLayoutEntry {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateBindGroupLayoutArgs {
+pub struct CreateBindGroupLayoutArgs {
   device_rid: u32,
   label: Option<String>,
   entries: Vec<GPUBindGroupLayoutEntry>,
@@ -78,11 +78,9 @@ struct CreateBindGroupLayoutArgs {
 
 pub fn op_webgpu_create_bind_group_layout(
   state: &mut OpState,
-  args: Value,
+  args: CreateBindGroupLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateBindGroupLayoutArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -213,7 +211,7 @@ pub fn op_webgpu_create_bind_group_layout(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreatePipelineLayoutArgs {
+pub struct CreatePipelineLayoutArgs {
   device_rid: u32,
   label: Option<String>,
   bind_group_layouts: Vec<u32>,
@@ -221,11 +219,9 @@ struct CreatePipelineLayoutArgs {
 
 pub fn op_webgpu_create_pipeline_layout(
   state: &mut OpState,
-  args: Value,
+  args: CreatePipelineLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreatePipelineLayoutArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -276,7 +272,7 @@ struct GPUBindGroupEntry {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateBindGroupArgs {
+pub struct CreateBindGroupArgs {
   device_rid: u32,
   label: Option<String>,
   layout: u32,
@@ -285,11 +281,9 @@ struct CreateBindGroupArgs {
 
 pub fn op_webgpu_create_bind_group(
   state: &mut OpState,
-  args: Value,
+  args: CreateBindGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateBindGroupArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table

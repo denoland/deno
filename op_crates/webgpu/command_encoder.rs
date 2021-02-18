@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -38,7 +38,7 @@ fn serialize_store_op(store_op: String) -> wgpu_core::command::StoreOp {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateCommandEncoderArgs {
+pub struct CreateCommandEncoderArgs {
   device_rid: u32,
   label: Option<String>,
   _measure_execution_time: Option<bool>, // not yet implemented
@@ -46,11 +46,9 @@ struct CreateCommandEncoderArgs {
 
 pub fn op_webgpu_create_command_encoder(
   state: &mut OpState,
-  args: Value,
+  args: CreateCommandEncoderArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateCommandEncoderArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -79,7 +77,7 @@ pub fn op_webgpu_create_command_encoder(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPURenderPassColorAttachment {
+pub struct GPURenderPassColorAttachment {
   view: u32,
   resolve_target: Option<u32>,
   load_op: String,
@@ -103,7 +101,7 @@ struct GPURenderPassDepthStencilAttachment {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderBeginRenderPassArgs {
+pub struct CommandEncoderBeginRenderPassArgs {
   command_encoder_rid: u32,
   label: Option<String>,
   color_attachments: Vec<GPURenderPassColorAttachment>,
@@ -113,11 +111,9 @@ struct CommandEncoderBeginRenderPassArgs {
 
 pub fn op_webgpu_command_encoder_begin_render_pass(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderBeginRenderPassArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderBeginRenderPassArgs = serde_json::from_value(args)?;
-
   let command_encoder_resource = state
     .resource_table
     .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
@@ -243,18 +239,16 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderBeginComputePassArgs {
+pub struct CommandEncoderBeginComputePassArgs {
   command_encoder_rid: u32,
   label: Option<String>,
 }
 
 pub fn op_webgpu_command_encoder_begin_compute_pass(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderBeginComputePassArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderBeginComputePassArgs = serde_json::from_value(args)?;
-
   let command_encoder_resource = state
     .resource_table
     .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
@@ -282,7 +276,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderCopyBufferToBufferArgs {
+pub struct CommandEncoderCopyBufferToBufferArgs {
   command_encoder_rid: u32,
   source: u32,
   source_offset: u64,
@@ -293,12 +287,9 @@ struct CommandEncoderCopyBufferToBufferArgs {
 
 pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderCopyBufferToBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderCopyBufferToBufferArgs =
-    serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -356,7 +347,7 @@ pub struct GPUImageCopyTexture {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderCopyBufferToTextureArgs {
+pub struct CommandEncoderCopyBufferToTextureArgs {
   command_encoder_rid: u32,
   source: GPUImageCopyBuffer,
   destination: GPUImageCopyTexture,
@@ -365,12 +356,9 @@ struct CommandEncoderCopyBufferToTextureArgs {
 
 pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderCopyBufferToTextureArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderCopyBufferToTextureArgs =
-    serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -422,7 +410,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderCopyTextureToBufferArgs {
+pub struct CommandEncoderCopyTextureToBufferArgs {
   command_encoder_rid: u32,
   source: GPUImageCopyTexture,
   destination: GPUImageCopyBuffer,
@@ -431,12 +419,9 @@ struct CommandEncoderCopyTextureToBufferArgs {
 
 pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderCopyTextureToBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderCopyTextureToBufferArgs =
-    serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -487,7 +472,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderCopyTextureToTextureArgs {
+pub struct CommandEncoderCopyTextureToTextureArgs {
   command_encoder_rid: u32,
   source: GPUImageCopyTexture,
   destination: GPUImageCopyTexture,
@@ -496,12 +481,9 @@ struct CommandEncoderCopyTextureToTextureArgs {
 
 pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderCopyTextureToTextureArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderCopyTextureToTextureArgs =
-    serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -556,18 +538,16 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderPushDebugGroupArgs {
+pub struct CommandEncoderPushDebugGroupArgs {
   command_encoder_rid: u32,
   group_label: String,
 }
 
 pub fn op_webgpu_command_encoder_push_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderPushDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderPushDebugGroupArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -583,17 +563,15 @@ pub fn op_webgpu_command_encoder_push_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderPopDebugGroupArgs {
+pub struct CommandEncoderPopDebugGroupArgs {
   command_encoder_rid: u32,
 }
 
 pub fn op_webgpu_command_encoder_pop_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderPopDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderPopDebugGroupArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -608,18 +586,16 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderInsertDebugMarkerArgs {
+pub struct CommandEncoderInsertDebugMarkerArgs {
   command_encoder_rid: u32,
   marker_label: String,
 }
 
 pub fn op_webgpu_command_encoder_insert_debug_marker(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderInsertDebugMarkerArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderInsertDebugMarkerArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -637,7 +613,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderWriteTimestampArgs {
+pub struct CommandEncoderWriteTimestampArgs {
   command_encoder_rid: u32,
   query_set: u32,
   query_index: u32,
@@ -645,11 +621,9 @@ struct CommandEncoderWriteTimestampArgs {
 
 pub fn op_webgpu_command_encoder_write_timestamp(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderWriteTimestampArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderWriteTimestampArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -672,7 +646,7 @@ pub fn op_webgpu_command_encoder_write_timestamp(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderResolveQuerySetArgs {
+pub struct CommandEncoderResolveQuerySetArgs {
   command_encoder_rid: u32,
   query_set: u32,
   first_query: u32,
@@ -683,11 +657,9 @@ struct CommandEncoderResolveQuerySetArgs {
 
 pub fn op_webgpu_command_encoder_resolve_query_set(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderResolveQuerySetArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderResolveQuerySetArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -717,18 +689,16 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CommandEncoderFinishArgs {
+pub struct CommandEncoderFinishArgs {
   command_encoder_rid: u32,
   label: Option<String>,
 }
 
 pub fn op_webgpu_command_encoder_finish(
   state: &mut OpState,
-  args: Value,
+  args: CommandEncoderFinishArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CommandEncoderFinishArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table

@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -21,7 +21,7 @@ impl Resource for WebGPURenderPass {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetViewportArgs {
+pub struct RenderPassSetViewportArgs {
   render_pass_rid: u32,
   x: f32,
   y: f32,
@@ -33,11 +33,9 @@ struct RenderPassSetViewportArgs {
 
 pub fn op_webgpu_render_pass_set_viewport(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetViewportArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetViewportArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -58,7 +56,7 @@ pub fn op_webgpu_render_pass_set_viewport(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetScissorRectArgs {
+pub struct RenderPassSetScissorRectArgs {
   render_pass_rid: u32,
   x: u32,
   y: u32,
@@ -68,11 +66,9 @@ struct RenderPassSetScissorRectArgs {
 
 pub fn op_webgpu_render_pass_set_scissor_rect(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetScissorRectArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetScissorRectArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -100,18 +96,16 @@ pub struct GPUColor {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetBlendColorArgs {
+pub struct RenderPassSetBlendColorArgs {
   render_pass_rid: u32,
   color: GPUColor,
 }
 
 pub fn op_webgpu_render_pass_set_blend_color(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetBlendColorArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetBlendColorArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -132,18 +126,16 @@ pub fn op_webgpu_render_pass_set_blend_color(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetStencilReferenceArgs {
+pub struct RenderPassSetStencilReferenceArgs {
   render_pass_rid: u32,
   reference: u32,
 }
 
 pub fn op_webgpu_render_pass_set_stencil_reference(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetStencilReferenceArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetStencilReferenceArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -159,7 +151,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassBeginPipelineStatisticsQueryArgs {
+pub struct RenderPassBeginPipelineStatisticsQueryArgs {
   render_pass_rid: u32,
   query_set: u32,
   query_index: u32,
@@ -167,12 +159,9 @@ struct RenderPassBeginPipelineStatisticsQueryArgs {
 
 pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassBeginPipelineStatisticsQueryArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassBeginPipelineStatisticsQueryArgs =
-    serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -195,18 +184,15 @@ pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassEndPipelineStatisticsQueryArgs {
+pub struct RenderPassEndPipelineStatisticsQueryArgs {
   render_pass_rid: u32,
 }
 
 pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassEndPipelineStatisticsQueryArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassEndPipelineStatisticsQueryArgs =
-    serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -223,7 +209,7 @@ pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassWriteTimestampArgs {
+pub struct RenderPassWriteTimestampArgs {
   render_pass_rid: u32,
   query_set: u32,
   query_index: u32,
@@ -231,11 +217,9 @@ struct RenderPassWriteTimestampArgs {
 
 pub fn op_webgpu_render_pass_write_timestamp(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassWriteTimestampArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassWriteTimestampArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -258,18 +242,16 @@ pub fn op_webgpu_render_pass_write_timestamp(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassExecuteBundlesArgs {
+pub struct RenderPassExecuteBundlesArgs {
   render_pass_rid: u32,
   bundles: Vec<u32>,
 }
 
 pub fn op_webgpu_render_pass_execute_bundles(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassExecuteBundlesArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassExecuteBundlesArgs = serde_json::from_value(args)?;
-
   let mut render_bundle_ids = vec![];
 
   for rid in &args.bundles {
@@ -298,18 +280,16 @@ pub fn op_webgpu_render_pass_execute_bundles(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassEndPassArgs {
+pub struct RenderPassEndPassArgs {
   command_encoder_rid: u32,
   render_pass_rid: u32,
 }
 
 pub fn op_webgpu_render_pass_end_pass(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassEndPassArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassEndPassArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -331,7 +311,7 @@ pub fn op_webgpu_render_pass_end_pass(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetBindGroupArgs {
+pub struct RenderPassSetBindGroupArgs {
   render_pass_rid: u32,
   index: u32,
   bind_group: u32,
@@ -342,11 +322,9 @@ struct RenderPassSetBindGroupArgs {
 
 pub fn op_webgpu_render_pass_set_bind_group(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetBindGroupArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetBindGroupArgs = serde_json::from_value(args)?;
-
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGPUBindGroup>(args.bind_group)
@@ -392,18 +370,16 @@ pub fn op_webgpu_render_pass_set_bind_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassPushDebugGroupArgs {
+pub struct RenderPassPushDebugGroupArgs {
   render_pass_rid: u32,
   group_label: String,
 }
 
 pub fn op_webgpu_render_pass_push_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassPushDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassPushDebugGroupArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -423,17 +399,15 @@ pub fn op_webgpu_render_pass_push_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassPopDebugGroupArgs {
+pub struct RenderPassPopDebugGroupArgs {
   render_pass_rid: u32,
 }
 
 pub fn op_webgpu_render_pass_pop_debug_group(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassPopDebugGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassPopDebugGroupArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -448,18 +422,16 @@ pub fn op_webgpu_render_pass_pop_debug_group(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassInsertDebugMarkerArgs {
+pub struct RenderPassInsertDebugMarkerArgs {
   render_pass_rid: u32,
   marker_label: String,
 }
 
 pub fn op_webgpu_render_pass_insert_debug_marker(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassInsertDebugMarkerArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassInsertDebugMarkerArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -479,18 +451,16 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetPipelineArgs {
+pub struct RenderPassSetPipelineArgs {
   render_pass_rid: u32,
   pipeline: u32,
 }
 
 pub fn op_webgpu_render_pass_set_pipeline(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetPipelineArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetPipelineArgs = serde_json::from_value(args)?;
-
   let render_pipeline_resource = state
     .resource_table
     .get::<super::pipeline::WebGPURenderPipeline>(args.pipeline)
@@ -510,7 +480,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetIndexBufferArgs {
+pub struct RenderPassSetIndexBufferArgs {
   render_pass_rid: u32,
   buffer: u32,
   index_format: String,
@@ -520,11 +490,9 @@ struct RenderPassSetIndexBufferArgs {
 
 pub fn op_webgpu_render_pass_set_index_buffer(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetIndexBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetIndexBufferArgs = serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.buffer)
@@ -546,7 +514,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassSetVertexBufferArgs {
+pub struct RenderPassSetVertexBufferArgs {
   render_pass_rid: u32,
   slot: u32,
   buffer: u32,
@@ -556,11 +524,9 @@ struct RenderPassSetVertexBufferArgs {
 
 pub fn op_webgpu_render_pass_set_vertex_buffer(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassSetVertexBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassSetVertexBufferArgs = serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.buffer)
@@ -583,7 +549,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassDrawArgs {
+pub struct RenderPassDrawArgs {
   render_pass_rid: u32,
   vertex_count: u32,
   instance_count: u32,
@@ -593,11 +559,9 @@ struct RenderPassDrawArgs {
 
 pub fn op_webgpu_render_pass_draw(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassDrawArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassDrawArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -616,7 +580,7 @@ pub fn op_webgpu_render_pass_draw(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassDrawIndexedArgs {
+pub struct RenderPassDrawIndexedArgs {
   render_pass_rid: u32,
   index_count: u32,
   instance_count: u32,
@@ -627,11 +591,9 @@ struct RenderPassDrawIndexedArgs {
 
 pub fn op_webgpu_render_pass_draw_indexed(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassDrawIndexedArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassDrawIndexedArgs = serde_json::from_value(args)?;
-
   let render_pass_resource = state
     .resource_table
     .get::<WebGPURenderPass>(args.render_pass_rid)
@@ -651,7 +613,7 @@ pub fn op_webgpu_render_pass_draw_indexed(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassDrawIndirectArgs {
+pub struct RenderPassDrawIndirectArgs {
   render_pass_rid: u32,
   indirect_buffer: u32,
   indirect_offset: u64,
@@ -659,11 +621,9 @@ struct RenderPassDrawIndirectArgs {
 
 pub fn op_webgpu_render_pass_draw_indirect(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassDrawIndirectArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassDrawIndirectArgs = serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)
@@ -684,7 +644,7 @@ pub fn op_webgpu_render_pass_draw_indirect(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenderPassDrawIndexedIndirectArgs {
+pub struct RenderPassDrawIndexedIndirectArgs {
   render_pass_rid: u32,
   indirect_buffer: u32,
   indirect_offset: u64,
@@ -692,11 +652,9 @@ struct RenderPassDrawIndexedIndirectArgs {
 
 pub fn op_webgpu_render_pass_draw_indexed_indirect(
   state: &mut OpState,
-  args: Value,
+  args: RenderPassDrawIndexedIndirectArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenderPassDrawIndexedIndirectArgs = serde_json::from_value(args)?;
-
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)

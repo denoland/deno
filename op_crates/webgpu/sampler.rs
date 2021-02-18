@@ -4,7 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -61,7 +61,7 @@ pub fn serialize_compare_function(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateSamplerArgs {
+pub struct CreateSamplerArgs {
   device_rid: u32,
   label: Option<String>,
   address_mode_u: Option<String>,
@@ -78,11 +78,9 @@ struct CreateSamplerArgs {
 
 pub fn op_webgpu_create_sampler(
   state: &mut OpState,
-  args: Value,
+  args: CreateSamplerArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateSamplerArgs = serde_json::from_value(args)?;
-
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
