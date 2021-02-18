@@ -995,9 +995,9 @@
           "OperationError",
         );
       }
-      if ((offset + rangeSize) <= this[_size]) {
+      if ((offset + rangeSize) > this[_size]) {
         throw new DOMException(
-          `${prefix}: offset + rangeSize must be less or equal to buffer size.`,
+          `${prefix}: offset + rangeSize must be less than or equal to buffer size.`,
           "OperationError",
         );
       }
@@ -1009,9 +1009,9 @@
       }
       const readMode = (mode & 0x0001) === 0x0001;
       const writeMode = (mode & 0x0002) === 0x0002;
-      if (readMode && writeMode) {
+      if ((readMode && writeMode) || (!readMode && !writeMode)) {
         throw new DOMException(
-          `${prefix}: only one of READ or WRITE map mode may be set.`,
+          `${prefix}: exactly one of READ or WRITE map mode must be set.`,
           "OperationError",
         );
       }
@@ -1053,7 +1053,6 @@
     getMappedRange(offset = 0, size) {
       webidl.assertBranded(this, GPUBuffer);
       const prefix = "Failed to execute 'getMappedRange' on 'GPUBuffer'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
       offset = webidl.converters.GPUSize64(offset, {
         prefix,
         context: "Argument 1",
@@ -1093,13 +1092,13 @@
       if (!mappingRange) {
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
       }
-      if (offset >= mappingRange[0]) {
+      if (offset < mappingRange[0]) {
         throw new DOMException(
           `${prefix}: offset is out of bounds.`,
           "OperationError",
         );
       }
-      if ((offset + rangeSize) <= mappingRange[1]) {
+      if ((offset + rangeSize) > mappingRange[1]) {
         throw new DOMException(
           `${prefix}: offset is out of bounds.`,
           "OperationError",
@@ -1157,14 +1156,28 @@
       } else if (
         this[_state] === "mapped" || this[_state] === "mapped at creation"
       ) {
+        /** @type {boolean} */
+        let write = false;
+        if (this[_state] === "mapped at creation") {
+          write = true;
+        } else if (this[_state] === "mapped") {
+          const mapMode = this[_mapMode];
+          if (mapMode === undefined) {
+            throw new DOMException(
+              `${prefix}: invalid state.`,
+              "OperationError",
+            );
+          }
+          if ((mapMode & 0x0002) === 0x0002) {
+            write = true;
+          }
+        }
+
         const mappedRanges = this[_mappedRanges];
-        const mapMode = this[_mapMode];
-        if (!mappedRanges || !mapMode) {
+        if (!mappedRanges) {
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
         for (const [buffer, rid] of mappedRanges) {
-          const write = this[_state] === "mapped at creation" ||
-            (this[_state] === "mapped" && (mapMode & 0x0002) === 0x0002);
           core.jsonOpSync("op_webgpu_buffer_unmap", {
             bufferRid: this[_rid],
             mappedRid: rid,
