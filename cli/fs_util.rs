@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::{generic_error, AnyError};
+use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
@@ -116,8 +116,6 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
 
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
-///
-/// Keep in mind this function attempts to create a list of file paths on the local filesystem.
 pub fn collect_files<P>(
   files: &[PathBuf],
   ignore: &[PathBuf],
@@ -152,10 +150,6 @@ where
     {
       target_files.push(entry.into_path().canonicalize()?)
     }
-  }
-
-  if target_files.is_empty() {
-    return Err(generic_error("No target files found."));
   }
 
   Ok(target_files)
@@ -244,17 +238,16 @@ mod tests {
     assert!(!is_supported_ext_md(Path::new("foo.mjsx")));
   }
 
-  fn create_files(dir_path: impl AsRef<Path>, files: &[&str]) {
-    let dir_path = dir_path.as_ref();
-    std::fs::create_dir(dir_path).expect("Failed to create directory");
-    for f in files {
-      let path = dir_path.join(f);
-      std::fs::write(path, "").expect("Failed to create file");
-    }
-  }
-
   #[test]
   fn test_collect_files() {
+    fn create_files(dir_path: &PathBuf, files: &[&str]) {
+      std::fs::create_dir(dir_path).expect("Failed to create directory");
+      for f in files {
+        let path = dir_path.join(f);
+        std::fs::write(path, "").expect("Failed to create file");
+      }
+    }
+
     // dir.ts
     // ├── a.ts
     // ├── b.js
@@ -304,30 +297,5 @@ mod tests {
       assert!(result.iter().any(|r| r.ends_with(e)));
     }
     assert_eq!(result.len(), expected.len());
-  }
-
-  #[test]
-  fn test_collect_files_with_url() {
-    const URL: &str = "https://deno.land/std@0.85.0/examples/welcome.ts";
-
-    // https://github.com/denoland/deno/issues/9518
-    // Fails if only URL is passed since no target files can be found locally
-    let files = vec![PathBuf::from(URL)];
-    let result = collect_files(&files, &[], |_| true);
-    assert!(result.is_err());
-
-    // If file paths that include both a URL and a local file path are passed to `collect_files`,
-    // it returns valid file paths, ignoring the URL.
-    let t = TempDir::new().expect("tempdir fail");
-    let root_dir_path = t.path().join("root");
-    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
-    create_files(&root_dir_path, &root_dir_files);
-    let result =
-      collect_files(&[PathBuf::from(URL), root_dir_path], &[], |_| true)
-        .unwrap();
-    for expected in root_dir_files.iter() {
-      assert!(result.iter().any(|r| r.ends_with(expected)));
-    }
-    assert_eq!(result.len(), root_dir_files.len());
   }
 }
