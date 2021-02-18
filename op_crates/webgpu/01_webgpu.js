@@ -1237,6 +1237,12 @@
     destroy() {
       throw new Error("Not yet implemented");
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
 
   class GPUBufferUsage {
@@ -1333,6 +1339,12 @@
     destroy() {
       throw new Error("Not yet implemented");
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPUTexture", GPUTexture);
 
@@ -1377,6 +1389,12 @@
     constructor() {
       webidl.illegalConstructor();
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPUTextureView", GPUTextureView);
 
@@ -1398,6 +1416,12 @@
 
     constructor() {
       webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPUSampler", GPUSampler);
@@ -1421,6 +1445,12 @@
     constructor() {
       webidl.illegalConstructor();
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPUBindGroupLayout", GPUBindGroupLayout);
 
@@ -1443,6 +1473,12 @@
     constructor() {
       webidl.illegalConstructor();
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPUPipelineLayout", GPUPipelineLayout);
 
@@ -1464,6 +1500,12 @@
 
     constructor() {
       webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPUBindGroup", GPUBindGroup);
@@ -1490,6 +1532,12 @@
 
     compilationInfo() {
       throw new Error("Not yet implemented");
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPUShaderModule", GPUShaderModule);
@@ -1554,6 +1602,12 @@
 
       return createGPUBindGroupLayout(label, rid);
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPUComputePipeline", GPUComputePipeline);
 
@@ -1598,6 +1652,12 @@
       );
 
       return createGPUBindGroupLayout(label, rid);
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
@@ -2111,6 +2171,12 @@
       this[_rid] = undefined;
 
       return createGPUCommandBuffer(descriptor.label ?? null, rid);
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
@@ -2732,6 +2798,12 @@
         indirectOffset,
       });
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPURenderPassEncoder", GPURenderPassEncoder);
 
@@ -3010,6 +3082,12 @@
         markerLabel,
       });
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPUComputePassEncoder", GPUComputePassEncoder);
 
@@ -3034,8 +3112,15 @@
       webidl.illegalConstructor();
     }
 
-    get executionTime() {
+    async get executionTime() {
       throw new Error("Not yet implemented");
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+        // TODO: executionTime
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPUCommandBuffer", GPUCommandBuffer);
@@ -3407,6 +3492,12 @@
 
       throw new Error("Not yet implemented");
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
+    }
   }
   GPUObjectBaseMixin("GPURenderBundleEncoder", GPURenderBundleEncoder);
 
@@ -3429,6 +3520,12 @@
 
     constructor() {
       webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
@@ -3462,6 +3559,12 @@
     destroy() {
       webidl.assertBranded(this, GPUQuerySet);
       throw new Error("Not yet implemented");
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({
+        label: this.label,
+      })}`;
     }
   }
   GPUObjectBaseMixin("GPUQuerySet", GPUQuerySet);
