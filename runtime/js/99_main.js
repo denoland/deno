@@ -268,6 +268,7 @@ delete Object.prototype.__proto__;
     GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
     GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
     GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
+    GPUShaderStage: util.nonEnumerable(webgpu.GPUShaderStage),
     GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
     GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
     GPUColorWrite: util.nonEnumerable(webgpu.GPUColorWrite),
