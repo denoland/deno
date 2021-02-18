@@ -161,6 +161,11 @@ jobs:
           - ubuntu-18.04
           - windows-2019
           - macos-10.15
+        exclude:
+          - kind: debug
+            os: windows-2019
+          - kind: debug
+            os: macos-10.15
 
     env:
       CARGO_INCREMENTAL: 0
