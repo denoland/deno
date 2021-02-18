@@ -2779,6 +2779,11 @@ console.log("finish");
     output: "084_worker_custom_inspect.ts.out",
   });
 
+  itest!(_085_dynamic_import_async_error {
+    args: "run --allow-read 085_dynamic_import_async_error.ts",
+    output: "085_dynamic_import_async_error.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
