@@ -211,7 +211,6 @@ pub fn op_webgpu_compute_pass_end_pass(
   args: ComputePassEndPassArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGPUCommandEncoder>(
@@ -221,9 +220,10 @@ pub fn op_webgpu_compute_pass_end_pass(
   let command_encoder = command_encoder_resource.0;
   let compute_pass_resource = state
     .resource_table
-    .get::<WebGPUComputePass>(args.compute_pass_rid)
+    .take::<WebGPUComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
   let compute_pass = &compute_pass_resource.0.borrow();
+  let instance = state.borrow::<super::Instance>();
 
   gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(
     command_encoder,
