@@ -698,11 +698,56 @@
     };
   }
 
-  function illegalConstructor() {
-    throw new TypeError("Illegal constructor");
+  // https://heycam.github.io/webidl/#es-sequence
+  function createSequenceConverter(converter) {
+    return function (V, opts = {}) {
+      if (typeof V !== "object") {
+        throw makeException(
+          TypeError,
+          "can not be converted to sequence.",
+          opts,
+        );
+      }
+      const method = V?.[Symbol.iterator];
+      if (method === undefined) {
+        throw makeException(
+          TypeError,
+          "can not be converted to sequence.",
+          opts,
+        );
+      }
+      const iter = method();
+      const array = [];
+      while (true) {
+        const res = iter?.next?.();
+        if (res === undefined) {
+          throw makeException(
+            TypeError,
+            "can not be converted to sequence.",
+            opts,
+          );
+        }
+        if (res.done === true) break;
+        const val = converter(val, {
+          ...opts,
+          context: `${opts.context}, index ${array.length}`,
+        });
+        array.push(val);
+      }
+      return array;
+    };
   }
 
   const brand = Symbol("[[webidl.brand]]");
+
+  function createInterfaceConverter(name, prototype) {
+    return (V, opts) => {
+      if (!(V instanceof prototype) || V[brand] !== brand) {
+        throw makeException(TypeError, `is not of type ${name}.`, opts);
+      }
+      return V;
+    };
+  }
 
   function createBranded(Type) {
     const t = Object.create(Type.prototype);
@@ -716,13 +761,8 @@
     }
   }
 
-  function createInterfaceConverter(name, prototype) {
-    return (V, opts) => {
-      if (!(V instanceof prototype) || V[brand] !== brand) {
-        throw makeException(TypeError, `is not of type ${name}.`, opts);
-      }
-      return V;
-    };
+  function illegalConstructor() {
+    throw new TypeError("Illegal constructor");
   }
 
   window.__bootstrap ??= {};
@@ -732,10 +772,11 @@
     createDictionaryConverter,
     createEnumConverter,
     createNullableConverter,
-    illegalConstructor,
+    createSequenceConverter,
+    createInterfaceConverter,
     brand,
     createBranded,
     assertBranded,
-    createInterfaceConverter,
+    illegalConstructor,
   };
 })(this);
