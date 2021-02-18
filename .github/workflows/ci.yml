@@ -21,8 +21,8 @@ jobs:
       CARGO_TERM_COLOR: always
 
     outputs:
-      commit: ${{ steps.commit.outputs.hash }}
-      tag: ${{ steps.ref.outputs.tag }}
+      type: ${{ steps.release.outputs.type }}
+      ref: ${{ steps.release.outputs.ref }}
 
     steps:
       - name: Configure git
@@ -34,14 +34,11 @@ jobs:
           fetch-depth: 5
           submodules: true
 
-      - name: Get commit hash
-        id: commit
-        run: echo "::set-output name=hash::$(git rev-parse HEAD)"
-
-      - name: Get commit tag
-        if: startsWith(github.ref, 'refs/tags/')
-        id: ref
-        run: echo "::set-output name=tag::$(echo ${GITHUB_REF#refs/*/})"
+      - name: Get release info
+        id: release
+        run: |
+          echo "::set-output name=type::${{ github.ref == 'refs/heads/master' && 'canary' || startsWith(github.ref, 'refs/tags/') && 'release' }}"
+          echo "::set-output name=ref::${{ github.ref == 'refs/heads/master' && '$(git rev-parse HEAD)' || startsWith(github.ref, 'refs/tags/') && '$(echo ${GITHUB_REF#refs/*/})' }}"
 
       - name: Create source tarball
         if: runner.os == 'Linux'
@@ -57,7 +54,7 @@ jobs:
           toolchain: 1.50.0
 
       - name: Configure canary build
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+        if: github.repository == 'denoland/deno' && steps.release.outputs.type == 'canary'
         shell: bash
         run: echo 'DENO_CANARY=true' >> $GITHUB_ENV
 
@@ -106,7 +103,7 @@ jobs:
           retention-days: 7
 
   release:
-    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+    if: github.repository == 'denoland/deno' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -122,22 +119,15 @@ jobs:
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
-      - name: Upload canary Builds
+      - name: Upload Builds
         run: |
-          gsutil cp ./artifacts/*.zip gs://dl.deno.land/canary/${{ needs.build.outputs.commit }}/
-          echo ${{ needs.build.outputs.commit }} > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
-
-      - name: Upload release Builds
-        if: startsWith(needs.build.outputs.tag, 'v')
-        run: |
-          gsutil cp ./artifacts/*.zip gs://dl.deno.land/canary/${{ needs.build.outputs.tag }}/
-          echo ${{ needs.build.outputs.tag }} > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+          gsutil cp ./artifacts/*.zip gs://dl.deno.land/${{ needs.build.outputs.type }}/${{ needs.build.outputs.ref }}/
+          echo ${{ needs.build.outputs.ref }} > ${{ needs.build.outputs.type }}-latest.txt
+          gsutil cp ${{ needs.build.outputs.type }}-latest.txt gs://dl.deno.land/${{ needs.build.outputs.type }}-latest.txt
 
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v1
-        if: startsWith(needs.build.outputs.tag, 'v')
+        if: needs.build.outputs.type == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
