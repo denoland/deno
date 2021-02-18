@@ -747,7 +747,7 @@
         ...descriptor,
       });
 
-      return createGPUQuerySet(descriptor.label ?? null, rid);
+      return createGPUQuerySet(descriptor.label ?? null, rid, descriptor);
     }
   }
   GPUObjectBaseMixin("GPUDevice", GPUDevice);
@@ -966,9 +966,9 @@
     }
 
     /**
-     * @param {number} mode 
-     * @param {number} offset 
-     * @param {number} [size] 
+     * @param {number} mode
+     * @param {number} offset
+     * @param {number} [size]
      */
     async mapAsync(mode, offset = 0, size) {
       webidl.assertBranded(this, GPUBuffer);
@@ -1059,8 +1059,8 @@
     }
 
     /**
-     * @param {number} offset 
-     * @param {number} size 
+     * @param {number} offset
+     * @param {number} size
      */
     getMappedRange(offset = 0, size) {
       webidl.assertBranded(this, GPUBuffer);
@@ -3165,22 +3165,27 @@
   }
   GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
 
+  const _descriptor = symbol("[[descriptor]]");
+
   /**
    * @param {string | null} label
    * @param {number} rid
    * @returns {GPUQuerySet}
    */
-  function createGPUQuerySet(label, rid) {
+  function createGPUQuerySet(label, rid, descriptor) {
     /** @type {GPUQuerySet} */
     const queue = webidl.createBranded(GPUQuerySet);
     queue[_label] = label;
     queue[_rid] = rid;
+    queue[_descriptor] = descriptor;
     return queue;
   }
 
   class GPUQuerySet {
     /** @type {number} */
     [_rid];
+    /** @type {GPUQuerySetDescriptor} */
+    [_descriptor];
 
     constructor() {
       webidl.illegalConstructor();
