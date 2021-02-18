@@ -3112,7 +3112,7 @@
       webidl.illegalConstructor();
     }
 
-    async get executionTime() {
+    get executionTime() {
       throw new Error("Not yet implemented");
     }
 
