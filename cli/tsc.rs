@@ -383,7 +383,10 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
           } else {
             resolved_specifier.to_string()
           };
-          resolved.push((resolved_specifier_str, media_type.as_ts_extension()));
+          resolved.push((
+            resolved_specifier_str,
+            media_type.as_ts_extension().into(),
+          ));
         }
         // in certain situations, like certain dynamic imports, we won't have
         // the source file in the graph, so we will return a fake module to

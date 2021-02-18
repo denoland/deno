@@ -295,9 +295,11 @@ pub async fn generate_dependency_diagnostics(
                 }
                 ResolvedDependency::Resolved(specifier) => {
                   if !(state_snapshot.documents.contains_key(&specifier) || sources.contains_key(&specifier)) {
-                    let is_local = specifier.scheme() == "file";
-                    let (code, message) = if is_local {
+                    let scheme = specifier.scheme();
+                    let (code, message) = if scheme == "file" {
                       (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier))
+                    } else if scheme == "data" {
+                      (Some(lsp::NumberOrString::String("no-cache-data".to_string())), "Uncached data URL.".to_string())
                     } else {
                       (Some(lsp::NumberOrString::String("no-cache".to_string())), format!("Unable to load the remote module: \"{}\".", specifier))
                     };

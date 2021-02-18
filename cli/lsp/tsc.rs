@@ -7,7 +7,6 @@ use super::language_server;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::text::LineIndex;
-use super::utils;
 
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
@@ -480,40 +479,41 @@ impl DocumentSpan {
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).unwrap();
-    if let Ok(target_line_index) =
-      language_server.get_line_index(target_specifier).await
-    {
-      let target_uri = utils::normalize_file_name(&self.file_name).unwrap();
-      let (target_range, target_selection_range) =
-        if let Some(context_span) = &self.context_span {
-          (
-            context_span.to_range(&target_line_index),
-            self.text_span.to_range(&target_line_index),
-          )
-        } else {
-          (
-            self.text_span.to_range(&target_line_index),
-            self.text_span.to_range(&target_line_index),
-          )
-        };
-      let origin_selection_range =
-        if let Some(original_context_span) = &self.original_context_span {
-          Some(original_context_span.to_range(line_index))
-        } else if let Some(original_text_span) = &self.original_text_span {
-          Some(original_text_span.to_range(line_index))
-        } else {
-          None
-        };
-      let link = lsp::LocationLink {
-        origin_selection_range,
-        target_uri,
-        target_range,
-        target_selection_range,
+    let target_line_index = language_server
+      .get_line_index(target_specifier.clone())
+      .await
+      .ok()?;
+    let target_uri = language_server
+      .url_map
+      .normalize_specifier(&target_specifier)
+      .unwrap();
+    let (target_range, target_selection_range) =
+      if let Some(context_span) = &self.context_span {
+        (
+          context_span.to_range(&target_line_index),
+          self.text_span.to_range(&target_line_index),
+        )
+      } else {
+        (
+          self.text_span.to_range(&target_line_index),
+          self.text_span.to_range(&target_line_index),
+        )
       };
-      Some(link)
-    } else {
-      None
-    }
+    let origin_selection_range =
+      if let Some(original_context_span) = &self.original_context_span {
+        Some(original_context_span.to_range(line_index))
+      } else if let Some(original_text_span) = &self.original_text_span {
+        Some(original_text_span.to_range(line_index))
+      } else {
+        None
+      };
+    let link = lsp::LocationLink {
+      origin_selection_range,
+      target_uri,
+      target_range,
+      target_selection_range,
+    };
+    Some(link)
   }
 }
 
@@ -589,9 +589,16 @@ pub struct ImplementationLocation {
 }
 
 impl ImplementationLocation {
-  pub fn to_location(&self, line_index: &LineIndex) -> lsp::Location {
-    let uri =
-      utils::normalize_file_name(&self.document_span.file_name).unwrap();
+  pub(crate) fn to_location(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+  ) -> lsp::Location {
+    let specifier = resolve_url(&self.document_span.file_name).unwrap();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .unwrap();
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
@@ -633,8 +640,8 @@ impl RenameLocations {
     let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
-      let uri = utils::normalize_file_name(&location.document_span.file_name)?;
       let specifier = resolve_url(&location.document_span.file_name)?;
+      let uri = language_server.url_map.normalize_specifier(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -852,9 +859,16 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
-  pub fn to_location(&self, line_index: &LineIndex) -> lsp::Location {
-    let uri =
-      utils::normalize_file_name(&self.document_span.file_name).unwrap();
+  pub(crate) fn to_location(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+  ) -> lsp::Location {
+    let specifier = resolve_url(&self.document_span.file_name).unwrap();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .unwrap();
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
@@ -1237,7 +1251,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         if specifier.starts_with("asset:///") {
           resolved.push(Some((
             specifier.clone(),
-            MediaType::from(specifier).as_ts_extension(),
+            MediaType::from(specifier).as_ts_extension().into(),
           )))
         } else if let Some(dependency) = dependencies.get(specifier) {
           let resolved_import =
@@ -1259,7 +1273,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               let media_type = MediaType::from(&resolved_specifier);
               resolved.push(Some((
                 resolved_specifier.to_string(),
-                media_type.as_ts_extension(),
+                media_type.as_ts_extension().into(),
               )));
             } else if sources.contains_key(&resolved_specifier) {
               let media_type = if let Some(media_type) =
@@ -1271,7 +1285,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               };
               resolved.push(Some((
                 resolved_specifier.to_string(),
-                media_type.as_ts_extension(),
+                media_type.as_ts_extension().into(),
               )));
             } else {
               resolved.push(None);
@@ -1289,7 +1303,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
       {
         resolved.push(Some((
           resolved_specifier.to_string(),
-          media_type.as_ts_extension(),
+          media_type.as_ts_extension().into(),
         )));
       } else {
         resolved.push(None);
