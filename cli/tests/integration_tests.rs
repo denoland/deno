@@ -524,7 +524,9 @@ mod integration {
       .expect("Failed to spawn script")
       .wait()
       .expect("Failed to wait for child process");
-    assert!(!status.success()); // No target files found
+    // No target files found
+    assert!(!status.success());
+
     // Check without ignore.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
@@ -537,6 +539,7 @@ mod integration {
       .wait()
       .expect("Failed to wait for child process");
     assert!(!status.success());
+
     // Format the source file.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
@@ -4960,7 +4963,10 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(!output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stderr), "error: No target files found.\n");
+    assert_eq!(
+      String::from_utf8_lossy(&output.stderr),
+      "error: No target files found.\n"
+    );
   }
 
   #[test]
@@ -4977,7 +4983,10 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(!output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stderr), "error: No target files found.\n");
+    assert_eq!(
+      String::from_utf8_lossy(&output.stderr),
+      "error: No target files found.\n"
+    );
   }
 
   #[test]
