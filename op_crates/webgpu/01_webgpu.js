@@ -1378,9 +1378,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUBuffer", GPUBuffer);
@@ -1512,9 +1514,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUTexture", GPUTexture);
@@ -1577,9 +1581,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUTextureView", GPUTextureView);
@@ -1618,9 +1624,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUSampler", GPUSampler);
@@ -1659,9 +1667,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUBindGroupLayout", GPUBindGroupLayout);
@@ -1700,9 +1710,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUPipelineLayout", GPUPipelineLayout);
@@ -1739,9 +1751,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUBindGroup", GPUBindGroup);
@@ -1784,9 +1798,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUShaderModule", GPUShaderModule);
@@ -1873,9 +1889,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUComputePipeline", GPUComputePipeline);
@@ -1943,9 +1961,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
@@ -2532,9 +2552,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
@@ -3229,9 +3251,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPURenderPassEncoder", GPURenderPassEncoder);
@@ -3560,9 +3584,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUComputePassEncoder", GPUComputePassEncoder);
@@ -3606,10 +3632,12 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-        // TODO: executionTime
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+          // TODO: executionTime
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUCommandBuffer", GPUCommandBuffer);
@@ -4038,9 +4066,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPURenderBundleEncoder", GPURenderBundleEncoder);
@@ -4080,9 +4110,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
@@ -4132,9 +4164,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUQuerySet", GPUQuerySet);
