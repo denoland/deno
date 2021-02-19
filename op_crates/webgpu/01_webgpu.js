@@ -798,12 +798,14 @@
       return renderPipeline;
     }
 
-    async createComputePipelineAsync(descriptor) {
-      return this.createComputePipeline(descriptor);
+    createComputePipelineAsync(descriptor) {
+      // TODO(lucacasonato): this should be real async
+      return Promise.resolve(this.createComputePipeline(descriptor));
     }
 
-    async createRenderPipelineAsync(descriptor) {
-      return this.createRenderPipeline(descriptor);
+    createRenderPipelineAsync(descriptor) {
+      // TODO(lucacasonato): this should be real async
+      return Promise.resolve(this.createRenderPipeline(descriptor));
     }
 
     /**
@@ -3635,7 +3637,7 @@
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
-          // TODO: executionTime
+          // TODO(crowlKats): executionTime
         })
       }`;
     }
