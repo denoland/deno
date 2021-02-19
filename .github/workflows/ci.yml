@@ -353,7 +353,7 @@ jobs:
           command: bench
 
       - name: Post Benchmarks
-        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+        if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
@@ -373,7 +373,7 @@ jobs:
 
   release-canary:
     name: release / canary
-    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
