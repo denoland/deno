@@ -21,7 +21,6 @@ jobs:
       CARGO_TERM_COLOR: always
 
     outputs:
-      type: ${{ steps.release.outputs.type }}
       ref: ${{ steps.release.outputs.ref }}
 
     steps:
@@ -36,15 +35,7 @@ jobs:
 
       - name: Get release info
         id: release
-        run: |
-          echo "::set-output name=type::${{ github.ref == 'refs/heads/master' && 'canary' || startsWith(github.ref, 'refs/tags/') && 'release' }}"
-          echo "::set-output name=ref::${{ github.ref == 'refs/heads/master' && '$(git rev-parse HEAD)' || startsWith(github.ref, 'refs/tags/') && '$(echo ${GITHUB_REF#refs/*/})' }}"
-
-      - name: Create source tarball
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno
+        run: echo "::set-output name=ref::$(git rev-parse HEAD)"
 
       - name: Install rust
         uses: actions-rs/toolchain@v1
@@ -54,7 +45,6 @@ jobs:
           toolchain: 1.50.0
 
       - name: Configure canary build
-        if: github.repository == 'denoland/deno' && steps.release.outputs.type == 'canary'
         shell: bash
         run: echo 'DENO_CANARY=true' >> $GITHUB_ENV
 
@@ -71,7 +61,6 @@ jobs:
         run: |
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
-          ./deno types > lib.deno.d.ts
 
       - name: Prep mac release
         if: runner.os == 'macOS'
@@ -90,7 +79,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: artifacts
+          name: canary
           path: |
             target/release/deno-x86_64-unknown-linux-gnu.zip
             target/release/deno-x86_64-pc-windows-msvc.zip
@@ -98,46 +87,7 @@ jobs:
             target/release/denort-x86_64-unknown-linux-gnu.zip
             target/release/denort-x86_64-pc-windows-msvc.zip
             target/release/denort-x86_64-apple-darwin.zip
-            target/release/deno_src.tar.gz
-            target/release/lib.deno.d.ts
           retention-days: 7
-
-  release:
-    if: github.repository == 'denoland/deno' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v2
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@master
-        with:
-          project_id: denoland
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
-
-      - name: Upload Builds
-        run: |
-          gsutil cp ./artifacts/*.zip gs://dl.deno.land/${{ needs.build.outputs.type }}/${{ needs.build.outputs.ref }}/
-          echo ${{ needs.build.outputs.ref }} > ${{ needs.build.outputs.type }}-latest.txt
-          gsutil cp ${{ needs.build.outputs.type }}-latest.txt gs://dl.deno.land/${{ needs.build.outputs.type }}-latest.txt
-
-      - name: Upload release to GitHub
-        uses: softprops/action-gh-release@v1
-        if: needs.build.outputs.type == 'release'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          files: |
-            artifacts/deno-x86_64-unknown-linux-gnu.zip
-            artifacts/deno-x86_64-pc-windows-msvc.zip
-            artifacts/deno-x86_64-apple-darwin.zip
-            artifacts/lib.deno.d.ts
-            artifacts/deno_src.tar.gz
-          draft: true
 
   test:
     name: test / ${{ matrix.kind }} / ${{ matrix.os }}
@@ -157,6 +107,9 @@ jobs:
           - kind: debug
             os: macos-10.15
 
+    outputs:
+      ref: ${{ steps.release.outputs.ref }}
+
     env:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
@@ -171,6 +124,16 @@ jobs:
         with:
           fetch-depth: 5
           submodules: true
+
+      - name: Get release info
+        id: release
+        run: echo "::set-output name=ref::$(echo ${GITHUB_REF#refs/*/})"
+
+      - name: Create source tarball
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p target/release
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: actions-rs/toolchain@v1
@@ -243,6 +206,44 @@ jobs:
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet ${{ matrix.kind == 'release' && '--release' || '' }}
+
+      - name: Prep linux release
+        if: matrix.kind == 'release' && runner.os == 'Linux'
+        working-directory: target/release
+        run: |
+          zip -r deno-x86_64-unknown-linux-gnu.zip deno
+          zip -r denort-x86_64-unknown-linux-gnu.zip denort
+          ./deno types > lib.deno.d.ts
+
+      - name: Prep mac release
+        if: matrix.kind == 'release' && runner.os == 'macOS'
+        working-directory: target/release
+        run: |
+          zip -r deno-x86_64-apple-darwin.zip deno
+          zip -r denort-x86_64-apple-darwin.zip denort
+
+      - name: Prep windows release
+        if: matrix.kind == 'release' && runner.os == 'Windows'
+        working-directory: target/release
+        run: |
+          Compress-Archive -CompressionLevel Optimal -Force -Path deno.exe -DestinationPath deno-x86_64-pc-windows-msvc.zip
+          Compress-Archive -CompressionLevel Optimal -Force -Path denort.exe -DestinationPath denort-x86_64-pc-windows-msvc.zip
+
+      - name: Upload Artifacts
+        if: matrix.kind == 'release'
+        uses: actions/upload-artifact@v2
+        with:
+          name: stable
+          path: |
+            target/release/deno-x86_64-unknown-linux-gnu.zip
+            target/release/deno-x86_64-pc-windows-msvc.zip
+            target/release/deno-x86_64-apple-darwin.zip
+            target/release/denort-x86_64-unknown-linux-gnu.zip
+            target/release/denort-x86_64-pc-windows-msvc.zip
+            target/release/denort-x86_64-apple-darwin.zip
+            target/release/deno_src.tar.gz
+            target/release/lib.deno.d.ts
+          retention-days: 7
 
   lint:
     runs-on: ubuntu-latest
@@ -369,3 +370,70 @@ jobs:
         run: |
           cat /proc/cpuinfo
           cat /proc/meminfo
+
+  release-canary:
+    name: release / canary
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: canary
+          path: ./canary
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload Builds
+        run: |
+          gsutil cp ./canary/*.zip gs://dl.deno.land/canary/${{ needs.build.outputs.ref }}/
+          echo ${{ needs.build.outputs.ref }} > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
+  release-stable:
+    name: release / stable
+    if: github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/')
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: stable
+          path: ./stable
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload Builds
+        run: |
+          gsutil cp ./stable/*.zip gs://dl.deno.land/release/${{ needs.test.outputs.ref }}/
+          echo ${{ needs.test.outputs.ref }} > release-latest.txt
+          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+
+      - name: Release to GitHub
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            stable/deno-x86_64-unknown-linux-gnu.zip
+            stable/deno-x86_64-pc-windows-msvc.zip
+            stable/deno-x86_64-apple-darwin.zip
+            stable/lib.deno.d.ts
+            stable/deno_src.tar.gz
+          draft: true
