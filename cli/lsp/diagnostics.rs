@@ -229,11 +229,12 @@ fn ts_json_to_diagnostics(
     .collect()
 }
 
+// None is returned if getting diagnostics was cancelled.
 pub async fn generate_ts_diagnostics(
   state_snapshot: StateSnapshot,
   diagnostic_collection: DiagnosticCollection,
   ts_server: &tsc::TsServer,
-) -> Result<DiagnosticVec, AnyError> {
+) -> Result<Option<DiagnosticVec>, AnyError> {
   let mut diagnostics = Vec::new();
   let mut specifiers = Vec::new();
   for specifier in state_snapshot.documents.open_specifiers() {
@@ -244,20 +245,25 @@ pub async fn generate_ts_diagnostics(
     }
   }
   if !specifiers.is_empty() {
-    let req = tsc::RequestMethod::GetDiagnostics(specifiers);
-    let res = ts_server.request(state_snapshot.clone(), req).await?;
-    let ts_diagnostic_map: TsDiagnostics = serde_json::from_value(res)?;
-    for (specifier_str, ts_diagnostics) in ts_diagnostic_map.iter() {
-      let specifier = deno_core::resolve_url(specifier_str)?;
-      let version = state_snapshot.documents.version(&specifier);
-      diagnostics.push((
-        specifier,
-        version,
-        ts_json_to_diagnostics(ts_diagnostics),
-      ));
+    let maybe_val = ts_server
+      .diagnostics_request(state_snapshot.clone(), specifiers)
+      .await?;
+    if let Some(val) = maybe_val {
+      let ts_diagnostic_map: TsDiagnostics = serde_json::from_value(val)?;
+      for (specifier_str, ts_diagnostics) in ts_diagnostic_map.iter() {
+        let specifier = deno_core::resolve_url(specifier_str)?;
+        let version = state_snapshot.documents.version(&specifier);
+        diagnostics.push((
+          specifier,
+          version,
+          ts_json_to_diagnostics(ts_diagnostics),
+        ));
+      }
+    } else {
+      return Ok(None);
     }
   }
-  Ok(diagnostics)
+  Ok(Some(diagnostics))
 }
 
 pub async fn generate_dependency_diagnostics(

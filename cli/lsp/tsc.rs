@@ -17,6 +17,7 @@ use crate::tsc_config::TsConfig;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::json_op_sync;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
@@ -34,9 +35,13 @@ use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use text_size::TextSize;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 type Request = (
@@ -45,12 +50,30 @@ type Request = (
   oneshot::Sender<Result<Value, AnyError>>,
 );
 
+type DiagnosticsRequest = (
+  HashSet<ModuleSpecifier>,
+  StateSnapshot,
+  oneshot::Sender<Result<Option<Value>, AnyError>>,
+);
+
 #[derive(Clone, Debug)]
-pub struct TsServer(mpsc::UnboundedSender<Request>);
+pub struct TsServer {
+  requests_queue: mpsc::UnboundedSender<Request>,
+  diagnostics_notifier: mpsc::Sender<()>,
+  diagnostics_request: Arc<Mutex<Option<DiagnosticsRequest>>>,
+}
 
 impl TsServer {
   pub fn new() -> Self {
-    let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
+    let (requests_queue_tx, mut requests_queue_rx) =
+      mpsc::unbounded_channel::<Request>();
+    let (diagnostics_notifier_tx, mut diagnostics_notifier_rx) =
+      mpsc::channel::<()>(1);
+    let diagnostics_request: Arc<Mutex<Option<DiagnosticsRequest>>> =
+      Default::default();
+
+    let diagnostics_request_ = diagnostics_request.clone();
+
     let _join_handle = thread::spawn(move || {
       // TODO(@kitsonk) we need to allow displaying diagnostics here, but the
       // current compiler snapshot sends them to stdio which would totally break
@@ -59,16 +82,80 @@ impl TsServer {
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
-        while let Some((req, state_snapshot, tx)) = rx.recv().await {
-          let value = request(&mut ts_runtime, state_snapshot, req);
-          if tx.send(value).is_err() {
-            warn!("Unable to send result to client.");
+        // This loop handles incoming requests to TSC. Incoming requests need to
+        // be prioritized somewhat. Regular requests (like hover or
+        // completions) should be handled before diagnostic requests because
+        // we want to respond to user interaction as fast as possible. We also
+        // don't want to queue up stale diagnostic requests, and we want to
+        // batch diagnostic requests as much as possible for performance
+        // reasons. This tries to do that.
+        let mut maybe_req: Option<Request> = None;
+        loop {
+          // First check if there is a regular request to handle.
+          if let Some((req, state_snapshot, tx)) = maybe_req.take() {
+            let res = request(&mut ts_runtime, state_snapshot, req);
+            if tx.send(res).is_err() {
+              warn!("Unable to send result to client.");
+            }
+          }
+
+          // Then check if there is a regular request queued, if so place it in
+          // maybe_req slot and jump back to start of loop to handle it.
+          if let Some(recv_req) = requests_queue_rx.recv().now_or_never() {
+            if let Some(req) = recv_req {
+              maybe_req = Some(req);
+              continue;
+            } else {
+              // The channel has closed, so we stop the loop.
+              break;
+            }
+          }
+
+          // Then check if there are diagnostics to handle.
+          let maybe_diagnostics_request = {
+            let mut requests = diagnostics_request.lock().unwrap();
+            std::mem::replace(&mut *requests, Default::default())
+          };
+          if let Some((specifiers, state_snapshot, tx)) =
+            maybe_diagnostics_request
+          {
+            let req =
+              RequestMethod::GetDiagnostics(specifiers.into_iter().collect());
+            let res = request(&mut ts_runtime, state_snapshot, req);
+            if tx.send(res.map(Some)).is_err() {
+              warn!("Unable to send result to client.");
+            }
+          }
+
+          // If nothing is ready to be processed, we wait for the next regular
+          // or diagnostic request.
+          tokio::select! {
+            recv_req = requests_queue_rx.recv() => {
+              if let Some(req) = recv_req {
+                maybe_req = Some(req);
+                continue;
+              } else {
+                // The channel has closed, so we stop the loop.
+                break;
+              }
+            }
+            res = diagnostics_notifier_rx.recv() => {
+              if res.is_none() {
+                // The channel has closed, so we stop the loop.
+                break;
+              }
+              continue;
+            }
           }
         }
       })
     });
 
-    Self(tx)
+    Self {
+      requests_queue: requests_queue_tx,
+      diagnostics_notifier: diagnostics_notifier_tx,
+      diagnostics_request: diagnostics_request_,
+    }
   }
 
   pub async fn request(
@@ -77,10 +164,43 @@ impl TsServer {
     req: RequestMethod,
   ) -> Result<Value, AnyError> {
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
-    if self.0.send((req, snapshot, tx)).is_err() {
+    if self.requests_queue.send((req, snapshot, tx)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
     rx.await?
+  }
+
+  pub async fn diagnostics_request(
+    &self,
+    snapshot: StateSnapshot,
+    specifiers: Vec<ModuleSpecifier>,
+  ) -> Result<Option<Value>, AnyError> {
+    let (tx, rx) = oneshot::channel::<Result<Option<Value>, AnyError>>();
+    {
+      let mut request = self.diagnostics_request.lock().unwrap();
+      let mut specifier_set =
+        if let Some((set, _, original_rx)) = request.take() {
+          original_rx.send(Ok(None)).unwrap();
+          set
+        } else {
+          HashSet::new()
+        };
+      for specifier in specifiers {
+        specifier_set.insert(specifier);
+      }
+      *request = Some((specifier_set, snapshot, tx));
+    }
+    // Wake up the tsc thread by notifying it, if it hasnt already been notified.
+    //
+    let res = self.diagnostics_notifier.try_send(());
+    match res {
+      Ok(_) => {}
+      Err(TrySendError::Full(_)) => {
+        // ignore - this means tsc is already scheduled to be notified.
+      }
+      Err(err) => Err(err)?,
+    };
+    rx.await.unwrap()
   }
 }
 

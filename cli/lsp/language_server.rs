@@ -269,14 +269,12 @@ impl Inner {
       let mut diagnostics = None;
       if enabled {
         let mark = self.performance.mark("prepare_diagnostics_ts");
-        diagnostics = Some(
-          diagnostics::generate_ts_diagnostics(
-            self.snapshot(),
-            self.diagnostics.clone(),
-            &self.ts_server,
-          )
-          .await?,
-        );
+        diagnostics = diagnostics::generate_ts_diagnostics(
+          self.snapshot(),
+          self.diagnostics.clone(),
+          &self.ts_server,
+        )
+        .await?;
         self.performance.measure(mark);
       };
       Ok::<_, AnyError>(diagnostics)
