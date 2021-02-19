@@ -13,6 +13,10 @@
   const webidl = window.__bootstrap.webidl;
   const eventTarget = window.__bootstrap.eventTarget;
 
+  /**
+   * @param {number[] | GPUExtent3DDict} data
+   * @returns {GPUExtent3DDict} 
+   */
   function normalizeGPUExtent3D(data) {
     if (Array.isArray(data)) {
       return {
@@ -25,6 +29,10 @@
     }
   }
 
+  /**
+   * @param {number[] | GPUOrigin3DDict} data
+   * @returns {GPUOrigin3DDict} 
+   */
   function normalizeGPUOrigin3D(data) {
     if (Array.isArray(data)) {
       return {
@@ -37,6 +45,10 @@
     }
   }
 
+  /**
+   * @param {number[] | GPUColor} data
+   * @returns {GPUColor} 
+   */
   function normalizeGPUColor(data) {
     if (Array.isArray(data)) {
       return {
@@ -88,9 +100,7 @@
 
       const { error, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_adapter",
-        {
-          ...options,
-        },
+        { ...options },
       );
 
       if (error) {
@@ -263,30 +273,39 @@
       throw new TypeError("Not yet implemented");
     }
     get maxBindGroups() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxBindGroups;
     }
     get maxDynamicUniformBuffersPerPipelineLayout() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxDynamicUniformBuffersPerPipelineLayout;
     }
     get maxDynamicStorageBuffersPerPipelineLayout() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxDynamicStorageBuffersPerPipelineLayout;
     }
     get maxSampledTexturesPerShaderStage() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxSampledTexturesPerShaderStage;
     }
     get maxSamplersPerShaderStage() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxSamplersPerShaderStage;
     }
     get maxStorageBuffersPerShaderStage() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxStorageBuffersPerShaderStage;
     }
     get maxStorageTexturesPerShaderStage() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxStorageTexturesPerShaderStage;
     }
     get maxUniformBuffersPerShaderStage() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxUniformBuffersPerShaderStage;
     }
     get maxUniformBufferBindingSize() {
+      webidl.assertBranded(this, GPUAdapterLimits);
       return this[_limits].maxUniformBufferBindingSize;
     }
     get maxStorageBufferBindingSize() {
@@ -326,35 +345,42 @@
 
     /** @return {IterableIterator<[string, string]>} */
     entries() {
+      webidl.assertBranded(this, GPUAdapterFeatures);
       return this[_features].entries();
     }
 
     /** @return {void} */
     forEach(callbackfn, thisArg) {
+      webidl.assertBranded(this, GPUAdapterFeatures);
       this[_features].forEach(callbackfn, thisArg);
     }
 
     /** @return {boolean} */
     has(value) {
+      webidl.assertBranded(this, GPUAdapterFeatures);
       return this[_features].has(value);
     }
 
     /** @return {IterableIterator<string>} */
     keys() {
+      webidl.assertBranded(this, GPUAdapterFeatures);
       return this[_features].keys();
     }
 
     /** @return {IterableIterator<string>} */
     values() {
+      webidl.assertBranded(this, GPUAdapterFeatures);
       return this[_features].values();
     }
 
     /** @return {number} */
     get size() {
+      webidl.assertBranded(this, GPUAdapterFeatures);
       return this[_features].size;
     }
 
     [Symbol.iterator]() {
+      webidl.assertBranded(this, GPUAdapterFeatures);
       return this[_features][Symbol.iterator]();
     }
 
@@ -2962,7 +2988,6 @@
           "OperationError",
         );
       }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       core.jsonOpSync("op_webgpu_render_pass_pop_debug_group", {
         renderPassRid: this[_rid],
