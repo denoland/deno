@@ -187,24 +187,29 @@
         },
       );
 
+      /** @type {InnerGPUDevice} */
+      const inner = {
+        rid,
+        adapter: this,
+        features: Object.freeze(features),
+        limits: Object.freeze(limits),
+        resources: [],
+      };
       return createGPUDevice(
         descriptor.label ?? null,
-        {
-          rid,
-          adapter: this,
-          features: Object.freeze(features),
-          limits: Object.freeze(limits),
-          queue: createGPUQueue(descriptor.label ?? null, rid),
-        },
+        inner,
+        createGPUQueue(descriptor.label ?? null, inner),
       );
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        name: this.name,
-        features: this.features,
-        limits: this.limits,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          name: this.name,
+          features: this.features,
+          limits: this.limits,
+        })
+      }`;
     }
   }
 
@@ -389,26 +394,29 @@
   }
 
   const _device = Symbol("[[device]]");
+  const _queue = Symbol("[[queue]]");
 
   /**
    * @typedef InnerGPUDevice
    * @property {GPUAdapter} adapter
-   * @property {number} rid
+   * @property {number | undefined} rid
    * @property {GPUFeatureName[]} features
    * @property {object} limits
-   * @property {GPUQueue} queue
+   * @property {WeakRef<any>[]} resources
    */
 
   /**
    * @param {string | null} label
    * @param {InnerGPUDevice} inner
+   * @param {GPUQueue} queue
    * @returns {GPUDevice}
    */
-  function createGPUDevice(label, inner) {
+  function createGPUDevice(label, inner, queue) {
     /** @type {GPUDevice} */
     const device = webidl.createBranded(GPUDevice);
     device[_label] = label;
     device[_device] = inner;
+    device[_queue] = queue;
     return device;
   }
 
@@ -416,6 +424,26 @@
   class GPUDevice extends eventTarget.EventTarget {
     /** @type {InnerGPUDevice} */
     [_device];
+
+    /** @type {GPUQueue} */
+    [_queue];
+
+    [_cleanup]() {
+      const device = this[_device];
+      const resources = device.resources;
+      while (resources.length > 0) {
+        const resource = resources.pop()?.deref();
+        if (resource) {
+          resource[_cleanup]();
+        }
+      }
+      const rid = device.rid;
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        device.rid = undefined;
+      }
+    }
 
     get adapter() {
       webidl.assertBranded(this, GPUDevice);
@@ -431,7 +459,7 @@
     }
     get queue() {
       webidl.assertBranded(this, GPUDevice);
-      return this[_device].queue;
+      return this[_queue];
     }
 
     constructor() {
@@ -440,7 +468,8 @@
     }
 
     destroy() {
-      throw new Error("Not yet implemented");
+      webidl.assertBranded(this, GPUDevice);
+      this[_cleanup]();
     }
 
     /**
@@ -476,18 +505,21 @@
           state: "unmapped",
         };
       }
-      return createGPUBuffer(
+      const buffer = createGPUBuffer(
         descriptor.label ?? null,
-        this[_device].rid,
+        this[_device],
         rid,
         descriptor.size,
         descriptor.usage,
         options,
       );
+      this[_device].resources.push(new WeakRef(buffer));
+      return buffer;
     }
 
     /**
      * @param {GPUTextureDescriptor} descriptor
+     * @returns {GPUTexture}
      */
     createTexture(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -503,16 +535,22 @@
         size: normalizeGPUExtent3D(descriptor.size),
       });
 
-      return createGPUTexture(descriptor.label ?? null, rid);
+      const texture = createGPUTexture(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(texture));
+      return texture;
     }
 
     /**
      * @param {GPUSamplerDescriptor} descriptor
+     * @returns {GPUSampler}
      */
     createSampler(descriptor = {}) {
       webidl.assertBranded(this, GPUDevice);
       const prefix = "Failed to execute 'createSampler' on 'GPUDevice'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUSamplerDescriptor(descriptor, {
         prefix,
         context: "Argument 1",
@@ -522,11 +560,18 @@
         ...descriptor,
       });
 
-      return createGPUSampler(descriptor.label ?? null, rid);
+      const sampler = createGPUSampler(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(sampler));
+      return sampler;
     }
 
     /**
      * @param {GPUBindGroupLayoutDescriptor} descriptor
+     * @returns {GPUBindGroupLayout}
      */
     createBindGroupLayout(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -553,11 +598,18 @@
         ...descriptor,
       });
 
-      return createGPUBindGroupLayout(descriptor.label ?? null, rid);
+      const bindGroupLayout = createGPUBindGroupLayout(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(bindGroupLayout));
+      return bindGroupLayout;
     }
 
     /**
      * @param {GPUPipelineLayoutDescriptor} descriptor
+     * @returns {GPUPipelineLayout}
      */
     createPipelineLayout(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -575,11 +627,18 @@
         ),
       });
 
-      return createGPUPipelineLayout(descriptor.label ?? null, rid);
+      const pipelineLayout = createGPUPipelineLayout(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(pipelineLayout));
+      return pipelineLayout;
     }
 
     /**
      * @param {GPUBindGroupDescriptor} descriptor
+     * @returns {GPUBindGroup}
      */
     createBindGroup(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -618,7 +677,13 @@
         }),
       });
 
-      return createGPUBindGroup(descriptor.label ?? null, rid);
+      const bindGroup = createGPUBindGroup(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(bindGroup));
+      return bindGroup;
     }
 
     /**
@@ -647,11 +712,18 @@
           : []),
       );
 
-      return createGPUShaderModule(descriptor.label ?? null, rid);
+      const shaderModule = createGPUShaderModule(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(shaderModule));
+      return shaderModule;
     }
 
     /**
      * @param {GPUComputePipelineDescriptor} descriptor
+     * @returns {GPUComputePipeline}
      */
     createComputePipeline(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -671,11 +743,18 @@
         },
       });
 
-      return createGPUComputePipeline(descriptor.label ?? null, rid);
+      const computePipeline = createGPUComputePipeline(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(computePipeline));
+      return computePipeline;
     }
 
     /**
      * @param {GPURenderPipelineDescriptor} descriptor
+     * @returns {GPURenderPipeline}
      */
     createRenderPipeline(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -710,7 +789,13 @@
         ...d,
       });
 
-      return createGPURenderPipeline(descriptor.label ?? null, rid);
+      const renderPipeline = createGPURenderPipeline(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(renderPipeline));
+      return renderPipeline;
     }
 
     createComputePipelineAsync(_descriptor) {
@@ -723,6 +808,7 @@
 
     /**
      * @param {GPUCommandEncoderDescriptor} descriptor
+     * @returns {GPUCommandEncoder}
      */
     createCommandEncoder(descriptor = {}) {
       webidl.assertBranded(this, GPUDevice);
@@ -736,11 +822,18 @@
         ...descriptor,
       });
 
-      return createGPUCommandEncoder(descriptor.label ?? null, rid);
+      const commandEncoder = createGPUCommandEncoder(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(commandEncoder));
+      return commandEncoder;
     }
 
     /**
      * @param {GPURenderBundleEncoderDescriptor} descriptor
+     * @returns {GPURenderBundleEncoder}
      */
     createRenderBundleEncoder(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -762,11 +855,18 @@
         },
       );
 
-      return createGPURenderBundleEncoder(descriptor.label ?? null, rid);
+      const renderBundleEncoder = createGPURenderBundleEncoder(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(renderBundleEncoder));
+      return renderBundleEncoder;
     }
 
     /**
      * @param {GPUQuerySetDescriptor} descriptor
+     * @returns {GPUQuerySet}
      */
     createQuerySet(descriptor) {
       webidl.assertBranded(this, GPUDevice);
@@ -784,39 +884,45 @@
         ...descriptor,
       });
 
-      return createGPUQuerySet(descriptor.label ?? null, rid, descriptor);
+      const querySet = createGPUQuerySet(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+        descriptor,
+      );
+      this[_device].resources.push(new WeakRef(querySet));
+      return querySet;
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        adapter: this.adapter,
-        features: this.features,
-        label: this.label,
-        limits: this.limits,
-        queue: this.queue,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          adapter: this.adapter,
+          features: this.features,
+          label: this.label,
+          limits: this.limits,
+          queue: this.queue,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUDevice", GPUDevice);
 
   /**
    * @param {string | null} label
-   * @param {number} rid
+   * @param {InnerGPUDevice} device
    * @returns {GPUQueue}
    */
-  function createGPUQueue(label, rid) {
+  function createGPUQueue(label, device) {
     /** @type {GPUQueue} */
     const queue = webidl.createBranded(GPUQueue);
     queue[_label] = label;
-    queue[_device] = rid;
+    queue[_device] = device;
     return queue;
   }
 
   class GPUQueue {
-    /**
-     * The rid of the related device.
-     * @type {number}
-     */
+    /** @type {InnerGPUDevice} */
     [_device];
 
     constructor() {
@@ -883,7 +989,7 @@
       core.jsonOpSync(
         "op_webgpu_write_buffer",
         {
-          queueRid: this[_device],
+          queueRid: this[_device].rid,
           buffer: buffer[_rid],
           bufferOffset,
           dataOffset,
@@ -923,7 +1029,7 @@
       core.jsonOpSync(
         "op_webgpu_write_texture",
         {
-          queueRid: this[_device],
+          queueRid: this[_device].rid,
           destination: {
             texture: destination.texture[_rid],
             mipLevel: destination.mipLevel,
@@ -942,9 +1048,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({
-        label: this.label,
-      })}`;
+      return `${this.constructor.name} ${
+        inspect({
+          label: this.label,
+        })
+      }`;
     }
   }
   GPUObjectBaseMixin("GPUQueue", GPUQueue);
@@ -968,18 +1076,18 @@
 
   /**
    * @param {string | null} label
-   * @param {number} deviceRid
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @param {number} size
    * @param {number} usage
    * @param {CreateGPUBufferOptions} options
    * @returns {GPUBuffer}
    */
-  function createGPUBuffer(label, deviceRid, rid, size, usage, options) {
+  function createGPUBuffer(label, device, rid, size, usage, options) {
     /** @type {GPUBuffer} */
     const buffer = webidl.createBranded(GPUBuffer);
     buffer[_label] = label;
-    buffer[_device] = deviceRid;
+    buffer[_device] = device;
     buffer[_rid] = rid;
     buffer[_size] = size;
     buffer[_usage] = usage;
@@ -990,7 +1098,7 @@
   }
 
   class GPUBuffer {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
     [_device];
 
     /** @type {number} */
@@ -1013,6 +1121,15 @@
 
     /** @type {number} */
     [_mapMode];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1099,7 +1216,7 @@
         "op_webgpu_buffer_get_map_async",
         {
           bufferRid: this[_rid],
-          deviceRid: this[_device],
+          deviceRid: this[_device].rid,
           mode,
           offset,
           size: rangeSize,
@@ -1256,9 +1373,11 @@
     }
 
     destroy() {
-      throw new Error("Not yet implemented");
+      webidl.assertBranded(this, GPUBuffer);
+      this[_cleanup]();
     }
   }
+  GPUObjectBaseMixin("GPUBuffer", GPUBuffer);
 
   class GPUBufferUsage {
     constructor() {
@@ -1310,22 +1429,46 @@
     }
   }
 
+  const _views = Symbol("[[views]]");
+
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUTexture}
    */
-  function createGPUTexture(label, rid) {
+  function createGPUTexture(label, device, rid) {
     /** @type {GPUTexture} */
     const texture = webidl.createBranded(GPUTexture);
     texture[_label] = label;
+    texture[_device] = device;
     texture[_rid] = rid;
     return texture;
   }
 
   class GPUTexture {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+    /** @type {WeakRef<GPUTextureView>[]} */
+    [_views] = [];
+
+    [_cleanup]() {
+      const views = this[_views];
+      while (views.length > 0) {
+        const view = views.pop()?.deref();
+        if (view) {
+          view[_cleanup]();
+        }
+      }
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1348,11 +1491,18 @@
         ...descriptor,
       });
 
-      return createGPUTextureView(descriptor.label ?? null, rid);
+      const textureView = createGPUTextureView(
+        descriptor.label ?? null,
+        this,
+        rid,
+      );
+      this[_views].push(new WeakRef(textureView));
+      return textureView;
     }
 
     destroy() {
-      throw new Error("Not yet implemented");
+      webidl.assertBranded(this, GPUTexture);
+      this[_cleanup]();
     }
   }
   GPUObjectBaseMixin("GPUTexture", GPUTexture);
@@ -1379,21 +1529,36 @@
     }
   }
 
+  const _texture = Symbol("[[texture]]");
+
   /**
    * @param {string | null} label
+   * @param {GPUTexture} texture
    * @param {number} rid
    * @returns {GPUTextureView}
    */
-  function createGPUTextureView(label, rid) {
+  function createGPUTextureView(label, texture, rid) {
     /** @type {GPUTextureView} */
     const textureView = webidl.createBranded(GPUTextureView);
     textureView[_label] = label;
+    textureView[_texture] = texture;
     textureView[_rid] = rid;
     return textureView;
   }
   class GPUTextureView {
-    /** @type {number} */
+    /** @type {GPUTexture} */
+    [_texture];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1403,19 +1568,32 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUSampler}
    */
-  function createGPUSampler(label, rid) {
+  function createGPUSampler(label, device, rid) {
     /** @type {GPUSampler} */
     const sampler = webidl.createBranded(GPUSampler);
     sampler[_label] = label;
+    sampler[_device] = device;
     sampler[_rid] = rid;
     return sampler;
   }
   class GPUSampler {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1425,19 +1603,32 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUBindGroupLayout}
    */
-  function createGPUBindGroupLayout(label, rid) {
+  function createGPUBindGroupLayout(label, device, rid) {
     /** @type {GPUBindGroupLayout} */
     const bindGroupLayout = webidl.createBranded(GPUBindGroupLayout);
     bindGroupLayout[_label] = label;
+    bindGroupLayout[_device] = device;
     bindGroupLayout[_rid] = rid;
     return bindGroupLayout;
   }
   class GPUBindGroupLayout {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1447,19 +1638,32 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUPipelineLayout}
    */
-  function createGPUPipelineLayout(label, rid) {
+  function createGPUPipelineLayout(label, device, rid) {
     /** @type {GPUPipelineLayout} */
     const pipelineLayout = webidl.createBranded(GPUPipelineLayout);
     pipelineLayout[_label] = label;
+    pipelineLayout[_device] = device;
     pipelineLayout[_rid] = rid;
     return pipelineLayout;
   }
   class GPUPipelineLayout {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1469,19 +1673,30 @@
 
   /**
    * @param {string | null} label
-   * @param {number} rid
+    * @param {InnerGPUDevice} device
+  * @param {number} rid
    * @returns {GPUBindGroup}
    */
-  function createGPUBindGroup(label, rid) {
+  function createGPUBindGroup(label, device, rid) {
     /** @type {GPUBindGroup} */
     const bindGroup = webidl.createBranded(GPUBindGroup);
     bindGroup[_label] = label;
+    bindGroup[_device] = device;
     bindGroup[_rid] = rid;
     return bindGroup;
   }
   class GPUBindGroup {
-    /** @type {number} */
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1491,19 +1706,32 @@
 
   /**
    * @param {string | null} label
-   * @param {number} rid
+    * @param {InnerGPUDevice} device
+  * @param {number} rid
    * @returns {GPUShaderModule}
    */
-  function createGPUShaderModule(label, rid) {
+  function createGPUShaderModule(label, device, rid) {
     /** @type {GPUShaderModule} */
     const bindGroup = webidl.createBranded(GPUShaderModule);
     bindGroup[_label] = label;
+    bindGroup[_device] = device;
     bindGroup[_rid] = rid;
     return bindGroup;
   }
   class GPUShaderModule {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1535,19 +1763,32 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUComputePipeline}
    */
-  function createGPUComputePipeline(label, rid) {
+  function createGPUComputePipeline(label, device, rid) {
     /** @type {GPUComputePipeline} */
     const pipeline = webidl.createBranded(GPUComputePipeline);
     pipeline[_label] = label;
+    pipeline[_device] = device;
     pipeline[_rid] = rid;
     return pipeline;
   }
   class GPUComputePipeline {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1555,6 +1796,7 @@
 
     /**
      * @param {number} index
+     * @returns {GPUBindGroupLayout}
      */
     getBindGroupLayout(index) {
       webidl.assertBranded(this, GPURenderPipeline);
@@ -1573,26 +1815,45 @@
         },
       );
 
-      return createGPUBindGroupLayout(label, rid);
+      const bindGroupLayout = createGPUBindGroupLayout(
+        label,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(bindGroupLayout));
+      return bindGroupLayout;
     }
   }
   GPUObjectBaseMixin("GPUComputePipeline", GPUComputePipeline);
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPURenderPipeline}
    */
-  function createGPURenderPipeline(label, rid) {
+  function createGPURenderPipeline(label, device, rid) {
     /** @type {GPURenderPipeline} */
     const pipeline = webidl.createBranded(GPURenderPipeline);
     pipeline[_label] = label;
+    pipeline[_device] = device;
     pipeline[_rid] = rid;
     return pipeline;
   }
   class GPURenderPipeline {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1618,7 +1879,13 @@
         },
       );
 
-      return createGPUBindGroupLayout(label, rid);
+      const bindGroupLayout = createGPUBindGroupLayout(
+        label,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(bindGroupLayout));
+      return bindGroupLayout;
     }
   }
   GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
@@ -1645,22 +1912,45 @@
     }
   }
 
+  const _encoders = Symbol("[[encoders]]");
+
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUCommandEncoder}
    */
-  function createGPUCommandEncoder(label, rid) {
+  function createGPUCommandEncoder(label, device, rid) {
     /** @type {GPUCommandEncoder} */
     const encoder = webidl.createBranded(GPUCommandEncoder);
     encoder[_label] = label;
+    encoder[_device] = device;
     encoder[_rid] = rid;
     return encoder;
   }
-
   class GPUCommandEncoder {
+    /** @type {InnerGPUDevice} */
+    [_device];
     /** @type {number | undefined} */
     [_rid];
+    /** @type {WeakRef<GPURenderPassEncoder | GPUComputePassEncoder>[]} */
+    [_encoders] = [];
+
+    [_cleanup]() {
+      const encoders = this[_encoders];
+      while (encoders.length > 0) {
+        const encoder = encoders.pop()?.deref();
+        if (encoder) {
+          encoder[_cleanup]();
+        }
+      }
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -1672,7 +1962,10 @@
      */
     beginRenderPass(descriptor) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'beginRenderPass' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1746,11 +2039,13 @@
         },
       );
 
-      return createGPURenderPassEncoder(
+      const renderPassEncoder = createGPURenderPassEncoder(
         descriptor.label ?? null,
-        this[_rid],
+        this,
         rid,
       );
+      this[_encoders].push(new WeakRef(renderPassEncoder));
+      return renderPassEncoder;
     }
 
     /**
@@ -1758,7 +2053,10 @@
      */
     beginComputePass(descriptor = {}) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'beginComputePass' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'beginComputePass' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1777,11 +2075,13 @@
         },
       );
 
-      return createGPUComputePassEncoder(
+      const computePassEncoder = createGPUComputePassEncoder(
         descriptor.label ?? null,
         this[_rid],
         rid,
       );
+      this[_encoders].push(new WeakRef(computePassEncoder));
+      return computePassEncoder;
     }
 
     /**
@@ -1799,7 +2099,10 @@
       size,
     ) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1846,7 +2149,10 @@
      */
     copyBufferToTexture(source, destination, copySize) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1892,7 +2198,10 @@
      */
     copyTextureToBuffer(source, destination, copySize) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1936,7 +2245,10 @@
      */
     copyTextureToTexture(source, destination, copySize) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1980,7 +2292,10 @@
      */
     pushDebugGroup(groupLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -1999,7 +2314,10 @@
 
     popDebugGroup() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'popDebugGroup' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -2013,7 +2331,10 @@
      */
     insertDebugMarker(markerLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -2036,7 +2357,10 @@
      */
     writeTimestamp(querySet, queryIndex) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'writeTimestamp' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -2073,7 +2397,10 @@
       destinationOffset,
     ) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -2116,7 +2443,10 @@
      */
     finish(descriptor = {}) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'finish' on 'GPUCommandEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'finish' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUCommandEncoder);
@@ -2129,9 +2459,16 @@
         commandEncoderRid: this[_rid],
         ...descriptor,
       });
+      /** @type {number | undefined} */
       this[_rid] = undefined;
 
-      return createGPUCommandBuffer(descriptor.label ?? null, rid);
+      const commandBuffer = createGPUCommandBuffer(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(commandBuffer));
+      return commandBuffer;
     }
   }
   GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
@@ -2140,24 +2477,33 @@
 
   /**
    * @param {string | null} label
-   * @param {number} encoderRid
+   * @param {GPUCommandEncoder} encoder
    * @param {number} rid
    * @returns {GPURenderPassEncoder}
    */
-  function createGPURenderPassEncoder(label, encoderRid, rid) {
+  function createGPURenderPassEncoder(label, encoder, rid) {
     /** @type {GPURenderPassEncoder} */
-    const encoder = webidl.createBranded(GPURenderPassEncoder);
-    encoder[_label] = label;
-    encoder[_encoder] = encoderRid;
-    encoder[_rid] = rid;
-    return encoder;
+    const passEncoder = webidl.createBranded(GPURenderPassEncoder);
+    passEncoder[_label] = label;
+    passEncoder[_encoder] = encoder;
+    passEncoder[_rid] = rid;
+    return passEncoder;
   }
 
   class GPURenderPassEncoder {
-    /** @type {number} */
+    /** @type {GPUCommandEncoder} */
     [_encoder];
     /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -2173,7 +2519,10 @@
      */
     setViewport(x, y, width, height, minDepth, maxDepth) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setViewport' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setViewport' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2215,7 +2564,10 @@
      */
     setScissorRect(x, y, width, height) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setScissorRect' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setScissorRect' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2252,9 +2604,11 @@
      */
     setBlendColor(color) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setBlendColor' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setBlendColor' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
-
 
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
@@ -2275,9 +2629,11 @@
      */
     setStencilReference(reference) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setStencilReference' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setStencilReference' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
-
 
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
@@ -2295,18 +2651,22 @@
 
     beginOcclusionQuery(_queryIndex) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'beginOcclusionQuery' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'beginOcclusionQuery' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
-
 
       throw new Error("Not yet implemented");
     }
 
     endOcclusionQuery() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'endOcclusionQuery' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'endOcclusionQuery' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
-
 
       throw new Error("Not yet implemented");
     }
@@ -2317,7 +2677,10 @@
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2341,7 +2704,10 @@
 
     endPipelineStatisticsQuery() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'endPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'endPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2356,7 +2722,10 @@
      */
     writeTimestamp(querySet, queryIndex) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2383,7 +2752,10 @@
      */
     executeBundles(bundles) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'executeBundles' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'executeBundles' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2402,7 +2774,10 @@
 
     endPass() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'endPass' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'endPass' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       core.jsonOpSync("op_webgpu_render_pass_end_pass", {
@@ -2421,7 +2796,10 @@
       dynamicOffsetsDataLength,
     ) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setBindGroup' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setBindGroup' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       const bind = bindGroup[_rid];
@@ -2455,7 +2833,10 @@
      */
     pushDebugGroup(groupLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2474,7 +2855,10 @@
 
     popDebugGroup() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'popDebugGroup' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'popDebugGroup' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2488,7 +2872,10 @@
      */
     insertDebugMarker(markerLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2510,7 +2897,10 @@
      */
     setPipeline(pipeline) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setPipeline' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setPipeline' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2535,7 +2925,10 @@
      */
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2575,7 +2968,10 @@
      */
     setVertexBuffer(slot, buffer, offset = 0, size = 0) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2615,7 +3011,10 @@
      */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'draw' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'draw' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2661,7 +3060,10 @@
       firstInstance = 0,
     ) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'drawIndexed' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2704,7 +3106,10 @@
      */
     drawIndirect(indirectBuffer, indirectOffset) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'drawIndirect' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2732,7 +3137,10 @@
      */
     drawIndexedIndirect(indirectBuffer, indirectOffset) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'drawIndexedIndirect' on 'GPURenderPassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'drawIndexedIndirect' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderPassEncoder);
@@ -2758,25 +3166,34 @@
 
   /**
    * @param {string | null} label
-   * @param {number} encoderRid
+   * @param {GPUCommandEncoder} encoder
    * @param {number} rid
    * @returns {GPUComputePassEncoder}
    */
-  function createGPUComputePassEncoder(label, encoderRid, rid) {
+  function createGPUComputePassEncoder(label, encoder, rid) {
     /** @type {GPUComputePassEncoder} */
-    const commandBuffer = webidl.createBranded(GPUComputePassEncoder);
-    commandBuffer[_label] = label;
-    commandBuffer[_encoder] = encoderRid;
-    commandBuffer[_rid] = rid;
-    return commandBuffer;
+    const computePassEncoder = webidl.createBranded(GPUComputePassEncoder);
+    computePassEncoder[_label] = label;
+    computePassEncoder[_encoder] = encoder;
+    computePassEncoder[_rid] = rid;
+    return computePassEncoder;
   }
 
   class GPUComputePassEncoder {
-    /** @type {number} */
+    /** @type {GPUCommandEncoder} */
     [_encoder];
 
     /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -2787,7 +3204,10 @@
      */
     setPipeline(pipeline) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2811,7 +3231,10 @@
      */
     dispatch(x, y = 1, z = 1) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'dispatch' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'dispatch' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2834,7 +3257,10 @@
      */
     dispatchIndirect(indirectBuffer, indirectOffset) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2862,7 +3288,10 @@
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'beginPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2889,7 +3318,10 @@
 
     endPipelineStatisticsQuery() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'endPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'endPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2904,7 +3336,10 @@
      */
     writeTimestamp(querySet, queryIndex) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'writeTimestamp' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'writeTimestamp' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2933,7 +3368,10 @@
 
     endPass() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'endPass' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'endPass' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -2953,7 +3391,10 @@
       dynamicOffsetsDataLength,
     ) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setBindGroup' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       const bind = bindGroup[_rid];
@@ -2987,7 +3428,10 @@
      */
     pushDebugGroup(groupLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -3006,7 +3450,10 @@
 
     popDebugGroup() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -3020,7 +3467,10 @@
      */
     insertDebugMarker(markerLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPUComputePassEncoder);
@@ -3041,20 +3491,33 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUCommandBuffer}
    */
-  function createGPUCommandBuffer(label, rid) {
+  function createGPUCommandBuffer(label, device, rid) {
     /** @type {GPUCommandBuffer} */
     const commandBuffer = webidl.createBranded(GPUCommandBuffer);
     commandBuffer[_label] = label;
+    commandBuffer[_device] = device;
     commandBuffer[_rid] = rid;
     return commandBuffer;
   }
 
   class GPUCommandBuffer {
-    /** @type {number} */
+    /** @type {InnerGPUDevice} */
+    [_device];
+    /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -3068,20 +3531,33 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPURenderBundleEncoder}
    */
-  function createGPURenderBundleEncoder(label, rid) {
+  function createGPURenderBundleEncoder(label, device, rid) {
     /** @type {GPURenderBundleEncoder} */
-    const bundle = webidl.createBranded(GPURenderBundleEncoder);
-    bundle[_label] = label;
-    bundle[_rid] = rid;
-    return bundle;
+    const bundleEncoder = webidl.createBranded(GPURenderBundleEncoder);
+    bundleEncoder[_label] = label;
+    bundleEncoder[_device] = device;
+    bundleEncoder[_rid] = rid;
+    return bundleEncoder;
   }
 
   class GPURenderBundleEncoder {
+    /** @type {InnerGPUDevice} */
+    [_device];
     /** @type {number | undefined} */
     [_rid];
+
+    [_cleanup]() {
+      const rid = this[_rid];
+      if (rid !== undefined) {
+        core.close(rid);
+        /** @type {number | undefined} */
+        this[_rid] = undefined;
+      }
+    }
 
     constructor() {
       webidl.illegalConstructor();
@@ -3092,7 +3568,10 @@
      */
     finish(descriptor = {}) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'finish' on 'GPURenderBundleEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'finish' on 'GPURenderBundleEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3109,7 +3588,13 @@
       );
       this[_rid] = undefined;
 
-      return createGPURenderBundle(descriptor.label ?? null, rid);
+      const renderBundle = createGPURenderBundle(
+        descriptor.label ?? null,
+        this[_device],
+        rid,
+      );
+      this[_device].resources.push(new WeakRef(renderBundle));
+      return renderBundle;
     }
 
     // TODO(lucacasonato): has an overload
@@ -3121,7 +3606,10 @@
       dynamicOffsetsDataLength,
     ) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setBindGroup' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       const bind = bindGroup[_rid];
@@ -3155,7 +3643,10 @@
      */
     pushDebugGroup(groupLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3174,7 +3665,10 @@
 
     popDebugGroup() {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3188,7 +3682,10 @@
      */
     insertDebugMarker(markerLabel) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3210,7 +3707,10 @@
      */
     setPipeline(pipeline) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3235,7 +3735,10 @@
      */
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setIndexBuffer' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setIndexBuffer' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3275,7 +3778,10 @@
      */
     setVertexBuffer(slot, buffer, offset = 0, size = 0) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'setVertexBuffer' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'setVertexBuffer' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3315,7 +3821,10 @@
      */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'draw' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'draw' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3361,7 +3870,10 @@
       firstInstance = 0,
     ) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'drawIndexed' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'drawIndexed' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3404,7 +3916,10 @@
      */
     drawIndirect(indirectBuffer, indirectOffset) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'drawIndirect' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'drawIndirect' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       webidl.assertBranded(this, GPURenderBundleEncoder);
@@ -3428,7 +3943,10 @@
 
     drawIndexedIndirect(_indirectBuffer, _indirectOffset) {
       if (this[_rid] === undefined) {
-        throw new DOMException("Failed to execute 'drawIndexedIndirect' on 'GPUComputePassEncoder': already consumed", "OperationError");
+        throw new DOMException(
+          "Failed to execute 'drawIndexedIndirect' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
       }
 
       throw new Error("Not yet implemented");
@@ -3438,18 +3956,22 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPURenderBundle}
    */
-  function createGPURenderBundle(label, rid) {
+  function createGPURenderBundle(label, device, rid) {
     /** @type {GPURenderBundle} */
     const bundle = webidl.createBranded(GPURenderBundle);
     bundle[_label] = label;
+    bundle[_device] = device;
     bundle[_rid] = rid;
     return bundle;
   }
 
   class GPURenderBundle {
+    /** @type {InnerGPUDevice} */
+    [_device];
     /** @type {number | undefined} */
     [_rid];
 
@@ -3472,19 +3994,23 @@
 
   /**
    * @param {string | null} label
+   * @param {InnerGPUDevice} device
    * @param {number} rid
    * @returns {GPUQuerySet}
    */
-  function createGPUQuerySet(label, rid, descriptor) {
+  function createGPUQuerySet(label, device, rid, descriptor) {
     /** @type {GPUQuerySet} */
     const queue = webidl.createBranded(GPUQuerySet);
     queue[_label] = label;
+    queue[_device] = device;
     queue[_rid] = rid;
     queue[_descriptor] = descriptor;
     return queue;
   }
 
   class GPUQuerySet {
+    /** @type {InnerGPUDevice} */
+    [_device];
     /** @type {number | undefined} */
     [_rid];
     /** @type {GPUQuerySetDescriptor} */
