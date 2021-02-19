@@ -37,7 +37,13 @@ pub async fn format(
 ) -> Result<(), AnyError> {
   let target_file_resolver = || {
     // collect the files that are to be formatted
-    collect_files(&args, &ignore, is_supported_ext_fmt)
+    collect_files(&args, &ignore, is_supported_ext_fmt).and_then(|files| {
+      if files.is_empty() {
+        Err(generic_error("No target files found."))
+      } else {
+        Ok(files)
+      }
+    })
   };
   let operation = |paths: Vec<PathBuf>| {
     let config = get_typescript_config();

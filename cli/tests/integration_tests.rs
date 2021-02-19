@@ -537,7 +537,9 @@ mod integration {
       .expect("Failed to spawn script")
       .wait()
       .expect("Failed to wait for child process");
-    assert!(status.success());
+    // No target files found
+    assert!(!status.success());
+
     // Check without ignore.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
@@ -551,6 +553,7 @@ mod integration {
       .wait()
       .expect("Failed to wait for child process");
     assert!(!status.success());
+
     // Format the source file.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
@@ -4986,6 +4989,7 @@ console.log("finish");
   fn lint_ignore_unexplicit_files() {
     let output = util::deno_cmd()
       .current_dir(util::root_path())
+      .env("NO_COLOR", "1")
       .arg("lint")
       .arg("--unstable")
       .arg("--ignore=./")
@@ -4994,14 +4998,18 @@ console.log("finish");
       .unwrap()
       .wait_with_output()
       .unwrap();
-    assert!(output.status.success());
-    assert_eq!(output.stderr, b"Checked 0 file\n");
+    assert!(!output.status.success());
+    assert_eq!(
+      String::from_utf8_lossy(&output.stderr),
+      "error: No target files found.\n"
+    );
   }
 
   #[test]
   fn fmt_ignore_unexplicit_files() {
     let output = util::deno_cmd()
       .current_dir(util::root_path())
+      .env("NO_COLOR", "1")
       .arg("fmt")
       .arg("--check")
       .arg("--ignore=./")
@@ -5010,8 +5018,11 @@ console.log("finish");
       .unwrap()
       .wait_with_output()
       .unwrap();
-    assert!(output.status.success());
-    assert_eq!(output.stderr, b"Checked 0 file\n");
+    assert!(!output.status.success());
+    assert_eq!(
+      String::from_utf8_lossy(&output.stderr),
+      "error: No target files found.\n"
+    );
   }
 
   #[test]
