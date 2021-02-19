@@ -99,6 +99,10 @@
         return createGPUAdapter(data.name, data);
       }
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
   }
 
   const _name = Symbol("[[name]]");
