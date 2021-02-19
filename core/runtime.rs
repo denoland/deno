@@ -794,15 +794,10 @@ impl JsRuntime {
       // IMPORTANT: Top-level-await is enabled, which means that return value
       // of module evaluation is a promise.
       //
-      // Because that promise is created internally by V8, when error occurs during
-      // module evaluation the promise is rejected, and since the promise has no rejection
-      // handler it will result in call to `bindings::promise_reject_callback` adding
-      // the promise to pending promise rejection table - meaning JsRuntime will return
-      // error on next poll().
-      //
-      // This situation is not desirable as we want to manually return error at the
-      // end of this function to handle it further. It means we need to manually
-      // remove this promise from pending promise rejection table.
+      // This promise is internal, and not the same one that gets returned to
+      // the user. We add an empty `.catch()` handler so that it does not result
+      // in an exception if it rejects. That will instead happen for the other
+      // promise if not handled by the user.
       //
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
@@ -828,9 +823,7 @@ impl JsRuntime {
         let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
         let empty_fn = empty_fn.get_function(scope).unwrap();
         promise.catch(scope, empty_fn);
-        let promise_global = v8::Global::new(scope, promise);
         let mut state = state_rc.borrow_mut();
-        state.pending_promise_exceptions.remove(&promise_global);
         let promise_global = v8::Global::new(scope, promise);
         let module_global = v8::Global::new(scope, module);
 
