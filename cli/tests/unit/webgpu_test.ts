@@ -7,15 +7,15 @@ try {
   isCI = true;
 }
 
-const adapter = await navigator.gpu.requestAdapter();
-assert(adapter);
-
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
 unitTest({
   perms: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuComputePass() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
   const numbers = [1, 4, 3, 295];
 
   const device = await adapter.requestDevice();
@@ -106,4 +106,9 @@ unitTest({
   stagingBuffer.unmap();
 
   device.destroy();
+
+  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
+  // adapters.
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
 });
