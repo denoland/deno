@@ -7,8 +7,6 @@ try {
   isCI = true;
 }
 
-// TODO(lucacasonato): remove when navigator is added to deno-lint
-// deno-lint-ignore no-undef
 const adapter = await navigator.gpu.requestAdapter();
 assert(adapter);
 
