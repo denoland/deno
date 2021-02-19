@@ -212,16 +212,16 @@ pub fn op_webgpu_buffer_unmap(
   args: BufferUnmapArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
+  let mapped_resource = state
+    .resource_table
+    .take::<WebGPUBufferMapped>(args.mapped_rid)
+    .ok_or_else(bad_resource_id)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
     .get::<WebGPUBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
   let buffer = buffer_resource.0;
-  let mapped_resource = state
-    .resource_table
-    .get::<WebGPUBufferMapped>(args.mapped_rid)
-    .ok_or_else(bad_resource_id)?;
 
   let slice_pointer = mapped_resource.0;
   let size = mapped_resource.1;

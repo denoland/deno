@@ -945,7 +945,7 @@
         { prefix, context: "Argument 1" },
       );
       core.jsonOpSync("op_webgpu_queue_submit", {
-        queueRid: this[_device],
+        queueRid: this[_device].rid,
         commandBuffers: commandBuffers.map((buffer) => buffer[_rid]),
       });
     }
@@ -1125,12 +1125,22 @@
     [_mapMode];
 
     [_cleanup]() {
+      const mappedRanges = this[_mappedRanges];
+      if (mappedRanges) {
+        while (mappedRanges.length > 0) {
+          const mappedRange = mappedRanges.pop();
+          if (mappedRange !== undefined) {
+            core.close(mappedRange[1]);
+          }
+        }
+      }
       const rid = this[_rid];
       if (rid !== undefined) {
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      this[_state] = "destroy";
     }
 
     constructor() {
@@ -1453,6 +1463,7 @@
     texture[_label] = label;
     texture[_device] = device;
     texture[_rid] = rid;
+    texture[_views] = [];
     return texture;
   }
 
@@ -1462,7 +1473,7 @@
     /** @type {number | undefined} */
     [_rid];
     /** @type {WeakRef<GPUTextureView>[]} */
-    [_views] = [];
+    [_views];
 
     [_cleanup]() {
       const views = this[_views];
@@ -2008,6 +2019,7 @@
     encoder[_label] = label;
     encoder[_device] = device;
     encoder[_rid] = rid;
+    encoder[_encoders] = [];
     return encoder;
   }
   class GPUCommandEncoder {
@@ -2016,7 +2028,7 @@
     /** @type {number | undefined} */
     [_rid];
     /** @type {WeakRef<GPURenderPassEncoder | GPUComputePassEncoder>[]} */
-    [_encoders] = [];
+    [_encoders];
 
     [_cleanup]() {
       const encoders = this[_encoders];
