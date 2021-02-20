@@ -1087,10 +1087,7 @@ async fn test_command(
       maybe_types: None,
       media_type: MediaType::TypeScript,
       source: tools::test_runner::render_test_file(
-        test_modules
-          .iter()
-          .map(|module| module.clone())
-          .collect(),
+        test_modules.iter().cloned().collect(),
         fail_fast,
         quiet,
         filter.clone(),

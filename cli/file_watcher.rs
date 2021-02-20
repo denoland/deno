@@ -61,7 +61,7 @@ impl Stream for Debounce {
     } else {
       drop(changed_paths);
       let mut timer = self.project().timer;
-      if let Poll::Ready(_) = timer.as_mut().poll(cx) {
+      if timer.as_mut().poll(cx).is_ready() {
         timer.reset(Instant::now() + DEBOUNCE_INTERVAL);
       }
       Poll::Pending
