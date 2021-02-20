@@ -408,8 +408,7 @@ pub(crate) fn ts_changes_to_edit(
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let text_document_edit =
-      change.to_text_document_edit(state)?;
+    let text_document_edit = change.to_text_document_edit(state)?;
     text_document_edits.push(text_document_edit);
   }
   Ok(Some(lsp::WorkspaceEdit {

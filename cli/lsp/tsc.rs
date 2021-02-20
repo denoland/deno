@@ -1189,7 +1189,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let specifier = resolve_url(&v.specifier)?;
   let content =
     if let Some(content) = state.state_snapshot.assets.get(&specifier) {
-      content.text.clone()
+      content.text
     } else if state.state_snapshot.documents.contains_key(&specifier) {
       cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
       state

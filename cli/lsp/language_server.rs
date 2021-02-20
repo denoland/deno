@@ -539,7 +539,7 @@ impl LanguageServerState {
     let mark = self.performance.mark("get_line_index");
     let maybe_line_index = if specifier.scheme() == "asset" {
       if let Some(asset) = self.assets.get(specifier) {
-        Some(asset.line_index.clone())
+        Some(asset.line_index)
       } else {
         None
       }
@@ -1914,14 +1914,15 @@ impl lspower::LanguageServer for LanguageServer {
         Some(Ok(params)) => {
           let state = self.state.lock().unwrap();
           Ok(Some(
-            serde_json::to_value(state.virtual_text_document(params)?)
-              .map_err(|err| {
+            serde_json::to_value(state.virtual_text_document(params)).map_err(
+              |err| {
                 error!(
                   "Failed to serialize virtual_text_document response: {}",
                   err
                 );
                 LspError::internal_error()
-              })?,
+              },
+            )?,
           ))
         }
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
@@ -2021,7 +2022,7 @@ impl LanguageServerState {
   fn virtual_text_document(
     &self,
     params: VirtualTextDocumentParams,
-  ) -> LspResult<Option<String>> {
+  ) -> Option<String> {
     let mark = self.performance.mark("virtual_text_document");
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let contents = if specifier.as_str() == "deno:/status.md" {
@@ -2063,7 +2064,7 @@ impl LanguageServerState {
       }
     };
     self.performance.measure(mark);
-    Ok(contents)
+    contents
   }
 }
 
