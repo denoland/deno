@@ -577,7 +577,7 @@ impl ImplementationLocation {
     }
   }
 
-  pub(crate) async fn to_link(
+  pub(crate) fn to_link(
     &self,
     line_index: &LineIndex,
     state: &mut language_server::LanguageServerState,
@@ -691,7 +691,7 @@ pub struct DefinitionInfoAndBoundSpan {
 }
 
 impl DefinitionInfoAndBoundSpan {
-  pub(crate) async fn to_definition(
+  pub(crate) fn to_definition(
     &self,
     line_index: &LineIndex,
     state: &mut language_server::LanguageServerState,

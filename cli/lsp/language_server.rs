@@ -24,7 +24,6 @@ use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::fs;
 
 use crate::deno_dir;
 use crate::import_map::ImportMap;
@@ -66,7 +65,7 @@ pub struct LanguageServer {
   /// The LSP client that this LSP server is connected to.
   client: Client,
   /// The LSP client state
-  pub(crate) state: Arc<tokio::sync::Mutex<LanguageServerState>>,
+  pub(crate) state: Arc<std::sync::Mutex<LanguageServerState>>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Performance,
   /// An abstraction that handles interactions with TypeScript.
@@ -117,14 +116,14 @@ impl LanguageServer {
     let state = LanguageServerState::new(performance.clone());
     Self {
       client,
-      state: Arc::new(tokio::sync::Mutex::new(state)),
+      state: Arc::new(std::sync::Mutex::new(state)),
       performance,
       ts_server: TsServer::new(),
     }
   }
 
   pub async fn state_snapshot(&self) -> StateSnapshot {
-    self.state.lock().await.snapshot()
+    self.state.lock().unwrap().snapshot()
   }
 
   async fn get_navigation_tree(
@@ -133,7 +132,7 @@ impl LanguageServer {
   ) -> Result<tsc::NavigationTree, AnyError> {
     let mark = self.performance.mark("get_navigation_tree");
     let maybe_navigation_trees = {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       state.navigation_trees.get(specifier).cloned()
     };
     if let Some(navigation_tree) = maybe_navigation_trees {
@@ -149,7 +148,7 @@ impl LanguageServer {
         )
         .await?;
       let navigation_tree: tsc::NavigationTree = serde_json::from_value(res)?;
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       state
         .navigation_trees
         .insert(specifier.clone(), navigation_tree.clone());
@@ -160,7 +159,7 @@ impl LanguageServer {
 
   async fn prepare_diagnostics(&self) -> Result<(), AnyError> {
     let (enabled, lint_enabled, state_snapshot, diagnostic_collection) = {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       let config = &state.config;
       let state_snapshot = state.snapshot();
       let diagnostic_collection = state.diagnostics.clone();
@@ -235,7 +234,7 @@ impl LanguageServer {
 
     let disturbed = {
       let mut disturbed = false;
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       if let Some(diagnostics) = lint_res? {
         for (specifier, version, diagnostics) in diagnostics {
           state.diagnostics.set(
@@ -286,7 +285,7 @@ impl LanguageServer {
     let mark = self.performance.mark("publish_diagnostics");
     let mut diagnostics_to_publish = vec![];
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       let maybe_changes = state.diagnostics.take_changes();
 
       if let Some(diagnostic_changes) = maybe_changes {
@@ -352,7 +351,7 @@ impl LanguageServer {
       "target": "esnext",
     }));
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       let (maybe_config, maybe_root_uri) = {
         let config = &state.config;
         if config.settings.unstable {
@@ -424,12 +423,21 @@ impl LanguageServer {
   async fn cache(&self, params: CacheParams) -> LspResult<bool> {
     let mark = self.performance.mark("cache");
     {
-      let mut state = self.state.lock().await;
-      let referrer = state.url_map.normalize_url(&params.referrer.uri);
+      let (referrer, maybe_import_map) = {
+        let state = self.state.lock().unwrap();
+        let referrer = state.url_map.normalize_url(&params.referrer.uri);
+        (referrer, state.maybe_import_map.clone())
+      };
       if !params.uris.is_empty() {
-        for identifier in &params.uris {
-          let specifier = state.url_map.normalize_url(&identifier.uri);
-          sources::cache(&specifier, &state.maybe_import_map)
+        let mut specifiers = vec![];
+        {
+          let state = self.state.lock().unwrap();
+          for identifier in params.uris {
+            specifiers.push(state.url_map.normalize_url(&identifier.uri));
+          }
+        };
+        for specifier in specifiers {
+          sources::cache(&specifier, &maybe_import_map)
             .await
             .map_err(|err| {
               error!("{}", err);
@@ -437,20 +445,24 @@ impl LanguageServer {
             })?;
         }
       } else {
-        sources::cache(&referrer, &state.maybe_import_map)
+        sources::cache(&referrer, &maybe_import_map)
           .await
           .map_err(|err| {
             error!("{}", err);
             LspError::internal_error()
           })?;
       }
+
       // now that we have dependencies loaded, we need to re-analyze them and
       // invalidate some diagnostics
-      if state.documents.contains_key(&referrer) {
-        if let Some(source) = state.documents.content(&referrer).unwrap() {
-          state.analyze_dependencies(&referrer, &source);
+      {
+        let mut state = self.state.lock().unwrap();
+        if state.documents.contains_key(&referrer) {
+          if let Some(source) = state.documents.content(&referrer).unwrap() {
+            state.analyze_dependencies(&referrer, &source);
+          }
+          state.diagnostics.invalidate(&referrer);
         }
-        state.diagnostics.invalidate(&referrer);
       }
     }
 
@@ -552,7 +564,7 @@ impl LanguageServerState {
     }
   }
 
-  pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
+  pub fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map");
     let (maybe_import_map, maybe_root_uri) = {
       let config = &self.config;
@@ -581,7 +593,7 @@ impl LanguageServerState {
         .to_file_path()
         .map_err(|_| anyhow!("Bad file path."))?;
       let import_map_json =
-        fs::read_to_string(import_map_path).await.map_err(|err| {
+        std::fs::read_to_string(import_map_path).map_err(|err| {
           anyhow!(
             "Failed to load the import map at: {}. [{}]",
             import_map_url,
@@ -640,7 +652,7 @@ impl lspower::LanguageServer for LanguageServer {
     }
 
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       let config = &mut state.config;
       config.root_uri = params.root_uri;
       if let Some(value) = params.initialization_options {
@@ -666,7 +678,7 @@ impl lspower::LanguageServer for LanguageServer {
       LspError::internal_error()
     })?;
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       for (url_str, data) in assets {
         let specifier = resolve_url(&url_str).unwrap();
         let asset = AssetDocument::new(data);
@@ -691,7 +703,7 @@ impl lspower::LanguageServer for LanguageServer {
           error!("Unable to get fixable diagnostics: {}", err);
           LspError::internal_error()
         })?;
-      self.state.lock().await.ts_fixable_diagnostics = fixable_diagnostics;
+      self.state.lock().unwrap().ts_fixable_diagnostics = fixable_diagnostics;
     }
 
     self.performance.measure(mark);
@@ -703,8 +715,8 @@ impl lspower::LanguageServer for LanguageServer {
 
   async fn initialized(&self, _params: InitializedParams) {
     let (update_import_map_res, workspace_did_change_watched_files) = {
-      let mut state = self.state.lock().await;
-      let res = state.update_import_map().await;
+      let mut state = self.state.lock().unwrap();
+      let res = state.update_import_map();
       (
         res,
         state
@@ -763,7 +775,7 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       let specifier = state.url_map.normalize_url(&params.text_document.uri);
       state.documents.open(
         specifier.clone(),
@@ -783,7 +795,7 @@ impl lspower::LanguageServer for LanguageServer {
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change");
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       let specifier = state.url_map.normalize_url(&params.text_document.uri);
       match state.documents.change(
         &specifier,
@@ -817,7 +829,7 @@ impl lspower::LanguageServer for LanguageServer {
       return;
     }
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       let specifier = state.url_map.normalize_url(&params.text_document.uri);
       state.documents.close(&specifier);
       state.navigation_trees.remove(&specifier);
@@ -837,7 +849,7 @@ impl lspower::LanguageServer for LanguageServer {
     let config = if self
       .state
       .lock()
-      .await
+      .unwrap()
       .config
       .client_capabilities
       .workspace_configuration
@@ -864,10 +876,18 @@ impl lspower::LanguageServer for LanguageServer {
     };
 
     if let Some(config) = config {
-      if let Err(err) = self.state.lock().await.config.update(config) {
+      let config_res;
+      let import_map_res;
+      {
+        let mut state = self.state.lock().unwrap();
+        config_res = state.config.update(config);
+        import_map_res = state.update_import_map();
+      }
+
+      if let Err(err) = config_res {
         error!("failed to update settings: {}", err);
       }
-      if let Err(err) = self.state.lock().await.update_import_map().await {
+      if let Err(err) = import_map_res {
         self
           .client
           .show_message(MessageType::Warning, err.to_string())
@@ -894,21 +914,16 @@ impl lspower::LanguageServer for LanguageServer {
   ) {
     let mark = self.performance.mark("did_change_watched_files");
     let mut import_map_res = Ok(());
-    let mut tsconfig_res = Ok(());
+    let maybe_config_uri;
     {
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       // if the current import map has changed, we need to reload it
       if let Some(import_map_uri) = &state.maybe_import_map_uri {
         if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
-          import_map_res = state.update_import_map().await;
+          import_map_res = state.update_import_map();
         }
       }
-      // if the current tsconfig has changed, we need to reload it
-      if let Some(config_uri) = &state.maybe_config_uri {
-        if params.changes.iter().any(|fe| *config_uri == fe.uri) {
-          tsconfig_res = self.update_tsconfig().await;
-        }
-      }
+      maybe_config_uri = state.maybe_config_uri.clone();
     };
     if let Err(err) = import_map_res {
       self
@@ -916,11 +931,16 @@ impl lspower::LanguageServer for LanguageServer {
         .show_message(MessageType::Warning, err.to_string())
         .await;
     }
-    if let Err(err) = tsconfig_res {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+    // if the current tsconfig has changed, we need to reload it
+    if let Some(config_uri) = &maybe_config_uri {
+      if params.changes.iter().any(|fe| *config_uri == fe.uri) {
+        if let Err(err) = self.update_tsconfig().await {
+          self
+            .client
+            .show_message(MessageType::Warning, err.to_string())
+            .await;
+        }
+      }
     }
     self.performance.measure(mark);
   }
@@ -931,7 +951,7 @@ impl lspower::LanguageServer for LanguageServer {
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let mark = self.performance.mark("formatting");
     let (specifier, file_text, line_index, file_path) = {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       let specifier = state.url_map.normalize_url(&params.text_document.uri);
       let file_text = state
         .documents
@@ -991,7 +1011,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1041,7 +1061,7 @@ impl lspower::LanguageServer for LanguageServer {
     let mut code_actions;
     let file_diagnostics: Vec<Diagnostic>;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1113,7 +1133,7 @@ impl lspower::LanguageServer for LanguageServer {
               error!("Cannot decode actions from TypeScript: {}", err);
               LspError::internal_error()
             })?;
-          let state = self.state.lock().await;
+          let state = self.state.lock().unwrap();
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, &state)
@@ -1181,7 +1201,7 @@ impl lspower::LanguageServer for LanguageServer {
         Err(LspError::invalid_request())
       } else {
         let mut code_action = params.clone();
-        let state = self.state.lock().await;
+        let state = self.state.lock().unwrap();
         code_action.edit =
           ts_changes_to_edit(&combined_code_actions.changes, &state).map_err(
             |err| {
@@ -1208,7 +1228,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let settings;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() || !state.config.settings.enabled_code_lens() {
         return Ok(None);
       }
@@ -1339,7 +1359,7 @@ impl lspower::LanguageServer for LanguageServer {
           let line_index;
           let snapshot;
           {
-            let state = self.state.lock().await;
+            let state = self.state.lock().unwrap();
             line_index =
               state.get_line_index(&code_lens_data.specifier).unwrap();
             snapshot = state.snapshot();
@@ -1360,7 +1380,7 @@ impl lspower::LanguageServer for LanguageServer {
             })?;
           if let Some(implementations) = maybe_implementations {
             let mut locations = Vec::new();
-            let mut state = self.state.lock().await;
+            let mut state = self.state.lock().unwrap();
             for implementation in implementations {
               let implementation_specifier = resolve_url(
                 &implementation.document_span.file_name,
@@ -1428,7 +1448,7 @@ impl lspower::LanguageServer for LanguageServer {
           let line_index;
           let snapshot;
           {
-            let state = self.state.lock().await;
+            let state = self.state.lock().unwrap();
             line_index =
               state.get_line_index(&code_lens_data.specifier).unwrap();
             snapshot = state.snapshot();
@@ -1449,7 +1469,7 @@ impl lspower::LanguageServer for LanguageServer {
             })?;
           if let Some(references) = maybe_references {
             let mut locations = Vec::new();
-            let mut state = self.state.lock().await;
+            let mut state = self.state.lock().unwrap();
             for reference in references {
               if reference.is_definition {
                 continue;
@@ -1536,7 +1556,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1589,7 +1609,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1619,7 +1639,7 @@ impl lspower::LanguageServer for LanguageServer {
 
     if let Some(references) = maybe_references {
       let mut results = Vec::new();
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       for reference in references {
         if !params.context.include_declaration && reference.is_definition {
           continue;
@@ -1652,7 +1672,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1681,8 +1701,8 @@ impl lspower::LanguageServer for LanguageServer {
       serde_json::from_value(res).unwrap();
 
     if let Some(definition) = maybe_definition {
-      let mut state = self.state.lock().await;
-      let results = definition.to_definition(&line_index, &mut state).await;
+      let mut state = self.state.lock().unwrap();
+      let results = definition.to_definition(&line_index, &mut state);
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -1700,7 +1720,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1753,7 +1773,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1789,11 +1809,9 @@ impl lspower::LanguageServer for LanguageServer {
 
     let result = if let Some(implementations) = maybe_implementations {
       let mut links = Vec::new();
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       for implementation in implementations {
-        if let Some(link) =
-          implementation.to_link(&line_index, &mut state).await
-        {
+        if let Some(link) = implementation.to_link(&line_index, &mut state) {
           links.push(link)
         }
       }
@@ -1815,7 +1833,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
@@ -1860,7 +1878,7 @@ impl lspower::LanguageServer for LanguageServer {
 
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
-      let mut state = self.state.lock().await;
+      let mut state = self.state.lock().unwrap();
       let workspace_edits = rename_locations
         .into_workspace_edit(&params.new_name, &mut state)
         .map_err(|err| {
@@ -1894,7 +1912,7 @@ impl lspower::LanguageServer for LanguageServer {
       "deno/performance" => Ok(Some(self.get_performance())),
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => {
-          let state = self.state.lock().await;
+          let state = self.state.lock().unwrap();
           Ok(Some(
             serde_json::to_value(state.virtual_text_document(params)?)
               .map_err(|err| {
@@ -1925,7 +1943,7 @@ impl lspower::LanguageServer for LanguageServer {
     let line_index;
     let snapshot;
     {
-      let state = self.state.lock().await;
+      let state = self.state.lock().unwrap();
       if !state.enabled() {
         return Ok(None);
       }
