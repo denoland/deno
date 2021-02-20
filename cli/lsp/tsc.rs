@@ -105,7 +105,7 @@ impl AssetDocument {
 }
 
 #[derive(Debug, Clone)]
-pub struct Assets(HashMap<ModuleSpecifier, Option<AssetDocument>>);
+pub struct Assets(HashMap<ModuleSpecifier, AssetDocument>);
 
 impl Default for Assets {
   fn default() -> Self {
@@ -115,7 +115,7 @@ impl Default for Assets {
         let url_str = format!("asset:///{}", k);
         let specifier = resolve_url(&url_str).unwrap();
         let asset = AssetDocument::new(v);
-        (specifier, Some(asset))
+        (specifier, asset)
       })
       .collect();
     Self(assets)
@@ -127,42 +127,16 @@ impl Assets {
     self.0.contains_key(k)
   }
 
-  pub fn get(&self, k: &ModuleSpecifier) -> Option<&Option<AssetDocument>> {
-    self.0.get(k)
+  pub fn get(&self, k: &ModuleSpecifier) -> Option<AssetDocument> {
+    self.0.get(k).cloned()
   }
 
   pub fn insert(
     &mut self,
     k: ModuleSpecifier,
-    v: Option<AssetDocument>,
-  ) -> Option<Option<AssetDocument>> {
+    v: AssetDocument,
+  ) -> Option<AssetDocument> {
     self.0.insert(k, v)
-  }
-}
-
-/// Optionally returns an internal asset, first checking for any static assets
-/// in Rust, then checking any previously retrieved static assets from the
-/// isolate, and then finally, the tsc isolate itself.
-pub async fn get_asset(
-  specifier: &ModuleSpecifier,
-  ts_server: &TsServer,
-  state_snapshot: StateSnapshot,
-) -> Result<Option<AssetDocument>, AnyError> {
-  let specifier_str = specifier.to_string().replace("asset:///", "");
-  if let Some(text) = tsc::get_asset(&specifier_str) {
-    let maybe_asset = Some(AssetDocument::new(text));
-    Ok(maybe_asset)
-  } else {
-    let res = ts_server
-      .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
-      .await?;
-    let maybe_text: Option<String> = serde_json::from_value(res)?;
-    let maybe_asset = if let Some(text) = maybe_text {
-      Some(AssetDocument::new(text))
-    } else {
-      None
-    };
-    Ok(maybe_asset)
   }
 }
 
@@ -479,10 +453,8 @@ impl DocumentSpan {
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).unwrap();
-    let target_line_index = language_server
-      .get_line_index(target_specifier.clone())
-      .await
-      .ok()?;
+    let target_line_index =
+      language_server.get_line_index(&target_specifier)?;
     let target_uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
@@ -661,10 +633,11 @@ impl RenameLocations {
       // push TextEdit for ensured `TextDocumentEdit.edits`.
       let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
       document_edit.edits.push(lsp::OneOf::Left(lsp::TextEdit {
-        range: location
-          .document_span
-          .text_span
-          .to_range(&language_server.get_line_index(specifier.clone()).await?),
+        range: location.document_span.text_span.to_range(
+          &language_server
+            .get_line_index(&specifier)
+            .ok_or_else(|| anyhow!("Line index not found: {}", specifier))?,
+        ),
         new_text: new_name.to_string(),
       }));
     }
@@ -804,7 +777,9 @@ impl FileTextChanges {
     language_server: &mut language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = resolve_url(&self.file_name)?;
-    let line_index = language_server.get_line_index(specifier.clone()).await?;
+    let line_index = language_server
+      .get_line_index(&specifier)
+      .ok_or_else(|| anyhow!("Line index not found: {}", specifier))?;
     let edits = self
       .text_changes
       .iter()
@@ -1189,7 +1164,7 @@ fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_length");
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   let specifier = resolve_url(&v.specifier)?;
-  if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
+  if let Some(asset) = state.state_snapshot.assets.get(&specifier) {
     Ok(json!(asset.length))
   } else if state.state_snapshot.documents.contains_key(&specifier) {
     cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
@@ -1220,7 +1195,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: GetTextArgs = serde_json::from_value(args)?;
   let specifier = resolve_url(&v.specifier)?;
   let content =
-    if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
+    if let Some(content) = state.state_snapshot.assets.get(&specifier) {
       content.text.clone()
     } else if state.state_snapshot.documents.contains_key(&specifier) {
       cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
@@ -1517,7 +1492,7 @@ pub enum RequestMethod {
   /// Get rename locations at a given position.
   FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
   /// Retrieve the text of an assets that exists in memory in the isolate.
-  GetAsset(ModuleSpecifier),
+  GetAssets,
   /// Retrieve code fixes for a range of a file with the provided error codes.
   GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>)),
   /// Get completion information at a given position (IntelliSense).
@@ -1569,10 +1544,9 @@ impl RequestMethod {
           "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
         })
       }
-      RequestMethod::GetAsset(specifier) => json!({
+      RequestMethod::GetAssets => json!({
         "id": id,
-        "method": "getAsset",
-        "specifier": specifier,
+        "method": "getAssets",
       }),
       RequestMethod::GetCodeFixes((
         specifier,
@@ -2066,9 +2040,9 @@ mod tests {
   }
 
   #[test]
-  fn test_request_asset() {
+  fn test_request_assets() {
     let (mut runtime, state_snapshot) = setup(
-      false,
+      true,
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -2077,16 +2051,11 @@ mod tests {
       }),
       vec![],
     );
-    let specifier =
-      resolve_url("asset:///lib.esnext.d.ts").expect("could not resolve url");
-    let result = request(
-      &mut runtime,
-      state_snapshot,
-      RequestMethod::GetAsset(specifier),
-    );
+    let result =
+      request(&mut runtime, state_snapshot, RequestMethod::GetAssets);
     assert!(result.is_ok());
-    let response: Option<String> =
+    let response: HashMap<String, String> =
       serde_json::from_value(result.unwrap()).unwrap();
-    assert!(response.is_some());
+    assert!(response.get("asset:///lib.esnext.d.ts").is_some());
   }
 }

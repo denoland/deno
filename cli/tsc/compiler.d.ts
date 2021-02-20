@@ -43,7 +43,7 @@ declare global {
   type LanguageServerRequest =
     | ConfigureRequest
     | FindRenameLocationsRequest
-    | GetAsset
+    | GetAssets
     | GetCodeFixes
     | GetCombinedCodeFix
     | GetCompletionsRequest
@@ -77,9 +77,8 @@ declare global {
     providePrefixAndSuffixTextForRename: boolean;
   }
 
-  interface GetAsset extends BaseLanguageServerRequest {
-    method: "getAsset";
-    specifier: string;
+  interface GetAssets extends BaseLanguageServerRequest {
+    method: "getAssets";
   }
 
   interface GetCodeFixes extends BaseLanguageServerRequest {

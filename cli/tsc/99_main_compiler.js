@@ -70,6 +70,7 @@ delete Object.prototype.__proto__;
 
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
+  const precachedAssets = [];
 
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
@@ -548,12 +549,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getAsset": {
-        const sourceFile = host.getSourceFile(
-          request.specifier,
-          ts.ScriptTarget.ESNext,
-        );
-        return respond(id, sourceFile && sourceFile.text);
+      case "getAssets": {
+        const assets = {};
+        for (const specifier of precachedAssets) {
+          const sourceFile = host.getSourceFile(
+            specifier,
+            ts.ScriptTarget.ESNext,
+          );
+          assets[specifier] = sourceFile.text;
+        }
+        return respond(id, assets);
       }
       case "getCodeFixes": {
         return respond(
@@ -741,8 +746,10 @@ delete Object.prototype.__proto__;
     // tsc, so things like `"lib": [ "deno.ns" ]` are supported.
     if (!ts.libs.includes(lib)) {
       ts.libs.push(lib);
-      ts.libMap.set(lib, `lib.${lib}.d.ts`);
+      ts.libMap.set(lib, specifier);
     }
+    precachedAssets.push(`${ASSETS}${specifier}`);
+
     // we are caching in memory common type libraries that will be re-used by
     // tsc on when the snapshot is restored
     assert(

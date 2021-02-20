@@ -168,40 +168,15 @@ impl Inner {
     self.config.settings.enable
   }
 
-  /// Searches assets, open documents and external sources for a line_index,
-  /// which might be performed asynchronously, hydrating in memory caches for
-  /// subsequent requests.
-  pub(crate) async fn get_line_index(
-    &mut self,
-    specifier: ModuleSpecifier,
-  ) -> Result<LineIndex, AnyError> {
-    let mark = self.performance.mark("get_line_index");
-    let result = if specifier.scheme() == "asset" {
-      if let Some(asset) = self.get_asset(&specifier).await? {
-        Ok(asset.line_index)
-      } else {
-        Err(anyhow!("asset is missing: {}", specifier))
-      }
-    } else if let Some(line_index) = self.documents.line_index(&specifier) {
-      Ok(line_index)
-    } else if let Some(line_index) = self.sources.get_line_index(&specifier) {
-      Ok(line_index)
-    } else {
-      Err(anyhow!("Unable to find line index for: {}", specifier))
-    };
-    self.performance.measure(mark);
-    result
-  }
-
-  /// Only searches already cached assets and documents for a line index.  If
-  /// the line index cannot be found, `None` is returned.
-  fn get_line_index_sync(
+  /// Searches assets and documents for a line index. If the line index cannot
+  /// be found, `None` is returned.
+  pub fn get_line_index(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
-    let mark = self.performance.mark("get_line_index_sync");
+    let mark = self.performance.mark("get_line_index");
     let maybe_line_index = if specifier.scheme() == "asset" {
-      if let Some(Some(asset)) = self.assets.get(specifier) {
+      if let Some(asset) = self.assets.get(specifier) {
         Some(asset.line_index.clone())
       } else {
         None
@@ -526,20 +501,6 @@ impl Inner {
   ) -> Option<i32> {
     self.documents.version(&specifier)
   }
-
-  async fn get_asset(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<AssetDocument>, AnyError> {
-    if let Some(maybe_asset) = self.assets.get(specifier) {
-      return Ok(maybe_asset.clone());
-    } else {
-      let maybe_asset =
-        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()).await?;
-      self.assets.insert(specifier.clone(), maybe_asset.clone());
-      Ok(maybe_asset)
-    }
-  }
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
@@ -585,6 +546,24 @@ impl Inner {
 
     if let Err(err) = self.update_tsconfig().await {
       warn!("Updating tsconfig has errored: {}", err);
+    }
+
+    let res = self
+      .ts_server
+      .request(self.snapshot(), tsc::RequestMethod::GetAssets)
+      .await
+      .map_err(|err| {
+        error!("Unable to get assets: {}", err);
+        LspError::internal_error()
+      })?;
+    let assets: HashMap<String, String> = from_value(res).map_err(|err| {
+      error!("Unable to get assets: {}", err);
+      LspError::internal_error()
+    })?;
+    for (url_str, data) in assets {
+      let specifier = resolve_url(&url_str).unwrap();
+      let asset = AssetDocument::new(data);
+      self.assets.insert(specifier, asset);
     }
 
     if capabilities.code_action_provider.is_some() {
@@ -864,15 +843,15 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetQuickInfo((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -932,7 +911,7 @@ impl Inner {
       self.performance.measure(mark);
       return Ok(None);
     }
-    let line_index = self.get_line_index_sync(&specifier).unwrap();
+    let line_index = self.get_line_index(&specifier).unwrap();
     let mut code_actions = CodeActionCollection::default();
     let file_diagnostics: Vec<Diagnostic> = self
       .diagnostics
@@ -1059,7 +1038,7 @@ impl Inner {
 
     let mark = self.performance.mark("code_lens");
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    let line_index = self.get_line_index_sync(&specifier).unwrap();
+    let line_index = self.get_line_index(&specifier).unwrap();
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Failed to retrieve nav tree: {}", err);
@@ -1186,7 +1165,7 @@ impl Inner {
       let code_lens = match code_lens_data.source {
         CodeLensSource::Implementations => {
           let line_index =
-            self.get_line_index_sync(&code_lens_data.specifier).unwrap();
+            self.get_line_index(&code_lens_data.specifier).unwrap();
           let req = tsc::RequestMethod::GetImplementation((
             code_lens_data.specifier.clone(),
             line_index.offset_tsc(params.range.start)?,
@@ -1270,7 +1249,7 @@ impl Inner {
         }
         CodeLensSource::References => {
           let line_index =
-            self.get_line_index_sync(&code_lens_data.specifier).unwrap();
+            self.get_line_index(&code_lens_data.specifier).unwrap();
           let req = tsc::RequestMethod::GetReferences((
             code_lens_data.specifier.clone(),
             line_index.offset_tsc(params.range.start)?,
@@ -1301,12 +1280,11 @@ impl Inner {
                 LspError::internal_error()
               })?;
               let line_index = self
-                .get_line_index(reference_specifier)
-                .await
-                .map_err(|err| {
-                error!("Unable to get line index: {}", err);
-                LspError::internal_error()
-              })?;
+                .get_line_index(&reference_specifier)
+                .ok_or_else(|| {
+                  error!("Line index not found: {}", reference_specifier);
+                  LspError::internal_error()
+                })?;
               locations.push(reference.to_location(&line_index, self));
             }
             let command = if !locations.is_empty() {
@@ -1378,15 +1356,15 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let files_to_search = vec![specifier.clone()];
     let req = tsc::RequestMethod::GetDocumentHighlights((
       specifier,
@@ -1424,15 +1402,15 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetReferences((
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
@@ -1453,7 +1431,10 @@ impl Inner {
           resolve_url(&reference.document_span.file_name).unwrap();
         // TODO(lucacasonato): handle error correctly
         let line_index =
-          self.get_line_index(reference_specifier).await.unwrap();
+          self.get_line_index(&reference_specifier).ok_or_else(|| {
+            error!("Line index not found: {}", reference_specifier);
+            LspError::internal_error()
+          })?;
         results.push(reference.to_location(&line_index, self));
       }
 
@@ -1476,15 +1457,15 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetDefinition((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -1517,15 +1498,15 @@ impl Inner {
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let req = tsc::RequestMethod::GetCompletions((
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
@@ -1562,15 +1543,15 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
 
     let req = tsc::RequestMethod::GetImplementation((
       specifier,
@@ -1620,15 +1601,15 @@ impl Inner {
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
 
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
 
     let req = tsc::RequestMethod::FindRenameLocations((
       specifier,
@@ -1725,15 +1706,15 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
+    let line_index = if let Some(line_index) = self.get_line_index(&specifier)
+    {
+      line_index
+    } else {
+      return Err(LspError::invalid_params(format!(
+        "An unexpected specifier ({}) was provided.",
+        specifier
+      )));
+    };
     let options = if let Some(context) = params.context {
       tsc::SignatureHelpItemsOptions {
         trigger_reason: Some(tsc::SignatureHelpTriggerReason {
@@ -2010,11 +1991,7 @@ impl Inner {
     } else {
       match specifier.scheme() {
         "asset" => {
-          if let Some(asset) = self
-            .get_asset(&specifier)
-            .await
-            .map_err(|_| LspError::internal_error())?
-          {
+          if let Some(asset) = self.assets.get(&specifier) {
             Some(asset.text)
           } else {
             error!("Missing asset: {}", specifier);
