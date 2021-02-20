@@ -1,4 +1,4 @@
-Deno.test("test", function() {
+Deno.test("test", function () {
   const timer = setTimeout(() => null, 10000);
   try {
     throw new Error("fail");
