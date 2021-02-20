@@ -15,7 +15,7 @@ pub struct ClientCapabilities {
   pub workspace_did_change_watched_files: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -30,7 +30,7 @@ pub struct CodeLensSettings {
   pub references_all_functions: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   pub enable: bool,

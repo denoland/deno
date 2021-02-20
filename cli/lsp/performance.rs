@@ -49,14 +49,17 @@ impl From<PerformanceMark> for PerformanceMeasure {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug, Clone)]
-pub struct Performance {
-  counts: Arc<Mutex<HashMap<String, u32>>>,
+#[derive(Debug, Clone, Default)]
+pub struct Performance(Arc<Mutex<PerformanceInner>>);
+
+#[derive(Debug)]
+pub struct PerformanceInner {
+  counts: HashMap<String, u32>,
   max_size: usize,
-  measures: Arc<Mutex<VecDeque<PerformanceMeasure>>>,
+  measures: VecDeque<PerformanceMeasure>,
 }
 
-impl Default for Performance {
+impl Default for PerformanceInner {
   fn default() -> Self {
     Self {
       counts: Default::default(),
@@ -70,8 +73,9 @@ impl Performance {
   /// Return the count and average duration of a measurement identified by name.
   #[cfg(test)]
   pub fn average(&self, name: &str) -> Option<(usize, Duration)> {
+    let inner = self.0.lock().unwrap();
     let mut items = Vec::new();
-    for measure in self.measures.lock().unwrap().iter() {
+    for measure in inner.measures.iter() {
       if measure.name == name {
         items.push(measure.duration);
       }
@@ -89,8 +93,9 @@ impl Performance {
   /// Return an iterator which provides the names, count, and average duration
   /// of each measurement.
   pub fn averages(&self) -> Vec<PerformanceAverage> {
+    let inner = self.0.lock().unwrap();
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
-    for measure in self.measures.lock().unwrap().iter() {
+    for measure in inner.measures.iter() {
       averages
         .entry(measure.name.clone())
         .or_default()
@@ -113,9 +118,9 @@ impl Performance {
   /// structure, which is then passed to `.measure()` to finalize the duration
   /// and add it to the internal buffer.
   pub fn mark<S: AsRef<str>>(&self, name: S) -> PerformanceMark {
+    let mut inner = self.0.lock().unwrap();
     let name = name.as_ref();
-    let mut counts = self.counts.lock().unwrap();
-    let count = counts.entry(name.to_string()).or_insert(0);
+    let count = inner.counts.entry(name.to_string()).or_insert(0);
     *count += 1;
     PerformanceMark {
       name: name.to_string(),
@@ -128,12 +133,12 @@ impl Performance {
   /// be used to finalize the duration of the span being measured, and add the
   /// measurement to the internal buffer.
   pub fn measure(&self, mark: PerformanceMark) -> Duration {
+    let mut inner = self.0.lock().unwrap();
     let measure = PerformanceMeasure::from(mark);
     let duration = measure.duration;
-    let mut measures = self.measures.lock().unwrap();
-    measures.push_back(measure);
-    while measures.len() > self.max_size {
-      measures.pop_front();
+    inner.measures.push_back(measure);
+    while inner.measures.len() > inner.max_size {
+      inner.measures.pop_front();
     }
     duration
   }

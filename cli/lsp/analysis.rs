@@ -402,14 +402,14 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-pub(crate) async fn ts_changes_to_edit(
+pub(crate) fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
-  language_server: &mut language_server::Inner,
+  state: &language_server::LanguageServerState,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
     let text_document_edit =
-      change.to_text_document_edit(language_server).await?;
+      change.to_text_document_edit(state)?;
     text_document_edits.push(text_document_edit);
   }
   Ok(Some(lsp::WorkspaceEdit {
@@ -482,11 +482,11 @@ impl CodeActionCollection {
   }
 
   /// Add a TypeScript code fix action to the code actions collection.
-  pub(crate) async fn add_ts_fix_action(
+  pub(crate) fn add_ts_fix_action(
     &mut self,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    language_server: &mut language_server::Inner,
+    state: &language_server::LanguageServerState,
   ) -> Result<(), AnyError> {
     if action.commands.is_some() {
       // In theory, tsc can return actions that require "commands" to be applied
@@ -501,7 +501,7 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let edit = ts_changes_to_edit(&action.changes, language_server).await?;
+    let edit = ts_changes_to_edit(&action.changes, state)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),

@@ -34,6 +34,7 @@ use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::thread;
 use text_size::TextSize;
 use tokio::sync::mpsc;
@@ -45,8 +46,8 @@ type Request = (
   oneshot::Sender<Result<Value, AnyError>>,
 );
 
-#[derive(Clone, Debug)]
-pub struct TsServer(mpsc::UnboundedSender<Request>);
+#[derive(Debug, Clone)]
+pub struct TsServer(Arc<mpsc::UnboundedSender<Request>>);
 
 impl TsServer {
   pub fn new() -> Self {
@@ -68,7 +69,7 @@ impl TsServer {
       })
     });
 
-    Self(tx)
+    Self(Arc::new(tx))
   }
 
   pub async fn request(
@@ -447,15 +448,14 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
-  pub(crate) async fn to_link(
+  pub(crate) fn to_link(
     &self,
     line_index: &LineIndex,
-    language_server: &mut language_server::Inner,
+    state: &mut language_server::LanguageServerState,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).unwrap();
-    let target_line_index =
-      language_server.get_line_index(&target_specifier)?;
-    let target_uri = language_server
+    let target_line_index = state.get_line_index(&target_specifier)?;
+    let target_uri = state
       .url_map
       .normalize_specifier(&target_specifier)
       .unwrap();
@@ -564,7 +564,7 @@ impl ImplementationLocation {
   pub(crate) fn to_location(
     &self,
     line_index: &LineIndex,
-    language_server: &mut language_server::Inner,
+    language_server: &mut language_server::LanguageServerState,
   ) -> lsp::Location {
     let specifier = resolve_url(&self.document_span.file_name).unwrap();
     let uri = language_server
@@ -580,12 +580,9 @@ impl ImplementationLocation {
   pub(crate) async fn to_link(
     &self,
     line_index: &LineIndex,
-    language_server: &mut language_server::Inner,
+    state: &mut language_server::LanguageServerState,
   ) -> Option<lsp::LocationLink> {
-    self
-      .document_span
-      .to_link(line_index, language_server)
-      .await
+    self.document_span.to_link(line_index, state)
   }
 }
 
@@ -604,16 +601,16 @@ pub struct RenameLocations {
 }
 
 impl RenameLocations {
-  pub(crate) async fn into_workspace_edit(
+  pub(crate) fn into_workspace_edit(
     self,
     new_name: &str,
-    language_server: &mut language_server::Inner,
+    state: &mut language_server::LanguageServerState,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
       let specifier = resolve_url(&location.document_span.file_name)?;
-      let uri = language_server.url_map.normalize_specifier(&specifier)?;
+      let uri = state.url_map.normalize_specifier(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -622,7 +619,7 @@ impl RenameLocations {
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
-              version: language_server.document_version(specifier.clone()),
+              version: state.document_version(specifier.clone()),
             },
             edits:
               Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
@@ -634,7 +631,7 @@ impl RenameLocations {
       let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
       document_edit.edits.push(lsp::OneOf::Left(lsp::TextEdit {
         range: location.document_span.text_span.to_range(
-          &language_server
+          &state
             .get_line_index(&specifier)
             .ok_or_else(|| anyhow!("Line index not found: {}", specifier))?,
         ),
@@ -697,14 +694,12 @@ impl DefinitionInfoAndBoundSpan {
   pub(crate) async fn to_definition(
     &self,
     line_index: &LineIndex,
-    language_server: &mut language_server::Inner,
+    state: &mut language_server::LanguageServerState,
   ) -> Option<lsp::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
       for di in definitions {
-        if let Some(link) =
-          di.document_span.to_link(line_index, language_server).await
-        {
+        if let Some(link) = di.document_span.to_link(line_index, state) {
           location_links.push(link);
         }
       }
@@ -772,12 +767,12 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub(crate) async fn to_text_document_edit(
+  pub(crate) fn to_text_document_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    state: &language_server::LanguageServerState,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = resolve_url(&self.file_name)?;
-    let line_index = language_server
+    let line_index = state
       .get_line_index(&specifier)
       .ok_or_else(|| anyhow!("Line index not found: {}", specifier))?;
     let edits = self
@@ -785,10 +780,11 @@ impl FileTextChanges {
       .iter()
       .map(|tc| tc.as_text_edit(&line_index))
       .collect();
+    let version = state.document_version(specifier.clone());
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
-        version: language_server.document_version(specifier),
+        uri: specifier,
+        version,
       },
       edits,
     })
@@ -837,13 +833,10 @@ impl ReferenceEntry {
   pub(crate) fn to_location(
     &self,
     line_index: &LineIndex,
-    language_server: &mut language_server::Inner,
+    state: &mut language_server::LanguageServerState,
   ) -> lsp::Location {
     let specifier = resolve_url(&self.document_span.file_name).unwrap();
-    let uri = language_server
-      .url_map
-      .normalize_specifier(&specifier)
-      .unwrap();
+    let uri = state.url_map.normalize_specifier(&specifier).unwrap();
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
