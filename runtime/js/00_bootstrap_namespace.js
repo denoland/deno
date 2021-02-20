@@ -5,5 +5,6 @@
 // the files.
 
 // This namespace is removed during runtime bootstrapping process.
+"use strict";
 
 globalThis.__bootstrap = globalThis.__bootstrap || {};

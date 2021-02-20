@@ -19,6 +19,16 @@ declare namespace globalThis {
       Headers: typeof Headers;
     };
 
+    declare var file: {
+      Blob: typeof Blob & {
+        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
+      };
+      _byteSequence: unique symbol;
+      File: typeof File & {
+        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
+      };
+    };
+
     declare var streams: {
       ReadableStream: typeof ReadableStream;
       isReadableStreamDisturbed(stream: ReadableStream): boolean;

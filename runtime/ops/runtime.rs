@@ -26,8 +26,8 @@ fn op_main_module(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
-  let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
-  if main_url.as_url().scheme() == "file" {
+  let main_url = deno_core::resolve_url_or_path(&main)?;
+  if main_url.scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state
       .borrow::<Permissions>()
@@ -36,6 +36,7 @@ fn op_main_module(
   Ok(json!(&main))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_metrics(
   state: &mut OpState,
   _args: Value,

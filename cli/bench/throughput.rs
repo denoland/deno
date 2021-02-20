@@ -11,7 +11,7 @@ const MB: usize = 1024 * 1024;
 const SERVER_ADDR: &str = "0.0.0.0:4544";
 const CLIENT_ADDR: &str = "127.0.0.1 4544";
 
-pub(crate) fn cat(deno_exe: &PathBuf, megs: usize) -> Result<f64> {
+pub(crate) fn cat(deno_exe: &PathBuf, megs: usize) -> f64 {
   let size = megs * MB;
   let shell_cmd = format!(
     "{} run --allow-read cli/tests/cat.ts /dev/zero | head -c {}",
@@ -25,7 +25,7 @@ pub(crate) fn cat(deno_exe: &PathBuf, megs: usize) -> Result<f64> {
   let _ = test_util::run_collect(cmd, None, None, None, true);
   let end = Instant::now();
 
-  Ok((end - start).as_secs_f64())
+  (end - start).as_secs_f64()
 }
 
 pub(crate) fn tcp(deno_exe: &PathBuf, megs: usize) -> Result<f64> {

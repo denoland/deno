@@ -22,7 +22,11 @@
       "event-global-extra.window.js": true,
       "event-global.worker.js": true,
       "legacy-pre-activation-behavior.window.js": true,
-      "relatedTarget.window.js": true
+      "relatedTarget.window.js": true,
+      "Event-constructors.any.js": [
+        "Untitled 2",
+        "Untitled 3"
+      ]
     },
     "idlharness.any.js": false,
     "idlharness.window.js": false
@@ -1016,6 +1020,41 @@
           "Check isReloadNavigation attribute",
           "Check isHistoryNavigation attribute"
         ]
+      }
+    }
+  },
+  "FileAPI": {
+    "blob": {
+      "Blob-array-buffer.any.js": true,
+      "Blob-stream.any.js": true,
+      "Blob-text.any.js": true,
+      "Blob-constructor.any.js": [
+        "Blob interface object",
+        "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
+      ],
+      "Blob-slice-overflow.any.js": true,
+      "Blob-slice.any.js": true
+    },
+    "file": {
+      "File-constructor.any.js": true
+    }
+  },
+  "html": {
+    "webappapis": {
+      "atob": {
+        "base64.any.js": true
+      },
+      "timers": {
+        "cleartimeout-clearinterval.any.js": true,
+        "missing-timeout-setinterval.any.js": true,
+        "negative-setinterval.any.js": true,
+        "negative-settimeout.any.js": true,
+        "type-long-setinterval.any.js": true,
+        "type-long-settimeout.any.js": true
+      },
+      "microtask-queuing": {
+        "queue-microtask-exceptions.any.js": true,
+        "queue-microtask.any.js": true
       }
     }
   }

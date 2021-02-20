@@ -11,8 +11,9 @@ use crate::media_type::MediaType;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp_types;
+use lspower::lsp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
@@ -26,7 +27,7 @@ pub enum DiagnosticSource {
 
 #[derive(Debug, Default, Clone)]
 pub struct DiagnosticCollection {
-  map: HashMap<(ModuleSpecifier, DiagnosticSource), Vec<lsp_types::Diagnostic>>,
+  map: HashMap<(ModuleSpecifier, DiagnosticSource), Vec<lsp::Diagnostic>>,
   versions: HashMap<ModuleSpecifier, i32>,
   changes: HashSet<ModuleSpecifier>,
 }
@@ -37,7 +38,7 @@ impl DiagnosticCollection {
     specifier: ModuleSpecifier,
     source: DiagnosticSource,
     version: Option<i32>,
-    diagnostics: Vec<lsp_types::Diagnostic>,
+    diagnostics: Vec<lsp::Diagnostic>,
   ) {
     self.map.insert((specifier.clone(), source), diagnostics);
     if let Some(version) = version {
@@ -50,7 +51,7 @@ impl DiagnosticCollection {
     &self,
     specifier: &ModuleSpecifier,
     source: &DiagnosticSource,
-  ) -> impl Iterator<Item = &lsp_types::Diagnostic> {
+  ) -> impl Iterator<Item = &lsp::Diagnostic> {
     self
       .map
       .get(&(specifier.clone(), source.clone()))
@@ -75,7 +76,7 @@ impl DiagnosticCollection {
 }
 
 pub type DiagnosticVec =
-  Vec<(ModuleSpecifier, Option<i32>, Vec<lsp_types::Diagnostic>)>;
+  Vec<(ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>)>;
 
 pub async fn generate_lint_diagnostics(
   state_snapshot: StateSnapshot,
@@ -117,28 +118,24 @@ pub async fn generate_lint_diagnostics(
   .unwrap()
 }
 
-impl<'a> From<&'a diagnostics::DiagnosticCategory>
-  for lsp_types::DiagnosticSeverity
-{
+impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
   fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => {
-        lsp_types::DiagnosticSeverity::Error
-      }
+      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::Error,
       diagnostics::DiagnosticCategory::Warning => {
-        lsp_types::DiagnosticSeverity::Warning
+        lsp::DiagnosticSeverity::Warning
       }
       diagnostics::DiagnosticCategory::Suggestion => {
-        lsp_types::DiagnosticSeverity::Hint
+        lsp::DiagnosticSeverity::Hint
       }
       diagnostics::DiagnosticCategory::Message => {
-        lsp_types::DiagnosticSeverity::Information
+        lsp::DiagnosticSeverity::Information
       }
     }
   }
 }
 
-impl<'a> From<&'a diagnostics::Position> for lsp_types::Position {
+impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   fn from(pos: &'a diagnostics::Position) -> Self {
     Self {
       line: pos.line as u32,
@@ -150,8 +147,8 @@ impl<'a> From<&'a diagnostics::Position> for lsp_types::Position {
 fn to_lsp_range(
   start: &diagnostics::Position,
   end: &diagnostics::Position,
-) -> lsp_types::Range {
-  lsp_types::Range {
+) -> lsp::Range {
+  lsp::Range {
     start: start.into(),
     end: end.into(),
   }
@@ -171,7 +168,7 @@ fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
 
 fn to_lsp_related_information(
   related_information: &Option<Vec<diagnostics::Diagnostic>>,
-) -> Option<Vec<lsp_types::DiagnosticRelatedInformation>> {
+) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
   if let Some(related) = related_information {
     Some(
       related
@@ -180,9 +177,9 @@ fn to_lsp_related_information(
           if let (Some(source), Some(start), Some(end)) =
             (&ri.source, &ri.start, &ri.end)
           {
-            let uri = lsp_types::Url::parse(&source).unwrap();
-            Some(lsp_types::DiagnosticRelatedInformation {
-              location: lsp_types::Location {
+            let uri = lsp::Url::parse(&source).unwrap();
+            Some(lsp::DiagnosticRelatedInformation {
+              location: lsp::Location {
                 uri,
                 range: to_lsp_range(start, end),
               },
@@ -201,15 +198,15 @@ fn to_lsp_related_information(
 
 fn ts_json_to_diagnostics(
   diagnostics: &[diagnostics::Diagnostic],
-) -> Vec<lsp_types::Diagnostic> {
+) -> Vec<lsp::Diagnostic> {
   diagnostics
     .iter()
     .filter_map(|d| {
       if let (Some(start), Some(end)) = (&d.start, &d.end) {
-        Some(lsp_types::Diagnostic {
+        Some(lsp::Diagnostic {
           range: to_lsp_range(start, end),
           severity: Some((&d.category).into()),
-          code: Some(lsp_types::NumberOrString::Number(d.code as i32)),
+          code: Some(lsp::NumberOrString::Number(d.code as i32)),
           code_description: None,
           source: Some("deno-ts".to_string()),
           message: get_diagnostic_message(d),
@@ -219,7 +216,7 @@ fn ts_json_to_diagnostics(
           tags: match d.code {
             // These are codes that indicate the variable is unused.
             2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 7027 | 7028 => {
-              Some(vec![lsp_types::DiagnosticTag::Unnecessary])
+              Some(vec![lsp::DiagnosticTag::Unnecessary])
             }
             _ => None,
           },
@@ -251,7 +248,7 @@ pub async fn generate_ts_diagnostics(
     let res = ts_server.request(state_snapshot.clone(), req).await?;
     let ts_diagnostic_map: TsDiagnostics = serde_json::from_value(res)?;
     for (specifier_str, ts_diagnostics) in ts_diagnostic_map.iter() {
-      let specifier = ModuleSpecifier::resolve_url(specifier_str)?;
+      let specifier = deno_core::resolve_url(specifier_str)?;
       let version = state_snapshot.documents.version(&specifier);
       diagnostics.push((
         specifier,
@@ -283,36 +280,41 @@ pub async fn generate_dependency_diagnostics(
               &dependency.maybe_code_specifier_range,
             ) {
               match code.clone() {
-                ResolvedDependency::Err(message) => {
-                  diagnostic_list.push(lsp_types::Diagnostic {
+                ResolvedDependency::Err(dependency_err) => {
+                  diagnostic_list.push(lsp::Diagnostic {
                     range: *range,
-                    severity: Some(lsp_types::DiagnosticSeverity::Error),
-                    code: None,
+                    severity: Some(lsp::DiagnosticSeverity::Error),
+                    code: Some(dependency_err.as_code()),
                     code_description: None,
                     source: Some("deno".to_string()),
-                    message,
+                    message: format!("{}", dependency_err),
                     related_information: None,
                     tags: None,
                     data: None,
                   })
                 }
                 ResolvedDependency::Resolved(specifier) => {
-                  if !(state_snapshot.documents.contains(&specifier) || sources.contains(&specifier)) {
-                    let is_local = specifier.as_url().scheme() == "file";
-                    diagnostic_list.push(lsp_types::Diagnostic {
+                  if !(state_snapshot.documents.contains_key(&specifier) || sources.contains_key(&specifier)) {
+                    let scheme = specifier.scheme();
+                    let (code, message) = if scheme == "file" {
+                      (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier))
+                    } else if scheme == "data" {
+                      (Some(lsp::NumberOrString::String("no-cache-data".to_string())), "Uncached data URL.".to_string())
+                    } else {
+                      (Some(lsp::NumberOrString::String("no-cache".to_string())), format!("Unable to load the remote module: \"{}\".", specifier))
+                    };
+                    diagnostic_list.push(lsp::Diagnostic {
                       range: *range,
-                      severity: Some(lsp_types::DiagnosticSeverity::Error),
-                      code: None,
+                      severity: Some(lsp::DiagnosticSeverity::Error),
+                      code,
                       code_description: None,
                       source: Some("deno".to_string()),
-                      message: if is_local {
-                        format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)
-                      } else {
-                        format!("Unable to load the module: \"{}\".\n  If the module exists, running `deno cache {}` should resolve this error.", specifier, specifier)
-                      },
+                      message,
                       related_information: None,
                       tags: None,
-                      data: None,
+                      data: Some(json!({
+                        "specifier": specifier
+                      })),
                     })
                   }
                 },

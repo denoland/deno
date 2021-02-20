@@ -17,20 +17,29 @@ jobs:
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
-            kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
-            kind: test_debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             kind: bench
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
+          # TODO(ry) Ideally we could use ubuntu-latest-xl for lint but there's
+          # a bug with dprint that is preventing this from running.
+          - os: ubuntu-latest
             kind: lint
+          # TODO(ry) Ideally we would use ubuntu-latest-xl for test_debug too,
+          # but there are race conditions in our test we are working around by
+          # using the slower runner.
+          - os: ubuntu-latest
+            kind: test_debug
+          # Warning: Do not upgrade test_release to newer version of ubuntu
+          # runners. We need to link against older version of glibc in order to
+          # run on older systems. glibc in 20.04 is not compatible with 18.04.
+          # See #9484.
+          - os: ubuntu-18.04
+            kind: test_release
 
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
       # Don't fast-fail on tag build because publishing binaries shouldn't be
-      # prevented if 'cargo publish' fails (which can be a false negative).
+      # prevented if if any of the stages fails (which can be a false negative).
       fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
         'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
 
@@ -57,8 +66,7 @@ jobs:
           startsWith(matrix.os, 'ubuntu') &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
@@ -66,7 +74,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.49.0
+          rust-version: 1.50.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -78,13 +86,13 @@ jobs:
         if: |
           !startsWith(matrix.os, 'windows')
         run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Install Deno (Windows)
         if: startsWith(matrix.os, 'windows')
         run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
 
       - name: Install Python
@@ -113,8 +121,7 @@ jobs:
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/'))
+          startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -127,8 +134,7 @@ jobs:
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/'))
+          startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
@@ -288,8 +294,7 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
@@ -300,8 +305,7 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
@@ -315,8 +319,7 @@ jobs:
         if: |
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
+          startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -327,16 +330,3 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
-
-      - name: Publish
-        if: |
-          startsWith(matrix.os, 'ubuntu') &&
-          matrix.kind == 'test_release' &&
-          github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          cd cli
-          cargo publish

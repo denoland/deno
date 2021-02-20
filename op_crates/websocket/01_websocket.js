@@ -1,4 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -255,7 +256,7 @@
     }
 
     close(code, reason) {
-      if (code && (code !== 1000 && !(3000 <= code > 5000))) {
+      if (code && !(code === 1000 || (3000 <= code && code < 5000))) {
         throw new DOMException(
           "The close code must be either 1000 or in the range of 3000 to 4999.",
           "NotSupportedError",
