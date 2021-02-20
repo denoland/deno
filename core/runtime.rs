@@ -756,7 +756,7 @@ impl JsRuntime {
 
       if module.get_status() == v8::ModuleStatus::Errored {
         let exception = module.get_exception();
-        exception_to_err_result(tc_scope, module.get_exception(), false)
+        exception_to_err_result(tc_scope, exception, false)
           .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
       } else {
         let instantiate_result = module
@@ -765,7 +765,7 @@ impl JsRuntime {
           Some(_) => Ok(()),
           None => {
             let exception = tc_scope.exception().unwrap();
-            exception_to_err_result(tc_scope, module.get_exception(), false)
+            exception_to_err_result(tc_scope, exception, false)
               .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
           }
         }
