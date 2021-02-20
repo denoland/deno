@@ -15,7 +15,7 @@
 
   /**
    * @param {number[] | GPUExtent3DDict} data
-   * @returns {GPUExtent3DDict} 
+   * @returns {GPUExtent3DDict}
    */
   function normalizeGPUExtent3D(data) {
     if (Array.isArray(data)) {
@@ -31,7 +31,7 @@
 
   /**
    * @param {number[] | GPUOrigin3DDict} data
-   * @returns {GPUOrigin3DDict} 
+   * @returns {GPUOrigin3DDict}
    */
   function normalizeGPUOrigin3D(data) {
     if (Array.isArray(data)) {
@@ -47,7 +47,7 @@
 
   /**
    * @param {number[] | GPUColor} data
-   * @returns {GPUColor} 
+   * @returns {GPUColor}
    */
   function normalizeGPUColor(data) {
     if (Array.isArray(data)) {
@@ -2085,13 +2085,6 @@
      * @return {GPURenderPassEncoder}
      */
     beginRenderPass(descriptor) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder'";
@@ -2100,6 +2093,13 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
 
       let depthStencilAttachment;
       if (descriptor.depthStencilAttachment) {
@@ -2176,13 +2176,6 @@
      * @param {GPUComputePassDescriptor} descriptor
      */
     beginComputePass(descriptor = {}) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginComputePass' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'beginComputePass' on 'GPUCommandEncoder'";
@@ -2190,6 +2183,13 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'beginComputePass' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
 
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_compute_pass",
@@ -2222,13 +2222,6 @@
       destinationOffset,
       size,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder'";
@@ -2253,6 +2246,14 @@
         prefix,
         context: "Argument 5",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_buffer",
         {
@@ -2272,13 +2273,6 @@
      * @param {GPUExtent3D} copySize
      */
     copyBufferToTexture(source, destination, copySize) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder'";
@@ -2295,6 +2289,13 @@
         prefix,
         context: "Argument 3",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
 
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_texture",
@@ -2321,13 +2322,6 @@
      * @param {GPUExtent3D} copySize
      */
     copyTextureToBuffer(source, destination, copySize) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder'";
@@ -2344,6 +2338,14 @@
         prefix,
         context: "Argument 3",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_buffer",
         {
@@ -2368,13 +2370,6 @@
      * @param {GPUExtent3D} copySize
      */
     copyTextureToTexture(source, destination, copySize) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder'";
@@ -2391,6 +2386,14 @@
         prefix,
         context: "Argument 3",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_texture",
         {
@@ -2415,13 +2418,6 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder'";
@@ -2430,6 +2426,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
         commandEncoderRid: this[_rid],
         groupLabel,
@@ -2437,6 +2441,8 @@
     }
 
     popDebugGroup() {
+      webidl.assertBranded(this, GPUCommandEncoder);
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder': already consumed",
@@ -2444,7 +2450,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPUCommandEncoder);
       core.jsonOpSync("op_webgpu_command_encoder_pop_debug_group", {
         commandEncoderRid: this[_rid],
       });
@@ -2454,13 +2459,6 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder'";
@@ -2469,6 +2467,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_command_encoder_insert_debug_marker", {
         commandEncoderRid: this[_rid],
         markerLabel,
@@ -2480,13 +2486,6 @@
      * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder'";
@@ -2499,6 +2498,14 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_command_encoder_write_timestamp", {
         commandEncoderRid: this[_rid],
         querySet: querySet[_rid],
@@ -2520,13 +2527,6 @@
       destination,
       destinationOffset,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
@@ -2551,6 +2551,14 @@
         prefix,
         context: "Argument 5",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_command_encoder_resolve_query_set", {
         commandEncoderRid: this[_rid],
         querySet: querySet[_rid],
@@ -2566,6 +2574,13 @@
      * @returns {GPUCommandBuffer}
      */
     finish(descriptor = {}) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix = "Failed to execute 'finish' on 'GPUCommandEncoder'";
+      descriptor = webidl.converters.GPUCommandBufferDescriptor(descriptor, {
+        prefix,
+        context: "Argument 1",
+      });
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'finish' on 'GPUCommandEncoder': already consumed",
@@ -2573,12 +2588,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPUCommandEncoder);
-      const prefix = "Failed to execute 'finish' on 'GPUCommandEncoder'";
-      descriptor = webidl.converters.GPUCommandBufferDescriptor(descriptor, {
-        prefix,
-        context: "Argument 1",
-      });
       const { rid } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
         commandEncoderRid: this[_rid],
         ...descriptor,
@@ -2650,13 +2659,6 @@
      * @param {number} maxDepth
      */
     setViewport(x, y, width, height, minDepth, maxDepth) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setViewport' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
@@ -2676,6 +2678,14 @@
         prefix,
         context: "Argument 6",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setViewport' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_set_viewport", {
         renderPassRid: this[_rid],
         x,
@@ -2695,13 +2705,6 @@
      * @param {number} height
      */
     setScissorRect(x, y, width, height) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setScissorRect' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setScissorRect' on 'GPUComputePassEncoder'";
@@ -2722,6 +2725,14 @@
         prefix,
         context: "Argument 4",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setScissorRect' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_set_scissor_rect", {
         renderPassRid: this[_rid],
         x,
@@ -2735,13 +2746,6 @@
      * @param {GPUColor} color
      */
     setBlendColor(color) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setBlendColor' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setBlendColor' on 'GPUComputePassEncoder'";
@@ -2750,6 +2754,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setBlendColor' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_set_blend_color", {
         renderPassRid: this[_rid],
         color: normalizeGPUColor(color),
@@ -2760,13 +2772,6 @@
      * @param {number} reference
      */
     setStencilReference(reference) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setStencilReference' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setStencilReference' on 'GPUComputePassEncoder'";
@@ -2775,6 +2780,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setStencilReference' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_set_stencil_reference", {
         renderPassRid: this[_rid],
         reference,
@@ -2808,13 +2821,6 @@
      * @param {number} queryIndex
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder'";
@@ -2827,6 +2833,14 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
         renderPassRid: this[_rid],
         querySet: querySet[_rid],
@@ -2835,6 +2849,8 @@
     }
 
     endPipelineStatisticsQuery() {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'endPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed",
@@ -2842,7 +2858,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPURenderPassEncoder);
       core.jsonOpSync("op_webgpu_render_pass_end_pipeline_statistics_query", {
         renderPassRid: this[_rid],
       });
@@ -2853,13 +2868,6 @@
      * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder'";
@@ -2872,6 +2880,13 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
       core.jsonOpSync("op_webgpu_render_pass_write_timestamp", {
         renderPassRid: this[_rid],
         querySet: querySet[_rid],
@@ -2883,13 +2898,6 @@
      * @param {GPURenderBundle[]} bundles
      */
     executeBundles(bundles) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'executeBundles' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'executeBundles' on 'GPURenderPassEncoder'";
@@ -2898,6 +2906,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'executeBundles' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
         renderPassRid: this[_rid],
         bundles: bundles.map((bundle) => bundle[_rid]),
@@ -2964,13 +2980,6 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder'";
@@ -2979,6 +2988,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_push_debug_group", {
         renderPassRid: this[_rid],
         groupLabel,
@@ -2986,13 +3003,15 @@
     }
 
     popDebugGroup() {
+      webidl.assertBranded(this, GPURenderPassEncoder);
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'popDebugGroup' on 'GPURenderPassEncoder': already consumed",
           "OperationError",
         );
       }
-      webidl.assertBranded(this, GPURenderPassEncoder);
+
       core.jsonOpSync("op_webgpu_render_pass_pop_debug_group", {
         renderPassRid: this[_rid],
       });
@@ -3002,13 +3021,6 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder'";
@@ -3017,6 +3029,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_insert_debug_marker", {
         renderPassRid: this[_rid],
         markerLabel,
@@ -3027,13 +3047,6 @@
      * @param {GPURenderPipeline} pipeline
      */
     setPipeline(pipeline) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setPipeline' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setPipeline' on 'GPURenderPassEncoder'";
@@ -3042,6 +3055,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setPipeline' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_set_pipeline", {
         renderPassRid: this[_rid],
         pipeline: pipeline[_rid],
@@ -3055,13 +3076,6 @@
      * @param {number} size
      */
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder'";
@@ -3082,6 +3096,14 @@
         prefix,
         context: "Argument 4",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_set_index_buffer", {
         renderPassRid: this[_rid],
         buffer: buffer[_rid],
@@ -3098,13 +3120,6 @@
      * @param {number} size
      */
     setVertexBuffer(slot, buffer, offset = 0, size = 0) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder'";
@@ -3125,6 +3140,14 @@
         prefix,
         context: "Argument 4",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_set_vertex_buffer", {
         renderPassRid: this[_rid],
         slot,
@@ -3141,13 +3164,6 @@
      * @param {number} firstInstance
      */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'draw' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix = "Failed to execute 'draw' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3167,6 +3183,14 @@
         prefix,
         context: "Argument 4",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'draw' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_draw", {
         renderPassRid: this[_rid],
         vertexCount,
@@ -3190,13 +3214,6 @@
       baseVertex = 0,
       firstInstance = 0,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder'";
@@ -3221,6 +3238,14 @@
         prefix,
         context: "Argument 5",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_draw_indexed", {
         renderPassRid: this[_rid],
         indexCount,
@@ -3236,13 +3261,6 @@
      * @param {number} indirectOffset
      */
     drawIndirect(indirectBuffer, indirectOffset) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
@@ -3255,6 +3273,14 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_draw_indirect", {
         renderPassRid: this[_rid],
         indirectBuffer: indirectBuffer[_rid],
@@ -3267,13 +3293,6 @@
      * @param {number} indirectOffset
      */
     drawIndexedIndirect(indirectBuffer, indirectOffset) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndexedIndirect' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
@@ -3286,6 +3305,14 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'drawIndexedIndirect' on 'GPURenderPassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_pass_draw_indexed_indirect", {
         renderPassRid: this[_rid],
         indirectBuffer: indirectBuffer[_rid],
@@ -3342,13 +3369,6 @@
      * @param {GPUComputePipeline} pipeline
      */
     setPipeline(pipeline) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUComputePassEncoder);
       const prefix =
         "Failed to execute 'setPipeline' on 'GPUComputePassEncoder'";
@@ -3357,6 +3377,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_compute_pass_set_pipeline", {
         computePassRid: this[_rid],
         pipeline: pipeline[_rid],
@@ -3369,6 +3397,13 @@
      * @param {number} z
      */
     dispatch(x, y = 1, z = 1) {
+      webidl.assertBranded(this, GPUComputePassEncoder);
+      const prefix = "Failed to execute 'dispatch' on 'GPUComputePassEncoder'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      x = webidl.converters.GPUSize32(x, { prefix, context: "Argument 1" });
+      y = webidl.converters.GPUSize32(y, { prefix, context: "Argument 2" });
+      z = webidl.converters.GPUSize32(z, { prefix, context: "Argument 3" });
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'dispatch' on 'GPUComputePassEncoder': already consumed",
@@ -3376,12 +3411,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPUComputePassEncoder);
-      const prefix = "Failed to execute 'dispatch' on 'GPUComputePassEncoder'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      x = webidl.converters.GPUSize32(x, { prefix, context: "Argument 1" });
-      y = webidl.converters.GPUSize32(y, { prefix, context: "Argument 2" });
-      z = webidl.converters.GPUSize32(z, { prefix, context: "Argument 3" });
       core.jsonOpSync("op_webgpu_compute_pass_dispatch", {
         computePassRid: this[_rid],
         x,
@@ -3395,13 +3424,6 @@
      * @param {number} indirectOffset
      */
     dispatchIndirect(indirectBuffer, indirectOffset) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUComputePassEncoder);
       const prefix =
         "Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder'";
@@ -3414,6 +3436,14 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_compute_pass_dispatch_indirect", {
         computePassRid: this[_rid],
         indirectBuffer: indirectBuffer[_rid],
@@ -3426,13 +3456,6 @@
      * @param {number} queryIndex
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUComputePassEncoder);
       const prefix =
         "Failed to execute 'beginPipelineStatisticsQuery' on 'GPUComputePassEncoder'";
@@ -3445,6 +3468,14 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync(
         "op_webgpu_compute_pass_begin_pipeline_statistics_query",
         {
@@ -3456,6 +3487,8 @@
     }
 
     endPipelineStatisticsQuery() {
+      webidl.assertBranded(this, GPUComputePassEncoder);
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'endPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed",
@@ -3463,7 +3496,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPUComputePassEncoder);
       core.jsonOpSync("op_webgpu_compute_pass_end_pipeline_statistics_query", {
         computePassRid: this[_rid],
       });
@@ -3474,13 +3506,6 @@
      * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'writeTimestamp' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUComputePassEncoder);
       const prefix =
         "Failed to execute 'writeTimestamp' on 'GPUComputePassEncoder'";
@@ -3498,6 +3523,13 @@
         throw new GPUValidationError(`${prefix}: GPUQuerySet is not valid.`);
       }
 
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'writeTimestamp' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_compute_pass_write_timestamp", {
         computePassRid: this[_rid],
         querySet: querySet[_rid],
@@ -3506,6 +3538,8 @@
     }
 
     endPass() {
+      webidl.assertBranded(this, GPUComputePassEncoder);
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'endPass' on 'GPUComputePassEncoder': already consumed",
@@ -3513,7 +3547,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPUComputePassEncoder);
       core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
         commandEncoderRid: this[_encoder],
         computePassRid: this[_rid],
@@ -3566,13 +3599,6 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUComputePassEncoder);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder'";
@@ -3581,6 +3607,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_compute_pass_push_debug_group", {
         computePassRid: this[_rid],
         groupLabel,
@@ -3588,6 +3622,8 @@
     }
 
     popDebugGroup() {
+      webidl.assertBranded(this, GPUComputePassEncoder);
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed",
@@ -3595,7 +3631,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPUComputePassEncoder);
       core.jsonOpSync("op_webgpu_compute_pass_pop_debug_group", {
         computePassRid: this[_rid],
       });
@@ -3605,13 +3640,6 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUComputePassEncoder);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder'";
@@ -3620,6 +3648,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_compute_pass_insert_debug_marker", {
         computePassRid: this[_rid],
         markerLabel,
@@ -3723,6 +3759,12 @@
      * @param {GPURenderBundleDescriptor} descriptor
      */
     finish(descriptor = {}) {
+      webidl.assertBranded(this, GPURenderBundleEncoder);
+      descriptor = webidl.converters.GPURenderBundleDescriptor(descriptor, {
+        prefix: "Failed to execute 'finish' on 'GPURenderBundleEncoder'",
+        context: "Argument 1",
+      });
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'finish' on 'GPURenderBundleEncoder': already consumed",
@@ -3730,11 +3772,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPURenderBundleEncoder);
-      descriptor = webidl.converters.GPURenderBundleDescriptor(descriptor, {
-        prefix: "Failed to execute 'finish' on 'GPURenderBundleEncoder'",
-        context: "Argument 1",
-      });
       const { rid } = core.jsonOpSync(
         "op_webgpu_render_bundle_encoder_finish",
         {
@@ -3798,13 +3835,6 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPURenderBundleEncoder'";
@@ -3813,6 +3843,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
         renderBundleEncoderRid: this[_rid],
         groupLabel,
@@ -3820,6 +3858,8 @@
     }
 
     popDebugGroup() {
+      webidl.assertBranded(this, GPURenderBundleEncoder);
+
       if (this[_rid] === undefined) {
         throw new DOMException(
           "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed",
@@ -3827,7 +3867,6 @@
         );
       }
 
-      webidl.assertBranded(this, GPURenderBundleEncoder);
       core.jsonOpSync("op_webgpu_render_bundle_encoder_pop_debug_group", {
         renderBundleEncoderRid: this[_rid],
       });
@@ -3837,13 +3876,6 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPURenderBundleEncoder'";
@@ -3852,6 +3884,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
         renderBundleEncoderRid: this[_rid],
         markerLabel,
@@ -3862,13 +3902,6 @@
      * @param {GPURenderPipeline} pipeline
      */
     setPipeline(pipeline) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'setPipeline' on 'GPURenderBundleEncoder'";
@@ -3877,6 +3910,14 @@
         prefix,
         context: "Argument 1",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_pipeline", {
         renderBundleEncoderRid: this[_rid],
         pipeline: pipeline[_rid],
@@ -3890,13 +3931,6 @@
      * @param {number} size
      */
     setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setIndexBuffer' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'setIndexBuffer' on 'GPURenderBundleEncoder'";
@@ -3917,6 +3951,14 @@
         prefix,
         context: "Argument 4",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setIndexBuffer' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
         renderBundleEncoderRid: this[_rid],
         buffer: buffer[_rid],
@@ -3933,13 +3975,6 @@
      * @param {number} size
      */
     setVertexBuffer(slot, buffer, offset = 0, size = 0) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setVertexBuffer' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'setVertexBuffer' on 'GPURenderBundleEncoder'";
@@ -3960,6 +3995,14 @@
         prefix,
         context: "Argument 4",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'setVertexBuffer' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
         renderBundleEncoderRid: this[_rid],
         slot,
@@ -3976,13 +4019,6 @@
      * @param {number} firstInstance
      */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'draw' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix = "Failed to execute 'draw' on 'GPURenderBundleEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4002,6 +4038,14 @@
         prefix,
         context: "Argument 4",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'draw' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw", {
         renderBundleEncoderRid: this[_rid],
         vertexCount,
@@ -4025,13 +4069,6 @@
       baseVertex = 0,
       firstInstance = 0,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndexed' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'drawIndexed' on 'GPURenderBundleEncoder'";
@@ -4056,6 +4093,14 @@
         prefix,
         context: "Argument 5",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'drawIndexed' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indexed", {
         renderBundleEncoderRid: this[_rid],
         indexCount,
@@ -4071,13 +4116,6 @@
      * @param {number} indirectOffset
      */
     drawIndirect(indirectBuffer, indirectOffset) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndirect' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPURenderBundleEncoder);
       const prefix =
         "Failed to execute 'drawIndirect' on 'GPURenderBundleEncoder'";
@@ -4090,6 +4128,14 @@
         prefix,
         context: "Argument 2",
       });
+
+      if (this[_rid] === undefined) {
+        throw new DOMException(
+          "Failed to execute 'drawIndirect' on 'GPUComputePassEncoder': already consumed",
+          "OperationError",
+        );
+      }
+
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indirect", {
         renderBundleEncoderRid: this[_rid],
         indirectBuffer: indirectBuffer[_rid],
