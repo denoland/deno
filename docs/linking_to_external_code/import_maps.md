@@ -42,9 +42,9 @@ $ deno run --import-map=import_map.json --unstable color.ts
 
 To use starting directory for absolute imports:
 
-```json
-// import_map.json
+**import_map.json**
 
+```jsonc
 {
   "imports": {
     "/": "./"
@@ -52,17 +52,17 @@ To use starting directory for absolute imports:
 }
 ```
 
-```ts
-// main.ts
+**main.ts**
 
+```ts
 import { MyUtil } from "/util.ts";
 ```
 
 You may map a different directory: (eg. src)
 
-```json
-// import_map.json
+**import_map.json**
 
+```jsonc
 {
   "imports": {
     "/": "./src/"

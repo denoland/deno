@@ -54,6 +54,7 @@ declare global {
     | GetNavigationTree
     | GetQuickInfoRequest
     | GetReferencesRequest
+    | GetSignatureHelpItemsRequest
     | GetSupportedCodeFixes;
 
   interface BaseLanguageServerRequest {
@@ -142,6 +143,13 @@ declare global {
     method: "getReferences";
     specifier: string;
     position: number;
+  }
+
+  interface GetSignatureHelpItemsRequest extends BaseLanguageServerRequest {
+    method: "getSignatureHelpItems";
+    specifier: string;
+    position: number;
+    options: ts.SignatureHelpItemsOptions;
   }
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {

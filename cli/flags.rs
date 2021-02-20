@@ -219,18 +219,22 @@ impl From<Flags> for PermissionsOptions {
   }
 }
 
-static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
+static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
+    DENO_AUTH_TOKENS     A semi-colon separated list of bearer tokens and
+                         hostnames to use when fetching remote modules from
+                         private repositories
+                         (e.g. "abcde12345@deno.land;54321edcba@github.com")
+    DENO_CERT            Load certificate authority from PEM encoded file
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_CERT            Load certificate authority from PEM encoded file
-    NO_COLOR             Set to disable color
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
                          (module downloads, fetch)
+    NO_COLOR             Set to disable color
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)";
+                         (module downloads, fetch)"#;
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
@@ -793,7 +797,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
     .about("Format source files")
     .long_about(
-      "Auto-format JavaScript, TypeScript and Markdown files.
+      "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
   deno fmt
   deno fmt myfile1.ts myfile2.ts
   deno fmt --check
@@ -819,7 +823,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("ts")
-        .possible_values(&["ts", "tsx", "js", "jsx", "md"]),
+        .possible_values(&["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
     .arg(
       Arg::with_name("ignore")
