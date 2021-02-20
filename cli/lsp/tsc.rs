@@ -114,7 +114,7 @@ impl TsServer {
           // Then check if there are diagnostics to handle.
           let maybe_diagnostics_request = {
             let mut requests = diagnostics_request.lock().unwrap();
-            std::mem::replace(&mut *requests, Default::default())
+            std::mem::take(&mut *requests)
           };
           if let Some((specifiers, state_snapshot, tx)) =
             maybe_diagnostics_request
@@ -198,7 +198,7 @@ impl TsServer {
       Err(TrySendError::Full(_)) => {
         // ignore - this means tsc is already scheduled to be notified.
       }
-      Err(err) => Err(err)?,
+      Err(err) => return Err(err.into()),
     };
     rx.await.unwrap()
   }
