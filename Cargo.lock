@@ -404,6 +404,7 @@ dependencies = [
  "chrono",
  "clap",
  "deno_core",
+ "deno_crypto",
  "deno_doc",
  "deno_fetch",
  "deno_lint",
@@ -483,6 +484,10 @@ version = "0.13.0"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

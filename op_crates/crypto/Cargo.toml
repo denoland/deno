@@ -16,4 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.79.0", path = "../../core" }
 rand = "0.8.3"
-
+ring = "0.16.19"
+tokio = { version = "1.1.1", features = ["full"] }
+serde_json = { version = "1.0.62", features = ["preserve_order"] }
+serde = { version = "1.0.123", features = ["derive"] }
