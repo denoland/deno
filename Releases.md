@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.7.5 / 2021.02.19
+
+fix: align btoa to spec (#9053)
+fix: Don't use file names from source maps (#9462)
+fix: Make dynamic import async errors catchable (#9505)
+fix: webidl utils and align Event to spec (#9470)
+fix(lsp): document spans use original range (#9525)
+fix(lsp): handle cached type dependencies properly (#9500)
+fix(lsp): handle data URLs properly (#9522)
+
+Release notes for std version 0.88.0:
+https://github.com/denoland/deno_std/releases/tag/0.88.0
+
 ### 1.7.4 / 2021.02.13
 
 - feat(unstable, lsp): add deno cache code actions (#9471)
