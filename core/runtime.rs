@@ -732,33 +732,51 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
+  fn mod_instantiate(
+    &mut self,
+    id: ModuleId,
+    dyn_import_id: Option<ModuleLoadId>,
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    let result = {
+      let scope =
+        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+      let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let module = state_rc
-      .borrow()
-      .modules
-      .get_handle(id)
-      .map(|handle| v8::Local::new(tc_scope, handle))
-      .expect("ModuleInfo not found");
+      let module = state_rc
+        .borrow()
+        .modules
+        .get_handle(id)
+        .map(|handle| v8::Local::new(tc_scope, handle))
+        .expect("ModuleInfo not found");
 
-    if module.get_status() == v8::ModuleStatus::Errored {
-      exception_to_err_result(tc_scope, module.get_exception(), false)?
-    }
-
-    let result =
-      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
-    match result {
-      Some(_) => Ok(()),
-      None => {
-        let exception = tc_scope.exception().unwrap();
+      if module.get_status() == v8::ModuleStatus::Errored {
+        let exception = module.get_exception();
         exception_to_err_result(tc_scope, exception, false)
+          .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
+      } else {
+        let instantiate_result = module
+          .instantiate_module(tc_scope, bindings::module_resolve_callback);
+        match instantiate_result {
+          Some(_) => Ok(()),
+          None => {
+            let exception = tc_scope.exception().unwrap();
+            exception_to_err_result(tc_scope, exception, false)
+              .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
+          }
+        }
+      }
+    };
+
+    if let Some(dyn_import_id) = dyn_import_id {
+      if let Err(err) = result {
+        self.dyn_import_error(dyn_import_id, err);
+        return Ok(());
       }
     }
+    result
   }
 
   /// Evaluates an already instantiated ES module.
@@ -792,15 +810,10 @@ impl JsRuntime {
       // IMPORTANT: Top-level-await is enabled, which means that return value
       // of module evaluation is a promise.
       //
-      // Because that promise is created internally by V8, when error occurs during
-      // module evaluation the promise is rejected, and since the promise has no rejection
-      // handler it will result in call to `bindings::promise_reject_callback` adding
-      // the promise to pending promise rejection table - meaning JsRuntime will return
-      // error on next poll().
-      //
-      // This situation is not desirable as we want to manually return error at the
-      // end of this function to handle it further. It means we need to manually
-      // remove this promise from pending promise rejection table.
+      // This promise is internal, and not the same one that gets returned to
+      // the user. We add an empty `.catch()` handler so that it does not result
+      // in an exception if it rejects. That will instead happen for the other
+      // promise if not handled by the user.
       //
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
@@ -826,9 +839,7 @@ impl JsRuntime {
         let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
         let empty_fn = empty_fn.get_function(scope).unwrap();
         promise.catch(scope, empty_fn);
-        let promise_global = v8::Global::new(scope, promise);
         let mut state = state_rc.borrow_mut();
-        state.pending_promise_exceptions.remove(&promise_global);
         let promise_global = v8::Global::new(scope, promise);
         let module_global = v8::Global::new(scope, module);
 
@@ -1092,7 +1103,7 @@ impl JsRuntime {
             // The top-level module from a dynamic import has been instantiated.
             // Load is done.
             let module_id = load.root_module_id.unwrap();
-            self.mod_instantiate(module_id)?;
+            self.mod_instantiate(module_id, Some(dyn_import_id))?;
             self.dyn_mod_evaluate(dyn_import_id, module_id)?;
           }
         }
@@ -1330,7 +1341,7 @@ impl JsRuntime {
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
-    self.mod_instantiate(root_id).map(|_| root_id)
+    self.mod_instantiate(root_id, None).map(|_| root_id)
   }
 
   fn poll_pending_ops(&mut self, cx: &mut Context) -> Vec<(OpId, Box<[u8]>)> {
@@ -2340,11 +2351,11 @@ pub mod tests {
       assert_eq!(imports.len(), 0);
     }
 
-    runtime.mod_instantiate(mod_b).unwrap();
+    runtime.mod_instantiate(mod_b, None).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    runtime.mod_instantiate(mod_a).unwrap();
+    runtime.mod_instantiate(mod_a, None).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     runtime.mod_evaluate_inner(mod_a);

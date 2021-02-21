@@ -350,6 +350,7 @@
             });
             event.target = this;
             this.dispatchEvent(event);
+            core.close(this.#rid);
 
             break;
           }
@@ -364,6 +365,7 @@
             const closeEv = new CloseEvent("close");
             closeEv.target = this;
             this.dispatchEvent(closeEv);
+            core.close(this.#rid);
 
             break;
           }
