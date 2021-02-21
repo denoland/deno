@@ -1051,6 +1051,8 @@ mod integration {
       let mut stderr_lines =
         std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
+      std::thread::sleep(std::time::Duration::from_secs(1));
+
       assert!(stdout_lines.next().unwrap().contains("running 2 tests"));
       assert!(stdout_lines.next().unwrap().contains("bar"));
       assert!(stdout_lines.next().unwrap().contains("ok"));
