@@ -218,14 +218,17 @@ fn new_watcher(
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      log::debug!("File changed");
       if let Ok(event) = res {
         if matches!(
           event.kind,
           EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
         ) {
+          let paths = event
+            .paths
+            .iter()
+            .filter_map(|path| path.canonicalize().ok());
           let mut changed_paths = changed_paths.lock().unwrap();
-          changed_paths.extend(event.paths);
+          changed_paths.extend(paths);
         }
       }
     })?;
