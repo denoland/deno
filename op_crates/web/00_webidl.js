@@ -662,10 +662,44 @@
     };
   }
 
-  window.__bootstrap = window.__bootstrap || {};
+  // https://heycam.github.io/webidl/#es-enumeration
+  function createEnumConverter(name, values) {
+    const E = new Set(values);
+
+    return function (V, opts = {}) {
+      const S = String(V);
+
+      if (!E.has(S)) {
+        throw makeException(
+          TypeError,
+          `The provided value '${V}' is not a valid enum value of type ${name}.`,
+          opts,
+        );
+      }
+
+      return S;
+    };
+  }
+
+  function createNullableConverter(converter) {
+    return (V, opts = {}) => {
+      // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
+      // being performed due to V being assigned to an attribute whose type is a
+      // nullable callback function that is annotated with
+      // [LegacyTreatNonObjectAsNull], then return the IDL nullable type T?
+      // value null.
+
+      if (V === null || V === undefined) return null;
+      return converter(V, opts);
+    };
+  }
+
+  window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     converters,
     requiredArguments,
     createDictionaryConverter,
+    createEnumConverter,
+    createNullableConverter,
   };
 })(this);

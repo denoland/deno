@@ -7,7 +7,6 @@ use super::language_server;
 use super::language_server::StateSnapshot;
 use super::text;
 use super::text::LineIndex;
-use super::utils;
 
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
@@ -19,6 +18,7 @@ use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::json_op_sync;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -113,7 +113,7 @@ impl Default for Assets {
       .iter()
       .map(|(k, v)| {
         let url_str = format!("asset:///{}", k);
-        let specifier = ModuleSpecifier::resolve_url(&url_str).unwrap();
+        let specifier = resolve_url(&url_str).unwrap();
         let asset = AssetDocument::new(v);
         (specifier, Some(asset))
       })
@@ -166,16 +166,12 @@ pub async fn get_asset(
   }
 }
 
-fn display_parts_to_string(
-  maybe_parts: Option<Vec<SymbolDisplayPart>>,
-) -> Option<String> {
-  maybe_parts.map(|parts| {
-    parts
-      .into_iter()
-      .map(|p| p.text)
-      .collect::<Vec<String>>()
-      .join("")
-  })
+fn display_parts_to_string(parts: Vec<SymbolDisplayPart>) -> String {
+  parts
+    .into_iter()
+    .map(|p| p.text)
+    .collect::<Vec<String>>()
+    .join("")
 }
 
 fn get_tag_body_text(tag: &JSDocTagInfo) -> Option<String> {
@@ -433,7 +429,7 @@ impl QuickInfo {
   pub fn to_hover(&self, line_index: &LineIndex) -> lsp::Hover {
     let mut contents = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) =
-      display_parts_to_string(self.display_parts.clone())
+      self.display_parts.clone().map(display_parts_to_string)
     {
       contents.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
@@ -441,7 +437,7 @@ impl QuickInfo {
       ));
     }
     if let Some(documentation) =
-      display_parts_to_string(self.documentation.clone())
+      self.documentation.clone().map(display_parts_to_string)
     {
       contents.push(lsp::MarkedString::from_markdown(documentation));
     }
@@ -482,34 +478,42 @@ impl DocumentSpan {
     line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    let target_specifier =
-      ModuleSpecifier::resolve_url(&self.file_name).unwrap();
-    if let Ok(target_line_index) =
-      language_server.get_line_index(target_specifier).await
-    {
-      let target_uri = utils::normalize_file_name(&self.file_name).unwrap();
-      let (target_range, target_selection_range) =
-        if let Some(context_span) = &self.context_span {
-          (
-            context_span.to_range(&target_line_index),
-            self.text_span.to_range(&target_line_index),
-          )
-        } else {
-          (
-            self.text_span.to_range(&target_line_index),
-            self.text_span.to_range(&target_line_index),
-          )
-        };
-      let link = lsp::LocationLink {
-        origin_selection_range: Some(self.text_span.to_range(line_index)),
-        target_uri,
-        target_range,
-        target_selection_range,
+    let target_specifier = resolve_url(&self.file_name).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier.clone())
+      .await
+      .ok()?;
+    let target_uri = language_server
+      .url_map
+      .normalize_specifier(&target_specifier)
+      .unwrap();
+    let (target_range, target_selection_range) =
+      if let Some(context_span) = &self.context_span {
+        (
+          context_span.to_range(&target_line_index),
+          self.text_span.to_range(&target_line_index),
+        )
+      } else {
+        (
+          self.text_span.to_range(&target_line_index),
+          self.text_span.to_range(&target_line_index),
+        )
       };
-      Some(link)
-    } else {
-      None
-    }
+    let origin_selection_range =
+      if let Some(original_context_span) = &self.original_context_span {
+        Some(original_context_span.to_range(line_index))
+      } else if let Some(original_text_span) = &self.original_text_span {
+        Some(original_text_span.to_range(line_index))
+      } else {
+        None
+      };
+    let link = lsp::LocationLink {
+      origin_selection_range,
+      target_uri,
+      target_range,
+      target_selection_range,
+    };
+    Some(link)
   }
 }
 
@@ -585,13 +589,31 @@ pub struct ImplementationLocation {
 }
 
 impl ImplementationLocation {
-  pub fn to_location(&self, line_index: &LineIndex) -> lsp::Location {
-    let uri =
-      utils::normalize_file_name(&self.document_span.file_name).unwrap();
+  pub(crate) fn to_location(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+  ) -> lsp::Location {
+    let specifier = resolve_url(&self.document_span.file_name).unwrap();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .unwrap();
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
+  }
+
+  pub(crate) async fn to_link(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+  ) -> Option<lsp::LocationLink> {
+    self
+      .document_span
+      .to_link(line_index, language_server)
+      .await
   }
 }
 
@@ -618,9 +640,8 @@ impl RenameLocations {
     let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
     for location in self.locations.iter() {
-      let uri = utils::normalize_file_name(&location.document_span.file_name)?;
-      let specifier =
-        ModuleSpecifier::resolve_url(&location.document_span.file_name)?;
+      let specifier = resolve_url(&location.document_span.file_name)?;
+      let uri = language_server.url_map.normalize_specifier(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -782,7 +803,7 @@ impl FileTextChanges {
     &self,
     language_server: &mut language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
-    let specifier = ModuleSpecifier::resolve_url(&self.file_name)?;
+    let specifier = resolve_url(&self.file_name)?;
     let line_index = language_server.get_line_index(specifier.clone()).await?;
     let edits = self
       .text_changes
@@ -791,7 +812,7 @@ impl FileTextChanges {
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.as_url().clone(),
+        uri: specifier.clone(),
         version: language_server.document_version(specifier),
       },
       edits,
@@ -838,9 +859,16 @@ pub struct ReferenceEntry {
 }
 
 impl ReferenceEntry {
-  pub fn to_location(&self, line_index: &LineIndex) -> lsp::Location {
-    let uri =
-      utils::normalize_file_name(&self.document_span.file_name).unwrap();
+  pub(crate) fn to_location(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+  ) -> lsp::Location {
+    let specifier = resolve_url(&self.document_span.file_name).unwrap();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .unwrap();
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
@@ -946,6 +974,91 @@ impl CompletionEntry {
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpItems {
+  items: Vec<SignatureHelpItem>,
+  applicable_span: TextSpan,
+  selected_item_index: u32,
+  argument_index: u32,
+  argument_count: u32,
+}
+
+impl SignatureHelpItems {
+  pub fn into_signature_help(self) -> lsp::SignatureHelp {
+    lsp::SignatureHelp {
+      signatures: self
+        .items
+        .into_iter()
+        .map(|item| item.into_signature_information())
+        .collect(),
+      active_parameter: Some(self.argument_index),
+      active_signature: Some(self.selected_item_index),
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpItem {
+  is_variadic: bool,
+  prefix_display_parts: Vec<SymbolDisplayPart>,
+  suffix_display_parts: Vec<SymbolDisplayPart>,
+  separator_display_parts: Vec<SymbolDisplayPart>,
+  parameters: Vec<SignatureHelpParameter>,
+  documentation: Vec<SymbolDisplayPart>,
+  tags: Vec<JSDocTagInfo>,
+}
+
+impl SignatureHelpItem {
+  pub fn into_signature_information(self) -> lsp::SignatureInformation {
+    let prefix_text = display_parts_to_string(self.prefix_display_parts);
+    let params_text = self
+      .parameters
+      .iter()
+      .map(|param| display_parts_to_string(param.display_parts.clone()))
+      .collect::<Vec<String>>()
+      .join(", ");
+    let suffix_text = display_parts_to_string(self.suffix_display_parts);
+    lsp::SignatureInformation {
+      label: format!("{}{}{}", prefix_text, params_text, suffix_text),
+      documentation: Some(lsp::Documentation::String(display_parts_to_string(
+        self.documentation,
+      ))),
+      parameters: Some(
+        self
+          .parameters
+          .into_iter()
+          .map(|param| param.into_parameter_information())
+          .collect(),
+      ),
+      active_parameter: None,
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpParameter {
+  name: String,
+  documentation: Vec<SymbolDisplayPart>,
+  display_parts: Vec<SymbolDisplayPart>,
+  is_optional: bool,
+}
+
+impl SignatureHelpParameter {
+  pub fn into_parameter_information(self) -> lsp::ParameterInformation {
+    lsp::ParameterInformation {
+      label: lsp::ParameterLabel::Simple(display_parts_to_string(
+        self.display_parts,
+      )),
+      documentation: Some(lsp::Documentation::String(display_parts_to_string(
+        self.documentation,
+      ))),
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
   id: usize,
@@ -982,7 +1095,7 @@ fn cache_snapshot(
     .snapshots
     .contains_key(&(specifier.clone().into(), version.clone().into()))
   {
-    let s = ModuleSpecifier::resolve_url(&specifier)?;
+    let s = resolve_url(&specifier)?;
     let content = state.state_snapshot.documents.content(&s)?.unwrap();
     state
       .snapshots
@@ -1075,7 +1188,7 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
 fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_length");
   let v: SourceSnapshotArgs = serde_json::from_value(args)?;
-  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
+  let specifier = resolve_url(&v.specifier)?;
   if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
     Ok(json!(asset.length))
   } else if state.state_snapshot.documents.contains_key(&specifier) {
@@ -1105,7 +1218,7 @@ struct GetTextArgs {
 fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_text");
   let v: GetTextArgs = serde_json::from_value(args)?;
-  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
+  let specifier = resolve_url(&v.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
       content.text.clone()
@@ -1117,8 +1230,7 @@ fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
         .unwrap()
         .clone()
     } else {
-      let sources = &mut state.state_snapshot.sources;
-      sources.get_text(&specifier).unwrap()
+      state.state_snapshot.sources.get_source(&specifier).unwrap()
     };
   state.state_snapshot.performance.measure(mark);
   Ok(json!(text::slice(&content, v.start..v.end)))
@@ -1128,7 +1240,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_resolve");
   let v: ResolveArgs = serde_json::from_value(args)?;
   let mut resolved = Vec::<Option<(String, String)>>::new();
-  let referrer = ModuleSpecifier::resolve_url(&v.base)?;
+  let referrer = resolve_url(&v.base)?;
   let sources = &mut state.state_snapshot.sources;
 
   if state.state_snapshot.documents.contains_key(&referrer) {
@@ -1139,7 +1251,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         if specifier.starts_with("asset:///") {
           resolved.push(Some((
             specifier.clone(),
-            MediaType::from(specifier).as_ts_extension(),
+            MediaType::from(specifier).as_ts_extension().into(),
           )))
         } else if let Some(dependency) = dependencies.get(specifier) {
           let resolved_import =
@@ -1161,7 +1273,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               let media_type = MediaType::from(&resolved_specifier);
               resolved.push(Some((
                 resolved_specifier.to_string(),
-                media_type.as_ts_extension(),
+                media_type.as_ts_extension().into(),
               )));
             } else if sources.contains_key(&resolved_specifier) {
               let media_type = if let Some(media_type) =
@@ -1173,7 +1285,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               };
               resolved.push(Some((
                 resolved_specifier.to_string(),
-                media_type.as_ts_extension(),
+                media_type.as_ts_extension().into(),
               )));
             } else {
               resolved.push(None);
@@ -1191,7 +1303,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
       {
         resolved.push(Some((
           resolved_specifier.to_string(),
-          media_type.as_ts_extension(),
+          media_type.as_ts_extension().into(),
         )));
       } else {
         resolved.push(None);
@@ -1231,8 +1343,8 @@ struct ScriptVersionArgs {
 fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_script_version");
   let v: ScriptVersionArgs = serde_json::from_value(args)?;
-  let specifier = ModuleSpecifier::resolve_url(&v.specifier)?;
-  if specifier.as_url().scheme() == "asset" {
+  let specifier = resolve_url(&v.specifier)?;
+  if specifier.scheme() == "asset" {
     return if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(json!("1"))
     } else {
@@ -1362,6 +1474,41 @@ pub struct UserPreferences {
   pub provide_refactor_not_applicable_reason: Option<bool>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpItemsOptions {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trigger_reason: Option<SignatureHelpTriggerReason>,
+}
+
+#[derive(Debug, Serialize)]
+pub enum SignatureHelpTriggerKind {
+  #[serde(rename = "characterTyped")]
+  CharacterTyped,
+  #[serde(rename = "invoked")]
+  Invoked,
+  #[serde(rename = "retrigger")]
+  Retrigger,
+}
+
+impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
+  fn from(kind: lsp::SignatureHelpTriggerKind) -> Self {
+    match kind {
+      lsp::SignatureHelpTriggerKind::Invoked => Self::Invoked,
+      lsp::SignatureHelpTriggerKind::TriggerCharacter => Self::CharacterTyped,
+      lsp::SignatureHelpTriggerKind::ContentChange => Self::Retrigger,
+    }
+  }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpTriggerReason {
+  pub kind: SignatureHelpTriggerKind,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trigger_character: Option<String>,
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 #[derive(Debug)]
 pub enum RequestMethod {
@@ -1391,6 +1538,8 @@ pub enum RequestMethod {
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Get document references for a specific position.
   GetReferences((ModuleSpecifier, u32)),
+  /// Get signature help items for a specific position.
+  GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
 }
@@ -1498,6 +1647,15 @@ impl RequestMethod {
         "specifier": specifier,
         "position": position,
       }),
+      RequestMethod::GetSignatureHelpItems((specifier, position, options)) => {
+        json!({
+          "id": id,
+          "method": "getSignatureHelpItems",
+          "specifier": specifier,
+          "position": position,
+          "options": options,
+        })
+      }
       RequestMethod::GetSupportedCodeFixes => json!({
         "id": id,
         "method": "getSupportedCodeFixes",
@@ -1547,8 +1705,8 @@ mod tests {
   fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
     let mut documents = DocumentCache::default();
     for (specifier, content, version) in sources {
-      let specifier = ModuleSpecifier::resolve_url(specifier)
-        .expect("failed to create specifier");
+      let specifier =
+        resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, version, content);
     }
     StateSnapshot {
@@ -1643,8 +1801,7 @@ mod tests {
       }),
       vec![("file:///a.ts", r#"console.log("hello deno");"#, 1)],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1689,8 +1846,7 @@ mod tests {
       }),
       vec![("file:///a.ts", r#"console.log(document.location);"#, 1)],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1723,8 +1879,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1753,8 +1908,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1807,8 +1961,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1844,8 +1997,7 @@ mod tests {
         1,
       )],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1902,8 +2054,7 @@ mod tests {
       }),
       vec![("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
     );
-    let specifier = ModuleSpecifier::resolve_url("file:///a.ts")
-      .expect("could not resolve url");
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,
@@ -1926,8 +2077,8 @@ mod tests {
       }),
       vec![],
     );
-    let specifier = ModuleSpecifier::resolve_url("asset:///lib.esnext.d.ts")
-      .expect("could not resolve url");
+    let specifier =
+      resolve_url("asset:///lib.esnext.d.ts").expect("could not resolve url");
     let result = request(
       &mut runtime,
       state_snapshot,

@@ -2,6 +2,7 @@
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -52,7 +53,7 @@ use super::tsc;
 use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::TsServer;
-use super::utils;
+use super::urls;
 
 lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -100,6 +101,8 @@ pub(crate) struct Inner {
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
   ts_server: TsServer,
+  /// A map of specifiers and URLs used to translate over the LSP.
+  pub url_map: urls::LspUrlMap,
 }
 
 impl LanguageServer {
@@ -130,6 +133,7 @@ impl Inner {
       sources,
       ts_fixable_diagnostics: Default::default(),
       ts_server: TsServer::new(),
+      url_map: Default::default(),
     }
   }
 
@@ -172,7 +176,7 @@ impl Inner {
     specifier: ModuleSpecifier,
   ) -> Result<LineIndex, AnyError> {
     let mark = self.performance.mark("get_line_index");
-    let result = if specifier.as_url().scheme() == "asset" {
+    let result = if specifier.scheme() == "asset" {
       if let Some(asset) = self.get_asset(&specifier).await? {
         Ok(asset.line_index)
       } else {
@@ -196,7 +200,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
     let mark = self.performance.mark("get_line_index_sync");
-    let maybe_line_index = if specifier.as_url().scheme() == "asset" {
+    let maybe_line_index = if specifier.scheme() == "asset" {
       if let Some(Some(asset)) = self.assets.get(specifier) {
         Some(asset.line_index.clone())
       } else {
@@ -374,7 +378,7 @@ impl Inner {
               .cloned(),
           );
         }
-        let uri = specifier.as_url().clone();
+        let uri = specifier.clone();
         let version = self.documents.version(&specifier);
         self
           .client
@@ -660,7 +664,7 @@ impl Inner {
       // already managed by the language service
       return;
     }
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -677,7 +681,7 @@ impl Inner {
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark("did_change");
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     match self.documents.change(
       &specifier,
       params.text_document.version,
@@ -703,7 +707,7 @@ impl Inner {
       // already managed by the language service
       return;
     }
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     self.documents.close(&specifier);
     self.navigation_trees.remove(&specifier);
 
@@ -801,7 +805,7 @@ impl Inner {
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let mark = self.performance.mark("formatting");
-    let specifier = utils::normalize_url(params.text_document.uri.clone());
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let file_text = self
       .documents
       .content(&specifier)
@@ -857,9 +861,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("hover");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -897,7 +901,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_action");
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let fixable_diagnostics: Vec<&Diagnostic> = params
       .context
       .diagnostics
@@ -914,7 +918,9 @@ impl Inner {
             _ => false,
           },
           "deno" => match &d.code {
-            Some(NumberOrString::String(code)) => code == "no-cache",
+            Some(NumberOrString::String(code)) => {
+              code == "no-cache" || code == "no-cache-data"
+            }
             _ => false,
           },
           _ => false,
@@ -1052,7 +1058,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens");
-    let specifier = utils::normalize_url(params.text_document.uri);
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let line_index = self.get_line_index_sync(&specifier).unwrap();
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
@@ -1200,7 +1206,7 @@ impl Inner {
           if let Some(implementations) = maybe_implementations {
             let mut locations = Vec::new();
             for implementation in implementations {
-              let implementation_specifier = ModuleSpecifier::resolve_url(
+              let implementation_specifier = resolve_url(
                 &implementation.document_span.file_name,
               )
               .map_err(|err| {
@@ -1208,7 +1214,7 @@ impl Inner {
                 LspError::internal_error()
               })?;
               let implementation_location =
-                implementation.to_location(&line_index);
+                implementation.to_location(&line_index, self);
               if !(implementation_specifier == code_lens_data.specifier
                 && implementation_location.range.start == params.range.start)
               {
@@ -1221,11 +1227,13 @@ impl Inner {
               } else {
                 "1 implementation".to_string()
               };
-              let url = utils::normalize_specifier(&code_lens_data.specifier)
+              let url = self
+                .url_map
+                .normalize_specifier(&code_lens_data.specifier)
                 .map_err(|err| {
-                error!("{}", err);
-                LspError::internal_error()
-              })?;
+                  error!("{}", err);
+                  LspError::internal_error()
+                })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
@@ -1285,7 +1293,7 @@ impl Inner {
               if reference.is_definition {
                 continue;
               }
-              let reference_specifier = ModuleSpecifier::resolve_url(
+              let reference_specifier = resolve_url(
                 &reference.document_span.file_name,
               )
               .map_err(|err| {
@@ -1299,7 +1307,7 @@ impl Inner {
                 error!("Unable to get line index: {}", err);
                 LspError::internal_error()
               })?;
-              locations.push(reference.to_location(&line_index));
+              locations.push(reference.to_location(&line_index, self));
             }
             let command = if !locations.is_empty() {
               let title = if locations.len() > 1 {
@@ -1307,11 +1315,13 @@ impl Inner {
               } else {
                 "1 reference".to_string()
               };
-              let url = utils::normalize_specifier(&code_lens_data.specifier)
+              let url = self
+                .url_map
+                .normalize_specifier(&code_lens_data.specifier)
                 .map_err(|err| {
-                error!("{}", err);
-                LspError::internal_error()
-              })?;
+                  error!("{}", err);
+                  LspError::internal_error()
+                })?;
               Command {
                 title,
                 command: "deno.showReferences".to_string(),
@@ -1365,9 +1375,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("document_highlight");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1411,8 +1421,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("references");
-    let specifier =
-      utils::normalize_url(params.text_document_position.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1439,12 +1450,11 @@ impl Inner {
           continue;
         }
         let reference_specifier =
-          ModuleSpecifier::resolve_url(&reference.document_span.file_name)
-            .unwrap();
+          resolve_url(&reference.document_span.file_name).unwrap();
         // TODO(lucacasonato): handle error correctly
         let line_index =
           self.get_line_index(reference_specifier).await.unwrap();
-        results.push(reference.to_location(&line_index));
+        results.push(reference.to_location(&line_index, self));
       }
 
       self.performance.measure(mark);
@@ -1463,9 +1473,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("goto_definition");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1503,8 +1513,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("completion");
-    let specifier =
-      utils::normalize_url(params.text_document_position.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
     // TODO(lucacasonato): handle error correctly
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1548,9 +1559,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("goto_implementation");
-    let specifier = utils::normalize_url(
-      params.text_document_position_params.text_document.uri,
-    );
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1575,30 +1586,26 @@ impl Inner {
           LspError::invalid_request()
         })?;
 
-    let maybe_implementations = serde_json::from_value::<Option<Vec<tsc::ImplementationLocation>>>(res)
+    let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = serde_json::from_value(res)
       .map_err(|err| {
         error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {}", err);
         LspError::internal_error()
       })?;
 
-    if let Some(implementations) = maybe_implementations {
-      let mut results = Vec::new();
-      for impl_ in implementations {
-        let document_span = impl_.document_span;
-        let impl_specifier =
-          ModuleSpecifier::resolve_url(&document_span.file_name).unwrap();
-        let impl_line_index =
-          &self.get_line_index(impl_specifier).await.unwrap();
-        if let Some(link) = document_span.to_link(impl_line_index, self).await {
-          results.push(link);
+    let result = if let Some(implementations) = maybe_implementations {
+      let mut links = Vec::new();
+      for implementation in implementations {
+        if let Some(link) = implementation.to_link(&line_index, self).await {
+          links.push(link)
         }
       }
-      self.performance.measure(mark);
-      Ok(Some(GotoDefinitionResponse::Link(results)))
+      Some(GotoDefinitionResponse::Link(links))
     } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
+      None
+    };
+
+    self.performance.measure(mark);
+    Ok(result)
   }
 
   async fn rename(
@@ -1609,8 +1616,9 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("rename");
-    let specifier =
-      utils::normalize_url(params.text_document_position.text_document.uri);
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1703,6 +1711,68 @@ impl Inner {
         error!("Got a {} request, but no handler is defined", method);
         Err(LspError::method_not_found())
       }
+    }
+  }
+
+  async fn signature_help(
+    &self,
+    params: SignatureHelpParams,
+  ) -> LspResult<Option<SignatureHelp>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("signature_help");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+    let options = if let Some(context) = params.context {
+      tsc::SignatureHelpItemsOptions {
+        trigger_reason: Some(tsc::SignatureHelpTriggerReason {
+          kind: context.trigger_kind.into(),
+          trigger_character: context.trigger_character,
+        }),
+      }
+    } else {
+      tsc::SignatureHelpItemsOptions {
+        trigger_reason: None,
+      }
+    };
+    let req = tsc::RequestMethod::GetSignatureHelpItems((
+      specifier,
+      line_index.offset_tsc(params.text_document_position_params.position)?,
+      options,
+    ));
+    let res =
+      self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver: {}", err);
+          LspError::invalid_request()
+        })?;
+    let maybe_signature_help_items: Option<tsc::SignatureHelpItems> =
+      serde_json::from_value(res).map_err(|err| {
+        error!("Failed to deserialize tsserver response: {}", err);
+        LspError::internal_error()
+      })?;
+
+    if let Some(signature_help_items) = maybe_signature_help_items {
+      let signature_help = signature_help_items.into_signature_help();
+      self.performance.measure(mark);
+      Ok(Some(signature_help))
+    } else {
+      self.performance.measure(mark);
+      Ok(None)
     }
   }
 }
@@ -1840,6 +1910,13 @@ impl lspower::LanguageServer for LanguageServer {
   ) -> LspResult<Option<Value>> {
     self.0.lock().await.request_else(method, params).await
   }
+
+  async fn signature_help(
+    &self,
+    params: SignatureHelpParams,
+  ) -> LspResult<Option<SignatureHelp>> {
+    self.0.lock().await.signature_help(params).await
+  }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1865,10 +1942,10 @@ impl Inner {
   /// in the Deno cache, including any of their dependencies.
   async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
     let mark = self.performance.mark("cache");
-    let referrer = utils::normalize_url(params.referrer.uri);
+    let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !params.uris.is_empty() {
       for identifier in &params.uris {
-        let specifier = utils::normalize_url(identifier.uri.clone());
+        let specifier = self.url_map.normalize_url(&identifier.uri);
         sources::cache(&specifier, &self.maybe_import_map)
           .await
           .map_err(|err| {
@@ -1911,9 +1988,8 @@ impl Inner {
     params: VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
     let mark = self.performance.mark("virtual_text_document");
-    let specifier = utils::normalize_url(params.text_document.uri);
-    let url = specifier.as_url();
-    let contents = if url.as_str() == "deno:/status.md" {
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
 
       contents.push_str(&format!(
@@ -1932,7 +2008,7 @@ impl Inner {
       }
       Some(contents)
     } else {
-      match url.scheme() {
+      match specifier.scheme() {
         "asset" => {
           if let Some(asset) = self
             .get_asset(&specifier)
@@ -1946,8 +2022,8 @@ impl Inner {
           }
         }
         _ => {
-          if let Some(text) = self.sources.get_text(&specifier) {
-            Some(text)
+          if let Some(source) = self.sources.get_source(&specifier) {
+            Some(source)
           } else {
             error!("The cached sources was not found: {}", specifier);
             None
@@ -2106,15 +2182,15 @@ mod tests {
       ("initialize_request.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification_asset.json", LspResponse::None),
-      ("hover_request_asset_01.json", LspResponse::RequestAny),
+      ("definition_request_asset.json", LspResponse::RequestAny),
       (
         "virtual_text_document_request.json",
         LspResponse::RequestAny,
       ),
       (
-        "hover_request_asset_02.json",
+        "hover_request_asset.json",
         LspResponse::Request(
-          4,
+          5,
           json!({
             "contents": [
               {
@@ -2539,6 +2615,80 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_signature_help() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "signature_help_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "signature_help_request_01.json",
+        LspResponse::Request(
+          1,
+          json!({
+            "signatures": [
+              {
+                "label": "add(a: number, b: number): number",
+                "documentation": "Adds two numbers.",
+                "parameters": [
+                  {
+                    "label": "a: number",
+                    "documentation": "This is a first number."
+                  },
+                  {
+                    "label": "b: number",
+                    "documentation": "This is a second number."
+                  }
+                ]
+              }
+            ],
+            "activeSignature": 0,
+            "activeParameter": 0
+          }),
+        ),
+      ),
+      (
+        "signature_help_did_change_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "signature_help_request_02.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "signatures": [
+              {
+                "label": "add(a: number, b: number): number",
+                "documentation": "Adds two numbers.",
+                "parameters": [
+                  {
+                    "label": "a: number",
+                    "documentation": "This is a first number."
+                  },
+                  {
+                    "label": "b: number",
+                    "documentation": "This is a second number."
+                  }
+                ]
+              }
+            ],
+            "activeSignature": 0,
+            "activeParameter": 1
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
   async fn test_code_lens_impl_request() {
     let mut harness = LspTestHarness::new(vec![
       ("initialize_request.json", LspResponse::RequestAny),
@@ -2669,6 +2819,7 @@ mod tests {
       ("initialize_request.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification_asset.json", LspResponse::None),
+      ("references_request_asset.json", LspResponse::RequestAny),
       (
         "virtual_text_document_request.json",
         LspResponse::RequestAny,

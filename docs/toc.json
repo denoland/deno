@@ -31,6 +31,7 @@
       "reloading_modules": "Reloading modules",
       "integrity_checking": "Integrity checking",
       "proxies": "Proxies",
+      "private": "Private modules",
       "import_maps": "Import maps"
     }
   },

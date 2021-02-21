@@ -1041,6 +1041,9 @@
   },
   "html": {
     "webappapis": {
+      "atob": {
+        "base64.any.js": true
+      },
       "timers": {
         "cleartimeout-clearinterval.any.js": true,
         "missing-timeout-setinterval.any.js": true,
