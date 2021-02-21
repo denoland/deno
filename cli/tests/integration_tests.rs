@@ -2402,6 +2402,12 @@ mod integration {
     output: "deno_test.out",
   });
 
+  itest!(deno_test_finally_cleartimeout {
+    args: "test test_finally_cleartimeout.ts",
+    exit_code: 1,
+    output: "test_finally_cleartimeout.out",
+  });
+
   itest!(deno_test_unresolved_promise {
     args: "test test_unresolved_promise.js",
     exit_code: 1,
