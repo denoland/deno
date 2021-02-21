@@ -1,0 +1,14 @@
+{
+  "id": 2,
+  "jsonrpc": "2.0",
+  "method": "textDocument/signatureHelp",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "position": {
+      "character": 8,
+      "line": 9
+    }
+  }
+}

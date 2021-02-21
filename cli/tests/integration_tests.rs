@@ -5,7 +5,8 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
-use std::io::{BufRead, Write};
+use std::fs;
+use std::io::{BufRead, Read, Write};
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -207,6 +208,42 @@ mod integration {
     assert_eq!("noColor false", util::strip_ansi_codes(stdout_str));
   }
 
+  #[test]
+  fn auth_tokens() {
+    let _g = util::http_server();
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("http://127.0.0.1:4551/cli/tests/001_hello.js")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+    assert!(stdout_str.is_empty());
+    let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+    eprintln!("{}", stderr_str);
+    assert!(stderr_str.contains("Import 'http://127.0.0.1:4551/cli/tests/001_hello.js' failed: 404 Not Found"));
+
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("http://127.0.0.1:4551/cli/tests/001_hello.js")
+      .env("DENO_AUTH_TOKENS", "abcdef123456789@127.0.0.1:4551")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+    assert_eq!(util::strip_ansi_codes(stdout_str), "Hello World");
+  }
+
   #[cfg(unix)]
   #[test]
   pub fn test_raw_tty() {
@@ -336,14 +373,41 @@ mod integration {
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::root_path())
       .arg("cache")
+      .arg("-L")
+      .arg("debug")
       .arg(module_url.to_string())
       .output()
       .expect("Failed to spawn script");
     assert!(output.status.success());
-    let out = std::str::from_utf8(&output.stdout).unwrap();
-    assert_eq!(out, "");
-    // TODO(ry) Is there some way to check that the file was actually cached in
-    // DENO_DIR?
+
+    let out = std::str::from_utf8(&output.stderr).unwrap();
+    // Check if file and dependencies are written successfully
+    assert!(out.contains("host.writeFile(\"deno://subdir/print_hello.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://subdir/mod2.js\")"));
+    assert!(out.contains("host.writeFile(\"deno://006_url_imports.js\")"));
+
+    let prg = util::deno_exe_path();
+    let output = Command::new(&prg)
+      .env("DENO_DIR", deno_dir.path())
+      .env("HTTP_PROXY", "http://nil")
+      .env("NO_COLOR", "1")
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg(module_url.to_string())
+      .output()
+      .expect("Failed to spawn script");
+
+    let str_output = std::str::from_utf8(&output.stdout).unwrap();
+
+    let module_output_path =
+      util::root_path().join("cli/tests/006_url_imports.ts.out");
+    let mut module_output = String::new();
+    let mut module_output_file = fs::File::open(module_output_path).unwrap();
+    module_output_file
+      .read_to_string(&mut module_output)
+      .unwrap();
+
+    assert_eq!(module_output, str_output);
   }
 
   #[test]
@@ -432,35 +496,50 @@ mod integration {
   fn fmt_test() {
     let t = TempDir::new().expect("tempdir fail");
     let fixed_js = util::root_path().join("cli/tests/badly_formatted_fixed.js");
-    let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
     let badly_formatted_original_js =
       util::root_path().join("cli/tests/badly_formatted.mjs");
-    let badly_formatted_original_md =
-      util::root_path().join("cli/tests/badly_formatted.md");
     let badly_formatted_js = t.path().join("badly_formatted.js");
-    let badly_formatted_md = t.path().join("badly_formatted.md");
     let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
-    let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
     std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
       .expect("Failed to copy file");
+
+    let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
+    let badly_formatted_original_md =
+      util::root_path().join("cli/tests/badly_formatted.md");
+    let badly_formatted_md = t.path().join("badly_formatted.md");
+    let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
     std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
+      .expect("Failed to copy file");
+
+    let fixed_json =
+      util::root_path().join("cli/tests/badly_formatted_fixed.json");
+    let badly_formatted_original_json =
+      util::root_path().join("cli/tests/badly_formatted.json");
+    let badly_formatted_json = t.path().join("badly_formatted.json");
+    let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
+    std::fs::copy(&badly_formatted_original_json, &badly_formatted_json)
       .expect("Failed to copy file");
     // First, check formatting by ignoring the badly formatted file.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
       .arg("fmt")
       .arg(format!(
-        "--ignore={},{}",
-        badly_formatted_js_str, badly_formatted_md_str
+        "--ignore={},{},{}",
+        badly_formatted_js_str,
+        badly_formatted_md_str,
+        badly_formatted_json_str
       ))
       .arg("--check")
       .arg(badly_formatted_js_str)
       .arg(badly_formatted_md_str)
+      .arg(badly_formatted_json_str)
       .spawn()
       .expect("Failed to spawn script")
       .wait()
       .expect("Failed to wait for child process");
-    assert!(status.success());
+    // No target files found
+    assert!(!status.success());
+
     // Check without ignore.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
@@ -468,17 +547,20 @@ mod integration {
       .arg("--check")
       .arg(badly_formatted_js_str)
       .arg(badly_formatted_md_str)
+      .arg(badly_formatted_json_str)
       .spawn()
       .expect("Failed to spawn script")
       .wait()
       .expect("Failed to wait for child process");
     assert!(!status.success());
+
     // Format the source file.
     let status = util::deno_cmd()
       .current_dir(util::root_path())
       .arg("fmt")
       .arg(badly_formatted_js_str)
       .arg(badly_formatted_md_str)
+      .arg(badly_formatted_json_str)
       .spawn()
       .expect("Failed to spawn script")
       .wait()
@@ -486,10 +568,13 @@ mod integration {
     assert!(status.success());
     let expected_js = std::fs::read_to_string(fixed_js).unwrap();
     let expected_md = std::fs::read_to_string(fixed_md).unwrap();
+    let expected_json = std::fs::read_to_string(fixed_json).unwrap();
     let actual_js = std::fs::read_to_string(badly_formatted_js).unwrap();
     let actual_md = std::fs::read_to_string(badly_formatted_md).unwrap();
+    let actual_json = std::fs::read_to_string(badly_formatted_json).unwrap();
     assert_eq!(expected_js, actual_js);
     assert_eq!(expected_md, actual_md);
+    assert_eq!(expected_json, actual_json);
   }
 
   mod file_watcher {
@@ -2341,13 +2426,25 @@ console.log("finish");
       .arg("--allow-net")
       .arg("--allow-read")
       .arg("--unstable")
-      .arg("workers_test.ts")
+      .arg("workers/test.ts")
       .spawn()
       .unwrap()
       .wait()
       .unwrap();
     assert!(status.success());
   }
+
+  itest!(worker_error {
+    args: "run -A workers/worker_error.ts",
+    output: "workers/worker_error.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(worker_nested_error {
+    args: "run -A workers/worker_nested_error.ts",
+    output: "workers/worker_nested_error.ts.out",
+    exit_code: 1,
+  });
 
   #[test]
   fn compiler_api() {
@@ -2397,6 +2494,13 @@ console.log("finish");
     args:
       "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
     output: "033_import_map.out",
+  });
+
+  itest!(_033_import_map_remote {
+    args:
+      "run --quiet --reload --import-map=http://127.0.0.1:4545/cli/tests/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
+    output: "033_import_map_remote.out",
+    http_server: true,
   });
 
   itest!(_034_onload {
@@ -2598,18 +2702,6 @@ console.log("finish");
     http_server: true,
   });
 
-  itest!(_073_worker_error {
-    args: "run -A 073_worker_error.ts",
-    output: "073_worker_error.ts.out",
-    exit_code: 1,
-  });
-
-  itest!(_074_worker_nested_error {
-    args: "run -A 074_worker_nested_error.ts",
-    output: "074_worker_nested_error.ts.out",
-    exit_code: 1,
-  });
-
   itest!(_075_import_local_query_hash {
     args: "run 075_import_local_query_hash.ts",
     output: "075_import_local_query_hash.ts.out",
@@ -2690,6 +2782,16 @@ console.log("finish");
     output: "084_worker_custom_inspect.ts.out",
   });
 
+  itest!(_085_dynamic_import_async_error {
+    args: "run --allow-read 085_dynamic_import_async_error.ts",
+    output: "085_dynamic_import_async_error.ts.out",
+  });
+
+  itest!(_086_dynamic_import_already_rejected {
+    args: "run --allow-read 086_dynamic_import_already_rejected.ts",
+    output: "086_dynamic_import_already_rejected.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -2767,7 +2869,7 @@ console.log("finish");
   });
 
   itest!(fmt_check_tests_dir {
-    args: "fmt --check ./",
+    args: "fmt --check ./ --ignore=.test_coverage",
     output: "fmt/expected_fmt_check_tests_dir.out",
     exit_code: 1,
   });
@@ -2779,7 +2881,7 @@ console.log("finish");
   });
 
   itest!(fmt_check_formatted_files {
-    args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md",
+    args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md fmt/formatted4.jsonc",
     output: "fmt/expected_fmt_check_formatted_files.out",
     exit_code: 0,
   });
@@ -2802,6 +2904,12 @@ console.log("finish");
     output_str: Some(
       "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n"
     ),
+  });
+
+  itest!(fmt_stdin_json {
+    args: "fmt --ext=json -",
+    input: Some("{    \"key\":   \"value\"}"),
+    output_str: Some("{ \"key\": \"value\" }\n"),
   });
 
   itest!(fmt_stdin_check_formatted {
@@ -2982,6 +3090,13 @@ console.log("finish");
     args: "run error_025_tab_indent",
     output: "error_025_tab_indent.out",
     exit_code: 1,
+  });
+
+  itest!(error_026_remote_import_error {
+    args: "run error_026_remote_import_error.ts",
+    output: "error_026_remote_import_error.ts.out",
+    exit_code: 1,
+    http_server: true,
   });
 
   itest!(error_missing_module_named_import {
@@ -4879,6 +4994,7 @@ console.log("finish");
   fn lint_ignore_unexplicit_files() {
     let output = util::deno_cmd()
       .current_dir(util::root_path())
+      .env("NO_COLOR", "1")
       .arg("lint")
       .arg("--unstable")
       .arg("--ignore=./")
@@ -4887,14 +5003,18 @@ console.log("finish");
       .unwrap()
       .wait_with_output()
       .unwrap();
-    assert!(output.status.success());
-    assert_eq!(output.stderr, b"Checked 0 file\n");
+    assert!(!output.status.success());
+    assert_eq!(
+      String::from_utf8_lossy(&output.stderr),
+      "error: No target files found.\n"
+    );
   }
 
   #[test]
   fn fmt_ignore_unexplicit_files() {
     let output = util::deno_cmd()
       .current_dir(util::root_path())
+      .env("NO_COLOR", "1")
       .arg("fmt")
       .arg("--check")
       .arg("--ignore=./")
@@ -4903,8 +5023,11 @@ console.log("finish");
       .unwrap()
       .wait_with_output()
       .unwrap();
-    assert!(output.status.success());
-    assert_eq!(output.stderr, b"Checked 0 file\n");
+    assert!(!output.status.success());
+    assert_eq!(
+      String::from_utf8_lossy(&output.stderr),
+      "error: No target files found.\n"
+    );
   }
 
   #[test]

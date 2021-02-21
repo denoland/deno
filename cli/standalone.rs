@@ -6,6 +6,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::FutureExt;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -123,7 +124,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         "Self-contained binaries don't support module loading",
       ));
     }
-    Ok(ModuleSpecifier::resolve_url(specifier)?)
+    Ok(resolve_url(specifier)?)
   }
 
   fn load(
@@ -155,7 +156,7 @@ pub async fn run(
   source_code: String,
   metadata: Metadata,
 ) -> Result<(), AnyError> {
-  let main_module = ModuleSpecifier::resolve_url(SPECIFIER)?;
+  let main_module = resolve_url(SPECIFIER)?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {

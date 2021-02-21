@@ -11,6 +11,7 @@ use crate::media_type::MediaType;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
 use std::collections::HashMap;
@@ -247,7 +248,7 @@ pub async fn generate_ts_diagnostics(
     let res = ts_server.request(state_snapshot.clone(), req).await?;
     let ts_diagnostic_map: TsDiagnostics = serde_json::from_value(res)?;
     for (specifier_str, ts_diagnostics) in ts_diagnostic_map.iter() {
-      let specifier = ModuleSpecifier::resolve_url(specifier_str)?;
+      let specifier = deno_core::resolve_url(specifier_str)?;
       let version = state_snapshot.documents.version(&specifier);
       diagnostics.push((
         specifier,
@@ -279,36 +280,41 @@ pub async fn generate_dependency_diagnostics(
               &dependency.maybe_code_specifier_range,
             ) {
               match code.clone() {
-                ResolvedDependency::Err(err) => {
+                ResolvedDependency::Err(dependency_err) => {
                   diagnostic_list.push(lsp::Diagnostic {
                     range: *range,
                     severity: Some(lsp::DiagnosticSeverity::Error),
-                    code: None,
+                    code: Some(dependency_err.as_code()),
                     code_description: None,
                     source: Some("deno".to_string()),
-                    message: format!("{}", err),
+                    message: format!("{}", dependency_err),
                     related_information: None,
                     tags: None,
                     data: None,
                   })
                 }
                 ResolvedDependency::Resolved(specifier) => {
-                  if !(state_snapshot.documents.contains(&specifier) || sources.contains(&specifier)) {
-                    let is_local = specifier.as_url().scheme() == "file";
+                  if !(state_snapshot.documents.contains_key(&specifier) || sources.contains_key(&specifier)) {
+                    let scheme = specifier.scheme();
+                    let (code, message) = if scheme == "file" {
+                      (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier))
+                    } else if scheme == "data" {
+                      (Some(lsp::NumberOrString::String("no-cache-data".to_string())), "Uncached data URL.".to_string())
+                    } else {
+                      (Some(lsp::NumberOrString::String("no-cache".to_string())), format!("Unable to load the remote module: \"{}\".", specifier))
+                    };
                     diagnostic_list.push(lsp::Diagnostic {
                       range: *range,
                       severity: Some(lsp::DiagnosticSeverity::Error),
-                      code: None,
+                      code,
                       code_description: None,
                       source: Some("deno".to_string()),
-                      message: if is_local {
-                        format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)
-                      } else {
-                        format!("Unable to load the module: \"{}\".\n  If the module exists, running `deno cache {}` should resolve this error.", specifier, specifier)
-                      },
+                      message,
                       related_information: None,
                       tags: None,
-                      data: None,
+                      data: Some(json!({
+                        "specifier": specifier
+                      })),
                     })
                   }
                 },

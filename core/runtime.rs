@@ -201,6 +201,13 @@ impl JsRuntime {
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
+      // Include 10MB ICU data file.
+      assert!(v8::icu::set_common_data(align_data::include_aligned!(
+        align_data::Align16,
+        "icudtl.dat"
+      ))
+      .is_ok());
+
       unsafe { v8_init() };
     });
 
@@ -693,9 +700,15 @@ impl JsRuntime {
     let module = maybe_module.unwrap();
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
-    for i in 0..module.get_module_requests_length() {
-      let import_specifier =
-        module.get_module_request(i).to_rust_string_lossy(tc_scope);
+    let module_requests = module.get_module_requests();
+    for i in 0..module_requests.length() {
+      let module_request = v8::Local::<v8::ModuleRequest>::try_from(
+        module_requests.get(tc_scope, i).unwrap(),
+      )
+      .unwrap();
+      let import_specifier = module_request
+        .get_specifier()
+        .to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
       let module_specifier = state.loader.resolve(
         state.op_state.clone(),
@@ -721,33 +734,51 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
+  fn mod_instantiate(
+    &mut self,
+    id: ModuleId,
+    dyn_import_id: Option<ModuleLoadId>,
+  ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    let result = {
+      let scope =
+        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+      let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let module = state_rc
-      .borrow()
-      .modules
-      .get_handle(id)
-      .map(|handle| v8::Local::new(tc_scope, handle))
-      .expect("ModuleInfo not found");
+      let module = state_rc
+        .borrow()
+        .modules
+        .get_handle(id)
+        .map(|handle| v8::Local::new(tc_scope, handle))
+        .expect("ModuleInfo not found");
 
-    if module.get_status() == v8::ModuleStatus::Errored {
-      exception_to_err_result(tc_scope, module.get_exception(), false)?
-    }
-
-    let result =
-      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
-    match result {
-      Some(_) => Ok(()),
-      None => {
-        let exception = tc_scope.exception().unwrap();
+      if module.get_status() == v8::ModuleStatus::Errored {
+        let exception = module.get_exception();
         exception_to_err_result(tc_scope, exception, false)
+          .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
+      } else {
+        let instantiate_result = module
+          .instantiate_module(tc_scope, bindings::module_resolve_callback);
+        match instantiate_result {
+          Some(_) => Ok(()),
+          None => {
+            let exception = tc_scope.exception().unwrap();
+            exception_to_err_result(tc_scope, exception, false)
+              .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
+          }
+        }
+      }
+    };
+
+    if let Some(dyn_import_id) = dyn_import_id {
+      if let Err(err) = result {
+        self.dyn_import_error(dyn_import_id, err);
+        return Ok(());
       }
     }
+    result
   }
 
   /// Evaluates an already instantiated ES module.
@@ -781,15 +812,10 @@ impl JsRuntime {
       // IMPORTANT: Top-level-await is enabled, which means that return value
       // of module evaluation is a promise.
       //
-      // Because that promise is created internally by V8, when error occurs during
-      // module evaluation the promise is rejected, and since the promise has no rejection
-      // handler it will result in call to `bindings::promise_reject_callback` adding
-      // the promise to pending promise rejection table - meaning JsRuntime will return
-      // error on next poll().
-      //
-      // This situation is not desirable as we want to manually return error at the
-      // end of this function to handle it further. It means we need to manually
-      // remove this promise from pending promise rejection table.
+      // This promise is internal, and not the same one that gets returned to
+      // the user. We add an empty `.catch()` handler so that it does not result
+      // in an exception if it rejects. That will instead happen for the other
+      // promise if not handled by the user.
       //
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
@@ -809,9 +835,13 @@ impl JsRuntime {
         );
         let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
-        let promise_global = v8::Global::new(scope, promise);
+        let empty_fn = |_scope: &mut v8::HandleScope,
+                        _args: v8::FunctionCallbackArguments,
+                        _rv: v8::ReturnValue| {};
+        let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
+        let empty_fn = empty_fn.get_function(scope).unwrap();
+        promise.catch(scope, empty_fn);
         let mut state = state_rc.borrow_mut();
-        state.pending_promise_exceptions.remove(&promise_global);
         let promise_global = v8::Global::new(scope, promise);
         let module_global = v8::Global::new(scope, module);
 
@@ -1075,7 +1105,7 @@ impl JsRuntime {
             // The top-level module from a dynamic import has been instantiated.
             // Load is done.
             let module_id = load.root_module_id.unwrap();
-            self.mod_instantiate(module_id)?;
+            self.mod_instantiate(module_id, Some(dyn_import_id))?;
             self.dyn_mod_evaluate(dyn_import_id, module_id)?;
           }
         }
@@ -1211,8 +1241,7 @@ impl JsRuntime {
 
     let is_main =
       load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_specifier =
-      ModuleSpecifier::resolve_url(&module_url_found).unwrap();
+    let referrer_specifier = crate::resolve_url(&module_url_found).unwrap();
 
     let state_rc = Self::state(self.v8_isolate());
     // #A There are 3 cases to handle at this moment:
@@ -1314,7 +1343,7 @@ impl JsRuntime {
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
-    self.mod_instantiate(root_id).map(|_| root_id)
+    self.mod_instantiate(root_id, None).map(|_| root_id)
   }
 
   fn poll_pending_ops(
@@ -2026,6 +2055,22 @@ pub mod tests {
   }
 
   #[test]
+  fn test_serialize_deserialize() {
+    run_in_task(|mut cx| {
+      let (mut runtime, _dispatch_count) = setup(Mode::Async);
+      runtime
+        .execute(
+          "serialize_deserialize_test.js",
+          include_str!("serialize_deserialize_test.js"),
+        )
+        .unwrap();
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
   fn will_snapshot() {
     let snapshot = {
       let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2171,7 +2216,7 @@ pub mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2243,7 +2288,7 @@ pub mod tests {
       let imports = state.modules.get_children(mod_a);
       assert_eq!(
         imports,
-        Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
+        Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
       );
     }
     let mod_b = runtime
@@ -2255,11 +2300,11 @@ pub mod tests {
       assert_eq!(imports.len(), 0);
     }
 
-    runtime.mod_instantiate(mod_b).unwrap();
+    runtime.mod_instantiate(mod_b, None).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    runtime.mod_instantiate(mod_a).unwrap();
+    runtime.mod_instantiate(mod_a, None).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     runtime.mod_evaluate_inner(mod_a);
@@ -2284,7 +2329,7 @@ pub mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2348,7 +2393,7 @@ pub mod tests {
       assert!(c < 4);
       assert_eq!(specifier, "./b.js");
       assert_eq!(referrer, "file:///dyn_import3.js");
-      let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+      let s = crate::resolve_import(specifier, referrer).unwrap();
       Ok(s)
     }
 
@@ -2475,7 +2520,7 @@ pub mod tests {
       ) -> Result<ModuleSpecifier, AnyError> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -2497,7 +2542,7 @@ pub mod tests {
       ..Default::default()
     });
 
-    let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+    let specifier = crate::resolve_url("file:///main.js").unwrap();
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
     let module_id = futures::executor::block_on(

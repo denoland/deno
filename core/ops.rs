@@ -10,10 +10,13 @@ use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::iter::once;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -118,10 +121,10 @@ impl Default for OpTable {
 ///
 /// The provided function `op_fn` has the following parameters:
 /// * `&mut OpState`: the op state, can be used to read/write resources in the runtime from an op.
-/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `V`: the deserializable value that is passed to the Rust function.
 /// * `&mut [ZeroCopyBuf]`: raw bytes passed along, usually not needed if the JSON value is used.
 ///
-/// `op_fn` returns a JSON value, which is directly returned to JavaScript.
+/// `op_fn` returns a serializable value, which is directly returned to JavaScript.
 ///
 /// When registering an op like this...
 /// ```ignore
@@ -137,10 +140,11 @@ impl Default for OpTable {
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_sync<F>(op_fn: F) -> Box<OpFn>
+pub fn json_op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, Value, &mut [ZeroCopyBuf]) -> Result<Value, AnyError>
-    + 'static,
+  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  V: DeserializeOwned,
+  R: Serialize,
 {
   Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
     let result = serde_json::from_slice(&bufs[0])
@@ -156,10 +160,10 @@ where
 ///
 /// The provided function `op_fn` has the following parameters:
 /// * `Rc<RefCell<OpState>`: the op state, can be used to read/write resources in the runtime from an op.
-/// * `Value`: the JSON value that is passed to the Rust function.
+/// * `V`: the deserializable value that is passed to the Rust function.
 /// * `BufVec`: raw bytes passed along, usually not needed if the JSON value is used.
 ///
-/// `op_fn` returns a future, whose output is a JSON value. This value will be asynchronously
+/// `op_fn` returns a future, whose output is a serializable value. This value will be asynchronously
 /// returned to JavaScript.
 ///
 /// When registering an op like this...
@@ -176,18 +180,20 @@ where
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_async<F, R>(op_fn: F) -> Box<OpFn>
+pub fn json_op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(Rc<RefCell<OpState>>, Value, BufVec) -> R + 'static,
-  R: Future<Output = Result<Value, AnyError>> + 'static,
+  F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
+  V: DeserializeOwned,
+  R: Future<Output = Result<RV, AnyError>> + 'static,
+  RV: Serialize,
 {
   let try_dispatch_op =
     move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
-      let args: Value = serde_json::from_slice(&bufs[0])?;
-      let promise_id = args
-        .get("promiseId")
-        .and_then(Value::as_u64)
+      let promise_id = bufs[0]
+        .get(0..8)
+        .map(|b| u64::from_be_bytes(b.try_into().unwrap()))
         .ok_or_else(|| type_error("missing or invalid `promiseId`"))?;
+      let args = serde_json::from_slice(&bufs[0][8..])?;
       let bufs = bufs[1..].into();
       use crate::futures::FutureExt;
       let fut = op_fn(state.clone(), args, bufs).map(move |result| {
@@ -205,16 +211,16 @@ where
       Ok(op) => op,
       Err(err) => Op::Sync(json_serialize_op_result(
         None,
-        Err(err),
+        Err::<(), AnyError>(err),
         state.borrow().get_error_class_fn,
       )),
     }
   })
 }
 
-fn json_serialize_op_result(
+fn json_serialize_op_result<R: Serialize>(
   promise_id: Option<u64>,
-  result: Result<serde_json::Value, AnyError>,
+  result: Result<R, AnyError>,
   get_error_class_fn: crate::runtime::GetErrorClassFn,
 ) -> Box<[u8]> {
   let value = match result {
