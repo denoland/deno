@@ -5,6 +5,22 @@
 #[macro_use]
 extern crate lazy_static;
 
+use futures::FutureExt;
+use futures::Stream;
+use futures::StreamExt;
+use hyper::header::HeaderValue;
+use hyper::server::Server;
+use hyper::service::make_service_fn;
+use hyper::service::service_fn;
+use hyper::Body;
+use hyper::Request;
+use hyper::Response;
+use hyper::StatusCode;
+use os_pipe::pipe;
+#[cfg(unix)]
+pub use pty;
+use regex::Regex;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
@@ -25,23 +41,6 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
-
-use futures::FutureExt;
-use futures::Stream;
-use futures::StreamExt;
-use hyper::header::HeaderValue;
-use hyper::server::Server;
-use hyper::service::make_service_fn;
-use hyper::service::service_fn;
-use hyper::Body;
-use hyper::Request;
-use hyper::Response;
-use hyper::StatusCode;
-use os_pipe::pipe;
-#[cfg(unix)]
-pub use pty;
-use regex::Regex;
-use serde::Serialize;
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
