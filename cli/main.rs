@@ -599,12 +599,6 @@ async fn bundle_command(
       debug!(">>>>> bundle START");
       let program_state = ProgramState::build(flags.clone()).await?;
 
-      info!(
-        "{} {}",
-        colors::green("Bundle"),
-        module_specifier.to_string()
-      );
-
       let module_graph = create_module_graph_and_maybe_check(
         module_specifier,
         program_state.clone(),
@@ -642,6 +636,12 @@ async fn bundle_command(
     let flags = flags.clone();
     let out_file = out_file.clone();
     async move {
+      info!(
+        "{} {}",
+        colors::green("Bundle"),
+        module_graph.info()?.module
+      );
+
       let output = bundle_module_graph(module_graph, flags, debug)?;
 
       debug!(">>>>> bundle END");

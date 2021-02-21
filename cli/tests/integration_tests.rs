@@ -609,6 +609,21 @@ mod integration {
       }
     }
 
+    /// Helper function to skip watcher output that doesn't contain
+    /// "{job_name} failed" phrase.
+    fn wait_for_process_failed(
+      job_name: &str,
+      stderr_lines: &mut impl Iterator<Item = String>,
+    ) {
+      let phrase = format!("{} failed", job_name);
+      loop {
+        let msg = stderr_lines.next().unwrap();
+        if msg.contains(&phrase) {
+          break;
+        }
+      }
+    }
+
     #[test]
     fn fmt_watch_test() {
       let t = TempDir::new().expect("tempdir fail");
@@ -677,6 +692,7 @@ mod integration {
         .arg(&bundle)
         .arg("--watch")
         .arg("--unstable")
+        .env("NO_COLOR", "1")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -714,11 +730,8 @@ mod integration {
         .next()
         .unwrap()
         .contains("File change detected!"));
-      assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
-      assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
-      let file = PathBuf::from(&bundle);
-      assert!(file.is_file());
-      wait_for_process_finished("Bundle", &mut stderr_lines);
+      assert!(stderr_lines.next().unwrap().contains("error: "));
+      wait_for_process_failed("Bundle", &mut stderr_lines);
 
       // the watcher process is still alive
       assert!(deno.try_wait().unwrap().is_none());
@@ -754,7 +767,6 @@ mod integration {
         std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
       std::thread::sleep(std::time::Duration::from_secs(1));
-      assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
       assert!(stderr_lines.next().unwrap().contains("error:"));
       assert!(stderr_lines.next().unwrap().contains("Bundle failed!"));
       // the target file hasn't been created yet
@@ -850,7 +862,7 @@ mod integration {
       std::thread::sleep(std::time::Duration::from_secs(1));
       assert!(stderr_lines.next().unwrap().contains("Restarting"));
       assert!(stderr_lines.next().unwrap().contains("error:"));
-      wait_for_process_finished("Process", &mut stderr_lines);
+      wait_for_process_failed("Process", &mut stderr_lines);
 
       // Then restore the file
       std::fs::write(
@@ -869,7 +881,7 @@ mod integration {
       std::thread::sleep(std::time::Duration::from_secs(1));
       assert!(stderr_lines.next().unwrap().contains("Restarting"));
       assert!(stderr_lines.next().unwrap().contains("error:"));
-      wait_for_process_finished("Process", &mut stderr_lines);
+      wait_for_process_failed("Process", &mut stderr_lines);
 
       // Modify the imported file and make sure that restarting occurs
       std::fs::write(&another_file, "export const foo = 'modified!';")

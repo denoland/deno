@@ -175,7 +175,9 @@ where
         let fut = error_handler(operation(operation_arg));
         select! {
           (paths, result) = next_restart(&mut resolver, &mut debounce) => {
-            paths_to_watch = paths;
+            if result.is_ok() {
+              paths_to_watch = paths;
+            }
             resolution_result = result;
             continue;
           },
@@ -199,7 +201,9 @@ where
     }
 
     let (paths, result) = next_restart(&mut resolver, &mut debounce).await;
-    paths_to_watch = paths;
+    if result.is_ok() {
+      paths_to_watch = paths;
+    }
     resolution_result = result;
 
     drop(watcher);
@@ -214,6 +218,7 @@ fn new_watcher(
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+      log::debug!("File changed");
       if let Ok(event) = res {
         if matches!(
           event.kind,
@@ -227,6 +232,7 @@ fn new_watcher(
 
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 
+  log::debug!("Watching paths: {:?}", paths);
   for path in paths {
     // Ignore any error e.g. `PathNotFound`
     let _ = watcher.watch(path, RecursiveMode::Recursive);
