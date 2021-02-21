@@ -198,7 +198,7 @@
    * @returns {x is ArrayBufferView}
    */
   function isTypedArray(x) {
-    return x instanceof TypedArray;
+    return ArrayBuffer.isView(x) && x instanceof TypedArray;
   }
 
   /** 
@@ -1469,8 +1469,7 @@
           } else if (init.body instanceof URLSearchParams) {
             body = new TextEncoder().encode(init.body.toString());
             contentType = "application/x-www-form-urlencoded;charset=UTF-8";
-          }
-          if (init.body instanceof Blob) {
+          } else if (init.body instanceof Blob) {
             ({
               [_byteSequence]: body,
               type: contentType,
