@@ -783,7 +783,11 @@
             prefix,
             context,
           });
-          assertDeviceMatch(device, resource, {
+          assertResource(resource[_texture], {
+            prefix,
+            context,
+          });
+          assertDeviceMatch(device, resource[_texture], {
             prefix,
             resourceContext: context,
             selfContext: "this",
@@ -794,7 +798,7 @@
             resource: rid,
           };
         } else {
-          const rid = assertDevice(resource.buffer, { prefix, context });
+          const rid = assertResource(resource.buffer, { prefix, context });
           assertDeviceMatch(device, resource.buffer, {
             prefix,
             resourceContext: context,
@@ -811,7 +815,7 @@
       });
 
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         label: descriptor.label,
         layout,
         entries,
@@ -878,14 +882,14 @@
       let layout = undefined;
       if (descriptor.layout) {
         const context = "layout";
-        layout = assertDevice(descriptor.layout, { prefix, context });
+        layout = assertResource(descriptor.layout, { prefix, context });
         assertDeviceMatch(device, descriptor.layout, {
           prefix,
           resourceContext: context,
           selfContext: "this",
         });
       }
-      const module = assertDevice(descriptor.compute.module, {
+      const module = assertResource(descriptor.compute.module, {
         prefix,
         context: "compute shader module",
       });
@@ -930,14 +934,14 @@
       let layout = undefined;
       if (descriptor.layout) {
         const context = "layout";
-        layout = assertDevice(descriptor.layout, { prefix, context });
+        layout = assertResource(descriptor.layout, { prefix, context });
         assertDeviceMatch(device, descriptor.layout, {
           prefix,
           resourceContext: context,
           selfContext: "this",
         });
       }
-      const module = assertDevice(descriptor.vertex.module, {
+      const module = assertResource(descriptor.vertex.module, {
         prefix,
         context: "vertex shader module",
       });
@@ -948,7 +952,7 @@
       });
       let fragment = undefined;
       if (descriptor.fragment) {
-        const module = assertDevice(descriptor.fragment.module, {
+        const module = assertResource(descriptor.fragment.module, {
           prefix,
           context: "fragment shader module",
         });
@@ -2524,11 +2528,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      const destinationRid = assertResource(source, {
+      const destinationRid = assertResource(destination, {
         prefix,
         context: "Argument 3",
       });
-      assertDeviceMatch(device, source, {
+      assertDeviceMatch(device, destination, {
         prefix,
         resourceContext: "Argument 3",
         selfContext: "this",
@@ -2661,7 +2665,7 @@
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_buffer",
         {
-          commandEncoderRid: this[_rid],
+          commandEncoderRid,
           source: {
             texture: sourceTextureRid,
             mipLevel: source.mipLevel,
@@ -3271,7 +3275,7 @@
       }
 
       core.jsonOpSync("op_webgpu_render_pass_end_pass", {
-        commandEncoderRid: this[_encoder],
+        commandEncoderRid: this[_encoder][_rid],
         renderPassRid: this[_rid],
       });
       this[_rid] = undefined;
@@ -3890,7 +3894,7 @@
       }
 
       core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
-        commandEncoderRid: this[_encoder],
+        commandEncoderRid: this[_encoder][_rid],
         computePassRid: this[_rid],
       });
       this[_rid] = undefined;
