@@ -11,7 +11,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_runtime::inspector::InspectorSession;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
@@ -389,7 +388,7 @@ pub async fn report_coverages(
   let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
   for script_coverage in coverages {
     let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+      deno_core::resolve_url_or_path(&script_coverage.url)?;
     program_state
       .prepare_module_load(
         module_specifier.clone(),

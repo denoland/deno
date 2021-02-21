@@ -167,7 +167,7 @@ page, first `npm install --save-dev typescript-deno-plugin typescript` in your
 project (`npm init -y` as necessary), then add the following block to your
 `tsconfig.json` and you are off to the races!
 
-```json
+```jsonc
 {
   "compilerOptions": {
     "plugins": [
@@ -238,7 +238,7 @@ endif
   syntax highlighting
 - Add the following `.sublime-project` file to your project folder
 
-```json
+```jsonc
 {
   "settings": {
     "LSP": {

@@ -4,6 +4,7 @@ use crate::media_type::MediaType;
 use crate::tsc_config;
 
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
@@ -11,7 +12,7 @@ use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use swc_common::chain;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
@@ -78,7 +79,7 @@ impl Into<Location> for swc_common::Loc {
 
 impl Into<ModuleSpecifier> for Location {
   fn into(self) -> ModuleSpecifier {
-    ModuleSpecifier::resolve_url_or_path(&self.filename).unwrap()
+    resolve_url_or_path(&self.filename).unwrap()
   }
 }
 
@@ -106,7 +107,7 @@ impl DiagnosticBuffer {
   where
     F: Fn(Span) -> Loc,
   {
-    let s = error_buffer.0.read().unwrap().clone();
+    let s = error_buffer.0.lock().unwrap().clone();
     let diagnostics = s
       .iter()
       .map(|d| {
@@ -133,18 +134,12 @@ impl DiagnosticBuffer {
 }
 
 /// A buffer for collecting errors from the AST parser.
-#[derive(Debug, Clone)]
-pub struct ErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
-
-impl ErrorBuffer {
-  pub fn new() -> Self {
-    Self(Arc::new(RwLock::new(Vec::new())))
-  }
-}
+#[derive(Debug, Clone, Default)]
+pub struct ErrorBuffer(Arc<Mutex<Vec<Diagnostic>>>);
 
 impl Emitter for ErrorBuffer {
   fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().push((**db).clone());
+    self.0.lock().unwrap().push((**db).clone());
   }
 }
 
@@ -364,7 +359,7 @@ pub fn parse_with_source_map(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
   );
-  let error_buffer = ErrorBuffer::new();
+  let error_buffer = ErrorBuffer::default();
   let syntax = get_syntax(media_type);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
@@ -593,9 +588,7 @@ mod tests {
 
   #[test]
   fn test_parsed_module_analyze_dependencies() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.js")
-        .unwrap();
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.js").unwrap();
     let source = r#"import * as bar from "./test.ts";
     const foo = await import("./foo.ts");
     "#;
@@ -634,9 +627,8 @@ mod tests {
 
   #[test]
   fn test_transpile() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     enum D {
       A,
@@ -668,9 +660,8 @@ mod tests {
 
   #[test]
   fn test_transpile_tsx() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     export class A {
       render() {
@@ -688,9 +679,8 @@ mod tests {
 
   #[test]
   fn test_transpile_decorators() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     function enumerable(value: boolean) {
       return function (
@@ -701,7 +691,7 @@ mod tests {
         descriptor.enumerable = value;
       };
     }
-    
+
     export class A {
       @enumerable(false)
       a() {

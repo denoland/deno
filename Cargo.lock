@@ -411,6 +411,7 @@ dependencies = [
  "deno_web",
  "deno_websocket",
  "dissimilar",
+ "dprint-plugin-json",
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
  "encoding_rs",
@@ -656,6 +657,17 @@ checksum = "db5b96c278cf35e2dd2c225c16abcdbf46b2e39d3058426ac67b105f023ac148"
 dependencies = [
  "bumpalo",
  "fnv",
+ "serde",
+]
+
+[[package]]
+name = "dprint-plugin-json"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00b43a7746fa356617bb85828932170b5b6a35102b1d29978b0f1b388dbcd346"
+dependencies = [
+ "dprint-core",
+ "jsonc-parser",
  "serde",
 ]
 

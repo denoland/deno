@@ -797,7 +797,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
     .about("Format source files")
     .long_about(
-      "Auto-format JavaScript, TypeScript and Markdown files.
+      "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
   deno fmt
   deno fmt myfile1.ts myfile2.ts
   deno fmt --check
@@ -823,7 +823,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("ts")
-        .possible_values(&["ts", "tsx", "js", "jsx", "md"]),
+        .possible_values(&["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
     .arg(
       Arg::with_name("ignore")
