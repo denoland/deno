@@ -192,13 +192,12 @@
     }
   }
 
-  const TypedArray = Reflect.getPrototypeOf(Int8Array);
   /** 
    * @param {unknown} x
    * @returns {x is ArrayBufferView}
    */
   function isTypedArray(x) {
-    return ArrayBuffer.isView(x) && x instanceof TypedArray;
+    return ArrayBuffer.isView(x) && !(x instanceof DataView);
   }
 
   /** 
@@ -1169,11 +1168,14 @@
 
     clone() {
       if (this.bodyUsed) {
-        throw new TypeError(BodyUsedError);
+        throw TypeError(BodyUsedError);
       }
 
       const iterators = this.headers.entries();
-      const headersList = [...iterators];
+      const headersList = [];
+      for (const header of iterators) {
+        headersList.push(header);
+      }
 
       const body = this[teeBody]();
 
@@ -1225,11 +1227,12 @@
      * @param {ResponseInit} [init]
      */
     constructor(body = null, init = {}) {
+      const extraInit = responseData.get(init) || {};
+
       init = responseInitConverter(init, {
         prefix: "Failed to construct 'Response'",
       });
 
-      const extraInit = responseData.get(init) || {};
       let { type = "default", url = "" } = extraInit;
 
       let status = init.status === undefined ? 200 : Number(init.status || 0);
@@ -1434,7 +1437,6 @@
     let method = null;
     let headers = null;
     let body;
-
     let clientRid = null;
     let redirected = false;
     let remRedirectCount = 20; // TODO(bartlomieju): use a better way to handle
@@ -1470,10 +1472,8 @@
             body = new TextEncoder().encode(init.body.toString());
             contentType = "application/x-www-form-urlencoded;charset=UTF-8";
           } else if (init.body instanceof Blob) {
-            ({
-              [_byteSequence]: body,
-              type: contentType,
-            } = init.body);
+            body = init.body[_byteSequence];
+            contentType = init.body.type;
           } else if (init.body instanceof FormData) {
             let boundary;
             if (headers.has("content-type")) {
@@ -1493,6 +1493,7 @@
             headers.set("content-type", contentType);
           }
         }
+
         if (init.client instanceof HttpClient) {
           clientRid = init.client.rid;
         }
