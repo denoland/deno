@@ -44,7 +44,7 @@ pub enum DenoSubcommand {
   Eval {
     print: bool,
     code: String,
-    as_typescript: bool,
+    ext: String,
   },
   Fmt {
     check: bool,
@@ -525,7 +525,14 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = Some(vec![]);
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
+  // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.is_present("ts");
+  let ext = if as_typescript {
+    "ts".to_string()
+  } else {
+    matches.value_of("ext").unwrap().to_string()
+  };
+
   let print = matches.is_present("print");
   let mut code: Vec<String> = matches
     .values_of("code_arg")
@@ -538,11 +545,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   for v in code_args {
     flags.argv.push(v);
   }
-  flags.subcommand = DenoSubcommand::Eval {
-    print,
-    code,
-    as_typescript,
-  };
+  flags.subcommand = DenoSubcommand::Eval { print, code, ext };
 }
 
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -797,7 +800,7 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("fmt")
     .about("Format source files")
     .long_about(
-      "Auto-format JavaScript, TypeScript and Markdown files.
+      "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
   deno fmt
   deno fmt myfile1.ts myfile2.ts
   deno fmt --check
@@ -823,7 +826,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .help("Set standard input (stdin) content type")
         .takes_value(true)
         .default_value("ts")
-        .possible_values(&["ts", "tsx", "js", "jsx", "md"]),
+        .possible_values(&["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
     )
     .arg(
       Arg::with_name("ignore")
@@ -999,17 +1002,27 @@ fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno eval \"console.log('hello world')\"
 
 To evaluate as TypeScript:
-  deno eval -T \"const v: string = 'hello'; console.log(v)\"
+  deno eval --ext=ts \"const v: string = 'hello'; console.log(v)\"
 
 This command has implicit access to all permissions (--allow-all).",
     )
     .arg(
+      // TODO(@satyarohith): remove this argument in 2.0.
       Arg::with_name("ts")
         .long("ts")
         .short("T")
         .help("Treat eval input as TypeScript")
         .takes_value(false)
-        .multiple(false),
+        .multiple(false)
+        .hidden(true),
+    )
+    .arg(
+      Arg::with_name("ext")
+        .long("ext")
+        .help("Set standard input (stdin) content type")
+        .takes_value(true)
+        .default_value("js")
+        .possible_values(&["ts", "tsx", "js", "jsx"]),
     )
     .arg(
       Arg::with_name("print")
@@ -1495,7 +1508,7 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("inspect")
         .long("inspect")
         .value_name("HOST:PORT")
-        .help("activate inspector on host:port (default: 127.0.0.1:9229)")
+        .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
         .min_values(0)
         .max_values(1)
         .require_equals(true)
@@ -1507,7 +1520,7 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .long("inspect-brk")
         .value_name("HOST:PORT")
         .help(
-          "activate inspector on host:port and break at start of user script",
+          "Activate inspector on host:port and break at start of user script",
         )
         .min_values(0)
         .max_values(1)
@@ -2296,7 +2309,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          as_typescript: false,
+          ext: "js".to_string(),
         },
         allow_net: Some(vec![]),
         allow_env: true,
@@ -2319,7 +2332,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: true,
           code: "1+2".to_string(),
-          as_typescript: false,
+          ext: "js".to_string(),
         },
         allow_net: Some(vec![]),
         allow_env: true,
@@ -2343,7 +2356,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          as_typescript: true,
+          ext: "ts".to_string(),
         },
         allow_net: Some(vec![]),
         allow_env: true,
@@ -2367,7 +2380,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "42".to_string(),
-          as_typescript: false,
+          ext: "js".to_string(),
         },
         unstable: true,
         import_map_path: Some("import_map.json".to_string()),
@@ -2410,7 +2423,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "console.log(Deno.args)".to_string(),
-          as_typescript: false,
+          ext: "js".to_string(),
         },
         argv: svec!["arg1", "arg2"],
         allow_net: Some(vec![]),

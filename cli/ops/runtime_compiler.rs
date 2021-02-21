@@ -13,11 +13,11 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
@@ -75,19 +75,20 @@ async fn op_emit(
       is_dynamic = true;
       Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
-        runtime_permissions,
+        runtime_permissions.clone(),
       )?))
     };
   let maybe_import_map = if let Some(import_map_str) = args.import_map_path {
-    let import_map_specifier =
-      ModuleSpecifier::resolve_url_or_path(&import_map_str).context(
-        format!("Bad file path (\"{}\") for import map.", import_map_str),
-      )?;
-    let import_map_url = import_map_specifier.as_url();
+    let import_map_specifier = resolve_url_or_path(&import_map_str)
+      .context(format!("Bad URL (\"{}\") for import map.", import_map_str))?;
     let import_map = if let Some(value) = args.import_map {
-      ImportMap::from_json(&import_map_url.to_string(), &value.to_string())?
+      ImportMap::from_json(import_map_specifier.as_str(), &value.to_string())?
     } else {
-      ImportMap::load(&import_map_str)?
+      let file = program_state
+        .file_fetcher
+        .fetch(&import_map_specifier, &runtime_permissions)
+        .await?;
+      ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
     Some(import_map)
   } else if args.import_map.is_some() {
@@ -96,7 +97,7 @@ async fn op_emit(
     None
   };
   let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
-  let root_specifier = ModuleSpecifier::resolve_url_or_path(&root_specifier)?;
+  let root_specifier = resolve_url_or_path(&root_specifier)?;
   builder
     .add(&root_specifier, is_dynamic)
     .await

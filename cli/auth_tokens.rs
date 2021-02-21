@@ -52,11 +52,10 @@ impl AuthTokens {
   /// matching is case insensitive.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<AuthToken> {
     self.0.iter().find_map(|t| {
-      let url = specifier.as_url();
-      let hostname = if let Some(port) = url.port() {
-        format!("{}:{}", url.host_str()?, port)
+      let hostname = if let Some(port) = specifier.port() {
+        format!("{}:{}", specifier.host_str()?, port)
       } else {
-        url.host_str()?.to_string()
+        specifier.host_str()?.to_string()
       };
       if hostname.to_lowercase().ends_with(&t.host) {
         Some(t.clone())
@@ -70,31 +69,27 @@ impl AuthTokens {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url;
 
   #[test]
   fn test_auth_token() {
     let auth_tokens = AuthTokens::new(Some("abc123@deno.land".to_string()));
-    let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
       auth_tokens.get(&fixture).unwrap().to_string(),
       "Bearer abc123"
     );
-    let fixture =
-      ModuleSpecifier::resolve_url("https://www.deno.land/x/mod.ts").unwrap();
+    let fixture = resolve_url("https://www.deno.land/x/mod.ts").unwrap();
     assert_eq!(
       auth_tokens.get(&fixture).unwrap().to_string(),
       "Bearer abc123".to_string()
     );
-    let fixture =
-      ModuleSpecifier::resolve_url("http://127.0.0.1:8080/x/mod.ts").unwrap();
+    let fixture = resolve_url("http://127.0.0.1:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
     let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land.example.com/x/mod.ts")
-        .unwrap();
+      resolve_url("https://deno.land.example.com/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
-    let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land:8080/x/mod.ts").unwrap();
+    let fixture = resolve_url("https://deno.land:8080/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
   }
 
@@ -102,14 +97,12 @@ mod tests {
   fn test_auth_tokens_multiple() {
     let auth_tokens =
       AuthTokens::new(Some("abc123@deno.land;def456@example.com".to_string()));
-    let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
       auth_tokens.get(&fixture).unwrap().to_string(),
       "Bearer abc123".to_string()
     );
-    let fixture =
-      ModuleSpecifier::resolve_url("http://example.com/a/file.ts").unwrap();
+    let fixture = resolve_url("http://example.com/a/file.ts").unwrap();
     assert_eq!(
       auth_tokens.get(&fixture).unwrap().to_string(),
       "Bearer def456".to_string()
@@ -120,11 +113,9 @@ mod tests {
   fn test_auth_tokens_port() {
     let auth_tokens =
       AuthTokens::new(Some("abc123@deno.land:8080".to_string()));
-    let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
     assert_eq!(auth_tokens.get(&fixture), None);
-    let fixture =
-      ModuleSpecifier::resolve_url("http://deno.land:8080/x/mod.ts").unwrap();
+    let fixture = resolve_url("http://deno.land:8080/x/mod.ts").unwrap();
     assert_eq!(
       auth_tokens.get(&fixture).unwrap().to_string(),
       "Bearer abc123".to_string()
@@ -134,8 +125,7 @@ mod tests {
   #[test]
   fn test_auth_tokens_contain_at() {
     let auth_tokens = AuthTokens::new(Some("abc@123@deno.land".to_string()));
-    let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
     assert_eq!(
       auth_tokens.get(&fixture).unwrap().to_string(),
       "Bearer abc@123".to_string()

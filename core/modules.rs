@@ -145,7 +145,7 @@ impl ModuleLoader for FsModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    Ok(ModuleSpecifier::resolve_import(specifier, referrer)?)
+    Ok(crate::resolve_import(specifier, referrer)?)
   }
 
   fn load(
@@ -157,7 +157,7 @@ impl ModuleLoader for FsModuleLoader {
   ) -> Pin<Box<ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     async move {
-      let path = module_specifier.as_url().to_file_path().map_err(|_| {
+      let path = module_specifier.to_file_path().map_err(|_| {
         generic_error(format!(
           "Provided module specifier \"{}\" is not a file URL.",
           module_specifier
@@ -649,11 +649,10 @@ mod tests {
 
       eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
 
-      let output_specifier =
-        match ModuleSpecifier::resolve_import(specifier, referrer) {
-          Ok(specifier) => specifier,
-          Err(..) => return Err(MockError::ResolveErr.into()),
-        };
+      let output_specifier = match crate::resolve_import(specifier, referrer) {
+        Ok(specifier) => specifier,
+        Err(..) => return Err(MockError::ResolveErr.into()),
+      };
 
       if mock_source_code(&output_specifier.to_string()).is_some() {
         Ok(output_specifier)
@@ -715,7 +714,7 @@ mod tests {
       module_loader: Some(loader),
       ..Default::default()
     });
-    let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
+    let spec = crate::resolve_url("file:///a.js").unwrap();
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
@@ -741,17 +740,17 @@ mod tests {
     assert_eq!(
       modules.get_children(a_id),
       Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+        crate::resolve_url("file:///b.js").unwrap(),
+        crate::resolve_url("file:///c.js").unwrap()
       ])
     );
     assert_eq!(
       modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///c.js").unwrap()])
     );
     assert_eq!(
       modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///d.js").unwrap()])
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
@@ -782,7 +781,7 @@ mod tests {
     });
 
     let fut = async move {
-      let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
+      let spec = crate::resolve_url("file:///circular1.js").unwrap();
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
@@ -807,16 +806,12 @@ mod tests {
 
       assert_eq!(
         modules.get_children(circular1_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
-        ])
+        Some(&vec![crate::resolve_url("file:///circular2.js").unwrap()])
       );
 
       assert_eq!(
         modules.get_children(circular2_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular3.js").unwrap()
-        ])
+        Some(&vec![crate::resolve_url("file:///circular3.js").unwrap()])
       );
 
       assert!(modules.get_id("file:///circular3.js").is_some());
@@ -824,8 +819,8 @@ mod tests {
       assert_eq!(
         modules.get_children(circular3_id),
         Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular1.js").unwrap(),
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
+          crate::resolve_url("file:///circular1.js").unwrap(),
+          crate::resolve_url("file:///circular2.js").unwrap()
         ])
       );
     }
@@ -858,7 +853,7 @@ mod tests {
     });
 
     let fut = async move {
-      let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
+      let spec = crate::resolve_url("file:///redirect1.js").unwrap();
       let result = runtime.load_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
@@ -923,7 +918,7 @@ mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+      let spec = crate::resolve_url("file:///main.js").unwrap();
       let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
@@ -971,7 +966,7 @@ mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
+      let spec = crate::resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
@@ -1005,8 +1000,7 @@ mod tests {
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
-    let spec =
-      ModuleSpecifier::resolve_url("file:///main_with_code.js").unwrap();
+    let spec = crate::resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = runtime
       .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
@@ -1033,17 +1027,17 @@ mod tests {
     assert_eq!(
       modules.get_children(main_id),
       Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+        crate::resolve_url("file:///b.js").unwrap(),
+        crate::resolve_url("file:///c.js").unwrap()
       ])
     );
     assert_eq!(
       modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///c.js").unwrap()])
     );
     assert_eq!(
       modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///d.js").unwrap()])
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }

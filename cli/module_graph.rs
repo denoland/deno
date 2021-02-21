@@ -33,6 +33,7 @@ use deno_core::error::get_custom_error_class;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
+use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -150,7 +151,7 @@ impl swc_bundler::Load for BundleLoader<'_> {
   ) -> Result<swc_bundler::ModuleData, AnyError> {
     match file {
       swc_common::FileName::Custom(filename) => {
-        let specifier = ModuleSpecifier::resolve_url_or_path(filename)
+        let specifier = resolve_url_or_path(filename)
           .context("Failed to convert swc FileName to ModuleSpecifier.")?;
         if let Some(src) = self.graph.get_source(&specifier) {
           let media_type = self
@@ -259,7 +260,7 @@ impl Default for Module {
       maybe_types: None,
       maybe_version: None,
       media_type: MediaType::Unknown,
-      specifier: ModuleSpecifier::resolve_url("file:///example.js").unwrap(),
+      specifier: deno_core::resolve_url("file:///example.js").unwrap(),
       source: "".to_string(),
       source_path: PathBuf::new(),
     }
@@ -449,11 +450,11 @@ impl Module {
       remapped_import = true;
       module_specifier
     } else {
-      ModuleSpecifier::resolve_import(specifier, self.specifier.as_str())?
+      deno_core::resolve_import(specifier, self.specifier.as_str())?
     };
 
-    let referrer_scheme = self.specifier.as_url().scheme();
-    let specifier_scheme = specifier.as_url().scheme();
+    let referrer_scheme = self.specifier.scheme();
+    let specifier_scheme = specifier.scheme();
     let location = maybe_location.unwrap_or(Location {
       filename: self.specifier.to_string(),
       line: 0,
@@ -1769,7 +1770,7 @@ impl swc_bundler::Resolve for Graph {
     specifier: &str,
   ) -> Result<swc_common::FileName, AnyError> {
     let referrer = if let swc_common::FileName::Custom(referrer) = referrer {
-      ModuleSpecifier::resolve_url_or_path(referrer)
+      resolve_url_or_path(referrer)
         .context("Cannot resolve swc FileName to a module specifier")?
     } else {
       unreachable!(
@@ -1995,7 +1996,7 @@ pub mod tests {
       let media_type = MediaType::from(&source_path);
       let source = fs::read_to_string(&source_path)
         .map_err(|err| (specifier.clone(), err.into()))?;
-      let is_remote = specifier.as_url().scheme() != "file";
+      let is_remote = specifier.scheme() != "file";
 
       Ok(CachedModule {
         source,
@@ -2200,7 +2201,7 @@ pub mod tests {
     let fixtures = c.join("tests/bundle");
 
     for (specifier, expected_str) in tests {
-      let specifier = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      let specifier = resolve_url_or_path(specifier).unwrap();
       let handler = Arc::new(Mutex::new(MockSpecifierHandler {
         fixtures: fixtures.clone(),
         ..MockSpecifierHandler::default()
@@ -2224,9 +2225,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_emit() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2247,9 +2247,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_ignores_dynamic_import_errors() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/dynamicimport.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/dynamicimport.ts")
+      .expect("could not resolve module");
     let (graph, _) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2265,9 +2264,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_check_emit_diagnostics() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/diag.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/diag.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2290,9 +2288,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_no_emit() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2313,7 +2310,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_check_mjs_root() {
-    let specifier = ModuleSpecifier::resolve_url_or_path("file:///tests/a.mjs")
+    let specifier = resolve_url_or_path("file:///tests/a.mjs")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
@@ -2334,7 +2331,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_check_types_root() {
-    let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js")
+    let specifier = resolve_url_or_path("file:///typesref.js")
       .expect("could not resolve module");
     let (graph, _) = setup(specifier).await;
     let result_info = graph
@@ -2351,9 +2348,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_user_config() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2397,8 +2393,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_emit() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
     let graph = setup_memory(
       specifier,
       map!(
@@ -2438,8 +2433,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_emit_bundle() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
     let graph = setup_memory(
       specifier,
       map!(
@@ -2474,8 +2468,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_emit_declaration() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
     let graph = setup_memory(
       specifier,
       map!(
@@ -2519,9 +2512,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_info() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     let (graph, _) = setup(specifier).await;
     let info = graph.info().expect("could not get info");
     assert!(info.compiled.is_none());
@@ -2532,16 +2524,15 @@ pub mod tests {
     assert!(info.map.is_none());
     assert_eq!(
       info.module,
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts").unwrap()
+      resolve_url_or_path("file:///tests/main.ts").unwrap()
     );
     assert_eq!(info.total_size, 344);
   }
 
   #[tokio::test]
   async fn test_graph_import_json() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/importjson.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/importjson.ts")
+      .expect("could not resolve module");
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/module_graph");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
@@ -2564,9 +2555,8 @@ pub mod tests {
     // to be actually emitted.
     //
     // This also exercises "@deno-types" and type references.
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
     let result_info = graph.transpile(TranspileOptions::default()).unwrap();
     assert_eq!(result_info.stats.0.len(), 3);
@@ -2592,19 +2582,17 @@ pub mod tests {
     assert_eq!(h.deps_calls.len(), 7);
     assert_eq!(
       h.deps_calls[0].0,
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts").unwrap()
+      resolve_url_or_path("file:///tests/main.ts").unwrap()
     );
     assert_eq!(h.deps_calls[0].1.len(), 1);
     assert_eq!(
       h.deps_calls[1].0,
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.js")
-        .unwrap()
+      resolve_url_or_path("https://deno.land/x/lib/mod.js").unwrap()
     );
     assert_eq!(h.deps_calls[1].1.len(), 3);
     assert_eq!(
       h.deps_calls[2].0,
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.d.ts")
-        .unwrap()
+      resolve_url_or_path("https://deno.land/x/lib/mod.d.ts").unwrap()
     );
     assert_eq!(h.deps_calls[2].1.len(), 3, "should have 3 dependencies");
     // sometimes the calls are not deterministic, and so checking the contents
@@ -2617,9 +2605,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_transpile_user_config() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/transpile.tsx")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
+      .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
     let result_info = graph
       .transpile(TranspileOptions {
@@ -2667,9 +2654,8 @@ pub mod tests {
       ..Default::default()
     }));
     let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/importremap.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/importremap.ts")
+      .expect("could not resolve module");
     builder.add(&specifier, false).await.expect("could not add");
     builder.get_graph();
   }
@@ -2687,9 +2673,8 @@ pub mod tests {
       ..MockSpecifierHandler::default()
     }));
     let mut builder = GraphBuilder::new(handler.clone(), None, maybe_lockfile);
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     builder
       .add(&specifier, false)
       .await
