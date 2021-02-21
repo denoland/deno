@@ -2941,6 +2941,11 @@ console.log("finish");
     output: "085_dynamic_import_async_error.ts.out",
   });
 
+  itest!(_086_dynamic_import_already_rejected {
+    args: "run --allow-read 086_dynamic_import_already_rejected.ts",
+    output: "086_dynamic_import_already_rejected.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
