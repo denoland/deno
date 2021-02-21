@@ -1,10 +1,11 @@
 Check [WILDCARD]/$deno$test.ts
-running 1 tests
-test test ... FAILED ([WILDCARD])
+running 2 tests
+test error ... FAILED ([WILDCARD])
+test success ... ok ([WILDCARD])
 
 failures:
 
-test
+error
 Error: fail
     at [WILDCARD]/test_finally_cleartimeout.ts:4:11
     at asyncOpSanitizer (deno:runtime/js/40_testing.js:38:15)
@@ -16,7 +17,7 @@ Error: fail
 
 failures:
 
-	test
+	error
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
