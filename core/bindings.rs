@@ -11,6 +11,7 @@ use futures::future::FutureExt;
 use rusty_v8 as v8;
 use std::cell::Cell;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::io::{stdout, Write};
 use std::option::Option;
 use url::Url;
@@ -45,6 +46,12 @@ lazy_static! {
       },
       v8::ExternalReference {
         function: decode.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: serialize.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: deserialize.map_fn_to()
       },
       v8::ExternalReference {
         function: get_promise_details.map_fn_to()
@@ -124,6 +131,8 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "evalContext", eval_context);
   set_func(scope, core_val, "encode", encode);
   set_func(scope, core_val, "decode", decode);
+  set_func(scope, core_val, "serialize", serialize);
+  set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
 
@@ -196,6 +205,32 @@ pub extern "C" fn host_import_module_dynamically_callback(
     let mut state = state_rc.borrow_mut();
     state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
   }
+
+  // Map errors from module resolution (not JS errors from module execution) to
+  // ones rethrown from this scope, so they include the call stack of the
+  // dynamic import site. Error objects without any stack frames are assumed to
+  // be module resolution errors, other exception values are left as they are.
+  let map_err = |scope: &mut v8::HandleScope,
+                 args: v8::FunctionCallbackArguments,
+                 _rv: v8::ReturnValue| {
+    let arg = args.get(0);
+    if arg.is_native_error() {
+      let message = v8::Exception::create_message(scope, arg);
+      if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
+        let arg: v8::Local<v8::Object> = arg.clone().try_into().unwrap();
+        let message_key = v8::String::new(scope, "message").unwrap();
+        let message = arg.get(scope, message_key.into()).unwrap();
+        let exception =
+          v8::Exception::type_error(scope, message.try_into().unwrap());
+        scope.throw_exception(exception);
+        return;
+      }
+    }
+    scope.throw_exception(arg);
+  };
+  let map_err = v8::FunctionTemplate::new(scope, map_err);
+  let map_err = map_err.get_function(scope).unwrap();
+  let promise = promise.catch(scope, map_err).unwrap();
 
   &*promise as *const _ as *mut _
 }
@@ -427,9 +462,7 @@ fn eval_context(
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
@@ -448,9 +481,11 @@ fn eval_context(
      }
   */
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let name =
-    v8::String::new(tc_scope, url.as_ref().map_or("<unknown>", Url::as_str))
-      .unwrap();
+  let name = v8::String::new(
+    tc_scope,
+    url.as_ref().map_or(crate::DUMMY_SPECIFIER, Url::as_str),
+  )
+  .unwrap();
   let origin = script_origin(tc_scope, name);
   let maybe_script = v8::Script::compile(tc_scope, source, Some(&origin));
 
@@ -550,9 +585,7 @@ fn encode(
   let text = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
@@ -583,9 +616,7 @@ fn decode(
   let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
     Ok(view) => view,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };
@@ -625,6 +656,90 @@ fn decode(
   };
 }
 
+struct SerializeDeserialize {}
+
+impl v8::ValueSerializerImpl for SerializeDeserialize {
+  #[allow(unused_variables)]
+  fn throw_data_clone_error<'s>(
+    &mut self,
+    scope: &mut v8::HandleScope<'s>,
+    message: v8::Local<'s, v8::String>,
+  ) {
+    let error = v8::Exception::error(scope, message);
+    scope.throw_exception(error);
+  }
+}
+
+impl v8::ValueDeserializerImpl for SerializeDeserialize {}
+
+fn serialize(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let serialize_deserialize = Box::new(SerializeDeserialize {});
+  let mut value_serializer =
+    v8::ValueSerializer::new(scope, serialize_deserialize);
+  match value_serializer.write_value(scope.get_current_context(), args.get(0)) {
+    Some(true) => {
+      let vector = value_serializer.release();
+      let buf = {
+        let buf_len = vector.len();
+        let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
+          vector.into_boxed_slice(),
+        );
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        v8::Uint8Array::new(scope, ab, 0, buf_len)
+          .expect("Failed to create UintArray8")
+      };
+
+      rv.set(buf.into());
+    }
+    _ => {
+      throw_type_error(scope, "Invalid argument");
+    }
+  }
+}
+
+fn deserialize(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+    Ok(view) => view,
+    Err(_) => {
+      throw_type_error(scope, "Invalid argument");
+      return;
+    }
+  };
+
+  let backing_store = view.buffer(scope).unwrap().get_backing_store();
+  let buf = unsafe {
+    get_backing_store_slice(
+      &backing_store,
+      view.byte_offset(),
+      view.byte_length(),
+    )
+  };
+
+  let serialize_deserialize = Box::new(SerializeDeserialize {});
+  let mut value_deserializer =
+    v8::ValueDeserializer::new(scope, serialize_deserialize, buf);
+  let value = value_deserializer.read_value(scope.get_current_context());
+
+  match value {
+    Some(deserialized) => rv.set(deserialized),
+    None => {
+      let msg = v8::String::new(scope, "string too long").unwrap();
+      let exception = v8::Exception::range_error(scope, msg);
+      scope.throw_exception(exception);
+    }
+  };
+}
+
 fn queue_microtask(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
@@ -633,9 +748,7 @@ fn queue_microtask(
   match v8::Local::<v8::Function>::try_from(args.get(0)) {
     Ok(f) => scope.enqueue_microtask(f),
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
     }
   };
 }
@@ -725,9 +838,7 @@ fn get_promise_details(
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,
     Err(_) => {
-      let msg = v8::String::new(scope, "Invalid argument").unwrap();
-      let exception = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exception);
+      throw_type_error(scope, "Invalid argument");
       return;
     }
   };

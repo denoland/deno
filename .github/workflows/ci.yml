@@ -35,13 +35,13 @@ jobs:
           - os: ubuntu-18.04
             kind: test_release
 
-      # Always run master branch builds to completion. This allows the cache to
+      # Always run main branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
       # Don't fast-fail on tag build because publishing binaries shouldn't be
       # prevented if if any of the stages fails (which can be a false negative).
       fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
-        'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
+        'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
       CARGO_INCREMENTAL: 0
@@ -55,7 +55,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v2
         with:
-          # Use depth > 1, because sometimes we need to rebuild master and if
+          # Use depth > 1, because sometimes we need to rebuild main and if
           # other commits have landed it will become impossible to rebuild if
           # the checkout is too shallow.
           fetch-depth: 5
@@ -120,7 +120,7 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/master' ||
+          (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         with:
@@ -133,7 +133,7 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/master' ||
+          (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         env:
@@ -147,7 +147,7 @@ jobs:
         if: |
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         shell: bash
         run: |
           echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -210,7 +210,7 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           echo $(git rev-parse HEAD) > canary-latest.txt
@@ -221,7 +221,7 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
@@ -270,7 +270,7 @@ jobs:
         if: |
           matrix.kind == 'bench' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |

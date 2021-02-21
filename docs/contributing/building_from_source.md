@@ -103,7 +103,7 @@ Build with Cargo:
 # Build:
 cargo build -vv
 
-# Build errors?  Ensure you have latest master and try building again, or if that doesn't work try:
+# Build errors?  Ensure you have latest main and try building again, or if that doesn't work try:
 cargo clean && cargo build -vv
 
 # Run:

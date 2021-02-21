@@ -84,9 +84,9 @@ More in-depth info can be found in the runtime
 We appreciate your help!
 
 To contribute, please read our
-[guidelines](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md).
+[guidelines](https://github.com/denoland/deno/blob/main/docs/contributing/style_guide.md).
 
-[Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=master&event=push
+[Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions
 [Twitter badge]: https://twitter.com/intent/follow?screen_name=deno_land
 [Twitter handle]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
