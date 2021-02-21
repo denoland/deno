@@ -1,0 +1,23 @@
+Check [WILDCARD]/$deno$test.ts
+running 2 tests
+test error ... FAILED ([WILDCARD])
+test success ... ok ([WILDCARD])
+
+failures:
+
+error
+Error: fail
+    at [WILDCARD]/test_finally_cleartimeout.ts:4:11
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:38:15)
+    at Object.resourceSanitizer [as fn] (deno:runtime/js/40_testing.js:74:13)
+    at TestRunner.[Symbol.asyncIterator] (deno:runtime/js/40_testing.js:249:24)
+    at AsyncGenerator.next (<anonymous>)
+    at Object.runTests (deno:runtime/js/40_testing.js:326:22)
+    at async [WILDCARD]/$deno$test.ts:3:1
+
+failures:
+
+	error
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
