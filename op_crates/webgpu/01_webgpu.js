@@ -14,6 +14,63 @@
   const eventTarget = window.__bootstrap.eventTarget;
 
   /**
+   * @param {any} self 
+   * @param {{prefix: string, context: string}} opts 
+   * @returns {InnerGPUDevice & {rid: number}}
+   */
+  function assertDevice(self, { prefix, context }) {
+    const device = self[_device];
+    const deviceRid = device?.rid;
+    if (deviceRid === undefined) {
+      throw new DOMException(
+        `${prefix}: ${context} references an invalid or destroyed device.`,
+        "OperationError",
+      );
+    }
+    return { ...device, rid: deviceRid };
+  }
+
+  /**
+   * @param {InnerGPUDevice} self 
+   * @param {any} resource 
+   * @param {{prefix: string, resourceContext: string, selfContext: string}} opts 
+   * @returns {InnerGPUDevice & {rid: number}}
+   */
+  function assertDeviceMatch(
+    self,
+    resource,
+    { prefix, resourceContext, selfContext },
+  ) {
+    const resourceDevice = assertDevice(resource, {
+      prefix,
+      context: resourceContext,
+    });
+    if (resourceDevice.rid !== self.rid) {
+      throw new DOMException(
+        `${prefix}: ${resourceContext} belongs to a diffent device than ${selfContext}.`,
+        "OperationError",
+      );
+    }
+    return { ...resourceDevice, rid: resourceDevice.rid };
+  }
+
+  /**
+   * @param {any} self 
+   * @param {{prefix: string, context: string}} opts 
+   * @returns {number}
+   */
+  function assertResource(self, { prefix, context }) {
+    const rid = self[_rid];
+    if (rid === undefined) {
+      throw new DOMException(
+        `${prefix}: ${context} an invalid or destroyed resource.`,
+        "OperationError",
+      );
+    }
+    return rid;
+  }
+
+  /**
    * @param {number[] | GPUExtent3DDict} data
    * @returns {GPUExtent3DDict} 
    */
@@ -514,8 +571,9 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         ...descriptor,
       });
       /** @type {CreateGPUBufferOptions} */
@@ -537,13 +595,13 @@
       }
       const buffer = createGPUBuffer(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
         descriptor.size,
         descriptor.usage,
         options,
       );
-      this[_device].resources.push(new WeakRef(buffer));
+      device.resources.push(new WeakRef(buffer));
       return buffer;
     }
 
@@ -559,18 +617,19 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync("op_webgpu_create_texture", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         ...descriptor,
         size: normalizeGPUExtent3D(descriptor.size),
       });
 
       const texture = createGPUTexture(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(texture));
+      device.resources.push(new WeakRef(texture));
       return texture;
     }
 
@@ -585,17 +644,18 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync("op_webgpu_create_sampler", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         ...descriptor,
       });
 
       const sampler = createGPUSampler(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(sampler));
+      device.resources.push(new WeakRef(sampler));
       return sampler;
     }
 
@@ -611,6 +671,7 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
       for (const entry of descriptor.entries) {
         let i = 0;
         if (entry.buffer) i++;
@@ -624,16 +685,16 @@
       }
 
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group_layout", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         ...descriptor,
       });
 
       const bindGroupLayout = createGPUBindGroupLayout(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(bindGroupLayout));
+      device.resources.push(new WeakRef(bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -649,20 +710,31 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const bindGroupLayouts = descriptor.bindGroupLayouts.map(
+        (layout, i) => {
+          const context = `bind group layout ${i + 1}`;
+          const rid = assertResource(layout, { prefix, context });
+          assertDeviceMatch(device, layout, {
+            prefix,
+            selfContext: "this",
+            resourceContext: context,
+          });
+          return rid;
+        },
+      );
       const { rid } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         label: descriptor.label,
-        bindGroupLayouts: descriptor.bindGroupLayouts.map((bindGroupLayout) =>
-          bindGroupLayout[_rid]
-        ),
+        bindGroupLayouts,
       });
 
       const pipelineLayout = createGPUPipelineLayout(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(pipelineLayout));
+      device.resources.push(new WeakRef(pipelineLayout));
       return pipelineLayout;
     }
 
@@ -678,41 +750,79 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const layout = assertResource(descriptor.layout, {
+        prefix,
+        context: "layout",
+      });
+      assertDeviceMatch(device, descriptor.layout, {
+        prefix,
+        resourceContext: "layout",
+        selfContext: "this",
+      });
+      const entries = descriptor.entries.map((entry, i) => {
+        const context = `entry ${i + 1}`;
+        const resource = entry.resource;
+        if (resource instanceof GPUSampler) {
+          const rid = assertResource(resource, {
+            prefix,
+            context,
+          });
+          assertDeviceMatch(device, resource, {
+            prefix,
+            resourceContext: context,
+            selfContext: "this",
+          });
+          return {
+            binding: entry.binding,
+            kind: "GPUSampler",
+            resource: rid,
+          };
+        } else if (resource instanceof GPUTextureView) {
+          const rid = assertResource(resource, {
+            prefix,
+            context,
+          });
+          assertDeviceMatch(device, resource, {
+            prefix,
+            resourceContext: context,
+            selfContext: "this",
+          });
+          return {
+            binding: entry.binding,
+            kind: "GPUTextureView",
+            resource: rid,
+          };
+        } else {
+          const rid = assertDevice(resource.buffer, { prefix, context });
+          assertDeviceMatch(device, resource.buffer, {
+            prefix,
+            resourceContext: context,
+            selfContext: "this",
+          });
+          return {
+            binding: entry.binding,
+            kind: "GPUBufferBinding",
+            resource: rid,
+            offset: entry.resource.offset,
+            size: entry.resource.size,
+          };
+        }
+      });
+
       const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
         deviceRid: this[_device].rid,
         label: descriptor.label,
-        layout: descriptor.layout[_rid],
-        entries: descriptor.entries.map((entry) => {
-          if (entry.resource instanceof GPUSampler) {
-            return {
-              binding: entry.binding,
-              kind: "GPUSampler",
-              resource: entry.resource[_rid],
-            };
-          } else if (entry.resource instanceof GPUTextureView) {
-            return {
-              binding: entry.binding,
-              kind: "GPUTextureView",
-              resource: entry.resource[_rid],
-            };
-          } else {
-            return {
-              binding: entry.binding,
-              kind: "GPUBufferBinding",
-              resource: entry.resource.buffer[_rid],
-              offset: entry.resource.offset,
-              size: entry.resource.size,
-            };
-          }
-        }),
+        layout,
+        entries,
       });
 
       const bindGroup = createGPUBindGroup(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(bindGroup));
+      device.resources.push(new WeakRef(bindGroup));
       return bindGroup;
     }
 
@@ -727,10 +837,11 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_shader_module",
         {
-          deviceRid: this[_device].rid,
+          deviceRid: device.rid,
           label: descriptor.label,
           code: (typeof descriptor.code === "string")
             ? descriptor.code
@@ -744,10 +855,10 @@
 
       const shaderModule = createGPUShaderModule(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(shaderModule));
+      device.resources.push(new WeakRef(shaderModule));
       return shaderModule;
     }
 
@@ -763,22 +874,43 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      let layout = undefined;
+      if (descriptor.layout) {
+        const context = "layout";
+        layout = assertDevice(descriptor.layout, { prefix, context });
+        assertDeviceMatch(device, descriptor.layout, {
+          prefix,
+          resourceContext: context,
+          selfContext: "this",
+        });
+      }
+      const module = assertDevice(descriptor.compute.module, {
+        prefix,
+        context: "compute shader module",
+      });
+      assertDeviceMatch(device, descriptor.compute.module, {
+        prefix,
+        resourceContext: "compute shader module",
+        selfContext: "this",
+      });
+
       const { rid } = core.jsonOpSync("op_webgpu_create_compute_pipeline", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         label: descriptor.label,
-        layout: descriptor.layout ? descriptor.layout[_rid] : undefined,
+        layout,
         compute: {
-          module: descriptor.compute.module[_rid],
+          module,
           entryPoint: descriptor.compute.entryPoint,
         },
       });
 
       const computePipeline = createGPUComputePipeline(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(computePipeline));
+      device.resources.push(new WeakRef(computePipeline));
       return computePipeline;
     }
 
@@ -794,37 +926,65 @@
         prefix,
         context: "Argument 1",
       });
-      const d = {
+      const device = assertDevice(this, { prefix, context: "this" });
+      let layout = undefined;
+      if (descriptor.layout) {
+        const context = "layout";
+        layout = assertDevice(descriptor.layout, { prefix, context });
+        assertDeviceMatch(device, descriptor.layout, {
+          prefix,
+          resourceContext: context,
+          selfContext: "this",
+        });
+      }
+      const module = assertDevice(descriptor.vertex.module, {
+        prefix,
+        context: "vertex shader module",
+      });
+      assertDeviceMatch(device, descriptor.vertex.module, {
+        prefix,
+        resourceContext: "vertex shader module",
+        selfContext: "this",
+      });
+      let fragment = undefined;
+      if (descriptor.fragment) {
+        const module = assertDevice(descriptor.fragment.module, {
+          prefix,
+          context: "fragment shader module",
+        });
+        assertDeviceMatch(device, descriptor.fragment.module, {
+          prefix,
+          resourceContext: "fragment shader module",
+          selfContext: "this",
+        });
+        fragment = {
+          module,
+          entryPoint: descriptor.fragment.entryPoint,
+          targets: descriptor.fragment.targets,
+        };
+      }
+
+      const { rid } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
+        deviceRid: device.rid,
         label: descriptor.label,
-        layout: descriptor.layout?.[_rid],
+        layout,
         vertex: {
-          module: descriptor.vertex.module[_rid],
+          module,
           entryPoint: descriptor.vertex.entryPoint,
           buffers: descriptor.vertex.buffers,
         },
         primitive: descriptor.primitive,
         depthStencil: descriptor.depthStencil,
         multisample: descriptor.multisample,
-        fragment: descriptor.fragment
-          ? {
-            module: descriptor.fragment.module[_rid],
-            entryPoint: descriptor.fragment.entryPoint,
-            targets: descriptor.fragment.targets,
-          }
-          : undefined,
-      };
-
-      const { rid } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
-        deviceRid: this[_device].rid,
-        ...d,
+        fragment,
       });
 
       const renderPipeline = createGPURenderPipeline(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(renderPipeline));
+      device.resources.push(new WeakRef(renderPipeline));
       return renderPipeline;
     }
 
@@ -849,17 +1009,18 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         ...descriptor,
       });
 
       const commandEncoder = createGPUCommandEncoder(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(commandEncoder));
+      device.resources.push(new WeakRef(commandEncoder));
       return commandEncoder;
     }
 
@@ -879,20 +1040,21 @@
           context: "Argument 1",
         },
       );
+      const device = assertDevice(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync(
         "op_webgpu_create_render_bundle_encoder",
         {
-          deviceRid: this[_device].rid,
+          deviceRid: device.rid,
           ...descriptor,
         },
       );
 
       const renderBundleEncoder = createGPURenderBundleEncoder(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(renderBundleEncoder));
+      device.resources.push(new WeakRef(renderBundleEncoder));
       return renderBundleEncoder;
     }
 
@@ -911,18 +1073,19 @@
           context: "Argument 1",
         },
       );
+      const device = assertDevice(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync("op_webgpu_create_query_set", {
-        deviceRid: this[_device].rid,
+        deviceRid: device.rid,
         ...descriptor,
       });
 
       const querySet = createGPUQuerySet(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
         descriptor,
       );
-      this[_device].resources.push(new WeakRef(querySet));
+      device.resources.push(new WeakRef(querySet));
       return querySet;
     }
 
@@ -974,9 +1137,20 @@
         commandBuffers,
         { prefix, context: "Argument 1" },
       );
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandBufferRids = commandBuffers.map((buffer, i) => {
+        const context = `command buffer ${i + 1}`;
+        const rid = assertResource(buffer, { prefix, context });
+        assertDeviceMatch(device, buffer, {
+          prefix,
+          selfContext: "this",
+          resourceContext: context,
+        });
+        return rid;
+      });
       core.jsonOpSync("op_webgpu_queue_submit", {
-        queueRid: this[_device].rid,
-        commandBuffers: commandBuffers.map((buffer) => buffer[_rid]),
+        queueRid: device.rid,
+        commandBuffers: commandBufferRids,
       });
     }
 
@@ -1018,11 +1192,21 @@
           prefix,
           context: "Argument 5",
         });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const bufferRid = assertResource(buffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, buffer, {
+        prefix,
+        selfContext: "this",
+        resourceContext: "Argument 1",
+      });
       core.jsonOpSync(
         "op_webgpu_write_buffer",
         {
-          queueRid: this[_device].rid,
-          buffer: buffer[_rid],
+          queueRid: device.rid,
+          buffer: bufferRid,
           bufferOffset,
           dataOffset,
           size,
@@ -1057,16 +1241,26 @@
         prefix,
         context: "Argument 4",
       });
-
+      const device = assertDevice(this, { prefix, context: "this" });
+      const textureRid = assertResource(destination.texture, {
+        prefix,
+        context: "texture",
+      });
+      assertDeviceMatch(device, destination.texture, {
+        prefix,
+        selfContext: "this",
+        resourceContext: "texture",
+      });
       core.jsonOpSync(
         "op_webgpu_write_texture",
         {
-          queueRid: this[_device].rid,
+          queueRid: device.rid,
           destination: {
-            texture: destination.texture[_rid],
+            texture: textureRid,
             mipLevel: destination.mipLevel,
-            origin: destination.origin ??
-              normalizeGPUOrigin3D(destination.origin),
+            origin: destination.origin
+              ? normalizeGPUOrigin3D(destination.origin)
+              : undefined,
           },
           dataLayout,
           size: normalizeGPUExtent3D(size),
@@ -1200,6 +1394,8 @@
           prefix,
           context: "Argument 3",
         });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const bufferRid = assertResource(this, { prefix, context: "this" });
       /** @type {number} */
       let rangeSize;
       if (size === undefined) {
@@ -1257,8 +1453,8 @@
       await core.jsonOpAsync(
         "op_webgpu_buffer_get_map_async",
         {
-          bufferRid: this[_rid],
-          deviceRid: this[_device].rid,
+          bufferRid,
+          deviceRid: device.rid,
           mode,
           offset,
           size: rangeSize,
@@ -1287,6 +1483,8 @@
           prefix,
           context: "Argument 2",
         });
+      assertDevice(this, { prefix, context: "this" });
+      const bufferRid = assertResource(this, { prefix, context: "this" });
       /** @type {number} */
       let rangeSize;
       if (size === undefined) {
@@ -1350,7 +1548,7 @@
       const { rid } = core.jsonOpSync(
         "op_webgpu_buffer_get_mapped_range",
         {
-          bufferRid: this[_rid],
+          bufferRid,
           offset: offset - mappingRange[0],
           size: rangeSize,
         },
@@ -1365,6 +1563,8 @@
     unmap() {
       webidl.assertBranded(this, GPUBuffer);
       const prefix = "Failed to execute 'unmap' on 'GPUBuffer'";
+      assertDevice(this, { prefix, context: "this" });
+      const bufferRid = assertResource(this, { prefix, context: "this" });
       if (this[_state] === "unmapped" || this[_state] === "destroyed") {
         throw new DOMException(
           `${prefix}: buffer is not ready to be unmapped.`,
@@ -1401,10 +1601,10 @@
         if (!mappedRanges) {
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
-        for (const [buffer, rid] of mappedRanges) {
+        for (const [buffer, mappedRid] of mappedRanges) {
           core.jsonOpSync("op_webgpu_buffer_unmap", {
-            bufferRid: this[_rid],
-            mappedRid: rid,
+            bufferRid,
+            mappedRid,
           }, ...(write ? [new Uint8Array(buffer)] : []));
         }
         this[_mappingRange] = null;
@@ -1536,9 +1736,10 @@
         prefix,
         context: "Argument 1",
       });
-
+      assertDevice(this, { prefix, context: "this" });
+      const textureRid = assertResource(this, { prefix, context: "this" });
       const { rid } = core.jsonOpSync("op_webgpu_create_texture_view", {
-        textureRid: this[_rid],
+        textureRid,
         ...descriptor,
       });
 
@@ -1914,20 +2115,22 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const computePipelineRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       const { rid, label } = core.jsonOpSync(
         "op_webgpu_compute_pipeline_get_bind_group_layout",
-        {
-          computePipelineRid: this[_rid],
-          index,
-        },
+        { computePipelineRid, index },
       );
 
       const bindGroupLayout = createGPUBindGroupLayout(
         label,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(bindGroupLayout));
+      device.resources.push(new WeakRef(bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -1986,20 +2189,22 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const renderPipelineRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       const { rid, label } = core.jsonOpSync(
         "op_webgpu_render_pipeline_get_bind_group_layout",
-        {
-          renderPipelineRid: this[_rid],
-          index,
-        },
+        { renderPipelineRid, index },
       );
 
       const bindGroupLayout = createGPUBindGroupLayout(
         label,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(bindGroupLayout));
+      device.resources.push(new WeakRef(bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -2085,13 +2290,6 @@
      * @return {GPURenderPassEncoder}
      */
     beginRenderPass(descriptor) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder'";
@@ -2100,12 +2298,31 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
 
       let depthStencilAttachment;
       if (descriptor.depthStencilAttachment) {
+        const view = assertResource(descriptor.depthStencilAttachment.view, {
+          prefix,
+          context: "texture view for depth stencil attachment",
+        });
+        assertDeviceMatch(
+          device,
+          descriptor.depthStencilAttachment.view[_texture],
+          {
+            prefix,
+            resourceContext: "texture view for depth stencil attachment",
+            selfContext: "this",
+          },
+        );
+
         depthStencilAttachment = {
           ...descriptor.depthStencilAttachment,
-          view: descriptor.depthStencilAttachment.view[_rid],
+          view,
         };
 
         if (
@@ -2131,34 +2348,75 @@
             descriptor.depthStencilAttachment.stencilLoadValue;
         }
       }
+      const colorAttachments = descriptor.colorAttachments.map(
+        (colorAttachment, i) => {
+          const context = `color attachment ${i + 1}`;
+          const view = assertResource(colorAttachment.view, {
+            prefix,
+            context: `texture view for ${context}`,
+          });
+          assertResource(colorAttachment.view[_texture], {
+            prefix,
+            context: `texture backing texture view for ${context}`,
+          });
+          assertDeviceMatch(
+            device,
+            colorAttachment.view[_texture],
+            {
+              prefix,
+              resourceContext: `texture view for ${context}`,
+              selfContext: "this",
+            },
+          );
+          let resolveTarget;
+          if (colorAttachment.resolveTarget) {
+            resolveTarget = assertResource(
+              colorAttachment.resolveTarget,
+              {
+                prefix,
+                context: `resolve target texture view for ${context}`,
+              },
+            );
+            assertResource(colorAttachment.resolveTarget[_texture], {
+              prefix,
+              context:
+                `texture backing resolve target texture view for ${context}`,
+            });
+            assertDeviceMatch(
+              device,
+              colorAttachment.resolveTarget[_texture],
+              {
+                prefix,
+                resourceContext: `resolve target texture view for ${context}`,
+                selfContext: "this",
+              },
+            );
+          }
+          const attachment = {
+            view: view,
+            resolveTarget,
+            storeOp: colorAttachment.storeOp,
+          };
+
+          if (typeof colorAttachment.loadValue === "string") {
+            attachment.loadOp = colorAttachment.loadValue;
+          } else {
+            attachment.loadOp = "clear";
+            attachment.loadValue = normalizeGPUColor(
+              colorAttachment.loadValue,
+            );
+          }
+
+          return attachment;
+        },
+      );
 
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_render_pass",
         {
-          commandEncoderRid: this[_rid],
+          commandEncoderRid,
           ...descriptor,
-          colorAttachments: descriptor.colorAttachments.map(
-            (colorAttachment) => {
-              const attachment = {
-                view: colorAttachment.view[_rid],
-                resolveTarget: colorAttachment.resolveTarget
-                  ? colorAttachment.resolveTarget[_rid]
-                  : undefined,
-                storeOp: colorAttachment.storeOp,
-              };
-
-              if (typeof colorAttachment.loadValue === "string") {
-                attachment.loadOp = colorAttachment.loadValue;
-              } else {
-                attachment.loadOp = "clear";
-                attachment.loadValue = normalizeGPUColor(
-                  colorAttachment.loadValue,
-                );
-              }
-
-              return attachment;
-            },
-          ),
+          colorAttachments,
           depthStencilAttachment,
         },
       );
@@ -2176,13 +2434,6 @@
      * @param {GPUComputePassDescriptor} descriptor
      */
     beginComputePass(descriptor = {}) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginComputePass' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'beginComputePass' on 'GPUCommandEncoder'";
@@ -2191,17 +2442,23 @@
         context: "Argument 1",
       });
 
+      assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+
       const { rid } = core.jsonOpSync(
         "op_webgpu_command_encoder_begin_compute_pass",
         {
-          commandEncoderRid: this[_rid],
+          commandEncoderRid,
           ...descriptor,
         },
       );
 
       const computePassEncoder = createGPUComputePassEncoder(
         descriptor.label ?? null,
-        this[_rid],
+        this,
         rid,
       );
       this[_encoders].push(new WeakRef(computePassEncoder));
@@ -2222,13 +2479,6 @@
       destinationOffset,
       size,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder'";
@@ -2253,13 +2503,37 @@
         prefix,
         context: "Argument 5",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const sourceRid = assertResource(source, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, source, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
+      const destinationRid = assertResource(source, {
+        prefix,
+        context: "Argument 3",
+      });
+      assertDeviceMatch(device, source, {
+        prefix,
+        resourceContext: "Argument 3",
+        selfContext: "this",
+      });
+
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_buffer",
         {
-          commandEncoderRid: this[_rid],
-          source: source[_rid],
+          commandEncoderRid,
+          source: sourceRid,
           sourceOffset,
-          destination: destination[_rid],
+          destination: destinationRid,
           destinationOffset,
           size,
         },
@@ -2272,13 +2546,6 @@
      * @param {GPUExtent3D} copySize
      */
     copyBufferToTexture(source, destination, copySize) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder'";
@@ -2295,20 +2562,43 @@
         prefix,
         context: "Argument 3",
       });
-
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const sourceBufferRid = assertResource(source.buffer, {
+        prefix,
+        context: "source in Argument 1",
+      });
+      assertDeviceMatch(device, source.buffer, {
+        prefix,
+        resourceContext: "source in Argument 1",
+        selfContext: "this",
+      });
+      const destinationTextureRid = assertResource(destination.texture, {
+        prefix,
+        context: "texture in Argument 2",
+      });
+      assertDeviceMatch(device, destination.texture, {
+        prefix,
+        resourceContext: "texture in Argument 2",
+        selfContext: "this",
+      });
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_texture",
         {
-          commandEncoderRid: this[_rid],
+          commandEncoderRid,
           source: {
             ...source,
-            buffer: source.buffer[_rid],
+            buffer: sourceBufferRid,
           },
           destination: {
-            texture: destination.texture[_rid],
+            texture: destinationTextureRid,
             mipLevel: destination.mipLevel,
-            origin: destination.origin ??
-              normalizeGPUOrigin3D(destination.origin),
+            origin: destination.origin
+              ? normalizeGPUOrigin3D(destination.origin)
+              : undefined,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -2321,13 +2611,6 @@
      * @param {GPUExtent3D} copySize
      */
     copyTextureToBuffer(source, destination, copySize) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder'";
@@ -2344,18 +2627,43 @@
         prefix,
         context: "Argument 3",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const sourceTextureRid = assertResource(source.texture, {
+        prefix,
+        context: "texture in Argument 1",
+      });
+      assertDeviceMatch(device, source.texture, {
+        prefix,
+        resourceContext: "texture in Argument 1",
+        selfContext: "this",
+      });
+      const destinationBufferRid = assertResource(destination.buffer, {
+        prefix,
+        context: "buffer in Argument 2",
+      });
+      assertDeviceMatch(device, destination.buffer, {
+        prefix,
+        resourceContext: "buffer in Argument 2",
+        selfContext: "this",
+      });
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_buffer",
         {
           commandEncoderRid: this[_rid],
           source: {
-            texture: source.texture[_rid],
+            texture: sourceTextureRid,
             mipLevel: source.mipLevel,
-            origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
+            origin: source.origin
+              ? normalizeGPUOrigin3D(source.origin)
+              : undefined,
           },
           destination: {
             ...destination,
-            buffer: destination.buffer[_rid],
+            buffer: destinationBufferRid,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -2368,13 +2676,6 @@
      * @param {GPUExtent3D} copySize
      */
     copyTextureToTexture(source, destination, copySize) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder'";
@@ -2391,20 +2692,46 @@
         prefix,
         context: "Argument 3",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const sourceTextureRid = assertResource(source.texture, {
+        prefix,
+        context: "texture in Argument 1",
+      });
+      assertDeviceMatch(device, source.texture, {
+        prefix,
+        resourceContext: "texture in Argument 1",
+        selfContext: "this",
+      });
+      const destinationTextureRid = assertResource(destination.texture, {
+        prefix,
+        context: "texture in Argument 2",
+      });
+      assertDeviceMatch(device, destination.texture, {
+        prefix,
+        resourceContext: "texture in Argument 2",
+        selfContext: "this",
+      });
       core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_texture",
         {
-          commandEncoderRid: this[_rid],
+          commandEncoderRid,
           source: {
-            texture: source.texture[_rid],
+            texture: sourceTextureRid,
             mipLevel: source.mipLevel,
-            origin: source.origin ?? normalizeGPUOrigin3D(source.origin),
+            origin: source.origin
+              ? normalizeGPUOrigin3D(source.origin)
+              : undefined,
           },
           destination: {
-            texture: destination.texture[_rid],
+            texture: destinationTextureRid,
             mipLevel: destination.mipLevel,
-            origin: destination.origin ??
-              normalizeGPUOrigin3D(destination.origin),
+            origin: destination.origin
+              ? normalizeGPUOrigin3D(destination.origin)
+              : undefined,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -2415,13 +2742,6 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder'";
@@ -2430,23 +2750,27 @@
         prefix,
         context: "Argument 1",
       });
+      assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
-        commandEncoderRid: this[_rid],
+        commandEncoderRid,
         groupLabel,
       });
     }
 
     popDebugGroup() {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix = "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder'";
+      assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_pop_debug_group", {
-        commandEncoderRid: this[_rid],
+        commandEncoderRid,
       });
     }
 
@@ -2454,13 +2778,6 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder'";
@@ -2469,8 +2786,13 @@
         prefix,
         context: "Argument 1",
       });
+      assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_insert_debug_marker", {
-        commandEncoderRid: this[_rid],
+        commandEncoderRid,
         markerLabel,
       });
     }
@@ -2480,13 +2802,6 @@
      * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder'";
@@ -2499,9 +2814,23 @@
         prefix,
         context: "Argument 2",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const querySetRid = assertResource(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, querySet, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_write_timestamp", {
-        commandEncoderRid: this[_rid],
-        querySet: querySet[_rid],
+        commandEncoderRid,
+        querySet: querySetRid,
         queryIndex,
       });
     }
@@ -2520,13 +2849,6 @@
       destination,
       destinationOffset,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix =
         "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
@@ -2551,12 +2873,35 @@
         prefix,
         context: "Argument 5",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const querySetRid = assertResource(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, querySet, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
+      const destinationRid = assertResource(destination, {
+        prefix,
+        context: "Argument 3",
+      });
+      assertDeviceMatch(device, destination, {
+        prefix,
+        resourceContext: "Argument 3",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_command_encoder_resolve_query_set", {
-        commandEncoderRid: this[_rid],
-        querySet: querySet[_rid],
+        commandEncoderRid,
+        querySet: querySetRid,
         firstQuery,
         queryCount,
-        destination: destination[_rid],
+        destination: destinationRid,
         destinationOffset,
       });
     }
@@ -2579,8 +2924,13 @@
         prefix,
         context: "Argument 1",
       });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       const { rid } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
-        commandEncoderRid: this[_rid],
+        commandEncoderRid,
         ...descriptor,
       });
       /** @type {number | undefined} */
@@ -2588,10 +2938,10 @@
 
       const commandBuffer = createGPUCommandBuffer(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(commandBuffer));
+      device.resources.push(new WeakRef(commandBuffer));
       return commandBuffer;
     }
 
