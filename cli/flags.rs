@@ -1108,6 +1108,9 @@ fn coverage_subcommand<'a, 'b>() -> App<'a, 'b> {
     .long_about(
       "Print coverage reports from coverage profiles.
 
+Collect a coverage profile with deno test:
+  deno test --coverage=cov_profile
+
 Print a report to stdout:
   deno coverage cov_profile
 
