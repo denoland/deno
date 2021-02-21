@@ -84,7 +84,7 @@ finishing test case.`;
   }
 
   // Wrap test function in additional assertion that makes sure
-  // that the test  case does not accidentally exit prematurely.
+  // that the test case does not accidentally exit prematurely.
   function assertExit(fn) {
     return async function exitSanitizer() {
       setExitHandler((exitCode) => {

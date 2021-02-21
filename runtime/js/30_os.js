@@ -24,6 +24,8 @@
     return core.jsonOpSync("op_system_cpu_info");
   }
 
+  // This is an internal only method used by the test harness to override the
+  // behavior of exit when the exit sanitizer is enabled.
   let exitHandler = null;
   function setExitHandler(fn) {
     exitHandler = fn;
