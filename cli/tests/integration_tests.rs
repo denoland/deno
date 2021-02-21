@@ -8,7 +8,6 @@ use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::fs;
 use std::io::{BufRead, Read, Write};
 use std::process::Command;
-use std::time::Duration;
 use tempfile::TempDir;
 use test_util as util;
 
