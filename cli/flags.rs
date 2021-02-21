@@ -1495,7 +1495,7 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
       Arg::with_name("inspect")
         .long("inspect")
         .value_name("HOST:PORT")
-        .help("activate inspector on host:port (default: 127.0.0.1:9229)")
+        .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
         .min_values(0)
         .max_values(1)
         .require_equals(true)
@@ -1507,7 +1507,7 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .long("inspect-brk")
         .value_name("HOST:PORT")
         .help(
-          "activate inspector on host:port and break at start of user script",
+          "Activate inspector on host:port and break at start of user script",
         )
         .min_values(0)
         .max_values(1)
