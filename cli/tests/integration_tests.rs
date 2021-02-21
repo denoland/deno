@@ -1051,12 +1051,12 @@ mod integration {
       let mut stderr_lines =
         std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-      std::thread::sleep(std::time::Duration::from_secs(1));
-
       assert!(stdout_lines.next().unwrap().contains("running 2 tests"));
-      assert!(stdout_lines.next().unwrap().contains("bar"));
+      let line = stdout_lines.next().unwrap();
+      assert!(line.contains("bar") || line.contains("foo"));
       assert!(stdout_lines.next().unwrap().contains("ok"));
-      assert!(stdout_lines.next().unwrap().contains("foo"));
+      let line = stdout_lines.next().unwrap();
+      assert!(line.contains("foo") || line.contains("bar"));
       assert!(stdout_lines.next().unwrap().contains("ok"));
       stdout_lines.next();
       stdout_lines.next();
