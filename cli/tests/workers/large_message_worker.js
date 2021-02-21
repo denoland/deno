@@ -3,7 +3,7 @@
 const dataSmall = "";
 const dataLarge = "x".repeat(10 * 1024);
 
-onmessage = function (e): void {
+onmessage = function (e) {
   for (let i = 0; i <= 10; i++) {
     if (i % 2 == 0) {
       postMessage(dataLarge);

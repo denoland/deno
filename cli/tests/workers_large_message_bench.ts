@@ -8,7 +8,7 @@ function oneWorker(i: any): Promise<void> {
   return new Promise<void>((resolve) => {
     let countDown = 10;
     const worker = new Worker(
-      new URL("workers/large_message_worker.ts", import.meta.url).href,
+      new URL("workers/large_message_worker.js", import.meta.url).href,
       { type: "module" },
     );
     worker.onmessage = (e): void => {
