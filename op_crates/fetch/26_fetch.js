@@ -185,7 +185,7 @@
      */
     grow(n) {
       if (n < 0) {
-        throw new Error("Buffer.grow: negative count");
+        throw Error("Buffer.grow: negative count");
       }
       const m = this.#grow(n);
       this.#reslice(m);
@@ -949,18 +949,23 @@
     return m;
   }
 
-  // FIXME: "referrer", "referrerPolicy", "mode", "cache", "signal", and "cancelable" are all un-used in current implementation
+  // "referrer", "referrerPolicy", "mode", "cache", "signal", and "cancelable" are all un-used in current implementation; the converters are dead code until then
+
+  const todo = () => {
+    throw new Error("todo!");
+  };
+
+  // https://fetch.spec.whatwg.org/#requestinfo
+  // typedef (Request or USVString) RequestInfo;
+  // const requestInfoConverter = webidl.union([ Request, USVString ]);
+  const requestInfoConverter = todo;
 
   // Headers should be able to convert values to HeadersInit,
   // internally work with Headers directly
   const headersInitConverter = (v) => new Headers(v);
 
   // https://fetch.spec.whatwg.org/#bodyinit
-  const bodyInitConverter = () => {};
-
-  const todo = () => {
-    throw new Error("todo!");
-  };
+  const bodyInitConverter = todo;
 
   // https://w3c.github.io/webappsec-referrer-policy/#enumdef-referrerpolicy
   const referrerPolicyConverter = todo;
@@ -1090,6 +1095,7 @@
     // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init = {}) {
       requiredArguments("Request", arguments.length, 1);
+      // input = requestInfoConverter(input);
       init = requestInitConverter(init, {
         prefix: "Failed to construct 'Request'",
       });
@@ -1101,12 +1107,12 @@
         b = init.body;
       } else if (input instanceof Request) {
         if (input.bodyUsed) {
-          throw new TypeError(BodyUsedError);
+          throw TypeError(BodyUsedError);
         }
         b = input[teeBody]();
       } else if (typeof input === "object" && "body" in input && input.body) {
         if (input.bodyUsed) {
-          throw new TypeError(BodyUsedError);
+          throw TypeError(BodyUsedError);
         }
         b = input.body;
       } else {
@@ -1118,18 +1124,18 @@
       if (init.headers) {
         headers = new Headers(init.headers);
       } else if (input instanceof Request) {
-        ({ headers } = input);
+        headers = input.headers;
       } else {
         headers = new Headers();
       }
 
-      const contentType = headers.get("content-type") ?? "";
+      const contentType = headers.get("content-type") || "";
       super(b, { contentType });
       this.#headers = headers;
 
       if (input instanceof Request) {
         if (input.bodyUsed) {
-          throw new TypeError(BodyUsedError);
+          throw TypeError(BodyUsedError);
         }
         this.#method = input.method;
         this.#url = input.url;
@@ -1223,7 +1229,7 @@
         prefix: "Failed to construct 'Response'",
       });
 
-      const extraInit = responseData.get(init) ?? {};
+      const extraInit = responseData.get(init) || {};
       let { type = "default", url = "" } = extraInit;
 
       let status = init.status === undefined ? 200 : Number(init.status || 0);
@@ -1318,7 +1324,7 @@
 
     clone() {
       if (this.bodyUsed) {
-        throw new TypeError(BodyUsedError);
+        throw TypeError(BodyUsedError);
       }
 
       const iterators = this.headers.entries();
@@ -1421,65 +1427,85 @@
    */
   async function fetch(input, init = {}) {
     requiredArguments("fetch", arguments.length, 1);
+    // input = requestInfoConverter(input);
     init = requestInitConverter(init, { prefix: "Failed to execute 'fetch'" });
+
+    let url;
+    let method = null;
+    let headers = null;
+    let body;
 
     let clientRid = null;
     let redirected = false;
     let remRedirectCount = 20; // TODO(bartlomieju): use a better way to handle
 
-    let {
-      url,
-      method,
-      headers,
-      body,
-    } = new Request(input, init);
-
-    // ref: https://fetch.spec.whatwg.org/#body-mixin
-    // Body should have been a mixin
-    // but we are treating it as a separate class
-    if (init.body) {
-      let contentType = "";
-      if (
-        typeof init.body === "string" || init.body instanceof String ||
-        init.body instanceof URL || init.body instanceof URLSearchParams
-      ) {
-        body = new TextEncoder().encode(String(init.body));
-        if (init.body instanceof URLSearchParams) {
-          contentType = "application/x-www-form-urlencoded;charset=UTF-8";
+    if (typeof input === "string" || input instanceof URL) {
+      url = typeof input === "string" ? input : input.href;
+      if (init != null) {
+        method = init.method || null;
+        if (init.headers) {
+          headers = init.headers instanceof Headers
+            ? init.headers
+            : new Headers(init.headers);
         } else {
-          contentType = "text/plain;charset=UTF-8";
+          headers = null;
         }
-      } else if (isTypedArray(init.body)) {
-        body = init.body;
-      } else if (init.body instanceof ArrayBuffer) {
-        body = new Uint8Array(init.body);
-      } else if (init.body instanceof Blob) {
-        ({
-          [_byteSequence]: body,
-          type: contentType,
-        } = init.body);
-      } else if (init.body instanceof FormData) {
-        let boundary;
-        if (headers.has("content-type")) {
-          const params = getHeaderValueParams("content-type");
-          boundary = params.get("boundary");
-        }
-        const multipartBuilder = new MultipartBuilder(
-          init.body,
-          boundary,
-        );
-        body = multipartBuilder.getBody();
-        contentType = multipartBuilder.getContentType();
-      } else if (init.body instanceof ReadableStream) {
-        body = init.body;
-      }
-      if (contentType && !headers.has("content-type")) {
-        headers.set("content-type", contentType);
-      }
-    }
 
-    if (init.client instanceof HttpClient) {
-      clientRid = init.client.rid;
+        // ref: https://fetch.spec.whatwg.org/#body-mixin
+        // Body should have been a mixin
+        // but we are treating it as a separate class
+        if (init.body) {
+          if (!headers) {
+            headers = new Headers();
+          }
+          let contentType = "";
+          if (typeof init.body === "string") {
+            body = new TextEncoder().encode(init.body);
+            contentType = "text/plain;charset=UTF-8";
+          } else if (isTypedArray(init.body)) {
+            body = init.body;
+          } else if (init.body instanceof ArrayBuffer) {
+            body = new Uint8Array(init.body);
+          } else if (init.body instanceof URLSearchParams) {
+            body = new TextEncoder().encode(init.body.toString());
+            contentType = "application/x-www-form-urlencoded;charset=UTF-8";
+          }
+          if (init.body instanceof Blob) {
+            ({
+              [_byteSequence]: body,
+              type: contentType,
+            } = init.body);
+          } else if (init.body instanceof FormData) {
+            let boundary;
+            if (headers.has("content-type")) {
+              const params = getHeaderValueParams("content-type");
+              boundary = params.get("boundary");
+            }
+            const multipartBuilder = new MultipartBuilder(
+              init.body,
+              boundary,
+            );
+            body = multipartBuilder.getBody();
+            contentType = multipartBuilder.getContentType();
+          } else if (init.body instanceof ReadableStream) {
+            body = init.body;
+          }
+          if (contentType && !headers.has("content-type")) {
+            headers.set("content-type", contentType);
+          }
+        }
+        if (init.client instanceof HttpClient) {
+          clientRid = init.client.rid;
+        }
+      }
+    } else {
+      url = input.url;
+      method = input.method;
+      headers = input.headers;
+
+      if (input.body) {
+        body = input.body;
+      }
     }
 
     let responseBody;
