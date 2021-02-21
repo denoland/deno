@@ -8,42 +8,15 @@ failures:
 
 exit(0)
 AssertionError: Test case attempted to exit with exit code: 0
-    at assert (deno:runtime/js/06_util.js:34:13)
-    at deno:runtime/js/40_testing.js:91:9
-    at Object.exit (deno:runtime/js/30_os.js:41:7)
-    at [WILDCARD]/exit_sanitizer_test.ts:2:8
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:37:13)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:71:13)
-    at Object.exitSanitizer [as fn] (deno:runtime/js/40_testing.js:98:15)
-    at TestRunner.[Symbol.asyncIterator] (deno:runtime/js/40_testing.js:272:24)
-    at AsyncGenerator.next (<anonymous>)
-    at Object.runTests (deno:runtime/js/40_testing.js:349:22)
+    [WILDCARD]
 
 exit(1)
 AssertionError: Test case attempted to exit with exit code: 1
-    at assert (deno:runtime/js/06_util.js:34:13)
-    at deno:runtime/js/40_testing.js:91:9
-    at Object.exit (deno:runtime/js/30_os.js:41:7)
-    at [WILDCARD]/exit_sanitizer_test.ts:6:8
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:37:13)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:71:13)
-    at Object.exitSanitizer [as fn] (deno:runtime/js/40_testing.js:98:15)
-    at TestRunner.[Symbol.asyncIterator] (deno:runtime/js/40_testing.js:272:24)
-    at AsyncGenerator.next (<anonymous>)
-    at Object.runTests (deno:runtime/js/40_testing.js:349:22)
+    [WILDCARD]
 
 exit(2)
 AssertionError: Test case attempted to exit with exit code: 2
-    at assert (deno:runtime/js/06_util.js:34:13)
-    at deno:runtime/js/40_testing.js:91:9
-    at Object.exit (deno:runtime/js/30_os.js:41:7)
-    at [WILDCARD]/exit_sanitizer_test.ts:10:8
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:37:13)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:71:13)
-    at Object.exitSanitizer [as fn] (deno:runtime/js/40_testing.js:98:15)
-    at TestRunner.[Symbol.asyncIterator] (deno:runtime/js/40_testing.js:272:24)
-    at AsyncGenerator.next (<anonymous>)
-    at Object.runTests (deno:runtime/js/40_testing.js:349:22)
+    [WILDCARD]
 
 failures:
 
