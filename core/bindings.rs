@@ -11,6 +11,7 @@ use futures::future::FutureExt;
 use rusty_v8 as v8;
 use std::cell::Cell;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::io::{stdout, Write};
 use std::option::Option;
 use url::Url;
@@ -204,6 +205,32 @@ pub extern "C" fn host_import_module_dynamically_callback(
     let mut state = state_rc.borrow_mut();
     state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
   }
+
+  // Map errors from module resolution (not JS errors from module execution) to
+  // ones rethrown from this scope, so they include the call stack of the
+  // dynamic import site. Error objects without any stack frames are assumed to
+  // be module resolution errors, other exception values are left as they are.
+  let map_err = |scope: &mut v8::HandleScope,
+                 args: v8::FunctionCallbackArguments,
+                 _rv: v8::ReturnValue| {
+    let arg = args.get(0);
+    if arg.is_native_error() {
+      let message = v8::Exception::create_message(scope, arg);
+      if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
+        let arg: v8::Local<v8::Object> = arg.clone().try_into().unwrap();
+        let message_key = v8::String::new(scope, "message").unwrap();
+        let message = arg.get(scope, message_key.into()).unwrap();
+        let exception =
+          v8::Exception::type_error(scope, message.try_into().unwrap());
+        scope.throw_exception(exception);
+        return;
+      }
+    }
+    scope.throw_exception(arg);
+  };
+  let map_err = v8::FunctionTemplate::new(scope, map_err);
+  let map_err = map_err.get_function(scope).unwrap();
+  let promise = promise.catch(scope, map_err).unwrap();
 
   &*promise as *const _ as *mut _
 }
