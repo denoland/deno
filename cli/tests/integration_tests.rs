@@ -1855,6 +1855,7 @@ mod integration {
         master.read_to_string(&mut output).unwrap();
 
         assert!(output.contains("undefined"));
+        assert!(!output.contains("Uncaught TypeError: Array.Symbol is not a function"));
 
         fork.wait().unwrap();
       } else {
