@@ -3489,30 +3489,6 @@ console.log("finish");
     output: "redirect_cache.out",
   });
 
-  itest!(test_coverage_branch {
-    args: "run --allow-all test_coverage_branch.ts",
-    output: "test_coverage_branch.out",
-    exit_code: 0,
-  });
-
-  itest!(test_coverage_branch_lcov {
-    args: "run --allow-all test_coverage_branch_lcov.ts",
-    output: "test_coverage_branch_lcov.out",
-    exit_code: 0,
-  });
-
-  itest!(test_coverage_complex {
-    args: "run --allow-all test_coverage_complex.ts",
-    output: "test_coverage_complex.out",
-    exit_code: 0,
-  });
-
-  itest!(test_coverage_complex_lcov {
-    args: "run --allow-all test_coverage_complex_lcov.ts",
-    output: "test_coverage_complex_lcov.out",
-    exit_code: 0,
-  });
-
   itest!(deno_lint {
     args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
     output: "lint/expected.out",
@@ -3844,6 +3820,34 @@ console.log("finish");
       .trim()
       .ends_with("Hello"));
     assert_eq!(output.stderr, b"");
+  }
+
+  mod coverage {
+      use super::*;
+
+      itest!(branch {
+        args: "run --allow-all test_coverage_branch.ts",
+        output: "test_coverage_branch.out",
+        exit_code: 0,
+      });
+
+      itest!(branch_lcov {
+        args: "run --allow-all test_coverage_branch_lcov.ts",
+        output: "test_coverage_branch_lcov.out",
+        exit_code: 0,
+      });
+
+      itest!(complex {
+        args: "run --allow-all test_coverage_complex.ts",
+        output: "test_coverage_complex.out",
+        exit_code: 0,
+      });
+
+      itest!(complex_lcov {
+        args: "run --allow-all test_coverage_complex_lcov.ts",
+        output: "test_coverage_complex_lcov.out",
+        exit_code: 0,
+      });
   }
 
   mod permissions {
