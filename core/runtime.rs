@@ -734,15 +734,11 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  fn mod_instantiate(
-    &mut self,
-    id: ModuleId,
-  ) -> Result<(), AnyError> {
+  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
-    let scope =
-        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
     let tc_scope = &mut v8::TryCatch::new(scope);
 
     let module = state_rc
@@ -757,8 +753,8 @@ impl JsRuntime {
       exception_to_err_result(tc_scope, exception, false)
         .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
     } else {
-      let instantiate_result = module
-        .instantiate_module(tc_scope, bindings::module_resolve_callback);
+      let instantiate_result =
+        module.instantiate_module(tc_scope, bindings::module_resolve_callback);
       match instantiate_result {
         Some(_) => Ok(()),
         None => {
@@ -846,10 +842,6 @@ impl JsRuntime {
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
-    }
-
-    if status == v8::ModuleStatus::Evaluated {
-      self.dyn_import_done(load_id, id);
     }
 
     Ok(())
