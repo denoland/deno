@@ -6,7 +6,7 @@
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "console.log(Deno.permissions);\n"
+      "text": "console.log(Deno.openPlugin);\n"
     }
   }
 }
