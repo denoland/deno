@@ -3939,26 +3939,26 @@ console.log("finish");
     use super::*;
 
     itest!(branch {
-      args: "run --allow-all test_coverage_branch.ts",
-      output: "test_coverage_branch.out",
+      args: "run --allow-all coverage/test_branch.ts",
+      output: "coverage/test_branch.out",
       exit_code: 0,
     });
 
     itest!(branch_lcov {
-      args: "run --allow-all test_coverage_branch_lcov.ts",
-      output: "test_coverage_branch_lcov.out",
+      args: "run --allow-all coverage/test_branch_lcov.ts",
+      output: "coverage/test_branch_lcov.out",
       exit_code: 0,
     });
 
     itest!(complex {
-      args: "run --allow-all test_coverage_complex.ts",
-      output: "test_coverage_complex.out",
+      args: "run --allow-all coverage/test_complex.ts",
+      output: "coverage/test_complex.out",
       exit_code: 0,
     });
 
     itest!(complex_lcov {
-      args: "run --allow-all test_coverage_complex_lcov.ts",
-      output: "test_coverage_complex_lcov.out",
+      args: "run --allow-all coverage/test_complex_lcov.ts",
+      output: "coverage/test_complex_lcov.out",
       exit_code: 0,
     });
   }

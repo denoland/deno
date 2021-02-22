@@ -1,5 +1,5 @@
-Check [WILDCARD]/tests/test_coverage_complex_lcov.ts
-Check [WILDCARD]/tests/$deno$test.ts
+Check [WILDCARD]/test_complex_lcov.ts
+Check [WILDCARD]/$deno$test.ts
 running 1 tests
 test complex ... ok ([WILDCARD])
 
