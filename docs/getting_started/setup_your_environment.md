@@ -113,9 +113,8 @@ and language server protocol client).
 
 After CoC is installed, from inside Vim, run`:CocInstall coc-tsserver` and
 `:CocInstall coc-deno`. Run `:CocCommand deno.initializeWorkspace` in your
-project to initialize workspace configurations. From now on, things like
-`gd` (go to definition) and `gr` (goto/find references)
-should work.
+project to initialize workspace configurations. From now on, things like `gd`
+(go to definition) and `gr` (goto/find references) should work.
 
 ##### ALE
 
