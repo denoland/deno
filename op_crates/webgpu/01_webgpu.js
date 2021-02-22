@@ -1982,6 +1982,8 @@
     return bindGroup;
   }
   class GPUBindGroup {
+    /** @type {InnerGPUDevice} */
+    [_device];
     /** @type {number | undefined} */
     [_rid];
 
@@ -3024,16 +3026,17 @@
         prefix,
         context: "Argument 6",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setViewport' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_set_viewport", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         x,
         y,
         width,
@@ -3071,16 +3074,17 @@
         prefix,
         context: "Argument 4",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setScissorRect' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_set_scissor_rect", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         x,
         y,
         width,
@@ -3100,16 +3104,17 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setBlendColor' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_set_blend_color", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         color: normalizeGPUColor(color),
       });
     }
@@ -3126,39 +3131,26 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setStencilReference' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_set_stencil_reference", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         reference,
       });
     }
 
     beginOcclusionQuery(_queryIndex) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginOcclusionQuery' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       throw new Error("Not yet implemented");
     }
 
     endOcclusionQuery() {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'endOcclusionQuery' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       throw new Error("Not yet implemented");
     }
 
@@ -3179,33 +3171,46 @@
         prefix,
         context: "Argument 2",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const querySetRid = assertResource(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, querySet, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
-        renderPassRid: this[_rid],
-        querySet: querySet[_rid],
+        renderPassRid,
+        querySet: querySetRid,
         queryIndex,
       });
     }
 
     endPipelineStatisticsQuery() {
       webidl.assertBranded(this, GPURenderPassEncoder);
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'endPipelineStatisticsQuery' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const prefix =
+        "Failed to execute 'endPipelineStatisticsQuery' on 'GPURenderPassEncoder'";
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_end_pipeline_statistics_query", {
-        renderPassRid: this[_rid],
+        renderPassRid,
       });
     }
 
@@ -3226,16 +3231,27 @@
         prefix,
         context: "Argument 2",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const querySetRid = assertResource(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, querySet, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_pass_write_timestamp", {
-        renderPassRid: this[_rid],
-        querySet: querySet[_rid],
+        renderPassRid,
+        querySet: querySetRid,
         queryIndex,
       });
     }
@@ -3252,31 +3268,46 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'executeBundles' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const bundleRids = bundles.map((bundle, i) => {
+        const context = `bundle ${i + 1}`;
+        const rid = assertResource(bundle, { prefix, context });
+        assertDeviceMatch(device, bundle, {
+          prefix,
+          resourceContext: context,
+          selfContext: "this",
+        });
+        return rid;
+      });
       core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
-        renderPassRid: this[_rid],
-        bundles: bundles.map((bundle) => bundle[_rid]),
+        renderPassRid,
+        bundles: bundleRids,
       });
     }
 
     endPass() {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'endPass' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix = "Failed to execute 'endPass' on 'GPURenderPassEncoder'";
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const commandEncoderRid = assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_end_pass", {
-        commandEncoderRid: this[_encoder][_rid],
-        renderPassRid: this[_rid],
+        commandEncoderRid,
+        renderPassRid,
       });
       this[_rid] = undefined;
     }
@@ -3289,21 +3320,33 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setBindGroup' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
-      const bind = bindGroup[_rid];
+      webidl.assertBranded(this, GPURenderPassEncoder);
+      const prefix = "Failed to execute 'endPass' on 'GPURenderPassEncoder'";
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const bindGroupRid = assertResource(bindGroup, {
+        prefix,
+        context: "Argument 2",
+      });
+      assertDeviceMatch(device, bindGroup, {
+        prefix,
+        resourceContext: "Argument 2",
+        selfContext: "this",
+      });
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_render_pass_set_bind_group",
           {
-            renderPassRid: this[_rid],
+            renderPassRid,
             index,
-            bindGroup: bind,
+            bindGroup: bindGroupRid,
             dynamicOffsetsDataStart,
             dynamicOffsetsDataLength,
           },
@@ -3312,9 +3355,9 @@
       } else {
         dynamicOffsetsData ??= [];
         core.jsonOpSync("op_webgpu_render_pass_set_bind_group", {
-          renderPassRid: this[_rid],
+          renderPassRid,
           index,
-          bindGroup: bind,
+          bindGroup: bindGroupRid,
           dynamicOffsetsData,
           dynamicOffsetsDataStart: 0,
           dynamicOffsetsDataLength: dynamicOffsetsData.length,
@@ -3334,32 +3377,36 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_push_debug_group", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         groupLabel,
       });
     }
 
     popDebugGroup() {
       webidl.assertBranded(this, GPURenderPassEncoder);
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'popDebugGroup' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const prefix =
+        "Failed to execute 'popDebugGroup' on 'GPURenderPassEncoder'";
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_pop_debug_group", {
-        renderPassRid: this[_rid],
+        renderPassRid,
       });
     }
 
@@ -3375,16 +3422,17 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_insert_debug_marker", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         markerLabel,
       });
     }
@@ -3401,17 +3449,27 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setPipeline' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const pipelineRid = assertResource(pipeline, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, pipeline, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_pipeline", {
-        renderPassRid: this[_rid],
-        pipeline: pipeline[_rid],
+        renderPassRid,
+        pipeline: pipelineRid,
       });
     }
 
@@ -3442,17 +3500,27 @@
         prefix,
         context: "Argument 4",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const bufferRid = assertResource(buffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, buffer, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_index_buffer", {
-        renderPassRid: this[_rid],
-        buffer: buffer[_rid],
+        renderPassRid,
+        buffer: bufferRid,
         indexFormat,
         offset,
         size,
@@ -3486,18 +3554,28 @@
         prefix,
         context: "Argument 4",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const bufferRid = assertResource(buffer, {
+        prefix,
+        context: "Argument 2",
+      });
+      assertDeviceMatch(device, buffer, {
+        prefix,
+        resourceContext: "Argument 2",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_pass_set_vertex_buffer", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         slot,
-        buffer: buffer[_rid],
+        buffer: bufferRid,
         offset,
         size,
       });
@@ -3529,16 +3607,17 @@
         prefix,
         context: "Argument 4",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'draw' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_draw", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         vertexCount,
         instanceCount,
         firstVertex,
@@ -3584,16 +3663,17 @@
         prefix,
         context: "Argument 5",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_render_pass_draw_indexed", {
-        renderPassRid: this[_rid],
+        renderPassRid,
         indexCount,
         instanceCount,
         firstIndex,
@@ -3619,17 +3699,27 @@
         prefix,
         context: "Argument 2",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const indirectBufferRid = assertResource(indirectBuffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, indirectBuffer, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_pass_draw_indirect", {
-        renderPassRid: this[_rid],
-        indirectBuffer: indirectBuffer[_rid],
+        renderPassRid,
+        indirectBuffer: indirectBufferRid,
         indirectOffset,
       });
     }
@@ -3651,17 +3741,27 @@
         prefix,
         context: "Argument 2",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndexedIndirect' on 'GPURenderPassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const renderPassRid = assertResource(this, { prefix, context: "this" });
+      const indirectBufferRid = assertResource(indirectBuffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, indirectBuffer, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_pass_draw_indexed_indirect", {
-        renderPassRid: this[_rid],
-        indirectBuffer: indirectBuffer[_rid],
+        renderPassRid,
+        indirectBuffer: indirectBufferRid,
         indirectOffset,
       });
     }
