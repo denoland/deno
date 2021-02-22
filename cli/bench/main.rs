@@ -55,7 +55,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "workers_startup",
-    &["run", "--allow-read", "cli/tests/workers_startup_bench.ts"],
+    &["run", "--allow-read", "cli/tests/workers/bench_startup.ts"],
     None,
   ),
   (
@@ -63,7 +63,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers_round_robin_bench.ts",
+      "cli/tests/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -79,7 +79,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "check",
-    &["cache", "--reload", "std/examples/chat/server_test.ts"],
+    &[
+      "cache",
+      "--reload",
+      "test_util/std/examples/chat/server_test.ts",
+    ],
     None,
   ),
   (
@@ -88,18 +92,22 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "cache",
       "--reload",
       "--no-check",
-      "std/examples/chat/server_test.ts",
+      "test_util/std/examples/chat/server_test.ts",
     ],
     None,
   ),
   (
     "bundle",
-    &["bundle", "std/examples/chat/server_test.ts"],
+    &["bundle", "test_util/std/examples/chat/server_test.ts"],
     None,
   ),
   (
     "bundle_no_check",
-    &["bundle", "--no-check", "std/examples/chat/server_test.ts"],
+    &[
+      "bundle",
+      "--no-check",
+      "test_util/std/examples/chat/server_test.ts",
+    ],
     None,
   ),
 ];
@@ -254,8 +262,8 @@ fn get_binary_sizes(target_dir: &PathBuf) -> Result<HashMap<String, u64>> {
 }
 
 const BUNDLES: &[(&str, &str)] = &[
-  ("file_server", "./std/http/file_server.ts"),
-  ("gist", "./std/examples/gist.ts"),
+  ("file_server", "./test_util/std/http/file_server.ts"),
+  ("gist", "./test_util/std/examples/gist.ts"),
 ];
 fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
   let mut sizes = HashMap::<String, u64>::new();
@@ -289,9 +297,9 @@ fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
   let mut m = HashMap::<String, f64>::new();
 
   m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
-  m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100)?);
+  m.insert("100M_cat".to_string(), throughput::cat(deno_exe, 100));
   m.insert("10M_tcp".to_string(), throughput::tcp(deno_exe, 10)?);
-  m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10)?);
+  m.insert("10M_cat".to_string(), throughput::cat(deno_exe, 10));
 
   Ok(m)
 }

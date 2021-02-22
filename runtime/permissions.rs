@@ -68,7 +68,7 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub denied_list: HashSet<T>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<PathBuf>,
   pub write: UnaryPermission<PathBuf>,
@@ -580,9 +580,8 @@ impl Permissions {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let url = specifier.as_url();
-    match url.scheme() {
-      "file" => match url.to_file_path() {
+    match specifier.scheme() {
+      "file" => match specifier.to_file_path() {
         Ok(path) => self.check_read(&path),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {}",
@@ -590,7 +589,7 @@ impl Permissions {
         ))),
       },
       "data" => Ok(()),
-      _ => self.check_net_url(url),
+      _ => self.check_net_url(specifier),
     }
   }
 
@@ -624,7 +623,7 @@ impl deno_fetch::FetchPermissions for Permissions {
     Permissions::check_net_url(self, url)
   }
 
-  fn check_read(&self, p: &PathBuf) -> Result<(), AnyError> {
+  fn check_read(&self, p: &Path) -> Result<(), AnyError> {
     Permissions::check_read(self, p)
   }
 }
@@ -749,7 +748,7 @@ fn format_host<T: AsRef<str>>(host: &(T, Option<u16>)) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::serde_json;
+  use deno_core::resolve_url_or_path;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -1001,42 +1000,27 @@ mod tests {
 
     let mut fixtures = vec![
       (
-        ModuleSpecifier::resolve_url_or_path("http://localhost:4545/mod.ts")
-          .unwrap(),
+        resolve_url_or_path("http://localhost:4545/mod.ts").unwrap(),
         true,
       ),
       (
-        ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
-          .unwrap(),
+        resolve_url_or_path("http://deno.land/x/mod.ts").unwrap(),
         false,
       ),
       (
-        ModuleSpecifier::resolve_url_or_path(
-          "data:text/plain,Hello%2C%20Deno!",
-        )
-        .unwrap(),
+        resolve_url_or_path("data:text/plain,Hello%2C%20Deno!").unwrap(),
         true,
       ),
     ];
 
     if cfg!(target_os = "windows") {
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///C:/a/mod.ts").unwrap(),
-        true,
-      ));
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///C:/b/mod.ts").unwrap(),
-        false,
-      ));
+      fixtures
+        .push((resolve_url_or_path("file:///C:/a/mod.ts").unwrap(), true));
+      fixtures
+        .push((resolve_url_or_path("file:///C:/b/mod.ts").unwrap(), false));
     } else {
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///a/mod.ts").unwrap(),
-        true,
-      ));
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///b/mod.ts").unwrap(),
-        false,
-      ));
+      fixtures.push((resolve_url_or_path("file:///a/mod.ts").unwrap(), true));
+      fixtures.push((resolve_url_or_path("file:///b/mod.ts").unwrap(), false));
     }
 
     for (specifier, expected) in fixtures {
@@ -1059,57 +1043,9 @@ mod tests {
 
     for url in test_cases {
       assert!(perms
-        .check_specifier(&ModuleSpecifier::resolve_url_or_path(url).unwrap())
+        .check_specifier(&resolve_url_or_path(url).unwrap())
         .is_err());
     }
-  }
-
-  #[test]
-  fn test_deserialize_perms() {
-    let json_perms = r#"
-    {
-      "read": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "write": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "net": {
-        "global_state": "Granted",
-        "granted_list": [],
-        "denied_list": []
-      },
-      "env": "Granted",
-      "run": "Granted",
-      "plugin": "Granted",
-      "hrtime": "Granted"
-    }
-    "#;
-    let perms0 = Permissions {
-      read: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      write: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      net: UnaryPermission {
-        global_state: PermissionState::Granted,
-        ..Default::default()
-      },
-      env: PermissionState::Granted,
-      run: PermissionState::Granted,
-      hrtime: PermissionState::Granted,
-      plugin: PermissionState::Granted,
-    };
-    let deserialized_perms: Permissions =
-      serde_json::from_str(json_perms).unwrap();
-    assert_eq!(perms0, deserialized_perms);
   }
 
   #[test]

@@ -1,6 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{std_file_resource, StreamResource};
+use super::io::ChildStderrResource;
+use super::io::ChildStdinResource;
+use super::io::ChildStdoutResource;
+use super::io::StdFileResource;
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -34,7 +37,7 @@ fn clone_file(
   state: &mut OpState,
   rid: u32,
 ) -> Result<std::fs::File, AnyError> {
-  std_file_resource(state, rid, move |r| match r {
+  StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
     Err(_) => Err(bad_resource_id()),
   })
@@ -134,7 +137,7 @@ fn op_run(
     Some(child_stdin) => {
       let rid = state
         .resource_table
-        .add(StreamResource::child_stdin(child_stdin));
+        .add(ChildStdinResource::from(child_stdin));
       Some(rid)
     }
     None => None,
@@ -144,7 +147,7 @@ fn op_run(
     Some(child_stdout) => {
       let rid = state
         .resource_table
-        .add(StreamResource::child_stdout(child_stdout));
+        .add(ChildStdoutResource::from(child_stdout));
       Some(rid)
     }
     None => None,
@@ -154,7 +157,7 @@ fn op_run(
     Some(child_stderr) => {
       let rid = state
         .resource_table
-        .add(StreamResource::child_stderr(child_stderr));
+        .add(ChildStderrResource::from(child_stderr));
       Some(rid)
     }
     None => None,

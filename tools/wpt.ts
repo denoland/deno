@@ -59,7 +59,7 @@ switch (command) {
     console.log(`Possible commands:
 
     setup
-      Validate that your environment is conigured correctly, or help you configure it.
+      Validate that your environment is configured correctly, or help you configure it.
 
     run
       Run all tests like specified in \`expectation.json\`.
@@ -67,7 +67,7 @@ switch (command) {
     update
       Update the \`expectation.json\` to match the current reality.
 
-More details at https://deno.land/manual@master/contributing/web_platform_tests
+More details at https://deno.land/manual@main/contributing/web_platform_tests
 
     `);
     break;

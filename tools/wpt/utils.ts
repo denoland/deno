@@ -7,6 +7,7 @@ export const {
   json,
   quiet,
   release,
+  rebuild,
   ["--"]: rest,
   ["auto-config"]: autoConfig,
 } = parse(Deno.args, {
@@ -43,7 +44,15 @@ const MANIFEST_PATH = join(ROOT_PATH, "./tools/wpt/manifest.json");
 
 export async function updateManifest() {
   const proc = runPy(
-    ["wpt", "manifest", "--tests-root", ".", "-p", MANIFEST_PATH],
+    [
+      "wpt",
+      "manifest",
+      "--tests-root",
+      ".",
+      "-p",
+      MANIFEST_PATH,
+      ...(rebuild ? ["--rebuild"] : []),
+    ],
     {},
   );
   const status = await proc.status();
@@ -153,7 +162,7 @@ export async function checkPy3Available() {
     output.includes("Python 3."),
     `The ${
       Deno.build.os == "windows" ? "python.exe" : "python3"
-    } in your path is not is not Python 3.`,
+    } in your path is not Python 3.`,
   );
 }
 

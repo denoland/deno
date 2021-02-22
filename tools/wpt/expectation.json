@@ -22,7 +22,11 @@
       "event-global-extra.window.js": true,
       "event-global.worker.js": true,
       "legacy-pre-activation-behavior.window.js": true,
-      "relatedTarget.window.js": true
+      "relatedTarget.window.js": true,
+      "Event-constructors.any.js": [
+        "Untitled 2",
+        "Untitled 3"
+      ]
     },
     "idlharness.any.js": false,
     "idlharness.window.js": false
@@ -961,14 +965,8 @@
       "URLSearchParams constructed with: %EF%BB%BFtest=%EF%BB%BF",
       "request.formData() with input: ﻿test=﻿",
       "response.formData() with input: ﻿test=﻿",
-      "request.formData() with input: %FE%FF",
-      "response.formData() with input: %FE%FF",
-      "request.formData() with input: %FF%FE",
-      "response.formData() with input: %FF%FE",
-      "request.formData() with input: %C2",
-      "response.formData() with input: %C2",
-      "request.formData() with input: %C2x",
-      "response.formData() with input: %C2x",
+      "request.formData() with input: †&†=x",
+      "response.formData() with input: †&†=x",
       "request.formData() with input: _charset_=windows-1252&test=%C2x",
       "response.formData() with input: _charset_=windows-1252&test=%C2x",
       "request.formData() with input: %=a",
@@ -1006,5 +1004,58 @@
     "urlsearchparams-set.any.js": true,
     "urlsearchparams-sort.any.js": true,
     "urlsearchparams-stringifier.any.js": true
+  },
+  "fetch": {
+    "api": {
+      "request": {
+        "request-structure.any.js": [
+          "Check destination attribute",
+          "Check referrer attribute",
+          "Check referrerPolicy attribute",
+          "Check mode attribute",
+          "Check credentials attribute",
+          "Check cache attribute",
+          "Check redirect attribute",
+          "Check integrity attribute",
+          "Check isReloadNavigation attribute",
+          "Check isHistoryNavigation attribute"
+        ]
+      }
+    }
+  },
+  "FileAPI": {
+    "blob": {
+      "Blob-array-buffer.any.js": true,
+      "Blob-stream.any.js": true,
+      "Blob-text.any.js": true,
+      "Blob-constructor.any.js": [
+        "Blob interface object",
+        "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
+      ],
+      "Blob-slice-overflow.any.js": true,
+      "Blob-slice.any.js": true
+    },
+    "file": {
+      "File-constructor.any.js": true
+    }
+  },
+  "html": {
+    "webappapis": {
+      "atob": {
+        "base64.any.js": true
+      },
+      "timers": {
+        "cleartimeout-clearinterval.any.js": true,
+        "missing-timeout-setinterval.any.js": true,
+        "negative-setinterval.any.js": true,
+        "negative-settimeout.any.js": true,
+        "type-long-setinterval.any.js": true,
+        "type-long-settimeout.any.js": true
+      },
+      "microtask-queuing": {
+        "queue-microtask-exceptions.any.js": true,
+        "queue-microtask.any.js": true
+      }
+    }
   }
 }

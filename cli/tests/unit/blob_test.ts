@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, unitTest } from "./test_util.ts";
-import { concat } from "../../../std/bytes/mod.ts";
-import { decode } from "../../../std/encoding/utf8.ts";
+import { concat } from "../../../test_util/std/bytes/mod.ts";
+import { decode } from "../../../test_util/std/encoding/utf8.ts";
 
 unitTest(function blobString(): void {
   const b1 = new Blob(["Hello World"]);

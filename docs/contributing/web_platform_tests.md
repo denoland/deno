@@ -55,10 +55,21 @@ right after a `wpt.ts update` should always pass.
 
 #### `setup`
 
-Validate that your environment is conigured correctly, or help you configure it.
+Validate that your environment is configured correctly, or help you configure
+it.
 
 This will check that the python3 (or `python.exe` on Windows) is actually
 Python 3.
+
+You can specify the following flags to customize bahaviour:
+
+```
+--rebuild
+    Rebuild the manifest instead of downloading. This can take up to 3 minutes.
+
+--auto-config
+    Automatically configure /etc/hosts if it is not configured (no prompt will be shown).
+```
 
 #### `run`
 

@@ -387,19 +387,25 @@ unitTest(function sortingNonExistentParamRemovesQuestionMarkFromURL(): void {
   assertEquals(url.search, "");
 });
 
-unitTest(
-  {
-    // FIXME(bartlomieju)
-    ignore: true,
-  },
-  function customInspectFunction(): void {
-    const url = new URL("http://example.com/?");
-    assertEquals(
-      Deno.inspect(url),
-      'URL { href: "http://example.com/?", origin: "http://example.com", protocol: "http:", username: "", password: "", host: "example.com", hostname: "example.com", port: "", pathname: "/", hash: "", search: "?" }',
-    );
-  },
-);
+unitTest(function customInspectFunction(): void {
+  const url = new URL("http://example.com/?");
+  assertEquals(
+    Deno.inspect(url),
+    `URL {
+  href: "http://example.com/?",
+  origin: "http://example.com",
+  protocol: "http:",
+  username: "",
+  password: "",
+  host: "example.com",
+  hostname: "example.com",
+  port: "",
+  pathname: "/",
+  hash: "",
+  search: "?"
+}`,
+  );
+});
 
 unitTest(function protocolNotHttpOrFile() {
   const url = new URL("about:blank");

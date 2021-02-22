@@ -49,14 +49,17 @@ use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
 const PORT: u16 = 4545;
+const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const REDIRECT_PORT: u16 = 4546;
 const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
+const AUTH_REDIRECT_PORT: u16 = 4551;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const WS_CLOSE_PORT: u16 = 4244;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -201,6 +204,25 @@ async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   Ok(redirect_resp(url))
 }
 
+async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
+  if let Some(auth) = req
+    .headers()
+    .get("authorization")
+    .map(|v| v.to_str().unwrap())
+  {
+    if auth.to_lowercase() == format!("bearer {}", TEST_AUTH_TOKEN) {
+      let p = req.uri().path();
+      assert_eq!(&p[0..1], "/");
+      let url = format!("http://localhost:{}{}", PORT, p);
+      return Ok(redirect_resp(url));
+    }
+  }
+
+  let mut resp = Response::new(Body::empty());
+  *resp.status_mut() = StatusCode::NOT_FOUND;
+  Ok(resp)
+}
+
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
@@ -217,6 +239,20 @@ async fn run_ws_server(addr: &SocketAddr) {
             }
           })
           .await;
+      }
+    });
+  }
+}
+
+async fn run_ws_close_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream_fut = accept_async(stream);
+
+      let ws_stream = ws_stream_fut.await;
+      if let Ok(mut ws_stream) = ws_stream {
+        ws_stream.close(None).await.unwrap();
       }
     });
   }
@@ -272,8 +308,8 @@ async fn get_tls_config(
 }
 
 async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
 
   let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
@@ -666,6 +702,19 @@ async fn wrap_another_redirect_server() {
   }
 }
 
+async fn wrap_auth_redirect_server() {
+  let auth_redirect_svc = make_service_fn(|_| async {
+    Ok::<_, Infallible>(service_fn(auth_redirect))
+  });
+  let auth_redirect_addr =
+    SocketAddr::from(([127, 0, 0, 1], AUTH_REDIRECT_PORT));
+  let auth_redirect_server =
+    Server::bind(&auth_redirect_addr).serve(auth_redirect_svc);
+  if let Err(e) = auth_redirect_server.await {
+    eprintln!("Auth redirect error: {:?}", e);
+  }
+}
+
 async fn wrap_abs_redirect_server() {
   let abs_redirect_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(absolute_redirect))
@@ -691,8 +740,8 @@ async fn wrap_main_server() {
 
 async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
   let tls_config = get_tls_config(cert_file, key_file)
     .await
     .expect("Cannot get TLS config");
@@ -740,12 +789,15 @@ pub async fn run_all_servers() {
   let double_redirects_server_fut = wrap_double_redirect_server();
   let inf_redirects_server_fut = wrap_inf_redirect_server();
   let another_redirect_server_fut = wrap_another_redirect_server();
+  let auth_redirect_server_fut = wrap_auth_redirect_server();
   let abs_redirect_server_fut = wrap_abs_redirect_server();
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
   let ws_server_fut = run_ws_server(&ws_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
+  let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
+  let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
@@ -755,7 +807,9 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      ws_close_server_fut,
       another_redirect_server_fut,
+      auth_redirect_server_fut,
       inf_redirects_server_fut,
       double_redirects_server_fut,
       abs_redirect_server_fut,
@@ -1556,6 +1610,70 @@ mod tests {
       dbg!(pattern, string, expected);
       assert_eq!(actual, expected);
     }
+  }
+
+  #[test]
+  fn test_pattern_match() {
+    // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+
+    let wildcard = "[BAR]";
+    assert!(pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+    assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+    let multiline_pattern = "[BAR]
+foo:
+[BAR]baz[BAR]";
+
+    fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+      // If there is leading text add a newline so it's on it's own line
+      let head = match leading_text {
+        Some(v) => format!("{}\n", v),
+        None => "".to_string(),
+      };
+      format!(
+        "{}foo:
+quuz {} corge
+grault",
+        head, input
+      )
+    }
+
+    // Validate multi-line string builder
+    assert_eq!(
+      "QUUX=qux
+foo:
+quuz BAZ corge
+grault",
+      multi_line_builder("BAZ", Some("QUUX=qux"))
+    );
+
+    // Correct input & leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Correct input & no leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", None),
+      wildcard
+    ));
+
+    // Incorrect input & leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Incorrect input & no leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", None),
+      wildcard
+    ));
   }
 
   #[test]

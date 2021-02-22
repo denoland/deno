@@ -1,4 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -33,11 +34,14 @@
   function assertOps(fn) {
     return async function asyncOpSanitizer() {
       const pre = metrics();
-      await fn();
-      // Defer until next event loop turn - that way timeouts and intervals
-      // cleared can actually be removed from resource table, otherwise
-      // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await delay(0);
+      try {
+        await fn();
+      } finally {
+        // Defer until next event loop turn - that way timeouts and intervals
+        // cleared can actually be removed from resource table, otherwise
+        // false positives may occur (https://github.com/denoland/deno/issues/4591)
+        await delay(0);
+      }
       const post = metrics();
       // We're checking diff because one might spawn HTTP server in the background
       // that will be a pending async op before test starts.

@@ -6,15 +6,16 @@ use crate::colors;
 use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
+use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_runtime::inspector::InspectorSession;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Serialize;
+use sourcemap::SourceMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -130,7 +131,15 @@ impl PrettyCoverageReporter {
     &mut self,
     script_coverage: &ScriptCoverage,
     script_source: &str,
+    maybe_source_map: Option<Vec<u8>>,
+    maybe_original_source: Option<String>,
   ) {
+    let maybe_source_map = if let Some(source_map) = maybe_source_map {
+      Some(SourceMap::from_slice(&source_map).unwrap())
+    } else {
+      None
+    };
+
     let mut ignored_spans: Vec<Span> = Vec::new();
     for item in ast::lex("", script_source, &MediaType::JavaScript) {
       if let TokenOrComment::Token(_) = item.inner {
@@ -141,88 +150,127 @@ impl PrettyCoverageReporter {
     }
 
     let lines = script_source.split('\n').collect::<Vec<_>>();
-    let mut covered_lines: Vec<usize> = Vec::new();
-    let mut uncovered_lines: Vec<usize> = Vec::new();
 
-    let mut line_start_offset = 0;
-    for (index, line) in lines.iter().enumerate() {
-      let line_end_offset = line_start_offset + line.len();
+    let line_offsets = {
+      let mut offsets: Vec<(usize, usize)> = Vec::new();
+      let mut index = 0;
 
-      let mut count = 0;
-
-      let ignore = ignored_spans.iter().any(|span| {
-        (span.lo.0 as usize) <= line_start_offset
-          && (span.hi.0 as usize) >= line_end_offset
-      });
-
-      if ignore {
-        covered_lines.push(index);
-        continue;
+      for line in &lines {
+        offsets.push((index, index + line.len() + 1));
+        index += line.len() + 1;
       }
 
-      // Count the hits of ranges that include the entire line which will always be at-least one
-      // as long as the code has been evaluated.
-      for function in &script_coverage.functions {
-        for range in &function.ranges {
-          if range.start_offset <= line_start_offset
-            && range.end_offset >= line_end_offset
-          {
-            count += range.count;
+      offsets
+    };
+
+    let line_counts = line_offsets
+      .iter()
+      .enumerate()
+      .map(|(index, (line_start_offset, line_end_offset))| {
+        let ignore = ignored_spans.iter().any(|span| {
+          (span.lo.0 as usize) <= *line_start_offset
+            && (span.hi.0 as usize) >= *line_end_offset
+        });
+
+        if ignore {
+          return (index, 1);
+        }
+
+        let mut count = 0;
+
+        // Count the hits of ranges that include the entire line which will always be at-least one
+        // as long as the code has been evaluated.
+        for function in &script_coverage.functions {
+          for range in &function.ranges {
+            if range.start_offset <= *line_start_offset
+              && range.end_offset >= *line_end_offset
+            {
+              count += range.count;
+            }
           }
         }
-      }
 
-      // Reset the count if any block intersects with the current line has a count of
-      // zero.
-      //
-      // We check for intersection instead of inclusion here because a block may be anywhere
-      // inside a line.
-      for function in &script_coverage.functions {
-        for range in &function.ranges {
-          if range.count > 0 {
-            continue;
-          }
+        // Reset the count if any block intersects with the current line has a count of
+        // zero.
+        //
+        // We check for intersection instead of inclusion here because a block may be anywhere
+        // inside a line.
+        for function in &script_coverage.functions {
+          for range in &function.ranges {
+            if range.count > 0 {
+              continue;
+            }
 
-          if (range.start_offset < line_start_offset
-            && range.end_offset > line_start_offset)
-            || (range.start_offset < line_end_offset
-              && range.end_offset > line_end_offset)
-          {
-            count = 0;
+            if (range.start_offset < *line_start_offset
+              && range.end_offset > *line_start_offset)
+              || (range.start_offset < *line_end_offset
+                && range.end_offset > *line_end_offset)
+            {
+              count = 0;
+            }
           }
         }
-      }
 
-      if count > 0 {
-        covered_lines.push(index);
-      } else {
-        uncovered_lines.push(index);
-      }
+        (index, count)
+      })
+      .collect::<Vec<(usize, usize)>>();
 
-      line_start_offset += line.len() + 1;
-    }
+    let lines = if let Some(original_source) = maybe_original_source.as_ref() {
+      original_source.split('\n').collect::<Vec<_>>()
+    } else {
+      lines
+    };
+
+    let line_counts = if let Some(source_map) = maybe_source_map.as_ref() {
+      let mut line_counts = line_counts
+        .iter()
+        .map(|(index, count)| {
+          source_map
+            .tokens()
+            .filter(move |token| token.get_dst_line() as usize == *index)
+            .map(move |token| (token.get_src_line() as usize, *count))
+        })
+        .flatten()
+        .collect::<Vec<(usize, usize)>>();
+
+      line_counts.sort_unstable_by_key(|(index, _)| *index);
+      line_counts.dedup_by_key(|(index, _)| *index);
+
+      line_counts
+    } else {
+      line_counts
+    };
 
     if !self.quiet {
       print!("cover {} ... ", script_coverage.url);
 
-      let line_coverage_ratio = covered_lines.len() as f32 / lines.len() as f32;
-      let line_coverage = format!(
-        "{:.3}% ({}/{})",
-        line_coverage_ratio * 100.0,
-        covered_lines.len(),
-        lines.len()
-      );
+      let hit_lines = line_counts
+        .iter()
+        .filter(|(_, count)| *count != 0)
+        .map(|(index, _)| *index);
 
-      if line_coverage_ratio >= 0.9 {
+      let missed_lines = line_counts
+        .iter()
+        .filter(|(_, count)| *count == 0)
+        .map(|(index, _)| *index);
+
+      let lines_found = line_counts.len();
+      let lines_hit = hit_lines.count();
+      let line_ratio = lines_hit as f32 / lines_found as f32;
+
+      let line_coverage =
+        format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found,);
+
+      if line_ratio >= 0.9 {
         println!("{}", colors::green(&line_coverage));
-      } else if line_coverage_ratio >= 0.75 {
+      } else if line_ratio >= 0.75 {
         println!("{}", colors::yellow(&line_coverage));
       } else {
         println!("{}", colors::red(&line_coverage));
       }
 
       let mut last_line = None;
-      for line_index in uncovered_lines {
+      for line_index in missed_lines {
         const WIDTH: usize = 4;
         const SEPERATOR: &str = "|";
 
@@ -340,7 +388,7 @@ pub async fn report_coverages(
   let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
   for script_coverage in coverages {
     let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+      deno_core::resolve_url_or_path(&script_coverage.url)?;
     program_state
       .prepare_module_load(
         module_specifier.clone(),
@@ -354,7 +402,18 @@ pub async fn report_coverages(
     let module_source = program_state.load(module_specifier.clone(), None)?;
     let script_source = &module_source.code;
 
-    coverage_reporter.visit_coverage(&script_coverage, &script_source);
+    let maybe_source_map = program_state.get_source_map(&script_coverage.url);
+    let maybe_cached_source = program_state
+      .file_fetcher
+      .get_source(&module_specifier)
+      .map(|f| f.source);
+
+    coverage_reporter.visit_coverage(
+      &script_coverage,
+      &script_source,
+      maybe_source_map,
+      maybe_cached_source,
+    );
   }
 
   Ok(())
