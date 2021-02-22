@@ -986,6 +986,65 @@ unitTest(function fetchResponseConstructorInvalidStatus(): void {
   }
 });
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchRequiresOneArgument(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch();
+      },
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchConvertsInitializerParameter(): Promise<void> {
+    const url = "http://localhost:4545/cli/tests/fixture.json";
+
+    {
+      const fetchWithInitializer = async (
+        initializer: unknown,
+      ): Promise<void> => {
+        // deno-lint-ignore ban-ts-comment
+        // @ts-expect-error
+        await fetch(url, initializer);
+      };
+
+      const goodInitializers = [
+        {},
+        [],
+        () => {},
+        null,
+        undefined,
+      ];
+
+      await Promise.all(goodInitializers.map(fetchWithInitializer));
+    }
+    {
+      const deniesInitializer = async (initializer: unknown): Promise<void> => {
+        await assertThrowsAsync(
+          async () => {
+            // deno-lint-ignore ban-ts-comment
+            // @ts-expect-error
+            await fetch(url, initializer);
+          },
+        );
+      };
+
+      const badInitializers = [
+        0,
+        0n,
+        "",
+        false,
+        Symbol(),
+      ];
+
+      await Promise.all(badInitializers.map(deniesInitializer));
+    }
+  },
+);
+
 unitTest(function fetchResponseEmptyConstructor(): void {
   const response = new Response();
   assertEquals(response.status, 200);
