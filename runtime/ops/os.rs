@@ -8,6 +8,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
@@ -55,7 +56,13 @@ fn op_set_env(
 ) -> Result<Value, AnyError> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().check_env()?;
-  env::set_var(args.key, args.value);
+  let key_not_support_re = Regex::new(r"=|\x00").unwrap();
+  let is_valid_key =
+    !args.key.is_empty() && !key_not_support_re.is_match(&args.key);
+  let is_valid_value = !args.value.contains("\x00");
+  if is_valid_key && is_valid_value {
+    env::set_var(args.key, args.value);
+  }
   Ok(json!({}))
 }
 
