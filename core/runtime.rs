@@ -771,6 +771,9 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  ///
+  /// Since the same module might be dynamically imported more than once,
+  /// this function is a noop if module was already evaluated.
   pub fn dyn_mod_evaluate(
     &mut self,
     load_id: ModuleLoadId,
@@ -793,55 +796,56 @@ impl JsRuntime {
       module.get_status()
     };
 
-    if status == v8::ModuleStatus::Instantiated {
-      // IMPORTANT: Top-level-await is enabled, which means that return value
-      // of module evaluation is a promise.
-      //
-      // This promise is internal, and not the same one that gets returned to
-      // the user. We add an empty `.catch()` handler so that it does not result
-      // in an exception if it rejects. That will instead happen for the other
-      // promise if not handled by the user.
-      //
-      // For more details see:
-      // https://github.com/denoland/deno/issues/4908
-      // https://v8.dev/features/top-level-await#module-execution-order
-      let scope =
-        &mut v8::HandleScope::with_context(self.v8_isolate(), context1);
-      let module = v8::Local::new(scope, &module_handle);
-      let maybe_value = module.evaluate(scope);
+    if status != v8::ModuleStatus::Instantiated {
+      return Ok(());
+    }
 
-      // Update status after evaluating.
-      let status = module.get_status();
+    // IMPORTANT: Top-level-await is enabled, which means that return value
+    // of module evaluation is a promise.
+    //
+    // This promise is internal, and not the same one that gets returned to
+    // the user. We add an empty `.catch()` handler so that it does not result
+    // in an exception if it rejects. That will instead happen for the other
+    // promise if not handled by the user.
+    //
+    // For more details see:
+    // https://github.com/denoland/deno/issues/4908
+    // https://v8.dev/features/top-level-await#module-execution-order
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context1);
+    let module = v8::Local::new(scope, &module_handle);
+    let maybe_value = module.evaluate(scope);
 
-      if let Some(value) = maybe_value {
-        assert!(
-          status == v8::ModuleStatus::Evaluated
-            || status == v8::ModuleStatus::Errored
-        );
-        let promise = v8::Local::<v8::Promise>::try_from(value)
-          .expect("Expected to get promise as module evaluation result");
-        let empty_fn = |_scope: &mut v8::HandleScope,
-                        _args: v8::FunctionCallbackArguments,
-                        _rv: v8::ReturnValue| {};
-        let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
-        let empty_fn = empty_fn.get_function(scope).unwrap();
-        promise.catch(scope, empty_fn);
-        let mut state = state_rc.borrow_mut();
-        let promise_global = v8::Global::new(scope, promise);
-        let module_global = v8::Global::new(scope, module);
+    // Update status after evaluating.
+    let status = module.get_status();
 
-        let dyn_import_mod_evaluate = DynImportModEvaluate {
-          module_id: id,
-          promise: promise_global,
-          module: module_global,
-        };
+    if let Some(value) = maybe_value {
+      assert!(
+        status == v8::ModuleStatus::Evaluated
+          || status == v8::ModuleStatus::Errored
+      );
+      let promise = v8::Local::<v8::Promise>::try_from(value)
+        .expect("Expected to get promise as module evaluation result");
+      let empty_fn = |_scope: &mut v8::HandleScope,
+                      _args: v8::FunctionCallbackArguments,
+                      _rv: v8::ReturnValue| {};
+      let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
+      let empty_fn = empty_fn.get_function(scope).unwrap();
+      promise.catch(scope, empty_fn);
+      let mut state = state_rc.borrow_mut();
+      let promise_global = v8::Global::new(scope, promise);
+      let module_global = v8::Global::new(scope, module);
 
-        state
-          .pending_dyn_mod_evaluate
-          .insert(load_id, dyn_import_mod_evaluate);
-      } else {
-        assert!(status == v8::ModuleStatus::Errored);
-      }
+      let dyn_import_mod_evaluate = DynImportModEvaluate {
+        module_id: id,
+        promise: promise_global,
+        module: module_global,
+      };
+
+      state
+        .pending_dyn_mod_evaluate
+        .insert(load_id, dyn_import_mod_evaluate);
+    } else {
+      assert!(status == v8::ModuleStatus::Errored);
     }
 
     Ok(())
@@ -852,6 +856,8 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  ///
+  /// This function panics if module has not been instantiated.
   fn mod_evaluate_inner(
     &mut self,
     id: ModuleId,
@@ -868,55 +874,54 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
+    assert_eq!(status, v8::ModuleStatus::Instantiated);
 
     let (sender, receiver) = mpsc::channel(1);
 
-    if status == v8::ModuleStatus::Instantiated {
-      // IMPORTANT: Top-level-await is enabled, which means that return value
-      // of module evaluation is a promise.
-      //
-      // Because that promise is created internally by V8, when error occurs during
-      // module evaluation the promise is rejected, and since the promise has no rejection
-      // handler it will result in call to `bindings::promise_reject_callback` adding
-      // the promise to pending promise rejection table - meaning JsRuntime will return
-      // error on next poll().
-      //
-      // This situation is not desirable as we want to manually return error at the
-      // end of this function to handle it further. It means we need to manually
-      // remove this promise from pending promise rejection table.
-      //
-      // For more details see:
-      // https://github.com/denoland/deno/issues/4908
-      // https://v8.dev/features/top-level-await#module-execution-order
-      let maybe_value = module.evaluate(scope);
+    // IMPORTANT: Top-level-await is enabled, which means that return value
+    // of module evaluation is a promise.
+    //
+    // Because that promise is created internally by V8, when error occurs during
+    // module evaluation the promise is rejected, and since the promise has no rejection
+    // handler it will result in call to `bindings::promise_reject_callback` adding
+    // the promise to pending promise rejection table - meaning JsRuntime will return
+    // error on next poll().
+    //
+    // This situation is not desirable as we want to manually return error at the
+    // end of this function to handle it further. It means we need to manually
+    // remove this promise from pending promise rejection table.
+    //
+    // For more details see:
+    // https://github.com/denoland/deno/issues/4908
+    // https://v8.dev/features/top-level-await#module-execution-order
+    let maybe_value = module.evaluate(scope);
 
-      // Update status after evaluating.
-      status = module.get_status();
+    // Update status after evaluating.
+    status = module.get_status();
 
-      if let Some(value) = maybe_value {
-        assert!(
-          status == v8::ModuleStatus::Evaluated
-            || status == v8::ModuleStatus::Errored
-        );
-        let promise = v8::Local::<v8::Promise>::try_from(value)
-          .expect("Expected to get promise as module evaluation result");
-        let promise_global = v8::Global::new(scope, promise);
-        let mut state = state_rc.borrow_mut();
-        state.pending_promise_exceptions.remove(&promise_global);
-        let promise_global = v8::Global::new(scope, promise);
-        assert!(
-          state.pending_mod_evaluate.is_none(),
-          "There is already pending top level module evaluation"
-        );
+    if let Some(value) = maybe_value {
+      assert!(
+        status == v8::ModuleStatus::Evaluated
+          || status == v8::ModuleStatus::Errored
+      );
+      let promise = v8::Local::<v8::Promise>::try_from(value)
+        .expect("Expected to get promise as module evaluation result");
+      let promise_global = v8::Global::new(scope, promise);
+      let mut state = state_rc.borrow_mut();
+      state.pending_promise_exceptions.remove(&promise_global);
+      let promise_global = v8::Global::new(scope, promise);
+      assert!(
+        state.pending_mod_evaluate.is_none(),
+        "There is already pending top level module evaluation"
+      );
 
-        state.pending_mod_evaluate = Some(ModEvaluate {
-          promise: promise_global,
-          sender,
-        });
-        scope.perform_microtask_checkpoint();
-      } else {
-        assert!(status == v8::ModuleStatus::Errored);
-      }
+      state.pending_mod_evaluate = Some(ModEvaluate {
+        promise: promise_global,
+        sender,
+      });
+      scope.perform_microtask_checkpoint();
+    } else {
+      assert!(status == v8::ModuleStatus::Errored);
     }
 
     receiver
