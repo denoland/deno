@@ -2,10 +2,10 @@
 "use strict";
 
 ((window) => {
-  const core = window.Deno.core;
   const {
     Event,
     EventTarget,
+    Deno: { core },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
 
@@ -51,7 +51,7 @@
   }
 
   class PermissionStatus extends EventTarget {
-    /** @type { { state: Deno.PermissionState } } */
+    /** @type {{ state: Deno.PermissionState }} */
     #state;
 
     /** @type {((this: PermissionStatus, event: Event) => any) | null} */
@@ -63,7 +63,7 @@
     }
 
     /**
-     * @param {Deno.PermissionState} state 
+     * @param {{ state: Deno.PermissionState }} state 
      * @param {unknown} key 
      */
     constructor(state = null, key = null) {
@@ -105,7 +105,7 @@
    */
   function cache(desc, state) {
     let { name: key } = desc;
-    if ((desc.name === "read" || desc.name === "write") && desc.path) {
+    if ((desc.name === "read" || desc.name === "write") && "path" in desc) {
       key += `-${desc.path}`;
     } else if (desc.name === "net" && desc.host) {
       key += `-${desc.host}`;
