@@ -4267,22 +4267,20 @@
      */
     finish(descriptor = {}) {
       webidl.assertBranded(this, GPURenderBundleEncoder);
+      const prefix = "Failed to execute 'finish' on 'GPURenderBundleEncoder'";
       descriptor = webidl.converters.GPURenderBundleDescriptor(descriptor, {
-        prefix: "Failed to execute 'finish' on 'GPURenderBundleEncoder'",
+        prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'finish' on 'GPURenderBundleEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       const { rid } = core.jsonOpSync(
         "op_webgpu_render_bundle_encoder_finish",
         {
-          renderBundleEncoderRid: this[_rid],
+          renderBundleEncoderRid,
           ...descriptor,
         },
       );
@@ -4290,10 +4288,10 @@
 
       const renderBundle = createGPURenderBundle(
         descriptor.label ?? null,
-        this[_device],
+        device,
         rid,
       );
-      this[_device].resources.push(new WeakRef(renderBundle));
+      device.resources.push(new WeakRef(renderBundle));
       return renderBundle;
     }
 
@@ -4305,21 +4303,30 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
-      const bind = bindGroup[_rid];
+      webidl.assertBranded(this, GPURenderBundleEncoder);
+      const prefix =
+        "Failed to execute 'setBindGroup' on 'GPURenderBundleEncoder'";
+      const device = assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const bindGroupRid = assertResource(bindGroup, {
+        prefix,
+        context: "Argument 2",
+      });
+      assertDeviceMatch(device, bindGroup, {
+        prefix,
+        resourceContext: "Argument 2",
+        selfContext: "this",
+      });
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_render_bundle_encoder_set_bind_group",
           {
-            renderBundleEncoderRid: this[_rid],
+            renderBundleEncoderRid,
             index,
-            bindGroup: bind,
+            bindGroup: bindGroupRid,
             dynamicOffsetsDataStart,
             dynamicOffsetsDataLength,
           },
@@ -4328,9 +4335,9 @@
       } else {
         dynamicOffsetsData ??= [];
         core.jsonOpSync("op_webgpu_render_bundle_encoder_set_bind_group", {
-          renderBundleEncoderRid: this[_rid],
+          renderBundleEncoderRid,
           index,
-          bindGroup: bind,
+          bindGroup: bindGroupRid,
           dynamicOffsetsData,
           dynamicOffsetsDataStart: 0,
           dynamicOffsetsDataLength: dynamicOffsetsData.length,
@@ -4350,32 +4357,28 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
-        renderBundleEncoderRid: this[_rid],
+        renderBundleEncoderRid,
         groupLabel,
       });
     }
 
     popDebugGroup() {
       webidl.assertBranded(this, GPURenderBundleEncoder);
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const prefix =
+        "Failed to execute 'popDebugGroup' on 'GPURenderBundleEncoder'";
+      assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_pop_debug_group", {
-        renderBundleEncoderRid: this[_rid],
+        renderBundleEncoderRid,
       });
     }
 
@@ -4391,16 +4394,13 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
-        renderBundleEncoderRid: this[_rid],
+        renderBundleEncoderRid,
         markerLabel,
       });
     }
@@ -4417,17 +4417,23 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const pipelineRid = assertResource(pipeline, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, pipeline, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_pipeline", {
-        renderBundleEncoderRid: this[_rid],
-        pipeline: pipeline[_rid],
+        renderBundleEncoderRid,
+        pipeline: pipelineRid,
       });
     }
 
@@ -4458,17 +4464,23 @@
         prefix,
         context: "Argument 4",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setIndexBuffer' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const bufferRid = assertResource(buffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, buffer, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
-        renderBundleEncoderRid: this[_rid],
-        buffer: buffer[_rid],
+        renderBundleEncoderRid,
+        buffer: bufferRid,
         indexFormat,
         offset,
         size,
@@ -4502,18 +4514,24 @@
         prefix,
         context: "Argument 4",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setVertexBuffer' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const bufferRid = assertResource(buffer, {
+        prefix,
+        context: "Argument 2",
+      });
+      assertDeviceMatch(device, buffer, {
+        prefix,
+        resourceContext: "Argument 2",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
-        renderBundleEncoderRid: this[_rid],
+        renderBundleEncoderRid,
         slot,
-        buffer: buffer[_rid],
+        buffer: bufferRid,
         offset,
         size,
       });
@@ -4545,16 +4563,13 @@
         prefix,
         context: "Argument 4",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'draw' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw", {
-        renderBundleEncoderRid: this[_rid],
+        renderBundleEncoderRid,
         vertexCount,
         instanceCount,
         firstVertex,
@@ -4600,16 +4615,13 @@
         prefix,
         context: "Argument 5",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndexed' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indexed", {
-        renderBundleEncoderRid: this[_rid],
+        renderBundleEncoderRid,
         indexCount,
         instanceCount,
         firstIndex,
@@ -4635,29 +4647,28 @@
         prefix,
         context: "Argument 2",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndirect' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this, { prefix, context: "this" });
+      const renderBundleEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const indirectBufferRid = assertResource(indirectBuffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, indirectBuffer, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indirect", {
-        renderBundleEncoderRid: this[_rid],
-        indirectBuffer: indirectBuffer[_rid],
+        renderBundleEncoderRid,
+        indirectBuffer: indirectBufferRid,
         indirectOffset,
       });
     }
 
     drawIndexedIndirect(_indirectBuffer, _indirectOffset) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'drawIndexedIndirect' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
       throw new Error("Not yet implemented");
     }
 
