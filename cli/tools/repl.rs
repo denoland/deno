@@ -115,8 +115,19 @@ impl Completer for Helper {
               .as_array()
               .unwrap()
               .iter()
-              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
-              .filter(|r| r.starts_with(&suffix[1..]))
+              .filter_map(|r| {
+                let name = r.get("name").unwrap().as_str().unwrap().to_string();
+
+                if name.starts_with("Symbol(") {
+                  return None;
+                }
+
+                if name.starts_with(&suffix[1..]) {
+                  return Some(name);
+                }
+
+                None
+              })
               .collect();
 
             return Ok((pos - (suffix.len() - 1), candidates));
