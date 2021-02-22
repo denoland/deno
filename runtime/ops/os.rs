@@ -59,7 +59,7 @@ fn op_set_env(
   let key_not_support_re = Regex::new(r"=|\x00").unwrap();
   let is_valid_key =
     !args.key.is_empty() && !key_not_support_re.is_match(&args.key);
-  let is_valid_value = !args.value.contains("\x00");
+  let is_valid_value = !args.value.contains('\x00');
   if is_valid_key && is_valid_value {
     env::set_var(args.key, args.value);
   }
