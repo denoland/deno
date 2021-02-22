@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(async function responseText() {
   const response = new Response("hello world");
@@ -48,4 +48,36 @@ unitTest(async function responseFormData() {
   const formData = await formDataPromise;
   assert(formData instanceof FormData);
   assertEquals(formData, input);
+});
+
+unitTest(function castsInitializerToDictionary(): void {
+  type initializerPasser = (_: unknown) => void;
+
+  const acceptsInitializer: initializerPasser = (responseInit) => {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-expect-error
+    new Response(undefined, responseInit);
+  };
+
+  acceptsInitializer({});
+  acceptsInitializer([]);
+  acceptsInitializer(() => {});
+  acceptsInitializer(null);
+  acceptsInitializer(undefined);
+
+  const deniesInitializer = (responseInit: unknown) => {
+    assertThrows(
+      () => {
+        // deno-lint-ignore ban-ts-comment
+        // @ts-expect-error
+        new Response(undefined, responseInit);
+      },
+    );
+  };
+
+  deniesInitializer(0);
+  deniesInitializer(0n);
+  deniesInitializer("");
+  deniesInitializer(false);
+  deniesInitializer(Symbol());
 });
