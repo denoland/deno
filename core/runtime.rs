@@ -14,8 +14,8 @@ use crate::modules::LoadState;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
+use crate::modules::ModuleMap;
 use crate::modules::ModuleSource;
-use crate::modules::Modules;
 use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
@@ -114,7 +114,7 @@ pub(crate) struct JsRuntimeState {
   //pub(crate) op_table: OpTable,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub loader: Rc<dyn ModuleLoader>,
-  pub modules: Modules,
+  pub module_map: ModuleMap,
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
@@ -288,7 +288,7 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: Cell::new(false),
-      modules: Modules::new(),
+      module_map: ModuleMap::new(),
       loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
@@ -429,7 +429,7 @@ impl JsRuntime {
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
-    std::mem::take(&mut state.borrow_mut().modules);
+    std::mem::take(&mut state.borrow_mut().module_map);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -719,7 +719,7 @@ impl JsRuntime {
       import_specifiers.push(module_specifier);
     }
 
-    let id = state_rc.borrow_mut().modules.register(
+    let id = state_rc.borrow_mut().module_map.register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),
@@ -743,7 +743,7 @@ impl JsRuntime {
 
     let module = state_rc
       .borrow()
-      .modules
+      .module_map
       .get_handle(id)
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
@@ -785,7 +785,7 @@ impl JsRuntime {
 
     let module_handle = state_rc
       .borrow()
-      .modules
+      .module_map
       .get_handle(id)
       .expect("ModuleInfo not found");
 
@@ -869,7 +869,7 @@ impl JsRuntime {
 
     let module = state_rc
       .borrow()
-      .modules
+      .module_map
       .get_handle(id)
       .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
@@ -988,7 +988,7 @@ impl JsRuntime {
     let module = {
       let state = state_rc.borrow();
       state
-        .modules
+        .module_map
         .get_handle(mod_id)
         .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found")
@@ -1247,13 +1247,13 @@ impl JsRuntime {
     if module_url_specified != module_url_found {
       let mut state = state_rc.borrow_mut();
       state
-        .modules
+        .module_map
         .alias(&module_url_specified, &module_url_found);
     }
 
     let maybe_mod_id = {
       let state = state_rc.borrow();
-      state.modules.get_id(&module_url_found)
+      state.module_map.get_id(&module_url_found)
     };
 
     let module_id = match maybe_mod_id {
@@ -1273,14 +1273,14 @@ impl JsRuntime {
     let imports = {
       let state_rc = Self::state(self.v8_isolate());
       let state = state_rc.borrow();
-      state.modules.get_children(module_id).unwrap().clone()
+      state.module_map.get_children(module_id).unwrap().clone()
     };
 
     for module_specifier in imports {
       let is_registered = {
         let state_rc = Self::state(self.v8_isolate());
         let state = state_rc.borrow();
-        state.modules.is_registered(&module_specifier)
+        state.module_map.is_registered(&module_specifier)
       };
       if !is_registered {
         load
@@ -2274,7 +2274,7 @@ pub mod tests {
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     {
       let state = state_rc.borrow();
-      let imports = state.modules.get_children(mod_a);
+      let imports = state.module_map.get_children(mod_a);
       assert_eq!(
         imports,
         Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
@@ -2285,7 +2285,7 @@ pub mod tests {
       .unwrap();
     {
       let state = state_rc.borrow();
-      let imports = state.modules.get_children(mod_b).unwrap();
+      let imports = state.module_map.get_children(mod_b).unwrap();
       assert_eq!(imports.len(), 0);
     }
 

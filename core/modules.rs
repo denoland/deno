@@ -400,7 +400,7 @@ enum SymbolicModule {
 
 /// A collection of JS modules.
 #[derive(Default)]
-pub struct Modules {
+pub struct ModuleMap {
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
@@ -408,8 +408,8 @@ pub struct Modules {
   next_module_id: ModuleId,
 }
 
-impl Modules {
-  pub fn new() -> Modules {
+impl ModuleMap {
+  pub fn new() -> ModuleMap {
     Self {
       handles_by_id: HashMap::new(),
       ids_by_handle: HashMap::new(),
@@ -699,7 +699,7 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -766,7 +766,7 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
@@ -838,7 +838,7 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -984,7 +984,7 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
