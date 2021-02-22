@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
-use deno_core::error::AnyError;
+use deno_core::error::{type_error, AnyError};
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -57,12 +57,13 @@ fn op_set_env(
   let args: SetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().check_env()?;
   let key_not_support_re = Regex::new(r"=|\x00").unwrap();
-  let is_valid_key =
-    !args.key.is_empty() && !key_not_support_re.is_match(&args.key);
-  let is_valid_value = !args.value.contains('\x00');
-  if is_valid_key && is_valid_value {
-    env::set_var(args.key, args.value);
+  let invalid_key =
+    args.key.is_empty() || key_not_support_re.is_match(&args.key);
+  let invalid_value = args.value.contains('\x00');
+  if invalid_key || invalid_value {
+    return Err(type_error("Key or value contains unsupported charactors"));
   }
+  env::set_var(args.key, args.value);
   Ok(json!({}))
 }
 

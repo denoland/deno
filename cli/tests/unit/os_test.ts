@@ -28,11 +28,10 @@ unitTest({ perms: { env: true } }, function deleteEnv(): void {
 });
 
 unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
-  Deno.env.set("", "v");
-  Deno.env.set("a=a", "v");
-  Deno.env.set("a\0a", "v");
-  Deno.env.set("TEST_VAR", "v\0v");
-  assertEquals(Deno.env.get("TEST_VAR"), undefined);
+  assertThrows(() => Deno.env.set("", "v"), TypeError);
+  assertThrows(() => Deno.env.set("a=a", "v"), TypeError);
+  assertThrows(() => Deno.env.set("a\0a", "v"), TypeError);
+  assertThrows(() => Deno.env.set("TEST_VAR", "v\0v"), TypeError);
 });
 
 unitTest(function envPermissionDenied1(): void {
