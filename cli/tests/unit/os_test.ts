@@ -27,6 +27,14 @@ unitTest({ perms: { env: true } }, function deleteEnv(): void {
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
 });
 
+unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
+  Deno.env.set("", "v");
+  Deno.env.set("a=a", "v");
+  Deno.env.set("a\0a", "v");
+  Deno.env.set("TEST_VAR", "v\0v");
+  assertEquals(Deno.env.get("TEST_VAR"), undefined);
+});
+
 unitTest(function envPermissionDenied1(): void {
   assertThrows(() => {
     Deno.env.toObject();
