@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
@@ -61,4 +61,49 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
   const b2 = await r2.text();
 
   assertEquals(b1, b2);
+});
+
+unitTest(function requiresOneArgument() {
+  assertThrows(() => {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-expect-error
+    new Request();
+  });
+});
+
+unitTest(function castsInitializerToDictionary(): void {
+  const url = "https://foo/";
+
+  type initializerPasser = (_: unknown) => void;
+
+  const acceptsInitializer: initializerPasser = (requestInit) => {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-expect-error
+    const request = new Request(url, requestInit);
+
+    assertEquals(request.url, url);
+    // add more asserts to generally make sure nothing weird went wrong
+  };
+
+  acceptsInitializer({});
+  acceptsInitializer([]);
+  acceptsInitializer(() => {});
+  acceptsInitializer(null);
+  acceptsInitializer(undefined);
+
+  const deniesInitializer: initializerPasser = (requestInit) => {
+    assertThrows(
+      () => {
+        // deno-lint-ignore ban-ts-comment
+        // @ts-expect-error
+        new Request(url, requestInit);
+      },
+    );
+  };
+
+  deniesInitializer(0);
+  deniesInitializer(0n);
+  deniesInitializer("");
+  deniesInitializer(false);
+  deniesInitializer(Symbol());
 });
