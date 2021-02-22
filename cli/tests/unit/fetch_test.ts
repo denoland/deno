@@ -1047,7 +1047,7 @@ unitTest(
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     // transformer writes don't resolve until they are read, so awaiting these
-    // will cause the transformer to hang, as the suspend the transformer, it
+    // will cause the transformer to hang, as they suspend the transformer, it
     // is also illogical to await for the reads, as that is the whole point of
     // streams is to have a "queue" which gets drained...
     writer.write(new TextEncoder().encode("hello "));
