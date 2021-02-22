@@ -56,9 +56,8 @@ fn op_set_env(
 ) -> Result<Value, AnyError> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().check_env()?;
-  let key_not_support_re = Regex::new(r"=|\x00").unwrap();
   let invalid_key =
-    args.key.is_empty() || key_not_support_re.is_match(&args.key);
+    args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
   let invalid_value = args.value.contains('\x00');
   if invalid_key || invalid_value {
     return Err(type_error("Key or value contains invalid characters."));
