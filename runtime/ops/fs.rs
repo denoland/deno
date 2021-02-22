@@ -1022,20 +1022,19 @@ fn op_read_dir_sync(
   let entries: Vec<_> = std::fs::read_dir(path)?
     .filter_map(|entry| {
       let entry = entry.unwrap();
-      let file_type = entry.file_type().unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
       if let Ok(name) = into_string(entry.file_name()) {
         Some(json!({
           "name": name,
-          "isFile": file_type.is_file(),
-          "isDirectory": file_type.is_dir(),
-          "isSymlink": file_type.is_symlink()
+          "isFile": entry.file_type().map_or(None, |file_type| Some(file_type.is_file())),
+          "isDirectory": entry.file_type().map_or(None, |file_type| Some(file_type.is_dir())),
+          "isSymlink": entry.file_type().map_or(None, |file_type| Some(file_type.is_symlink())),
         }))
       } else {
         None
       }
     })
-    .collect();
+  .collect();
 
   Ok(json!({ "entries": entries }))
 }
@@ -1056,25 +1055,24 @@ async fn op_read_dir_async(
     let entries: Vec<_> = std::fs::read_dir(path)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
-        let file_type = entry.file_type().unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
         if let Ok(name) = into_string(entry.file_name()) {
           Some(json!({
             "name": name,
-            "isFile": file_type.is_file(),
-            "isDirectory": file_type.is_dir(),
-            "isSymlink": file_type.is_symlink()
+            "isFile": entry.file_type().map_or(None, |file_type| Some(file_type.is_file())),
+            "isDirectory": entry.file_type().map_or(None, |file_type| Some(file_type.is_dir())),
+            "isSymlink": entry.file_type().map_or(None, |file_type| Some(file_type.is_symlink())),
           }))
         } else {
           None
         }
       })
-      .collect();
+    .collect();
 
     Ok(json!({ "entries": entries }))
   })
   .await
-  .unwrap()
+    .unwrap()
 }
 
 #[derive(Deserialize)]

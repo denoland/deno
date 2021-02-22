@@ -78,3 +78,21 @@ unitTest({ perms: { read: false } }, async function readDirPerm(): Promise<
     await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
   }, Deno.errors.PermissionDenied);
 });
+
+unitTest(
+  { perms: { read: true }, ignore: Deno.build.os == "windows" },
+  async function readDirDevFd(): Promise<
+    void
+  > {
+    // We don't actually care whats in here; just that we don't panic on non regular entries
+    await Deno.readDir("/dev/fd");
+  },
+);
+
+unitTest(
+  { perms: { read: true }, ignore: Deno.build.os == "windows" },
+  function readDirDevFdSync(): void {
+    // We don't actually care whats in here; just that we don't panic on non regular file entries
+    Deno.readDirSync("/dev/fd");
+  },
+);
