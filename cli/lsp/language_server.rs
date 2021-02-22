@@ -2787,7 +2787,10 @@ mod tests {
         LspResponse::RequestAssert(|value| {
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
-          assert_eq!(resp.result.averages.len(), 10);
+          // the len can be variable since some of the parts of the language
+          // server run in separate threads and may not add to performance by
+          // the time the results are checked.
+          assert!(resp.result.averages.len() >= 9);
         }),
       ),
       (
