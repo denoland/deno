@@ -3321,7 +3321,8 @@
       dynamicOffsetsDataLength,
     ) {
       webidl.assertBranded(this, GPURenderPassEncoder);
-      const prefix = "Failed to execute 'endPass' on 'GPURenderPassEncoder'";
+      const prefix =
+        "Failed to execute 'setBindGroup' on 'GPURenderPassEncoder'";
       const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -3823,17 +3824,27 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setPipeline' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
+      const pipelineRid = assertResource(pipeline, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, pipeline, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_compute_pass_set_pipeline", {
-        computePassRid: this[_rid],
-        pipeline: pipeline[_rid],
+        computePassRid,
+        pipeline: pipelineRid,
       });
     }
 
@@ -3849,16 +3860,17 @@
       x = webidl.converters.GPUSize32(x, { prefix, context: "Argument 1" });
       y = webidl.converters.GPUSize32(y, { prefix, context: "Argument 2" });
       z = webidl.converters.GPUSize32(z, { prefix, context: "Argument 3" });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'dispatch' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_compute_pass_dispatch", {
-        computePassRid: this[_rid],
+        computePassRid,
         x,
         y,
         z,
@@ -3882,17 +3894,27 @@
         prefix,
         context: "Argument 2",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
+      const indirectBufferRid = assertResource(indirectBuffer, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, indirectBuffer, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_compute_pass_dispatch_indirect", {
-        computePassRid: this[_rid],
-        indirectBuffer: indirectBuffer[_rid],
+        computePassRid: computePassRid,
+        indirectBuffer: indirectBufferRid,
         indirectOffset,
       });
     }
@@ -3914,19 +3936,29 @@
         prefix,
         context: "Argument 2",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'beginPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
+      const querySetRid = assertResource(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, querySet, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync(
         "op_webgpu_compute_pass_begin_pipeline_statistics_query",
         {
-          computePassRid: this[_rid],
-          querySet: querySet[_rid],
+          computePassRid,
+          querySet: querySetRid,
           queryIndex,
         },
       );
@@ -3934,16 +3966,19 @@
 
     endPipelineStatisticsQuery() {
       webidl.assertBranded(this, GPUComputePassEncoder);
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'endPipelineStatisticsQuery' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const prefix =
+        "Failed to execute 'endPipelineStatisticsQuery' on 'GPUComputePassEncoder'";
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_compute_pass_end_pipeline_statistics_query", {
-        computePassRid: this[_rid],
+        computePassRid,
       });
     }
 
@@ -3964,38 +3999,46 @@
         prefix,
         context: "Argument 2",
       });
-      const querySetRid = querySet[_rid];
-      if (querySetRid === undefined) {
-        throw new GPUValidationError(`${prefix}: GPUQuerySet is not valid.`);
-      }
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'writeTimestamp' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
+      const querySetRid = assertResource(querySet, {
+        prefix,
+        context: "Argument 1",
+      });
+      assertDeviceMatch(device, querySet, {
+        prefix,
+        resourceContext: "Argument 1",
+        selfContext: "this",
+      });
       core.jsonOpSync("op_webgpu_compute_pass_write_timestamp", {
-        computePassRid: this[_rid],
-        querySet: querySet[_rid],
+        computePassRid,
+        querySet: querySetRid,
         queryIndex,
       });
     }
 
     endPass() {
       webidl.assertBranded(this, GPUComputePassEncoder);
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'endPass' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const prefix = "Failed to execute 'endPass' on 'GPUComputePassEncoder'";
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const commandEncoderRid = assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
-        commandEncoderRid: this[_encoder][_rid],
-        computePassRid: this[_rid],
+        commandEncoderRid,
+        computePassRid,
       });
       this[_rid] = undefined;
     }
@@ -4008,21 +4051,34 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
-      const bind = bindGroup[_rid];
+      webidl.assertBranded(this, GPUComputePassEncoder);
+      const prefix =
+        "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
+      const device = assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
+      const bindGroupRid = assertResource(bindGroup, {
+        prefix,
+        context: "Argument 2",
+      });
+      assertDeviceMatch(device, bindGroup, {
+        prefix,
+        resourceContext: "Argument 2",
+        selfContext: "this",
+      });
       if (dynamicOffsetsData instanceof Uint32Array) {
         core.jsonOpSync(
           "op_webgpu_compute_pass_set_bind_group",
           {
-            computePassRid: this[_rid],
+            computePassRid,
             index,
-            bindGroup: bind,
+            bindGroup: bindGroupRid,
             dynamicOffsetsDataStart,
             dynamicOffsetsDataLength,
           },
@@ -4031,9 +4087,9 @@
       } else {
         dynamicOffsetsData ??= [];
         core.jsonOpSync("op_webgpu_compute_pass_set_bind_group", {
-          computePassRid: this[_rid],
+          computePassRid,
           index,
-          bindGroup: bind,
+          bindGroup: bindGroupRid,
           dynamicOffsetsData,
           dynamicOffsetsDataStart: 0,
           dynamicOffsetsDataLength: dynamicOffsetsData.length,
@@ -4053,32 +4109,36 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_compute_pass_push_debug_group", {
-        computePassRid: this[_rid],
+        computePassRid,
         groupLabel,
       });
     }
 
     popDebugGroup() {
       webidl.assertBranded(this, GPUComputePassEncoder);
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      const prefix =
+        "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder'";
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_compute_pass_pop_debug_group", {
-        computePassRid: this[_rid],
+        computePassRid,
       });
     }
 
@@ -4094,16 +4154,17 @@
         prefix,
         context: "Argument 1",
       });
-
-      if (this[_rid] === undefined) {
-        throw new DOMException(
-          "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder': already consumed",
-          "OperationError",
-        );
-      }
-
+      assertDevice(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      assertResource(this[_encoder], {
+        prefix,
+        context: "encoder referenced by this",
+      });
+      const computePassRid = assertResource(this, { prefix, context: "this" });
       core.jsonOpSync("op_webgpu_compute_pass_insert_debug_marker", {
-        computePassRid: this[_rid],
+        computePassRid,
         markerLabel,
       });
     }
