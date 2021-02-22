@@ -71,6 +71,20 @@ unitTest(function requiresOneArgument() {
   });
 });
 
+unitTest(function acceptsStringObjects() {
+  const url = "http://foo/";
+  {
+    const request = new Request(new String(url));
+    assertEquals(request.url, url);
+  }
+
+  {
+    const objectURL = new URL(url, location.href);
+    const request = new Request(objectURL);
+    assertEquals(request.url, url);
+  }
+});
+
 unitTest(function castsInitializerToDictionary(): void {
   const url = "https://foo/";
 
