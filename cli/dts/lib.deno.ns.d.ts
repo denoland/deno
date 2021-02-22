@@ -1418,9 +1418,9 @@ declare namespace Deno {
 
   export interface DirEntry {
     name: string;
-    isFile: boolean | null;
-    isDirectory: boolean | null;
-    isSymlink: boolean | null;
+    isFile: boolean;
+    isDirectory: boolean;
+    isSymlink: boolean;
   }
 
   /** Synchronously reads the directory given by `path` and returns an iterable

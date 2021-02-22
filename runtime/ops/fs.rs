@@ -1026,9 +1026,9 @@ fn op_read_dir_sync(
       if let Ok(name) = into_string(entry.file_name()) {
         Some(json!({
           "name": name,
-          "isFile": entry.file_type().map_or(None, |file_type| Some(file_type.is_file())),
-          "isDirectory": entry.file_type().map_or(None, |file_type| Some(file_type.is_dir())),
-          "isSymlink": entry.file_type().map_or(None, |file_type| Some(file_type.is_symlink())),
+          "isFile": entry.file_type().map_or(false, |file_type| file_type.is_file()),
+          "isDirectory": entry.file_type().map_or(false, |file_type| file_type.is_dir()),
+          "isSymlink": entry.file_type().map_or(false, |file_type| file_type.is_symlink()),
         }))
       } else {
         None
@@ -1059,9 +1059,9 @@ async fn op_read_dir_async(
         if let Ok(name) = into_string(entry.file_name()) {
           Some(json!({
             "name": name,
-            "isFile": entry.file_type().map_or(None, |file_type| Some(file_type.is_file())),
-            "isDirectory": entry.file_type().map_or(None, |file_type| Some(file_type.is_dir())),
-            "isSymlink": entry.file_type().map_or(None, |file_type| Some(file_type.is_symlink())),
+            "isFile": entry.file_type().map_or(false, |file_type| file_type.is_file()),
+            "isDirectory": entry.file_type().map_or(false, |file_type| file_type.is_dir()),
+            "isSymlink": entry.file_type().map_or(false, |file_type| file_type.is_symlink()),
           }))
         } else {
           None
