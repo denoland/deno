@@ -32,6 +32,14 @@ unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
   assertThrows(() => Deno.env.set("a=a", "v"), TypeError);
   assertThrows(() => Deno.env.set("a\0a", "v"), TypeError);
   assertThrows(() => Deno.env.set("TEST_VAR", "v\0v"), TypeError);
+
+  assertThrows(() => Deno.env.get(""), TypeError);
+  assertThrows(() => Deno.env.get("a=a"), TypeError);
+  assertThrows(() => Deno.env.get("a\0a"), TypeError);
+
+  assertThrows(() => Deno.env.delete(""), TypeError);
+  assertThrows(() => Deno.env.delete("a=a"), TypeError);
+  assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
 unitTest(function envPermissionDenied1(): void {

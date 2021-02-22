@@ -8,7 +8,6 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
@@ -88,6 +87,9 @@ fn op_get_env(
 ) -> Result<Value, AnyError> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().check_env()?;
+  if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error("Key contains invalid characters."));
+  }
   let r = match env::var(args.key) {
     Err(env::VarError::NotPresent) => json!([]),
     v => json!([v?]),
@@ -107,6 +109,9 @@ fn op_delete_env(
 ) -> Result<Value, AnyError> {
   let args: DeleteEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().check_env()?;
+  if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error("Key contains invalid characters."));
+  }
   env::remove_var(args.key);
   Ok(json!({}))
 }
