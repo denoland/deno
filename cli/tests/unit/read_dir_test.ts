@@ -84,7 +84,7 @@ unitTest(
   async function readDirDevFd(): Promise<
     void
   > {
-    for await(const _ of Deno.readDir("/dev/fd")) {
+    for await (const _ of Deno.readDir("/dev/fd")) {
       // We don't actually care whats in here; just that we don't panic on non regular entries
     }
   },
