@@ -737,48 +737,37 @@ impl JsRuntime {
   fn mod_instantiate(
     &mut self,
     id: ModuleId,
-    dyn_import_id: Option<ModuleLoadId>,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
-    let result = {
-      let scope =
+    let scope =
         &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-      let tc_scope = &mut v8::TryCatch::new(scope);
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
-      let module = state_rc
-        .borrow()
-        .modules
-        .get_handle(id)
-        .map(|handle| v8::Local::new(tc_scope, handle))
-        .expect("ModuleInfo not found");
+    let module = state_rc
+      .borrow()
+      .modules
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
+      .expect("ModuleInfo not found");
 
-      if module.get_status() == v8::ModuleStatus::Errored {
-        let exception = module.get_exception();
-        exception_to_err_result(tc_scope, exception, false)
-          .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
-      } else {
-        let instantiate_result = module
-          .instantiate_module(tc_scope, bindings::module_resolve_callback);
-        match instantiate_result {
-          Some(_) => Ok(()),
-          None => {
-            let exception = tc_scope.exception().unwrap();
-            exception_to_err_result(tc_scope, exception, false)
-              .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
-          }
+    if module.get_status() == v8::ModuleStatus::Errored {
+      let exception = module.get_exception();
+      exception_to_err_result(tc_scope, exception, false)
+        .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
+    } else {
+      let instantiate_result = module
+        .instantiate_module(tc_scope, bindings::module_resolve_callback);
+      match instantiate_result {
+        Some(_) => Ok(()),
+        None => {
+          let exception = tc_scope.exception().unwrap();
+          exception_to_err_result(tc_scope, exception, false)
+            .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
         }
       }
-    };
-
-    if let Some(dyn_import_id) = dyn_import_id {
-      if let Err(err) = result {
-        self.dyn_import_error(dyn_import_id, err);
-        return Ok(());
-      }
     }
-    result
   }
 
   /// Evaluates an already instantiated ES module.
@@ -1105,7 +1094,10 @@ impl JsRuntime {
             // The top-level module from a dynamic import has been instantiated.
             // Load is done.
             let module_id = load.root_module_id.unwrap();
-            self.mod_instantiate(module_id, Some(dyn_import_id))?;
+            let result = self.mod_instantiate(module_id);
+            if let Err(err) = result {
+              self.dyn_import_error(dyn_import_id, err);
+            }
             self.dyn_mod_evaluate(dyn_import_id, module_id)?;
           }
         }
@@ -1343,7 +1335,7 @@ impl JsRuntime {
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
-    self.mod_instantiate(root_id, None).map(|_| root_id)
+    self.mod_instantiate(root_id).map(|_| root_id)
   }
 
   fn poll_pending_ops(
@@ -2300,11 +2292,11 @@ pub mod tests {
       assert_eq!(imports.len(), 0);
     }
 
-    runtime.mod_instantiate(mod_b, None).unwrap();
+    runtime.mod_instantiate(mod_b).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    runtime.mod_instantiate(mod_a, None).unwrap();
+    runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     runtime.mod_evaluate_inner(mod_a);
