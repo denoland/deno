@@ -61,7 +61,7 @@ fn op_set_env(
     args.key.is_empty() || key_not_support_re.is_match(&args.key);
   let invalid_value = args.value.contains('\x00');
   if invalid_key || invalid_value {
-    return Err(type_error("Key or value contains unsupported charactors"));
+    return Err(type_error("Key or value contains invalid characters."));
   }
   env::set_var(args.key, args.value);
   Ok(json!({}))
