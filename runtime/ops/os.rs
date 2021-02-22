@@ -57,7 +57,7 @@ fn op_set_env(
   state.borrow::<Permissions>().check_env()?;
   let invalid_key =
     args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
-  let invalid_value = args.value.contains('\x00');
+  let invalid_value = args.value.contains('\0');
   if invalid_key || invalid_value {
     return Err(type_error("Key or value contains invalid characters."));
   }
