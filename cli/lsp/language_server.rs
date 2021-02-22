@@ -1914,7 +1914,7 @@ mod tests {
         let fixtures_path = test_util::root_path().join("cli/tests/lsp");
         assert!(fixtures_path.is_dir());
         let response: Result<Option<jsonrpc::Outgoing>, ExitedError> =
-          if *req_path_str == "" {
+          if req_path_str.is_empty() {
             Ok(None)
           } else {
             let req_path = fixtures_path.join(req_path_str);
