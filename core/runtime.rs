@@ -14,8 +14,8 @@ use crate::modules::LoadState;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
+use crate::modules::ModuleMap;
 use crate::modules::ModuleSource;
-use crate::modules::Modules;
 use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
@@ -112,7 +112,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub loader: Rc<dyn ModuleLoader>,
-  pub modules: Modules,
+  pub module_map: ModuleMap,
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
@@ -286,7 +286,7 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: false,
-      modules: Modules::new(),
+      module_map: ModuleMap::new(),
       loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
@@ -427,7 +427,7 @@ impl JsRuntime {
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
-    std::mem::take(&mut state.borrow_mut().modules);
+    std::mem::take(&mut state.borrow_mut().module_map);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -717,7 +717,7 @@ impl JsRuntime {
       import_specifiers.push(module_specifier);
     }
 
-    let id = state_rc.borrow_mut().modules.register(
+    let id = state_rc.borrow_mut().module_map.register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),
@@ -732,51 +732,36 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  fn mod_instantiate(
-    &mut self,
-    id: ModuleId,
-    dyn_import_id: Option<ModuleLoadId>,
-  ) -> Result<(), AnyError> {
+  fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
 
-    let result = {
-      let scope =
-        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-      let tc_scope = &mut v8::TryCatch::new(scope);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
-      let module = state_rc
-        .borrow()
-        .modules
-        .get_handle(id)
-        .map(|handle| v8::Local::new(tc_scope, handle))
-        .expect("ModuleInfo not found");
+    let module = state_rc
+      .borrow()
+      .module_map
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
+      .expect("ModuleInfo not found");
 
-      if module.get_status() == v8::ModuleStatus::Errored {
-        let exception = module.get_exception();
-        exception_to_err_result(tc_scope, exception, false)
-          .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
-      } else {
-        let instantiate_result = module
-          .instantiate_module(tc_scope, bindings::module_resolve_callback);
-        match instantiate_result {
-          Some(_) => Ok(()),
-          None => {
-            let exception = tc_scope.exception().unwrap();
-            exception_to_err_result(tc_scope, exception, false)
-              .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
-          }
+    if module.get_status() == v8::ModuleStatus::Errored {
+      let exception = module.get_exception();
+      exception_to_err_result(tc_scope, exception, false)
+        .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
+    } else {
+      let instantiate_result =
+        module.instantiate_module(tc_scope, bindings::module_resolve_callback);
+      match instantiate_result {
+        Some(_) => Ok(()),
+        None => {
+          let exception = tc_scope.exception().unwrap();
+          exception_to_err_result(tc_scope, exception, false)
+            .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
         }
       }
-    };
-
-    if let Some(dyn_import_id) = dyn_import_id {
-      if let Err(err) = result {
-        self.dyn_import_error(dyn_import_id, err);
-        return Ok(());
-      }
     }
-    result
   }
 
   /// Evaluates an already instantiated ES module.
@@ -795,7 +780,7 @@ impl JsRuntime {
 
     let module_handle = state_rc
       .borrow()
-      .modules
+      .module_map
       .get_handle(id)
       .expect("ModuleInfo not found");
 
@@ -806,59 +791,63 @@ impl JsRuntime {
       module.get_status()
     };
 
-    if status == v8::ModuleStatus::Instantiated {
-      // IMPORTANT: Top-level-await is enabled, which means that return value
-      // of module evaluation is a promise.
-      //
-      // This promise is internal, and not the same one that gets returned to
-      // the user. We add an empty `.catch()` handler so that it does not result
-      // in an exception if it rejects. That will instead happen for the other
-      // promise if not handled by the user.
-      //
-      // For more details see:
-      // https://github.com/denoland/deno/issues/4908
-      // https://v8.dev/features/top-level-await#module-execution-order
-      let scope =
-        &mut v8::HandleScope::with_context(self.v8_isolate(), context1);
-      let module = v8::Local::new(scope, &module_handle);
-      let maybe_value = module.evaluate(scope);
-
-      // Update status after evaluating.
-      let status = module.get_status();
-
-      if let Some(value) = maybe_value {
-        assert!(
-          status == v8::ModuleStatus::Evaluated
-            || status == v8::ModuleStatus::Errored
-        );
-        let promise = v8::Local::<v8::Promise>::try_from(value)
-          .expect("Expected to get promise as module evaluation result");
-        let empty_fn = |_scope: &mut v8::HandleScope,
-                        _args: v8::FunctionCallbackArguments,
-                        _rv: v8::ReturnValue| {};
-        let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
-        let empty_fn = empty_fn.get_function(scope).unwrap();
-        promise.catch(scope, empty_fn);
-        let mut state = state_rc.borrow_mut();
-        let promise_global = v8::Global::new(scope, promise);
-        let module_global = v8::Global::new(scope, module);
-
-        let dyn_import_mod_evaluate = DynImportModEvaluate {
-          module_id: id,
-          promise: promise_global,
-          module: module_global,
-        };
-
-        state
-          .pending_dyn_mod_evaluate
-          .insert(load_id, dyn_import_mod_evaluate);
-      } else {
-        assert!(status == v8::ModuleStatus::Errored);
-      }
-    }
-
+    // Since the same module might be dynamically imported more than once,
+    // we short-circuit is it is already evaluated.
     if status == v8::ModuleStatus::Evaluated {
       self.dyn_import_done(load_id, id);
+      return Ok(());
+    }
+
+    if status != v8::ModuleStatus::Instantiated {
+      return Ok(());
+    }
+
+    // IMPORTANT: Top-level-await is enabled, which means that return value
+    // of module evaluation is a promise.
+    //
+    // This promise is internal, and not the same one that gets returned to
+    // the user. We add an empty `.catch()` handler so that it does not result
+    // in an exception if it rejects. That will instead happen for the other
+    // promise if not handled by the user.
+    //
+    // For more details see:
+    // https://github.com/denoland/deno/issues/4908
+    // https://v8.dev/features/top-level-await#module-execution-order
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context1);
+    let module = v8::Local::new(scope, &module_handle);
+    let maybe_value = module.evaluate(scope);
+
+    // Update status after evaluating.
+    let status = module.get_status();
+
+    if let Some(value) = maybe_value {
+      assert!(
+        status == v8::ModuleStatus::Evaluated
+          || status == v8::ModuleStatus::Errored
+      );
+      let promise = v8::Local::<v8::Promise>::try_from(value)
+        .expect("Expected to get promise as module evaluation result");
+      let empty_fn = |_scope: &mut v8::HandleScope,
+                      _args: v8::FunctionCallbackArguments,
+                      _rv: v8::ReturnValue| {};
+      let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
+      let empty_fn = empty_fn.get_function(scope).unwrap();
+      promise.catch(scope, empty_fn);
+      let mut state = state_rc.borrow_mut();
+      let promise_global = v8::Global::new(scope, promise);
+      let module_global = v8::Global::new(scope, module);
+
+      let dyn_import_mod_evaluate = DynImportModEvaluate {
+        module_id: id,
+        promise: promise_global,
+        module: module_global,
+      };
+
+      state
+        .pending_dyn_mod_evaluate
+        .insert(load_id, dyn_import_mod_evaluate);
+    } else {
+      assert!(status == v8::ModuleStatus::Errored);
     }
 
     Ok(())
@@ -869,6 +858,8 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
+  ///
+  /// This function panics if module has not been instantiated.
   fn mod_evaluate_inner(
     &mut self,
     id: ModuleId,
@@ -880,60 +871,59 @@ impl JsRuntime {
 
     let module = state_rc
       .borrow()
-      .modules
+      .module_map
       .get_handle(id)
       .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
+    assert_eq!(status, v8::ModuleStatus::Instantiated);
 
     let (sender, receiver) = mpsc::channel(1);
 
-    if status == v8::ModuleStatus::Instantiated {
-      // IMPORTANT: Top-level-await is enabled, which means that return value
-      // of module evaluation is a promise.
-      //
-      // Because that promise is created internally by V8, when error occurs during
-      // module evaluation the promise is rejected, and since the promise has no rejection
-      // handler it will result in call to `bindings::promise_reject_callback` adding
-      // the promise to pending promise rejection table - meaning JsRuntime will return
-      // error on next poll().
-      //
-      // This situation is not desirable as we want to manually return error at the
-      // end of this function to handle it further. It means we need to manually
-      // remove this promise from pending promise rejection table.
-      //
-      // For more details see:
-      // https://github.com/denoland/deno/issues/4908
-      // https://v8.dev/features/top-level-await#module-execution-order
-      let maybe_value = module.evaluate(scope);
+    // IMPORTANT: Top-level-await is enabled, which means that return value
+    // of module evaluation is a promise.
+    //
+    // Because that promise is created internally by V8, when error occurs during
+    // module evaluation the promise is rejected, and since the promise has no rejection
+    // handler it will result in call to `bindings::promise_reject_callback` adding
+    // the promise to pending promise rejection table - meaning JsRuntime will return
+    // error on next poll().
+    //
+    // This situation is not desirable as we want to manually return error at the
+    // end of this function to handle it further. It means we need to manually
+    // remove this promise from pending promise rejection table.
+    //
+    // For more details see:
+    // https://github.com/denoland/deno/issues/4908
+    // https://v8.dev/features/top-level-await#module-execution-order
+    let maybe_value = module.evaluate(scope);
 
-      // Update status after evaluating.
-      status = module.get_status();
+    // Update status after evaluating.
+    status = module.get_status();
 
-      if let Some(value) = maybe_value {
-        assert!(
-          status == v8::ModuleStatus::Evaluated
-            || status == v8::ModuleStatus::Errored
-        );
-        let promise = v8::Local::<v8::Promise>::try_from(value)
-          .expect("Expected to get promise as module evaluation result");
-        let promise_global = v8::Global::new(scope, promise);
-        let mut state = state_rc.borrow_mut();
-        state.pending_promise_exceptions.remove(&promise_global);
-        let promise_global = v8::Global::new(scope, promise);
-        assert!(
-          state.pending_mod_evaluate.is_none(),
-          "There is already pending top level module evaluation"
-        );
+    if let Some(value) = maybe_value {
+      assert!(
+        status == v8::ModuleStatus::Evaluated
+          || status == v8::ModuleStatus::Errored
+      );
+      let promise = v8::Local::<v8::Promise>::try_from(value)
+        .expect("Expected to get promise as module evaluation result");
+      let promise_global = v8::Global::new(scope, promise);
+      let mut state = state_rc.borrow_mut();
+      state.pending_promise_exceptions.remove(&promise_global);
+      let promise_global = v8::Global::new(scope, promise);
+      assert!(
+        state.pending_mod_evaluate.is_none(),
+        "There is already pending top level module evaluation"
+      );
 
-        state.pending_mod_evaluate = Some(ModEvaluate {
-          promise: promise_global,
-          sender,
-        });
-        scope.perform_microtask_checkpoint();
-      } else {
-        assert!(status == v8::ModuleStatus::Errored);
-      }
+      state.pending_mod_evaluate = Some(ModEvaluate {
+        promise: promise_global,
+        sender,
+      });
+      scope.perform_microtask_checkpoint();
+    } else {
+      assert!(status == v8::ModuleStatus::Errored);
     }
 
     receiver
@@ -1000,7 +990,7 @@ impl JsRuntime {
     let module = {
       let state = state_rc.borrow();
       state
-        .modules
+        .module_map
         .get_handle(mod_id)
         .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found")
@@ -1103,7 +1093,10 @@ impl JsRuntime {
             // The top-level module from a dynamic import has been instantiated.
             // Load is done.
             let module_id = load.root_module_id.unwrap();
-            self.mod_instantiate(module_id, Some(dyn_import_id))?;
+            let result = self.mod_instantiate(module_id);
+            if let Err(err) = result {
+              self.dyn_import_error(dyn_import_id, err);
+            }
             self.dyn_mod_evaluate(dyn_import_id, module_id)?;
           }
         }
@@ -1256,13 +1249,13 @@ impl JsRuntime {
     if module_url_specified != module_url_found {
       let mut state = state_rc.borrow_mut();
       state
-        .modules
+        .module_map
         .alias(&module_url_specified, &module_url_found);
     }
 
     let maybe_mod_id = {
       let state = state_rc.borrow();
-      state.modules.get_id(&module_url_found)
+      state.module_map.get_id(&module_url_found)
     };
 
     let module_id = match maybe_mod_id {
@@ -1282,14 +1275,14 @@ impl JsRuntime {
     let imports = {
       let state_rc = Self::state(self.v8_isolate());
       let state = state_rc.borrow();
-      state.modules.get_children(module_id).unwrap().clone()
+      state.module_map.get_children(module_id).unwrap().clone()
     };
 
     for module_specifier in imports {
       let is_registered = {
         let state_rc = Self::state(self.v8_isolate());
         let state = state_rc.borrow();
-        state.modules.is_registered(&module_specifier)
+        state.module_map.is_registered(&module_specifier)
       };
       if !is_registered {
         load
@@ -1341,7 +1334,7 @@ impl JsRuntime {
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
-    self.mod_instantiate(root_id, None).map(|_| root_id)
+    self.mod_instantiate(root_id).map(|_| root_id)
   }
 
   fn poll_pending_ops(&mut self, cx: &mut Context) -> Vec<(OpId, Box<[u8]>)> {
@@ -2336,7 +2329,7 @@ pub mod tests {
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     {
       let state = state_rc.borrow();
-      let imports = state.modules.get_children(mod_a);
+      let imports = state.module_map.get_children(mod_a);
       assert_eq!(
         imports,
         Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
@@ -2347,15 +2340,15 @@ pub mod tests {
       .unwrap();
     {
       let state = state_rc.borrow();
-      let imports = state.modules.get_children(mod_b).unwrap();
+      let imports = state.module_map.get_children(mod_b).unwrap();
       assert_eq!(imports.len(), 0);
     }
 
-    runtime.mod_instantiate(mod_b, None).unwrap();
+    runtime.mod_instantiate(mod_b).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    runtime.mod_instantiate(mod_a, None).unwrap();
+    runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     runtime.mod_evaluate_inner(mod_a);
