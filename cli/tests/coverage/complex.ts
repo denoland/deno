@@ -48,3 +48,5 @@ export function unused(
     baz,
   );
 }
+
+export const π = Math.PI;

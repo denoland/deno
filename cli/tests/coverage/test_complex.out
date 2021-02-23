@@ -5,7 +5,7 @@ test complex ... ok ([WILDCARD])
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
-cover [WILDCARD]/coverage/complex.ts ... 66.667% (20/30)
+cover [WILDCARD]/coverage/complex.ts ... 67.742% (21/31)
   40 | export function unused(
   41 |   foo: string,
   42 |   bar: string,
