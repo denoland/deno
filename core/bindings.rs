@@ -368,7 +368,7 @@ fn send<'s>(
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow_mut();
+  let mut state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map_err(AnyError::from)
@@ -412,12 +412,12 @@ fn send<'s>(
     Op::Async(fut) => {
       let fut2 = fut.map(move |buf| (op_id, buf));
       state.pending_ops.push(fut2.boxed_local());
-      state.have_unpolled_ops.set(true);
+      state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
       let fut2 = fut.map(move |buf| (op_id, buf));
       state.pending_unref_ops.push(fut2.boxed_local());
-      state.have_unpolled_ops.set(true);
+      state.have_unpolled_ops = true;
     }
     Op::NotFound => {
       let msg = format!("Unknown op id: {}", op_id);
