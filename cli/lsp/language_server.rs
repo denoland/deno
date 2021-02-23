@@ -227,14 +227,13 @@ impl Inner {
       self.performance.measure(mark);
       Ok(navigation_tree.clone())
     } else {
-      let res = self
+      let navigation_tree: tsc::NavigationTree = self
         .ts_server
         .request(
           self.snapshot(),
           tsc::RequestMethod::GetNavigationTree(specifier.clone()),
         )
         .await?;
-      let navigation_tree: tsc::NavigationTree = serde_json::from_value(res)?;
       self
         .navigation_trees
         .insert(specifier.clone(), navigation_tree.clone());
@@ -512,7 +511,7 @@ impl Inner {
         warn!("{}", ignored_options);
       }
     }
-    self
+    let _ok: bool = self
       .ts_server
       .request(self.snapshot(), tsc::RequestMethod::Configure(tsconfig))
       .await?;
@@ -588,16 +587,11 @@ impl Inner {
     }
 
     if capabilities.code_action_provider.is_some() {
-      let res = self
+      let fixable_diagnostics: Vec<String> = self
         .ts_server
         .request(self.snapshot(), tsc::RequestMethod::GetSupportedCodeFixes)
         .await
         .map_err(|err| {
-          error!("Unable to get fixable diagnostics: {}", err);
-          LspError::internal_error()
-        })?;
-      let fixable_diagnostics: Vec<String> =
-        from_value(res).map_err(|err| {
           error!("Unable to get fixable diagnostics: {}", err);
           LspError::internal_error()
         })?;
@@ -877,11 +871,14 @@ impl Inner {
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
     ));
-    // TODO(lucacasonato): handle error correctly
-    let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
-    // TODO(lucacasonato): handle error correctly
-    let maybe_quick_info: Option<tsc::QuickInfo> =
-      serde_json::from_value(res).unwrap();
+    let maybe_quick_info: Option<tsc::QuickInfo> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get quick info: {}", err);
+        LspError::internal_error()
+      })?;
     if let Some(quick_info) = maybe_quick_info {
       let hover = quick_info.to_hover(&line_index);
       self.performance.measure(mark);
@@ -953,18 +950,13 @@ impl Inner {
             line_index.offset_tsc(diagnostic.range.end)?,
             codes,
           ));
-          let res =
+          let actions: Vec<tsc::CodeFixAction> =
             self.ts_server.request(self.snapshot(), req).await.map_err(
               |err| {
                 error!("Error getting actions from TypeScript: {}", err);
                 LspError::internal_error()
               },
             )?;
-          let actions: Vec<tsc::CodeFixAction> =
-            from_value(res).map_err(|err| {
-              error!("Cannot decode actions from TypeScript: {}", err);
-              LspError::internal_error()
-            })?;
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, self)
@@ -1005,46 +997,42 @@ impl Inner {
     params: CodeAction,
   ) -> LspResult<CodeAction> {
     let mark = self.performance.mark("code_action_resolve");
-    let result =
-      if let Some(data) = params.data.clone() {
-        let code_action_data: CodeActionData =
-          from_value(data).map_err(|err| {
-            error!("Unable to decode code action data: {}", err);
-            LspError::invalid_params("The CodeAction's data is invalid.")
-          })?;
-        let req = tsc::RequestMethod::GetCombinedCodeFix((
-          code_action_data.specifier,
-          json!(code_action_data.fix_id.clone()),
-        ));
-        let res = self.ts_server.request(self.snapshot(), req).await.map_err(
-          |err| {
-            error!("Unable to get combined fix from TypeScript: {}", err);
-            LspError::internal_error()
-          },
-        )?;
-        let combined_code_actions: tsc::CombinedCodeActions =
-          from_value(res).map_err(|err| {
-            error!("Cannot decode combined actions from TypeScript: {}", err);
-            LspError::internal_error()
-          })?;
-        if combined_code_actions.commands.is_some() {
-          error!("Deno does not support code actions with commands.");
-          Err(LspError::invalid_request())
-        } else {
-          let mut code_action = params.clone();
-          code_action.edit =
-            ts_changes_to_edit(&combined_code_actions.changes, self)
-              .await
-              .map_err(|err| {
-                error!("Unable to convert changes to edits: {}", err);
-                LspError::internal_error()
-              })?;
-          Ok(code_action)
-        }
+    let result = if let Some(data) = params.data.clone() {
+      let code_action_data: CodeActionData =
+        from_value(data).map_err(|err| {
+          error!("Unable to decode code action data: {}", err);
+          LspError::invalid_params("The CodeAction's data is invalid.")
+        })?;
+      let req = tsc::RequestMethod::GetCombinedCodeFix((
+        code_action_data.specifier,
+        json!(code_action_data.fix_id.clone()),
+      ));
+      let combined_code_actions: tsc::CombinedCodeActions = self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Unable to get combined fix from TypeScript: {}", err);
+          LspError::internal_error()
+        })?;
+      if combined_code_actions.commands.is_some() {
+        error!("Deno does not support code actions with commands.");
+        Err(LspError::invalid_request())
       } else {
-        // The code action doesn't need to be resolved
-        Ok(params)
-      };
+        let mut code_action = params.clone();
+        code_action.edit =
+          ts_changes_to_edit(&combined_code_actions.changes, self)
+            .await
+            .map_err(|err| {
+              error!("Unable to convert changes to edits: {}", err);
+              LspError::internal_error()
+            })?;
+        Ok(code_action)
+      }
+    } else {
+      // The code action doesn't need to be resolved
+      Ok(params)
+    };
     self.performance.measure(mark);
     result
   }
@@ -1191,18 +1179,13 @@ impl Inner {
             code_lens_data.specifier.clone(),
             line_index.offset_tsc(params.range.start)?,
           ));
-          let res =
+          let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
             self.ts_server.request(self.snapshot(), req).await.map_err(
               |err| {
                 error!("Error processing TypeScript request: {}", err);
                 LspError::internal_error()
               },
             )?;
-          let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
-            serde_json::from_value(res).map_err(|err| {
-              error!("Error deserializing response: {}", err);
-              LspError::internal_error()
-            })?;
           if let Some(implementations) = maybe_implementations {
             let mut locations = Vec::new();
             for implementation in implementations {
@@ -1275,18 +1258,13 @@ impl Inner {
             code_lens_data.specifier.clone(),
             line_index.offset_tsc(params.range.start)?,
           ));
-          let res =
+          let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
             self.ts_server.request(self.snapshot(), req).await.map_err(
               |err| {
                 error!("Error processing TypeScript request: {}", err);
                 LspError::internal_error()
               },
             )?;
-          let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
-            serde_json::from_value(res).map_err(|err| {
-              error!("Error deserializing response: {}", err);
-              LspError::internal_error()
-            })?;
           if let Some(references) = maybe_references {
             let mut locations = Vec::new();
             for reference in references {
@@ -1393,11 +1371,14 @@ impl Inner {
       line_index.offset_tsc(params.text_document_position_params.position)?,
       files_to_search,
     ));
-    // TODO(lucacasonato): handle error correctly
-    let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
-    // TODO(lucacasonato): handle error correctly
-    let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> =
-      serde_json::from_value(res).unwrap();
+    let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get document highlights from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
 
     if let Some(document_highlights) = maybe_document_highlights {
       let result = document_highlights
@@ -1437,11 +1418,14 @@ impl Inner {
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
     ));
-    // TODO(lucacasonato): handle error correctly
-    let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
-    // TODO(lucacasonato): handle error correctly
-    let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
-      serde_json::from_value(res).unwrap();
+    let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get references from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
 
     if let Some(references) = maybe_references {
       let mut results = Vec::new();
@@ -1489,11 +1473,14 @@ impl Inner {
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
     ));
-    // TODO(lucacasonato): handle error correctly
-    let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
-    // TODO(lucacasonato): handle error correctly
-    let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> =
-      serde_json::from_value(res).unwrap();
+    let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get definition from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
 
     if let Some(definition) = maybe_definition {
       let results = definition.to_definition(&line_index, self).await;
@@ -1535,11 +1522,14 @@ impl Inner {
         ..Default::default()
       },
     ));
-    // TODO(lucacasonato): handle error correctly
-    let res = self.ts_server.request(self.snapshot(), req).await.unwrap();
-    // TODO(lucacasonato): handle error correctly
-    let maybe_completion_info: Option<tsc::CompletionInfo> =
-      serde_json::from_value(res).unwrap();
+    let maybe_completion_info: Option<tsc::CompletionInfo> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get completion info from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
 
     if let Some(completions) = maybe_completion_info {
       let results = completions.into_completion_response(&line_index);
@@ -1576,20 +1566,13 @@ impl Inner {
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
     ));
-    let res =
-      self
-        .ts_server
-        .request(self.snapshot(), req)
-        .await
-        .map_err(|err| {
-          error!("Failed to request to tsserver {}", err);
-          LspError::invalid_request()
-        })?;
-
-    let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = serde_json::from_value(res)
+    let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
       .map_err(|err| {
-        error!("Failed to deserialized tsserver response to Vec<ImplementationLocation> {}", err);
-        LspError::internal_error()
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
       })?;
 
     let result = if let Some(implementations) = maybe_implementations {
@@ -1638,26 +1621,14 @@ impl Inner {
       false,
     ));
 
-    let res =
-      self
-        .ts_server
-        .request(self.snapshot(), req)
-        .await
-        .map_err(|err| {
-          error!("Failed to request to tsserver {}", err);
-          LspError::invalid_request()
-        })?;
-
-    let maybe_locations = serde_json::from_value::<
-      Option<Vec<tsc::RenameLocation>>,
-    >(res)
-    .map_err(|err| {
-      error!(
-        "Failed to deserialize tsserver response to Vec<RenameLocation> {}",
-        err
-      );
-      LspError::internal_error()
-    })?;
+    let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
 
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
@@ -1751,19 +1722,13 @@ impl Inner {
       line_index.offset_tsc(params.text_document_position_params.position)?,
       options,
     ));
-    let res =
-      self
-        .ts_server
-        .request(self.snapshot(), req)
-        .await
-        .map_err(|err| {
-          error!("Failed to request to tsserver: {}", err);
-          LspError::invalid_request()
-        })?;
-    let maybe_signature_help_items: Option<tsc::SignatureHelpItems> =
-      serde_json::from_value(res).map_err(|err| {
-        error!("Failed to deserialize tsserver response: {}", err);
-        LspError::internal_error()
+    let maybe_signature_help_items: Option<tsc::SignatureHelpItems> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver: {}", err);
+        LspError::invalid_request()
       })?;
 
     if let Some(signature_help_items) = maybe_signature_help_items {
