@@ -1179,7 +1179,7 @@ Generate html reports from lcov:
     .arg(
       Arg::with_name("lcov")
         .long("lcov")
-        .help("Output cover result in lcov format")
+        .help("Output coverage report in lcov format")
         .takes_value(false),
     )
     .arg(
