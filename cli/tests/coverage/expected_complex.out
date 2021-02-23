@@ -1,10 +1,3 @@
-Check [WILDCARD]/test_complex.ts
-Check [WILDCARD]/$deno$test.ts
-running 1 tests
-test complex ... ok ([WILDCARD])
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
-
 cover [WILDCARD]/coverage/complex.ts ... 61.111% (22/36)
   40 | export function unused(
   41 |   foo: string,
