@@ -220,7 +220,7 @@ formats by the `deno coverage` tool.
 
 ```
 # Go into your project's working directory
-git clone https://github.com/denoland/deno_std && cd deno_std
+git clone https://github.com/oakserver/oak && cd oak
 
 # Collect your coverage profile with deno test --coverage=<output_directory>
 deno test --coverage=cov_profile --unstable
