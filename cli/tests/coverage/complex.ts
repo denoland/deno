@@ -50,3 +50,8 @@ export function unused(
 }
 
 export const π = Math.PI;
+export function ƒ(): number {
+  return (
+    0
+  );
+}

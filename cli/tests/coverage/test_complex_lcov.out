@@ -9,10 +9,12 @@ SF:[WILDCARD]complex.ts
 FN:19,dependency
 FN:32,complex
 FN:45,unused
+FN:54,ƒ
 FNDA:1,dependency
 FNDA:1,complex
 FNDA:0,unused
-FNF:3
+FNDA:0,ƒ
+FNF:4
 FNH:2
 BRF:0
 BRH:0
@@ -47,6 +49,11 @@ DA:48,0
 DA:49,0
 DA:50,0
 DA:52,1
-LH:21
-LF:31
+DA:53,0
+DA:54,0
+DA:55,0
+DA:56,0
+DA:57,1
+LH:22
+LF:36
 end_of_record
