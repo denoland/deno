@@ -237,6 +237,10 @@ impl CoverageReporter for LcovCoverageReporter {
         // Block number and branch number are gcc internal IDs for the branch. Taken is either '-'
         // if the basic block containing the branch was never executed or a number indicating how
         // often that branch was taken.
+        //
+        // However with the data we get from v8 coverage profiles it seems we can't actually hit
+        // this as appears it won't consider any nested branches it hasn't seen but its here for
+        // the sake of accuracy.
         let taken = if block_hits > 0 {
           range.count.to_string()
         } else {
