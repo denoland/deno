@@ -1,18 +1,20 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::serde_json::{self, Value};
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::convert::From;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 use std::time::SystemTime;
-use std::{
-  collections::HashMap,
-  convert::From,
-  env, fs,
-  path::PathBuf,
-  process::{Command, Stdio},
-};
 
 mod http;
+mod lsp;
 mod throughput;
 
 fn read_json(filename: &str) -> Result<Value> {
@@ -410,38 +412,40 @@ fn cargo_deps() -> usize {
 
 #[derive(Serialize)]
 struct BenchResult {
-  created_at: String,
-  sha1: String,
-  binary_size: HashMap<String, u64>,
-  bundle_size: HashMap<String, u64>,
-  cargo_deps: usize,
   // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
   // When this is changed, the historical data in gh-pages branch needs to be
   // changed too.
   benchmark: HashMap<String, HashMap<String, f64>>,
-  throughput: HashMap<String, f64>,
-  max_memory: HashMap<String, u64>,
-  req_per_sec: HashMap<String, u64>,
+  binary_size: HashMap<String, u64>,
+  bundle_size: HashMap<String, u64>,
+  cargo_deps: usize,
+  created_at: String,
   max_latency: HashMap<String, f64>,
-  thread_count: HashMap<String, u64>,
+  max_memory: HashMap<String, u64>,
+  lsp_exec_time: HashMap<String, u128>,
+  req_per_sec: HashMap<String, u64>,
+  sha1: String,
   syscall_count: HashMap<String, u64>,
+  thread_count: HashMap<String, u64>,
+  throughput: HashMap<String, f64>,
 }
 
 impl BenchResult {
   pub fn new() -> BenchResult {
     BenchResult {
-      created_at: String::new(),
-      sha1: String::new(),
+      benchmark: HashMap::new(),
       binary_size: HashMap::new(),
       bundle_size: HashMap::new(),
       cargo_deps: 0,
-      benchmark: HashMap::new(),
-      throughput: HashMap::new(),
-      max_memory: HashMap::new(),
-      req_per_sec: HashMap::new(),
+      created_at: String::new(),
       max_latency: HashMap::new(),
-      thread_count: HashMap::new(),
+      max_memory: HashMap::new(),
+      lsp_exec_time: HashMap::new(),
+      req_per_sec: HashMap::new(),
+      sha1: String::new(),
       syscall_count: HashMap::new(),
+      thread_count: HashMap::new(),
+      throughput: HashMap::new(),
     }
   }
 }
@@ -479,6 +483,7 @@ fn main() -> Result<()> {
   .trim()
   .to_string();
 
+  new_data.lsp_exec_time = lsp::run_local(lsp::benchmarks(&deno_exe))?;
   new_data.binary_size = get_binary_sizes(&target_dir)?;
   new_data.bundle_size = bundle_benchmark(&deno_exe)?;
   new_data.cargo_deps = cargo_deps();
