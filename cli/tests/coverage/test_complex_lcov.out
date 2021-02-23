@@ -8,7 +8,7 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WIL
 SF:[WILDCARD]complex.ts
 FN:19,dependency
 FN:32,complex
-FN:44,unused
+FN:45,unused
 FNDA:1,dependency
 FNDA:1,complex
 FNDA:0,unused
@@ -36,16 +36,16 @@ DA:34,2
 DA:35,2
 DA:36,2
 DA:37,1
-DA:39,0
 DA:40,0
 DA:41,0
 DA:42,0
-DA:44,0
+DA:43,0
 DA:45,0
 DA:46,0
 DA:47,0
 DA:48,0
 DA:49,0
+DA:50,0
 LH:20
 LF:30
 end_of_record

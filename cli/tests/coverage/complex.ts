@@ -10,7 +10,7 @@ export interface Complex {
   baz: string;
 }
 
-// More padding
+// 패딩에 대한 더 많은 문자.
 function dependency(
   foo: string,
   bar: string,
@@ -23,7 +23,7 @@ function dependency(
   };
 }
 
-// And yet even more padding
+// 良い対策のためにいくつかのユニコード文字を投げる。
 export function complex(
   foo: string,
   bar: string,
@@ -36,6 +36,7 @@ export function complex(
   );
 }
 
+// 更多用於填充的字元。
 export function unused(
   foo: string,
   bar: string,

@@ -6,14 +6,14 @@ test complex ... ok ([WILDCARD])
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
 cover [WILDCARD]/coverage/complex.ts ... 66.667% (20/30)
-  39 | export function unused(
-  40 |   foo: string,
-  41 |   bar: string,
-  42 |   baz: string,
+  40 | export function unused(
+  41 |   foo: string,
+  42 |   bar: string,
+  43 |   baz: string,
 -----|-----
-  44 |   return complex(
-  45 |     foo,
-  46 |     bar,
-  47 |     baz,
-  48 |   );
-  49 | }
+  45 |   return complex(
+  46 |     foo,
+  47 |     bar,
+  48 |     baz,
+  49 |   );
+  50 | }
