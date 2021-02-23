@@ -419,6 +419,8 @@ impl ModuleMap {
     }
   }
 
+  /// Get module id, following all aliases in case of module specifier
+  /// that had been redirected.
   pub fn get_id(&self, name: &str) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {

@@ -771,9 +771,6 @@ impl JsRuntime {
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  ///
-  /// Since the same module might be dynamically imported more than once,
-  /// this function is a noop if module was already evaluated.
   pub fn dyn_mod_evaluate(
     &mut self,
     load_id: ModuleLoadId,
@@ -795,6 +792,13 @@ impl JsRuntime {
       let module = module_handle.get(scope);
       module.get_status()
     };
+
+    // Since the same module might be dynamically imported more than once,
+    // we short-circuit is it is already evaluated.
+    if status == v8::ModuleStatus::Evaluated {
+      self.dyn_import_done(load_id, id);
+      return Ok(());
+    }
 
     if status != v8::ModuleStatus::Instantiated {
       return Ok(());
