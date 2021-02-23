@@ -3979,6 +3979,8 @@ console.log("finish");
         panic!("pattern match failed");
       }
 
+      assert!(output.status.success());
+
       let output = util::deno_cmd()
         .current_dir(util::root_path())
         .arg("coverage")
@@ -4004,6 +4006,8 @@ console.log("finish");
         println!("EXPECTED\n{}\nEXPECTED", expected);
         panic!("pattern match failed");
       }
+
+      assert!(output.status.success());
     }
 
     #[test]
@@ -4047,6 +4051,8 @@ console.log("finish");
         panic!("pattern match failed");
       }
 
+      assert!(output.status.success());
+
       let output = util::deno_cmd()
         .current_dir(util::root_path())
         .arg("coverage")
@@ -4072,6 +4078,8 @@ console.log("finish");
         println!("EXPECTED\n{}\nEXPECTED", expected);
         panic!("pattern match failed");
       }
+
+      assert!(output.status.success());
     }
   }
 
