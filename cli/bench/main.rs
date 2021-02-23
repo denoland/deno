@@ -483,7 +483,8 @@ fn main() -> Result<()> {
   .trim()
   .to_string();
 
-  new_data.lsp_exec_time = lsp::run_local(lsp::benchmarks(&deno_exe))?;
+  new_data.lsp_exec_time = lsp::benchmarks(&deno_exe)?;
+  /*
   new_data.binary_size = get_binary_sizes(&target_dir)?;
   new_data.bundle_size = bundle_benchmark(&deno_exe)?;
   new_data.cargo_deps = cargo_deps();
@@ -500,6 +501,7 @@ fn main() -> Result<()> {
     run_strace_benchmarks(&deno_exe, &mut new_data)?;
     new_data.max_memory = run_max_mem_benchmark(&deno_exe)?;
   }
+  */
 
   println!("===== <BENCHMARK RESULTS>");
   serde_json::to_writer_pretty(std::io::stdout(), &new_data)?;
