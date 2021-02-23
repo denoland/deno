@@ -1,7 +1,9 @@
 SF:[WILDCARD]branch.ts
 FN:2,branch
+FN:10,unused
 FNDA:1,branch
-FNF:1
+FNDA:0,unused
+FNF:2
 FNH:1
 BRDA:4,1,0,0
 BRF:1
@@ -13,6 +15,13 @@ DA:4,0
 DA:5,0
 DA:6,0
 DA:7,1
+DA:9,0
+DA:10,0
+DA:11,0
+DA:12,0
+DA:13,0
+DA:14,0
+DA:15,0
 LH:4
-LF:7
+LF:14
 end_of_record
