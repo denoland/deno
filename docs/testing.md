@@ -234,3 +234,11 @@ deno coverage --unstable cov_profile --lcov > cov_profile.lcov
 # Which can then be further processed by tools like genhtml
 genhtml -o cov_profile/html cov_profile.lcov
 ```
+
+By default, `deno coverage` will exclude any files matching the regular
+expression `test\.(js|mjs|ts|jsx|tsx)` and only consider including files
+matching the regular expression `^file:`.
+
+These filters can be overriden using the `--exclude` and `--include` flags. A
+source file's url must match both regular expressions for it to be a part of the
+report.
