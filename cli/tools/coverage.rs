@@ -217,6 +217,7 @@ impl CoverageReporter for LcovCoverageReporter {
     let mut branches_hit = 0;
     for (block_number, function) in script_coverage.functions.iter().enumerate()
     {
+      let block_hits = function.ranges[0].count;
       for (branch_number, range) in function.ranges[1..].iter().enumerate() {
         let source_line =
           script_source[0..range.start_offset].split('\n').count();
@@ -231,7 +232,16 @@ impl CoverageReporter for LcovCoverageReporter {
           source_line
         };
 
-        let taken = range.count;
+        // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
+        //
+        // Block number and branch number are gcc internal IDs for the branch. Taken is either '-'
+        // if the basic block containing the branch was never executed or a number indicating how
+        // often that branch was taken.
+        let taken = if block_hits > 0 {
+          range.count.to_string()
+        } else {
+          "-".to_string()
+        };
 
         println!(
           "BRDA:{},{},{},{}",
