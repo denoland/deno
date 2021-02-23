@@ -1129,6 +1129,7 @@ struct SourceSnapshotArgs {
 
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
+#[allow(clippy::unnecessary_wraps)]
 fn dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
@@ -1354,7 +1355,7 @@ fn script_names(
       .documents
       .open_specifiers()
       .into_iter()
-      .map(|s| s.clone())
+      .cloned()
       .collect(),
   )
 }
@@ -1398,6 +1399,7 @@ struct SetAssetArgs {
   text: Option<String>,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn set_asset(state: &mut State, args: SetAssetArgs) -> Result<bool, AnyError> {
   state.asset = args.text;
   Ok(true)
