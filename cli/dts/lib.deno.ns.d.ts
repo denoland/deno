@@ -109,8 +109,8 @@ declare namespace Deno {
      * to true. */
     sanitizeResources?: boolean;
 
-    /** Override the behavior of Deno.exit with an assertion to ensure the test
-     * case does not accidentally prematurely exit. Defaults to true. */
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
   }
 
