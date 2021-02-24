@@ -1,6 +1,6 @@
 // This entire interface should be completely ignored by the coverage tool.
 export interface Complex {
-  // These are comments.
+  // These comments should be ignored.
   foo: string;
 
   // But this is a stub, so this isn't really documentation.
@@ -10,6 +10,9 @@ export interface Complex {
   baz: string;
 }
 
+// Lets add some wide characters to ensure that the absolute byte offsets are
+// being matched properly.
+//
 // 패딩에 대한 더 많은 문자.
 function dependency(
   foo: string,
@@ -23,6 +26,8 @@ function dependency(
   };
 }
 
+// Again just more wide characters for padding.
+//
 // 良い対策のためにいくつかのユニコード文字を投げる。
 export function complex(
   foo: string,
@@ -36,6 +41,7 @@ export function complex(
   );
 }
 
+// And yet again for good measure.
 // 更多用於填充的字元。
 export function unused(
   foo: string,
@@ -49,7 +55,12 @@ export function unused(
   );
 }
 
+// Using a non-ascii name again to ensure that the byte offsets match up
+// correctly.
 export const π = Math.PI;
+
+// And same applies for this one, this one is unused and will show up in
+// lacking coverage.
 export function ƒ(): number {
   return (
     0
