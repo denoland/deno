@@ -2252,6 +2252,12 @@ mod integration {
     assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
   }
 
+  itest!(test_exit_sanitizer {
+    args: "test exit_sanitizer_test.ts",
+    output: "exit_sanitizer_test.out",
+    exit_code: 1,
+  });
+
   itest!(stdout_write_all {
     args: "run --quiet stdout_write_all.ts",
     output: "stdout_write_all.out",
