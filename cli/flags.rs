@@ -14,7 +14,6 @@ use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
@@ -34,6 +33,13 @@ pub enum DenoSubcommand {
   },
   Completions {
     buf: Box<[u8]>,
+  },
+  Coverage {
+    files: Vec<PathBuf>,
+    ignore: Vec<PathBuf>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    lcov: bool,
   },
   Doc {
     private: bool,
@@ -300,6 +306,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     types_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("cache") {
     cache_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("coverage") {
+    coverage_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("info") {
     info_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("eval") {
@@ -375,6 +383,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(cache_subcommand())
     .subcommand(compile_subcommand())
     .subcommand(completions_subcommand())
+    .subcommand(coverage_subcommand())
     .subcommand(doc_subcommand())
     .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
@@ -569,6 +578,33 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Cache { files };
 }
 
+fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let files = match matches.values_of("files") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
+  let include = match matches.values_of("include") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+  let exclude = match matches.values_of("exclude") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+  let lcov = matches.is_present("lcov");
+  flags.subcommand = DenoSubcommand::Coverage {
+    files,
+    ignore,
+    include,
+    exclude,
+    lcov,
+  };
+}
+
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
     let lockfile = matches.value_of("lock").unwrap();
@@ -672,23 +708,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
 
-  flags.coverage_dir = if matches.is_present("coverage") {
-    if let Some(coverage_dir) = matches.value_of("coverage") {
-      Some(coverage_dir.to_string())
-    } else {
-      Some(
-        TempDir::new()
-          .unwrap()
-          .into_path()
-          .to_str()
-          .unwrap()
-          .to_string(),
-      )
-    }
-  } else {
-    None
-  };
-
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
       .values_of("script_arg")
@@ -712,6 +731,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
     no_run,
     fail_fast,
@@ -1099,6 +1119,77 @@ Future runs of this module will trigger no downloads or compilation unless
     )
 }
 
+fn coverage_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("coverage")
+    .about("Print coverage reports")
+    .long_about(
+      "Print coverage reports from coverage profiles.
+
+Collect a coverage profile with deno test:
+  deno test --coverage=cov_profile
+
+Print a report to stdout:
+  deno coverage cov_profile
+
+Include urls that start with the file schema:
+  deno coverage --include=\"^file:\" cov_profile
+
+Exclude urls ending with test.ts and test.js:
+  deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
+
+Include urls that start with the file schema and exclude files ending with test.ts and test.js, for
+an url to match it must match the include pattern and not match the exclude pattern:
+  deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
+
+Write a report using the lcov format:
+  deno coverage --lcov cov_profile > cov.lcov
+
+Generate html reports from lcov:
+  genhtml -o html_cov cov.lcov
+",
+    )
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore coverage files"),
+    )
+    .arg(
+      Arg::with_name("include")
+        .long("include")
+        .takes_value(true)
+        .value_name("regex")
+        .multiple(true)
+        .require_equals(true)
+        .default_value(r"^file:")
+        .help("Include source files in the report"),
+    )
+    .arg(
+      Arg::with_name("exclude")
+        .long("exclude")
+        .takes_value(true)
+        .value_name("regex")
+        .multiple(true)
+        .require_equals(true)
+        .default_value(r"test\.(js|mjs|ts|jsx|tsx)$")
+        .help("Exclude source files from the report"),
+    )
+    .arg(
+      Arg::with_name("lcov")
+        .long("lcov")
+        .help("Output coverage report in lcov format")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("files")
+        .takes_value(true)
+        .multiple(true)
+        .required(true),
+    )
+}
+
 fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("upgrade")
     .about("Upgrade deno executable to given version")
@@ -1391,14 +1482,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("coverage")
         .long("coverage")
-        .min_values(0)
-        .max_values(1)
         .require_equals(true)
         .takes_value(true)
         .requires("unstable")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage information"),
+        .help("Collect coverage profile data"),
     )
     .arg(
       Arg::with_name("files")
@@ -3424,6 +3513,24 @@ mod tests {
         allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn coverage() {
+    let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Coverage {
+          files: vec![PathBuf::from("foo.json")],
+          ignore: vec![],
+          include: vec![r"^file:".to_string()],
+          exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
+          lcov: false,
+        },
         ..Flags::default()
       }
     );

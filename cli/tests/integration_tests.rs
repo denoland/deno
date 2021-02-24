@@ -3612,48 +3612,6 @@ console.log("finish");
     output: "redirect_cache.out",
   });
 
-  itest!(deno_test_coverage {
-    args: "test --coverage --unstable test_coverage.ts",
-    output: "test_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_comment_coverage {
-    args: "test --coverage --unstable test_comment_coverage.ts",
-    output: "test_comment_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_branch_coverage {
-    args: "test --coverage --unstable test_branch_coverage.ts",
-    output: "test_branch_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_coverage_explicit {
-    args: "test --coverage=.test_coverage --unstable test_coverage.ts",
-    output: "test_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_run_test_coverage {
-    args: "test --allow-all --coverage --unstable test_run_test_coverage.ts",
-    output: "test_run_test_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_run_run_coverage {
-    args: "test --allow-all --coverage --unstable test_run_run_coverage.ts",
-    output: "test_run_run_coverage.out",
-    exit_code: 0,
-  });
-
-  itest!(deno_test_run_combined_coverage {
-    args: "test --allow-all --coverage --unstable test_run_run_coverage.ts test_run_test_coverage.ts",
-    output: "test_run_combined_coverage.out",
-    exit_code: 0,
-  });
-
   itest!(deno_lint {
     args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
     output: "lint/expected.out",
@@ -3986,6 +3944,160 @@ console.log("finish");
       .trim()
       .ends_with("Hello"));
     assert_eq!(output.stderr, b"");
+  }
+
+  mod coverage {
+    use super::*;
+
+    #[test]
+    fn branch() {
+      let tempdir = TempDir::new().expect("tempdir fail");
+      let status = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("test")
+        .arg("--quiet")
+        .arg("--unstable")
+        .arg(format!("--coverage={}", tempdir.path().to_str().unwrap()))
+        .arg("cli/tests/coverage/branch_test.ts")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .expect("failed to spawn test runner");
+
+      assert!(status.success());
+
+      let output = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("coverage")
+        .arg("--quiet")
+        .arg("--unstable")
+        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .expect("failed to spawn coverage reporter");
+
+      let actual =
+        util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+          .to_string();
+
+      let expected = fs::read_to_string(
+        util::root_path().join("cli/tests/coverage/expected_branch.out"),
+      )
+      .unwrap();
+
+      if !util::wildcard_match(&expected, &actual) {
+        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("EXPECTED\n{}\nEXPECTED", expected);
+        panic!("pattern match failed");
+      }
+
+      assert!(output.status.success());
+
+      let output = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("coverage")
+        .arg("--quiet")
+        .arg("--unstable")
+        .arg("--lcov")
+        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .expect("failed to spawn coverage reporter");
+
+      let actual =
+        util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+          .to_string();
+
+      let expected = fs::read_to_string(
+        util::root_path().join("cli/tests/coverage/expected_branch.lcov"),
+      )
+      .unwrap();
+
+      if !util::wildcard_match(&expected, &actual) {
+        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("EXPECTED\n{}\nEXPECTED", expected);
+        panic!("pattern match failed");
+      }
+
+      assert!(output.status.success());
+    }
+
+    #[test]
+    fn complex() {
+      let tempdir = TempDir::new().expect("tempdir fail");
+      let status = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("test")
+        .arg("--quiet")
+        .arg("--unstable")
+        .arg(format!("--coverage={}", tempdir.path().to_str().unwrap()))
+        .arg("cli/tests/coverage/complex_test.ts")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .expect("failed to spawn test runner");
+
+      assert!(status.success());
+
+      let output = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("coverage")
+        .arg("--quiet")
+        .arg("--unstable")
+        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .expect("failed to spawn coverage reporter");
+
+      let actual =
+        util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+          .to_string();
+
+      let expected = fs::read_to_string(
+        util::root_path().join("cli/tests/coverage/expected_complex.out"),
+      )
+      .unwrap();
+
+      if !util::wildcard_match(&expected, &actual) {
+        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("EXPECTED\n{}\nEXPECTED", expected);
+        panic!("pattern match failed");
+      }
+
+      assert!(output.status.success());
+
+      let output = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("coverage")
+        .arg("--quiet")
+        .arg("--unstable")
+        .arg("--lcov")
+        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .expect("failed to spawn coverage reporter");
+
+      let actual =
+        util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+          .to_string();
+
+      let expected = fs::read_to_string(
+        util::root_path().join("cli/tests/coverage/expected_complex.lcov"),
+      )
+      .unwrap();
+
+      if !util::wildcard_match(&expected, &actual) {
+        println!("OUTPUT\n{}\nOUTPUT", actual);
+        println!("EXPECTED\n{}\nEXPECTED", expected);
+        panic!("pattern match failed");
+      }
+
+      assert!(output.status.success());
+    }
   }
 
   mod permissions {
