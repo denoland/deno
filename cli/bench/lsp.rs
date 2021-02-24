@@ -22,6 +22,11 @@ use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 
+static FIXTURE_DB_TS: &str = include_str!("fixtures/db.ts");
+static FIXTURE_EDITS_JSON: &[u8] = include_bytes!("fixtures/edits.json");
+static FIXTURE_INIT_JSON: &[u8] =
+  include_bytes!("fixtures/initialize_params.json");
+
 lazy_static! {
   static ref CONTENT_TYPE_REG: Regex =
     Regex::new(r"(?i)^content-length:\s+(\d+)").unwrap();
@@ -201,57 +206,58 @@ impl LspClient {
   }
 }
 
-fn bench_startup_shutdown(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
+fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
   let mut client = LspClient::new(deno_exe)?;
 
-  let (_, response_error): (Option<Value>, Option<LspResponseError>) = client
-    .write_request(
-    "initialize",
+  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
+  let (_, response_error): (Option<Value>, Option<LspResponseError>) =
+    client.write_request("initialize", params)?;
+  assert!(response_error.is_none());
+
+  client.write_notification("initialized", json!({}))?;
+
+  client.write_notification(
+    "textDocument/didOpen",
     json!({
-      "processId": 0,
-      "clientInfo": {
-        "name": "bench-harness",
-        "version": "1.0.0"
-      },
-      "rootUri": null,
-      "initializationOptions": {
-        "enable": true,
-        "codeLens": {
-          "implementations": true,
-          "references": true
-        },
-        "lint": true,
-        "importMap": null,
-        "unstable": false
-      },
-      "capabilities": {
-        "textDocument": {
-          "codeAction": {
-            "codeActionLiteralSupport": {
-              "codeActionKind": {
-                "valueSet": [
-                  "quickfix"
-                ]
-              }
-            },
-            "isPreferredSupport": true,
-            "dataSupport": true,
-            "resolveSupport": {
-              "properties": [
-                "edit"
-              ]
-            }
-          },
-          "synchronization": {
-            "dynamicRegistration": true,
-            "willSave": true,
-            "willSaveWaitUntil": true,
-            "didSave": true
-          }
-        }
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": FIXTURE_DB_TS
       }
     }),
   )?;
+
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+
+  let edits: Vec<Value> = serde_json::from_slice(FIXTURE_EDITS_JSON)?;
+
+  for (i, edit) in edits.iter().enumerate() {
+    client.write_notification("textDocument/didChange", edit)?;
+    std::thread::sleep(Duration::from_millis(150)); // average typing rate of someone who touch types
+    if i == 16 || i == 23 {
+      // some cognitive delay when typing
+      std::thread::sleep(Duration::from_millis(250));
+    }
+  }
+
+  // there should be at least 3 diagnostic publishes
+  // TODO(kitsonk) figure out a way to drain any notifications without blocking
+  for _ in 0..3 {
+    let (method, _): (String, Option<Value>) = client.read_notification()?;
+    assert_eq!(method, "textDocument/publishDiagnostics");
+  }
+
+  Ok(client.duration())
+}
+
+fn bench_startup_shutdown(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
+  let mut client = LspClient::new(deno_exe)?;
+
+  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
+  let (_, response_error): (Option<Value>, Option<LspResponseError>) =
+    client.write_request("initialize", params)?;
   assert!(response_error.is_none());
 
   client.write_notification("initialized", json!({}))?;
@@ -286,15 +292,26 @@ pub(crate) fn benchmarks(
   println!("-> Start benchmarking lsp");
   let mut exec_times = HashMap::new();
 
-  println!("   - Simple Startup/Shutdown");
-  let mut startup_times = Vec::new();
-  for _ in 0..9 {
-    startup_times.push(bench_startup_shutdown(deno_exe)?);
+  println!("   - Simple Startup/Shutdown ");
+  let mut times = Vec::new();
+  for _ in 0..10 {
+    times.push(bench_startup_shutdown(deno_exe)?);
   }
-
-  let mean: u64 = startup_times.iter().sum::<Duration>().as_millis() as u64
-    / startup_times.len() as u64;
+  let mean: u64 =
+    times.iter().sum::<Duration>().as_millis() as u64 / times.len() as u64;
+  println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("startup_shutdown".to_string(), mean);
+
+  println!("   - Big Document/Several Edits ");
+  let mut times = Vec::new();
+  for _ in 0..5 {
+    times.push(bench_big_file_edits(deno_exe)?);
+  }
+  let mean: u64 =
+    times.iter().sum::<Duration>().as_millis() as u64 / times.len() as u64;
+  println!("      ({} runs, mean: {}ms)", times.len(), mean);
+  exec_times.insert("big_file_edits".to_string(), mean);
+  println!("");
 
   println!("<- End benchmarking lsp");
 
