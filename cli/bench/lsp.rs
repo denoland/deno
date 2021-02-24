@@ -11,6 +11,7 @@ use deno_core::serde_json::Value;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::io::BufRead;
 use std::io::Read;
 use std::io::Write;
@@ -32,35 +33,73 @@ lazy_static! {
     Regex::new(r"(?i)^content-length:\s+(\d+)").unwrap();
 }
 
-#[derive(Debug, Deserialize)]
-struct LspResponse {
-  result: Option<Value>,
-  id: u32,
-  error: Option<LspResponseError>,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct LspResponseError {
   code: i32,
   message: String,
   data: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
-struct LspNotification {
-  method: String,
-  params: Option<Value>,
+#[derive(Debug)]
+enum LspMessage {
+  Request(u64, String, Option<Value>),
+  Response(u64, Option<Value>, Option<LspResponseError>),
+  Notification(String, Option<Value>),
+}
+
+impl LspMessage {
+  fn to_value(&self) -> Value {
+    match self {
+      Self::Notification(method, params) => json!({
+        "method": method,
+        "params": params,
+      }),   
+      Self::Request(id, method, params) => json!({
+        "id": id,
+        "method": method,
+        "params": params,
+      }),
+      Self::Response(id, result, error) => json!({
+        "id": id,
+        "result": result,
+        "error": error,
+      }),
+    }
+  }
+}
+
+impl<'a> From<&'a [u8]> for LspMessage {
+  fn from(s: &'a [u8]) -> Self {
+    let value: Value = serde_json::from_slice(s).unwrap();
+    let obj = value.as_object().unwrap();
+    if obj.contains_key("id") && obj.contains_key("method") {
+      let id = obj.get("id").unwrap().as_u64().unwrap();
+      let method = obj.get("method").unwrap().as_str().unwrap().to_string();
+      Self::Request(id, method, obj.get("params").cloned())
+    } else if obj.contains_key("id") {
+      let id = obj.get("id").unwrap().as_u64().unwrap();
+      let maybe_error: Option<LspResponseError> = obj
+        .get("error")
+        .map(|v| serde_json::from_value(v.clone()).unwrap());
+      Self::Response(id, obj.get("result").cloned(), maybe_error)
+    } else {
+      assert!(obj.contains_key("method"));
+      let method = obj.get("method").unwrap().as_str().unwrap().to_string();
+      Self::Notification(method, obj.get("params").cloned())
+    }
+  }
 }
 
 struct LspClient {
   reader: std::io::BufReader<ChildStdout>,
   child: std::process::Child,
-  request_id: u32,
+  queue: VecDeque<LspMessage>,
+  request_id: u64,
   start: Instant,
   writer: std::io::BufWriter<ChildStdin>,
 }
 
-fn read_lsp_message<R>(reader: &mut R) -> Result<Vec<u8>, AnyError>
+fn read_message<R>(reader: &mut R) -> Result<Vec<u8>, AnyError>
 where
   R: Read + BufRead,
 {
@@ -114,6 +153,7 @@ impl LspClient {
 
     Ok(Self {
       child,
+      queue: Default::default(),
       reader,
       request_id: 1,
       start: Instant::now(),
@@ -125,12 +165,9 @@ impl LspClient {
     self.start.elapsed()
   }
 
-  fn read<V>(&mut self) -> Result<V, AnyError>
-  where
-    V: de::DeserializeOwned,
-  {
-    let msg_buf = read_lsp_message(&mut self.reader)?;
-    let msg = serde_json::from_slice(&msg_buf)?;
+  fn read(&mut self) -> Result<LspMessage, AnyError> {
+    let msg_buf = read_message(&mut self.reader)?;
+    let msg = LspMessage::from(msg_buf.as_slice());
     Ok(msg)
   }
 
@@ -138,12 +175,18 @@ impl LspClient {
   where
     R: de::DeserializeOwned,
   {
-    let notification: LspNotification = self.read()?;
-    if let Some(params) = notification.params {
-      let p = serde_json::from_value(params)?;
-      Ok((notification.method, Some(p)))
-    } else {
-      Ok((notification.method, None))
+    loop {
+      match self.read()? {
+        LspMessage::Notification(method, maybe_params) => {
+          if let Some(p) = maybe_params {
+            let params = serde_json::from_value(p)?;
+            return Ok((method, Some(params)));
+          } else {
+            return Ok((method, None));
+          }
+        }
+        msg => self.queue.push_back(msg),
+      }
     }
   }
 
@@ -176,14 +219,21 @@ impl LspClient {
       "params": params,
     });
     self.write(value)?;
-    let response: LspResponse = self.read()?;
-    assert_eq!(response.id, self.request_id);
-    self.request_id += 1;
-    if let Some(result) = response.result {
-      let r = serde_json::from_value(result)?;
-      Ok((Some(r), response.error))
-    } else {
-      Ok((None, response.error))
+
+    loop {
+      match self.read()? {
+        LspMessage::Response(id, result, error) => {
+          assert_eq!(id, self.request_id);
+          self.request_id += 1;
+          if let Some(r) = result {
+            let res = serde_json::from_value(r)?;
+            return Ok((Some(res), error));
+          } else {
+            return Ok((None, error));
+          }
+        }
+        msg => self.queue.push_back(msg),
+      }
     }
   }
 
@@ -233,19 +283,16 @@ fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
 
   let edits: Vec<Value> = serde_json::from_slice(FIXTURE_EDITS_JSON)?;
 
-  for (i, edit) in edits.iter().enumerate() {
+  for (_, edit) in edits.iter().enumerate() {
     client.write_notification("textDocument/didChange", edit)?;
-    if i % 4 == 0 {
-      // pull some diagnostics off to try to manifest any delays on the server
-      // TODO(kitsonk) figure out a way to drain any notifications without blocking
-      let (method, _): (String, Option<Value>) = client.read_notification()?;
-      assert_eq!(method, "textDocument/publishDiagnostics");
-    }
+    // std::thread::sleep(Duration::from_millis(100));
   }
 
-  // TODO(kitsonk) figure out a way to drain any notifications without blocking
-  let (method, _): (String, Option<Value>) = client.read_notification()?;
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (_, response_error): (Option<Value>, Option<LspResponseError>) =
+    client.write_request("shutdown", json!(null))?;
+  assert!(response_error.is_none());
+
+  client.write_notification("exit", json!(null))?;
 
   Ok(client.duration())
 }
@@ -318,9 +365,9 @@ pub(crate) fn benchmarks(
 #[cfg(test)]
 mod tests {
   #[test]
-  fn test_read_lsp_message() {
+  fn test_read_message() {
     let msg = b"content-length: 11\r\n\r\nhello world";
     let reader = std::io::Cursor::new(msg);
-    assert_eq!(read_lsp_message(reader).unwrap(), b"hello world");
+    assert_eq!(read_message(reader).unwrap(), b"hello world");
   }
 }
