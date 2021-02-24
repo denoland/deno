@@ -410,8 +410,11 @@ fn cargo_deps() -> usize {
   count
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 struct BenchResult {
+  created_at: String,
+  sha1: String,
+
   // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
   // When this is changed, the historical data in gh-pages branch needs to be
   // changed too.
@@ -419,35 +422,13 @@ struct BenchResult {
   binary_size: HashMap<String, u64>,
   bundle_size: HashMap<String, u64>,
   cargo_deps: usize,
-  created_at: String,
   max_latency: HashMap<String, f64>,
   max_memory: HashMap<String, u64>,
-  lsp_exec_time: HashMap<String, u128>,
+  lsp_exec_time: HashMap<String, u64>,
   req_per_sec: HashMap<String, u64>,
-  sha1: String,
   syscall_count: HashMap<String, u64>,
   thread_count: HashMap<String, u64>,
   throughput: HashMap<String, f64>,
-}
-
-impl BenchResult {
-  pub fn new() -> BenchResult {
-    BenchResult {
-      benchmark: HashMap::new(),
-      binary_size: HashMap::new(),
-      bundle_size: HashMap::new(),
-      cargo_deps: 0,
-      created_at: String::new(),
-      max_latency: HashMap::new(),
-      max_memory: HashMap::new(),
-      lsp_exec_time: HashMap::new(),
-      req_per_sec: HashMap::new(),
-      sha1: String::new(),
-      syscall_count: HashMap::new(),
-      thread_count: HashMap::new(),
-      throughput: HashMap::new(),
-    }
-  }
 }
 
 /*
@@ -469,7 +450,7 @@ fn main() -> Result<()> {
 
   env::set_current_dir(&test_util::root_path())?;
 
-  let mut new_data = BenchResult::new();
+  let mut new_data = BenchResult::default();
   new_data.created_at =
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
   new_data.sha1 = test_util::run_collect(
