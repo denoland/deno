@@ -1186,7 +1186,7 @@ Generate html reports from lcov:
       Arg::with_name("files")
         .takes_value(true)
         .multiple(true)
-        .required(false),
+        .required(true),
     )
 }
 
