@@ -395,7 +395,7 @@ jobs:
       - name: Upload Builds
         run: |
           gsutil cp ./canary/*.zip gs://dl.deno.land/canary/${{ needs.build.outputs.ref }}/
-          echo ${{ needs.build.outputs.ref }} > canary-latest.txt
+          echo -n ${{ needs.build.outputs.ref }} > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
   release-stable:
@@ -422,7 +422,7 @@ jobs:
       - name: Upload Builds
         run: |
           gsutil cp ./stable/*.zip gs://dl.deno.land/release/${{ needs.test.outputs.ref }}/
-          echo ${{ needs.test.outputs.ref }} > release-latest.txt
+          echo -n ${{ needs.test.outputs.ref }} > release-latest.txt
           gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Release to GitHub
