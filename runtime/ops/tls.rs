@@ -101,18 +101,17 @@ async fn op_start_tls(
 ) -> Result<Value, AnyError> {
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let cert_file = args.cert_file.clone();
 
-  let mut domain = args.hostname;
+  let mut domain = args.hostname.as_str();
   if domain.is_empty() {
-    domain.push_str("localhost");
+    domain = "localhost";
   }
   {
     super::check_unstable2(&state, "Deno.startTls");
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
     permissions.check_net(&(&domain, Some(0)))?;
-    if let Some(path) = cert_file.clone() {
+    if let Some(path) = &args.cert_file {
       permissions.check_read(Path::new(&path))?;
     }
   }
@@ -134,15 +133,15 @@ async fn op_start_tls(
   config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-  if let Some(path) = cert_file {
+  if let Some(path) = args.cert_file {
     let key_file = File::open(path)?;
     let reader = &mut BufReader::new(key_file);
     config.root_store.add_pem_file(reader).unwrap();
   }
 
   let tls_connector = TlsConnector::from(Arc::new(config));
-  let dnsname =
-    DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+  let dnsname = DNSNameRef::try_from_ascii_str(&domain)
+    .map_err(|_| generic_error("Invalid DNS lookup"))?;
   let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
 
   let rid = {
@@ -172,18 +171,17 @@ async fn op_connect_tls(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
-  let cert_file = args.cert_file.clone();
   {
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
     permissions.check_net(&(&args.hostname, Some(args.port)))?;
-    if let Some(path) = cert_file.clone() {
+    if let Some(path) = &args.cert_file {
       permissions.check_read(Path::new(&path))?;
     }
   }
-  let mut domain = args.hostname.clone();
+  let mut domain = args.hostname.as_str();
   if domain.is_empty() {
-    domain.push_str("localhost");
+    domain = "localhost";
   }
 
   let addr = resolve_addr(&args.hostname, args.port)
@@ -198,14 +196,14 @@ async fn op_connect_tls(
   config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-  if let Some(path) = cert_file {
+  if let Some(path) = args.cert_file {
     let key_file = File::open(path)?;
     let reader = &mut BufReader::new(key_file);
     config.root_store.add_pem_file(reader).unwrap();
   }
   let tls_connector = TlsConnector::from(Arc::new(config));
-  let dnsname =
-    DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+  let dnsname = DNSNameRef::try_from_ascii_str(&domain)
+    .map_err(|_| generic_error("Invalid DNS lookup"))?;
   let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
   let rid = {
     let mut state_ = state.borrow_mut();

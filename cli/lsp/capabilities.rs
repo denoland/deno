@@ -16,6 +16,7 @@ use lspower::lsp::ImplementationProviderCapability;
 use lspower::lsp::OneOf;
 use lspower::lsp::SaveOptions;
 use lspower::lsp::ServerCapabilities;
+use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
@@ -69,7 +70,17 @@ pub fn server_capabilities(
         work_done_progress: None,
       },
     }),
-    signature_help_provider: None,
+    signature_help_provider: Some(SignatureHelpOptions {
+      trigger_characters: Some(vec![
+        ",".to_string(),
+        "(".to_string(),
+        "<".to_string(),
+      ]),
+      retrigger_characters: None,
+      work_done_progress_options: WorkDoneProgressOptions {
+        work_done_progress: None,
+      },
+    }),
     declaration_provider: None,
     definition_provider: Some(OneOf::Left(true)),
     type_definition_provider: None,

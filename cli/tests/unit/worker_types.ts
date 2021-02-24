@@ -5,7 +5,7 @@ unitTest(
   { perms: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
-      new URL("../subdir/worker_types.ts", import.meta.url).href,
+      new URL("../workers/worker_types.ts", import.meta.url).href,
       { type: "module" },
     );
     assert(w);

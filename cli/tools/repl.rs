@@ -37,7 +37,6 @@ struct Helper {
   context_id: u64,
   message_tx: SyncSender<(String, Option<Value>)>,
   response_rx: Receiver<Result<Value, AnyError>>,
-  highlighter: LineHighlighter,
 }
 
 impl Helper {
@@ -116,8 +115,19 @@ impl Completer for Helper {
               .as_array()
               .unwrap()
               .iter()
-              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
-              .filter(|r| r.starts_with(&suffix[1..]))
+              .filter_map(|r| {
+                let name = r.get("name").unwrap().as_str().unwrap().to_string();
+
+                if name.starts_with("Symbol(") {
+                  return None;
+                }
+
+                if name.starts_with(&suffix[1..]) {
+                  return Some(name);
+                }
+
+                None
+              })
               .collect();
 
             return Ok((pos - (suffix.len() - 1), candidates));
@@ -183,32 +193,18 @@ impl Highlighter for Helper {
     hint.into()
   }
 
-  fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
-    self.highlighter.highlight(line, pos)
-  }
-
   fn highlight_candidate<'c>(
     &self,
     candidate: &'c str,
     _completion: rustyline::CompletionType,
   ) -> Cow<'c, str> {
-    self.highlighter.highlight(candidate, 0)
+    self.highlight(candidate, 0)
   }
 
   fn highlight_char(&self, line: &str, _: usize) -> bool {
     !line.is_empty()
   }
-}
 
-struct LineHighlighter;
-
-impl LineHighlighter {
-  fn new() -> Self {
-    Self
-  }
-}
-
-impl Highlighter for LineHighlighter {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
@@ -436,7 +432,6 @@ pub async fn run(
     context_id,
     message_tx,
     response_rx,
-    highlighter: LineHighlighter::new(),
   };
 
   let editor = Arc::new(Mutex::new(Editor::new()));

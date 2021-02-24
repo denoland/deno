@@ -26,6 +26,7 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
   const core = Deno.core;
 
   const CONTINUE = null;
@@ -124,13 +125,17 @@
   }
 
   function btoa(s) {
+    s = webidl.converters.DOMString(s, {
+      prefix: "Failed to execute 'btoa'",
+      context: "Argument 1",
+    });
     const byteArray = [];
     for (let i = 0; i < s.length; i++) {
       const charCode = s[i].charCodeAt(0);
       if (charCode > 0xff) {
-        throw new TypeError(
-          "The string to be encoded contains characters " +
-            "outside of the Latin1 range.",
+        throw new DOMException(
+          "The string to be encoded contains characters outside of the Latin1 range.",
+          "InvalidCharacterError",
         );
       }
       byteArray.push(charCode);

@@ -108,6 +108,10 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
+
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -2034,6 +2038,8 @@ declare namespace Deno {
     trailingComma?: boolean;
     /*** Evaluate the result of calling getters. Defaults to false. */
     getters?: boolean;
+    /** Show an object's non-enumerable properties. Defaults to false. */
+    showHidden?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

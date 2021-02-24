@@ -259,7 +259,7 @@ declare namespace Deno {
    * user friendly format.
    *
    * ```ts
-   * const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
+   * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
    * console.table(diagnostics);  // Prints raw diagnostic data
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
    * ```
@@ -498,8 +498,10 @@ declare namespace Deno {
 
   interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is an ES module (`"esm"`). */
-    bundle?: "esm";
+     * JavaScript bundle that is a single ES module (`"esm"`) or a single file
+     * self contained script we executes in an immediately invoked function
+     * when loaded (`"iife"`). */
+    bundle?: "esm" | "iife";
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.
@@ -848,13 +850,13 @@ declare namespace Deno {
     | "TXT";
 
   export interface ResolveDnsOptions {
-    /** The name server to be used for lookups. 
-    * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+    /** The name server to be used for lookups.
+     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
     nameServer?: {
       /** The IP address of the name server */
       ipAddr: string;
       /** The port number the query will be sent to.
-      * If not specified, defaults to 53. */
+       * If not specified, defaults to 53. */
       port?: number;
     };
   }
@@ -1341,6 +1343,24 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): Promise<void>;
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
+  }
+
+  export interface OpMetrics {
+    opsDispatched: number;
+    opsDispatchedSync: number;
+    opsDispatchedAsync: number;
+    opsDispatchedAsyncUnref: number;
+    opsCompleted: number;
+    opsCompletedSync: number;
+    opsCompletedAsync: number;
+    opsCompletedAsyncUnref: number;
+    bytesSentControl: number;
+    bytesSentData: number;
+    bytesReceived: number;
+  }
 }
 
 declare function fetch(

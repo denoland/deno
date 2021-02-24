@@ -155,12 +155,7 @@ SharedQueue Binary Layout
     asyncHandlers[opId] = cb;
   }
 
-  function handleAsyncMsgFromRust(opId, buf) {
-    if (buf) {
-      // This is the overflow_response case of deno::JsRuntime::poll().
-      asyncHandlers[opId](buf);
-      return;
-    }
+  function handleAsyncMsgFromRust() {
     while (true) {
       const opIdBuf = shift();
       if (opIdBuf == null) {
@@ -168,6 +163,10 @@ SharedQueue Binary Layout
       }
       assert(asyncHandlers[opIdBuf[0]] != null);
       asyncHandlers[opIdBuf[0]](opIdBuf[1]);
+    }
+
+    for (let i = 0; i < arguments.length; i += 2) {
+      asyncHandlers[arguments[i]](arguments[i + 1]);
     }
   }
 
@@ -213,12 +212,13 @@ SharedQueue Binary Layout
     throw new ErrorClass(res.err.message);
   }
 
-  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
+  async function jsonOpAsync(opName, args = null, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
-    args.promiseId = nextPromiseId++;
-    const argsBuf = encodeJson(args);
-    dispatch(opName, argsBuf, ...zeroCopy);
+    const promiseId = nextPromiseId++;
+    const reqBuf = core.encode("\0".repeat(8) + JSON.stringify(args));
+    new DataView(reqBuf.buffer).setBigUint64(0, BigInt(promiseId));
+    dispatch(opName, reqBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
@@ -226,11 +226,11 @@ SharedQueue Binary Layout
     });
     promise.resolve = resolve;
     promise.reject = reject;
-    promiseTable[args.promiseId] = promise;
+    promiseTable[promiseId] = promise;
     return processResponse(await promise);
   }
 
-  function jsonOpSync(opName, args = {}, ...zeroCopy) {
+  function jsonOpSync(opName, args = null, ...zeroCopy) {
     const argsBuf = encodeJson(args);
     const res = dispatch(opName, argsBuf, ...zeroCopy);
     return processResponse(decodeJson(res));

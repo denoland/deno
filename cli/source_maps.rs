@@ -110,7 +110,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
 ) -> (String, i64, i64, Option<String>) {
   let maybe_source_map = get_mappings(&file_name, mappings_map, getter.clone());
   let default_pos =
-    (file_name, line_number, column_number, source_line.clone());
+    (file_name.clone(), line_number, column_number, source_line);
 
   // Lookup expects 0-based line and column numbers, but ours are 1-based.
   let line_number = line_number - 1;
@@ -123,7 +123,15 @@ pub fn get_orig_position<G: SourceMapGetter>(
         None => default_pos,
         Some(token) => match token.get_source() {
           None => default_pos,
-          Some(original) => {
+          Some(source_file_name) => {
+            // The `source_file_name` written by tsc in the source map is
+            // sometimes only the basename of the URL, or has unwanted `<`/`>`
+            // around it. Use the `file_name` we get from V8 if
+            // `source_file_name` does not parse as a URL.
+            let file_name = match deno_core::resolve_url(source_file_name) {
+              Ok(m) => m.to_string(),
+              Err(_) => file_name,
+            };
             let maybe_source_line =
               if let Some(source_view) = token.get_source_view() {
                 source_view.get_line(token.get_src_line())
@@ -133,18 +141,16 @@ pub fn get_orig_position<G: SourceMapGetter>(
 
             let source_line = if let Some(source_line) = maybe_source_line {
               Some(source_line.to_string())
-            } else if let Some(source_line) = getter.get_source_line(
-              original,
-              // Getter expects 0-based line numbers, but ours are 1-based.
-              token.get_src_line() as usize,
-            ) {
+            } else if let Some(source_line) =
+              getter.get_source_line(&file_name, token.get_src_line() as usize)
+            {
               Some(source_line)
             } else {
-              source_line
+              None
             };
 
             (
-              original.to_string(),
+              file_name,
               i64::from(token.get_src_line()) + 1,
               i64::from(token.get_src_col()) + 1,
               source_line,

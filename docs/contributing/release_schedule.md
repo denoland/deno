@@ -14,7 +14,7 @@ Stable releases can be found on the
 ### Canary channel
 
 In addition to the stable channel described above, canaries are released
-multiple times daily (for each commit on master). You can upgrade to the latest
+multiple times daily (for each commit on main). You can upgrade to the latest
 canary release by running:
 
 ```

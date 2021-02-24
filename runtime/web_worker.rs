@@ -4,7 +4,7 @@ use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::js;
-use crate::metrics::Metrics;
+use crate::metrics::RuntimeMetrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
@@ -209,9 +209,9 @@ impl WebWorker {
       {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
-        op_state.put::<Metrics>(Default::default());
+        op_state.put(RuntimeMetrics::default());
         op_state.put::<Permissions>(permissions);
-        op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+        op_state.put(ops::UnstableChecker {
           unstable: options.unstable,
         });
       }
@@ -476,8 +476,7 @@ mod tests {
   use deno_core::serde_json::json;
 
   fn create_test_web_worker() -> WebWorker {
-    let main_module =
-      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let main_module = deno_core::resolve_url_or_path("./hello.js").unwrap();
     let module_loader = Rc::new(deno_core::NoopModuleLoader);
     let create_web_worker_cb = Arc::new(|_| unreachable!());
 

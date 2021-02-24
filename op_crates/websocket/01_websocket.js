@@ -256,7 +256,7 @@
     }
 
     close(code, reason) {
-      if (code && (code !== 1000 && !(3000 <= code > 5000))) {
+      if (code && !(code === 1000 || (3000 <= code && code < 5000))) {
         throw new DOMException(
           "The close code must be either 1000 or in the range of 3000 to 4999.",
           "NotSupportedError",
@@ -350,6 +350,7 @@
             });
             event.target = this;
             this.dispatchEvent(event);
+            core.close(this.#rid);
 
             break;
           }
@@ -364,6 +365,7 @@
             const closeEv = new CloseEvent("close");
             closeEv.target = this;
             this.dispatchEvent(closeEv);
+            core.close(this.#rid);
 
             break;
           }

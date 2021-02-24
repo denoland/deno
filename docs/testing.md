@@ -92,6 +92,31 @@ Deno.test({
 });
 ```
 
+### Exit sanitizer
+
+There's also the exit sanitizer which ensures that tested code doesn't call
+Deno.exit() signaling a false test success.
+
+This is enabled by default for all tests, but can be disabled by setting the
+`sanitizeExit` boolean to false in thetest definition.
+
+```ts
+Deno.test({
+  name: "false success",
+  fn() {
+    Deno.exit(0);
+  },
+  sanitizeExit: false,
+});
+
+Deno.test({
+  name: "failing test",
+  fn() {
+    throw new Error("this test fails");
+  },
+});
+```
+
 ## Running tests
 
 To run the test, call `deno test` with the file that contains your test
