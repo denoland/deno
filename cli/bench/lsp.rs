@@ -235,19 +235,17 @@ fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
 
   for (i, edit) in edits.iter().enumerate() {
     client.write_notification("textDocument/didChange", edit)?;
-    std::thread::sleep(Duration::from_millis(150)); // average typing rate of someone who touch types
-    if i == 16 || i == 23 {
-      // some cognitive delay when typing
-      std::thread::sleep(Duration::from_millis(250));
+    if i % 4 == 0 {
+      // pull some diagnostics off to try to manifest any delays on the server
+      // TODO(kitsonk) figure out a way to drain any notifications without blocking
+      let (method, _): (String, Option<Value>) = client.read_notification()?;
+      assert_eq!(method, "textDocument/publishDiagnostics");
     }
   }
 
-  // there should be at least 3 diagnostic publishes
   // TODO(kitsonk) figure out a way to drain any notifications without blocking
-  for _ in 0..3 {
-    let (method, _): (String, Option<Value>) = client.read_notification()?;
-    assert_eq!(method, "textDocument/publishDiagnostics");
-  }
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
 
   Ok(client.duration())
 }
@@ -311,7 +309,6 @@ pub(crate) fn benchmarks(
     times.iter().sum::<Duration>().as_millis() as u64 / times.len() as u64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("big_file_edits".to_string(), mean);
-  println!("");
 
   println!("<- End benchmarking lsp");
 
