@@ -450,25 +450,26 @@ fn main() -> Result<()> {
 
   env::set_current_dir(&test_util::root_path())?;
 
-  let mut new_data = BenchResult::default();
-  new_data.created_at =
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-  new_data.sha1 = test_util::run_collect(
-    &["git", "rev-parse", "HEAD"],
-    None,
-    None,
-    None,
-    true,
-  )
-  .0
-  .trim()
-  .to_string();
-
-  new_data.lsp_exec_time = lsp::benchmarks(&deno_exe)?;
-  new_data.binary_size = get_binary_sizes(&target_dir)?;
-  new_data.bundle_size = bundle_benchmark(&deno_exe)?;
-  new_data.cargo_deps = cargo_deps();
-  new_data.benchmark = run_exec_time(&deno_exe, &target_dir)?;
+  let mut new_data = BenchResult {
+    created_at: chrono::Utc::now()
+      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    sha1: test_util::run_collect(
+      &["git", "rev-parse", "HEAD"],
+      None,
+      None,
+      None,
+      true,
+    )
+    .0
+    .trim()
+    .to_string(),
+    benchmark: run_exec_time(&deno_exe, &target_dir)?,
+    binary_size: get_binary_sizes(&target_dir)?,
+    bundle_size: bundle_benchmark(&deno_exe)?,
+    cargo_deps: cargo_deps(),
+    lsp_exec_time: lsp::benchmarks(&deno_exe)?,
+    ..Default::default()
+  };
 
   // Cannot run throughput benchmark on windows because they don't have nc or
   // pipe.
