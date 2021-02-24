@@ -31,7 +31,6 @@ fn js_unit_tests() {
     .current_dir(util::root_path())
     .arg("run")
     .arg("--unstable")
-    .arg("--reload")
     .arg("-A")
     .arg("cli/tests/unit/unit_test_runner.ts")
     .arg("--master")
@@ -1328,31 +1327,37 @@ mod integration {
   fn ts_reload() {
     let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
     assert!(hello_ts.is_file());
-    let mut initial = util::deno_cmd()
+
+    let deno_dir = TempDir::new().expect("tempdir fail");
+    let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
       .current_dir(util::root_path())
       .arg("cache")
-      .arg("--reload")
-      .arg(hello_ts.clone())
+      .arg(&hello_ts)
       .spawn()
       .expect("failed to spawn script");
     let status_initial =
       initial.wait().expect("failed to wait for child process");
     assert!(status_initial.success());
 
-    let output = util::deno_cmd()
+    let output = util::deno_cmd_with_deno_dir(deno_dir.path())
       .current_dir(util::root_path())
       .arg("cache")
       .arg("--reload")
       .arg("-L")
       .arg("debug")
-      .arg(hello_ts)
+      .arg(&hello_ts)
       .output()
       .expect("failed to spawn script");
+
     // check the output of the the bundle program.
+    let output_path = hello_ts.canonicalize().unwrap();
     assert!(std::str::from_utf8(&output.stderr)
       .unwrap()
       .trim()
-      .contains("host.writeFile(\"deno://002_hello.js\")"));
+      .contains(&format!(
+        "host.getSourceFile(\"{}\", Latest)",
+        url::Url::from_file_path(&output_path).unwrap().as_str()
+      )));
   }
 
   #[test]
@@ -1494,7 +1499,6 @@ mod integration {
     let output = util::deno_cmd()
       .current_dir(util::root_path())
       .arg("run")
-      .arg("--reload")
       .arg(&bundle)
       .output()
       .expect("failed to spawn script");
