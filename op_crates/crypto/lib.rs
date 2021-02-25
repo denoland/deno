@@ -41,3 +41,7 @@ pub fn op_crypto_get_random_values(
 
   Ok(json!({}))
 }
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
+}
