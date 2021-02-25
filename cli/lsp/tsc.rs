@@ -72,7 +72,7 @@ impl TsServer {
     let diagnostics_request: Arc<Mutex<Option<DiagnosticsRequest>>> =
       Default::default();
 
-    let diagnostics_request_ = diagnostics_request.clone();
+    let diagnostics_request_clone = diagnostics_request.clone();
 
     let _join_handle = thread::spawn(move || {
       // TODO(@kitsonk) we need to allow displaying diagnostics here, but the
@@ -95,12 +95,14 @@ impl TsServer {
           if let Some((req, state_snapshot, tx)) = maybe_req.take() {
             let res = request(&mut ts_runtime, state_snapshot, req);
             if tx.send(res).is_err() {
-              warn!("Unable to send result to client.");
+              warn!(
+                "Internal Error: Unable to send tsc result to language server."
+              );
             }
           }
 
-          // Then check if there is a regular request queued, if so place it in
-          // maybe_req slot and jump back to start of loop to handle it.
+          // Then check if there is a regular request queued, and if so place it
+          // in maybe_req slot and jump back to start of loop to handle it.
           if let Some(recv_req) = requests_queue_rx.recv().now_or_never() {
             if let Some(req) = recv_req {
               maybe_req = Some(req);
@@ -154,7 +156,7 @@ impl TsServer {
     Self {
       requests_queue: requests_queue_tx,
       diagnostics_notifier: diagnostics_notifier_tx,
-      diagnostics_request: diagnostics_request_,
+      diagnostics_request: diagnostics_request_clone,
     }
   }
 

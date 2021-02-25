@@ -229,7 +229,7 @@ fn ts_json_to_diagnostics(
     .collect()
 }
 
-// None is returned if getting diagnostics was cancelled.
+/// Generate TS diagnostics. If None is returned, the request was cancelled.
 pub async fn generate_ts_diagnostics(
   state_snapshot: StateSnapshot,
   diagnostic_collection: DiagnosticCollection,
