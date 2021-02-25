@@ -155,12 +155,7 @@ SharedQueue Binary Layout
     asyncHandlers[opId] = cb;
   }
 
-  function handleAsyncMsgFromRust(opId, buf) {
-    if (buf) {
-      // This is the overflow_response case of deno::JsRuntime::poll().
-      asyncHandlers[opId](buf);
-      return;
-    }
+  function handleAsyncMsgFromRust() {
     while (true) {
       const opIdBuf = shift();
       if (opIdBuf == null) {
@@ -168,6 +163,10 @@ SharedQueue Binary Layout
       }
       assert(asyncHandlers[opIdBuf[0]] != null);
       asyncHandlers[opIdBuf[0]](opIdBuf[1]);
+    }
+
+    for (let i = 0; i < arguments.length; i += 2) {
+      asyncHandlers[arguments[i]](arguments[i + 1]);
     }
   }
 

@@ -4,7 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
-  const { exit } = window.__bootstrap.os;
+  const { setExitHandler, exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
   const { exposeForTest } = window.__bootstrap.internals;
@@ -86,6 +86,27 @@ finishing test case.`;
     };
   }
 
+  // Wrap test function in additional assertion that makes sure
+  // that the test case does not accidentally exit prematurely.
+  function assertExit(fn) {
+    return async function exitSanitizer() {
+      setExitHandler((exitCode) => {
+        assert(
+          false,
+          `Test case attempted to exit with exit code: ${exitCode}`,
+        );
+      });
+
+      try {
+        await fn();
+      } catch (err) {
+        throw err;
+      } finally {
+        setExitHandler(null);
+      }
+    };
+  }
+
   const TEST_REGISTRY = [];
 
   // Main test function provided by Deno, as you can see it merely
@@ -100,6 +121,7 @@ finishing test case.`;
       only: false,
       sanitizeOps: true,
       sanitizeResources: true,
+      sanitizeExit: true,
     };
 
     if (typeof t === "string") {
@@ -126,6 +148,10 @@ finishing test case.`;
 
     if (testDef.sanitizeResources) {
       testDef.fn = assertResources(testDef.fn);
+    }
+
+    if (testDef.sanitizeExit) {
+      testDef.fn = assertExit(testDef.fn);
     }
 
     TEST_REGISTRY.push(testDef);
