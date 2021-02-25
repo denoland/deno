@@ -2677,7 +2677,7 @@ console.log("finish");
   #[cfg(unix)]
   #[test]
   fn _061_permissions_request() {
-    let args = "run --unstable 061_permissions_request.ts";
+    let args = "run 061_permissions_request.ts";
     let output = "061_permissions_request.ts.out";
     let input = b"g\nd\n";
 
@@ -2687,7 +2687,7 @@ console.log("finish");
   #[cfg(unix)]
   #[test]
   fn _062_permissions_request_global() {
-    let args = "run --unstable 062_permissions_request_global.ts";
+    let args = "run 062_permissions_request_global.ts";
     let output = "062_permissions_request_global.ts.out";
     let input = b"g\n";
 
@@ -2695,13 +2695,12 @@ console.log("finish");
   }
 
   itest!(_063_permissions_revoke {
-    args: "run --unstable --allow-read=foo,bar 063_permissions_revoke.ts",
+    args: "run --allow-read=foo,bar 063_permissions_revoke.ts",
     output: "063_permissions_revoke.ts.out",
   });
 
   itest!(_064_permissions_revoke_global {
-    args:
-      "run --unstable --allow-read=foo,bar 064_permissions_revoke_global.ts",
+    args: "run --allow-read=foo,bar 064_permissions_revoke_global.ts",
     output: "064_permissions_revoke_global.ts.out",
   });
 
