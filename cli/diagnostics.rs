@@ -44,8 +44,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "ftruncateSync",
   "hostname",
   "kill",
-  "link",
-  "linkSync",
   "listen",
   "listenDatagram",
   "loadavg",
