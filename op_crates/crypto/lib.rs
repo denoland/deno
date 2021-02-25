@@ -78,20 +78,31 @@ impl Resource for CryptoKeyPairResource<Rsa<Public>, Rsa<Private>> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WebCryptoGenerateKeyArgs {
+struct WebCryptoAlgorithmArg {
+  name: Algorithm,
+  public_modulus: u32,
   modulus_length: u32,
-  exponent: u32,
+  // hash: Option<WebCryptoHash>,
+  // named_curve: Option<WebCryptoNamedCurve>,
 }
 
-pub async fn op_webcrypto_generate_key(
-  state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let args: WebCryptoGenerateKeyArgs = serde_json::from_value(args)?;
-  let exponent = BigNum::from_u32(args.exponent)?;
-  let bits = args.modulus_length;
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WebCryptoGenerateKeyArg {
+  algorithm: WebCryptoAlgorithmArg,
+  extractable: bool,
+  key_usages: Vec<KeyUsage>,
+}
 
+pub fn op_webcrypto_generate_key(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: WebCryptoGenerateKeyArg = serde_json::from_value(args)?;
+  let exponent = BigNum::from_u32(args.algorithm.public_modulus)?;
+  let bits = args.algorithm.modulus_length;
+  let extractable = args.extractable;
   let private_key = Rsa::generate_with_e(bits, &exponent)?;
   let algorithm = Algorithm::RsaPss;
   let public_key: Rsa<Public> = Rsa::from_public_components(
@@ -101,13 +112,13 @@ pub async fn op_webcrypto_generate_key(
   let webcrypto_key_public = WebCryptoKey {
     key_type: KeyType::Public,
     algorithm: algorithm.clone(),
-    extractable: true,
+    extractable,
     usages: vec![],
   };
   let webcrypto_key_private = WebCryptoKey {
     key_type: KeyType::Private,
     algorithm,
-    extractable: true,
+    extractable,
     usages: vec![],
   };
   let crypto_key =
@@ -117,6 +128,6 @@ pub async fn op_webcrypto_generate_key(
     private_key,
   };
   let resource = CryptoKeyPairResource { crypto_key, key };
-  let rid = state.borrow_mut().resource_table.add(resource);
+  let rid = state.resource_table.add(resource);
   Ok(json!({ "rid": rid }))
 }

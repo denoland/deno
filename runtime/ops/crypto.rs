@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_crypto::op_crypto_get_random_values;
+use deno_crypto::op_webcrypto_generate_key;
 use deno_crypto::rand::rngs::StdRng;
 use deno_crypto::rand::SeedableRng;
 
@@ -14,5 +15,10 @@ pub fn init(rt: &mut deno_core::JsRuntime, maybe_seed: Option<u64>) {
     rt,
     "op_crypto_get_random_values",
     op_crypto_get_random_values,
+  );
+  super::reg_json_sync(
+    rt,
+    "op_webcrypto_generate_key",
+    op_webcrypto_generate_key,
   );
 }

@@ -1,0 +1,1 @@
+console.log(Deno.core.jsonOpSync("op_webcrypto_generate_key", { modulusLength: 4096/2, exponent: 101 }))

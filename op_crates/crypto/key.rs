@@ -1,9 +1,14 @@
+use serde::Deserialize;
+use serde::Serialize;
+
+#[derive(Serialize, Deserialize)]
 pub enum KeyType {
   Public,
   Private,
   Secret,
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum KeyUsage {
   Encrypt,
   Decrypt,
@@ -15,7 +20,7 @@ pub enum KeyUsage {
   UnwrapKey,
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Algorithm {
   RsassaPkcs1v15,
   RsaPss,
@@ -29,6 +34,7 @@ pub enum Algorithm {
   Hmac,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct WebCryptoKey {
   pub key_type: KeyType,
   pub extractable: bool,

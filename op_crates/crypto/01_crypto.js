@@ -41,6 +41,10 @@
     return arrayBufferView;
   }
 
+  function generateKey(algorithm, extractable, keyUsages) {
+    core.jsonOpSync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages })
+  }
+
   window.crypto = {
     getRandomValues,
   };
