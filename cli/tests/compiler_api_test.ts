@@ -319,3 +319,22 @@ Deno.test({
     assert(typeof files[`${specifier}.js.map`] === "string");
   },
 });
+
+Deno.test({
+  name: `Deno.emit() - bundle supports iife`,
+  async fn() {
+    const { diagnostics, files } = await Deno.emit("/a.ts", {
+      bundle: "iife",
+      sources: {
+        "/a.ts": `import { b } from "./b.ts";
+          console.log(b);`,
+        "/b.ts": `export const b = "b";`,
+      },
+    });
+    assert(diagnostics);
+    assertEquals(diagnostics.length, 0);
+    assertEquals(Object.keys(files).length, 1);
+    assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
+    assert(files["deno:///bundle.js"].endsWith("})();\n"));
+  },
+});

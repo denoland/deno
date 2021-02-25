@@ -23,6 +23,7 @@
     "cli/tests/encoding",
     "cli/tests/inline_js_source_map*",
     "cli/tests/badly_formatted.md",
+    "cli/tests/badly_formatted.json",
     "cli/tsc/*typescript.js",
     "test_util/std",
     "test_util/wpt",
@@ -33,8 +34,8 @@
     "tools/wpt/manifest.json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.33.0.wasm",
-    "https://plugins.dprint.dev/json-0.7.2.wasm",
-    "https://plugins.dprint.dev/markdown-0.4.2.wasm"
+    "https://plugins.dprint.dev/typescript-0.40.3.wasm",
+    "https://plugins.dprint.dev/json-0.8.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.5.1.wasm"
   ]
 }

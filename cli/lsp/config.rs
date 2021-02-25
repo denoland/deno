@@ -18,7 +18,10 @@ pub struct ClientCapabilities {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
-  /// Flag for providing reference code lens.
+  /// Flag for providing implementation code lenses.
+  #[serde(default)]
+  pub implementations: bool,
+  /// Flag for providing reference code lenses.
   #[serde(default)]
   pub references: bool,
   /// Flag for providing reference code lens on all functions.  For this to have
@@ -47,7 +50,15 @@ impl WorkspaceSettings {
   pub fn enabled_code_lens(&self) -> bool {
     if let Some(code_lens) = &self.code_lens {
       // This should contain all the "top level" code lens references
-      code_lens.references
+      code_lens.implementations || code_lens.references
+    } else {
+      false
+    }
+  }
+
+  pub fn enabled_code_lens_implementations(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      code_lens.implementations
     } else {
       false
     }

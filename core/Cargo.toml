@@ -1,7 +1,7 @@
 # Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "deno_core"
-version = "0.78.0"
+version = "0.79.0"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]
@@ -13,16 +13,17 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
+align-data = "0.1"
 anyhow = "1.0.38"
 futures = "0.3.12"
 indexmap = "1.6.1"
 lazy_static = "1.4.0"
-libc = "0.2.82"
-log = "0.4.13"
-pin-project = "1.0.4"
-rusty_v8 = "0.16.0"
-serde = { version = "1.0.121", features = ["derive"] }
-serde_json = { version = "1.0.61", features = ["preserve_order"] }
+libc = "0.2.86"
+log = "0.4.14"
+pin-project = "1.0.5"
+rusty_v8 = "0.19.0"
+serde = { version = "1.0.123", features = ["derive"] }
+serde_json = { version = "1.0.62", features = ["preserve_order"] }
 smallvec = "1.6.1"
 url = { version = "2.2.0", features = ["serde"] }
 
@@ -36,4 +37,4 @@ path = "examples/http_bench_json_ops.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["full"] }
+tokio = { version = "1.2.0", features = ["full"] }

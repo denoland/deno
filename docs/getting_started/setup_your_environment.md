@@ -112,10 +112,9 @@ and language server protocol client).
 ##### CoC
 
 After CoC is installed, from inside Vim, run`:CocInstall coc-tsserver` and
-`:CocInstall coc-deno`. To get autocompletion working for Deno type definitions
-run `:CocCommand deno.types`. Optionally restart the CoC server `:CocRestart`.
-From now on, things like `gd` (go to definition) and `gr` (goto/find references)
-should work.
+`:CocInstall coc-deno`. Run `:CocCommand deno.initializeWorkspace` in your
+project to initialize workspace configurations. From now on, things like `gd`
+(go to definition) and `gr` (goto/find references) should work.
 
 ##### ALE
 
@@ -167,7 +166,7 @@ page, first `npm install --save-dev typescript-deno-plugin typescript` in your
 project (`npm init -y` as necessary), then add the following block to your
 `tsconfig.json` and you are off to the races!
 
-```json
+```jsonc
 {
   "compilerOptions": {
     "plugins": [
@@ -238,7 +237,7 @@ endif
   syntax highlighting
 - Add the following `.sublime-project` file to your project folder
 
-```json
+```jsonc
 {
   "settings": {
     "LSP": {

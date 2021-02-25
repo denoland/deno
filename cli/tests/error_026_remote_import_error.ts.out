@@ -1,0 +1,7 @@
+[WILDCARD]error: Uncaught Error: bad
+  throw Error("bad");
+        ^
+    at foo (http://localhost:4545/cli/tests/error_001.ts:2:9)
+    at bar (http://localhost:4545/cli/tests/error_001.ts:6:3)
+    at http://localhost:4545/cli/tests/error_001.ts:9:1
+[WILDCARD]

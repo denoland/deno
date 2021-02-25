@@ -17,22 +17,31 @@ jobs:
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
-            kind: test_release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
-            kind: test_debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             kind: bench
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest' || 'ubuntu-18.04' }}
+          # TODO(ry) Ideally we could use ubuntu-latest-xl for lint but there's
+          # a bug with dprint that is preventing this from running.
+          - os: ubuntu-latest
             kind: lint
+          # TODO(ry) Ideally we would use ubuntu-latest-xl for test_debug too,
+          # but there are race conditions in our test we are working around by
+          # using the slower runner.
+          - os: ubuntu-latest
+            kind: test_debug
+          # Warning: Do not upgrade test_release to newer version of ubuntu
+          # runners. We need to link against older version of glibc in order to
+          # run on older systems. glibc in 20.04 is not compatible with 18.04.
+          # See #9484.
+          - os: ubuntu-18.04
+            kind: test_release
 
-      # Always run master branch builds to completion. This allows the cache to
+      # Always run main branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
       # Don't fast-fail on tag build because publishing binaries shouldn't be
-      # prevented if 'cargo publish' fails (which can be a false negative).
+      # prevented if if any of the stages fails (which can be a false negative).
       fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
-        'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
+        'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
       CARGO_INCREMENTAL: 0
@@ -46,7 +55,7 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v2
         with:
-          # Use depth > 1, because sometimes we need to rebuild master and if
+          # Use depth > 1, because sometimes we need to rebuild main and if
           # other commits have landed it will become impossible to rebuild if
           # the checkout is too shallow.
           fetch-depth: 5
@@ -65,7 +74,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.49.0
+          rust-version: 1.50.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -77,13 +86,13 @@ jobs:
         if: |
           !startsWith(matrix.os, 'windows')
         run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Install Deno (Windows)
         if: startsWith(matrix.os, 'windows')
         run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.5.1
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
 
       - name: Install Python
@@ -111,8 +120,8 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/')
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -124,8 +133,8 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master' ||
-          startsWith(github.ref, 'refs/tags/')
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/'))
         uses: google-github-actions/setup-gcloud@master
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
@@ -138,7 +147,7 @@ jobs:
         if: |
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         shell: bash
         run: |
           echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -201,7 +210,7 @@ jobs:
           runner.os != 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           echo $(git rev-parse HEAD) > canary-latest.txt
@@ -212,7 +221,7 @@ jobs:
           runner.os == 'Windows' &&
           matrix.kind == 'test_release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         env:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
@@ -261,7 +270,7 @@ jobs:
         if: |
           matrix.kind == 'bench' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
