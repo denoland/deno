@@ -3,10 +3,10 @@
 use crate::colors;
 use crate::media_type::serialize_media_type;
 use crate::media_type::MediaType;
-use deno_core::ModuleSpecifier;
 
-use serde::Serialize;
-use serde::Serializer;
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
+use deno_core::ModuleSpecifier;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
