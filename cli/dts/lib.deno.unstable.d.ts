@@ -21,28 +21,6 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Synchronously creates `newpath` as a hard link to `oldpath`.
-   *
-   * ```ts
-   * Deno.linkSync("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permissions. */
-  export function linkSync(oldpath: string, newpath: string): void;
-
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Creates `newpath` as a hard link to `oldpath`.
-   *
-   * ```ts
-   * await Deno.link("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permissions. */
-  export function link(oldpath: string, newpath: string): Promise<void>;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Gets the size of the console as columns/rows.
