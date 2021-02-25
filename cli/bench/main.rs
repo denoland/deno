@@ -68,6 +68,15 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     None,
   ),
   (
+    "workers_large_message",
+    &[
+      "run",
+      "--allow-read",
+      "cli/tests/workers_large_message_bench.ts",
+    ],
+    None,
+  ),
+  (
     "text_decoder",
     &["run", "cli/tests/text_decoder_perf.js"],
     None,

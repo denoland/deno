@@ -5,6 +5,7 @@ import {
   assertThrows,
   assertThrowsAsync,
   fail,
+  unimplemented,
   unitTest,
 } from "./test_util.ts";
 
@@ -20,12 +21,37 @@ unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   );
 });
 
+function findClosedPortInRange(
+  minPort: number,
+  maxPort: number,
+): number | never {
+  let port = minPort;
+
+  // If we hit the return statement of this loop
+  // that means that we did not throw an
+  // AddrInUse error when we executed Deno.listen.
+  while (port < maxPort) {
+    try {
+      const listener = Deno.listen({ port });
+      listener.close();
+      return port;
+    } catch (e) {
+      port++;
+    }
+  }
+
+  unimplemented(
+    `No available ports between ${minPort} and ${maxPort} to test fetch`,
+  );
+}
+
 unitTest(
   { perms: { net: true } },
   async function fetchConnectionError(): Promise<void> {
+    const port = findClosedPortInRange(4000, 9999);
     await assertThrowsAsync(
       async (): Promise<void> => {
-        await fetch("http://localhost:4000");
+        await fetch(`http://localhost:${port}`);
       },
       TypeError,
       "error trying to connect",

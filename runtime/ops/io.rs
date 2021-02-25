@@ -105,8 +105,8 @@ lazy_static! {
 }
 
 pub fn init(rt: &mut JsRuntime) {
-  rt.register_op("op_read", metrics_op(minimal_op(op_read)));
-  rt.register_op("op_write", metrics_op(minimal_op(op_write)));
+  rt.register_op("op_read", metrics_op("op_read", minimal_op(op_read)));
+  rt.register_op("op_write", metrics_op("op_write", minimal_op(op_write)));
   super::reg_json_async(rt, "op_shutdown", op_shutdown);
 }
 

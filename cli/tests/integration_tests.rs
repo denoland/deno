@@ -1844,13 +1844,40 @@ mod integration {
       let deno_exe = util::deno_exe_path();
       let fork = Fork::from_ptmx().unwrap();
       if let Ok(mut master) = fork.is_parent() {
-        master.write_all(b"Deno.internal\t\n").unwrap();
+        master.write_all(b"Symbol.it\t\n").unwrap();
         master.write_all(b"close();\n").unwrap();
 
         let mut output = String::new();
         master.read_to_string(&mut output).unwrap();
 
-        assert!(output.contains("Symbol(Deno.internal)"));
+        assert!(output.contains("Symbol(Symbol.iterator)"));
+
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pty_ignore_symbols() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b"Array.Symbol\t\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
+
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
+
+        assert!(output.contains("undefined"));
+        assert!(!output
+          .contains("Uncaught TypeError: Array.Symbol is not a function"));
 
         fork.wait().unwrap();
       } else {
@@ -2375,6 +2402,12 @@ mod integration {
     output: "deno_test.out",
   });
 
+  itest!(deno_test_finally_cleartimeout {
+    args: "test test_finally_cleartimeout.ts",
+    exit_code: 1,
+    output: "test_finally_cleartimeout.out",
+  });
+
   itest!(deno_test_unresolved_promise {
     args: "test test_unresolved_promise.js",
     exit_code: 1,
@@ -2481,7 +2514,7 @@ console.log("finish");
 
   // Ugly parentheses due to whitespace delimiting problem.
   itest!(_030_eval_ts {
-    args: "eval --quiet -T console.log((123)as(number))", // 'as' is a TS keyword only
+    args: "eval --quiet --ext=ts console.log((123)as(number))", // 'as' is a TS keyword only
     output: "030_eval_ts.out",
   });
 
@@ -2785,6 +2818,11 @@ console.log("finish");
   itest!(_085_dynamic_import_async_error {
     args: "run --allow-read 085_dynamic_import_async_error.ts",
     output: "085_dynamic_import_async_error.ts.out",
+  });
+
+  itest!(_086_dynamic_import_already_rejected {
+    args: "run --allow-read 086_dynamic_import_already_rejected.ts",
+    output: "086_dynamic_import_already_rejected.ts.out",
   });
 
   itest!(js_import_detect {
@@ -3747,10 +3785,11 @@ console.log("finish");
     exit_code: 0,
   });
 
-  itest!(local_sources_not_cached_in_memory {
-    args: "run --allow-read --allow-write no_mem_cache.js",
-    output: "no_mem_cache.js.out",
-  });
+  // FIXME(bartlomieju): disabled, because this test is very flaky on CI
+  // itest!(local_sources_not_cached_in_memory {
+  //   args: "run --allow-read --allow-write no_mem_cache.js",
+  //   output: "no_mem_cache.js.out",
+  // });
 
   // This test checks that inline source map data is used. It uses a hand crafted
   // source map that maps to a file that exists, but is not loaded into the module

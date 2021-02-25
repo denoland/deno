@@ -4,7 +4,7 @@ use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::inspector::InspectorSession;
 use crate::js;
-use crate::metrics::Metrics;
+use crate::metrics::RuntimeMetrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
@@ -104,9 +104,9 @@ impl MainWorker {
       {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
-        op_state.put::<Metrics>(Default::default());
+        op_state.put(RuntimeMetrics::default());
         op_state.put::<Permissions>(permissions);
-        op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+        op_state.put(ops::UnstableChecker {
           unstable: options.unstable,
         });
       }
