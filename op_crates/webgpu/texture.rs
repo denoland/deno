@@ -9,6 +9,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
+use super::error::WebGPUError;
 pub(crate) struct WebGPUTexture(pub(crate) wgpu_core::id::TextureId);
 impl Resource for WebGPUTexture {
   fn name(&self) -> Cow<str> {
@@ -176,16 +177,17 @@ pub fn op_webgpu_create_texture(
     usage: wgpu_types::TextureUsage::from_bits(args.usage).unwrap(),
   };
 
-  let texture = gfx_select_err!(device => instance.device_create_texture(
+  let (texture, maybe_err) = gfx_select!(device => instance.device_create_texture(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUTexture(texture));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }
 
@@ -239,15 +241,16 @@ pub fn op_webgpu_create_texture_view(
     ),
   };
 
-  let texture_view = gfx_select_err!(texture => instance.texture_create_view(
+  let (texture_view, maybe_err) = gfx_select!(texture => instance.texture_create_view(
     texture,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUTextureView(texture_view));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }

@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use super::error::WebGPUError;
 use super::texture::serialize_texture_format;
 
 struct WebGPURenderBundleEncoder(
@@ -65,8 +66,16 @@ pub fn op_webgpu_create_render_bundle_encoder(
       .transpose()?,
     sample_count: args.sample_count.unwrap_or(1),
   };
-  let render_bundle_encoder =
-    wgpu_core::command::RenderBundleEncoder::new(&descriptor, device, None)?;
+
+  let res =
+    wgpu_core::command::RenderBundleEncoder::new(&descriptor, device, None);
+  let (render_bundle_encoder, maybe_err) = match res {
+    Ok(encoder) => (encoder, None),
+    Err(e) => (
+      wgpu_core::command::RenderBundleEncoder::dummy(device),
+      Some(e),
+    ),
+  };
 
   let rid = state
     .resource_table
@@ -76,6 +85,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from),
   }))
 }
 
@@ -102,18 +112,19 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .into_inner();
   let instance = state.borrow::<super::Instance>();
 
-  let render_bundle = gfx_select_err!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
+  let (render_bundle, maybe_err) = gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
     &wgpu_core::command::RenderBundleDescriptor {
       label: args.label.map(Cow::from),
     },
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPURenderBundle(render_bundle));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }
 

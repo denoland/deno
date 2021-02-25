@@ -8,6 +8,8 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 
+use super::error::WebGPUError;
+
 type WebGPUQueue = super::WebGPUDevice;
 
 #[derive(Deserialize)]
@@ -39,9 +41,10 @@ pub fn op_webgpu_queue_submit(
     ids.push(buffer_resource.0);
   }
 
-  gfx_select!(queue => instance.queue_submit(queue, &ids))?;
+  let maybe_err =
+    gfx_select!(queue => instance.queue_submit(queue, &ids)).err();
 
-  Ok(json!({}))
+  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -83,14 +86,15 @@ pub fn op_webgpu_write_buffer(
     Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
     None => &zero_copy[0][args.data_offset..],
   };
-  gfx_select!(queue => instance.queue_write_buffer(
+  let maybe_err = gfx_select!(queue => instance.queue_write_buffer(
     queue,
     buffer,
     args.buffer_offset,
     data
-  ))?;
+  ))
+  .err();
 
-  Ok(json!({}))
+  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -136,7 +140,7 @@ pub fn op_webgpu_write_texture(
     rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
   };
 
-  gfx_select!(queue => instance.queue_write_texture(
+  let maybe_err = gfx_select!(queue => instance.queue_write_texture(
     queue,
     &destination,
     &*zero_copy[0],
@@ -146,7 +150,8 @@ pub fn op_webgpu_write_texture(
       height: args.size.height.unwrap_or(1),
       depth: args.size.depth.unwrap_or(1),
     }
-  ))?;
+  ))
+  .err();
 
-  Ok(json!({}))
+  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
 }

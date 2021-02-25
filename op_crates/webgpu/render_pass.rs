@@ -10,6 +10,8 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
+use super::error::WebGPUError;
+
 pub(crate) struct WebGPURenderPass(
   pub(crate) RefCell<wgpu_core::command::RenderPass>,
 );
@@ -304,9 +306,9 @@ pub fn op_webgpu_render_pass_end_pass(
   let render_pass = &render_pass_resource.0.borrow();
   let instance = state.borrow::<super::Instance>();
 
-  gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass))?;
+  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass)).err();
 
-  Ok(json!({}))
+  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
 }
 
 #[derive(Deserialize)]

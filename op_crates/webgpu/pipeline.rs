@@ -9,6 +9,8 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
+use super::error::WebGPUError;
+
 pub(crate) struct WebGPUPipelineLayout(
   pub(crate) wgpu_core::id::PipelineLayoutId,
 );
@@ -199,16 +201,12 @@ pub fn op_webgpu_create_compute_pipeline(
     }),
   };
 
-  let (compute_pipeline, _, err) = gfx_select!(device => instance.device_create_compute_pipeline(
+  let (compute_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
   ));
-
-  if let Some(err) = err {
-    return Err(err.into());
-  }
 
   let rid = state
     .resource_table
@@ -216,6 +214,7 @@ pub fn op_webgpu_create_compute_pipeline(
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from),
   }))
 }
 
@@ -238,7 +237,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
     .ok_or_else(bad_resource_id)?;
   let compute_pipeline = compute_pipeline_resource.0;
 
-  let bind_group_layout = gfx_select_err!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData))?;
+  let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData));
 
   let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
 
@@ -249,6 +248,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   Ok(json!({
     "rid": rid,
     "label": label,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }
 
@@ -591,16 +591,12 @@ pub fn op_webgpu_create_render_pipeline(
     }),
   };
 
-  let (render_pipeline, _, err) = gfx_select!(device => instance.device_create_render_pipeline(
+  let (render_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
   ));
-
-  if let Some(err) = err {
-    return Err(err.into());
-  }
 
   let rid = state
     .resource_table
@@ -608,6 +604,7 @@ pub fn op_webgpu_create_render_pipeline(
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }
 
@@ -630,7 +627,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
     .ok_or_else(bad_resource_id)?;
   let render_pipeline = render_pipeline_resource.0;
 
-  let bind_group_layout = gfx_select_err!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData))?;
+  let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData));
 
   let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
 
@@ -641,5 +638,6 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   Ok(json!({
     "rid": rid,
     "label": label,
+    "err": maybe_err.map(WebGPUError::from),
   }))
 }

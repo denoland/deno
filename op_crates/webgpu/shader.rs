@@ -9,6 +9,8 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
+use super::error::WebGPUError;
+
 pub(crate) struct WebGPUShaderModule(pub(crate) wgpu_core::id::ShaderModuleId);
 impl Resource for WebGPUShaderModule {
   fn name(&self) -> Cow<str> {
@@ -59,16 +61,17 @@ pub fn op_webgpu_create_shader_module(
     flags,
   };
 
-  let shader_module = gfx_select_err!(device => instance.device_create_shader_module(
+  let (shader_module, maybe_err) = gfx_select!(device => instance.device_create_shader_module(
     device,
     &descriptor,
     source,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUShaderModule(shader_module));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }

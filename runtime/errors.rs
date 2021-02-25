@@ -164,6 +164,7 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
+    .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| {
       e.downcast_ref::<dlopen::Error>()
         .map(get_dlopen_error_class)

@@ -17,6 +17,9 @@ use std::rc::Rc;
 pub use wgpu_core;
 pub use wgpu_types;
 
+use error::DOMExceptionOperationError;
+use error::WebGPUError;
+
 #[macro_use]
 mod macros {
   macro_rules! gfx_select {
@@ -36,19 +39,6 @@ mod macros {
       }
     };
   }
-
-  macro_rules! gfx_select_err {
-    ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
-      {
-        let (data, err) = gfx_select!($id => $global.$method( $($param),* ));
-        if let Some(err) = err {
-          Err(err)
-        } else {
-          Ok(data)
-        }
-      }
-    };
-  }
 }
 
 pub mod binding;
@@ -56,6 +46,7 @@ pub mod buffer;
 pub mod bundle;
 pub mod command_encoder;
 pub mod compute_pass;
+pub mod error;
 pub mod pipeline;
 pub mod queue;
 pub mod render_pass;
@@ -219,7 +210,7 @@ pub async fn op_webgpu_request_adapter(
     },
     compatible_surface: None, // windowless
   };
-  let adapter = instance.request_adapter(
+  let res = instance.request_adapter(
     &descriptor,
     wgpu_core::instance::AdapterInputs::Mask(
       wgpu_types::BackendBit::PRIMARY,
@@ -227,13 +218,14 @@ pub async fn op_webgpu_request_adapter(
     ),
   );
 
-  if adapter.is_err() {
-    return Ok(json!({
-      "error": true
-    }));
-  }
-
-  let adapter = adapter.unwrap();
+  let adapter = match res {
+    Ok(adapter) => adapter,
+    Err(err) => {
+      return Ok(json!({
+        "err": err.to_string()
+      }))
+    }
+  };
   let name = gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
   let adapter_features =
     gfx_select!(adapter => instance.adapter_features(adapter))?;
@@ -421,12 +413,15 @@ pub async fn op_webgpu_request_device(
       }),
   };
 
-  let device = gfx_select_err!(adapter => instance.adapter_request_device(
+  let (device, maybe_err) = gfx_select!(adapter => instance.adapter_request_device(
     adapter,
     &descriptor,
     std::env::var("DENO_WEBGPU_TRACE").ok().as_ref().map(std::path::Path::new),
     std::marker::PhantomData
-  ))?;
+  ));
+  if let Some(err) = maybe_err {
+    return Err(DOMExceptionOperationError::new(&err.to_string()).into());
+  }
 
   let device_features =
     gfx_select!(device => instance.device_features(device))?;
@@ -531,15 +526,16 @@ pub fn op_webgpu_create_query_set(
     count: args.count,
   };
 
-  let query_set = gfx_select_err!(device => instance.device_create_query_set(
+  let (query_set, maybe_err) = gfx_select!(device => instance.device_create_query_set(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUQuerySet(query_set));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from),
   }))
 }

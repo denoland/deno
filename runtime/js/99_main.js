@@ -196,6 +196,7 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("SyntaxError", SyntaxError);
     core.registerErrorClass("TypeError", TypeError);
     core.registerErrorClass("URIError", URIError);
+    core.registerErrorClass("DOMExceptionOperationError", DOMException, "OperationError");
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope

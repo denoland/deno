@@ -9,6 +9,8 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
+use super::error::WebGPUError;
+
 pub(crate) struct WebGPUBindGroupLayout(
   pub(crate) wgpu_core::id::BindGroupLayoutId,
 );
@@ -194,11 +196,11 @@ pub fn op_webgpu_create_bind_group_layout(
     entries: Cow::from(entries),
   };
 
-  let bind_group_layout = gfx_select_err!(device => instance.device_create_bind_group_layout(
+  let (bind_group_layout, maybe_err) = gfx_select!(device => instance.device_create_bind_group_layout(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state
     .resource_table
@@ -206,6 +208,7 @@ pub fn op_webgpu_create_bind_group_layout(
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }
 
@@ -245,11 +248,11 @@ pub fn op_webgpu_create_pipeline_layout(
     push_constant_ranges: Default::default(),
   };
 
-  let pipeline_layout = gfx_select_err!(device => instance.device_create_pipeline_layout(
+  let (pipeline_layout, maybe_err) = gfx_select!(device => instance.device_create_pipeline_layout(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state
     .resource_table
@@ -257,6 +260,7 @@ pub fn op_webgpu_create_pipeline_layout(
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }
 
@@ -343,15 +347,16 @@ pub fn op_webgpu_create_bind_group(
     entries: Cow::from(entries),
   };
 
-  let bind_group = gfx_select_err!(device => instance.device_create_bind_group(
+  let (bind_group, maybe_err) = gfx_select!(device => instance.device_create_bind_group(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUBindGroup(bind_group));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }

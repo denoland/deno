@@ -9,6 +9,8 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
+use super::error::WebGPUError;
+
 pub(crate) struct WebGPUSampler(pub(crate) wgpu_core::id::SamplerId);
 impl Resource for WebGPUSampler {
   fn name(&self) -> Cow<str> {
@@ -112,15 +114,16 @@ pub fn op_webgpu_create_sampler(
     border_color: None, // native-only
   };
 
-  let sampler = gfx_select_err!(device => instance.device_create_sampler(
+  let (sampler, maybe_err) = gfx_select!(device => instance.device_create_sampler(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUSampler(sampler));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }

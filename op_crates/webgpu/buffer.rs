@@ -14,6 +14,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use super::error::DOMExceptionOperationError;
+use super::error::WebGPUError;
+
 pub(crate) struct WebGPUBuffer(pub(crate) wgpu_core::id::BufferId);
 impl Resource for WebGPUBuffer {
   fn name(&self) -> Cow<str> {
@@ -57,16 +60,17 @@ pub fn op_webgpu_create_buffer(
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
 
-  let buffer = gfx_select_err!(device => instance.device_create_buffer(
+  let (buffer, maybe_err) = gfx_select!(device => instance.device_create_buffer(
     device,
     &descriptor,
     std::marker::PhantomData
-  ))?;
+  ));
 
   let rid = state.resource_table.add(WebGPUBuffer(buffer));
 
   Ok(json!({
     "rid": rid,
+    "err": maybe_err.map(WebGPUError::from)
   }))
 }
 
@@ -119,6 +123,7 @@ pub async fn op_webgpu_buffer_get_map_async(
         .unwrap();
     }
 
+    // TODO(lucacasonato): error handling
     gfx_select!(buffer => instance.buffer_map_async(
       buffer,
       args.offset..(args.offset + args.size),
@@ -184,7 +189,8 @@ pub fn op_webgpu_buffer_get_mapped_range(
     buffer,
     args.offset,
     std::num::NonZeroU64::new(args.size)
-  ))?;
+  ))
+  .map_err(|e| DOMExceptionOperationError::new(&e.to_string()))?;
 
   let slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
@@ -231,7 +237,7 @@ pub fn op_webgpu_buffer_unmap(
     slice.copy_from_slice(&buffer);
   }
 
-  gfx_select!(buffer => instance.buffer_unmap(buffer))?;
+  let maybe_err = gfx_select!(buffer => instance.buffer_unmap(buffer)).err();
 
-  Ok(json!({}))
+  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
 }

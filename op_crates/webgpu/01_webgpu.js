@@ -27,7 +27,7 @@
         "OperationError",
       );
     }
-    return { ...device, rid: deviceRid };
+    return device;
   }
 
   /**
@@ -155,12 +155,12 @@
         context: "Argument 1",
       });
 
-      const { error, ...data } = await core.jsonOpAsync(
+      const { err, ...data } = await core.jsonOpAsync(
         "op_webgpu_request_adapter",
         { ...options },
       );
 
-      if (error) {
+      if (err) {
         return null;
       } else {
         return createGPUAdapter(data.name, data);
@@ -258,14 +258,12 @@
         },
       );
 
-      /** @type {InnerGPUDevice} */
-      const inner = {
+      const inner = new InnerGPUDevice({
         rid,
         adapter: this,
         features: Object.freeze(features),
         limits: Object.freeze(limits),
-        resources: [],
-      };
+      });
       return createGPUDevice(
         descriptor.label ?? null,
         inner,
@@ -450,6 +448,49 @@
     }
   }
 
+  const _reason = Symbol("[[reason]]");
+  const _message = Symbol("[[message]]");
+
+  /**
+   * 
+   * @param {string | undefined} reason
+   * @param {string} message
+   * @returns {GPUDeviceLostInfo}
+   */
+  function createGPUDeviceLostInfo(reason, message) {
+    /** @type {GPUDeviceLostInfo} */
+    const deviceLostInfo = webidl.createBranded(GPUDeviceLostInfo);
+    deviceLostInfo[_reason] = reason;
+    deviceLostInfo[_message] = message;
+    return deviceLostInfo;
+  }
+
+  class GPUDeviceLostInfo {
+    /** @type {string | undefined} */
+    [_reason];
+    /** @type {string} */
+    [_message];
+
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    get reason() {
+      webidl.assertBranded(this, GPUDeviceLostInfo);
+      return this[_reason];
+    }
+    get message() {
+      webidl.assertBranded(this, GPUDeviceLostInfo);
+      return this[_message];
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({ reason: this[_reason], message: this[_message] })
+      }`;
+    }
+  }
+
   const _label = Symbol("[[label]]");
 
   /**
@@ -483,14 +524,102 @@
   const _device = Symbol("[[device]]");
   const _queue = Symbol("[[queue]]");
 
+  /** 
+   * @typedef ErrorScope
+   * @property {string} filter
+   * @property {GPUError | undefined} error  
+   */
+
   /**
-   * @typedef InnerGPUDevice
+   * @typedef InnerGPUDeviceOptions
    * @property {GPUAdapter} adapter
    * @property {number | undefined} rid
    * @property {GPUFeatureName[]} features
    * @property {object} limits
-   * @property {WeakRef<any>[]} resources
    */
+
+  class InnerGPUDevice {
+    /** @type {GPUAdapter} */
+    adapter;
+    /** @type {number | undefined} */
+    rid;
+    /** @type {GPUFeatureName[]} */
+    features;
+    /** @type {object} */
+    limits;
+    /** @type {WeakRef<any>[]} */
+    resources;
+    /** @type {boolean} */
+    isLost;
+    /** @type {Promise<GPUDeviceLostInfo>} */
+    lost;
+    /** @type {(info: GPUDeviceLostInfo) => void} */
+    resolveLost;
+    /** @type {ErrorScope[]} */
+    errorScopeStack;
+
+    /**
+     * @param {InnerGPUDeviceOptions} options
+     */
+    constructor(options) {
+      this.adapter = options.adapter;
+      this.rid = options.rid;
+      this.features = options.features;
+      this.limits = options.limits;
+      this.resources = [];
+      this.isLost = false;
+      this.resolveLost = () => {};
+      this.lost = new Promise((resolve) => {
+        this.resolveLost = resolve;
+      });
+      this.errorScopeStack = [];
+    }
+
+    /** @param {any} resource */
+    trackResource(resource) {
+      this.resources.push(new WeakRef(resource));
+    }
+
+    /** @param {{ type: string, value: string | null } | undefined} err */
+    pushError(err) {
+      if (err) {
+        switch (err.type) {
+          case "lost":
+            this.isLost = true;
+            this.resolveLost(
+              createGPUDeviceLostInfo(undefined, "device was lost"),
+            );
+            break;
+          case "validation":
+          case "out-of-memory":
+            for (
+              let i = this.errorScopeStack.length - 1;
+              i >= 0;
+              i--
+            ) {
+              const scope = this.errorScopeStack[i];
+              if (scope.filter == err.type) {
+                if (!scope.error) {
+                  switch (err.type) {
+                    case "validation":
+                      scope.error = new GPUValidationError(
+                        err.value ?? "validation error",
+                      );
+                      break;
+                    case "out-of-memory":
+                      scope.error = new GPUOutOfMemoryError();
+                      break;
+                  }
+                }
+                return;
+              }
+            }
+            // TODO(lucacasonato): emit a UncapturedErrorEvent
+            break;
+        }
+      }
+    }
+  }
 
   /**
    * @param {string | null} label
@@ -572,10 +701,11 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync("op_webgpu_create_buffer", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_buffer", {
         deviceRid: device.rid,
         ...descriptor,
       });
+      device.pushError(err);
       /** @type {CreateGPUBufferOptions} */
       let options;
       if (descriptor.mappedAtCreation) {
@@ -601,7 +731,7 @@
         descriptor.usage,
         options,
       );
-      device.resources.push(new WeakRef(buffer));
+      device.trackResource((buffer));
       return buffer;
     }
 
@@ -618,18 +748,19 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync("op_webgpu_create_texture", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_texture", {
         deviceRid: device.rid,
         ...descriptor,
         size: normalizeGPUExtent3D(descriptor.size),
       });
+      device.pushError(err);
 
       const texture = createGPUTexture(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(texture));
+      device.trackResource((texture));
       return texture;
     }
 
@@ -645,17 +776,18 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync("op_webgpu_create_sampler", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_sampler", {
         deviceRid: device.rid,
         ...descriptor,
       });
+      device.pushError(err);
 
       const sampler = createGPUSampler(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(sampler));
+      device.trackResource((sampler));
       return sampler;
     }
 
@@ -684,17 +816,21 @@
         }
       }
 
-      const { rid } = core.jsonOpSync("op_webgpu_create_bind_group_layout", {
-        deviceRid: device.rid,
-        ...descriptor,
-      });
+      const { rid, err } = core.jsonOpSync(
+        "op_webgpu_create_bind_group_layout",
+        {
+          deviceRid: device.rid,
+          ...descriptor,
+        },
+      );
+      device.pushError(err);
 
       const bindGroupLayout = createGPUBindGroupLayout(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(bindGroupLayout));
+      device.trackResource((bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -723,18 +859,19 @@
           return rid;
         },
       );
-      const { rid } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
         deviceRid: device.rid,
         label: descriptor.label,
         bindGroupLayouts,
       });
+      device.pushError(err);
 
       const pipelineLayout = createGPUPipelineLayout(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(pipelineLayout));
+      device.trackResource((pipelineLayout));
       return pipelineLayout;
     }
 
@@ -814,19 +951,20 @@
         }
       });
 
-      const { rid } = core.jsonOpSync("op_webgpu_create_bind_group", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_bind_group", {
         deviceRid: device.rid,
         label: descriptor.label,
         layout,
         entries,
       });
+      device.pushError(err);
 
       const bindGroup = createGPUBindGroup(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(bindGroup));
+      device.trackResource((bindGroup));
       return bindGroup;
     }
 
@@ -842,7 +980,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync(
+      const { rid, err } = core.jsonOpSync(
         "op_webgpu_create_shader_module",
         {
           deviceRid: device.rid,
@@ -856,13 +994,14 @@
           ? [new Uint8Array(descriptor.code.buffer)]
           : []),
       );
+      device.pushError(err);
 
       const shaderModule = createGPUShaderModule(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(shaderModule));
+      device.trackResource((shaderModule));
       return shaderModule;
     }
 
@@ -899,22 +1038,26 @@
         selfContext: "this",
       });
 
-      const { rid } = core.jsonOpSync("op_webgpu_create_compute_pipeline", {
-        deviceRid: device.rid,
-        label: descriptor.label,
-        layout,
-        compute: {
-          module,
-          entryPoint: descriptor.compute.entryPoint,
+      const { rid, err } = core.jsonOpSync(
+        "op_webgpu_create_compute_pipeline",
+        {
+          deviceRid: device.rid,
+          label: descriptor.label,
+          layout,
+          compute: {
+            module,
+            entryPoint: descriptor.compute.entryPoint,
+          },
         },
-      });
+      );
+      device.pushError(err);
 
       const computePipeline = createGPUComputePipeline(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(computePipeline));
+      device.trackResource((computePipeline));
       return computePipeline;
     }
 
@@ -968,7 +1111,7 @@
         };
       }
 
-      const { rid } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
         deviceRid: device.rid,
         label: descriptor.label,
         layout,
@@ -982,13 +1125,14 @@
         multisample: descriptor.multisample,
         fragment,
       });
+      device.pushError(err);
 
       const renderPipeline = createGPURenderPipeline(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(renderPipeline));
+      device.trackResource((renderPipeline));
       return renderPipeline;
     }
 
@@ -1014,17 +1158,18 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync("op_webgpu_create_command_encoder", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_command_encoder", {
         deviceRid: device.rid,
         ...descriptor,
       });
+      device.pushError(err);
 
       const commandEncoder = createGPUCommandEncoder(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(commandEncoder));
+      device.trackResource((commandEncoder));
       return commandEncoder;
     }
 
@@ -1045,20 +1190,21 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync(
+      const { rid, err } = core.jsonOpSync(
         "op_webgpu_create_render_bundle_encoder",
         {
           deviceRid: device.rid,
           ...descriptor,
         },
       );
+      device.pushError(err);
 
       const renderBundleEncoder = createGPURenderBundleEncoder(
         descriptor.label ?? null,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(renderBundleEncoder));
+      device.trackResource((renderBundleEncoder));
       return renderBundleEncoder;
     }
 
@@ -1078,10 +1224,11 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync("op_webgpu_create_query_set", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_query_set", {
         deviceRid: device.rid,
         ...descriptor,
       });
+      device.pushError(err);
 
       const querySet = createGPUQuerySet(
         descriptor.label ?? null,
@@ -1089,8 +1236,55 @@
         rid,
         descriptor,
       );
-      device.resources.push(new WeakRef(querySet));
+      device.trackResource((querySet));
       return querySet;
+    }
+
+    get lost() {
+      webidl.assertBranded(this, GPUDevice);
+      const device = this[_device];
+      if (!device) {
+        return Promise.resolve(true);
+      }
+      if (device.rid === undefined) {
+        return Promise.resolve(true);
+      }
+      return device.lost;
+    }
+
+    /**
+     * @param {GPUErrorFilter} filter
+     */
+    pushErrorScope(filter) {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'pushErrorScope' on 'GPUDevice'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      filter = webidl.converters.GPUErrorFilter(filter, {
+        prefix,
+        context: "Argument 1",
+      });
+      const device = assertDevice(this, { prefix, context: "this" });
+      device.errorScopeStack.push({ filter, error: undefined });
+    }
+
+    /**
+     * @returns {Promise<GPUError | null>}
+     */
+    async popErrorScope() {
+      webidl.assertBranded(this, GPUDevice);
+      const prefix = "Failed to execute 'pushErrorScope' on 'GPUDevice'";
+      const device = assertDevice(this, { prefix, context: "this" });
+      if (device.isLost) {
+        throw new DOMException("Device has been lost.", "OperationError");
+      }
+      const scope = device.errorScopeStack.pop();
+      if (!scope) {
+        throw new DOMException(
+          "There are no error scopes on that stack.",
+          "OperationError",
+        );
+      }
+      return scope.error ?? null;
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
@@ -1152,10 +1346,11 @@
         });
         return rid;
       });
-      core.jsonOpSync("op_webgpu_queue_submit", {
+      const { err } = core.jsonOpSync("op_webgpu_queue_submit", {
         queueRid: device.rid,
         commandBuffers: commandBufferRids,
       });
+      device.pushError(err);
     }
 
     onSubmittedWorkDone() {
@@ -1206,7 +1401,7 @@
         selfContext: "this",
         resourceContext: "Argument 1",
       });
-      core.jsonOpSync(
+      const { err } = core.jsonOpSync(
         "op_webgpu_write_buffer",
         {
           queueRid: device.rid,
@@ -1217,6 +1412,7 @@
         },
         new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data),
       );
+      device.pushError(err);
     }
 
     /**
@@ -1255,7 +1451,7 @@
         selfContext: "this",
         resourceContext: "texture",
       });
-      core.jsonOpSync(
+      const { err } = core.jsonOpSync(
         "op_webgpu_write_texture",
         {
           queueRid: device.rid,
@@ -1271,6 +1467,7 @@
         },
         new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data),
       );
+      device.pushError(err);
     }
 
     copyImageBitmapToTexture(_source, _destination, _copySize) {
@@ -1454,7 +1651,7 @@
 
       this[_mapMode] = mode;
       this[_state] = "mapping pending";
-      await core.jsonOpAsync(
+      const { err } = await core.jsonOpAsync(
         "op_webgpu_buffer_get_map_async",
         {
           bufferRid,
@@ -1464,6 +1661,7 @@
           size: rangeSize,
         },
       );
+      device.pushError(err);
       this[_state] = "mapped";
       this[_mappingRange] = [offset, offset + rangeSize];
       /** @type {[ArrayBuffer, number, number][] | null} */
@@ -1567,7 +1765,7 @@
     unmap() {
       webidl.assertBranded(this, GPUBuffer);
       const prefix = "Failed to execute 'unmap' on 'GPUBuffer'";
-      assertDevice(this, { prefix, context: "this" });
+      const device = assertDevice(this, { prefix, context: "this" });
       const bufferRid = assertResource(this, { prefix, context: "this" });
       if (this[_state] === "unmapped" || this[_state] === "destroyed") {
         throw new DOMException(
@@ -1606,10 +1804,12 @@
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
         for (const [buffer, mappedRid] of mappedRanges) {
-          core.jsonOpSync("op_webgpu_buffer_unmap", {
+          const { err } = core.jsonOpSync("op_webgpu_buffer_unmap", {
             bufferRid,
             mappedRid,
           }, ...(write ? [new Uint8Array(buffer)] : []));
+          device.pushError(err);
+          if (err) return;
         }
         this[_mappingRange] = null;
         this[_mappedRanges] = null;
@@ -1740,12 +1940,13 @@
         prefix,
         context: "Argument 1",
       });
-      assertDevice(this, { prefix, context: "this" });
+      const device = assertDevice(this, { prefix, context: "this" });
       const textureRid = assertResource(this, { prefix, context: "this" });
-      const { rid } = core.jsonOpSync("op_webgpu_create_texture_view", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_create_texture_view", {
         textureRid,
         ...descriptor,
       });
+      device.pushError(err);
 
       const textureView = createGPUTextureView(
         descriptor.label ?? null,
@@ -2126,17 +2327,18 @@
         prefix,
         context: "this",
       });
-      const { rid, label } = core.jsonOpSync(
+      const { rid, label, err } = core.jsonOpSync(
         "op_webgpu_compute_pipeline_get_bind_group_layout",
         { computePipelineRid, index },
       );
+      device.pushError(err);
 
       const bindGroupLayout = createGPUBindGroupLayout(
         label,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(bindGroupLayout));
+      device.trackResource((bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -2200,17 +2402,18 @@
         prefix,
         context: "this",
       });
-      const { rid, label } = core.jsonOpSync(
+      const { rid, label, err } = core.jsonOpSync(
         "op_webgpu_render_pipeline_get_bind_group_layout",
         { renderPipelineRid, index },
       );
+      device.pushError(err);
 
       const bindGroupLayout = createGPUBindGroupLayout(
         label,
         device,
         rid,
       );
-      device.resources.push(new WeakRef(bindGroupLayout));
+      device.trackResource((bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -2540,7 +2743,7 @@
         selfContext: "this",
       });
 
-      core.jsonOpSync(
+      const { err } = core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_buffer",
         {
           commandEncoderRid,
@@ -2551,6 +2754,7 @@
           size,
         },
       );
+      device.pushError(err);
     }
 
     /**
@@ -2599,7 +2803,7 @@
         selfContext: "this",
       });
 
-      core.jsonOpSync(
+      const { err } = core.jsonOpSync(
         "op_webgpu_command_encoder_copy_buffer_to_texture",
         {
           commandEncoderRid,
@@ -2617,6 +2821,7 @@
           copySize: normalizeGPUExtent3D(copySize),
         },
       );
+      device.pushError(err);
     }
 
     /**
@@ -2664,7 +2869,7 @@
         resourceContext: "buffer in Argument 2",
         selfContext: "this",
       });
-      core.jsonOpSync(
+      const { err } = core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_buffer",
         {
           commandEncoderRid,
@@ -2682,6 +2887,7 @@
           copySize: normalizeGPUExtent3D(copySize),
         },
       );
+      device.pushError(err);
     }
 
     /**
@@ -2729,7 +2935,7 @@
         resourceContext: "texture in Argument 2",
         selfContext: "this",
       });
-      core.jsonOpSync(
+      const { err } = core.jsonOpSync(
         "op_webgpu_command_encoder_copy_texture_to_texture",
         {
           commandEncoderRid,
@@ -2750,6 +2956,7 @@
           copySize: normalizeGPUExtent3D(copySize),
         },
       );
+      device.pushError(err);
     }
 
     /**
@@ -2764,28 +2971,36 @@
         prefix,
         context: "Argument 1",
       });
-      assertDevice(this, { prefix, context: "this" });
+      const device = assertDevice(this, { prefix, context: "this" });
       const commandEncoderRid = assertResource(this, {
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_command_encoder_push_debug_group", {
-        commandEncoderRid,
-        groupLabel,
-      });
+      const { err } = core.jsonOpSync(
+        "op_webgpu_command_encoder_push_debug_group",
+        {
+          commandEncoderRid,
+          groupLabel,
+        },
+      );
+      device.pushError(err);
     }
 
     popDebugGroup() {
       webidl.assertBranded(this, GPUCommandEncoder);
       const prefix = "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder'";
-      assertDevice(this, { prefix, context: "this" });
+      const device = assertDevice(this, { prefix, context: "this" });
       const commandEncoderRid = assertResource(this, {
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_command_encoder_pop_debug_group", {
-        commandEncoderRid,
-      });
+      const { err } = core.jsonOpSync(
+        "op_webgpu_command_encoder_pop_debug_group",
+        {
+          commandEncoderRid,
+        },
+      );
+      device.pushError(err);
     }
 
     /**
@@ -2800,15 +3015,19 @@
         prefix,
         context: "Argument 1",
       });
-      assertDevice(this, { prefix, context: "this" });
+      const device = assertDevice(this, { prefix, context: "this" });
       const commandEncoderRid = assertResource(this, {
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_command_encoder_insert_debug_marker", {
-        commandEncoderRid,
-        markerLabel,
-      });
+      const { err } = core.jsonOpSync(
+        "op_webgpu_command_encoder_insert_debug_marker",
+        {
+          commandEncoderRid,
+          markerLabel,
+        },
+      );
+      device.pushError(err);
     }
 
     /**
@@ -2842,11 +3061,15 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_command_encoder_write_timestamp", {
-        commandEncoderRid,
-        querySet: querySetRid,
-        queryIndex,
-      });
+      const { err } = core.jsonOpSync(
+        "op_webgpu_command_encoder_write_timestamp",
+        {
+          commandEncoderRid,
+          querySet: querySetRid,
+          queryIndex,
+        },
+      );
+      device.pushError(err);
     }
 
     /**
@@ -2910,14 +3133,18 @@
         resourceContext: "Argument 3",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_command_encoder_resolve_query_set", {
-        commandEncoderRid,
-        querySet: querySetRid,
-        firstQuery,
-        queryCount,
-        destination: destinationRid,
-        destinationOffset,
-      });
+      const { err } = core.jsonOpSync(
+        "op_webgpu_command_encoder_resolve_query_set",
+        {
+          commandEncoderRid,
+          querySet: querySetRid,
+          firstQuery,
+          queryCount,
+          destination: destinationRid,
+          destinationOffset,
+        },
+      );
+      device.pushError(err);
     }
 
     /**
@@ -2936,10 +3163,11 @@
         prefix,
         context: "this",
       });
-      const { rid } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
+      const { rid, err } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
         commandEncoderRid,
         ...descriptor,
       });
+      device.pushError(err);
       /** @type {number | undefined} */
       this[_rid] = undefined;
 
@@ -2948,7 +3176,7 @@
         device,
         rid,
       );
-      device.resources.push(new WeakRef(commandBuffer));
+      device.trackResource((commandBuffer));
       return commandBuffer;
     }
 
@@ -3296,7 +3524,7 @@
     endPass() {
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix = "Failed to execute 'endPass' on 'GPURenderPassEncoder'";
-      assertDevice(this[_encoder], {
+      const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
       });
@@ -3305,10 +3533,11 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_end_pass", {
+      const { err } = core.jsonOpSync("op_webgpu_render_pass_end_pass", {
         commandEncoderRid,
         renderPassRid,
       });
+      device.pushError(err);
       this[_rid] = undefined;
     }
 
@@ -4027,7 +4256,7 @@
     endPass() {
       webidl.assertBranded(this, GPUComputePassEncoder);
       const prefix = "Failed to execute 'endPass' on 'GPUComputePassEncoder'";
-      assertDevice(this[_encoder], {
+      const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
       });
@@ -4036,10 +4265,11 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
+      const { err } = core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
         commandEncoderRid,
         computePassRid,
       });
+      device.pushError(err);
       this[_rid] = undefined;
     }
 
@@ -4277,13 +4507,14 @@
         prefix,
         context: "this",
       });
-      const { rid } = core.jsonOpSync(
+      const { rid, err } = core.jsonOpSync(
         "op_webgpu_render_bundle_encoder_finish",
         {
           renderBundleEncoderRid,
           ...descriptor,
         },
       );
+      device.pushError(err);
       this[_rid] = undefined;
 
       const renderBundle = createGPURenderBundle(
@@ -4291,7 +4522,7 @@
         device,
         rid,
       );
-      device.resources.push(new WeakRef(renderBundle));
+      device.trackResource((renderBundle));
       return renderBundle;
     }
 
