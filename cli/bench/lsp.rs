@@ -11,7 +11,6 @@ use deno_core::serde_json::Value;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::io::BufRead;
 use std::io::Read;
 use std::io::Write;
@@ -24,13 +23,34 @@ use std::time::Duration;
 use std::time::Instant;
 
 static FIXTURE_DB_TS: &str = include_str!("fixtures/db.ts");
-static FIXTURE_EDITS_JSON: &[u8] = include_bytes!("fixtures/edits.json");
+static FIXTURE_DB_MESSAGES: &[u8] = include_bytes!("fixtures/db_messages.json");
 static FIXTURE_INIT_JSON: &[u8] =
   include_bytes!("fixtures/initialize_params.json");
 
 lazy_static! {
   static ref CONTENT_TYPE_REG: Regex =
     Regex::new(r"(?i)^content-length:\s+(\d+)").unwrap();
+}
+
+#[derive(Debug, Deserialize)]
+enum FixtureType {
+  #[serde(rename = "action")]
+  Action,
+  #[serde(rename = "change")]
+  Change,
+  #[serde(rename = "completion")]
+  Completion,
+  #[serde(rename = "highlight")]
+  Highlight,
+  #[serde(rename = "hover")]
+  Hover,
+}
+
+#[derive(Debug, Deserialize)]
+struct FixtureMessage {
+  #[serde(rename = "type")]
+  fixture_type: FixtureType,
+  params: Value,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -42,30 +62,9 @@ struct LspResponseError {
 
 #[derive(Debug)]
 enum LspMessage {
+  Notification(String, Option<Value>),
   Request(u64, String, Option<Value>),
   Response(u64, Option<Value>, Option<LspResponseError>),
-  Notification(String, Option<Value>),
-}
-
-impl LspMessage {
-  fn to_value(&self) -> Value {
-    match self {
-      Self::Notification(method, params) => json!({
-        "method": method,
-        "params": params,
-      }),   
-      Self::Request(id, method, params) => json!({
-        "id": id,
-        "method": method,
-        "params": params,
-      }),
-      Self::Response(id, result, error) => json!({
-        "id": id,
-        "result": result,
-        "error": error,
-      }),
-    }
-  }
 }
 
 impl<'a> From<&'a [u8]> for LspMessage {
@@ -93,7 +92,6 @@ impl<'a> From<&'a [u8]> for LspMessage {
 struct LspClient {
   reader: std::io::BufReader<ChildStdout>,
   child: std::process::Child,
-  queue: VecDeque<LspMessage>,
   request_id: u64,
   start: Instant,
   writer: std::io::BufWriter<ChildStdin>,
@@ -153,7 +151,6 @@ impl LspClient {
 
     Ok(Self {
       child,
-      queue: Default::default(),
       reader,
       request_id: 1,
       start: Instant::now(),
@@ -185,7 +182,7 @@ impl LspClient {
             return Ok((method, None));
           }
         }
-        msg => self.queue.push_back(msg),
+        _ => (),
       }
     }
   }
@@ -202,15 +199,14 @@ impl LspClient {
     Ok(())
   }
 
-  fn write_request<S, V, R>(
+  fn write_request<S, V>(
     &mut self,
     method: S,
     params: V,
-  ) -> Result<(Option<R>, Option<LspResponseError>), AnyError>
+  ) -> Result<(Option<Value>, Option<LspResponseError>), AnyError>
   where
     S: AsRef<str>,
     V: Serialize,
-    R: de::DeserializeOwned,
   {
     let value = json!({
       "jsonrpc": "2.0",
@@ -225,14 +221,9 @@ impl LspClient {
         LspMessage::Response(id, result, error) => {
           assert_eq!(id, self.request_id);
           self.request_id += 1;
-          if let Some(r) = result {
-            let res = serde_json::from_value(r)?;
-            return Ok((Some(res), error));
-          } else {
-            return Ok((None, error));
-          }
+          return Ok((result, error));
         }
-        msg => self.queue.push_back(msg),
+        _ => (),
       }
     }
   }
@@ -256,6 +247,9 @@ impl LspClient {
   }
 }
 
+/// A benchmark that opens a 8000+ line TypeScript document, adds a function to
+/// the end of the document and does a level of hovering and gets quick fix
+/// code actions.
 fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
   let mut client = LspClient::new(deno_exe)?;
 
@@ -281,11 +275,27 @@ fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
 
-  let edits: Vec<Value> = serde_json::from_slice(FIXTURE_EDITS_JSON)?;
+  let messages: Vec<FixtureMessage> =
+    serde_json::from_slice(FIXTURE_DB_MESSAGES)?;
 
-  for (_, edit) in edits.iter().enumerate() {
-    client.write_notification("textDocument/didChange", edit)?;
-    // std::thread::sleep(Duration::from_millis(100));
+  for msg in messages {
+    match msg.fixture_type {
+      FixtureType::Action => {
+        client.write_request("textDocument/codeAction", msg.params)?;
+      }
+      FixtureType::Change => {
+        client.write_notification("textDocument/didChange", msg.params)?;
+      }
+      FixtureType::Completion => {
+        client.write_request("textDocument/completion", msg.params)?;
+      }
+      FixtureType::Highlight => {
+        client.write_request("textDocument/documentHighlight", msg.params)?;
+      }
+      FixtureType::Hover => {
+        client.write_request("textDocument/hover", msg.params)?;
+      }
+    }
   }
 
   let (_, response_error): (Option<Value>, Option<LspResponseError>) =
@@ -297,6 +307,7 @@ fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
   Ok(client.duration())
 }
 
+/// A test that starts up the LSP, opens a single line document, and exits.
 fn bench_startup_shutdown(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
   let mut client = LspClient::new(deno_exe)?;
 
@@ -331,6 +342,7 @@ fn bench_startup_shutdown(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
   Ok(client.duration())
 }
 
+/// Generate benchmarks for the LSP server.
 pub(crate) fn benchmarks(
   deno_exe: &PathBuf,
 ) -> Result<HashMap<String, u64>, AnyError> {
@@ -342,8 +354,8 @@ pub(crate) fn benchmarks(
   for _ in 0..10 {
     times.push(bench_startup_shutdown(deno_exe)?);
   }
-  let mean: u64 =
-    times.iter().sum::<Duration>().as_millis() as u64 / times.len() as u64;
+  let mean =
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("startup_shutdown".to_string(), mean);
 
@@ -352,8 +364,8 @@ pub(crate) fn benchmarks(
   for _ in 0..5 {
     times.push(bench_big_file_edits(deno_exe)?);
   }
-  let mean: u64 =
-    times.iter().sum::<Duration>().as_millis() as u64 / times.len() as u64;
+  let mean =
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("big_file_edits".to_string(), mean);
 
