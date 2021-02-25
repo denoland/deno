@@ -37,6 +37,7 @@ declare global {
     jsonOpSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
+    // deno-lint-ignore no-explicit-any
     registerErrorBuilder(name: string, builder: (msg: string) => any): void;
   }
 

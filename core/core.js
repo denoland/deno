@@ -176,7 +176,9 @@ SharedQueue Binary Layout
 
   function registerErrorBuilder(errorName, builder) {
     if (typeof errorMap[errorName] !== "undefined") {
-      throw new TypeError(`Error builder for "${errorName}" already registered`);
+      throw new TypeError(
+        `Error builder for "${errorName}" already registered`,
+      );
     }
     errorMap[errorName] = builder;
   }
