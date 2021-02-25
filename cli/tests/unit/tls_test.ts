@@ -20,6 +20,24 @@ unitTest(async function connectTLSNoPerm(): Promise<void> {
   }, Deno.errors.PermissionDenied);
 });
 
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSInvalidHost(): Promise<void> {
+    const listener = await Deno.listenTls({
+      hostname: "localhost",
+      port: 3567,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key",
+    });
+
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({ hostname: "127.0.0.1", port: 3567 });
+    }, Error);
+
+    listener.close();
+  },
+);
+
 unitTest(async function connectTLSCertFileNoReadPerm(): Promise<void> {
   await assertThrowsAsync(async () => {
     await Deno.connectTls({

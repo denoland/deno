@@ -310,7 +310,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
     stringify(JSON),
-    'JSON { [Symbol(Symbol.toStringTag)]: "JSON" }',
+    "JSON {}",
   );
   assertEquals(
     stringify(console),
@@ -335,7 +335,6 @@ unitTest(function consoleTestStringifyCircular(): void {
   clear: [Function: clear],
   trace: [Function: trace],
   indentLevel: 0,
-  [Symbol(Symbol.toStringTag)]: "console",
   [Symbol(isConsoleInstance)]: true
 }`,
   );
@@ -360,6 +359,50 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   const agf = async function* agf() {};
   Reflect.setPrototypeOf(agf, null);
   assertEquals(stringify(agf), "[Function: agf]");
+});
+
+unitTest(function consoleTestStringifyFunctionWithProperties(): void {
+  const f = () => "test";
+  f.x = () => "foo";
+  f.y = 3;
+  f.z = () => "baz";
+  f.b = function bar() {};
+  f.a = new Map();
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
+}`,
+  );
+
+  const t = () => {};
+  t.x = f;
+  f.s = f;
+  f.t = t;
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] {
+    x: [Function],
+    y: 3,
+    z: [Function],
+    b: [Function: bar],
+    a: Map {},
+    s: [Circular],
+    t: [Function: t] { x: [Circular] }
+  }
+}`,
+  );
+
+  assertEquals(
+    stringify(Array),
+    `[Function: Array]`,
+  );
+
+  assertEquals(
+    stripColor(Deno.inspect(Array, { showHidden: true })),
+    `[Function: Array] { [Symbol(Symbol.species)]: [Getter] }`,
+  );
 });
 
 unitTest(function consoleTestStringifyWithDepth(): void {

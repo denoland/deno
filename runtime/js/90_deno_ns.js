@@ -90,6 +90,9 @@
     fdatasync: __bootstrap.fs.fdatasync,
     symlink: __bootstrap.fs.symlink,
     symlinkSync: __bootstrap.fs.symlinkSync,
+    permissions: __bootstrap.permissions.permissions,
+    Permissions: __bootstrap.permissions.Permissions,
+    PermissionStatus: __bootstrap.permissions.PermissionStatus,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -98,9 +101,6 @@
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
-    permissions: __bootstrap.permissions.permissions,
-    Permissions: __bootstrap.permissions.Permissions,
-    PermissionStatus: __bootstrap.permissions.PermissionStatus,
     openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,

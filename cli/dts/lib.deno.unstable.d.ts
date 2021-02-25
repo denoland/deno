@@ -219,7 +219,7 @@ declare namespace Deno {
    * user friendly format.
    *
    * ```ts
-   * const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
+   * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
    * console.table(diagnostics);  // Prints raw diagnostic data
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
    * ```
@@ -458,8 +458,10 @@ declare namespace Deno {
 
   interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is an ES module (`"esm"`). */
-    bundle?: "esm";
+     * JavaScript bundle that is a single ES module (`"esm"`) or a single file
+     * self contained script we executes in an immediately invoked function
+     * when loaded (`"iife"`). */
+    bundle?: "esm" | "iife";
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.
@@ -809,12 +811,12 @@ declare namespace Deno {
 
   export interface ResolveDnsOptions {
     /** The name server to be used for lookups.
-    * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
     nameServer?: {
       /** The IP address of the name server */
       ipAddr: string;
       /** The port number the query will be sent to.
-      * If not specified, defaults to 53. */
+       * If not specified, defaults to 53. */
       port?: number;
     };
   }
@@ -1029,119 +1031,6 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
 
-  /** The name of a "powerful feature" which needs permission.
-   *
-   * See: https://w3c.github.io/permissions/#permission-registry
-   *
-   * Note that the definition of `PermissionName` in the above spec is swapped
-   * out for a set of Deno permissions which are not web-compatible. */
-  export type PermissionName =
-    | "run"
-    | "read"
-    | "write"
-    | "net"
-    | "env"
-    | "plugin"
-    | "hrtime";
-
-  /** The current status of the permission.
-   *
-   * See: https://w3c.github.io/permissions/#status-of-a-permission */
-  export type PermissionState = "granted" | "denied" | "prompt";
-
-  export interface RunPermissionDescriptor {
-    name: "run";
-  }
-
-  export interface ReadPermissionDescriptor {
-    name: "read";
-    path?: string;
-  }
-
-  export interface WritePermissionDescriptor {
-    name: "write";
-    path?: string;
-  }
-
-  export interface NetPermissionDescriptor {
-    name: "net";
-    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
-     *
-     *      "github.com"
-     *      "deno.land:8080"
-     */
-    host?: string;
-  }
-
-  export interface EnvPermissionDescriptor {
-    name: "env";
-  }
-
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
-  }
-
-  export interface HrtimePermissionDescriptor {
-    name: "hrtime";
-  }
-
-  /** Permission descriptors which define a permission and can be queried,
-   * requested, or revoked.
-   *
-   * See: https://w3c.github.io/permissions/#permission-descriptor */
-  export type PermissionDescriptor =
-    | RunPermissionDescriptor
-    | ReadPermissionDescriptor
-    | WritePermissionDescriptor
-    | NetPermissionDescriptor
-    | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
-    | HrtimePermissionDescriptor;
-
-  export class Permissions {
-    /** Resolves to the current status of a permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     * if (status.state === "granted") {
-     *   data = await Deno.readFile("/etc/passwd");
-     * }
-     * ```
-     */
-    query(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Revokes a permission, and resolves to the state of the permission.
-     *
-     *       const status = await Deno.permissions.revoke({ name: "run" });
-     *       assert(status.state !== "granted")
-     */
-    revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Requests the permission, and resolves to the state of the permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.request({ name: "env" });
-     * if (status.state === "granted") {
-     *   console.log("'env' permission is granted.");
-     * } else {
-     *   console.log("'env' permission is denied.");
-     * }
-     * ```
-     */
-    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
-  }
-
-  /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
-   * match web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
-   */
-  export const permissions: Permissions;
-
-  /** see: https://w3c.github.io/permissions/#permissionstatus */
-  export class PermissionStatus {
-    state: PermissionState;
-    constructor();
-  }
-
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
    *
@@ -1301,6 +1190,24 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): Promise<void>;
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
+  }
+
+  export interface OpMetrics {
+    opsDispatched: number;
+    opsDispatchedSync: number;
+    opsDispatchedAsync: number;
+    opsDispatchedAsyncUnref: number;
+    opsCompleted: number;
+    opsCompletedSync: number;
+    opsCompletedAsync: number;
+    opsCompletedAsyncUnref: number;
+    bytesSentControl: number;
+    bytesSentData: number;
+    bytesReceived: number;
+  }
 }
 
 declare function fetch(

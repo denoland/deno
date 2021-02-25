@@ -1,5 +1,5 @@
 [WILDCARD][Function: Location]
-Location { [Symbol(Symbol.toStringTag)]: "Location" }
+Location {}
 Location {
   hash: "#bat",
   host: "foo",
