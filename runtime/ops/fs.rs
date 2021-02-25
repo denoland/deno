@@ -1140,13 +1140,14 @@ fn op_link_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
   let permissions = state.borrow::<Permissions>();
   permissions.check_read(&oldpath)?;
+  permissions.check_write(&oldpath)?;
+  permissions.check_read(&newpath)?;
   permissions.check_write(&newpath)?;
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
@@ -1159,8 +1160,6 @@ async fn op_link_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.link");
-
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1169,6 +1168,8 @@ async fn op_link_async(
     let state = state.borrow();
     let permissions = state.borrow::<Permissions>();
     permissions.check_read(&oldpath)?;
+    permissions.check_write(&oldpath)?;
+    permissions.check_read(&newpath)?;
     permissions.check_write(&newpath)?;
   }
 
