@@ -173,16 +173,13 @@ impl LspClient {
     R: de::DeserializeOwned,
   {
     loop {
-      match self.read()? {
-        LspMessage::Notification(method, maybe_params) => {
-          if let Some(p) = maybe_params {
-            let params = serde_json::from_value(p)?;
-            return Ok((method, Some(params)));
-          } else {
-            return Ok((method, None));
-          }
+      if let LspMessage::Notification(method, maybe_params) = self.read()? {
+        if let Some(p) = maybe_params {
+          let params = serde_json::from_value(p)?;
+          return Ok((method, Some(params)));
+        } else {
+          return Ok((method, None));
         }
-        _ => (),
       }
     }
   }
@@ -217,13 +214,10 @@ impl LspClient {
     self.write(value)?;
 
     loop {
-      match self.read()? {
-        LspMessage::Response(id, result, error) => {
-          assert_eq!(id, self.request_id);
-          self.request_id += 1;
-          return Ok((result, error));
-        }
-        _ => (),
+      if let LspMessage::Response(id, result, error) = self.read()? {
+        assert_eq!(id, self.request_id);
+        self.request_id += 1;
+        return Ok((result, error));
       }
     }
   }
