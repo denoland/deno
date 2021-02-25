@@ -1270,6 +1270,7 @@
     /**
      * @returns {Promise<GPUError | null>}
      */
+    // deno-lint-ignore require-await
     async popErrorScope() {
       webidl.assertBranded(this, GPUDevice);
       const prefix = "Failed to execute 'pushErrorScope' on 'GPUDevice'";
