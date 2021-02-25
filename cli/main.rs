@@ -996,6 +996,34 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   Ok(())
 }
 
+async fn coverage_command(
+  flags: Flags,
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+  include: Vec<String>,
+  exclude: Vec<String>,
+  lcov: bool,
+) -> Result<(), AnyError> {
+  if !flags.unstable {
+    exit_unstable("compile");
+  }
+
+  if files.is_empty() {
+    println!("No matching coverage profiles found");
+    std::process::exit(1);
+  }
+
+  tools::coverage::cover_files(
+    flags.clone(),
+    files,
+    ignore,
+    include,
+    exclude,
+    lcov,
+  )
+  .await
+}
+
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
@@ -1065,7 +1093,6 @@ async fn test_command(
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
       let session = worker.create_inspector_session();
-
       let coverage_dir = PathBuf::from(coverage_dir);
       let mut coverage_collector =
         tools::coverage::CoverageCollector::new(coverage_dir, session);
@@ -1085,20 +1112,6 @@ async fn test_command(
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     coverage_collector.stop_collecting().await?;
-
-    // TODO(caspervonb) extract reporting into it's own subcommand.
-    // For now, we'll only report for the command that passed --coverage as a flag.
-    if flags.coverage_dir.is_some() {
-      let mut exclude = test_modules.clone();
-      exclude.push(main_module.clone());
-      tools::coverage::report_coverages(
-        program_state.clone(),
-        &coverage_collector.dir,
-        quiet,
-        exclude,
-      )
-      .await?;
-    }
   }
 
   Ok(())
@@ -1189,6 +1202,14 @@ fn get_subcommand(
       lite,
       target,
     } => compile_command(flags, source_file, output, args, target, lite)
+      .boxed_local(),
+    DenoSubcommand::Coverage {
+      files,
+      ignore,
+      include,
+      exclude,
+      lcov,
+    } => coverage_command(flags, files, ignore, include, exclude, lcov)
       .boxed_local(),
     DenoSubcommand::Fmt {
       check,

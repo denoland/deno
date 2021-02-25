@@ -1,0 +1,28 @@
+Check [WILDCARD]/$deno$test.ts
+running 3 tests
+test exit(0) ... FAILED ([WILDCARD])
+test exit(1) ... FAILED ([WILDCARD])
+test exit(2) ... FAILED ([WILDCARD])
+
+failures:
+
+exit(0)
+AssertionError: Test case attempted to exit with exit code: 0
+    [WILDCARD]
+
+exit(1)
+AssertionError: Test case attempted to exit with exit code: 1
+    [WILDCARD]
+
+exit(2)
+AssertionError: Test case attempted to exit with exit code: 2
+    [WILDCARD]
+
+failures:
+
+	exit(0)
+	exit(1)
+	exit(2)
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
