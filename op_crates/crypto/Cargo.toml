@@ -16,4 +16,5 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.79.0", path = "../../core" }
 rand = "0.8.3"
-
+openssl = "0.10.32"
+serde = { version = "1.0.123", features = ["derive"] }
