@@ -13,7 +13,7 @@ use deno_core::futures::future::FutureExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::GetErrorClassFn;
+use deno_core::GetErrorBuilderFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
@@ -62,7 +62,7 @@ pub struct WorkerOptions {
   pub ts_version: String,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
-  pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub get_error_class_fn: Option<GetErrorBuilderFn>,
   pub location: Option<Url>,
 }
 

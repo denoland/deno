@@ -81,9 +81,9 @@ function print(value) {
   Deno.core.dispatchByName('op_print', Deno.core.encode(value.toString()), _newline);
 }
 
-// Finally we register the error class used by op_sum
-// so that it throws the correct class.
-Deno.core.registerErrorClass('Error', Error);
+// Finally we register the error builder used by op_sum
+// so that it throws the correct error class.
+Deno.core.registerErrorBuilder('Error', (msg) => new Error(msg));
 "#,
   ).unwrap();
 

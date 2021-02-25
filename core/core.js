@@ -174,14 +174,14 @@ SharedQueue Binary Layout
     return send(opsCache[opName], control, ...zeroCopy);
   }
 
-  function registerErrorClass(errorName, className) {
+  function registerErrorBuilder(errorName, builder) {
     if (typeof errorMap[errorName] !== "undefined") {
-      throw new TypeError(`Error class for "${errorName}" already registered`);
+      throw new TypeError(`Error builder for "${errorName}" already registered`);
     }
-    errorMap[errorName] = className;
+    errorMap[errorName] = builder;
   }
 
-  function getErrorClass(errorName) {
+  function getErrorBuilder(errorName) {
     return errorMap[errorName];
   }
 
@@ -203,13 +203,13 @@ SharedQueue Binary Layout
     if ("ok" in res) {
       return res.ok;
     }
-    const ErrorClass = getErrorClass(res.err.className);
-    if (!ErrorClass) {
+    const errorBuilder = getErrorBuilder(res.err.className);
+    if (!errorBuilder) {
       throw new Error(
-        `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        `Unregistered error builder: "${res.err.className}"\n  ${res.err.message}\n  Builders for errors returned from ops should be registered via Deno.core.registerErrorBuilder().`,
       );
     }
-    throw new ErrorClass(res.err.message);
+    throw errorBuilder(res.err.message);
   }
 
   async function jsonOpAsync(opName, args = null, ...zeroCopy) {
@@ -261,8 +261,8 @@ SharedQueue Binary Layout
     ops,
     close,
     resources,
-    registerErrorClass,
-    getErrorClass,
+    registerErrorBuilder,
+    getErrorBuilder,
     sharedQueueInit: init,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {

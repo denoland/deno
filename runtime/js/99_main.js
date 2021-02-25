@@ -170,31 +170,73 @@ delete Object.prototype.__proto__;
   }
 
   function registerErrors() {
-    core.registerErrorClass("NotFound", errors.NotFound);
-    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
-    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
-    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
-    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
-    core.registerErrorClass("NotConnected", errors.NotConnected);
-    core.registerErrorClass("AddrInUse", errors.AddrInUse);
-    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
-    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
-    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
-    core.registerErrorClass("InvalidData", errors.InvalidData);
-    core.registerErrorClass("TimedOut", errors.TimedOut);
-    core.registerErrorClass("Interrupted", errors.Interrupted);
-    core.registerErrorClass("WriteZero", errors.WriteZero);
-    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
-    core.registerErrorClass("BadResource", errors.BadResource);
-    core.registerErrorClass("Http", errors.Http);
-    core.registerErrorClass("Busy", errors.Busy);
-    core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass("Error", Error);
-    core.registerErrorClass("RangeError", RangeError);
-    core.registerErrorClass("ReferenceError", ReferenceError);
-    core.registerErrorClass("SyntaxError", SyntaxError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("URIError", URIError);
+    core.registerErrorBuilder("NotFound", (msg) => new errors.NotFound(msg));
+    core.registerErrorBuilder(
+      "PermissionDenied",
+      (msg) => new errors.PermissionDenied(msg),
+    );
+    core.registerErrorBuilder(
+      "ConnectionRefused",
+      (msg) => new errors.ConnectionRefused(msg),
+    );
+    core.registerErrorBuilder(
+      "ConnectionReset",
+      (msg) => new errors.ConnectionReset(),
+    );
+    core.registerErrorBuilder(
+      "ConnectionAborted",
+      (msg) => new errors.ConnectionAborted(),
+    );
+    core.registerErrorBuilder(
+      "NotConnected",
+      (msg) => new errors.NotConnected(),
+    );
+    core.registerErrorBuilder("AddrInUse", (msg) => new errors.AddrInUse(msg));
+    core.registerErrorBuilder(
+      "AddrNotAvailable",
+      (msg) => new errors.AddrNotAvailable(msg),
+    );
+    core.registerErrorBuilder(
+      "BrokenPipe",
+      (msg) => new errors.BrokenPipe(msg),
+    );
+    core.registerErrorBuilder(
+      "AlreadyExists",
+      (msg) => new errors.AlreadyExists(msg),
+    );
+    core.registerErrorBuilder(
+      "InvalidData",
+      (msg) => new errors.InvalidData(msg),
+    );
+    core.registerErrorBuilder("TimedOut", (msg) => new errors.TimedOut(msg));
+    core.registerErrorBuilder(
+      "Interrupted",
+      (msg) => new errors.Interrupted(msg),
+    );
+    core.registerErrorBuilder("WriteZero", (msg) => new errors.WriteZero(msg));
+    core.registerErrorBuilder(
+      "UnexpectedEof",
+      (msg) => new errors.UnexpectedEof(msg),
+    );
+    core.registerErrorBuilder(
+      "BadResource",
+      (msg) => new errors.BadResource(msg),
+    );
+    core.registerErrorBuilder("Http", (msg) => new errors.Http(msg));
+    core.registerErrorBuilder("Busy", (msg) => new errors.Busy(msg));
+    core.registerErrorBuilder(
+      "NotSupported",
+      (msg) => new errors.NotSupported(msg),
+    );
+    core.registerErrorBuilder("Error", (msg) => new Error(msg));
+    core.registerErrorBuilder("RangeError", (msg) => new RangeError(msg));
+    core.registerErrorBuilder(
+      "ReferenceError",
+      (msg) => new ReferenceError(msg),
+    );
+    core.registerErrorBuilder("SyntaxError", (msg) => new SyntaxError(msg));
+    core.registerErrorBuilder("TypeError", (msg) => new TypeError(msg));
+    core.registerErrorBuilder("URIError", (msg) => new URIError(msg));
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope

@@ -71,7 +71,7 @@ pub use crate::ops::OpTable;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;
-pub use crate::runtime::GetErrorClassFn;
+pub use crate::runtime::GetErrorBuilderFn;
 pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;

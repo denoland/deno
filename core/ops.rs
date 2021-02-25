@@ -5,7 +5,7 @@ use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
-use crate::runtime::GetErrorClassFn;
+use crate::runtime::GetErrorBuilderFn;
 use crate::BufVec;
 use crate::ZeroCopyBuf;
 use futures::Future;
@@ -40,7 +40,7 @@ pub enum Op {
 pub struct OpState {
   pub resource_table: ResourceTable,
   pub op_table: OpTable,
-  pub get_error_class_fn: GetErrorClassFn,
+  pub get_error_class_fn: GetErrorBuilderFn,
   gotham_state: GothamState,
 }
 
@@ -221,7 +221,7 @@ where
 fn json_serialize_op_result<R: Serialize>(
   promise_id: Option<u64>,
   result: Result<R, AnyError>,
-  get_error_class_fn: crate::runtime::GetErrorClassFn,
+  get_error_class_fn: crate::runtime::GetErrorBuilderFn,
 ) -> Box<[u8]> {
   let value = match result {
     Ok(v) => serde_json::json!({ "ok": v, "promiseId": promise_id }),

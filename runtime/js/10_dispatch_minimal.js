@@ -51,13 +51,13 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      const ErrorClass = core.getErrorClass(res.err.className);
-      if (!ErrorClass) {
+      const errorBuilder = core.getErrorBuilder(res.err.className);
+      if (!errorBuilder) {
         throw new Error(
-          `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+          `Unregistered error builder: "${res.err.className}"\n  ${res.err.message}\n  Builders for errors returned from ops should be registered via Deno.core.registerErrorBuilder().`,
         );
       }
-      throw new ErrorClass(res.err.message);
+      throw errorBuilder(res.err.message);
     }
     return res.result;
   }

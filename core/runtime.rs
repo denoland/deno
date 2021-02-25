@@ -54,7 +54,7 @@ pub enum Snapshot {
 
 pub type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
 
-pub type GetErrorClassFn =
+pub type GetErrorBuilderFn =
   &'static dyn for<'e> Fn(&'e AnyError) -> &'static str;
 
 /// Objects that need to live as long as the isolate
@@ -171,7 +171,7 @@ pub struct RuntimeOptions {
 
   /// Allows to map error type to a string "class" used to represent
   /// error in JavaScript.
-  pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub get_error_class_fn: Option<GetErrorBuilderFn>,
 
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.

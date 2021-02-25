@@ -729,7 +729,7 @@ delete Object.prototype.__proto__;
 
   // Setup the compiler runtime during the build process.
   core.ops();
-  core.registerErrorClass("Error", Error);
+  core.registerErrorBuilder("Error", (msg) => new Error(msg));
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
