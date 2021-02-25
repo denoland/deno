@@ -103,12 +103,22 @@ pub fn op_webcrypto_generate_key(
   let exponent = BigNum::from_u32(args.algorithm.public_modulus)?;
   let bits = args.algorithm.modulus_length;
   let extractable = args.extractable;
-  let private_key = Rsa::generate_with_e(bits, &exponent)?;
-  let algorithm = Algorithm::RsaPss;
-  let public_key: Rsa<Public> = Rsa::from_public_components(
-    private_key.n().to_owned()?,
-    private_key.e().to_owned()?,
-  )?;
+  let algorithm = args.algorithm.name;
+
+  let (public_key, private_key) = match algorithm {
+    Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
+      let private_key = Rsa::generate_with_e(bits, &exponent)?;
+      (
+        Rsa::from_public_components(
+          private_key.n().to_owned()?,
+          private_key.e().to_owned()?,
+        )?,
+        private_key,
+      )
+    }
+    _ => return Ok(json!({})),
+  };
+
   let webcrypto_key_public = WebCryptoKey {
     key_type: KeyType::Public,
     algorithm: algorithm.clone(),
