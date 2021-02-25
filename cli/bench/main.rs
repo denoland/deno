@@ -463,11 +463,11 @@ fn main() -> Result<()> {
     .0
     .trim()
     .to_string(),
-    lsp_exec_time: lsp::benchmarks(&deno_exe)?,
     benchmark: run_exec_time(&deno_exe, &target_dir)?,
     binary_size: get_binary_sizes(&target_dir)?,
     bundle_size: bundle_benchmark(&deno_exe)?,
     cargo_deps: cargo_deps(),
+    lsp_exec_time: lsp::benchmarks(&deno_exe)?,
     ..Default::default()
   };
 
