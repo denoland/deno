@@ -22,6 +22,7 @@ use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
+use ring::agreement::EphemeralPrivateKey;
 use ring::hmac::Key as HmacKey;
 use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
@@ -85,6 +86,14 @@ impl Resource for CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey> {
 impl<T: 'static> Resource for CryptoKeyPairResource<T, EcdsaKeyPair> {
   fn name(&self) -> Cow<str> {
     "ECDSACryptoKeyPair".into()
+  }
+}
+
+impl Resource
+  for CryptoKeyPairResource<ring::agreement::PublicKey, EphemeralPrivateKey>
+{
+  fn name(&self) -> Cow<str> {
+    "ECDHCryptoKeyPair".into()
   }
 }
 
@@ -155,6 +164,37 @@ pub fn op_webcrypto_generate_key(
         private_key,
       };
       let resource = CryptoKeyPairResource { crypto_key, key };
+      state.resource_table.add(resource)
+    }
+    Algorithm::Ecdh => {
+      let agreement = match args.algorithm.named_curve.unwrap() {
+        WebCryptoNamedCurve::P256 => &ring::agreement::ECDH_P256,
+        WebCryptoNamedCurve::P384 => &ring::agreement::ECDH_P384,
+        WebCryptoNamedCurve::P521 => panic!(), // TODO: Not implemented but don't panic.
+      };
+      let rng = RingRand::SystemRandom::new();
+      let private_key = EphemeralPrivateKey::generate(agreement, &rng)?;
+      let public_key = private_key.compute_public_key()?;
+      let webcrypto_key_public = WebCryptoKey {
+        key_type: KeyType::Public,
+        algorithm: algorithm.clone(),
+        extractable,
+        usages: vec![],
+      };
+      let webcrypto_key_private = WebCryptoKey {
+        key_type: KeyType::Private,
+        algorithm,
+        extractable,
+        usages: vec![],
+      };
+      let crypto_key =
+        WebCryptoKeyPair::new(webcrypto_key_public, webcrypto_key_private);
+      let key = CryptoKeyPair {
+        public_key,
+        private_key,
+      };
+      let resource = CryptoKeyPairResource { crypto_key, key };
+
       state.resource_table.add(resource)
     }
     Algorithm::Ecdsa => {
