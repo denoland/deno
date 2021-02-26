@@ -417,7 +417,7 @@ async fn install_command(
   tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
-async fn language_server_command() -> Result<(), AnyError> {
+async fn lsp_command() -> Result<(), AnyError> {
   lsp::start().await
 }
 
@@ -1099,7 +1099,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::LanguageServer => language_server_command().boxed_local(),
+    DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,
