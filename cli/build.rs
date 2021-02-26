@@ -265,7 +265,7 @@ fn main() {
     deno_websocket::get_declaration().display()
   );
   println!(
-    "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
+    "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",
     deno_crypto::get_declaration().display()
   );
 
