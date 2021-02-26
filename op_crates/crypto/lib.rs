@@ -306,8 +306,18 @@ pub fn op_webcrypto_sign_key(
       // Signature data as buffer.
       signature.as_ref().to_vec()
     }
+    Algorithm::Hmac => {
+      let resource = state
+        .resource_table
+        .get::<CryptoKeyResource<HmacKey>>(args.rid)
+        .ok_or_else(bad_resource_id)?;
+      let key = &resource.key;
+
+      let signature = ring::hmac::sign(&key, &data);
+      signature.as_ref().to_vec()
+    }
     _ => panic!(), // TODO: don't panic
   };
 
-  Ok(json!({}))
+  Ok(json!({ "data": signature }))
 }
