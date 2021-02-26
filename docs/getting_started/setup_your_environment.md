@@ -112,10 +112,9 @@ and language server protocol client).
 ##### CoC
 
 After CoC is installed, from inside Vim, run`:CocInstall coc-tsserver` and
-`:CocInstall coc-deno`. To get autocompletion working for Deno type definitions
-run `:CocCommand deno.types`. Optionally restart the CoC server `:CocRestart`.
-From now on, things like `gd` (go to definition) and `gr` (goto/find references)
-should work.
+`:CocInstall coc-deno`. Run `:CocCommand deno.initializeWorkspace` in your
+project to initialize workspace configurations. From now on, things like `gd`
+(go to definition) and `gr` (goto/find references) should work.
 
 ##### ALE
 

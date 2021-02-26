@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
 use deno_core::ModuleSpecifier;
-use serde::Serialize;
-use serde::Serializer;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;

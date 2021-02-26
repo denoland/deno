@@ -19,6 +19,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::json_op_sync;
 use deno_core::resolve_url;
+use deno_core::serde::de;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -71,16 +72,19 @@ impl TsServer {
     Self(tx)
   }
 
-  pub async fn request(
+  pub async fn request<R>(
     &self,
     snapshot: StateSnapshot,
     req: RequestMethod,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<R, AnyError>
+  where
+    R: de::DeserializeOwned,
+  {
     let (tx, rx) = oneshot::channel::<Result<Value, AnyError>>();
     if self.0.send((req, snapshot, tx)).is_err() {
       return Err(anyhow!("failed to send request to tsc thread"));
     }
-    rx.await?
+    rx.await?.map(|v| serde_json::from_value::<R>(v).unwrap())
   }
 }
 
@@ -1104,9 +1108,11 @@ fn cache_snapshot(
   Ok(())
 }
 
-fn op<F>(op_fn: F) -> Box<OpFn>
+fn op<F, V, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut State, Value) -> Result<Value, AnyError> + 'static,
+  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
+  V: de::DeserializeOwned,
+  R: Serialize,
 {
   json_op_sync(move |s, args, _bufs| {
     let state = s.borrow_mut::<State>();
@@ -1123,14 +1129,17 @@ struct SourceSnapshotArgs {
 
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
-fn dispose(state: &mut State, args: Value) -> Result<Value, AnyError> {
+#[allow(clippy::unnecessary_wraps)]
+fn dispose(
+  state: &mut State,
+  args: SourceSnapshotArgs,
+) -> Result<bool, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_dispose");
-  let v: SourceSnapshotArgs = serde_json::from_value(args)?;
   state
     .snapshots
-    .remove(&(v.specifier.into(), v.version.into()));
+    .remove(&(args.specifier.into(), args.version.into()));
   state.state_snapshot.performance.measure(mark);
-  Ok(json!(true))
+  Ok(true)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1144,18 +1153,20 @@ struct GetChangeRangeArgs {
 
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source hash changed.
-fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn get_change_range(
+  state: &mut State,
+  args: GetChangeRangeArgs,
+) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_change_range");
-  let v: GetChangeRangeArgs = serde_json::from_value(args.clone())?;
-  cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
+  cache_snapshot(state, args.specifier.clone(), args.version.clone())?;
   if let Some(current) = state
     .snapshots
-    .get(&(v.specifier.clone().into(), v.version.into()))
+    .get(&(args.specifier.clone().into(), args.version.clone().into()))
   {
-    if let Some(prev) = state
-      .snapshots
-      .get(&(v.specifier.clone().into(), v.old_version.clone().into()))
-    {
+    if let Some(prev) = state.snapshots.get(&(
+      args.specifier.clone().into(),
+      args.old_version.clone().into(),
+    )) {
       state.state_snapshot.performance.measure(mark);
       Ok(text::get_range_change(prev, current))
     } else {
@@ -1168,7 +1179,7 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
       Ok(json!({
         "span": {
           "start": 0,
-          "length": v.old_length,
+          "length": args.old_length,
         },
         "newLength": new_length,
       }))
@@ -1178,31 +1189,33 @@ fn get_change_range(state: &mut State, args: Value) -> Result<Value, AnyError> {
     Err(custom_error(
       "MissingSnapshot",
       format!(
-        "The current snapshot version is missing.\n  Args: \"{}\"",
+        "The current snapshot version is missing.\n  Args: \"{:?}\"",
         args
       ),
     ))
   }
 }
 
-fn get_length(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn get_length(
+  state: &mut State,
+  args: SourceSnapshotArgs,
+) -> Result<usize, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_length");
-  let v: SourceSnapshotArgs = serde_json::from_value(args)?;
-  let specifier = resolve_url(&v.specifier)?;
+  let specifier = resolve_url(&args.specifier)?;
   if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
-    Ok(json!(asset.length))
+    Ok(asset.length)
   } else if state.state_snapshot.documents.contains_key(&specifier) {
-    cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
+    cache_snapshot(state, args.specifier.clone(), args.version.clone())?;
     let content = state
       .snapshots
-      .get(&(v.specifier.into(), v.version.into()))
+      .get(&(args.specifier.into(), args.version.into()))
       .unwrap();
     state.state_snapshot.performance.measure(mark);
-    Ok(json!(content.encode_utf16().count()))
+    Ok(content.encode_utf16().count())
   } else {
     let sources = &mut state.state_snapshot.sources;
     state.state_snapshot.performance.measure(mark);
-    Ok(json!(sources.get_length_utf16(&specifier).unwrap()))
+    Ok(sources.get_length_utf16(&specifier).unwrap())
   }
 }
 
@@ -1215,39 +1228,40 @@ struct GetTextArgs {
   end: usize,
 }
 
-fn get_text(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn get_text(state: &mut State, args: GetTextArgs) -> Result<String, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_text");
-  let v: GetTextArgs = serde_json::from_value(args)?;
-  let specifier = resolve_url(&v.specifier)?;
+  let specifier = resolve_url(&args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
       content.text.clone()
     } else if state.state_snapshot.documents.contains_key(&specifier) {
-      cache_snapshot(state, v.specifier.clone(), v.version.clone())?;
+      cache_snapshot(state, args.specifier.clone(), args.version.clone())?;
       state
         .snapshots
-        .get(&(v.specifier.into(), v.version.into()))
+        .get(&(args.specifier.into(), args.version.into()))
         .unwrap()
         .clone()
     } else {
       state.state_snapshot.sources.get_source(&specifier).unwrap()
     };
   state.state_snapshot.performance.measure(mark);
-  Ok(json!(text::slice(&content, v.start..v.end)))
+  Ok(text::slice(&content, args.start..args.end).to_string())
 }
 
-fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn resolve(
+  state: &mut State,
+  args: ResolveArgs,
+) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_resolve");
-  let v: ResolveArgs = serde_json::from_value(args)?;
-  let mut resolved = Vec::<Option<(String, String)>>::new();
-  let referrer = resolve_url(&v.base)?;
+  let mut resolved = Vec::new();
+  let referrer = resolve_url(&args.base)?;
   let sources = &mut state.state_snapshot.sources;
 
   if state.state_snapshot.documents.contains_key(&referrer) {
     if let Some(dependencies) =
       state.state_snapshot.documents.dependencies(&referrer)
     {
-      for specifier in &v.specifiers {
+      for specifier in &args.specifiers {
         if specifier.starts_with("asset:///") {
           resolved.push(Some((
             specifier.clone(),
@@ -1297,7 +1311,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
       }
     }
   } else if sources.contains_key(&referrer) {
-    for specifier in &v.specifiers {
+    for specifier in &args.specifiers {
       if let Some((resolved_specifier, media_type)) =
         sources.resolve_import(specifier, &referrer)
       {
@@ -1321,17 +1335,29 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   }
 
   state.state_snapshot.performance.measure(mark);
-  Ok(json!(resolved))
-}
-
-fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
-  state.response = Some(serde_json::from_value(args)?);
-  Ok(json!(true))
+  Ok(resolved)
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn script_names(state: &mut State, _args: Value) -> Result<Value, AnyError> {
-  Ok(json!(state.state_snapshot.documents.open_specifiers()))
+fn respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
+  state.response = Some(args);
+  Ok(true)
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn script_names(
+  state: &mut State,
+  _args: Value,
+) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  Ok(
+    state
+      .state_snapshot
+      .documents
+      .open_specifiers()
+      .into_iter()
+      .cloned()
+      .collect(),
+  )
 }
 
 #[derive(Debug, Deserialize)]
@@ -1340,29 +1366,31 @@ struct ScriptVersionArgs {
   specifier: String,
 }
 
-fn script_version(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn script_version(
+  state: &mut State,
+  args: ScriptVersionArgs,
+) -> Result<Option<String>, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_script_version");
-  let v: ScriptVersionArgs = serde_json::from_value(args)?;
-  let specifier = resolve_url(&v.specifier)?;
+  let specifier = resolve_url(&args.specifier)?;
   if specifier.scheme() == "asset" {
     return if state.state_snapshot.assets.contains_key(&specifier) {
-      Ok(json!("1"))
+      Ok(Some("1".to_string()))
     } else {
-      Ok(json!(null))
+      Ok(None)
     };
   } else if let Some(version) =
     state.state_snapshot.documents.version(&specifier)
   {
-    return Ok(json!(version.to_string()));
+    return Ok(Some(version.to_string()));
   } else {
     let sources = &mut state.state_snapshot.sources;
     if let Some(version) = sources.get_script_version(&specifier) {
-      return Ok(json!(version));
+      return Ok(Some(version));
     }
   }
 
   state.state_snapshot.performance.measure(mark);
-  Ok(json!(null))
+  Ok(None)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1371,10 +1399,10 @@ struct SetAssetArgs {
   text: Option<String>,
 }
 
-fn set_asset(state: &mut State, args: Value) -> Result<Value, AnyError> {
-  let v: SetAssetArgs = serde_json::from_value(args)?;
-  state.asset = v.text;
-  Ok(json!(true))
+#[allow(clippy::unnecessary_wraps)]
+fn set_asset(state: &mut State, args: SetAssetArgs) -> Result<bool, AnyError> {
+  state.asset = args.text;
+  Ok(true)
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the

@@ -59,6 +59,7 @@ const AUTH_REDIRECT_PORT: u16 = 4551;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const WS_CLOSE_PORT: u16 = 4244;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -238,6 +239,20 @@ async fn run_ws_server(addr: &SocketAddr) {
             }
           })
           .await;
+      }
+    });
+  }
+}
+
+async fn run_ws_close_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream_fut = accept_async(stream);
+
+      let ws_stream = ws_stream_fut.await;
+      if let Ok(mut ws_stream) = ws_stream {
+        ws_stream.close(None).await.unwrap();
       }
     });
   }
@@ -781,6 +796,8 @@ pub async fn run_all_servers() {
   let ws_server_fut = run_ws_server(&ws_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
+  let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
+  let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
@@ -790,6 +807,7 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      ws_close_server_fut,
       another_redirect_server_fut,
       auth_redirect_server_fut,
       inf_redirects_server_fut,
@@ -1133,11 +1151,15 @@ pub fn new_deno_dir() -> TempDir {
 }
 
 pub fn deno_cmd() -> Command {
-  let e = deno_exe_path();
   let deno_dir = new_deno_dir();
+  deno_cmd_with_deno_dir(deno_dir.path())
+}
+
+pub fn deno_cmd_with_deno_dir(deno_dir: &std::path::Path) -> Command {
+  let e = deno_exe_path();
   assert!(e.exists());
   let mut c = Command::new(e);
-  c.env("DENO_DIR", deno_dir.path());
+  c.env("DENO_DIR", deno_dir);
   c
 }
 
