@@ -88,6 +88,8 @@
     fsync: __bootstrap.fs.fsync,
     fdatasyncSync: __bootstrap.fs.fdatasyncSync,
     fdatasync: __bootstrap.fs.fdatasync,
+    symlink: __bootstrap.fs.symlink,
+    symlinkSync: __bootstrap.fs.symlinkSync,
     link: __bootstrap.fs.link,
     linkSync: __bootstrap.fs.linkSync,
     permissions: __bootstrap.permissions.permissions,
@@ -128,8 +130,6 @@
     futimeSync: __bootstrap.fs.futimeSync,
     utime: __bootstrap.fs.utime,
     utimeSync: __bootstrap.fs.utimeSync,
-    symlink: __bootstrap.fs.symlink,
-    symlinkSync: __bootstrap.fs.symlinkSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
   };
