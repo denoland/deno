@@ -41,15 +41,29 @@
     return arrayBufferView;
   }
 
+  // Just for storing the rid for a crypto key.
+  class CryptoKey {
+    #rid
+    
+    constructor(key) {
+      this.usages = key.usages;
+      this.extractable = key.extractable;
+      this.algorithm = key.algorithm;
+      this.keyType = key.keyType;
+    }
+  }
+
   function generateKey(algorithm, extractable, keyUsages) {
-    core.jsonOpSync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages })
+    return new CryptoKey(core.jsonOpSync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages }))
   }
 
   window.crypto = {
     getRandomValues,
+    generateKey,
   };
   window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.crypto = {
     getRandomValues,
+    generateKey,
   };
 })(this);
