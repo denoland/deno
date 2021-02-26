@@ -18,14 +18,15 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rsa::algorithms::generate_multi_prime_key;
-use rsa::RSAPrivateKey;
-use rsa::RSAPublicKey;
-
+use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
-use rand::rngs::OsRng;
+use ring::hmac::Key as HmacKey;
+use ring::rand as RingRand;
+use rsa::algorithms::generate_multi_prime_key;
+use rsa::RSAPrivateKey;
+use rsa::RSAPublicKey;
 
 pub use rand; // Re-export rand
 
@@ -35,6 +36,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoKeyPair;
 use crate::key::KeyType;
 use crate::key::KeyUsage;
+use crate::key::WebCryptoHash;
 use crate::key::WebCryptoKey;
 use crate::key::WebCryptoKeyPair;
 
@@ -73,7 +75,18 @@ struct CryptoKeyPairResource<A, B> {
 
 impl Resource for CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey> {
   fn name(&self) -> Cow<str> {
-    "usbDeviceHandle".into()
+    "cryptoKeyPair".into()
+  }
+}
+
+struct CryptoKeyResource<K> {
+  crypto_key: WebCryptoKey,
+  key: K,
+}
+
+impl Resource for CryptoKeyResource<HmacKey> {
+  fn name(&self) -> Cow<str> {
+    "cryptoKey".into()
   }
 }
 
@@ -83,7 +96,8 @@ struct WebCryptoAlgorithmArg {
   name: Algorithm,
   public_modulus: u32,
   modulus_length: u32,
-  // hash: Option<WebCryptoHash>,
+  hash: Option<WebCryptoHash>,
+  // length: Option<u32>
   // named_curve: Option<WebCryptoNamedCurve>,
 }
 
@@ -106,37 +120,56 @@ pub fn op_webcrypto_generate_key(
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
 
-  let (public_key, private_key) = match algorithm {
+  let rid = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
       let mut rng = OsRng;
-      let private_key = generate_multi_prime_key(&mut rng, exponent as usize, bits as usize)?;
-      (
-        private_key.to_public_key(),
+      let private_key =
+        generate_multi_prime_key(&mut rng, exponent as usize, bits as usize)?;
+      let public_key = private_key.to_public_key();
+
+      let webcrypto_key_public = WebCryptoKey {
+        key_type: KeyType::Public,
+        algorithm: algorithm.clone(),
+        extractable,
+        usages: vec![],
+      };
+      let webcrypto_key_private = WebCryptoKey {
+        key_type: KeyType::Private,
+        algorithm,
+        extractable,
+        usages: vec![],
+      };
+      let crypto_key =
+        WebCryptoKeyPair::new(webcrypto_key_public, webcrypto_key_private);
+      let key = CryptoKeyPair {
+        public_key,
         private_key,
-      )
+      };
+      let resource = CryptoKeyPairResource { crypto_key, key };
+      state.resource_table.add(resource)
+    }
+    Algorithm::Hmac => {
+      let hash = match args.algorithm.hash.unwrap() {
+        WebCryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+        WebCryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
+        WebCryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
+        WebCryptoHash::Sha512 => ring::hmac::HMAC_SHA512,
+      };
+      let rng = RingRand::SystemRandom::new();
+      // TODO: change algorithm length when specified.
+      let key = HmacKey::generate(hash, &rng)?;
+      let crypto_key = WebCryptoKey {
+        key_type: KeyType::Public,
+        algorithm,
+        extractable,
+        usages: vec![],
+      };
+      let resource = CryptoKeyResource { crypto_key, key };
+
+      state.resource_table.add(resource)
     }
     _ => return Ok(json!({})),
   };
 
-  let webcrypto_key_public = WebCryptoKey {
-    key_type: KeyType::Public,
-    algorithm: algorithm.clone(),
-    extractable,
-    usages: vec![],
-  };
-  let webcrypto_key_private = WebCryptoKey {
-    key_type: KeyType::Private,
-    algorithm,
-    extractable,
-    usages: vec![],
-  };
-  let crypto_key =
-    WebCryptoKeyPair::new(webcrypto_key_public, webcrypto_key_private);
-  let key = CryptoKeyPair {
-    public_key,
-    private_key,
-  };
-  let resource = CryptoKeyPairResource { crypto_key, key };
-  let rid = state.resource_table.add(resource);
   Ok(json!({ "rid": rid }))
 }

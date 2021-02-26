@@ -9,6 +9,14 @@ pub enum KeyType {
 }
 
 #[derive(Serialize, Deserialize)]
+pub enum WebCryptoHash {
+  Sha1,
+  Sha256,
+  Sha384,
+  Sha512,
+}
+
+#[derive(Serialize, Deserialize)]
 pub enum KeyUsage {
   Encrypt,
   Decrypt,
@@ -20,7 +28,7 @@ pub enum KeyUsage {
   UnwrapKey,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum Algorithm {
   RsassaPkcs1v15,
   RsaPss,
