@@ -11,6 +11,7 @@ use deno_core::ZeroCopyBuf;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
+use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
