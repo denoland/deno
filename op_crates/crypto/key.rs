@@ -17,6 +17,13 @@ pub enum WebCryptoHash {
 }
 
 #[derive(Serialize, Deserialize)]
+pub enum WebCryptoNamedCurve {
+  P256,
+  P384,
+  P521,
+}
+
+#[derive(Serialize, Deserialize)]
 pub enum KeyUsage {
   Encrypt,
   Decrypt,

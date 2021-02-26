@@ -24,6 +24,8 @@ use rand::thread_rng;
 use rand::Rng;
 use ring::hmac::Key as HmacKey;
 use ring::rand as RingRand;
+use ring::signature::EcdsaKeyPair;
+use ring::signature::KeyPair;
 use rsa::algorithms::generate_multi_prime_key;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
@@ -39,6 +41,7 @@ use crate::key::KeyUsage;
 use crate::key::WebCryptoHash;
 use crate::key::WebCryptoKey;
 use crate::key::WebCryptoKeyPair;
+use crate::key::WebCryptoNamedCurve;
 
 /// Execute this crates' JS source files.
 pub fn init(isolate: &mut JsRuntime) {
@@ -75,7 +78,13 @@ struct CryptoKeyPairResource<A, B> {
 
 impl Resource for CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey> {
   fn name(&self) -> Cow<str> {
-    "cryptoKeyPair".into()
+    "RSACryptoKeyPair".into()
+  }
+}
+
+impl<T: 'static> Resource for CryptoKeyPairResource<T, EcdsaKeyPair> {
+  fn name(&self) -> Cow<str> {
+    "ECDSACryptoKeyPair".into()
   }
 }
 
@@ -98,7 +107,7 @@ struct WebCryptoAlgorithmArg {
   modulus_length: u32,
   hash: Option<WebCryptoHash>,
   // length: Option<u32>
-  // named_curve: Option<WebCryptoNamedCurve>,
+  named_curve: Option<WebCryptoNamedCurve>,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +157,43 @@ pub fn op_webcrypto_generate_key(
       let resource = CryptoKeyPairResource { crypto_key, key };
       state.resource_table.add(resource)
     }
+    Algorithm::Ecdsa => {
+      let curve = match args.algorithm.named_curve.unwrap() {
+        WebCryptoNamedCurve::P256 => {
+          &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
+        }
+        WebCryptoNamedCurve::P384 => {
+          &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
+        }
+        WebCryptoNamedCurve::P521 => panic!(), // TODO: Not implemented but don't panic.
+      };
+
+      let rng = RingRand::SystemRandom::new();
+      let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
+      let private_key = EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?;
+      let public_key = private_key.public_key().clone();
+      let webcrypto_key_public = WebCryptoKey {
+        key_type: KeyType::Public,
+        algorithm: algorithm.clone(),
+        extractable,
+        usages: vec![],
+      };
+      let webcrypto_key_private = WebCryptoKey {
+        key_type: KeyType::Private,
+        algorithm,
+        extractable,
+        usages: vec![],
+      };
+      let crypto_key =
+        WebCryptoKeyPair::new(webcrypto_key_public, webcrypto_key_private);
+      let key = CryptoKeyPair {
+        public_key,
+        private_key,
+      };
+      let resource = CryptoKeyPairResource { crypto_key, key };
+
+      state.resource_table.add(resource)
+    }
     Algorithm::Hmac => {
       let hash = match args.algorithm.hash.unwrap() {
         WebCryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
@@ -159,7 +205,7 @@ pub fn op_webcrypto_generate_key(
       // TODO: change algorithm length when specified.
       let key = HmacKey::generate(hash, &rng)?;
       let crypto_key = WebCryptoKey {
-        key_type: KeyType::Public,
+        key_type: KeyType::Secret,
         algorithm,
         extractable,
         usages: vec![],
