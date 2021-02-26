@@ -1,3 +1,20 @@
-// console.log(Deno.core.jsonOpSync("op_webcrypto_generate_key", { modulusLength: 4096/2, exponent: 101 }))
-// console.log(crypto.generateKey({ name: "RsaPss",  modulusLength: 4096, publicModulus: 2 }, true, ["Sign"]))
-console.log(crypto.generateKey({ name: "RsaPss",  modulusLength: 4096, publicModulus: 2 }, true, ["Sign"]))
+// generateKey + sign
+let keyPair = await window.crypto.subtle.generateKey(
+  {
+    name: "RSASSA-PKCS1-v1_5",
+    modulusLength: 2048,
+    publicModulus: 101, // Oops, ik things are a bit
+    hash: "SHA-256"
+  },
+  true,
+  ["encrypt", "decrypt"]
+);
+
+let encoded = new TextEncoder().encode("Hello, World!");
+let signature = await window.crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    keyPair,
+    encoded
+);
+
+console.log(signature);

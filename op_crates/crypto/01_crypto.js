@@ -42,14 +42,13 @@
   }
 
   // Just for storing the rid for a crypto key.
-  class CryptoKey {
-    #rid
-    
+  class CryptoKey {    
     constructor(key) {
       this.usages = key.usages;
       this.extractable = key.extractable;
       this.algorithm = key.algorithm;
       this.keyType = key.keyType;
+      this.rid = key.rid;
     }
   }
 
@@ -57,13 +56,25 @@
     return new CryptoKey(core.jsonOpSync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages }))
   }
 
+  function sign(algorithm, key, data) {
+    let rid = key.rid;
+    return core.jsonOpSync("op_webcrypto_sign_key", { rid, algorithm }, data).data;
+  }
+
   window.crypto = {
     getRandomValues,
-    generateKey,
+    subtle: {
+      generateKey,
+      sign,
+    }
   };
   window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.crypto = {
     getRandomValues,
     generateKey,
+    subtle: {
+      generateKey,
+      sign,
+    }
   };
 })(this);

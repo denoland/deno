@@ -264,17 +264,17 @@ pub fn op_webcrypto_generate_key(
 struct WebCryptoSignArg {
   rid: u32,
   algorithm: Algorithm,
-  key: WebCryptoKey,
-  data: Vec<u8>,
 }
 
 pub fn op_webcrypto_sign_key(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
+  assert_eq!(zero_copy.len(), 1);
+
   let args: WebCryptoSignArg = serde_json::from_value(args)?;
-  let data = args.data;
+  let data = &*zero_copy[0];
   let algorithm = args.algorithm;
 
   let signature = match algorithm {
