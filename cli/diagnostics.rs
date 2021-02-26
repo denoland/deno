@@ -56,8 +56,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "signal",
   "signals",
   "startTls",
-  "symlink",
-  "symlinkSync",
   "systemMemoryInfo",
   "systemCpuInfo",
   "umask",

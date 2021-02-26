@@ -36,46 +36,6 @@ declare namespace Deno {
     rows: number;
   };
 
-  export type SymlinkOptions = {
-    type: "file" | "dir";
-  };
-
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Creates `newpath` as a symbolic link to `oldpath`.
-   *
-   * The options.type parameter can be set to `file` or `dir`. This argument is only
-   * available on Windows and ignored on other platforms.
-   *
-   * ```ts
-   * Deno.symlinkSync("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-write` permission. */
-  export function symlinkSync(
-    oldpath: string,
-    newpath: string,
-    options?: SymlinkOptions,
-  ): void;
-
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Creates `newpath` as a symbolic link to `oldpath`.
-   *
-   * The options.type parameter can be set to `file` or `dir`. This argument is only
-   * available on Windows and ignored on other platforms.
-   *
-   * ```ts
-   * await Deno.symlink("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-write` permission. */
-  export function symlink(
-    oldpath: string,
-    newpath: string,
-    options?: SymlinkOptions,
-  ): Promise<void>;
-
   /** **Unstable**  There are questions around which permission this needs. And
    * maybe should be renamed (loadAverage?)
    *
