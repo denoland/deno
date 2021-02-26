@@ -322,7 +322,13 @@ pub async fn op_ws_next_event(
         "reason": frame.reason.as_ref()
       }
     }),
-    Some(Ok(Message::Close(None))) => json!({ "kind": "close" }),
+    Some(Ok(Message::Close(None))) => json!({
+      "kind": "close",
+      "data": {
+        "code": 1005,
+        "reason": ""
+      }
+    }),
     Some(Ok(Message::Ping(_))) => json!({ "kind": "ping" }),
     Some(Ok(Message::Pong(_))) => json!({ "kind": "pong" }),
     Some(Err(_)) => json!({ "kind": "error" }),

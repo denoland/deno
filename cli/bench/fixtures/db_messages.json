@@ -1,0 +1,2247 @@
+[
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8329,
+              "character": 0
+            },
+            "end": {
+              "line": 8329,
+              "character": 0
+            }
+          },
+          "rangeLength": 0,
+          "text": "\n"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 3
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 0
+            },
+            "end": {
+              "line": 8330,
+              "character": 0
+            }
+          },
+          "rangeLength": 0,
+          "text": "f"
+        }
+      ]
+    }
+  },
+  {
+    "type": "completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8330,
+        "character": 1
+      },
+      "context": {
+        "triggerKind": 1
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 4
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 1
+            },
+            "end": {
+              "line": 8330,
+              "character": 1
+            }
+          },
+          "rangeLength": 0,
+          "text": "u"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 5
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 2
+            },
+            "end": {
+              "line": 8330,
+              "character": 2
+            }
+          },
+          "rangeLength": 0,
+          "text": "n"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 6
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 3
+            },
+            "end": {
+              "line": 8330,
+              "character": 3
+            }
+          },
+          "rangeLength": 0,
+          "text": "c"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 7
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 4
+            },
+            "end": {
+              "line": 8330,
+              "character": 4
+            }
+          },
+          "rangeLength": 0,
+          "text": "t"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 8
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 5
+            },
+            "end": {
+              "line": 8330,
+              "character": 5
+            }
+          },
+          "rangeLength": 0,
+          "text": "i"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 9
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 6
+            },
+            "end": {
+              "line": 8330,
+              "character": 6
+            }
+          },
+          "rangeLength": 0,
+          "text": "o"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 10
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 7
+            },
+            "end": {
+              "line": 8330,
+              "character": 7
+            }
+          },
+          "rangeLength": 0,
+          "text": "n"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 11
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 8
+            },
+            "end": {
+              "line": 8330,
+              "character": 8
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 12
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 9
+            },
+            "end": {
+              "line": 8330,
+              "character": 9
+            }
+          },
+          "rangeLength": 0,
+          "text": "a"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8330,
+          "character": 10
+        },
+        "end": {
+          "line": 8330,
+          "character": 10
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 13
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 10
+            },
+            "end": {
+              "line": 8330,
+              "character": 10
+            }
+          },
+          "rangeLength": 0,
+          "text": "()"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8330,
+          "character": 11
+        },
+        "end": {
+          "line": 8330,
+          "character": 11
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8330,
+          "character": 12
+        },
+        "end": {
+          "line": 8330,
+          "character": 12
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 14
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 12
+            },
+            "end": {
+              "line": 8330,
+              "character": 12
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 15
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 13
+            },
+            "end": {
+              "line": 8330,
+              "character": 13
+            }
+          },
+          "rangeLength": 0,
+          "text": "{}"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 16
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 14
+            },
+            "end": {
+              "line": 8330,
+              "character": 14
+            }
+          },
+          "rangeLength": 0,
+          "text": "\n  \n"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 17
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 2
+            },
+            "end": {
+              "line": 8331,
+              "character": 2
+            }
+          },
+          "rangeLength": 0,
+          "text": "a"
+        }
+      ]
+    }
+  },
+  {
+    "type": "completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 3
+      },
+      "context": {
+        "triggerKind": 1
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 18
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 3
+            },
+            "end": {
+              "line": 8331,
+              "character": 3
+            }
+          },
+          "rangeLength": 0,
+          "text": "w"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 19
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 4
+            },
+            "end": {
+              "line": 8331,
+              "character": 4
+            }
+          },
+          "rangeLength": 0,
+          "text": "a"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 20
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 5
+            },
+            "end": {
+              "line": 8331,
+              "character": 5
+            }
+          },
+          "rangeLength": 0,
+          "text": "i"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 21
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 6
+            },
+            "end": {
+              "line": 8331,
+              "character": 6
+            }
+          },
+          "rangeLength": 0,
+          "text": "t"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 7
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 7
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 7
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 7
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 22
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 7
+            },
+            "end": {
+              "line": 8331,
+              "character": 7
+            }
+          },
+          "rangeLength": 0,
+          "text": " "
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 23
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 8
+            },
+            "end": {
+              "line": 8331,
+              "character": 8
+            }
+          },
+          "rangeLength": 0,
+          "text": "P"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 24
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 9
+            },
+            "end": {
+              "line": 8331,
+              "character": 9
+            }
+          },
+          "rangeLength": 0,
+          "text": "r"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 25
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 10
+            },
+            "end": {
+              "line": 8331,
+              "character": 10
+            }
+          },
+          "rangeLength": 0,
+          "text": "o"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 26
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 11
+            },
+            "end": {
+              "line": 8331,
+              "character": 11
+            }
+          },
+          "rangeLength": 0,
+          "text": "m"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 27
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 12
+            },
+            "end": {
+              "line": 8331,
+              "character": 12
+            }
+          },
+          "rangeLength": 0,
+          "text": "i"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 28
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 13
+            },
+            "end": {
+              "line": 8331,
+              "character": 13
+            }
+          },
+          "rangeLength": 0,
+          "text": "s"
+        }
+      ]
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 29
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 14
+            },
+            "end": {
+              "line": 8331,
+              "character": 14
+            }
+          },
+          "rangeLength": 0,
+          "text": "e"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 15
+        },
+        "end": {
+          "line": 8331,
+          "character": 15
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 30
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 15
+            },
+            "end": {
+              "line": 8331,
+              "character": 15
+            }
+          },
+          "rangeLength": 0,
+          "text": "."
+        }
+      ]
+    }
+  },
+  {
+    "type": "completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 16
+      },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "."
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 16
+        },
+        "end": {
+          "line": 8331,
+          "character": 16
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 31
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 16
+            },
+            "end": {
+              "line": 8331,
+              "character": 16
+            }
+          },
+          "rangeLength": 0,
+          "text": "resolve"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 23
+        },
+        "end": {
+          "line": 8331,
+          "character": 23
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 32
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 23
+            },
+            "end": {
+              "line": 8331,
+              "character": 23
+            }
+          },
+          "rangeLength": 0,
+          "text": "()"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 24
+        },
+        "end": {
+          "line": 8331,
+          "character": 24
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 24
+        },
+        "end": {
+          "line": 8331,
+          "character": 24
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 24
+        },
+        "end": {
+          "line": 8331,
+          "character": 24
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 33
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 24
+            },
+            "end": {
+              "line": 8331,
+              "character": 24
+            }
+          },
+          "rangeLength": 0,
+          "text": "\"\""
+        }
+      ]
+    }
+  },
+  {
+    "type": "completion",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 25
+      },
+      "context": {
+        "triggerKind": 2,
+        "triggerCharacter": "\""
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 25
+        },
+        "end": {
+          "line": 8331,
+          "character": 25
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 25
+        },
+        "end": {
+          "line": 8331,
+          "character": 25
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 34
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 25
+            },
+            "end": {
+              "line": 8331,
+              "character": 25
+            }
+          },
+          "rangeLength": 0,
+          "text": "a"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 26
+        },
+        "end": {
+          "line": 8331,
+          "character": 26
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 28
+        },
+        "end": {
+          "line": 8331,
+          "character": 28
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 35
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8331,
+              "character": 28
+            },
+            "end": {
+              "line": 8331,
+              "character": 28
+            }
+          },
+          "rangeLength": 0,
+          "text": ";"
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 29
+        },
+        "end": {
+          "line": 8331,
+          "character": 29
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 29
+        },
+        "end": {
+          "line": 8331,
+          "character": 29
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 4
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 2
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ],
+        "only": [
+          "quickfix"
+        ]
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 2
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 4
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 2
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ],
+        "only": [
+          "quickfix"
+        ]
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 5
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 5
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 2
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ],
+        "only": [
+          "quickfix"
+        ]
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 6
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 4
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 2
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ],
+        "only": [
+          "quickfix"
+        ]
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 2
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 2
+        },
+        "end": {
+          "line": 8331,
+          "character": 7
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ],
+        "only": [
+          "quickfix"
+        ]
+      }
+    }
+  },
+  {
+    "type": "highlight",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 4
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 4
+        },
+        "end": {
+          "line": 8331,
+          "character": 4
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "hover",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "position": {
+        "line": 8331,
+        "character": 4
+      }
+    }
+  },
+  {
+    "type": "change",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts",
+        "version": 36
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": {
+              "line": 8330,
+              "character": 0
+            },
+            "end": {
+              "line": 8330,
+              "character": 0
+            }
+          },
+          "rangeLength": 0,
+          "text": "async "
+        }
+      ]
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 4
+        },
+        "end": {
+          "line": 8331,
+          "character": 4
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 4
+        },
+        "end": {
+          "line": 8331,
+          "character": 4
+        }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 8331,
+                "character": 2
+              },
+              "end": {
+                "line": 8331,
+                "character": 7
+              }
+            },
+            "severity": 1,
+            "code": 1308,
+            "source": "deno-ts",
+            "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+            "relatedInformation": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "action",
+    "params": {
+      "textDocument": {
+        "uri": "file:///fixtures/db.ts"
+      },
+      "range": {
+        "start": {
+          "line": 8331,
+          "character": 4
+        },
+        "end": {
+          "line": 8331,
+          "character": 4
+        }
+      },
+      "context": {
+        "diagnostics": []
+      }
+    }
+  }
+]

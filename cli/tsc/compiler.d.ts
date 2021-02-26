@@ -37,7 +37,12 @@ declare global {
     jsonOpSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
-    registerErrorClass(name: string, Ctor: typeof Error): void;
+    registerErrorClass(
+      name: string,
+      Ctor: typeof Error,
+      // deno-lint-ignore no-explicit-any
+      ...args: any[]
+    ): void;
   }
 
   type LanguageServerRequest =

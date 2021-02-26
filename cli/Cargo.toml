@@ -25,9 +25,7 @@ path = "./bench/main.rs"
 
 [build-dependencies]
 deno_core = { path = "../core", version = "0.79.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.22.0" }
-deno_web = { path = "../op_crates/web", version = "0.30.0" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.5.0" }
+deno_runtime = { path = "../runtime", version = "0.9.0" }
 regex = "1.4.3"
 serde = { version = "1.0.123", features = ["derive"] }
 
@@ -46,7 +44,7 @@ base64 = "0.13.0"
 byteorder = "1.4.2"
 clap = "2.33.3"
 dissimilar = "1.0.2"
-dprint-plugin-typescript = "0.40.1"
+dprint-plugin-typescript = "0.40.3"
 dprint-plugin-markdown = "0.5.1"
 dprint-plugin-json = "0.8.0"
 encoding_rs = "0.8.28"
