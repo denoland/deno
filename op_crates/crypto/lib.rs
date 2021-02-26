@@ -18,13 +18,14 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use openssl::bn::BigNum;
-use openssl::pkey::Private;
-use openssl::pkey::Public;
-use openssl::rsa::Rsa;
+use rsa::algorithms::generate_multi_prime_key;
+use rsa::RSAPrivateKey;
+use rsa::RSAPublicKey;
+
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
+use rand::rngs::OsRng;
 
 pub use rand; // Re-export rand
 
@@ -70,7 +71,7 @@ struct CryptoKeyPairResource<A, B> {
   key: CryptoKeyPair<A, B>,
 }
 
-impl Resource for CryptoKeyPairResource<Rsa<Public>, Rsa<Private>> {
+impl Resource for CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey> {
   fn name(&self) -> Cow<str> {
     "usbDeviceHandle".into()
   }
@@ -100,19 +101,17 @@ pub fn op_webcrypto_generate_key(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: WebCryptoGenerateKeyArg = serde_json::from_value(args)?;
-  let exponent = BigNum::from_u32(args.algorithm.public_modulus)?;
+  let exponent = args.algorithm.public_modulus;
   let bits = args.algorithm.modulus_length;
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
 
   let (public_key, private_key) = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
-      let private_key = Rsa::generate_with_e(bits, &exponent)?;
+      let mut rng = OsRng;
+      let private_key = generate_multi_prime_key(&mut rng, exponent as usize, bits as usize)?;
       (
-        Rsa::from_public_components(
-          private_key.n().to_owned()?,
-          private_key.e().to_owned()?,
-        )?,
+        private_key.to_public_key(),
         private_key,
       )
     }
