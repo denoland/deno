@@ -1,4 +1,4 @@
-import { branch } from "./subdir/branch.ts";
+import { branch } from "./branch.ts";
 
 Deno.test("branch", function () {
   branch(true);

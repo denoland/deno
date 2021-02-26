@@ -1,0 +1,9 @@
+{
+  "imports": {
+    "moment": "./moment/moment.ts",
+    "moment/": "./moment/",
+    "lodash": "./lodash/lodash.ts",
+    "lodash/": "./lodash/",
+    "https://www.unpkg.com/vue/dist/vue.runtime.esm.js": "./vue.ts"
+  }
+}

@@ -16,8 +16,7 @@ const bytes = new Uint8Array([
 ]);
 
 async function main() {
-  const wasm = await WebAssembly.instantiateStreaming(bytes, {
-  });
+  const wasm = await WebAssembly.instantiateStreaming(bytes, {});
 
   const result = wasm.instance.exports.add(1, 3);
   console.log("1 + 3 =", result);

@@ -37,7 +37,12 @@ declare global {
     jsonOpSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
-    registerErrorClass(name: string, Ctor: typeof Error): void;
+    registerErrorClass(
+      name: string,
+      Ctor: typeof Error,
+      // deno-lint-ignore no-explicit-any
+      ...args: any[]
+    ): void;
   }
 
   type LanguageServerRequest =
@@ -54,6 +59,7 @@ declare global {
     | GetNavigationTree
     | GetQuickInfoRequest
     | GetReferencesRequest
+    | GetSignatureHelpItemsRequest
     | GetSupportedCodeFixes;
 
   interface BaseLanguageServerRequest {
@@ -142,6 +148,13 @@ declare global {
     method: "getReferences";
     specifier: string;
     position: number;
+  }
+
+  interface GetSignatureHelpItemsRequest extends BaseLanguageServerRequest {
+    method: "getSignatureHelpItems";
+    specifier: string;
+    position: number;
+    options: ts.SignatureHelpItemsOptions;
   }
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {

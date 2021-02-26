@@ -2,13 +2,13 @@
 
 use deno_core::error::custom_error;
 use deno_core::json_op_sync;
+use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use regex::Regex;
-use serde::Deserialize;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
