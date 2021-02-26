@@ -1690,8 +1690,7 @@ fn import_map_arg<'a, 'b>() -> Arg<'a, 'b> {
     .value_name("FILE")
     .help("Load import map file")
     .long_help(
-      "UNSTABLE:
-Load import map file
+      "Load import map file from local file or remote URL.
 Docs: https://deno.land/manual/linking_to_external_code/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
