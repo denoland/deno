@@ -24,6 +24,13 @@
     return core.jsonOpSync("op_system_cpu_info");
   }
 
+  // This is an internal only method used by the test harness to override the
+  // behavior of exit when the exit sanitizer is enabled.
+  let exitHandler = null;
+  function setExitHandler(fn) {
+    exitHandler = fn;
+  }
+
   function exit(code = 0) {
     // Dispatches `unload` only when it's not dispatched yet.
     if (!window[Symbol.for("isUnloadDispatched")]) {
@@ -31,6 +38,12 @@
       // ref: https://github.com/denoland/deno/issues/3603
       window.dispatchEvent(new Event("unload"));
     }
+
+    if (exitHandler) {
+      exitHandler(code);
+      return;
+    }
+
     core.jsonOpSync("op_exit", { code });
     throw new Error("Code not reachable");
   }
@@ -63,6 +76,7 @@
   window.__bootstrap.os = {
     env,
     execPath,
+    setExitHandler,
     exit,
     osRelease,
     systemMemoryInfo,

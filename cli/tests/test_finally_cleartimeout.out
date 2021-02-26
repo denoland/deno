@@ -1,0 +1,17 @@
+Check [WILDCARD]/$deno$test.ts
+running 2 tests
+test error ... FAILED ([WILDCARD])
+test success ... ok ([WILDCARD])
+
+failures:
+
+error
+Error: fail
+    [WILDCARD]
+
+failures:
+
+	error
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

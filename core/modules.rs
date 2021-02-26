@@ -398,26 +398,33 @@ enum SymbolicModule {
   Mod(ModuleId),
 }
 
+/// A collection of JS modules.
 #[derive(Default)]
-/// Alias-able module name map
-struct ModuleNameMap {
-  inner: HashMap<String, SymbolicModule>,
+pub struct ModuleMap {
+  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
+  info: HashMap<ModuleId, ModuleInfo>,
+  by_name: HashMap<String, SymbolicModule>,
+  next_module_id: ModuleId,
 }
 
-impl ModuleNameMap {
-  pub fn new() -> Self {
-    ModuleNameMap {
-      inner: HashMap::new(),
+impl ModuleMap {
+  pub fn new() -> ModuleMap {
+    Self {
+      handles_by_id: HashMap::new(),
+      ids_by_handle: HashMap::new(),
+      info: HashMap::new(),
+      by_name: HashMap::new(),
+      next_module_id: 1,
     }
   }
 
-  /// Get the id of a module.
-  /// If this module is internally represented as an alias,
-  /// follow the alias chain to get the final module id.
-  pub fn get(&self, name: &str) -> Option<ModuleId> {
+  /// Get module id, following all aliases in case of module specifier
+  /// that had been redirected.
+  pub fn get_id(&self, name: &str) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
-      let symbolic_module = self.inner.get(mod_name)?;
+      let symbolic_module = self.by_name.get(mod_name)?;
       match symbolic_module {
         SymbolicModule::Alias(target) => {
           mod_name = target;
@@ -427,55 +434,12 @@ impl ModuleNameMap {
     }
   }
 
-  /// Insert a name associated module id.
-  pub fn insert(&mut self, name: String, id: ModuleId) {
-    self.inner.insert(name, SymbolicModule::Mod(id));
-  }
-
-  /// Create an alias to another module.
-  pub fn alias(&mut self, name: String, target: String) {
-    self.inner.insert(name, SymbolicModule::Alias(target));
-  }
-
-  /// Check if a name is an alias to another module.
-  #[cfg(test)]
-  pub fn is_alias(&self, name: &str) -> bool {
-    let cond = self.inner.get(name);
-    matches!(cond, Some(SymbolicModule::Alias(_)))
-  }
-}
-
-/// A collection of JS modules.
-#[derive(Default)]
-pub struct Modules {
-  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
-  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
-  info: HashMap<ModuleId, ModuleInfo>,
-  by_name: ModuleNameMap,
-  next_module_id: ModuleId,
-}
-
-impl Modules {
-  pub fn new() -> Modules {
-    Self {
-      handles_by_id: HashMap::new(),
-      ids_by_handle: HashMap::new(),
-      info: HashMap::new(),
-      by_name: ModuleNameMap::new(),
-      next_module_id: 1,
-    }
-  }
-
-  pub fn get_id(&self, name: &str) -> Option<ModuleId> {
-    self.by_name.get(name)
-  }
-
   pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
     self.info.get(&id).map(|i| &i.import_specifiers)
   }
 
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
-    self.by_name.get(&specifier.to_string()).is_some()
+    self.get_id(&specifier.to_string()).is_some()
   }
 
   pub fn register(
@@ -488,7 +452,9 @@ impl Modules {
     let name = String::from(name);
     let id = self.next_module_id;
     self.next_module_id += 1;
-    self.by_name.insert(name.clone(), id);
+    self
+      .by_name
+      .insert(name.to_string(), SymbolicModule::Mod(id));
     self.handles_by_id.insert(id, handle.clone());
     self.ids_by_handle.insert(handle, id);
     self.info.insert(
@@ -504,12 +470,15 @@ impl Modules {
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {
-    self.by_name.alias(name.to_owned(), target.to_owned());
+    self
+      .by_name
+      .insert(name.to_string(), SymbolicModule::Alias(target.to_string()));
   }
 
   #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
-    self.by_name.is_alias(name)
+    let cond = self.by_name.get(name);
+    matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
   pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
@@ -732,7 +701,7 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -799,7 +768,7 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
@@ -871,7 +840,7 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -1017,7 +986,7 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();

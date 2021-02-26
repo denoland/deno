@@ -17,6 +17,7 @@ export {
   assertThrows,
   assertThrowsAsync,
   fail,
+  unimplemented,
   unreachable,
 } from "../../../test_util/std/testing/asserts.ts";
 export { deferred } from "../../../test_util/std/async/deferred.ts";
