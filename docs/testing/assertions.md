@@ -16,6 +16,7 @@ The assertions module provides 10 assertions:
 
 - `assert(expr: unknown, msg = ""): asserts expr`
 - `assertEquals(actual: unknown, expected: unknown, msg?: string): void`
+- `assertExists(actual: unknown,msg?: string): void`
 - `assertNotEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertStrictEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertStringIncludes(actual: string, expected: string, msg?: string): void`
@@ -35,6 +36,19 @@ Deno.test("Test Assert", () => {
   assert(1);
   assert("Hello");
   assert(true);
+});
+```
+
+### Exists
+
+The `assertExists` can be used to check if a value is not `null` or `undefined`.
+
+```js
+assertExists("Denosaurus");
+Deno.test("Test Assert Exists", () => {
+  assertExists("Denosaurus");
+  assertExists(false);
+  assertExists(0);
 });
 ```
 
@@ -159,7 +173,7 @@ Deno.test("Test Assert Throws", () => {
       throw new Error("Panic!");
     },
     Error,
-    "Panic!",
+    "Panic!"
   );
 });
 ```
@@ -177,7 +191,7 @@ Deno.test("Test Assert Throws Async", () => {
       });
     },
     Error,
-    "Panic! Threw Error",
+    "Panic! Threw Error"
   );
 
   assertThrowsAsync(
@@ -185,7 +199,7 @@ Deno.test("Test Assert Throws Async", () => {
       return Promise.reject(new Error("Panic! Reject Error"));
     },
     Error,
-    "Panic! Reject Error",
+    "Panic! Reject Error"
   );
 });
 ```
