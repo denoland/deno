@@ -2,6 +2,7 @@
 
 //#![deny(warnings)]
 
+use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -28,6 +29,7 @@ use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::KeyPair;
 use rsa::algorithms::generate_multi_prime_key;
+use rsa::padding::PaddingScheme;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
 
@@ -83,7 +85,7 @@ impl Resource for CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey> {
   }
 }
 
-impl<T: 'static> Resource for CryptoKeyPairResource<T, EcdsaKeyPair> {
+impl Resource for CryptoKeyResource<EcdsaKeyPair> {
   fn name(&self) -> Cow<str> {
     "ECDSACryptoKeyPair".into()
   }
@@ -211,26 +213,24 @@ pub fn op_webcrypto_generate_key(
       let rng = RingRand::SystemRandom::new();
       let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
       let private_key = EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?;
-      let public_key = private_key.public_key().clone();
+      // let public_key = private_key.public_key().clone();
       let webcrypto_key_public = WebCryptoKey {
         key_type: KeyType::Public,
         algorithm: algorithm.clone(),
         extractable,
         usages: vec![],
       };
-      let webcrypto_key_private = WebCryptoKey {
+      let crypto_key = WebCryptoKey {
         key_type: KeyType::Private,
         algorithm,
         extractable,
         usages: vec![],
       };
-      let crypto_key =
-        WebCryptoKeyPair::new(webcrypto_key_public, webcrypto_key_private);
-      let key = CryptoKeyPair {
-        public_key,
-        private_key,
+
+      let resource = CryptoKeyResource {
+        crypto_key,
+        key: private_key,
       };
-      let resource = CryptoKeyPairResource { crypto_key, key };
 
       state.resource_table.add(resource)
     }
@@ -258,4 +258,56 @@ pub fn op_webcrypto_generate_key(
   };
 
   Ok(json!({ "rid": rid }))
+}
+
+#[derive(Deserialize)]
+struct WebCryptoSignArg {
+  rid: u32,
+  algorithm: Algorithm,
+  key: WebCryptoKey,
+  data: Vec<u8>,
+}
+
+pub fn op_webcrypto_sign_key(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let args: WebCryptoSignArg = serde_json::from_value(args)?;
+  let data = args.data;
+  let algorithm = args.algorithm;
+
+  let signature = match algorithm {
+    Algorithm::RsassaPkcs1v15 => {
+      let resource = state
+        .resource_table
+        .get::<CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey>>(args.rid)
+        .ok_or_else(bad_resource_id)?;
+
+      let private_key = &resource.key.private_key;
+      // TODO(littledivy): Modify resource to store args from generateKey.
+      // let hash = resource.crypto_key.private_key.hash;
+      let padding = PaddingScheme::PKCS1v15Sign { hash: None };
+
+      // Sign data based on computed padding and return buffer
+      private_key.sign(padding, &data)?
+    }
+    Algorithm::Ecdsa => {
+      let resource = state
+        .resource_table
+        .get::<CryptoKeyResource<EcdsaKeyPair>>(args.rid)
+        .ok_or_else(bad_resource_id)?;
+      let key_pair = &resource.key;
+
+      // Sign data using SecureRng and key.
+      let rng = RingRand::SystemRandom::new();
+      let signature = key_pair.sign(&rng, &data)?;
+
+      // Signature data as buffer.
+      signature.as_ref().to_vec()
+    }
+    _ => panic!(), // TODO: don't panic
+  };
+
+  Ok(json!({}))
 }

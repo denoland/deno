@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum KeyType {
   Public,
   Private,
@@ -10,20 +11,28 @@ pub enum KeyType {
 
 #[derive(Serialize, Deserialize)]
 pub enum WebCryptoHash {
+  #[serde(rename = "SHA-1")]
   Sha1,
+  #[serde(rename = "SHA-256")]
   Sha256,
+  #[serde(rename = "SHA-384")]
   Sha384,
+  #[serde(rename = "SHA-512")]
   Sha512,
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum WebCryptoNamedCurve {
+  #[serde(rename = "P-256")]
   P256,
+  #[serde(rename = "P-384")]
   P384,
+  #[serde(rename = "P-512")]
   P521,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum KeyUsage {
   Encrypt,
   Decrypt,
@@ -60,6 +69,7 @@ pub enum Algorithm {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WebCryptoKey {
   pub key_type: KeyType,
   pub extractable: bool,
