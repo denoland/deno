@@ -42,7 +42,6 @@ fn op_apply_source_map(
       args.file_name,
       args.line_number.into(),
       args.column_number.into(),
-      None,
       &mut mappings_map,
       program_state,
     );

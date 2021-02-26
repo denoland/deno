@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::resolve_url;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -19,12 +20,11 @@ pub fn normalize_file_name(file_name: &str) -> Result<Url, AnyError> {
 pub fn normalize_specifier(
   specifier: &ModuleSpecifier,
 ) -> Result<Url, AnyError> {
-  let url = specifier.as_url();
-  if url.scheme() == "file" {
-    Ok(url.clone())
+  if specifier.scheme() == "file" {
+    Ok(specifier.clone())
   } else {
     let specifier_str =
-      format!("deno:///{}", url.as_str().replacen("://", "/", 1));
+      format!("deno:///{}", specifier.as_str().replacen("://", "/", 1));
     Url::parse(&specifier_str).map_err(|err| err.into())
   }
 }
@@ -41,12 +41,12 @@ pub fn normalize_url(url: Url) -> ModuleSpecifier {
     if let Ok(specifier) =
       percent_encoding::percent_decode_str(&specifier_str).decode_utf8()
     {
-      if let Ok(specifier) = ModuleSpecifier::resolve_url(&specifier) {
+      if let Ok(specifier) = resolve_url(&specifier) {
         return specifier;
       }
     }
   }
-  ModuleSpecifier::from(url)
+  url
 }
 
 #[cfg(test)]
@@ -63,8 +63,7 @@ mod tests {
 
   #[test]
   fn test_normalize_specifier() {
-    let fixture =
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
     let actual = normalize_specifier(&fixture).unwrap();
     let expected = Url::parse("deno:///https/deno.land/x/mod.ts").unwrap();
     assert_eq!(actual, expected);
@@ -74,9 +73,6 @@ mod tests {
   fn test_normalize_url() {
     let fixture = Url::parse("deno:///https/deno.land/x/mod.ts").unwrap();
     let actual = normalize_url(fixture);
-    assert_eq!(
-      actual,
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap()
-    );
+    assert_eq!(actual, resolve_url("https://deno.land/x/mod.ts").unwrap());
   }
 }

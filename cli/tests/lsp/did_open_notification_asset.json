@@ -6,7 +6,7 @@
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "console.log(\"hello deno!\");\n"
+      "text": "console.log(Date.now());\n"
     }
   }
 }

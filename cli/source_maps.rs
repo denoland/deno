@@ -3,7 +3,6 @@
 //! This mod provides functions to remap a `JsError` based on a source map.
 
 use deno_core::error::JsError;
-use deno_core::ModuleSpecifier;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
@@ -40,9 +39,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
       js_error.line_number,
       // start_column is 0-based, we need 1-based here.
       js_error.start_column.map(|n| n + 1),
-      js_error.source_line.clone(),
       &mut mappings_map,
-      getter,
+      getter.clone(),
     );
   let start_column = start_column.map(|n| n - 1);
   // It is better to just move end_column to be the same distance away from
@@ -58,6 +56,33 @@ pub fn apply_source_map<G: SourceMapGetter>(
     }
     _ => None,
   };
+
+  let mut script_resource_name = script_resource_name;
+  let mut line_number = line_number;
+  let mut start_column = start_column;
+  let mut end_column = end_column;
+  let mut source_line = source_line;
+  if script_resource_name
+    .as_ref()
+    .map_or(true, |s| s.starts_with("deno:"))
+  {
+    for frame in &js_error.frames {
+      if let (Some(file_name), Some(line_number_)) =
+        (&frame.file_name, frame.line_number)
+      {
+        if !file_name.starts_with("deno:") {
+          script_resource_name = Some(file_name.clone());
+          line_number = Some(line_number_);
+          start_column = frame.column_number.map(|n| n - 1);
+          end_column = frame.column_number;
+          // Lookup expects 0-based line and column numbers, but ours are 1-based.
+          source_line =
+            getter.get_source_line(file_name, (line_number_ - 1) as usize);
+          break;
+        }
+      }
+    }
+  }
 
   JsError {
     message: js_error.message.clone(),
@@ -75,21 +100,13 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
   file_name: Option<String>,
   line_number: Option<i64>,
   column_number: Option<i64>,
-  source_line: Option<String>,
   mappings_map: &mut CachedMaps,
   getter: Arc<G>,
 ) -> (Option<String>, Option<i64>, Option<i64>, Option<String>) {
   match (file_name, line_number, column_number) {
     (Some(file_name_v), Some(line_v), Some(column_v)) => {
       let (file_name, line_number, column_number, source_line) =
-        get_orig_position(
-          file_name_v,
-          line_v,
-          column_v,
-          source_line,
-          mappings_map,
-          getter,
-        );
+        get_orig_position(file_name_v, line_v, column_v, mappings_map, getter);
       (
         Some(file_name),
         Some(line_number),
@@ -97,7 +114,7 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
         source_line,
       )
     }
-    _ => (None, None, None, source_line),
+    _ => (None, None, None, None),
   }
 }
 
@@ -105,63 +122,55 @@ pub fn get_orig_position<G: SourceMapGetter>(
   file_name: String,
   line_number: i64,
   column_number: i64,
-  source_line: Option<String>,
   mappings_map: &mut CachedMaps,
   getter: Arc<G>,
 ) -> (String, i64, i64, Option<String>) {
-  let maybe_source_map = get_mappings(&file_name, mappings_map, getter.clone());
-  let default_pos =
-    (file_name.clone(), line_number, column_number, source_line);
-
   // Lookup expects 0-based line and column numbers, but ours are 1-based.
   let line_number = line_number - 1;
   let column_number = column_number - 1;
 
-  match maybe_source_map {
-    None => default_pos,
-    Some(source_map) => {
-      match source_map.lookup_token(line_number as u32, column_number as u32) {
-        None => default_pos,
-        Some(token) => match token.get_source() {
+  let default_pos = (file_name.clone(), line_number, column_number, None);
+  let maybe_source_map = get_mappings(&file_name, mappings_map, getter.clone());
+  let (file_name, line_number, column_number, source_line) =
+    match maybe_source_map {
+      None => default_pos,
+      Some(source_map) => {
+        match source_map.lookup_token(line_number as u32, column_number as u32)
+        {
           None => default_pos,
-          Some(source_file_name) => {
-            // The `source_file_name` written by tsc in the source map is
-            // sometimes only the basename of the URL, or has unwanted `<`/`>`
-            // around it. Use the `file_name` we get from V8 if
-            // `source_file_name` does not parse as a URL.
-            let file_name = match ModuleSpecifier::resolve_url(source_file_name)
-            {
-              Ok(m) => m.to_string(),
-              Err(_) => file_name,
-            };
-            let maybe_source_line =
-              if let Some(source_view) = token.get_source_view() {
-                source_view.get_line(token.get_src_line())
-              } else {
-                None
+          Some(token) => match token.get_source() {
+            None => default_pos,
+            Some(source_file_name) => {
+              // The `source_file_name` written by tsc in the source map is
+              // sometimes only the basename of the URL, or has unwanted `<`/`>`
+              // around it. Use the `file_name` we get from V8 if
+              // `source_file_name` does not parse as a URL.
+              let file_name = match deno_core::resolve_url(source_file_name) {
+                Ok(m) => m.to_string(),
+                Err(_) => file_name,
               };
-
-            let source_line = if let Some(source_line) = maybe_source_line {
-              Some(source_line.to_string())
-            } else if let Some(source_line) =
-              getter.get_source_line(&file_name, token.get_src_line() as usize)
-            {
-              Some(source_line)
-            } else {
-              None
-            };
-
-            (
-              file_name,
-              i64::from(token.get_src_line()) + 1,
-              i64::from(token.get_src_col()) + 1,
-              source_line,
-            )
-          }
-        },
+              let source_line =
+                if let Some(source_view) = token.get_source_view() {
+                  source_view
+                    .get_line(token.get_src_line())
+                    .map(|s| s.to_string())
+                } else {
+                  None
+                };
+              (
+                file_name,
+                i64::from(token.get_src_line()),
+                i64::from(token.get_src_col()),
+                source_line,
+              )
+            }
+          },
+        }
       }
-    }
-  }
+    };
+  let source_line = source_line
+    .or_else(|| getter.get_source_line(&file_name, line_number as usize));
+  (file_name, line_number + 1, column_number + 1, source_line)
 }
 
 fn get_mappings<'a, G: SourceMapGetter>(

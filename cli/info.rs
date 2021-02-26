@@ -3,10 +3,10 @@
 use crate::colors;
 use crate::media_type::serialize_media_type;
 use crate::media_type::MediaType;
-use deno_core::ModuleSpecifier;
 
-use serde::Serialize;
-use serde::Serializer;
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
+use deno_core::ModuleSpecifier;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -202,6 +202,7 @@ pub fn human_size(size: f64) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
+  use deno_core::resolve_url_or_path;
   use deno_core::serde_json::json;
 
   #[test]
@@ -218,12 +219,8 @@ mod test {
   }
 
   fn get_fixture() -> ModuleGraphInfo {
-    let spec_c =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a/b/c.ts")
-        .unwrap();
-    let spec_d =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/a/b/c.ts")
-        .unwrap();
+    let spec_c = resolve_url_or_path("https://deno.land/x/a/b/c.ts").unwrap();
+    let spec_d = resolve_url_or_path("https://deno.land/x/a/b/c.ts").unwrap();
     let deps = vec![ModuleInfo {
       deps: Vec::new(),
       name: spec_d.clone(),
@@ -261,10 +258,7 @@ mod test {
       info,
       local: PathBuf::from("/a/b/c.ts"),
       map: None,
-      module: ModuleSpecifier::resolve_url_or_path(
-        "https://deno.land/x/a/b/c.ts",
-      )
-      .unwrap(),
+      module: resolve_url_or_path("https://deno.land/x/a/b/c.ts").unwrap(),
       total_size: 999999,
     }
   }

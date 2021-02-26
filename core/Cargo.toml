@@ -21,7 +21,7 @@ lazy_static = "1.4.0"
 libc = "0.2.86"
 log = "0.4.14"
 pin-project = "1.0.5"
-rusty_v8 = "0.19.0"
+rusty_v8 = "0.20.0"
 serde = { version = "1.0.123", features = ["derive"] }
 serde_json = { version = "1.0.62", features = ["preserve_order"] }
 smallvec = "1.6.1"
