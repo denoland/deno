@@ -53,7 +53,7 @@ encoding_rs = "0.8.28"
 env_logger = "0.8.2"
 filetime = "0.2.14"
 http = "0.2.3"
-indexmap = "1.6.1"
+indexmap = { version = "1.6.1", features = ["serde"] }
 jsonc-parser = "0.15.1"
 lazy_static = "1.4.0"
 libc = "0.2.86"
