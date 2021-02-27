@@ -5,7 +5,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -40,7 +39,7 @@ fn is_special(url: &Url) -> bool {
   SPECIAL_PROTOCOLS.contains(&url.scheme())
 }
 
-type SpecifierMap = IndexMap<String, Option<ModuleSpecifier>>;
+type SpecifierMap = IndexMap<String, Option<Url>>;
 type ScopesMap = IndexMap<String, SpecifierMap>;
 
 #[derive(Debug, Clone, Serialize)]
@@ -287,7 +286,7 @@ impl ImportMap {
     normalized_specifier: &str,
     as_url: Option<&Url>,
     referrer: &str,
-  ) -> Result<Option<ModuleSpecifier>, ImportMapError> {
+  ) -> Result<Option<Url>, ImportMapError> {
     // exact-match
     if let Some(scope_imports) = scopes.get(referrer) {
       let scope_match = ImportMap::resolve_imports_match(
@@ -324,7 +323,7 @@ impl ImportMap {
     specifier_map: &SpecifierMap,
     normalized_specifier: &str,
     as_url: Option<&Url>,
-  ) -> Result<Option<ModuleSpecifier>, ImportMapError> {
+  ) -> Result<Option<Url>, ImportMapError> {
     // exact-match
     if let Some(maybe_address) = specifier_map.get(normalized_specifier) {
       if let Some(address) = maybe_address {
@@ -406,7 +405,7 @@ impl ImportMap {
     &self,
     specifier: &str,
     referrer: &str,
-  ) -> Result<Option<ModuleSpecifier>, ImportMapError> {
+  ) -> Result<Option<Url>, ImportMapError> {
     let as_url: Option<Url> =
       ImportMap::try_url_like_specifier(specifier, referrer);
     let normalized_specifier = if let Some(url) = as_url.as_ref() {
