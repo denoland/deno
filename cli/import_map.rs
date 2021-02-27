@@ -274,7 +274,7 @@ impl ImportMap {
     Ok(normalized_map)
   }
 
-  pub fn resolve_scopes_match(
+  fn resolve_scopes_match(
     scopes: &ScopesMap,
     normalized_specifier: &str,
     as_url: Option<&Url>,
@@ -312,7 +312,7 @@ impl ImportMap {
     Ok(None)
   }
 
-  pub fn resolve_imports_match(
+  fn resolve_imports_match(
     specifier_map: &SpecifierMap,
     normalized_specifier: &str,
     as_url: Option<&Url>,
