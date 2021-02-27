@@ -12,21 +12,11 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct ImportMapError {
-  pub msg: String,
-}
-
-impl ImportMapError {
-  pub fn new(msg: &str) -> Self {
-    ImportMapError {
-      msg: msg.to_string(),
-    }
-  }
-}
+pub struct ImportMapError(String);
 
 impl fmt::Display for ImportMapError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
+    f.pad(&self.0)
   }
 }
 
@@ -59,22 +49,26 @@ impl ImportMap {
     let v: Value = match serde_json::from_str(json_string) {
       Ok(v) => v,
       Err(_) => {
-        return Err(ImportMapError::new("Unable to parse import map JSON"));
+        return Err(ImportMapError(
+          "Unable to parse import map JSON".to_string(),
+        ));
       }
     };
 
     match v {
       Value::Object(_) => {}
       _ => {
-        return Err(ImportMapError::new("Import map JSON must be an object"));
+        return Err(ImportMapError(
+          "Import map JSON must be an object".to_string(),
+        ));
       }
     }
 
     let normalized_imports = match &v.get("imports") {
       Some(imports_map) => {
         if !imports_map.is_object() {
-          return Err(ImportMapError::new(
-            "Import map's 'imports' must be an object",
+          return Err(ImportMapError(
+            "Import map's 'imports' must be an object".to_string(),
           ));
         }
 
@@ -87,8 +81,8 @@ impl ImportMap {
     let normalized_scopes = match &v.get("scopes") {
       Some(scope_map) => {
         if !scope_map.is_object() {
-          return Err(ImportMapError::new(
-            "Import map's 'scopes' must be an object",
+          return Err(ImportMapError(
+            "Import map's 'scopes' must be an object".to_string(),
           ));
         }
 
@@ -120,7 +114,6 @@ impl ImportMap {
   }
 
   fn try_url_like_specifier(specifier: &str, base: &str) -> Option<Url> {
-    // this should never fail
     if specifier.starts_with('/')
       || specifier.starts_with("./")
       || specifier.starts_with("../")
@@ -243,7 +236,7 @@ impl ImportMap {
     // Order is preserved because of "preserve_order" feature of "serde_json".
     for (scope_prefix, potential_specifier_map) in scope_map.iter() {
       if !potential_specifier_map.is_object() {
-        return Err(ImportMapError::new(&format!(
+        return Err(ImportMapError(format!(
           "The value for the {:?} scope prefix must be an object",
           scope_prefix
         )));
@@ -329,7 +322,7 @@ impl ImportMap {
       if let Some(address) = maybe_address {
         return Ok(Some(address.clone()));
       } else {
-        return Err(ImportMapError::new(&format!(
+        return Err(ImportMapError(format!(
           "Blocked by null entry for \"{:?}\"",
           normalized_specifier
         )));
@@ -355,7 +348,7 @@ impl ImportMap {
       }
 
       if maybe_address.is_none() {
-        return Err(ImportMapError::new(&format!(
+        return Err(ImportMapError(format!(
           "Blocked by null entry for \"{:?}\"",
           specifier_key
         )));
@@ -371,7 +364,7 @@ impl ImportMap {
       let url = match resolution_result.join(after_prefix) {
         Ok(url) => url,
         Err(_) => {
-          return Err(ImportMapError::new(&format!(
+          return Err(ImportMapError(format!(
             "Failed to resolve the specifier \"{:?}\" as its after-prefix
             portion \"{:?}\" could not be URL-parsed relative to the URL prefix
             \"{:?}\" mapped to by the prefix \"{:?}\"",
@@ -384,7 +377,7 @@ impl ImportMap {
       };
 
       if !url.as_str().starts_with(resolution_result.as_str()) {
-        return Err(ImportMapError::new(&format!(
+        return Err(ImportMapError(format!(
           "The specifier \"{:?}\" backtracks above its prefix \"{:?}\"",
           normalized_specifier, specifier_key
         )));
@@ -442,7 +435,7 @@ impl ImportMap {
       return Ok(as_url);
     }
 
-    Err(ImportMapError::new(&format!(
+    Err(ImportMapError(format!(
       "Unmapped bare specifier {:?}",
       specifier
     )))
