@@ -150,7 +150,7 @@ impl ImportMap {
   ) -> Option<String> {
     // ignore empty keys
     if specifier_key.is_empty() {
-      // TODO: add diagnostic?
+      eprintln!("Invalid empty string specifier.");
       return None;
     }
 
@@ -186,7 +186,7 @@ impl ImportMap {
       let potential_address = match value {
         Value::String(address) => address.to_string(),
         _ => {
-          // TODO: add diagnostic
+          eprintln!("Invalid address {:#?} for the specifier key \"{}\". Addresses must be strings.", value, specifier_key);
           normalized_map.insert(normalized_specifier_key, None);
           continue;
         }
@@ -196,7 +196,10 @@ impl ImportMap {
         match ImportMap::try_url_like_specifier(&potential_address, base_url) {
           Some(url) => url,
           None => {
-            // TODO: add diagnostic
+            eprintln!(
+              "Invalid address \"{}\" for the specifier key \"{}\".",
+              potential_address, specifier_key
+            );
             normalized_map.insert(normalized_specifier_key, None);
             continue;
           }
@@ -204,7 +207,6 @@ impl ImportMap {
 
       let address_url_string = address_url.to_string();
       if specifier_key.ends_with('/') && !address_url_string.ends_with('/') {
-        // TODO: make it a diagnostic
         eprintln!(
           "Invalid target address {:?} for package specifier {:?}. \
             Package address targets must end with \"/\".",
@@ -255,7 +257,10 @@ impl ImportMap {
         match Url::parse(base_url).unwrap().join(scope_prefix) {
           Ok(url) => url.to_string(),
           _ => {
-            // TODO: add diagnostic
+            eprintln!(
+              "Invalid scope \"{}\" (parsed against base URL \"{}\").",
+              scope_prefix, base_url
+            );
             continue;
           }
         };
