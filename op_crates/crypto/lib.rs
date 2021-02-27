@@ -32,6 +32,7 @@ use rsa::algorithms::generate_multi_prime_key;
 use rsa::padding::PaddingScheme;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
+use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
@@ -310,4 +311,6 @@ pub fn op_webcrypto_sign_key(
   };
 
   Ok(json!({ "data": signature }))
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
 }
