@@ -290,15 +290,14 @@ impl ImportMap {
   ) -> Result<Option<ModuleSpecifier>, ImportMapError> {
     // exact-match
     if let Some(scope_imports) = scopes.get(referrer) {
-      if let Ok(scope_match) = ImportMap::resolve_imports_match(
+      let scope_match = ImportMap::resolve_imports_match(
         scope_imports,
         normalized_specifier,
         as_url,
-      ) {
-        // Return only if there was actual match (not None).
-        if scope_match.is_some() {
-          return Ok(scope_match);
-        }
+      )?;
+      // Return only if there was actual match (not None).
+      if scope_match.is_some() {
+        return Ok(scope_match);
       }
     }
 
@@ -306,15 +305,14 @@ impl ImportMap {
       if normalized_scope_key.ends_with('/')
         && referrer.starts_with(normalized_scope_key)
       {
-        if let Ok(scope_match) = ImportMap::resolve_imports_match(
+        let scope_match = ImportMap::resolve_imports_match(
           scope_imports,
           normalized_specifier,
           as_url,
-        ) {
-          // Return only if there was actual match (not None).
-          if scope_match.is_some() {
-            return Ok(scope_match);
-          }
+        )?;
+        // Return only if there was actual match (not None).
+        if scope_match.is_some() {
+          return Ok(scope_match);
         }
       }
     }
@@ -411,9 +409,10 @@ impl ImportMap {
   ) -> Result<Option<ModuleSpecifier>, ImportMapError> {
     let as_url: Option<Url> =
       ImportMap::try_url_like_specifier(specifier, referrer);
-    let normalized_specifier = match &as_url {
-      Some(url) => url.to_string(),
-      None => specifier.to_string(),
+    let normalized_specifier = if let Some(url) = as_url.as_ref() {
+      url.to_string()
+    } else {
+      specifier.to_string()
     };
 
     let scopes_match = ImportMap::resolve_scopes_match(
@@ -439,14 +438,14 @@ impl ImportMap {
       return Ok(imports_match);
     }
 
-    // no match in import map but we got resolvable URL
-    if let Some(resolved_url) = as_url {
-      return Ok(Some(resolved_url));
+    // The specifier was able to be turned into a URL, but wasn't remapped into anything.
+    if as_url.is_some() {
+      return Ok(as_url);
     }
 
     Err(ImportMapError::new(&format!(
       "Unmapped bare specifier {:?}",
-      normalized_specifier
+      specifier
     )))
   }
 }
