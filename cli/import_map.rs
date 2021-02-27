@@ -48,10 +48,7 @@ pub struct ImportMap {
   #[serde(skip)]
   base_url: String,
 
-  #[serde(with = "indexmap::serde_seq")]
   imports: SpecifierMap,
-
-  #[serde(with = "indexmap::serde_seq")]
   scopes: ScopesMap,
 }
 
@@ -129,9 +126,11 @@ impl ImportMap {
       || specifier.starts_with("./")
       || specifier.starts_with("../")
     {
-      let base_url = Url::parse(base).unwrap();
-      let url = base_url.join(specifier).unwrap();
-      return Some(url);
+      if let Ok(base_url) = Url::parse(base) {
+        if let Ok(url) = base_url.join(specifier) {
+          return Some(url);
+        }
+      }
     }
 
     if let Ok(url) = Url::parse(specifier) {
@@ -207,7 +206,7 @@ impl ImportMap {
       if specifier_key.ends_with('/') && !address_url_string.ends_with('/') {
         // TODO: make it a diagnostic
         eprintln!(
-          "Invalid target address {:?} for package specifier {:?}.\
+          "Invalid target address {:?} for package specifier {:?}. \
             Package address targets must end with \"/\".",
           address_url_string, specifier_key
         );
@@ -447,3 +446,266 @@ impl ImportMap {
   }
 }
 
+#[cfg(test)]
+mod tests {
+
+  use super::*;
+  use deno_core::resolve_import;
+  use std::path::Path;
+  use std::path::PathBuf;
+  use walkdir::WalkDir;
+
+  #[derive(Debug)]
+  enum TestKind {
+    Resolution {
+      given_specifier: String,
+      expected_specifier: Option<String>,
+      base_url: String,
+    },
+    Parse {
+      expected_import_map: Value,
+    },
+  }
+
+  #[derive(Debug)]
+  struct ImportMapTestCase {
+    name: String,
+    import_map: String,
+    import_map_base_url: String,
+    kind: TestKind,
+  }
+
+  fn load_import_map_wpt_tests() -> Vec<String> {
+    let mut found_test_files = vec![];
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let import_map_wpt_path =
+      repo_root.join("test_util/wpt/import-maps/data-driven/resources");
+    eprintln!("import map wpt path {:#?}", import_map_wpt_path);
+    for entry in WalkDir::new(import_map_wpt_path)
+      .contents_first(true)
+      .into_iter()
+      .filter_entry(|e| {
+        eprintln!("entry {:#?}", e);
+        if let Some(ext) = e.path().extension() {
+          return ext.to_string_lossy() == "json";
+        }
+        false
+      })
+      .filter_map(|e| match e {
+        Ok(e) => Some(e),
+        _ => None,
+      })
+      .map(|e| PathBuf::from(e.path()))
+    {
+      found_test_files.push(entry);
+    }
+
+    let mut file_contents = vec![];
+
+    for file in found_test_files {
+      let content = std::fs::read_to_string(file).unwrap();
+      file_contents.push(content);
+    }
+
+    file_contents
+  }
+
+  fn parse_import_map_tests(test_str: &str) -> Vec<ImportMapTestCase> {
+    let json_file: serde_json::Value = serde_json::from_str(test_str).unwrap();
+    let maybe_name = json_file
+      .get("name")
+      .map(|s| s.as_str().unwrap().to_string());
+    return parse_test_object(&json_file, maybe_name, None, None, None);
+
+    fn parse_test_object(
+      test_obj: &Value,
+      maybe_name_prefix: Option<String>,
+      maybe_import_map: Option<String>,
+      maybe_base_url: Option<String>,
+      maybe_import_map_base_url: Option<String>,
+    ) -> Vec<ImportMapTestCase> {
+      let maybe_import_map_base_url =
+        if let Some(base_url) = test_obj.get("importMapBaseURL") {
+          Some(base_url.as_str().unwrap().to_string())
+        } else {
+          maybe_import_map_base_url
+        };
+
+      let maybe_base_url = if let Some(base_url) = test_obj.get("baseURL") {
+        Some(base_url.as_str().unwrap().to_string())
+      } else {
+        maybe_base_url
+      };
+
+      let maybe_import_map = if let Some(import_map) = test_obj.get("importMap")
+      {
+        Some(if import_map.is_string() {
+          import_map.as_str().unwrap().to_string()
+        } else {
+          serde_json::to_string(import_map).unwrap()
+        })
+      } else {
+        maybe_import_map
+      };
+
+      if let Some(nested_tests) = test_obj.get("tests") {
+        let nested_tests_obj = nested_tests.as_object().unwrap();
+        let mut collected = vec![];
+        for (name, test_obj) in nested_tests_obj {
+          let nested_name = if let Some(ref name_prefix) = maybe_name_prefix {
+            format!("{}: {}", name_prefix, name)
+          } else {
+            name.to_string()
+          };
+          let parsed_nested_tests = parse_test_object(
+            test_obj,
+            Some(nested_name),
+            maybe_import_map.clone(),
+            maybe_base_url.clone(),
+            maybe_import_map_base_url.clone(),
+          );
+          collected.extend(parsed_nested_tests)
+        }
+        return collected;
+      }
+
+      let mut collected_cases = vec![];
+      if let Some(results) = test_obj.get("expectedResults") {
+        let expected_results = results.as_object().unwrap();
+        for (given, expected) in expected_results {
+          let name = if let Some(ref name_prefix) = maybe_name_prefix {
+            format!("{}: {}", name_prefix, given)
+          } else {
+            given.to_string()
+          };
+          let given_specifier = given.to_string();
+          let expected_specifier = expected.as_str().map(|str| str.to_string());
+
+          let test_case = ImportMapTestCase {
+            name,
+            import_map_base_url: maybe_import_map_base_url.clone().unwrap(),
+            import_map: maybe_import_map.clone().unwrap(),
+            kind: TestKind::Resolution {
+              given_specifier,
+              expected_specifier,
+              base_url: maybe_base_url.clone().unwrap(),
+            },
+          };
+
+          collected_cases.push(test_case);
+        }
+      } else if let Some(expected_import_map) =
+        test_obj.get("expectedParsedImportMap")
+      {
+        let test_case = ImportMapTestCase {
+          name: maybe_name_prefix.unwrap(),
+          import_map_base_url: maybe_import_map_base_url.unwrap(),
+          import_map: maybe_import_map.unwrap(),
+          kind: TestKind::Parse {
+            expected_import_map: expected_import_map.to_owned(),
+          },
+        };
+
+        collected_cases.push(test_case);
+      } else {
+        eprintln!("unreachable {:#?}", test_obj);
+        unreachable!();
+      }
+
+      collected_cases
+    }
+  }
+
+  fn run_import_map_test_cases(tests: Vec<ImportMapTestCase>) {
+    for test in tests {
+      let import_map =
+        ImportMap::from_json(&test.import_map_base_url, &test.import_map)
+          .unwrap();
+
+      match &test.kind {
+        TestKind::Resolution {
+          given_specifier,
+          expected_specifier,
+          base_url,
+        } => {
+          let maybe_resolved = import_map
+            .resolve(&given_specifier, &base_url)
+            .ok()
+            .map(|maybe_resolved| {
+              if let Some(specifier) = maybe_resolved {
+                specifier.to_string()
+              } else {
+                resolve_import(&given_specifier, &base_url)
+                  .unwrap()
+                  .to_string()
+              }
+            });
+          assert_eq!(&maybe_resolved, expected_specifier, "{}", test.name);
+        }
+        TestKind::Parse {
+          expected_import_map,
+        } => {
+          let import_map_value = serde_json::to_value(import_map).unwrap();
+          assert_eq!(expected_import_map, &import_map_value, "{}", test.name);
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn wpt() {
+    let test_file_contents = load_import_map_wpt_tests();
+    eprintln!("Found test files {}", test_file_contents.len());
+
+    for test_file in test_file_contents {
+      let tests = parse_import_map_tests(&test_file);
+      run_import_map_test_cases(tests);
+    }
+  }
+
+  #[test]
+  fn from_json_1() {
+    let base_url = "https://deno.land";
+
+    // empty JSON
+    assert!(ImportMap::from_json(base_url, "{}").is_ok());
+
+    let non_object_strings = vec!["null", "true", "1", "\"foo\"", "[]"];
+
+    // invalid JSON
+    for non_object in non_object_strings.to_vec() {
+      assert!(ImportMap::from_json(base_url, non_object).is_err());
+    }
+
+    // invalid schema: 'imports' is non-object
+    for non_object in non_object_strings.to_vec() {
+      assert!(ImportMap::from_json(
+        base_url,
+        &format!("{{\"imports\": {}}}", non_object),
+      )
+      .is_err());
+    }
+
+    // invalid schema: 'scopes' is non-object
+    for non_object in non_object_strings.to_vec() {
+      assert!(ImportMap::from_json(
+        base_url,
+        &format!("{{\"scopes\": {}}}", non_object),
+      )
+      .is_err());
+    }
+  }
+
+  #[test]
+  fn from_json_2() {
+    let json_map = r#"{
+      "imports": {
+        "foo": "https://example.com/1",
+        "bar": ["https://example.com/2"],
+        "fizz": null
+      }
+    }"#;
+    let result = ImportMap::from_json("https://deno.land", json_map);
+    assert!(result.is_ok());
+  }
+}
