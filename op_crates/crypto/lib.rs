@@ -114,7 +114,7 @@ impl Resource for CryptoKeyResource<HmacKey> {
 #[serde(rename_all = "camelCase")]
 struct WebCryptoAlgorithmArg {
   name: Algorithm,
-  public_modulus: u32,
+  public_exponent: u32,
   modulus_length: u32,
   hash: Option<WebCryptoHash>,
   // length: Option<u32>
@@ -135,32 +135,28 @@ pub fn op_webcrypto_generate_key(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: WebCryptoGenerateKeyArg = serde_json::from_value(args)?;
-  let exponent = args.algorithm.public_modulus;
+  let exponent = args.algorithm.public_exponent;
   let bits = args.algorithm.modulus_length;
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
 
   let rid = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
+      // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
       let private_key =
         generate_multi_prime_key(&mut rng, exponent as usize, bits as usize)?;
+      // Extract public key from private key.
       let public_key = private_key.to_public_key();
 
-      let webcrypto_key_public = WebCryptoKey {
-        key_type: KeyType::Public,
-        algorithm: algorithm.clone(),
-        extractable,
-        usages: vec![],
-      };
-      let webcrypto_key_private = WebCryptoKey {
-        key_type: KeyType::Private,
-        algorithm,
-        extractable,
-        usages: vec![],
-      };
+      // Create webcrypto keypair.
+      let webcrypto_key_public =
+        WebCryptoKey::new_public(algorithm.clone(), extractable, vec![]);
+      let webcrypto_key_private =
+        WebCryptoKey::new_private(algorithm, extractable, vec![]);
       let crypto_key =
         WebCryptoKeyPair::new(webcrypto_key_public, webcrypto_key_private);
+
       let key = CryptoKeyPair {
         public_key,
         private_key,
@@ -169,28 +165,22 @@ pub fn op_webcrypto_generate_key(
       state.resource_table.add(resource)
     }
     Algorithm::Ecdh => {
-      let agreement = match args.algorithm.named_curve.unwrap() {
-        WebCryptoNamedCurve::P256 => &ring::agreement::ECDH_P256,
-        WebCryptoNamedCurve::P384 => &ring::agreement::ECDH_P384,
-        WebCryptoNamedCurve::P521 => panic!(), // TODO: Not implemented but don't panic.
-      };
+      // Determine agreement from algorithm named_curve.
+      let agreement =
+        WebCryptoNamedCurve::from(args.algorithm.named_curve.unwrap());
+      // Generate private key from agreement and ring rng.
       let rng = RingRand::SystemRandom::new();
       let private_key = EphemeralPrivateKey::generate(agreement, &rng)?;
+      // Extract public key.
       let public_key = private_key.compute_public_key()?;
-      let webcrypto_key_public = WebCryptoKey {
-        key_type: KeyType::Public,
-        algorithm: algorithm.clone(),
-        extractable,
-        usages: vec![],
-      };
-      let webcrypto_key_private = WebCryptoKey {
-        key_type: KeyType::Private,
-        algorithm,
-        extractable,
-        usages: vec![],
-      };
+      // Create webcrypto keypair.
+      let webcrypto_key_public =
+        WebCryptoKey::new_public(algorithm.clone(), extractable, vec![]);
+      let webcrypto_key_private =
+        WebCryptoKey::new_private(algorithm, extractable, vec![]);
       let crypto_key =
         WebCryptoKeyPair::new(webcrypto_key_public, webcrypto_key_private);
+
       let key = CryptoKeyPair {
         public_key,
         private_key,

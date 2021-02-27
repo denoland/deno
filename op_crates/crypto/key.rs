@@ -1,3 +1,5 @@
+use ring::agreement::Algorithm as RingAlgorithm;
+use ring::signature::EcdsaSigningAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -29,6 +31,32 @@ pub enum WebCryptoNamedCurve {
   P384,
   #[serde(rename = "P-512")]
   P521,
+}
+
+impl Into<RingAlgorithm> for WebCryptoNamedCurve {
+  fn from(curve: RingAlgorithm) -> Self {
+    match curve {
+      WebCryptoNamedCurve::P256 => &ring::agreement::ECDH_P256,
+      WebCryptoNamedCurve::P384 => &ring::agreement::ECDH_P384,
+      // XXX: Not implemented.
+      WebCryptoNamedCurve::P521 => panic!(),
+    }
+  }
+}
+
+impl From<EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
+  fn from(algo: EcdsaSigningAlgorithm) -> Self {
+    match algo {
+      WebCryptoNamedCurve::P256 => {
+        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
+      }
+      WebCryptoNamedCurve::P384 => {
+        &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
+      }
+      // TODO: Not implemented but don't panic.
+      WebCryptoNamedCurve::P521 => panic!(),
+    }
+  }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -75,6 +103,47 @@ pub struct WebCryptoKey {
   pub extractable: bool,
   pub algorithm: Algorithm,
   pub usages: Vec<KeyUsage>,
+}
+
+impl WebCryptoKey {
+  pub fn new_private(
+    extractable: bool,
+    algorithm: Algorithm,
+    usages: Vec<KeyUsage>,
+  ) -> Self {
+    Self {
+      key_type: KeyType::Private,
+      extractable,
+      algorithm,
+      usages,
+    }
+  }
+
+  pub fn new_public(
+    extractable: bool,
+    algorithm: Algorithm,
+    usages: Vec<KeyUsage>,
+  ) -> Self {
+    Self {
+      key_type: KeyType::Public,
+      extractable,
+      algorithm,
+      usages,
+    }
+  }
+
+  pub fn new_secret(
+    extractable: bool,
+    algorithm: Algorithm,
+    usages: Vec<KeyUsage>,
+  ) -> Self {
+    Self {
+      key_type: KeyType::Secret,
+      extractable,
+      algorithm,
+      usages,
+    }
+  }
 }
 
 impl WebCryptoKeyPair {
