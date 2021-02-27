@@ -108,7 +108,7 @@ impl ImportMap {
     keys.remove("imports");
     keys.remove("scopes");
     for key in keys {
-      eprintln!("Invalid top-level key \"{:?}\". Only \"imports\" and \"scopes\" can be present.", key);
+      eprintln!("Invalid top-level key \"{}\". Only \"imports\" and \"scopes\" can be present.", key);
     }
 
     let import_map = ImportMap {
@@ -515,7 +515,7 @@ mod tests {
     let maybe_name = json_file
       .get("name")
       .map(|s| s.as_str().unwrap().to_string());
-    return parse_test_object(&json_file, maybe_name, None, None, None);
+    return parse_test_object(&json_file, maybe_name, None, None, None, None);
 
     fn parse_test_object(
       test_obj: &Value,
@@ -523,6 +523,7 @@ mod tests {
       maybe_import_map: Option<String>,
       maybe_base_url: Option<String>,
       maybe_import_map_base_url: Option<String>,
+      maybe_expected_import_map: Option<Value>,
     ) -> Vec<ImportMapTestCase> {
       let maybe_import_map_base_url =
         if let Some(base_url) = test_obj.get("importMapBaseURL") {
@@ -536,6 +537,13 @@ mod tests {
       } else {
         maybe_base_url
       };
+
+      let maybe_expected_import_map =
+        if let Some(im) = test_obj.get("expectedParsedImportMap") {
+          Some(im.to_owned())
+        } else {
+          maybe_expected_import_map
+        };
 
       let maybe_import_map = if let Some(import_map) = test_obj.get("importMap")
       {
@@ -563,6 +571,7 @@ mod tests {
             maybe_import_map.clone(),
             maybe_base_url.clone(),
             maybe_import_map_base_url.clone(),
+            maybe_expected_import_map.clone(),
           );
           collected.extend(parsed_nested_tests)
         }
@@ -594,15 +603,13 @@ mod tests {
 
           collected_cases.push(test_case);
         }
-      } else if let Some(expected_import_map) =
-        test_obj.get("expectedParsedImportMap")
-      {
+      } else if let Some(expected_import_map) = maybe_expected_import_map {
         let test_case = ImportMapTestCase {
           name: maybe_name_prefix.unwrap(),
           import_map_base_url: maybe_import_map_base_url.unwrap(),
           import_map: maybe_import_map.unwrap(),
           kind: TestKind::Parse {
-            expected_import_map: expected_import_map.to_owned(),
+            expected_import_map,
           },
         };
 
@@ -618,16 +625,15 @@ mod tests {
 
   fn run_import_map_test_cases(tests: Vec<ImportMapTestCase>) {
     for test in tests {
-      let import_map =
-        ImportMap::from_json(&test.import_map_base_url, &test.import_map)
-          .unwrap();
-
       match &test.kind {
         TestKind::Resolution {
           given_specifier,
           expected_specifier,
           base_url,
         } => {
+          let import_map =
+            ImportMap::from_json(&test.import_map_base_url, &test.import_map)
+              .unwrap();
           let maybe_resolved = import_map
             .resolve(&given_specifier, &base_url)
             .ok()
@@ -640,13 +646,24 @@ mod tests {
                   .to_string()
               }
             });
-          assert_eq!(&maybe_resolved, expected_specifier, "{}", test.name);
+          assert_eq!(expected_specifier, &maybe_resolved, "{}", test.name);
         }
         TestKind::Parse {
           expected_import_map,
         } => {
-          let import_map_value = serde_json::to_value(import_map).unwrap();
-          assert_eq!(expected_import_map, &import_map_value, "{}", test.name);
+          if matches!(expected_import_map, Value::Null) {
+            assert!(ImportMap::from_json(
+              &test.import_map_base_url,
+              &test.import_map
+            )
+            .is_err());
+          } else {
+            let import_map =
+              ImportMap::from_json(&test.import_map_base_url, &test.import_map)
+                .unwrap();
+            let import_map_value = serde_json::to_value(import_map).unwrap();
+            assert_eq!(expected_import_map, &import_map_value, "{}", test.name);
+          }
         }
       }
     }
