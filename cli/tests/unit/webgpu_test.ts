@@ -21,7 +21,9 @@ unitTest({
   const device = await adapter.requestDevice();
   assert(device);
 
-  const shaderCode = await Deno.readTextFile("cli/tests/shader.wgsl");
+  const shaderCode = await Deno.readTextFile(
+    "cli/tests/webgpu_computepass_shader.wgsl",
+  );
 
   const shaderModule = device.createShaderModule({
     code: shaderCode,
@@ -104,6 +106,112 @@ unitTest({
   assertEquals(new Uint32Array(data), new Uint32Array([0, 2, 7, 55]));
 
   stagingBuffer.unmap();
+
+  device.destroy();
+
+  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
+  // adapters.
+  const resources = Object.keys(Deno.resources());
+  Deno.close(Number(resources[resources.length - 1]));
+});
+
+// Skip this test on linux CI, because the vulkan emulator is not good enough
+// yet, and skip on macOS because these do not have virtual GPUs.
+unitTest({
+  perms: { read: true, env: true },
+  ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
+}, async function webgpuHelloTriangle() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const shaderCode = await Deno.readTextFile(
+    "cli/tests/webgpu_hellotriangle_shader.wgsl",
+  );
+
+  const shaderModule = device.createShaderModule({
+    code: shaderCode,
+  });
+
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [],
+  });
+
+  const renderPipeline = device.createRenderPipeline({
+    layout: pipelineLayout,
+    vertex: {
+      module: shaderModule,
+      entryPoint: "vs_main",
+    },
+    fragment: {
+      module: shaderModule,
+      entryPoint: "fs_main",
+      targets: [
+        {
+          format: "rgba8unorm-srgb",
+        },
+      ],
+    },
+  });
+
+  const dimensions = {
+    width: 200,
+    height: 200,
+  };
+  const unpaddedBytesPerRow = dimensions.width * 4;
+  const align = 256;
+  const paddedBytesPerRowPadding = (align - unpaddedBytesPerRow % align) %
+    align;
+  const paddedBytesPerRow = unpaddedBytesPerRow + paddedBytesPerRowPadding;
+
+  const outputBuffer = device.createBuffer({
+    label: "Capture",
+    size: paddedBytesPerRow * dimensions.height,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const texture = device.createTexture({
+    label: "Capture",
+    size: dimensions,
+    format: "rgba8unorm-srgb",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+
+  const encoder = device.createCommandEncoder();
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: texture.createView(),
+        storeOp: "store",
+        loadValue: [0, 1, 0, 1],
+      },
+    ],
+  });
+  renderPass.setPipeline(renderPipeline);
+  renderPass.draw(3, 1);
+  renderPass.endPass();
+
+  encoder.copyTextureToBuffer(
+    {
+      texture,
+    },
+    {
+      buffer: outputBuffer,
+      bytesPerRow: paddedBytesPerRow,
+      rowsPerImage: 0,
+    },
+    dimensions,
+  );
+
+  device.queue.submit([encoder.finish()]);
+
+  await outputBuffer.mapAsync(1);
+  const data = new Uint8Array(outputBuffer.getMappedRange());
+
+  assertEquals(data, await Deno.readFile("cli/tests/webgpu_hellotriangle.out"));
+
+  outputBuffer.unmap();
 
   device.destroy();
 
