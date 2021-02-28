@@ -64,6 +64,7 @@ impl ImportMap {
       }
     }
 
+    let mut diagnostics = vec![];
     let normalized_imports = match &v.get("imports") {
       Some(imports_map) => {
         if !imports_map.is_object() {
@@ -73,7 +74,7 @@ impl ImportMap {
         }
 
         let imports_map = imports_map.as_object().unwrap();
-        ImportMap::parse_specifier_map(imports_map, base_url)
+        ImportMap::parse_specifier_map(imports_map, base_url, &mut diagnostics)
       }
       None => IndexMap::new(),
     };
@@ -87,7 +88,7 @@ impl ImportMap {
         }
 
         let scope_map = scope_map.as_object().unwrap();
-        ImportMap::parse_scope_map(scope_map, base_url)?
+        ImportMap::parse_scope_map(scope_map, base_url, &mut diagnostics)?
       }
       None => IndexMap::new(),
     };
@@ -101,7 +102,7 @@ impl ImportMap {
     keys.remove("imports");
     keys.remove("scopes");
     for key in keys {
-      eprintln!("Invalid top-level key \"{}\". Only \"imports\" and \"scopes\" can be present.", key);
+      diagnostics.push(format!("Invalid top-level key \"{}\". Only \"imports\" and \"scopes\" can be present.", key));
     }
 
     let import_map = ImportMap {
@@ -109,6 +110,13 @@ impl ImportMap {
       imports: normalized_imports,
       scopes: normalized_scopes,
     };
+
+    if !diagnostics.is_empty() {
+      info!("Import map diagnostics:");
+      for diagnotic in diagnostics {
+        info!("  - {}", diagnotic);
+      }
+    }
 
     Ok(import_map)
   }
@@ -139,10 +147,11 @@ impl ImportMap {
   fn normalize_specifier_key(
     specifier_key: &str,
     base_url: &str,
+    diagnostics: &mut Vec<String>,
   ) -> Option<String> {
     // ignore empty keys
     if specifier_key.is_empty() {
-      eprintln!("Invalid empty string specifier.");
+      diagnostics.push("Invalid empty string specifier.".to_string());
       return None;
     }
 
@@ -164,21 +173,25 @@ impl ImportMap {
   fn parse_specifier_map(
     json_map: &Map<String, Value>,
     base_url: &str,
+    diagnostics: &mut Vec<String>,
   ) -> SpecifierMap {
     let mut normalized_map: SpecifierMap = SpecifierMap::new();
 
     // Order is preserved because of "preserve_order" feature of "serde_json".
     for (specifier_key, value) in json_map.iter() {
-      let normalized_specifier_key =
-        match ImportMap::normalize_specifier_key(specifier_key, base_url) {
-          Some(s) => s,
-          None => continue,
-        };
+      let normalized_specifier_key = match ImportMap::normalize_specifier_key(
+        specifier_key,
+        base_url,
+        diagnostics,
+      ) {
+        Some(s) => s,
+        None => continue,
+      };
 
       let potential_address = match value {
         Value::String(address) => address.to_string(),
         _ => {
-          eprintln!("Invalid address {:#?} for the specifier key \"{}\". Addresses must be strings.", value, specifier_key);
+          diagnostics.push(format!("Invalid address {:#?} for the specifier key \"{}\". Addresses must be strings.", value, specifier_key));
           normalized_map.insert(normalized_specifier_key, None);
           continue;
         }
@@ -188,10 +201,10 @@ impl ImportMap {
         match ImportMap::try_url_like_specifier(&potential_address, base_url) {
           Some(url) => url,
           None => {
-            eprintln!(
+            diagnostics.push(format!(
               "Invalid address \"{}\" for the specifier key \"{}\".",
               potential_address, specifier_key
-            );
+            ));
             normalized_map.insert(normalized_specifier_key, None);
             continue;
           }
@@ -199,11 +212,11 @@ impl ImportMap {
 
       let address_url_string = address_url.to_string();
       if specifier_key.ends_with('/') && !address_url_string.ends_with('/') {
-        eprintln!(
+        diagnostics.push(format!(
           "Invalid target address {:?} for package specifier {:?}. \
             Package address targets must end with \"/\".",
           address_url_string, specifier_key
-        );
+        ));
         normalized_map.insert(normalized_specifier_key, None);
         continue;
       }
@@ -230,6 +243,7 @@ impl ImportMap {
   fn parse_scope_map(
     scope_map: &Map<String, Value>,
     base_url: &str,
+    diagnostics: &mut Vec<String>,
   ) -> Result<ScopesMap, ImportMapError> {
     let mut normalized_map: ScopesMap = ScopesMap::new();
 
@@ -249,16 +263,19 @@ impl ImportMap {
         match Url::parse(base_url).unwrap().join(scope_prefix) {
           Ok(url) => url.to_string(),
           _ => {
-            eprintln!(
+            diagnostics.push(format!(
               "Invalid scope \"{}\" (parsed against base URL \"{}\").",
               scope_prefix, base_url
-            );
+            ));
             continue;
           }
         };
 
-      let norm_map =
-        ImportMap::parse_specifier_map(potential_specifier_map, base_url);
+      let norm_map = ImportMap::parse_specifier_map(
+        potential_specifier_map,
+        base_url,
+        diagnostics,
+      );
 
       normalized_map.insert(scope_prefix_url, norm_map);
     }
