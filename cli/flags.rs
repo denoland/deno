@@ -69,7 +69,7 @@ pub enum DenoSubcommand {
     root: Option<PathBuf>,
     force: bool,
   },
-  LanguageServer,
+  Lsp,
   Lint {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
@@ -331,7 +331,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   } else if let Some(m) = matches.subcommand_matches("compile") {
     compile_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("lsp") {
-    language_server_parse(&mut flags, m);
+    lsp_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -389,7 +389,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
-    .subcommand(language_server_subcommand())
+    .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
@@ -782,8 +782,8 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn language_server_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::LanguageServer;
+fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Lsp;
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -1288,15 +1288,17 @@ Show documentation for runtime built-ins:
     )
 }
 
-fn language_server_subcommand<'a, 'b>() -> App<'a, 'b> {
+fn lsp_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lsp")
     .about("Start the language server")
     .long_about(
-      r#"Start the Deno language server which will take input
-from stdin and provide output to stdout.
-  deno lsp
-"#,
-    )
+      "The 'deno lsp' subcommand provides a way for code editors and IDEs to
+interact with Deno using the Language Server Protocol. Usually humans do not
+use this subcommand directly. For example, 'deno lsp' can provide IDEs with
+go-to-definition support and automatic code formatting.
+
+How to connect various editors and IDEs to 'deno lsp':
+https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides")
 }
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -2184,12 +2186,12 @@ mod tests {
   }
 
   #[test]
-  fn language_server() {
+  fn lsp() {
     let r = flags_from_vec(svec!["deno", "lsp"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::LanguageServer,
+        subcommand: DenoSubcommand::Lsp,
         ..Flags::default()
       }
     );

@@ -38,7 +38,6 @@ deno_websocket = { path = "../op_crates/websocket", version = "0.5.0" }
 atty = "0.2.14"
 dlopen = "0.1.8"
 encoding_rs = "0.8.28"
-env_logger = "0.8.2"
 filetime = "0.2.14"
 http = "0.2.3"
 hyper = { version = "0.14.4", features = ["server"] }
@@ -50,10 +49,7 @@ notify = "5.0.0-pre.4"
 percent-encoding = "2.1.0"
 regex = "1.4.3"
 ring = "0.16.20"
-rustyline = { version = "7.1.0", default-features = false }
-rustyline-derive = "0.4.0"
 serde = { version = "1.0.123", features = ["derive"] }
-shell-escape = "0.1.5"
 sys-info = "0.8.0"
 termcolor = "1.1.2"
 tokio = { version = "1.2.0", features = ["full"] }
