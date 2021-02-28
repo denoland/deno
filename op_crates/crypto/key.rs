@@ -33,9 +33,9 @@ pub enum WebCryptoNamedCurve {
   P521,
 }
 
-impl Into<RingAlgorithm> for WebCryptoNamedCurve {
-  fn from(curve: RingAlgorithm) -> Self {
-    match curve {
+impl Into<&RingAlgorithm> for WebCryptoNamedCurve {
+  fn into(self) -> &'static RingAlgorithm {
+    match self {
       WebCryptoNamedCurve::P256 => &ring::agreement::ECDH_P256,
       WebCryptoNamedCurve::P384 => &ring::agreement::ECDH_P384,
       // XXX: Not implemented.
@@ -44,9 +44,9 @@ impl Into<RingAlgorithm> for WebCryptoNamedCurve {
   }
 }
 
-impl From<EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
-  fn from(algo: EcdsaSigningAlgorithm) -> Self {
-    match algo {
+impl Into<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
+  fn into(self) -> &'static EcdsaSigningAlgorithm {
+    match self {
       WebCryptoNamedCurve::P256 => {
         &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
       }
@@ -107,8 +107,8 @@ pub struct WebCryptoKey {
 
 impl WebCryptoKey {
   pub fn new_private(
-    extractable: bool,
     algorithm: Algorithm,
+    extractable: bool,
     usages: Vec<KeyUsage>,
   ) -> Self {
     Self {
@@ -120,8 +120,8 @@ impl WebCryptoKey {
   }
 
   pub fn new_public(
-    extractable: bool,
     algorithm: Algorithm,
+    extractable: bool,
     usages: Vec<KeyUsage>,
   ) -> Self {
     Self {

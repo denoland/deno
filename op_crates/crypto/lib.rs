@@ -23,10 +23,12 @@ use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
+use ring::agreement::Algorithm as RingAlgorithm;
 use ring::agreement::EphemeralPrivateKey;
 use ring::hmac::Key as HmacKey;
 use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
+use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::KeyPair;
 use rsa::algorithms::generate_multi_prime_key;
 use rsa::padding::PaddingScheme;
@@ -167,11 +169,11 @@ pub fn op_webcrypto_generate_key(
     }
     Algorithm::Ecdh => {
       // Determine agreement from algorithm named_curve.
-      let agreement =
-        WebCryptoNamedCurve::from(args.algorithm.named_curve.unwrap());
+      let agreement: &RingAlgorithm =
+        args.algorithm.named_curve.unwrap().into();
       // Generate private key from agreement and ring rng.
       let rng = RingRand::SystemRandom::new();
-      let private_key = EphemeralPrivateKey::generate(agreement, &rng)?;
+      let private_key = EphemeralPrivateKey::generate(&agreement, &rng)?;
       // Extract public key.
       let public_key = private_key.compute_public_key()?;
       // Create webcrypto keypair.
@@ -191,15 +193,8 @@ pub fn op_webcrypto_generate_key(
       state.resource_table.add(resource)
     }
     Algorithm::Ecdsa => {
-      let curve = match args.algorithm.named_curve.unwrap() {
-        WebCryptoNamedCurve::P256 => {
-          &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
-        }
-        WebCryptoNamedCurve::P384 => {
-          &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
-        }
-        WebCryptoNamedCurve::P521 => panic!(), // TODO: Not implemented but don't panic.
-      };
+      let curve: &EcdsaSigningAlgorithm =
+        args.algorithm.named_curve.unwrap().into();
 
       let rng = RingRand::SystemRandom::new();
       let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
@@ -311,6 +306,8 @@ pub fn op_webcrypto_sign_key(
   };
 
   Ok(json!({ "data": signature }))
+}
+
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
 }
