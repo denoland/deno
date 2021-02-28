@@ -4,13 +4,6 @@ Deno supports [import maps](https://github.com/WICG/import-maps).
 
 You can use import maps with the `--import-map=<FILE>` CLI flag.
 
-Current limitations:
-
-- single import map.
-- no fallback URLs.
-- Deno does not support `std:` namespace.
-- supports only `file:`, `http:` and `https:` schemes.
-
 Example:
 
 **import_map.json**
