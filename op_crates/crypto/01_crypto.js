@@ -52,13 +52,13 @@
     }
   }
 
-  function generateKey(algorithm, extractable, keyUsages) {
-    return new CryptoKey(core.jsonOpSync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages }))
+  async function generateKey(algorithm, extractable, keyUsages) {
+    return new CryptoKey(await core.jsonOpAsync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages }))
   }
 
-  function sign(algorithm, key, data) {
+  async function sign(algorithm, key, data) {
     let rid = key.rid;
-    return core.jsonOpSync("op_webcrypto_sign_key", { rid, algorithm }, data).data;
+    return await core.jsonOpAsync("op_webcrypto_sign_key", { rid, algorithm }, data).data;
   }
 
   window.crypto = {

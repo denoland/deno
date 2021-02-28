@@ -17,10 +17,10 @@ pub fn init(rt: &mut deno_core::JsRuntime, maybe_seed: Option<u64>) {
     "op_crypto_get_random_values",
     op_crypto_get_random_values,
   );
-  super::reg_json_sync(
+  super::reg_json_async(
     rt,
     "op_webcrypto_generate_key",
     op_webcrypto_generate_key,
   );
-  super::reg_json_sync(rt, "op_webcrypto_sign_key", op_webcrypto_sign_key);
+  super::reg_json_async(rt, "op_webcrypto_sign_key", op_webcrypto_sign_key);
 }

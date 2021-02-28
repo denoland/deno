@@ -132,16 +132,18 @@ struct WebCryptoGenerateKeyArg {
   key_usages: Vec<KeyUsage>,
 }
 
-pub fn op_webcrypto_generate_key(
-  state: &mut OpState,
+pub async fn op_webcrypto_generate_key(
+  state: Rc<RefCell<OpState>>,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let args: WebCryptoGenerateKeyArg = serde_json::from_value(args)?;
   let exponent = args.algorithm.public_exponent;
   let bits = args.algorithm.modulus_length;
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
+
+  let mut state = state.borrow_mut();
 
   let rid = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
@@ -252,13 +254,14 @@ struct WebCryptoSignArg {
   algorithm: Algorithm,
 }
 
-pub fn op_webcrypto_sign_key(
-  state: &mut OpState,
+pub async fn op_webcrypto_sign_key(
+  state: Rc<RefCell<OpState>>,
   args: Value,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   assert_eq!(zero_copy.len(), 1);
 
+  let state = state.borrow();
   let args: WebCryptoSignArg = serde_json::from_value(args)?;
   let data = &*zero_copy[0];
   let algorithm = args.algorithm;
