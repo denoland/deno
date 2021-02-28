@@ -554,7 +554,6 @@ dependencies = [
  "percent-encoding",
  "regex",
  "ring",
- "rustyline",
  "serde",
  "sys-info",
  "termcolor",
