@@ -14,7 +14,6 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_fetch::reqwest;
-use rustyline::error::ReadlineError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -79,18 +78,6 @@ fn get_notify_error_class(error: &notify::Error) -> &'static str {
     PathNotFound => "NotFound",
     WatchNotFound => "NotFound",
     InvalidConfig(_) => "InvalidData",
-  }
-}
-
-fn get_readline_error_class(error: &ReadlineError) -> &'static str {
-  use ReadlineError::*;
-  match error {
-    Io(err) => get_io_error_class(err),
-    Eof => "UnexpectedEof",
-    Interrupted => "Interrupted",
-    #[cfg(unix)]
-    Errno(err) => get_nix_error_class(err),
-    _ => unimplemented!(),
   }
 }
 

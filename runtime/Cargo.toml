@@ -50,8 +50,6 @@ notify = "5.0.0-pre.4"
 percent-encoding = "2.1.0"
 regex = "1.4.3"
 ring = "0.16.20"
-rustyline = { version = "7.1.0", default-features = false }
-rustyline-derive = "0.4.0"
 serde = { version = "1.0.123", features = ["derive"] }
 shell-escape = "0.1.5"
 sys-info = "0.8.0"
