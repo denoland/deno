@@ -132,6 +132,13 @@ struct WebCryptoGenerateKeyArg {
   key_usages: Vec<KeyUsage>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+enum JSCryptoKey {
+  Single(WebCryptoKey),
+  Pair(WebCryptoKeyPair),
+}
+
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
   args: Value,
@@ -145,7 +152,7 @@ pub async fn op_webcrypto_generate_key(
 
   let mut state = state.borrow_mut();
 
-  let rid = match algorithm {
+  let (rid, js_key) = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
@@ -166,8 +173,14 @@ pub async fn op_webcrypto_generate_key(
         public_key,
         private_key,
       };
-      let resource = CryptoKeyPairResource { crypto_key, key };
-      state.resource_table.add(resource)
+      let resource = CryptoKeyPairResource {
+        crypto_key: crypto_key.clone(),
+        key,
+      };
+      (
+        state.resource_table.add(resource),
+        JSCryptoKey::Pair(crypto_key),
+      )
     }
     Algorithm::Ecdh => {
       // Determine agreement from algorithm named_curve.
@@ -190,9 +203,15 @@ pub async fn op_webcrypto_generate_key(
         public_key,
         private_key,
       };
-      let resource = CryptoKeyPairResource { crypto_key, key };
+      let resource = CryptoKeyPairResource {
+        crypto_key: crypto_key.clone(),
+        key,
+      };
 
-      state.resource_table.add(resource)
+      (
+        state.resource_table.add(resource),
+        JSCryptoKey::Pair(crypto_key),
+      )
     }
     Algorithm::Ecdsa => {
       let curve: &EcdsaSigningAlgorithm =
@@ -201,26 +220,21 @@ pub async fn op_webcrypto_generate_key(
       let rng = RingRand::SystemRandom::new();
       let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
       let private_key = EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?;
-      // let public_key = private_key.public_key().clone();
-      let webcrypto_key_public = WebCryptoKey {
-        key_type: KeyType::Public,
-        algorithm: algorithm.clone(),
-        extractable,
-        usages: vec![],
-      };
-      let crypto_key = WebCryptoKey {
-        key_type: KeyType::Private,
-        algorithm,
-        extractable,
-        usages: vec![],
-      };
+      // Create webcrypto keypair.
+      let webcrypto_key_public =
+        WebCryptoKey::new_public(algorithm.clone(), extractable, vec![]);
+      let crypto_key =
+        WebCryptoKey::new_private(algorithm, extractable, vec![]);
 
       let resource = CryptoKeyResource {
-        crypto_key,
+        crypto_key: crypto_key.clone(),
         key: private_key,
       };
 
-      state.resource_table.add(resource)
+      (
+        state.resource_table.add(resource),
+        JSCryptoKey::Single(crypto_key),
+      )
     }
     Algorithm::Hmac => {
       let hash = match args.algorithm.hash.unwrap() {
@@ -232,20 +246,21 @@ pub async fn op_webcrypto_generate_key(
       let rng = RingRand::SystemRandom::new();
       // TODO: change algorithm length when specified.
       let key = HmacKey::generate(hash, &rng)?;
-      let crypto_key = WebCryptoKey {
-        key_type: KeyType::Secret,
-        algorithm,
-        extractable,
-        usages: vec![],
+      let crypto_key = WebCryptoKey::new_secret(algorithm, extractable, vec![]);
+      let resource = CryptoKeyResource {
+        crypto_key: crypto_key.clone(),
+        key,
       };
-      let resource = CryptoKeyResource { crypto_key, key };
 
-      state.resource_table.add(resource)
+      (
+        state.resource_table.add(resource),
+        JSCryptoKey::Single(crypto_key),
+      )
     }
     _ => return Ok(json!({})),
   };
 
-  Ok(json!({ "rid": rid }))
+  Ok(json!({ "rid": rid, "key": js_key }))
 }
 
 #[derive(Deserialize)]

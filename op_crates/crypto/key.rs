@@ -3,7 +3,7 @@ use ring::signature::EcdsaSigningAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyType {
   Public,
@@ -11,7 +11,7 @@ pub enum KeyType {
   Secret,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub enum WebCryptoHash {
   #[serde(rename = "SHA-1")]
   Sha1,
@@ -23,7 +23,7 @@ pub enum WebCryptoHash {
   Sha512,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub enum WebCryptoNamedCurve {
   #[serde(rename = "P-256")]
   P256,
@@ -59,7 +59,7 @@ impl Into<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
   }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyUsage {
   Encrypt,
@@ -96,7 +96,7 @@ pub enum Algorithm {
   Hmac,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WebCryptoKey {
   pub key_type: KeyType,
@@ -133,8 +133,8 @@ impl WebCryptoKey {
   }
 
   pub fn new_secret(
-    extractable: bool,
     algorithm: Algorithm,
+    extractable: bool,
     usages: Vec<KeyUsage>,
   ) -> Self {
     Self {
@@ -160,4 +160,9 @@ pub struct CryptoKeyPair<A, B> {
   pub private_key: B,
 }
 
-pub type WebCryptoKeyPair = CryptoKeyPair<WebCryptoKey, WebCryptoKey>;
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WebCryptoKeyPair {
+  pub public_key: WebCryptoKey,
+  pub private_key: WebCryptoKey,
+}
