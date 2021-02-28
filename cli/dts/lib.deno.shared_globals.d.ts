@@ -8,6 +8,7 @@
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
+/// <reference lib="deno.crypto" />
 
 declare namespace WebAssembly {
   /**
@@ -343,8 +344,6 @@ interface VoidFunction {
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
-declare var crypto: Crypto;
-
 /** Registers an event listener in the global scope, which will be called
  * synchronously whenever the event `type` is dispatched.
  *
@@ -415,26 +414,6 @@ declare interface Console {
 }
 
 declare var console: Console;
-
-declare interface Crypto {
-  readonly subtle: null;
-  getRandomValues<
-    T extends
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | null,
-  >(
-    array: T,
-  ): T;
-}
 
 interface MessageEventInit<T = any> extends EventInit {
   data?: T;
