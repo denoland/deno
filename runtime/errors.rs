@@ -175,10 +175,6 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_notify_error_class)
     })
     .or_else(|| {
-      e.downcast_ref::<ReadlineError>()
-        .map(get_readline_error_class)
-    })
-    .or_else(|| {
       e.downcast_ref::<reqwest::Error>()
         .map(get_request_error_class)
     })
