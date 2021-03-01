@@ -1734,7 +1734,7 @@ mod integration {
     let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
     eprintln!("{}", str_output);
     // check the output of the test.ts program.
-    assert!(str_output.contains("compiled: "));
+    assert!(str_output.contains("emit: "));
     assert_eq!(output.stderr, b"");
   }
 
@@ -3722,7 +3722,6 @@ console.log("finish");
   itest!(info_missing_module {
     args: "info error_009_missing_js_module.js",
     output: "info_missing_module.out",
-    exit_code: 1,
   });
 
   itest!(info_recursive_modules {

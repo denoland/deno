@@ -1,38 +1,85 @@
 {
-  "compiled": null,
-  "depCount": 4,
-  "fileType": "TypeScript",
-  "files": {
-    "[WILDCARD]cli/tests/076_info_json_deps_order.ts": {
-      "deps": [
-        "[WILDCARD]cli/tests/recursive_imports/A.ts"
+  "root": "file://[WILDCARD]/cli/tests/076_info_json_deps_order.ts",
+  "modules": [
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/076_info_json_deps_order.ts",
+      "dependencies": [
+        {
+          "specifier": "./recursive_imports/A.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/recursive_imports/A.ts"
+        }
       ],
-      "size": [WILDCARD]
+      "size": 46,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]/cli/tests/076_info_json_deps_order.ts",
+      "checksum": "88b144f362d31ac42263648aadef727dd36d039d3b8ac0248fdaff25d4de415a"
     },
-    "[WILDCARD]cli/tests/recursive_imports/A.ts": {
-      "deps": [
-        "[WILDCARD]cli/tests/recursive_imports/B.ts",
-        "[WILDCARD]cli/tests/recursive_imports/common.ts"
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/recursive_imports/A.ts",
+      "dependencies": [
+        {
+          "specifier": "./B.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/recursive_imports/B.ts"
+        },
+        {
+          "specifier": "./common.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/recursive_imports/common.ts"
+        }
       ],
-      "size": [WILDCARD]
+      "size": 114,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]/cli/tests/recursive_imports/A.ts",
+      "checksum": "da204c16d3114763810864083af8891a887d65fbe34e4c8b5bf985dbc8f0b01f"
     },
-    "[WILDCARD]cli/tests/recursive_imports/B.ts": {
-      "deps": [
-        "[WILDCARD]cli/tests/recursive_imports/C.ts",
-        "[WILDCARD]cli/tests/recursive_imports/common.ts"
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/recursive_imports/B.ts",
+      "dependencies": [
+        {
+          "specifier": "./C.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/recursive_imports/C.ts"
+        },
+        {
+          "specifier": "./common.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/recursive_imports/common.ts"
+        }
       ],
-      "size": [WILDCARD]
+      "size": 114,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]/cli/tests/recursive_imports/B.ts",
+      "checksum": "060ef62435d7e3a3276e8894307b19cf17772210a20dd091d24a670fadec6b83"
     },
-    "[WILDCARD]cli/tests/recursive_imports/C.ts": {
-      "deps": [
-        "[WILDCARD]cli/tests/recursive_imports/A.ts",
-        "[WILDCARD]cli/tests/recursive_imports/common.ts"
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/recursive_imports/C.ts",
+      "dependencies": [
+        {
+          "specifier": "./A.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/recursive_imports/A.ts"
+        },
+        {
+          "specifier": "./common.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/recursive_imports/common.ts"
+        }
       ],
-      "size": [WILDCARD]
+      "size": 132,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]/cli/tests/recursive_imports/C.ts",
+      "checksum": "5190563583617a69f190f1cc76e6552df878df278cfaa5d5e30ebe0938cf5e0b"
     },
-    "[WILDCARD]cli/tests/recursive_imports/common.ts": {
-      "deps": [],
-      "size": [WILDCARD]
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/recursive_imports/common.ts",
+      "dependencies": [],
+      "size": 34,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]/cli/tests/recursive_imports/common.ts",
+      "checksum": "01b595d69514bfd001ba2cf421feabeaef559513f10697bf1a22781f8a8ed7f0"
     }
-  },
-[WILDCARD]
+  ],
+  "size": 440
+}

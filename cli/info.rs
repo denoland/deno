@@ -1,169 +1,242 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::media_type::serialize_media_type;
+use crate::media_type::serialize_media_type2;
 use crate::media_type::MediaType;
 
+use deno_core::resolve_url;
 use deno_core::serde::Serialize;
-use deno_core::serde::Serializer;
 use deno_core::ModuleSpecifier;
-use std::cmp::Ordering;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
+use std::iter::Iterator;
 use std::path::PathBuf;
 
-/// The core structure representing information about a specific "root" file in
-/// a module graph.  This is used to represent information as part of the `info`
-/// subcommand.
-#[derive(Debug, Serialize)]
+const SIBLING_CONNECTOR: char = '├';
+const LAST_SIBLING_CONNECTOR: char = '└';
+const CHILD_DEPS_CONNECTOR: char = '┬';
+const CHILD_NO_DEPS_CONNECTOR: char = '─';
+const VERTICAL_CONNECTOR: char = '│';
+const EMPTY_CONNECTOR: char = ' ';
+
+#[derive(Debug, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ModuleGraphInfo {
-  pub compiled: Option<PathBuf>,
-  pub dep_count: usize,
-  #[serde(serialize_with = "serialize_media_type")]
-  pub file_type: MediaType,
-  pub files: ModuleInfoMap,
-  #[serde(skip_serializing)]
-  pub info: ModuleInfo,
-  pub local: PathBuf,
-  pub map: Option<PathBuf>,
-  pub module: ModuleSpecifier,
-  pub total_size: usize,
+pub struct ModuleGraphInfoDep {
+  pub specifier: String,
+  pub is_dynamic: bool,
+  #[serde(rename = "code", skip_serializing_if = "Option::is_none")]
+  pub maybe_code: Option<ModuleSpecifier>,
+  #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+  pub maybe_type: Option<ModuleSpecifier>,
 }
 
-impl fmt::Display for ModuleGraphInfo {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    writeln!(
-      f,
-      "{} {}",
-      colors::bold("local:"),
-      self.local.to_string_lossy()
-    )?;
-    writeln!(f, "{} {}", colors::bold("type:"), self.file_type)?;
-    if let Some(ref compiled) = self.compiled {
-      writeln!(
-        f,
-        "{} {}",
-        colors::bold("compiled:"),
-        compiled.to_string_lossy()
-      )?;
-    }
-    if let Some(ref map) = self.map {
-      writeln!(f, "{} {}", colors::bold("map:"), map.to_string_lossy())?;
-    }
-    writeln!(
-      f,
-      "{} {} unique {}",
-      colors::bold("deps:"),
-      self.dep_count,
-      colors::gray(&format!(
-        "(total {})",
-        human_size(self.info.total_size.unwrap_or(0) as f64)
-      ))
-    )?;
-    writeln!(f)?;
-    writeln!(
-      f,
-      "{} {}",
-      self.info.name,
-      colors::gray(&format!("({})", human_size(self.info.size as f64)))
-    )?;
-
-    let dep_count = self.info.deps.len();
-    for (idx, dep) in self.info.deps.iter().enumerate() {
-      dep.write_info(f, "", idx == dep_count - 1)?;
-    }
-
-    Ok(())
-  }
-}
-
-/// Represents a unique dependency within the graph of the the dependencies for
-/// a given module.
-#[derive(Debug, Serialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ModuleInfo {
-  pub deps: Vec<ModuleInfo>,
-  pub name: ModuleSpecifier,
-  pub size: usize,
-  pub total_size: Option<usize>,
-}
-
-impl PartialOrd for ModuleInfo {
-  fn partial_cmp(&self, other: &ModuleInfo) -> Option<Ordering> {
-    Some(self.cmp(other))
-  }
-}
-
-impl Ord for ModuleInfo {
-  fn cmp(&self, other: &ModuleInfo) -> Ordering {
-    self.name.to_string().cmp(&other.name.to_string())
-  }
-}
-
-impl ModuleInfo {
-  pub fn write_info(
+impl ModuleGraphInfoDep {
+  fn write_info<S: AsRef<str> + fmt::Display + Clone>(
     &self,
-    f: &mut fmt::Formatter<'_>,
-    prefix: &str,
+    f: &mut fmt::Formatter,
+    prefix: S,
     last: bool,
+    modules: &Vec<ModuleGraphInfoMod>,
+    seen: &mut HashSet<ModuleSpecifier>,
   ) -> fmt::Result {
-    let sibling_connector = if last { '└' } else { '├' };
-    let child_connector = if self.deps.is_empty() { '─' } else { '┬' };
-    let totals = if self.total_size.is_some() {
-      colors::gray(&format!(" ({})", human_size(self.size as f64)))
+    let maybe_code = self
+      .maybe_code
+      .as_ref()
+      .and_then(|s| modules.iter().find(|m| &m.specifier == s));
+    let maybe_type = self
+      .maybe_type
+      .as_ref()
+      .and_then(|s| modules.iter().find(|m| &m.specifier == s));
+    match (maybe_code, maybe_type) {
+      (Some(code), Some(types)) => {
+        code.write_info(f, prefix.clone(), false, false, modules, seen)?;
+        types.write_info(f, prefix, last, true, modules, seen)
+      }
+      (Some(code), None) => {
+        code.write_info(f, prefix, last, false, modules, seen)
+      }
+      (None, Some(types)) => {
+        types.write_info(f, prefix, last, true, modules, seen)
+      }
+      _ => Ok(()),
+    }
+  }
+}
+
+#[derive(Debug, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleGraphInfoMod {
+  pub specifier: ModuleSpecifier,
+  pub dependencies: Vec<ModuleGraphInfoDep>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub size: Option<usize>,
+  #[serde(
+    skip_serializing_if = "Option::is_none",
+    serialize_with = "serialize_media_type2"
+  )]
+  pub media_type: Option<MediaType>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub local: Option<PathBuf>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub checksum: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub emit: Option<PathBuf>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub map: Option<PathBuf>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error: Option<String>,
+}
+
+impl Default for ModuleGraphInfoMod {
+  fn default() -> Self {
+    ModuleGraphInfoMod {
+      specifier: resolve_url("https://deno.land/x/mod.ts").unwrap(),
+      dependencies: Vec::new(),
+      size: None,
+      media_type: None,
+      local: None,
+      checksum: None,
+      emit: None,
+      map: None,
+      error: None,
+    }
+  }
+}
+
+impl ModuleGraphInfoMod {
+  fn write_info<S: AsRef<str> + fmt::Display>(
+    &self,
+    f: &mut fmt::Formatter,
+    prefix: S,
+    last: bool,
+    type_dep: bool,
+    modules: &Vec<ModuleGraphInfoMod>,
+    seen: &mut HashSet<ModuleSpecifier>,
+  ) -> fmt::Result {
+    let was_seen = seen.contains(&self.specifier);
+    let sibling_connector = if last {
+      LAST_SIBLING_CONNECTOR
     } else {
-      colors::gray(" *")
+      SIBLING_CONNECTOR
     };
+    let child_connector = if self.dependencies.is_empty() || was_seen {
+      CHILD_NO_DEPS_CONNECTOR
+    } else {
+      CHILD_DEPS_CONNECTOR
+    };
+    let (size, specifier) = if self.error.is_some() {
+      (
+        colors::red_bold(" (error)").to_string(),
+        colors::red(&self.specifier).to_string(),
+      )
+    } else if was_seen {
+      let name = if type_dep {
+        colors::italic_gray(&self.specifier).to_string()
+      } else {
+        colors::gray(&self.specifier).to_string()
+      };
+      (colors::gray(" *").to_string(), name)
+    } else {
+      let name = if type_dep {
+        colors::italic(&self.specifier).to_string()
+      } else {
+        self.specifier.to_string()
+      };
+      (
+        colors::gray(format!(
+          " ({})",
+          human_size(self.size.unwrap_or(0) as f64)
+        ))
+        .to_string(),
+        name,
+      )
+    };
+
+    seen.insert(self.specifier.clone());
 
     writeln!(
       f,
       "{} {}{}",
-      colors::gray(&format!(
+      colors::gray(format!(
         "{}{}─{}",
         prefix, sibling_connector, child_connector
       )),
-      self.name,
-      totals
+      specifier,
+      size
     )?;
 
-    let mut prefix = prefix.to_string();
-    if last {
-      prefix.push(' ');
-    } else {
-      prefix.push('│');
-    }
-    prefix.push(' ');
-
-    let dep_count = self.deps.len();
-    for (idx, dep) in self.deps.iter().enumerate() {
-      dep.write_info(f, &prefix, idx == dep_count - 1)?;
+    if !was_seen {
+      let mut prefix = prefix.to_string();
+      if last {
+        prefix.push(EMPTY_CONNECTOR);
+      } else {
+        prefix.push(VERTICAL_CONNECTOR);
+      }
+      prefix.push(EMPTY_CONNECTOR);
+      let dep_count = self.dependencies.len();
+      for (idx, dep) in self.dependencies.iter().enumerate() {
+        dep.write_info(f, &prefix, idx == dep_count - 1, modules, seen)?;
+      }
     }
 
     Ok(())
   }
 }
 
-/// A flat map of dependencies for a given module graph.
-#[derive(Debug)]
-pub struct ModuleInfoMap(pub HashMap<ModuleSpecifier, ModuleInfoMapItem>);
-
-impl ModuleInfoMap {
-  pub fn new(map: HashMap<ModuleSpecifier, ModuleInfoMapItem>) -> Self {
-    ModuleInfoMap(map)
-  }
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleGraphInfo {
+  pub root: ModuleSpecifier,
+  pub modules: Vec<ModuleGraphInfoMod>,
+  pub size: usize,
 }
 
-impl Serialize for ModuleInfoMap {
-  /// Serializes inner hash map which is ordered by the key
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let ordered: BTreeMap<_, _> =
-      self.0.iter().map(|(k, v)| (k.to_string(), v)).collect();
-    ordered.serialize(serializer)
+impl fmt::Display for ModuleGraphInfo {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let root = self
+      .modules
+      .iter()
+      .find(|m| m.specifier == self.root)
+      .unwrap();
+    if let Some(err) = &root.error {
+      writeln!(f, "{} {}", colors::red("error:"), err)
+    } else {
+      if let Some(local) = &root.local {
+        writeln!(f, "{} {}", colors::bold("local:"), local.to_string_lossy())?;
+      }
+      if let Some(media_type) = &root.media_type {
+        writeln!(f, "{} {}", colors::bold("type:"), media_type)?;
+      }
+      if let Some(emit) = &root.emit {
+        writeln!(f, "{} {}", colors::bold("emit:"), emit.to_string_lossy())?;
+      }
+      if let Some(map) = &root.map {
+        writeln!(f, "{} {}", colors::bold("map:"), map.to_string_lossy())?;
+      }
+      let dep_count = self.modules.len() - 1;
+      writeln!(
+        f,
+        "{} {} unique {}",
+        colors::bold("dependencies:"),
+        dep_count,
+        colors::gray(format!("(total {})", human_size(self.size as f64)))
+      )?;
+      writeln!(
+        f,
+        "\n{} {}",
+        self.root,
+        colors::gray(format!(
+          "({})",
+          human_size(root.size.unwrap_or(0) as f64)
+        ))
+      )?;
+      let mut seen = HashSet::new();
+      let dep_len = root.dependencies.len();
+      for (idx, dep) in root.dependencies.iter().enumerate() {
+        dep.write_info(f, "", idx == dep_len - 1, &self.modules, &mut seen)?;
+      }
+      Ok(())
+    }
   }
 }
 
@@ -202,7 +275,7 @@ pub fn human_size(size: f64) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
-  use deno_core::resolve_url_or_path;
+  use deno_core::resolve_url;
   use deno_core::serde_json::json;
 
   #[test]
@@ -219,58 +292,81 @@ mod test {
   }
 
   fn get_fixture() -> ModuleGraphInfo {
-    let spec_c = resolve_url_or_path("https://deno.land/x/a/b/c.ts").unwrap();
-    let spec_d = resolve_url_or_path("https://deno.land/x/a/b/c.ts").unwrap();
-    let deps = vec![ModuleInfo {
-      deps: Vec::new(),
-      name: spec_d.clone(),
-      size: 12345,
-      total_size: None,
-    }];
-    let info = ModuleInfo {
-      deps,
-      name: spec_c.clone(),
-      size: 12345,
-      total_size: Some(12345),
-    };
-    let mut items = HashMap::new();
-    items.insert(
-      spec_c,
-      ModuleInfoMapItem {
-        deps: vec![spec_d.clone()],
-        size: 12345,
+    let specifier_a = resolve_url("https://deno.land/x/a.ts").unwrap();
+    let specifier_b = resolve_url("https://deno.land/x/b.ts").unwrap();
+    let specifier_c_js = resolve_url("https://deno.land/x/c.js").unwrap();
+    let specifier_c_dts = resolve_url("https://deno.land/x/c.d.ts").unwrap();
+    let modules = vec![
+      ModuleGraphInfoMod {
+        specifier: specifier_a.clone(),
+        dependencies: vec![ModuleGraphInfoDep {
+          specifier: "./b.ts".to_string(),
+          is_dynamic: false,
+          maybe_code: Some(specifier_b.clone()),
+          maybe_type: None,
+        }],
+        size: Some(123),
+        media_type: Some(MediaType::TypeScript),
+        local: Some(PathBuf::from("/cache/deps/https/deno.land/x/a.ts")),
+        checksum: Some("abcdef".to_string()),
+        emit: Some(PathBuf::from("/cache/emit/https/deno.land/x/a.js")),
+        ..Default::default()
       },
-    );
-    items.insert(
-      spec_d,
-      ModuleInfoMapItem {
-        deps: Vec::new(),
-        size: 12345,
+      ModuleGraphInfoMod {
+        specifier: specifier_b,
+        dependencies: vec![ModuleGraphInfoDep {
+          specifier: "./c.js".to_string(),
+          is_dynamic: false,
+          maybe_code: Some(specifier_c_js.clone()),
+          maybe_type: Some(specifier_c_dts.clone()),
+        }],
+        size: Some(456),
+        media_type: Some(MediaType::TypeScript),
+        local: Some(PathBuf::from("/cache/deps/https/deno.land/x/b.ts")),
+        checksum: Some("def123".to_string()),
+        emit: Some(PathBuf::from("/cache/emit/https/deno.land/x/b.js")),
+        ..Default::default()
       },
-    );
-    let files = ModuleInfoMap(items);
-
+      ModuleGraphInfoMod {
+        specifier: specifier_c_js,
+        size: Some(789),
+        media_type: Some(MediaType::JavaScript),
+        local: Some(PathBuf::from("/cache/deps/https/deno.land/x/c.js")),
+        checksum: Some("9876abcef".to_string()),
+        ..Default::default()
+      },
+      ModuleGraphInfoMod {
+        specifier: specifier_c_dts,
+        size: Some(999),
+        media_type: Some(MediaType::Dts),
+        local: Some(PathBuf::from("/cache/deps/https/deno.land/x/c.d.ts")),
+        checksum: Some("a2b3c4d5".to_string()),
+        ..Default::default()
+      },
+    ];
     ModuleGraphInfo {
-      compiled: Some(PathBuf::from("/a/b/c.js")),
-      dep_count: 99,
-      file_type: MediaType::TypeScript,
-      files,
-      info,
-      local: PathBuf::from("/a/b/c.ts"),
-      map: None,
-      module: resolve_url_or_path("https://deno.land/x/a/b/c.ts").unwrap(),
-      total_size: 999999,
+      root: specifier_a,
+      modules,
+      size: 99999,
     }
   }
 
   #[test]
-  fn test_module_graph_info_display() {
+  fn text_module_graph_info_display() {
     let fixture = get_fixture();
-    let actual = fixture.to_string();
-    assert!(actual.contains(" /a/b/c.ts"));
-    assert!(actual.contains(" 99 unique"));
-    assert!(actual.contains("(12.06KB)"));
-    assert!(actual.contains("\n\nhttps://deno.land/x/a/b/c.ts"));
+    let text = fixture.to_string();
+    let actual = colors::strip_ansi_codes(&text);
+    let expected = r#"local: /cache/deps/https/deno.land/x/a.ts
+type: TypeScript
+emit: /cache/emit/https/deno.land/x/a.js
+dependencies: 3 unique (total 97.66KB)
+
+https://deno.land/x/a.ts (123B)
+└─┬ https://deno.land/x/b.ts (456B)
+  ├── https://deno.land/x/c.js (789B)
+  └── https://deno.land/x/c.d.ts (999B)
+"#;
+    assert_eq!(actual, expected);
   }
 
   #[test]
@@ -280,19 +376,57 @@ mod test {
     assert_eq!(
       actual,
       json!({
-        "compiled": "/a/b/c.js",
-        "depCount": 99,
-        "fileType": "TypeScript",
-        "files": {
-          "https://deno.land/x/a/b/c.ts":{
-            "deps": [],
-            "size": 12345
+        "root": "https://deno.land/x/a.ts",
+        "modules": [
+          {
+            "specifier": "https://deno.land/x/a.ts",
+            "dependencies": [
+              {
+                "specifier": "./b.ts",
+                "isDynamic": false,
+                "code": "https://deno.land/x/b.ts"
+              }
+            ],
+            "size": 123,
+            "mediaType": "TypeScript",
+            "local": "/cache/deps/https/deno.land/x/a.ts",
+            "checksum": "abcdef",
+            "emit": "/cache/emit/https/deno.land/x/a.js"
+          },
+          {
+            "specifier": "https://deno.land/x/b.ts",
+            "dependencies": [
+              {
+                "specifier": "./c.js",
+                "isDynamic": false,
+                "code": "https://deno.land/x/c.js",
+                "type": "https://deno.land/x/c.d.ts"
+              }
+            ],
+            "size": 456,
+            "mediaType": "TypeScript",
+            "local": "/cache/deps/https/deno.land/x/b.ts",
+            "checksum": "def123",
+            "emit": "/cache/emit/https/deno.land/x/b.js"
+          },
+          {
+            "specifier": "https://deno.land/x/c.js",
+            "dependencies": [],
+            "size": 789,
+            "mediaType": "JavaScript",
+            "local": "/cache/deps/https/deno.land/x/c.js",
+            "checksum": "9876abcef"
+          },
+          {
+            "specifier": "https://deno.land/x/c.d.ts",
+            "dependencies": [],
+            "size": 999,
+            "mediaType": "Dts",
+            "local": "/cache/deps/https/deno.land/x/c.d.ts",
+            "checksum": "a2b3c4d5"
           }
-        },
-        "local": "/a/b/c.ts",
-        "map": null,
-        "module": "https://deno.land/x/a/b/c.ts",
-        "totalSize": 999999
+        ],
+        "size": 99999
       })
     );
   }
