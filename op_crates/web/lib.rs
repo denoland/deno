@@ -134,18 +134,17 @@ pub fn op_parse_url(
   }
   // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
   // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
-  let username =
-    catch_unwind(|| quirks::username(&url).to_string()).map_err(|_| {
-      generic_error(format!(
-        "Internal error while parsing \"{}\"{}, \
-         see https://github.com/servo/rust-url/issues/670",
-        args.href,
-        args
-          .base_href
-          .map(|b| format!(" against \"{}\"", b))
-          .unwrap_or_default()
-      ))
-    })?;
+  let username = catch_unwind(|| quirks::username(&url)).map_err(|_| {
+    generic_error(format!(
+      "Internal error while parsing \"{}\"{}, \
+       see https://github.com/servo/rust-url/issues/670",
+      args.href,
+      args
+        .base_href
+        .map(|b| format!(" against \"{}\"", b))
+        .unwrap_or_default()
+    ))
+  })?;
   Ok(json!(UrlParts {
     href: quirks::href(&url),
     hash: quirks::hash(&url),
@@ -157,7 +156,7 @@ pub fn op_parse_url(
     port: quirks::port(&url),
     protocol: quirks::protocol(&url),
     search: quirks::search(&url),
-    username: &username,
+    username,
   }))
 }
 
