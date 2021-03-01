@@ -30,18 +30,18 @@ unitTest(function urlParsing(): void {
 unitTest(function urlProtocolParsing(): void {
   assertEquals(new URL("Aa+-.1://foo").protocol, "aa+-.1:");
   assertEquals(new URL("aA+-.1://foo").protocol, "aa+-.1:");
-  assertThrows(() => new URL("1://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("+://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("-://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL(".://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("_://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("=://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("!://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL(`"://foo`), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("$://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("%://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("^://foo"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("*://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("1://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("+://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("-://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL(".://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("_://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("=://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("!://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL(`"://foo`), TypeError, "Invalid URL");
+  assertThrows(() => new URL("$://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("%://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("^://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("*://foo"), TypeError, "Invalid URL");
 });
 
 unitTest(function urlAuthenticationParsing(): void {
@@ -49,7 +49,7 @@ unitTest(function urlAuthenticationParsing(): void {
   assertEquals(specialUrl.username, "foo");
   assertEquals(specialUrl.password, "bar");
   assertEquals(specialUrl.hostname, "baz");
-  assertThrows(() => new URL("file://foo:bar@baz"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("file://foo:bar@baz"), TypeError, "Invalid URL");
   const nonSpecialUrl = new URL("abcd://foo:bar@baz");
   assertEquals(nonSpecialUrl.username, "foo");
   assertEquals(nonSpecialUrl.password, "bar");
@@ -64,11 +64,11 @@ unitTest(function urlHostnameParsing(): void {
   assertEquals(new URL("http://[0:f:0:0:f:f:0:0]").hostname, "[0:f::f:f:0:0]");
 
   // Forbidden host code point.
-  assertThrows(() => new URL("http:// a"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("file:// a"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("abcd:// a"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("http://%"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("file://%"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http:// a"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("file:// a"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("abcd:// a"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("http://%"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("file://%"), TypeError, "Invalid URL");
   assertEquals(new URL("abcd://%").hostname, "%");
 
   // Percent-decode.
@@ -81,26 +81,26 @@ unitTest(function urlHostnameParsing(): void {
   assertEquals(new URL("file://260").hostname, "0.0.1.4");
   assertEquals(new URL("abcd://260").hostname, "260");
   assertEquals(new URL("http://255.0.0.0").hostname, "255.0.0.0");
-  assertThrows(() => new URL("http://256.0.0.0"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http://256.0.0.0"), TypeError, "Invalid URL");
   assertEquals(new URL("http://0.255.0.0").hostname, "0.255.0.0");
-  assertThrows(() => new URL("http://0.256.0.0"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http://0.256.0.0"), TypeError, "Invalid URL");
   assertEquals(new URL("http://0.0.255.0").hostname, "0.0.255.0");
-  assertThrows(() => new URL("http://0.0.256.0"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http://0.0.256.0"), TypeError, "Invalid URL");
   assertEquals(new URL("http://0.0.0.255").hostname, "0.0.0.255");
-  assertThrows(() => new URL("http://0.0.0.256"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http://0.0.0.256"), TypeError, "Invalid URL");
   assertEquals(new URL("http://0.0.65535").hostname, "0.0.255.255");
-  assertThrows(() => new URL("http://0.0.65536"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http://0.0.65536"), TypeError, "Invalid URL");
   assertEquals(new URL("http://0.16777215").hostname, "0.255.255.255");
-  assertThrows(() => new URL("http://0.16777216"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http://0.16777216"), TypeError, "Invalid URL");
   assertEquals(new URL("http://4294967295").hostname, "255.255.255.255");
-  assertThrows(() => new URL("http://4294967296"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http://4294967296"), TypeError, "Invalid URL");
 });
 
 unitTest(function urlPortParsing(): void {
   const specialUrl = new URL("http://foo:8000");
   assertEquals(specialUrl.hostname, "foo");
   assertEquals(specialUrl.port, "8000");
-  assertThrows(() => new URL("file://foo:8000"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("file://foo:8000"), TypeError, "Invalid URL");
   const nonSpecialUrl = new URL("abcd://foo:8000");
   assertEquals(nonSpecialUrl.hostname, "foo");
   assertEquals(nonSpecialUrl.port, "8000");
@@ -234,11 +234,11 @@ unitTest(function urlProtocolSlashes(): void {
 
 unitTest(function urlRequireHost(): void {
   assertEquals(new URL("file:///").href, "file:///");
-  assertThrows(() => new URL("ftp:///"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("http:///"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("https:///"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("ws:///"), TypeError, "Invalid URL.");
-  assertThrows(() => new URL("wss:///"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("ftp:///"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("http:///"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("https:///"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("ws:///"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("wss:///"), TypeError, "Invalid URL");
 });
 
 unitTest(function urlDriveLetter() {
@@ -433,7 +433,7 @@ unitTest(function throwForInvalidPortConstructor(): void {
   ];
 
   for (const url of urls) {
-    assertThrows(() => new URL(url), TypeError, "Invalid URL.");
+    assertThrows(() => new URL(url), TypeError, "Invalid URL");
   }
 
   // Do not throw for 0 & 65535

@@ -4,11 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
 
-  function requiredArguments(
-    name,
-    length,
-    required,
-  ) {
+  function requiredArguments(name, length, required) {
     if (length < required) {
       const errMsg = `${name} requires at least ${required} argument${
         required === 1 ? "" : "s"
@@ -34,7 +30,8 @@
 
         this.#params = core.jsonOpSync("op_parse_url_search_params", init);
       } else if (
-        Array.isArray(init) || typeof init?.[Symbol.iterator] == "function"
+        Array.isArray(init) ||
+        typeof init?.[Symbol.iterator] == "function"
       ) {
         // Overload: sequence<sequence<USVString>>
         for (const pair of init) {
@@ -159,10 +156,7 @@
       this.#updateUrlSearch();
     }
 
-    forEach(
-      callbackfn,
-      thisArg,
-    ) {
+    forEach(callbackfn, thisArg) {
       requiredArguments("URLSearchParams.forEach", arguments.length, 1);
 
       if (typeof thisArg !== "undefined") {
@@ -252,7 +246,9 @@
       try {
         const parseArgs = { href: this.href, setHash: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get host() {
@@ -263,7 +259,9 @@
       try {
         const parseArgs = { href: this.href, setHost: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get hostname() {
@@ -274,7 +272,9 @@
       try {
         const parseArgs = { href: this.href, setHostname: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get href() {
@@ -286,7 +286,7 @@
         const parseArgs = { href: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
       } catch {
-        throw new TypeError("Invalid URL.");
+        throw new TypeError("Invalid URL");
       }
       this.#updateSearchParams();
     }
@@ -303,7 +303,9 @@
       try {
         const parseArgs = { href: this.href, setPassword: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get pathname() {
@@ -314,7 +316,9 @@
       try {
         const parseArgs = { href: this.href, setPathname: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get port() {
@@ -325,7 +329,9 @@
       try {
         const parseArgs = { href: this.href, setPort: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get protocol() {
@@ -336,7 +342,9 @@
       try {
         const parseArgs = { href: this.href, setProtocol: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get search() {
@@ -348,7 +356,9 @@
         const parseArgs = { href: this.href, setSearch: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
         this.#updateSearchParams();
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get username() {
@@ -359,7 +369,9 @@
       try {
         const parseArgs = { href: this.href, setUsername: String(value) };
         parts.set(this, core.jsonOpSync("op_parse_url", parseArgs));
-      } catch { /* pass */ }
+      } catch {
+        /* pass */
+      }
     }
 
     get searchParams() {
