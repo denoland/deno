@@ -510,12 +510,8 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_doc",
- "deno_fetch",
  "deno_lint",
  "deno_runtime",
- "deno_web",
- "deno_webgpu",
- "deno_websocket",
  "dissimilar",
  "dprint-plugin-json",
  "dprint-plugin-markdown",
@@ -651,7 +647,6 @@ dependencies = [
  "deno_websocket",
  "dlopen",
  "encoding_rs",
- "env_logger",
  "filetime",
  "fwdansi",
  "http",
@@ -665,10 +660,7 @@ dependencies = [
  "percent-encoding",
  "regex",
  "ring",
- "rustyline",
- "rustyline-derive",
  "serde",
- "shell-escape",
  "sys-info",
  "termcolor",
  "test_util",
@@ -2613,9 +2605,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.19.0"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a931537fc7d79e62dbb11457ca92b51a906089ece0aabc46e5387ddd9a20ac66"
+checksum = "344a561fdd20c89f336e8e14a532504e21c6a9570ac0d51f14328abc2bcdb635"
 dependencies = [
  "bitflags",
  "fslock",
