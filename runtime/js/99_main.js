@@ -27,6 +27,7 @@ delete Object.prototype.__proto__;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
+  const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
   const file = window.__bootstrap.file;
   const fetch = window.__bootstrap.fetch;
@@ -195,6 +196,11 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("SyntaxError", SyntaxError);
     core.registerErrorClass("TypeError", TypeError);
     core.registerErrorClass("URIError", URIError);
+    core.registerErrorClass(
+      "DOMExceptionOperationError",
+      DOMException,
+      "OperationError",
+    );
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -249,6 +255,37 @@ delete Object.prototype.__proto__;
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+
+    GPU: util.nonEnumerable(webgpu.GPU),
+    GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
+    GPUAdapterLimits: util.nonEnumerable(webgpu.GPUAdapterLimits),
+    GPUAdapterFeatures: util.nonEnumerable(webgpu.GPUAdapterFeatures),
+    GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
+    GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
+    GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
+    GPUBufferUsage: util.nonEnumerable(webgpu.GPUBufferUsage),
+    GPUMapMode: util.nonEnumerable(webgpu.GPUMapMode),
+    GPUTexture: util.nonEnumerable(webgpu.GPUTexture),
+    GPUTextureUsage: util.nonEnumerable(webgpu.GPUTextureUsage),
+    GPUTextureView: util.nonEnumerable(webgpu.GPUTextureView),
+    GPUSampler: util.nonEnumerable(webgpu.GPUSampler),
+    GPUBindGroupLayout: util.nonEnumerable(webgpu.GPUBindGroupLayout),
+    GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
+    GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
+    GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
+    GPUShaderStage: util.nonEnumerable(webgpu.GPUShaderStage),
+    GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
+    GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
+    GPUColorWrite: util.nonEnumerable(webgpu.GPUColorWrite),
+    GPUCommandEncoder: util.nonEnumerable(webgpu.GPUCommandEncoder),
+    GPURenderPassEncoder: util.nonEnumerable(webgpu.GPURenderPassEncoder),
+    GPUComputePassEncoder: util.nonEnumerable(webgpu.GPUComputePassEncoder),
+    GPUCommandBuffer: util.nonEnumerable(webgpu.GPUCommandBuffer),
+    GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
+    GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
+    GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
+    GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
+    GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable
@@ -256,12 +293,17 @@ delete Object.prototype.__proto__;
   // structure, it might be worth it to define a helper in `util`
   windowOrWorkerGlobalScope.console.enumerable = false;
 
+  const windowNavigatorProperties = {
+    gpu: webgpu.gpu,
+  };
+
   const mainRuntimeGlobalProperties = {
     Location: location.locationConstructorDescriptor,
     location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
+    navigator: util.readOnly(windowNavigatorProperties),
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
     // it seems those two properties should be available to workers as well
     onload: util.writable(null),
@@ -273,12 +315,17 @@ delete Object.prototype.__proto__;
     prompt: util.writable(prompt.prompt),
   };
 
+  const workerNavigatorProperties = {
+    gpu: webgpu.gpu,
+  };
+
   const workerRuntimeGlobalProperties = {
     WorkerLocation: location.workerLocationConstructorDescriptor,
     location: location.workerLocationDescriptor,
     WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
     DedicatedWorkerGlobalScope:
       globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
+    navigator: util.readOnly(workerNavigatorProperties),
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),

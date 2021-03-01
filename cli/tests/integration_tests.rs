@@ -1627,7 +1627,6 @@ mod integration {
       .arg("bundle")
       .arg("--import-map")
       .arg(import_map_path)
-      .arg("--unstable")
       .arg(import)
       .arg(&bundle)
       .spawn()
@@ -1673,7 +1672,6 @@ mod integration {
       .arg("--no-check")
       .arg("--import-map")
       .arg(import_map_path)
-      .arg("--unstable")
       .arg(import)
       .arg(&bundle)
       .spawn()
@@ -1734,7 +1732,7 @@ mod integration {
     let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
     eprintln!("{}", str_output);
     // check the output of the test.ts program.
-    assert!(str_output.contains("compiled: "));
+    assert!(str_output.contains("emit: "));
     assert_eq!(output.stderr, b"");
   }
 
@@ -2240,28 +2238,6 @@ mod integration {
     }
   }
 
-  #[test]
-  fn deno_test_no_color() {
-    let (out, _) = util::run_and_collect_output(
-      false,
-      "test deno_test_no_color.ts",
-      None,
-      Some(vec![("NO_COLOR".to_owned(), "true".to_owned())]),
-      false,
-    );
-    // ANSI escape codes should be stripped.
-    assert!(out.contains("test success ... ok"));
-    assert!(out.contains("test fail ... FAILED"));
-    assert!(out.contains("test ignored ... ignored"));
-    assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
-  }
-
-  itest!(test_exit_sanitizer {
-    args: "test exit_sanitizer_test.ts",
-    output: "exit_sanitizer_test.out",
-    exit_code: 1,
-  });
-
   itest!(stdout_write_all {
     args: "run --quiet stdout_write_all.ts",
     output: "stdout_write_all.out",
@@ -2388,41 +2364,67 @@ mod integration {
     http_server: true,
   });
 
-  itest!(deno_test {
-    args: "test test_runner_test.ts",
-    exit_code: 1,
-    output: "deno_test.out",
-  });
+  mod test {
+    use super::*;
 
-  itest!(deno_test_fail_fast {
-    args: "test --fail-fast test_runner_test.ts",
-    exit_code: 1,
-    output: "deno_test_fail_fast.out",
-  });
+    #[test]
+    fn no_color() {
+      let (out, _) = util::run_and_collect_output(
+        false,
+        "test test/deno_test_no_color.ts",
+        None,
+        Some(vec![("NO_COLOR".to_owned(), "true".to_owned())]),
+        false,
+      );
+      // ANSI escape codes should be stripped.
+      assert!(out.contains("test success ... ok"));
+      assert!(out.contains("test fail ... FAILED"));
+      assert!(out.contains("test ignored ... ignored"));
+      assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
+    }
 
-  itest!(deno_test_only {
-    args: "test deno_test_only.ts",
-    exit_code: 1,
-    output: "deno_test_only.ts.out",
-  });
+    itest!(all {
+      args: "test test/test_runner_test.ts",
+      exit_code: 1,
+      output: "test/deno_test.out",
+    });
 
-  itest!(deno_test_no_check {
-    args: "test --no-check test_runner_test.ts",
-    exit_code: 1,
-    output: "deno_test.out",
-  });
+    itest!(fail_fast {
+      args: "test --fail-fast test/test_runner_test.ts",
+      exit_code: 1,
+      output: "test/deno_test_fail_fast.out",
+    });
 
-  itest!(deno_test_finally_cleartimeout {
-    args: "test test_finally_cleartimeout.ts",
-    exit_code: 1,
-    output: "test_finally_cleartimeout.out",
-  });
+    itest!(only {
+      args: "test test/deno_test_only.ts",
+      exit_code: 1,
+      output: "test/deno_test_only.ts.out",
+    });
 
-  itest!(deno_test_unresolved_promise {
-    args: "test test_unresolved_promise.js",
-    exit_code: 1,
-    output: "deno_test_unresolved_promise.out",
-  });
+    itest!(no_check {
+      args: "test --no-check test/test_runner_test.ts",
+      exit_code: 1,
+      output: "test/deno_test.out",
+    });
+
+    itest!(finally_cleartimeout {
+      args: "test test/test_finally_cleartimeout.ts",
+      exit_code: 1,
+      output: "test/test_finally_cleartimeout.out",
+    });
+
+    itest!(unresolved_promise {
+      args: "test test/test_unresolved_promise.js",
+      exit_code: 1,
+      output: "test/deno_test_unresolved_promise.out",
+    });
+
+    itest!(exit_sanitizer {
+      args: "test test/exit_sanitizer_test.ts",
+      output: "test/exit_sanitizer_test.out",
+      exit_code: 1,
+    });
+  }
 
   #[test]
   fn timeout_clear() {
@@ -2535,7 +2537,7 @@ console.log("finish");
 
   itest!(_033_import_map {
     args:
-      "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+      "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
     output: "033_import_map.out",
   });
 
@@ -2561,7 +2563,7 @@ console.log("finish");
 
   itest!(_036_import_map_fetch {
     args:
-      "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+      "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
     output: "036_import_map_fetch.out",
   });
 
@@ -2706,7 +2708,7 @@ console.log("finish");
 
   itest!(_065_import_map_info {
     args:
-      "info --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
+      "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
     output: "065_import_map_info.out",
   });
 
@@ -3688,7 +3690,7 @@ console.log("finish");
   });
 
   itest!(import_data_url_import_map {
-    args: "run --quiet --reload --unstable --import-map import_maps/import_map.json import_data_url.ts",
+    args: "run --quiet --reload --import-map import_maps/import_map.json import_data_url.ts",
     output: "import_data_url.ts.out",
   });
 
@@ -3722,7 +3724,6 @@ console.log("finish");
   itest!(info_missing_module {
     args: "info error_009_missing_js_module.js",
     output: "info_missing_module.out",
-    exit_code: 1,
   });
 
   itest!(info_recursive_modules {

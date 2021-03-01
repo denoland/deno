@@ -521,7 +521,7 @@ impl CoverageReporter for PrettyCoverageReporter {
       // Put a horizontal separator between disjoint runs of lines
       if let Some(last_line) = last_line {
         if last_line + 1 != line_index {
-          let dash = colors::gray(&"-".repeat(WIDTH + 1));
+          let dash = colors::gray("-".repeat(WIDTH + 1));
           println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
         }
       }

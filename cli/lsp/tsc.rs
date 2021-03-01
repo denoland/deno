@@ -1074,7 +1074,7 @@ struct State<'a> {
   last_id: usize,
   response: Option<Response>,
   state_snapshot: StateSnapshot,
-  snapshots: HashMap<(Cow<'a, str>, Cow<'a, str>), String>,
+  snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
 }
 
 impl<'a> State<'a> {
@@ -1092,18 +1092,23 @@ impl<'a> State<'a> {
 /// If a snapshot is missing from the state cache, add it.
 fn cache_snapshot(
   state: &mut State,
-  specifier: String,
+  specifier: &ModuleSpecifier,
   version: String,
 ) -> Result<(), AnyError> {
   if !state
     .snapshots
-    .contains_key(&(specifier.clone().into(), version.clone().into()))
+    .contains_key(&(specifier.clone(), version.clone().into()))
   {
-    let s = resolve_url(&specifier)?;
-    let content = state.state_snapshot.documents.content(&s)?.unwrap();
+    let content = state
+      .state_snapshot
+      .documents
+      .content(specifier)?
+      .ok_or_else(|| {
+        anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
+      })?;
     state
       .snapshots
-      .insert((specifier.into(), version.into()), content);
+      .insert((specifier.clone(), version.into()), content);
   }
   Ok(())
 }
@@ -1135,9 +1140,8 @@ fn dispose(
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_dispose");
-  state
-    .snapshots
-    .remove(&(args.specifier.into(), args.version.into()));
+  let specifier = resolve_url(&args.specifier)?;
+  state.snapshots.remove(&(specifier, args.version.into()));
   state.state_snapshot.performance.measure(mark);
   Ok(true)
 }
@@ -1158,15 +1162,18 @@ fn get_change_range(
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_change_range");
-  cache_snapshot(state, args.specifier.clone(), args.version.clone())?;
+  let specifier = resolve_url(&args.specifier)?;
+  if state.state_snapshot.documents.contains_key(&specifier) {
+    cache_snapshot(state, &specifier, args.version.clone())?;
+  }
   if let Some(current) = state
     .snapshots
-    .get(&(args.specifier.clone().into(), args.version.clone().into()))
+    .get(&(specifier.clone(), args.version.clone().into()))
   {
-    if let Some(prev) = state.snapshots.get(&(
-      args.specifier.clone().into(),
-      args.old_version.clone().into(),
-    )) {
+    if let Some(prev) = state
+      .snapshots
+      .get(&(specifier, args.old_version.clone().into()))
+    {
       state.state_snapshot.performance.measure(mark);
       Ok(text::get_range_change(prev, current))
     } else {
@@ -1205,10 +1212,10 @@ fn get_length(
   if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
     Ok(asset.length)
   } else if state.state_snapshot.documents.contains_key(&specifier) {
-    cache_snapshot(state, args.specifier.clone(), args.version.clone())?;
+    cache_snapshot(state, &specifier, args.version.clone())?;
     let content = state
       .snapshots
-      .get(&(args.specifier.into(), args.version.into()))
+      .get(&(specifier, args.version.into()))
       .unwrap();
     state.state_snapshot.performance.measure(mark);
     Ok(content.encode_utf16().count())
@@ -1235,10 +1242,10 @@ fn get_text(state: &mut State, args: GetTextArgs) -> Result<String, AnyError> {
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
       content.text.clone()
     } else if state.state_snapshot.documents.contains_key(&specifier) {
-      cache_snapshot(state, args.specifier.clone(), args.version.clone())?;
+      cache_snapshot(state, &specifier, args.version.clone())?;
       state
         .snapshots
-        .get(&(args.specifier.into(), args.version.into()))
+        .get(&(specifier, args.version.into()))
         .unwrap()
         .clone()
     } else {

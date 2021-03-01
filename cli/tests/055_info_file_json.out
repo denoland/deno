@@ -1,33 +1,56 @@
 {
-  "compiled": null,
-  "depCount": 3,
-  "fileType": "TypeScript",
-  "files": {
-    "file:///[WILDCARD]/cli/tests/005_more_imports.ts": {
-      "deps": [
-        "file:///[WILDCARD]/cli/tests/subdir/mod1.ts"
+  "root": "file://[WILDCARD]/cli/tests/005_more_imports.ts",
+  "modules": [
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/005_more_imports.ts",
+      "dependencies": [
+        {
+          "specifier": "./subdir/mod1.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/subdir/mod1.ts"
+        }
       ],
-      "size": 211
+      "size": 211,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]005_more_imports.ts",
+      [WILDCARD]
     },
-    "file:///[WILDCARD]/cli/tests/subdir/mod1.ts": {
-      "deps": [
-        "file:///[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts"
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/subdir/mod1.ts",
+      "dependencies": [
+        {
+          "specifier": "./subdir2/mod2.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts"
+        }
       ],
-      "size": 320
+      "size": 320,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]mod1.ts",
+      [WILDCARD]
     },
-    "file:///[WILDCARD]/cli/tests/subdir/print_hello.ts": {
-      "deps": [],
-      "size": 63
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/subdir/print_hello.ts",
+      "dependencies": [],
+      "size": 63,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]print_hello.ts",
+      [WILDCARD]
     },
-    "file:///[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts": {
-      "deps": [
-        "file:///[WILDCARD]/cli/tests/subdir/print_hello.ts"
+    {
+      "specifier": "file://[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts",
+      "dependencies": [
+        {
+          "specifier": "../print_hello.ts",
+          "isDynamic": false,
+          "code": "file://[WILDCARD]/cli/tests/subdir/print_hello.ts"
+        }
       ],
-      "size": 163
+      "size": 163,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]mod2.ts",
+      [WILDCARD]
     }
-  },
-  "local": "[WILDCARD]005_more_imports.ts",
-  "map": null,
-  "module": "file:///[WILDCARD]/cli/tests/005_more_imports.ts",
-  "totalSize": 757
+  ],
+  "size": 757
 }
