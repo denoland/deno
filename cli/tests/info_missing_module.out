@@ -1,2 +1,6 @@
-error: Cannot resolve module "file://[WILDCARD]/bad-module.js" from "file://[WILDCARD]/error_009_missing_js_module.js".
-    at file://[WILDCARD]/error_009_missing_js_module.js:1:0
+local: [WILDCARD]error_009_missing_js_module.js
+type: JavaScript
+dependencies: 1 unique (total 26B)
+
+file://[WILDCARD]/cli/tests/error_009_missing_js_module.js (26B)
+└── file://[WILDCARD]/cli/tests/bad-module.js (error)
