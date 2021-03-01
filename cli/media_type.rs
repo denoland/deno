@@ -184,14 +184,7 @@ impl Serialize for MediaType {
 /// serialization for media types is and integer.
 ///
 /// TODO(@kitsonk) remove this once we stop sending MediaType into tsc.
-// pub fn serialize_media_type<S>(mt: &MediaType, s: S) -> Result<S::Ok, S::Error>
-// where
-//   S: Serializer,
-// {
-//   s.serialize_str(&mt.to_string())
-// }
-
-pub fn serialize_media_type2<S>(
+pub fn serialize_media_type<S>(
   mmt: &Option<MediaType>,
   s: S,
 ) -> Result<S::Ok, S::Error>

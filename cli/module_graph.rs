@@ -2443,24 +2443,16 @@ pub mod tests {
     assert!(emitted_files.contains_key("file:///b.ts.d.ts"));
   }
 
-  // #[tokio::test]
-  // async fn test_graph_info() {
-  //   let specifier = resolve_url_or_path("file:///tests/main.ts")
-  //     .expect("could not resolve module");
-  //   let (graph, _) = setup(specifier).await;
-  //   let info = graph.info().expect("could not get info");
-  //   assert!(info.compiled.is_none());
-  //   assert_eq!(info.dep_count, 6);
-  //   assert_eq!(info.file_type, MediaType::TypeScript);
-  //   assert_eq!(info.files.0.len(), 7);
-  //   assert!(info.local.to_string_lossy().ends_with("file_tests-main.ts"));
-  //   assert!(info.map.is_none());
-  //   assert_eq!(
-  //     info.module,
-  //     resolve_url_or_path("file:///tests/main.ts").unwrap()
-  //   );
-  //   assert_eq!(info.total_size, 344);
-  // }
+  #[tokio::test]
+  async fn test_graph_info() {
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
+    let (graph, _) = setup(specifier.clone()).await;
+    let info = graph.info().expect("could not get info");
+    assert_eq!(info.root, specifier);
+    assert_eq!(info.modules.len(), 7);
+    assert_eq!(info.size, 518);
+  }
 
   #[tokio::test]
   async fn test_graph_import_json() {
