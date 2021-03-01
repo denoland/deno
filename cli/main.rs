@@ -875,7 +875,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
-    exit_unstable("compile");
+    exit_unstable("coverage");
   }
 
   if files.is_empty() {
