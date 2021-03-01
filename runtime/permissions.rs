@@ -654,17 +654,25 @@ fn permission_prompt(message: &str) -> bool {
     if result.is_err() {
       return false;
     };
-    let ch = input.chars().next().unwrap();
-    match ch.to_ascii_lowercase() {
-      'g' => return true,
-      'd' => return false,
-      _ => {
-        // If we don't get a recognized option try again.
-        let msg_again =
-          format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
-        eprint!("{}", colors::bold(&msg_again));
-      }
-    };
+    if let Some(ch) = input.chars().next() {
+      match ch.to_ascii_lowercase() {
+        'g' => return true,
+        'd' => return false,
+        _ => {
+          // If we don't get a recognized option try again.
+          let msg_again = format!(
+            "Unrecognized option '{}' [g/d (g = grant, d = deny)] ",
+            ch
+          );
+          eprint!("{}", colors::bold(&msg_again));
+        }
+      };
+    } else {
+      eprint!(
+        "\n{}",
+        colors::bold("No input given [g/d (g = grant, d = deny)] ")
+      );
+    }
   }
 }
 
