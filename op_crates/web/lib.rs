@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::custom_error;
+use deno_core::error::generic_error;
+use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -83,83 +84,80 @@ pub fn op_parse_url(
     set_username: Option<String>,
   }
   let args: UrlParseArgs = serde_json::from_value(args)?;
-  let base_url = match args.base_href.as_ref() {
-    Some(base_href) => Some(
-      Url::parse(base_href)
-        .map_err(|_| custom_error("TypeError", "Invalid base URL."))?,
-    ),
-    None => None,
-  };
+  let base_url = args
+    .base_href
+    .as_ref()
+    .map(|b| Url::parse(b).map_err(|_| type_error("Invalid base URL")))
+    .transpose()?;
   let mut url = Url::options()
     .base_url(base_url.as_ref())
     .parse(&args.href)
-    .map_err(|_| custom_error("TypeError", "Invalid URL."))?;
+    .map_err(|_| type_error("Invalid URL"))?;
 
   if let Some(hash) = args.set_hash.as_ref() {
     quirks::set_hash(&mut url, hash);
   } else if let Some(host) = args.set_host.as_ref() {
-    quirks::set_host(&mut url, host).map_err(|_| uri_error("Invalid host."))?;
+    quirks::set_host(&mut url, host).map_err(|_| uri_error("Invalid host"))?;
   } else if let Some(hostname) = args.set_hostname.as_ref() {
     quirks::set_hostname(&mut url, hostname)
-      .map_err(|_| uri_error("Invalid hostname."))?;
+      .map_err(|_| uri_error("Invalid hostname"))?;
   } else if let Some(password) = args.set_password.as_ref() {
     quirks::set_password(&mut url, password)
-      .map_err(|_| uri_error("Invalid password."))?;
+      .map_err(|_| uri_error("Invalid password"))?;
   } else if let Some(pathname) = args.set_pathname.as_ref() {
     quirks::set_pathname(&mut url, pathname);
   } else if let Some(port) = args.set_port.as_ref() {
-    quirks::set_port(&mut url, port).map_err(|_| uri_error("Invalid port."))?;
+    quirks::set_port(&mut url, port).map_err(|_| uri_error("Invalid port"))?;
   } else if let Some(protocol) = args.set_protocol.as_ref() {
     quirks::set_protocol(&mut url, protocol)
-      .map_err(|_| uri_error("Invalid protocol."))?;
+      .map_err(|_| uri_error("Invalid protocol"))?;
   } else if let Some(search) = args.set_search.as_ref() {
     quirks::set_search(&mut url, search);
   } else if let Some(username) = args.set_username.as_ref() {
     quirks::set_username(&mut url, username)
-      .map_err(|_| uri_error("Invalid username."))?;
+      .map_err(|_| uri_error("Invalid username"))?;
   }
 
   #[derive(Serialize)]
-  struct UrlParts {
-    href: String,
-    hash: String,
-    host: String,
-    hostname: String,
-    origin: String,
-    password: String,
-    pathname: String,
-    port: String,
-    protocol: String,
-    search: String,
-    username: String,
+  struct UrlParts<'a> {
+    href: &'a str,
+    hash: &'a str,
+    host: &'a str,
+    hostname: &'a str,
+    origin: &'a str,
+    password: &'a str,
+    pathname: &'a str,
+    port: &'a str,
+    protocol: &'a str,
+    search: &'a str,
+    username: &'a str,
   }
   // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
   // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
   let username =
     catch_unwind(|| quirks::username(&url).to_string()).map_err(|_| {
-      let message = format!(
+      generic_error(format!(
         "Internal error while parsing \"{}\"{}, \
-         see https://github.com/servo/rust-url/issues/670.",
+         see https://github.com/servo/rust-url/issues/670",
         args.href,
         args
           .base_href
           .map(|b| format!(" against \"{}\"", b))
           .unwrap_or_default()
-      );
-      custom_error("Error", message)
+      ))
     })?;
   Ok(json!(UrlParts {
-    href: quirks::href(&url).to_string(),
-    hash: quirks::hash(&url).to_string(),
-    host: quirks::host(&url).to_string(),
-    hostname: quirks::hostname(&url).to_string(),
-    origin: quirks::origin(&url),
-    password: quirks::password(&url).to_string(),
-    pathname: quirks::pathname(&url).to_string(),
-    port: quirks::port(&url).to_string(),
-    protocol: quirks::protocol(&url).to_string(),
-    search: quirks::search(&url).to_string(),
-    username,
+    href: quirks::href(&url),
+    hash: quirks::hash(&url),
+    host: quirks::host(&url),
+    hostname: quirks::hostname(&url),
+    origin: &quirks::origin(&url),
+    password: quirks::password(&url),
+    pathname: quirks::pathname(&url),
+    port: quirks::port(&url),
+    protocol: quirks::protocol(&url),
+    search: quirks::search(&url),
+    username: &username,
   }))
 }
 
