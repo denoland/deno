@@ -237,6 +237,7 @@ impl WebWorker {
         deno_web::op_domain_to_ascii,
       );
       ops::io::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),

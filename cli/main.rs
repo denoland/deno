@@ -278,10 +278,11 @@ fn print_cache_info(
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}\n{}\n{}",
     crate::tsc::DENO_NS_LIB,
     crate::tsc::DENO_WEB_LIB,
     crate::tsc::DENO_FETCH_LIB,
+    crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
@@ -1022,6 +1023,8 @@ fn init_logger(maybe_level: Option<Level>) {
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", LevelFilter::Off)
+  // wgpu backend crates (gfx_backend), have a lot of useless INFO and WARN logs
+  .filter_module("gfx", LevelFilter::Error)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

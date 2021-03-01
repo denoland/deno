@@ -270,6 +270,10 @@ declare namespace globalThis {
       ): (v: any, opts: ValueConverterOpts) => any;
     }
 
+    declare var eventTarget: {
+      EventTarget: typeof EventTarget;
+    };
+
     declare var url: {
       URLSearchParams: typeof URLSearchParams;
     };

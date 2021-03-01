@@ -23,6 +23,7 @@ deno_crypto = { path = "../op_crates/crypto", version = "0.13.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.22.0" }
 deno_web = { path = "../op_crates/web", version = "0.30.0" }
 deno_websocket = { path = "../op_crates/websocket", version = "0.5.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
@@ -34,6 +35,7 @@ deno_crypto = { path = "../op_crates/crypto", version = "0.13.0" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.22.0" }
 deno_web = { path = "../op_crates/web", version = "0.30.0" }
 deno_websocket = { path = "../op_crates/websocket", version = "0.5.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 
 atty = "0.2.14"
 dlopen = "0.1.8"
