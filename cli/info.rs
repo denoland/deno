@@ -36,7 +36,7 @@ impl ModuleGraphInfoDep {
     f: &mut fmt::Formatter,
     prefix: S,
     last: bool,
-    modules: &Vec<ModuleGraphInfoMod>,
+    modules: &[ModuleGraphInfoMod],
     seen: &mut HashSet<ModuleSpecifier>,
   ) -> fmt::Result {
     let maybe_code = self
@@ -110,7 +110,7 @@ impl ModuleGraphInfoMod {
     prefix: S,
     last: bool,
     type_dep: bool,
-    modules: &Vec<ModuleGraphInfoMod>,
+    modules: &[ModuleGraphInfoMod],
     seen: &mut HashSet<ModuleSpecifier>,
   ) -> fmt::Result {
     let was_seen = seen.contains(&self.specifier);

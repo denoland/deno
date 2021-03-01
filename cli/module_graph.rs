@@ -1372,7 +1372,7 @@ impl Graph {
             specifier: sp.clone(),
             dependencies,
             size: Some(module.size()),
-            media_type: Some(module.media_type.clone()),
+            media_type: Some(module.media_type),
             local: Some(module.source_path.clone()),
             checksum: Some(checksum::gen(&[module.source.as_bytes()])),
             emit,
