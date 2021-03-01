@@ -1,3 +1,6 @@
+// TODO(lucacasonato): remove when GPUBufferUsage and friends are added to dlint
+// deno-lint-ignore-file no-undef
+
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 let isCI: boolean;

@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use serde::Serialize;
+use deno_core::serde::Serialize;
 
 #[derive(Default, Debug)]
 pub struct RuntimeMetrics {
