@@ -48,7 +48,7 @@
       ],
       "size": 163,
       "mediaType": "TypeScript",
-      "local": "[WILDCARD]subdir2/mod2.ts",
+      "local": "[WILDCARD]mod2.ts",
       [WILDCARD]
     }
   ],

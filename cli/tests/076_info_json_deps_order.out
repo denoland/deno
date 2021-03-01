@@ -31,7 +31,7 @@
       ],
       "size": 114,
       "mediaType": "TypeScript",
-      "local": "[WILDCARD]recursive_imports/A.ts",
+      "local": "[WILDCARD]A.ts",
       "checksum": "da204c16d3114763810864083af8891a887d65fbe34e4c8b5bf985dbc8f0b01f"
     },
     {
@@ -50,7 +50,7 @@
       ],
       "size": 114,
       "mediaType": "TypeScript",
-      "local": "[WILDCARD]recursive_imports/B.ts",
+      "local": "[WILDCARD]B.ts",
       "checksum": "060ef62435d7e3a3276e8894307b19cf17772210a20dd091d24a670fadec6b83"
     },
     {
@@ -69,7 +69,7 @@
       ],
       "size": 132,
       "mediaType": "TypeScript",
-      "local": "[WILDCARD]recursive_imports/C.ts",
+      "local": "[WILDCARD]C.ts",
       "checksum": "5190563583617a69f190f1cc76e6552df878df278cfaa5d5e30ebe0938cf5e0b"
     },
     {
@@ -77,7 +77,7 @@
       "dependencies": [],
       "size": 34,
       "mediaType": "TypeScript",
-      "local": "[WILDCARD]recursive_imports/common.ts",
+      "local": "[WILDCARD]common.ts",
       "checksum": "01b595d69514bfd001ba2cf421feabeaef559513f10697bf1a22781f8a8ed7f0"
     }
   ],
