@@ -13,6 +13,7 @@ use deno_core::JsRuntime;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
+use std::panic::catch_unwind;
 use std::path::PathBuf;
 
 /// Load and execute the javascript code.
@@ -135,8 +136,18 @@ pub fn op_parse_url(
   // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
   // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
   let username =
-    std::panic::catch_unwind(|| quirks::username(&url).to_string())
-      .map_err(|_| custom_error("Error", format!("Internal error when parsing \"{}\"{}, see https://github.com/servo/rust-url/issues/670.", args.href, args.base_href.map_or_else(|| "".to_string(), |b| format!(" against \"{}\"", b)))))?;
+    catch_unwind(|| quirks::username(&url).to_string()).map_err(|_| {
+      let message = format!(
+        "Internal error while parsing \"{}\"{}, \
+         see https://github.com/servo/rust-url/issues/670.",
+        args.href,
+        args
+          .base_href
+          .map(|b| format!(" against \"{}\"", b))
+          .unwrap_or_default()
+      );
+      custom_error("Error", message)
+    })?;
   Ok(json!(UrlParts {
     href: quirks::href(&url).to_string(),
     hash: quirks::hash(&url).to_string(),
