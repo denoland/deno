@@ -243,6 +243,7 @@ impl WebWorker {
         deno_web::op_stringify_url_search_params,
       );
       ops::io::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),

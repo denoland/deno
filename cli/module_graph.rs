@@ -6,13 +6,11 @@ use crate::ast::transpile_module;
 use crate::ast::BundleHook;
 use crate::ast::Location;
 use crate::ast::ParsedModule;
+use crate::checksum;
 use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
-use crate::info::ModuleGraphInfo;
-use crate::info::ModuleInfo;
-use crate::info::ModuleInfoMap;
-use crate::info::ModuleInfoMapItem;
+use crate::info;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::specifier_handler::CachedModule;
@@ -44,8 +42,8 @@ use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
+use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -1193,95 +1191,6 @@ impl Graph {
     Ok(())
   }
 
-  fn get_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    seen: &mut HashSet<ModuleSpecifier>,
-    totals: &mut HashMap<ModuleSpecifier, usize>,
-  ) -> ModuleInfo {
-    let not_seen = seen.insert(specifier.clone());
-    let module = match self.get_module(specifier) {
-      ModuleSlot::Module(module) => module,
-      ModuleSlot::Err(err) => {
-        error!("{}: {}", colors::red_bold("error"), err.to_string());
-        std::process::exit(1);
-      }
-      _ => unreachable!(),
-    };
-    let mut deps = Vec::new();
-    let mut total_size = None;
-
-    if not_seen {
-      let mut seen_deps = HashSet::new();
-      // TODO(@kitsonk) https://github.com/denoland/deno/issues/7927
-      for (_, dep) in module.dependencies.iter() {
-        // Check the runtime code dependency
-        if let Some(code_dep) = &dep.maybe_code {
-          if seen_deps.insert(code_dep.clone()) {
-            deps.push(self.get_info(code_dep, seen, totals));
-          }
-        }
-      }
-      deps.sort();
-      total_size = if let Some(total) = totals.get(specifier) {
-        Some(total.to_owned())
-      } else {
-        let mut total = deps
-          .iter()
-          .map(|d| {
-            if let Some(total_size) = d.total_size {
-              total_size
-            } else {
-              0
-            }
-          })
-          .sum();
-        total += module.size();
-        totals.insert(specifier.clone(), total);
-        Some(total)
-      };
-    }
-
-    ModuleInfo {
-      deps,
-      name: specifier.clone(),
-      size: module.size(),
-      total_size,
-    }
-  }
-
-  fn get_info_map(&self) -> ModuleInfoMap {
-    let map = self
-      .modules
-      .iter()
-      .filter_map(|(specifier, module_slot)| {
-        if let ModuleSlot::Module(module) = module_slot {
-          let mut deps = BTreeSet::new();
-          for (_, dep) in module.dependencies.iter() {
-            if let Some(code_dep) = &dep.maybe_code {
-              deps.insert(code_dep.clone());
-            }
-            if let Some(type_dep) = &dep.maybe_type {
-              deps.insert(type_dep.clone());
-            }
-          }
-          if let Some((_, types_dep)) = &module.maybe_types {
-            deps.insert(types_dep.clone());
-          }
-          let item = ModuleInfoMapItem {
-            deps: deps.into_iter().collect(),
-            size: module.size(),
-          };
-          Some((specifier.clone(), item))
-        } else {
-          None
-        }
-      })
-      .collect();
-
-    ModuleInfoMap::new(map)
-  }
-
   /// Retrieve a map that contains a representation of each module in the graph
   /// which can be used to provide code to a module loader without holding all
   /// the state to be able to operate on the graph.
@@ -1425,51 +1334,75 @@ impl Graph {
   /// Return a structure which provides information about the module graph and
   /// the relationship of the modules in the graph.  This structure is used to
   /// provide information for the `info` subcommand.
-  pub fn info(&self) -> Result<ModuleGraphInfo, AnyError> {
+  pub fn info(&self) -> Result<info::ModuleGraphInfo, AnyError> {
     if self.roots.is_empty() || self.roots.len() > 1 {
       return Err(GraphError::NotSupported(format!("Info is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
 
-    let module = self.roots[0].clone();
-    let m = if let ModuleSlot::Module(module) = self.get_module(&module) {
-      module
-    } else {
-      return Err(GraphError::MissingSpecifier(module.clone()).into());
-    };
-
-    let mut seen = HashSet::new();
-    let mut totals = HashMap::new();
-    let info = self.get_info(&module, &mut seen, &mut totals);
-
-    let files = self.get_info_map();
-    let total_size = totals.get(&module).unwrap_or(&m.size()).to_owned();
-    let (compiled, map) =
-      if let Some((emit_path, maybe_map_path)) = &m.maybe_emit_path {
-        (Some(emit_path.clone()), maybe_map_path.clone())
-      } else {
-        (None, None)
-      };
-
-    let dep_count = self
+    let root = self.resolve_specifier(&self.roots[0]).clone();
+    let mut modules: Vec<info::ModuleGraphInfoMod> = self
       .modules
       .iter()
-      .filter_map(|(_, m)| match m {
-        ModuleSlot::Module(_) => Some(1),
+      .filter_map(|(sp, sl)| match sl {
+        ModuleSlot::Module(module) => {
+          let mut dependencies: Vec<info::ModuleGraphInfoDep> = module
+            .dependencies
+            .iter()
+            .map(|(k, v)| info::ModuleGraphInfoDep {
+              specifier: k.clone(),
+              is_dynamic: v.is_dynamic,
+              maybe_code: v
+                .maybe_code
+                .clone()
+                .map(|s| self.resolve_specifier(&s).clone()),
+              maybe_type: v
+                .maybe_type
+                .clone()
+                .map(|s| self.resolve_specifier(&s).clone()),
+            })
+            .collect();
+          dependencies.sort();
+          let (emit, map) =
+            if let Some((emit, maybe_map)) = &module.maybe_emit_path {
+              (Some(emit.clone()), maybe_map.clone())
+            } else {
+              (None, None)
+            };
+          Some(info::ModuleGraphInfoMod {
+            specifier: sp.clone(),
+            dependencies,
+            size: Some(module.size()),
+            media_type: Some(module.media_type),
+            local: Some(module.source_path.clone()),
+            checksum: Some(checksum::gen(&[module.source.as_bytes()])),
+            emit,
+            map,
+            ..Default::default()
+          })
+        }
+        ModuleSlot::Err(err) => Some(info::ModuleGraphInfoMod {
+          specifier: sp.clone(),
+          error: Some(err.to_string()),
+          ..Default::default()
+        }),
         _ => None,
       })
-      .count()
-      - 1;
+      .collect();
 
-    Ok(ModuleGraphInfo {
-      compiled,
-      dep_count,
-      file_type: m.media_type,
-      files,
-      info,
-      local: m.source_path.clone(),
-      map,
-      module,
-      total_size,
+    modules.sort();
+
+    let size = modules.iter().fold(0_usize, |acc, m| {
+      if let Some(size) = &m.size {
+        acc + size
+      } else {
+        acc
+      }
+    });
+
+    Ok(info::ModuleGraphInfo {
+      root,
+      modules,
+      size,
     })
   }
 
@@ -2514,19 +2447,11 @@ pub mod tests {
   async fn test_graph_info() {
     let specifier = resolve_url_or_path("file:///tests/main.ts")
       .expect("could not resolve module");
-    let (graph, _) = setup(specifier).await;
+    let (graph, _) = setup(specifier.clone()).await;
     let info = graph.info().expect("could not get info");
-    assert!(info.compiled.is_none());
-    assert_eq!(info.dep_count, 6);
-    assert_eq!(info.file_type, MediaType::TypeScript);
-    assert_eq!(info.files.0.len(), 7);
-    assert!(info.local.to_string_lossy().ends_with("file_tests-main.ts"));
-    assert!(info.map.is_none());
-    assert_eq!(
-      info.module,
-      resolve_url_or_path("file:///tests/main.ts").unwrap()
-    );
-    assert_eq!(info.total_size, 344);
+    assert_eq!(info.root, specifier);
+    assert_eq!(info.modules.len(), 7);
+    assert_eq!(info.size, 518);
   }
 
   #[tokio::test]

@@ -96,9 +96,6 @@ impl ProgramState {
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
-          if !flags.unstable {
-            exit_unstable("--import-map")
-          }
           let import_map_specifier =
             deno_core::resolve_url_or_path(&import_map_url).context(
               format!("Bad URL (\"{}\") for import map.", import_map_url),

@@ -148,6 +148,7 @@ impl MainWorker {
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),
