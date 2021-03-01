@@ -1,4 +1,4 @@
-local: [WILDCARD]/cli/tests/error_009_missing_js_module.js
+local: [WILDCARD]error_009_missing_js_module.js
 type: JavaScript
 dependencies: 1 unique (total 26B)
 
