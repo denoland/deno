@@ -7,7 +7,7 @@
 
 // 8cc98b6f10b7f354473a08c3773bb1de839845b9
 
-declare interface GPUObjectBase {
+interface GPUObjectBase {
   label: string | null;
 }
 
@@ -15,7 +15,7 @@ declare interface GPUObjectDescriptorBase {
   label?: string;
 }
 
-declare interface GPUAdapterLimits {
+declare class GPUAdapterLimits {
   maxTextureDimension1D?: number;
   maxTextureDimension2D?: number;
   maxTextureDimension3D?: number;
@@ -35,9 +35,27 @@ declare interface GPUAdapterLimits {
   maxVertexBufferArrayStride?: number;
 }
 
-declare type GPUAdapterFeatures = GPUFeatureName[];
+declare class GPUAdapterFeatures {
+  forEach(
+    callbackfn: (
+      value: GPUFeatureName,
+      value2: GPUFeatureName,
+      set: Set<GPUFeatureName>,
+    ) => void,
+    thisArg?: any,
+  ): void;
+  has(value: GPUFeatureName): boolean;
+  size: number;
+  [
+    Symbol
+      .iterator
+  ](): IterableIterator<GPUFeatureName>;
+  entries(): IterableIterator<[GPUFeatureName, GPUFeatureName]>;
+  keys(): IterableIterator<GPUFeatureName>;
+  values(): IterableIterator<GPUFeatureName>;
+}
 
-declare interface GPU {
+declare class GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
   ): Promise<GPUAdapter | null>;
@@ -49,7 +67,7 @@ declare interface GPURequestAdapterOptions {
 
 declare type GPUPowerPreference = "low-power" | "high-performance";
 
-declare interface GPUAdapter {
+declare class GPUAdapter {
   readonly name: string;
   readonly features: GPUAdapterFeatures;
   readonly limits: GPUAdapterLimits;
@@ -86,7 +104,9 @@ declare type GPUFeatureName =
   | "shader-float64"
   | "vertex-attribute-64bit";
 
-declare interface GPUDevice extends EventTarget, GPUObjectBase {
+declare class GPUDevice extends EventTarget implements GPUObjectBase {
+  label: string | null;
+
   readonly lost: Promise<GPUDeviceLostInfo>;
   pushErrorScope(filter: GPUErrorFilter): undefined;
   popErrorScope(): Promise<GPUError | null>;
@@ -137,7 +157,9 @@ declare interface GPUDevice extends EventTarget, GPUObjectBase {
   createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet;
 }
 
-declare interface GPUBuffer extends GPUObjectBase {
+declare class GPUBuffer implements GPUObjectBase {
+  label: string | null;
+
   mapAsync(
     mode: GPUMapModeFlags,
     offset?: number,
@@ -175,7 +197,9 @@ declare class GPUMapMode {
   static WRITE: 0x0002;
 }
 
-declare interface GPUTexture extends GPUObjectBase {
+declare class GPUTexture implements GPUObjectBase {
+  label: string | null;
+
   createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
   destroy(): undefined;
 }
@@ -200,7 +224,9 @@ declare class GPUTextureUsage {
   static RENDER_ATTACHMENT: 0x10;
 }
 
-declare interface GPUTextureView extends GPUObjectBase {}
+declare class GPUTextureView implements GPUObjectBase {
+  label: string | null;
+}
 
 declare interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
   format?: GPUTextureFormat;
@@ -281,7 +307,9 @@ declare type GPUTextureFormat =
   | "depth24unorm-stencil8"
   | "depth32float-stencil8";
 
-declare interface GPUSampler extends GPUObjectBase {}
+declare class GPUSampler implements GPUObjectBase {
+  label: string | null;
+}
 
 declare interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
   addressModeU?: GPUAddressMode;
@@ -310,7 +338,9 @@ declare type GPUCompareFunction =
   | "greater-equal"
   | "always";
 
-declare interface GPUBindGroupLayout extends GPUObjectBase {}
+declare class GPUBindGroupLayout implements GPUObjectBase {
+  label: string | null;
+}
 
 declare interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
   entries: GPUBindGroupLayoutEntry[];
@@ -377,7 +407,9 @@ declare interface GPUStorageTextureBindingLayout {
   viewDimension?: GPUTextureViewDimension;
 }
 
-declare interface GPUBindGroup extends GPUObjectBase {}
+declare class GPUBindGroup implements GPUObjectBase {
+  label: string | null;
+}
 
 declare interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
   layout: GPUBindGroupLayout;
@@ -400,7 +432,9 @@ declare interface GPUBufferBinding {
   size?: number;
 }
 
-declare interface GPUPipelineLayout extends GPUObjectBase {}
+declare class GPUPipelineLayout implements GPUObjectBase {
+  label: string | null;
+}
 
 declare interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
   bindGroupLayouts: GPUBindGroupLayout[];
@@ -419,7 +453,9 @@ declare interface GPUCompilationInfo {
   readonly messages: ReadonlyArray<GPUCompilationMessage>;
 }
 
-declare interface GPUShaderModule extends GPUObjectBase {
+declare class GPUShaderModule implements GPUObjectBase {
+  label: string | null;
+
   compilationInfo(): Promise<GPUCompilationInfo>;
 }
 
@@ -441,14 +477,22 @@ declare interface GPUProgrammableStage {
   entryPoint: string;
 }
 
-declare interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {}
+declare class GPUComputePipeline implements GPUObjectBase, GPUPipelineBase {
+  label: string | null;
+
+  getBindGroupLayout(index: number): GPUBindGroupLayout;
+}
 
 declare interface GPUComputePipelineDescriptor
   extends GPUPipelineDescriptorBase {
   compute: GPUProgrammableStage;
 }
 
-declare interface GPURenderPipeline extends GPUObjectBase, GPUPipelineBase {}
+declare class GPURenderPipeline implements GPUObjectBase, GPUPipelineBase {
+  label: string | null;
+
+  getBindGroupLayout(index: number): GPUBindGroupLayout;
+}
 
 declare interface GPURenderPipelineDescriptor
   extends GPUPipelineDescriptorBase {
@@ -500,15 +544,13 @@ declare interface GPUBlendState {
 }
 
 declare type GPUColorWriteFlags = number;
-/*
-declare interface GPUColorWrite {
-    const GPUFlagsConstant RED   = 0x1;
-    const GPUFlagsConstant GREEN = 0x2;
-    const GPUFlagsConstant BLUE  = 0x4;
-    const GPUFlagsConstant ALPHA = 0x8;
-    const GPUFlagsConstant ALL   = 0xF;
-};
-*/
+declare class GPUColorWrite {
+  static RED: 0x1;
+  static GREEN: 0x2;
+  static BLUE: 0x4;
+  static ALPHA: 0x8;
+  static ALL: 0xF;
+}
 
 declare interface GPUBlendComponent {
   srcFactor: GPUBlendFactor;
@@ -627,13 +669,17 @@ declare interface GPUVertexAttribute {
   shaderLocation: number;
 }
 
-declare interface GPUCommandBuffer extends GPUObjectBase {
+declare class GPUCommandBuffer implements GPUObjectBase {
+  label: string | null;
+
   readonly executionTime: Promise<number>;
 }
 
 declare interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
 
-declare interface GPUCommandEncoder extends GPUObjectBase {
+declare class GPUCommandEncoder implements GPUObjectBase {
+  label: string | null;
+
   beginRenderPass(descriptor: GPURenderPassDescriptor): GPURenderPassEncoder;
   beginComputePass(
     descriptor?: GPUComputePassDescriptor,
@@ -703,7 +749,7 @@ declare interface GPUImageCopyTexture {
   aspect?: GPUTextureAspect;
 }
 
-declare interface GPUProgrammablePassEncoder {
+interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup,
@@ -723,8 +769,24 @@ declare interface GPUProgrammablePassEncoder {
   insertDebugMarker(markerLabel: string): undefined;
 }
 
-declare interface GPUComputePassEncoder
-  extends GPUObjectBase, GPUProgrammablePassEncoder {
+declare class GPUComputePassEncoder
+  implements GPUObjectBase, GPUProgrammablePassEncoder {
+  label: string | null;
+  setBindGroup(
+    index: number,
+    bindGroup: GPUBindGroup,
+    dynamicOffsets?: number[],
+  ): undefined;
+  setBindGroup(
+    index: number,
+    bindGroup: GPUBindGroup,
+    dynamicOffsetsData: Uint32Array,
+    dynamicOffsetsDataStart: number,
+    dynamicOffsetsDataLength: number,
+  ): undefined;
+  pushDebugGroup(groupLabel: string): undefined;
+  popDebugGroup(): undefined;
+  insertDebugMarker(markerLabel: string): undefined;
   setPipeline(pipeline: GPUComputePipeline): undefined;
   dispatch(x: number, y?: number, z?: number): undefined;
   dispatchIndirect(
@@ -745,7 +807,7 @@ declare interface GPUComputePassEncoder
 
 declare interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {}
 
-declare interface GPURenderEncoderBase {
+interface GPURenderEncoderBase {
   setPipeline(pipeline: GPURenderPipeline): undefined;
 
   setIndexBuffer(
@@ -782,8 +844,56 @@ declare interface GPURenderEncoderBase {
   ): undefined;
 }
 
-declare interface GPURenderPassEncoder
-  extends GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
+declare class GPURenderPassEncoder
+  implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
+  label: string | null;
+  setBindGroup(
+    index: number,
+    bindGroup: GPUBindGroup,
+    dynamicOffsets?: number[],
+  ): undefined;
+  setBindGroup(
+    index: number,
+    bindGroup: GPUBindGroup,
+    dynamicOffsetsData: Uint32Array,
+    dynamicOffsetsDataStart: number,
+    dynamicOffsetsDataLength: number,
+  ): undefined;
+  pushDebugGroup(groupLabel: string): undefined;
+  popDebugGroup(): undefined;
+  insertDebugMarker(markerLabel: string): undefined;
+  setPipeline(pipeline: GPURenderPipeline): undefined;
+  setIndexBuffer(
+    buffer: GPUBuffer,
+    indexFormat: GPUIndexFormat,
+    offset?: number,
+    size?: number,
+  ): undefined;
+  setVertexBuffer(
+    slot: number,
+    buffer: GPUBuffer,
+    offset?: number,
+    size?: number,
+  ): undefined;
+  draw(
+    vertexCount: number,
+    instanceCount?: number,
+    firstVertex?: number,
+    firstInstance?: number,
+  ): undefined;
+  drawIndexed(
+    indexCount: number,
+    instanceCount?: number,
+    firstIndex?: number,
+    baseVertex?: number,
+    firstInstance?: number,
+  ): undefined;
+  drawIndirect(indirectBuffer: GPUBuffer, indirectOffset: number): undefined;
+  drawIndexedIndirect(
+    indirectBuffer: GPUBuffer,
+    indirectOffset: number,
+  ): undefined;
+
   setViewport(
     x: number,
     y: number,
@@ -848,12 +958,62 @@ declare type GPULoadOp = "load";
 
 declare type GPUStoreOp = "store" | "clear";
 
-declare interface GPURenderBundle extends GPUObjectBase {}
+declare class GPURenderBundle implements GPUObjectBase {
+  label: string | null;
+}
 
 declare interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase {}
 
-declare interface GPURenderBundleEncoder
-  extends GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
+declare class GPURenderBundleEncoder
+  implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
+  label: string | null;
+  draw(
+    vertexCount: number,
+    instanceCount?: number,
+    firstVertex?: number,
+    firstInstance?: number,
+  ): undefined;
+  drawIndexed(
+    indexCount: number,
+    instanceCount?: number,
+    firstIndex?: number,
+    baseVertex?: number,
+    firstInstance?: number,
+  ): undefined;
+  drawIndexedIndirect(
+    indirectBuffer: GPUBuffer,
+    indirectOffset: number,
+  ): undefined;
+  drawIndirect(indirectBuffer: GPUBuffer, indirectOffset: number): undefined;
+  insertDebugMarker(markerLabel: string): undefined;
+  popDebugGroup(): undefined;
+  pushDebugGroup(groupLabel: string): undefined;
+  setBindGroup(
+    index: number,
+    bindGroup: GPUBindGroup,
+    dynamicOffsets?: number[],
+  ): undefined;
+  setBindGroup(
+    index: number,
+    bindGroup: GPUBindGroup,
+    dynamicOffsetsData: Uint32Array,
+    dynamicOffsetsDataStart: number,
+    dynamicOffsetsDataLength: number,
+  ): undefined;
+  setIndexBuffer(
+    buffer: GPUBuffer,
+    indexFormat: GPUIndexFormat,
+    offset?: number,
+    size?: number,
+  ): undefined;
+  setPipeline(pipeline: GPURenderPipeline): undefined;
+  setVertexBuffer(
+    slot: number,
+    buffer: GPUBuffer,
+    offset?: number,
+    size?: number,
+  ): undefined;
+
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
 
@@ -864,7 +1024,9 @@ declare interface GPURenderBundleEncoderDescriptor
   sampleCount?: number;
 }
 
-declare interface GPUQueue extends GPUObjectBase {
+declare class GPUQueue implements GPUObjectBase {
+  label: string | null;
+
   submit(commandBuffers: GPUCommandBuffer[]): undefined;
 
   onSubmittedWorkDone(): Promise<undefined>;
@@ -885,7 +1047,9 @@ declare interface GPUQueue extends GPUObjectBase {
   ): undefined;
 }
 
-declare interface GPUQuerySet extends GPUObjectBase {
+declare class GPUQuerySet implements GPUObjectBase {
+  label: string | null;
+
   destroy(): undefined;
 }
 
