@@ -39,7 +39,8 @@ Examples of bad PR title:
 - update docs
 - fix bugs
 
-2. Ensure there is a related issue and it is referenced in the PR text (You don't want to duplicate effort).
+2. Ensure there is a related issue and it is referenced in the PR text (You
+   don't want to duplicate effort).
 3. Ensure there are tests that cover the changes.
 4. Ensure `cargo test` passes.
 5. Ensure `./tools/format.js` passes without changing files.
@@ -47,13 +48,13 @@ Examples of bad PR title:
 
 That's it! Thank you for your contribution!
 
-
 ## After your pull request is merged
 
-After your pull request is merged, you can safely delete your branch and pull the changes
-from the main (upstream) repository:
+After your pull request is merged, you can safely delete your branch and pull
+the changes from the main (upstream) repository:
 
-- Delete the remote branch on GitHub either through the GitHub web UI or your local shell as follows:
+- Delete the remote branch on GitHub either through the GitHub web UI or your
+  local shell as follows:
 
   ```shell
   git push origin --delete my-fix-branch
@@ -76,7 +77,7 @@ from the main (upstream) repository:
   ```shell
   git pull --ff upstream main
   ```
-   
+
 ## Adding Ops (aka bindings)
 
 We are very concerned about making mistakes when adding new APIs. When adding an
