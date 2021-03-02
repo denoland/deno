@@ -69,6 +69,7 @@ pub fn server_capabilities(
       work_done_progress_options: WorkDoneProgressOptions {
         work_done_progress: None,
       },
+      ..Default::default()
     }),
     signature_help_provider: Some(SignatureHelpOptions {
       trigger_characters: Some(vec![
