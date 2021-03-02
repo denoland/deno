@@ -85,19 +85,22 @@
     }
   }
 
-  // Determine when key is a crypto key pair.
-  function isKeyPair(key) {
-    return Boolean(key.privateKey);
-  }
-
   async function generateKey(algorithm, extractable, keyUsages) {
-    let { rid, key }= await core.jsonOpAsync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages });
+    let { rid, key } = await core.jsonOpAsync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages });
     return key.single ? new CryptoKey(key.single, rid) : new CryptoKeyPair(key.pair.privateKey, key.pair.publicKey, rid);
   }
 
   async function sign(algorithm, key, data) {
-    let rid = isKeyPair(key) ? key.privateKey[ridSymbol] : key[ridSymbol];
-    return await core.jsonOpAsync("op_webcrypto_sign_key", { rid, algorithm }, data).data;
+    let rid = key[ridSymbol];
+    let simpleParam = typeof algorithm == "string";
+
+    // Normalize params. We've got serde doing the null to Option serialization.
+    let saltLength = simpleParam ? null: algorithm.saltLength || null;
+    let hash = simpleParam ? null : algorithm.hash || null;
+    algorithm = simpleParam ? algorithm : algorithm.name;
+    
+    console.log(rid)
+    return await core.jsonOpAsync("op_webcrypto_sign_key", { rid, algorithm, saltLength, hash }, data).data;
   }
 
   const subtle = {

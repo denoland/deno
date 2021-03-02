@@ -1,4 +1,5 @@
 use ring::agreement::Algorithm as RingAlgorithm;
+use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
@@ -55,6 +56,17 @@ impl Into<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
       }
       // TODO: Not implemented but don't panic.
       WebCryptoNamedCurve::P521 => panic!(),
+    }
+  }
+}
+
+impl Into<HmacAlgorithm> for WebCryptoHash {
+  fn into(self) -> HmacAlgorithm {
+    match self {
+      WebCryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+      WebCryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
+      WebCryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
+      WebCryptoHash::Sha512 => ring::hmac::HMAC_SHA512,
     }
   }
 }

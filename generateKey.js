@@ -8,5 +8,13 @@ let key = await window.crypto.subtle.generateKey(
   true,
   ["encrypt", "decrypt"]
 );
+console.log(key)
+let enc = new TextEncoder();
+let encoded = enc.encode("Hey")
+let signature = await window.crypto.subtle.sign(
+  "RSA-OAEP",
+  key,
+  encoded
+);
 
-console.log(key);
+console.log(signature);

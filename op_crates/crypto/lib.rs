@@ -26,6 +26,7 @@ use rand::Rng;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::agreement::EphemeralPrivateKey;
 use ring::hmac::Key as HmacKey;
+use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
@@ -240,12 +241,7 @@ pub async fn op_webcrypto_generate_key(
       )
     }
     Algorithm::Hmac => {
-      let hash = match args.algorithm.hash.unwrap() {
-        WebCryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-        WebCryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
-        WebCryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
-        WebCryptoHash::Sha512 => ring::hmac::HMAC_SHA512,
-      };
+      let hash: HmacAlgorithm = args.algorithm.hash.unwrap().into();
       let rng = RingRand::SystemRandom::new();
       // TODO: change algorithm length when specified.
       let key = HmacKey::generate(hash, &rng)?;
@@ -254,7 +250,6 @@ pub async fn op_webcrypto_generate_key(
         crypto_key: crypto_key.clone(),
         key,
       };
-
       (
         state.resource_table.add(resource),
         JSCryptoKey::Single(crypto_key),
@@ -267,9 +262,12 @@ pub async fn op_webcrypto_generate_key(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct WebCryptoSignArg {
   rid: u32,
   algorithm: Algorithm,
+  salt_length: Option<u32>,
+  hash: Option<WebCryptoHash>,
 }
 
 pub async fn op_webcrypto_sign_key(
