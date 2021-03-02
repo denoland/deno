@@ -286,7 +286,10 @@ impl DiagnosticsServer {
             _ = &mut debounce => {
               if dirty {
                 dirty = false;
-                let snapshot = language_server.lock().await.snapshot();
+                let snapshot = {
+                  // make sure the lock drops
+                  language_server.lock().await.snapshot()
+                };
                 update_diagnostics(
                   &client,
                   &mut collection,
