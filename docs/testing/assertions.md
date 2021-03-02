@@ -22,6 +22,7 @@ The assertions module provides 10 assertions:
 - `assertArrayIncludes(actual: unknown[], expected: unknown[], msg?: string): void`
 - `assertMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertNotMatch(actual: string, expected: RegExp, msg?: string): void`
+- `assertObjectMatch( actual: Record<PropertyKey, unknown>, expected: Record<PropertyKey, unknown>): void`
 - `assertThrows(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
 - `assertThrowsAsync(fn: () => Promise<void>, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Promise<Error>`
 
@@ -136,6 +137,20 @@ Deno.test("Test Assert Not Match", () => {
 });
 ```
 
+### Object
+
+Use `assertObjectMatch` to check that a JavaScript object matches a subset of the properties of an object.
+
+```js
+// Simple subset
+assertObjectMatch(
+  { foo: true, bar: false },
+  {
+    foo: true,
+  }
+);
+```
+
 ### Throws
 
 There are two ways to assert whether something throws an error in Deno,
@@ -159,7 +174,7 @@ Deno.test("Test Assert Throws", () => {
       throw new Error("Panic!");
     },
     Error,
-    "Panic!",
+    "Panic!"
   );
 });
 ```
@@ -177,7 +192,7 @@ Deno.test("Test Assert Throws Async", () => {
       });
     },
     Error,
-    "Panic! Threw Error",
+    "Panic! Threw Error"
   );
 
   assertThrowsAsync(
@@ -185,7 +200,7 @@ Deno.test("Test Assert Throws Async", () => {
       return Promise.reject(new Error("Panic! Reject Error"));
     },
     Error,
-    "Panic! Reject Error",
+    "Panic! Reject Error"
   );
 });
 ```
