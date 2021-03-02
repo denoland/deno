@@ -2792,7 +2792,7 @@ mod tests {
           // the len can be variable since some of the parts of the language
           // server run in separate threads and may not add to performance by
           // the time the results are checked.
-          assert!(resp.result.averages.len() >= 9);
+          assert!(resp.result.averages.len() >= 6);
         }),
       ),
       (
