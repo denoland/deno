@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.9.1"
+version = "0.9.2"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,9 +20,9 @@ path = "examples/hello_runtime.rs"
 [build-dependencies]
 deno_core = { path = "../core", version = "0.80.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.14.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.22.1" }
-deno_web = { path = "../op_crates/web", version = "0.30.1" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.5.1" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.22.2" }
+deno_web = { path = "../op_crates/web", version = "0.30.2" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.5.2" }
 deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 
 [target.'cfg(windows)'.build-dependencies]
@@ -32,9 +32,9 @@ winapi = "0.3.9"
 [dependencies]
 deno_core = { path = "../core", version = "0.80.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.14.0" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.22.1" }
-deno_web = { path = "../op_crates/web", version = "0.30.1" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.5.1" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.22.2" }
+deno_web = { path = "../op_crates/web", version = "0.30.2" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.5.2" }
 deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.0" }
 
 atty = "0.2.14"
