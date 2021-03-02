@@ -70,7 +70,8 @@ impl DocFileLoader for module_graph::Graph {
     let specifier =
       resolve_url_or_path(specifier).expect("Expected valid specifier");
     let source = self.get_source(&specifier).expect("Unknown dependency");
-    let media_type = MediaType::from(&specifier);
+    let media_type =
+      self.get_media_type(&specifier).expect("Unknown media type");
     let syntax = ast::get_syntax(&media_type);
     async move { Ok((syntax, source)) }.boxed_local()
   }
