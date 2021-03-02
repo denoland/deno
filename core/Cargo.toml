@@ -1,7 +1,7 @@
 # Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "deno_core"
-version = "0.79.0"
+version = "0.80.1"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]
