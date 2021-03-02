@@ -56,7 +56,7 @@ jsonc-parser = "0.15.1"
 lazy_static = "1.4.0"
 libc = "0.2.86"
 log = { version = "0.4.14", features = ["serde"] }
-lspower = "0.6.1"
+lspower = "=0.6.1"
 notify = "5.0.0-pre.4"
 percent-encoding = "2.1.0"
 pin-project = "1.0.5"
