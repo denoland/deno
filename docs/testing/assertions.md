@@ -22,6 +22,7 @@ The assertions module provides 10 assertions:
 - `assertArrayIncludes(actual: unknown[], expected: unknown[], msg?: string): void`
 - `assertMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertNotMatch(actual: string, expected: RegExp, msg?: string): void`
+- `assertObjectMatch( actual: Record<PropertyKey, unknown>, expected: Record<PropertyKey, unknown>): void`
 - `assertThrows(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
 - `assertThrowsAsync(fn: () => Promise<void>, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Promise<Error>`
 
@@ -134,6 +135,21 @@ Deno.test("Test Assert Not Match", () => {
   const basicUrl = new RegExp("^https?://[a-z.]+.com$");
   assertNotMatch("https://deno.land/", basicUrl);
 });
+```
+
+### Object
+
+Use `assertObjectMatch` to check that a JavaScript object matches a subset of
+the properties of an object.
+
+```js
+// Simple subset
+assertObjectMatch(
+  { foo: true, bar: false },
+  {
+    foo: true,
+  },
+);
 ```
 
 ### Throws
