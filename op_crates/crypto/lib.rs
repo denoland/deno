@@ -25,8 +25,8 @@ use rand::thread_rng;
 use rand::Rng;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::agreement::EphemeralPrivateKey;
-use ring::hmac::Key as HmacKey;
 use ring::hmac::Algorithm as HmacAlgorithm;
+use ring::hmac::Key as HmacKey;
 use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
@@ -34,6 +34,8 @@ use rsa::padding::PaddingScheme;
 use rsa::BigUint;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
+use sha1::Sha1;
+use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -79,6 +81,7 @@ pub fn op_crypto_get_random_values(
 struct CryptoKeyPairResource<A, B> {
   crypto_key: WebCryptoKeyPair,
   key: CryptoKeyPair<A, B>,
+  hash: Option<WebCryptoHash>,
 }
 
 impl Resource for CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey> {
@@ -104,6 +107,7 @@ impl Resource
 struct CryptoKeyResource<K> {
   crypto_key: WebCryptoKey,
   key: K,
+  hash: Option<WebCryptoHash>,
 }
 
 impl Resource for CryptoKeyResource<HmacKey> {
@@ -180,6 +184,7 @@ pub async fn op_webcrypto_generate_key(
       let resource = CryptoKeyPairResource {
         crypto_key: crypto_key.clone(),
         key,
+        hash: args.algorithm.hash,
       };
       (
         state.resource_table.add(resource),
@@ -210,6 +215,7 @@ pub async fn op_webcrypto_generate_key(
       let resource = CryptoKeyPairResource {
         crypto_key: crypto_key.clone(),
         key,
+        hash: args.algorithm.hash,
       };
 
       (
@@ -233,6 +239,7 @@ pub async fn op_webcrypto_generate_key(
       let resource = CryptoKeyResource {
         crypto_key: crypto_key.clone(),
         key: private_key,
+        hash: args.algorithm.hash,
       };
 
       (
@@ -249,6 +256,7 @@ pub async fn op_webcrypto_generate_key(
       let resource = CryptoKeyResource {
         crypto_key: crypto_key.clone(),
         key,
+        hash: args.algorithm.hash,
       };
       (
         state.resource_table.add(resource),
@@ -293,6 +301,35 @@ pub async fn op_webcrypto_sign_key(
       // TODO(littledivy): Modify resource to store args from generateKey.
       // let hash = resource.crypto_key.private_key.hash;
       let padding = PaddingScheme::PKCS1v15Sign { hash: None };
+
+      // Sign data based on computed padding and return buffer
+      private_key.sign(padding, &data)?
+    }
+    Algorithm::RsaOaep => {
+      let resource = state
+        .resource_table
+        .get::<CryptoKeyPairResource<RSAPublicKey, RSAPrivateKey>>(args.rid)
+        .ok_or_else(bad_resource_id)?;
+
+      let private_key = &resource.key.private_key;
+
+      let rng = OsRng;
+      let salt_len = args.salt_length.unwrap() as usize;
+
+      let padding = match resource.hash.unwrap() {
+        WebCryptoHash::Sha1 => {
+          PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len)
+        }
+        WebCryptoHash::Sha256 => {
+          PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len)
+        }
+        WebCryptoHash::Sha384 => {
+          PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len)
+        }
+        WebCryptoHash::Sha512 => {
+          PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len)
+        }
+      };
 
       // Sign data based on computed padding and return buffer
       private_key.sign(padding, &data)?

@@ -18,4 +18,6 @@ deno_core = { version = "0.79.0", path = "../../core" }
 rand = "0.7.0"
 ring = { version = "0.16.20", features = ["std"] }
 rsa = { git = "https://github.com/RustCrypto/RSA", rev = "616b08d" }
+sha-1 = "0.9.4"
+sha2 = "0.9.3"
 serde = { version = "1.0.123", features = ["derive"] }
