@@ -24,27 +24,27 @@ jobs:
       ref: ${{ steps.release.outputs.ref }}
 
     steps:
-      - name: Configure git
+      - name: Configure Git
         run: git config --global core.symlinks true
 
-      - name: Clone repository
+      - name: Checkout Repository
         uses: actions/checkout@v2
         with:
           fetch-depth: 5
           submodules: true
 
-      - name: Get release info
+      - name: Get Commit Hash
         id: release
         run: echo "::set-output name=ref::$(git rev-parse HEAD)"
 
-      - name: Install rust
+      - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           default: true
           override: true
           toolchain: 1.50.0
 
-      - name: Configure canary build
+      - name: Configure Canary
         shell: bash
         run: echo 'DENO_CANARY=true' >> $GITHUB_ENV
 
@@ -55,21 +55,21 @@ jobs:
           command: build
           args: --locked --all-targets --release
 
-      - name: Prep linux release
+      - name: Zip Linux Build
         if: runner.os == 'Linux'
         working-directory: target/release
         run: |
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
 
-      - name: Prep mac release
+      - name: Zip MacOS Build
         if: runner.os == 'macOS'
         working-directory: target/release
         run: |
           zip -r deno-x86_64-apple-darwin.zip deno
           zip -r denort-x86_64-apple-darwin.zip denort
 
-      - name: Prep windows release
+      - name: Zip Windows Build
         if: runner.os == 'Windows'
         working-directory: target/release
         run: |
@@ -116,50 +116,50 @@ jobs:
       CARGO_TERM_COLOR: always
 
     steps:
-      - name: Configure git
+      - name: Configure Git
         run: git config --global core.symlinks true
 
-      - name: Clone repository
+      - name: Checkout Repository
         uses: actions/checkout@v2
         with:
           fetch-depth: 5
           submodules: true
 
-      - name: Get release info
+      - name: Get Release Tag
         id: release
         run: echo "::set-output name=ref::$(echo ${GITHUB_REF#refs/*/})"
 
-      - name: Create source tarball
+      - name: Create Source Tarball
         if: runner.os == 'Linux'
         run: |
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno
 
-      - name: Install rust
+      - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           default: true
           override: true
           toolchain: 1.50.0
 
-      - name: Install Deno
+      - name: Setup Deno
         run: |
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH
 
-      - name: Install Python
+      - name: Setup Python
         uses: actions/setup-python@v1
         with:
           python-version: "3.8"
           architecture: x64
 
-      - name: Install Node
+      - name: Setup Node
         uses: actions/setup-node@v2
         with:
           node-version: "14"
           check-latest: true
 
-      - name: Remove unused Python
+      - name: Remove Unused Python
         if: runner.os == 'Windows'
         run: |-
           $env:PATH -split ";" |
@@ -169,7 +169,7 @@ jobs:
 
       - name: Log versions
         run: |
-          node -v
+          node --version
           python --version
           rustc --version
           cargo --version
@@ -207,7 +207,7 @@ jobs:
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet ${{ matrix.kind == 'release' && '--release' || '' }}
 
-      - name: Prep linux release
+      - name: Zip Linux Build
         if: matrix.kind == 'release' && runner.os == 'Linux'
         working-directory: target/release
         run: |
@@ -215,14 +215,14 @@ jobs:
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
 
-      - name: Prep mac release
+      - name: Zip MacOS Build
         if: matrix.kind == 'release' && runner.os == 'macOS'
         working-directory: target/release
         run: |
           zip -r deno-x86_64-apple-darwin.zip deno
           zip -r denort-x86_64-apple-darwin.zip denort
 
-      - name: Prep windows release
+      - name: Zip Windows Build
         if: matrix.kind == 'release' && runner.os == 'Windows'
         working-directory: target/release
         run: |
@@ -253,15 +253,15 @@ jobs:
       CARGO_TERM_COLOR: always
 
     steps:
-      - name: Configure git
+      - name: Configure Git
         run: git config --global core.symlinks true
 
-      - name: Clone repository
+      - name: Checkout Repository
         uses: actions/checkout@v2
         with:
           submodules: true
 
-      - name: Install rust
+      - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.50.0
@@ -269,7 +269,7 @@ jobs:
           override: true
           components: rustfmt, clippy
 
-      - name: Install Deno
+      - name: Setup Deno
         run: |
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH
@@ -294,33 +294,33 @@ jobs:
       CARGO_TERM_COLOR: always
 
     steps:
-      - name: Configure git
+      - name: Configure Git
         run: git config --global core.symlinks true
 
-      - name: Clone repository
+      - name: Checkout Repository
         uses: actions/checkout@v2
         with:
           submodules: true
 
-      - name: Install rust
+      - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           default: true
           override: true
           toolchain: 1.50.0
 
-      - name: Install Deno
+      - name: Setup Deno
         run: |
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH
 
-      - name: Install Python
+      - name: Setup Python
         uses: actions/setup-python@v1
         with:
           python-version: "3.8"
           architecture: x64
 
-      - name: Install Node
+      - name: Setup Node
         uses: actions/setup-node@v2
         with:
           node-version: "14"
@@ -328,7 +328,7 @@ jobs:
 
       - name: Log versions
         run: |
-          node -v
+          node --version
           python --version
           rustc --version
           cargo --version
@@ -385,7 +385,7 @@ jobs:
           name: canary
           path: ./canary
 
-      - name: Setup gcloud
+      - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
@@ -412,7 +412,7 @@ jobs:
           name: stable
           path: ./stable
 
-      - name: Setup gcloud
+      - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: denoland
