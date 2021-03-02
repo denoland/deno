@@ -97,6 +97,14 @@ jobs:
       fail-fast: false
       matrix:
         kind: ["debug", "release"]
+        # TODO(ry) Ideally we would use ubuntu-latest-xl for test/debug/*,
+        # but there are race conditions in our test we are working around by
+        # using the slower runner.
+
+        # Warning: Do not upgrade test/release/* to newer version of ubuntu
+        # runners. We need to link against older version of glibc in order to
+        # run on older systems. glibc in 20.04 is not compatible with 18.04.
+        # See #9484.
         os:
           - ubuntu-18.04
           - windows-2019
@@ -246,6 +254,8 @@ jobs:
           retention-days: 7
 
   lint:
+    # TODO(ry) Ideally we could use ubuntu-latest-xl for lint but there's
+    # a bug with dprint that is preventing this from running.
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
