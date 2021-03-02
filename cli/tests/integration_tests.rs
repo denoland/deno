@@ -1473,7 +1473,7 @@ mod integration {
     assert!(std::str::from_utf8(&output.stdout)
       .unwrap()
       .trim()
-      .ends_with("f1\nf2"));
+      .ends_with("f2\nf1"));
     assert_eq!(output.stderr, b"");
   }
 
