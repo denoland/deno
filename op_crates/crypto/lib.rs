@@ -29,11 +29,10 @@ use ring::hmac::Key as HmacKey;
 use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
-use ring::signature::KeyPair;
-use rsa::algorithms::generate_multi_prime_key;
 use rsa::padding::PaddingScheme;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
+use rsa::BigUint;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -42,7 +41,6 @@ mod key;
 
 use crate::key::Algorithm;
 use crate::key::CryptoKeyPair;
-use crate::key::KeyType;
 use crate::key::KeyUsage;
 use crate::key::WebCryptoHash;
 use crate::key::WebCryptoKey;
@@ -117,10 +115,10 @@ impl Resource for CryptoKeyResource<HmacKey> {
 #[serde(rename_all = "camelCase")]
 struct WebCryptoAlgorithmArg {
   name: Algorithm,
-  public_exponent: u32,
-  modulus_length: u32,
+  public_exponent: Option<u32>,
+  modulus_length: Option<u32>,
   hash: Option<WebCryptoHash>,
-  // length: Option<u32>
+  length: Option<u32>,
   named_curve: Option<WebCryptoNamedCurve>,
 }
 
@@ -145,8 +143,6 @@ pub async fn op_webcrypto_generate_key(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let args: WebCryptoGenerateKeyArg = serde_json::from_value(args)?;
-  let exponent = args.algorithm.public_exponent;
-  let bits = args.algorithm.modulus_length;
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
 
@@ -154,10 +150,13 @@ pub async fn op_webcrypto_generate_key(
 
   let (rid, js_key) = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
+      let exp = args.algorithm.public_exponent.unwrap();
+      let modulus_length = args.algorithm.modulus_length.unwrap();
+      let exponent = BigUint::from(exp);
+
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
-      let private_key =
-        generate_multi_prime_key(&mut rng, exponent as usize, bits as usize)?;
+      let private_key = RSAPrivateKey::new_with_exp(&mut rng, modulus_length as usize, &exponent)?;
       // Extract public key from private key.
       let public_key = private_key.to_public_key();
 

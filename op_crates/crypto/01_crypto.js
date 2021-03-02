@@ -41,14 +41,42 @@
     return arrayBufferView;
   }
 
-  // Just for storing the rid for a crypto key.
-  class CryptoKey {    
+  // Represents a rid in a CryptoKey instance.
+  const ridSymbol = Symbol();
+
+  // The CryptoKey class. A JavaScript representation of a WebCrypto key.
+  // Stores rid of the actual key along with read-only properties.
+  class CryptoKey {
+    #usages
+    #extractable
+    #algorithm
+    #keyType
+
     constructor(key) {
-      this.usages = key.usages;
-      this.extractable = key.extractable;
-      this.algorithm = key.algorithm;
-      this.keyType = key.keyType;
-      this.rid = key.rid;
+      // The key is serailized from an Enum in the Rust-side. 
+      // Therefore, we flatten it here.
+      let key = key.pair || key.single;
+      this.#usages = key.usages;
+      this.#extractable = key.extractable;
+      this.#algorithm = key.algorithm;
+      this.#keyType = key.keyType;
+      this[ridSymbol] = key.rid;
+    }
+
+    get usages() {
+      return this.#usages;
+    }
+
+    get extractable() {
+      return this.#extractable;
+    }
+
+    get algorithm() {
+      return this.#algorithm;
+    }
+
+    get keyType() {
+      return this.#keyType;
     }
   }
 
@@ -61,20 +89,19 @@
     return await core.jsonOpAsync("op_webcrypto_sign_key", { rid, algorithm }, data).data;
   }
 
+  const subtle = {
+    generateKey,
+    sign,
+  };
+
   window.crypto = {
     getRandomValues,
-    subtle: {
-      generateKey,
-      sign,
-    }
+    subtle,
   };
   window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.crypto = {
     getRandomValues,
     generateKey,
-    subtle: {
-      generateKey,
-      sign,
-    }
+    subtle,
   };
 })(this);
