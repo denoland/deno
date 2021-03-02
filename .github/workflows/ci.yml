@@ -76,6 +76,8 @@ jobs:
         with:
           rust-version: 1.50.0
 
+      - uses: Swatinem/rust-cache@v1
+
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
         run: |
