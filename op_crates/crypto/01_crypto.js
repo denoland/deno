@@ -52,15 +52,12 @@
     #algorithm
     #keyType
 
-    constructor(key) {
-      // The key is serailized from an Enum in the Rust-side. 
-      // Therefore, we flatten it here.
-      let key = key.pair || key.single;
+    constructor(key, rid) {
       this.#usages = key.usages;
       this.#extractable = key.extractable;
       this.#algorithm = key.algorithm;
       this.#keyType = key.keyType;
-      this[ridSymbol] = key.rid;
+      this[ridSymbol] = rid;
     }
 
     get usages() {
@@ -80,12 +77,26 @@
     }
   }
 
+  class CryptoKeyPair {
+    constructor(privateKey, publicKey, rid) {
+      this.privateKey = new CryptoKey(privateKey);
+      this.publicKey = new CryptoKey(publicKey);
+      this[ridSymbol] = rid;
+    }
+  }
+
+  // Determine when key is a crypto key pair.
+  function isKeyPair(key) {
+    return Boolean(key.privateKey);
+  }
+
   async function generateKey(algorithm, extractable, keyUsages) {
-    return new CryptoKey(await core.jsonOpAsync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages }))
+    let { rid, key }= await core.jsonOpAsync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages });
+    return key.single ? new CryptoKey(key.single, rid) : new CryptoKeyPair(key.pair.privateKey, key.pair.publicKey, rid);
   }
 
   async function sign(algorithm, key, data) {
-    let rid = key.rid;
+    let rid = isKeyPair(key) ? key.privateKey[ridSymbol] : key[ridSymbol];
     return await core.jsonOpAsync("op_webcrypto_sign_key", { rid, algorithm }, data).data;
   }
 

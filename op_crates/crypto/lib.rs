@@ -30,9 +30,9 @@ use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
+use rsa::BigUint;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
-use rsa::BigUint;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -156,7 +156,11 @@ pub async fn op_webcrypto_generate_key(
 
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
-      let private_key = RSAPrivateKey::new_with_exp(&mut rng, modulus_length as usize, &exponent)?;
+      let private_key = RSAPrivateKey::new_with_exp(
+        &mut rng,
+        modulus_length as usize,
+        &exponent,
+      )?;
       // Extract public key from private key.
       let public_key = private_key.to_public_key();
 
