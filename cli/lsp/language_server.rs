@@ -119,11 +119,7 @@ impl Inner {
     let sources = Sources::new(&location);
     let ts_server = Arc::new(TsServer::new());
     let performance = Performance::default();
-    let diagnostics_server = diagnostics::DiagnosticsServer::new(
-      client.clone(),
-      ts_server.clone(),
-      performance.clone(),
-    );
+    let diagnostics_server = diagnostics::DiagnosticsServer::new();
 
     Self {
       assets: Default::default(),
@@ -248,7 +244,7 @@ impl Inner {
     }
   }
 
-  fn snapshot(&self) -> StateSnapshot {
+  pub(crate) fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
       config: self.config.clone(),
@@ -526,8 +522,7 @@ impl Inner {
     self.analyze_dependencies(&specifier, &params.text_document.text);
     self.performance.measure(mark);
 
-    // TODO(@kitsonk): how to better lazily do this?
-    if let Err(err) = self.diagnostics_server.update(self.snapshot()) {
+    if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
   }
@@ -546,7 +541,7 @@ impl Inner {
     }
     self.performance.measure(mark);
 
-    if let Err(err) = self.diagnostics_server.update(self.snapshot()) {
+    if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
   }
@@ -564,7 +559,7 @@ impl Inner {
     self.navigation_trees.remove(&specifier);
 
     self.performance.measure(mark);
-    if let Err(err) = self.diagnostics_server.update(self.snapshot()) {
+    if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
   }
@@ -612,7 +607,7 @@ impl Inner {
           .show_message(MessageType::Warning, err.to_string())
           .await;
       }
-      if let Err(err) = self.diagnostics_server.update(self.snapshot()) {
+      if let Err(err) = self.diagnostics_server.update() {
         error!("{}", err);
       }
     } else {
@@ -1608,7 +1603,17 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    self.0.lock().await.initialize(params).await
+    let mut language_server = self.0.lock().await;
+    let client = language_server.client.clone();
+    let ts_server = language_server.ts_server.clone();
+    let performance = language_server.performance.clone();
+    language_server.diagnostics_server.start(
+      self.0.clone(),
+      client,
+      ts_server,
+      performance,
+    );
+    language_server.initialize(params).await
   }
 
   async fn initialized(&self, params: InitializedParams) {
@@ -1801,13 +1806,10 @@ impl Inner {
         })?;
     }
 
-    self
-      .diagnostics_server
-      .update(self.snapshot())
-      .map_err(|err| {
-        error!("{}", err);
-        LspError::internal_error()
-      })?;
+    self.diagnostics_server.update().map_err(|err| {
+      error!("{}", err);
+      LspError::internal_error()
+    })?;
     self.performance.measure(mark);
     Ok(true)
   }

@@ -3,7 +3,7 @@
 use super::analysis::get_lint_references;
 use super::analysis::references_to_diagnostics;
 use super::analysis::ResolvedDependency;
-use super::language_server::StateSnapshot;
+use super::language_server;
 use super::performance::Performance;
 use super::tsc;
 
@@ -11,6 +11,7 @@ use crate::diagnostics;
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 
+use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -26,7 +27,8 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time;
 
-const DIAGNOSTIC_DEBOUNCE_MS: u64 = 100;
+// 150ms between keystrokes is about 45 WPM.
+const DIAGNOSTIC_DEBOUNCE_MS: u64 = 200;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum DiagnosticSource {
@@ -43,7 +45,7 @@ enum DiagnosticRequest {
     oneshot::Sender<Vec<lsp::Diagnostic>>,
   ),
   Invalidate(ModuleSpecifier),
-  Update(StateSnapshot),
+  Update,
 }
 
 /// Given a client and a diagnostics collection, publish the appropriate changes
@@ -51,7 +53,7 @@ enum DiagnosticRequest {
 async fn publish_diagnostics(
   client: &Client,
   collection: &mut DiagnosticCollection,
-  snapshot: &StateSnapshot,
+  snapshot: &language_server::StateSnapshot,
   performance: &Performance,
 ) {
   let mark = performance.mark("publish_diagnostics");
@@ -96,7 +98,7 @@ async fn publish_diagnostics(
 async fn update_diagnostics(
   client: &Client,
   collection: &mut DiagnosticCollection,
-  snapshot: &StateSnapshot,
+  snapshot: &language_server::StateSnapshot,
   ts_server: &tsc::TsServer,
   performance: &Performance,
 ) {
@@ -204,7 +206,7 @@ async fn update_diagnostics(
 fn handle_request(
   maybe_request: Option<DiagnosticRequest>,
   collection: &mut DiagnosticCollection,
-  maybe_snapshot: &mut Option<StateSnapshot>,
+  dirty: &mut bool,
 ) -> bool {
   match maybe_request {
     Some(request) => {
@@ -221,7 +223,7 @@ fn handle_request(
         DiagnosticRequest::Invalidate(specifier) => {
           collection.invalidate(&specifier)
         }
-        DiagnosticRequest::Update(snapshot) => *maybe_snapshot = Some(snapshot),
+        DiagnosticRequest::Update => *dirty = true,
       }
       true
     }
@@ -232,15 +234,25 @@ fn handle_request(
 /// A server which calculates diagnostics in its own thread and publishes them
 /// to an LSP client.
 #[derive(Debug)]
-pub struct DiagnosticsServer(mpsc::UnboundedSender<DiagnosticRequest>);
+pub(crate) struct DiagnosticsServer(
+  Option<mpsc::UnboundedSender<DiagnosticRequest>>,
+);
 
 impl DiagnosticsServer {
-  pub fn new(
+  pub(crate) fn new() -> Self {
+    Self(None)
+  }
+
+  pub(crate) fn start(
+    &mut self,
+    language_server: Arc<tokio::sync::Mutex<language_server::Inner>>,
     client: Client,
     ts_server: Arc<tsc::TsServer>,
     performance: Performance,
-  ) -> Self {
+  ) {
     let (tx, mut rx) = mpsc::unbounded_channel::<DiagnosticRequest>();
+    self.0 = Some(tx);
+
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
       let mut collection = DiagnosticCollection::default();
@@ -249,13 +261,13 @@ impl DiagnosticsServer {
         // Some(snapshot) is the flag we use to determine if something has
         // changed where we will wait for the timeout of changes or a request
         // that forces us to update diagnostics
-        let mut maybe_snapshot: Option<StateSnapshot> = None;
+        let mut dirty = false;
 
         loop {
           let next = rx.recv();
           tokio::pin!(next);
 
-          let duration = if maybe_snapshot.is_some() {
+          let duration = if dirty {
             time::Duration::from_millis(DIAGNOSTIC_DEBOUNCE_MS)
           } else {
             // we need to await an arbitrary silly amount of time, so this is
@@ -272,24 +284,24 @@ impl DiagnosticsServer {
           // recent snapshot, thereby "abandoning" any interim states.
           tokio::select! {
             _ = &mut debounce => {
-              if let Some(snapshot) = maybe_snapshot {
-                maybe_snapshot = None;
+              if dirty {
+                dirty = false;
+                let snapshot = language_server.lock().await.snapshot();
                 update_diagnostics(
                   &client,
                   &mut collection,
                   &snapshot,
                   &ts_server,
-                  &performance,
-                )
-                .await;
+                  &performance
+                ).await;
               }
               let maybe_request = next.await;
-              if !handle_request(maybe_request, &mut collection, &mut maybe_snapshot) {
+              if !handle_request(maybe_request, &mut collection, &mut dirty) {
                 break;
               }
             }
             maybe_request = &mut next => {
-              if !handle_request(maybe_request, &mut collection, &mut maybe_snapshot) {
+              if !handle_request(maybe_request, &mut collection, &mut dirty) {
                 break;
               }
             }
@@ -297,8 +309,6 @@ impl DiagnosticsServer {
         }
       })
     });
-
-    Self(tx)
   }
 
   pub async fn get(
@@ -307,22 +317,29 @@ impl DiagnosticsServer {
     source: DiagnosticSource,
   ) -> Result<Vec<lsp::Diagnostic>, AnyError> {
     let (tx, rx) = oneshot::channel::<Vec<lsp::Diagnostic>>();
-    self.0.send(DiagnosticRequest::Get(specifier, source, tx))?;
-    rx.await.map_err(|err| err.into())
+    if let Some(self_tx) = &self.0 {
+      self_tx.send(DiagnosticRequest::Get(specifier, source, tx))?;
+      rx.await.map_err(|err| err.into())
+    } else {
+      Err(anyhow!("diagnostic server not started"))
+    }
   }
 
   pub fn invalidate(&self, specifier: ModuleSpecifier) -> Result<(), AnyError> {
-    self
-      .0
-      .send(DiagnosticRequest::Invalidate(specifier))
-      .map_err(|err| err.into())
+    if let Some(tx) = &self.0 {
+      tx.send(DiagnosticRequest::Invalidate(specifier))
+        .map_err(|err| err.into())
+    } else {
+      Err(anyhow!("diagnostic server not started"))
+    }
   }
 
-  pub fn update(&self, snapshot: StateSnapshot) -> Result<(), AnyError> {
-    self
-      .0
-      .send(DiagnosticRequest::Update(snapshot))
-      .map_err(|err| err.into())
+  pub fn update(&self) -> Result<(), AnyError> {
+    if let Some(tx) = &self.0 {
+      tx.send(DiagnosticRequest::Update).map_err(|err| err.into())
+    } else {
+      Err(anyhow!("diagnostic server not started"))
+    }
   }
 }
 
@@ -380,7 +397,7 @@ pub type DiagnosticVec =
   Vec<(ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>)>;
 
 async fn generate_lint_diagnostics(
-  state_snapshot: StateSnapshot,
+  state_snapshot: language_server::StateSnapshot,
   collection: DiagnosticCollection,
 ) -> DiagnosticVec {
   tokio::task::spawn_blocking(move || {
@@ -531,7 +548,7 @@ fn ts_json_to_diagnostics(
 }
 
 async fn generate_ts_diagnostics(
-  state_snapshot: StateSnapshot,
+  state_snapshot: language_server::StateSnapshot,
   collection: DiagnosticCollection,
   ts_server: &tsc::TsServer,
 ) -> Result<DiagnosticVec, AnyError> {
@@ -562,7 +579,7 @@ async fn generate_ts_diagnostics(
 }
 
 async fn generate_dependency_diagnostics(
-  mut state_snapshot: StateSnapshot,
+  mut state_snapshot: language_server::StateSnapshot,
   collection: DiagnosticCollection,
 ) -> Result<DiagnosticVec, AnyError> {
   tokio::task::spawn_blocking(move || {
