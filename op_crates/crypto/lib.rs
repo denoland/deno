@@ -356,7 +356,7 @@ pub async fn op_webcrypto_sign_key(
       // Sign data based on computed padding and return buffer
       private_key.sign(padding, &data)?
     }
-    Algorithm::RsaOaep => {
+    Algorithm::RsaPss => {
       let resource = state
         .resource_table
         .get::<CryptoKeyResource<RSAPrivateKey>>(args.rid)

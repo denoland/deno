@@ -87,6 +87,7 @@
     // A DOMError.
     if(err) throw new Error(err);
 
+    console.log(key);
     return key.single
       ? new CryptoKey(key.single.key, key.single.rid)
       : {
@@ -104,7 +105,6 @@
     let hash = simpleParam ? null : algorithm.hash || null;
     algorithm = simpleParam ? algorithm : algorithm.name;
 
-    console.log(rid);
     return await core.jsonOpAsync("op_webcrypto_sign_key", {
       rid,
       algorithm,

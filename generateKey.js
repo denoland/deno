@@ -6,7 +6,7 @@ let key = await window.crypto.subtle.generateKey(
     hash: "SHA-256"
   },
   true,
-  ["encrypt", "decrypt"]
+  ["sign", "verify"]
 );
 console.log(key)
 let enc = new TextEncoder();
