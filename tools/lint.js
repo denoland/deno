@@ -26,6 +26,7 @@ async function dlint() {
     ":!:cli/dts/**",
     ":!:cli/tests/encoding/**",
     ":!:cli/tests/error_syntax.js",
+    ":!:cli/tests/unit/**",
     ":!:cli/tests/lint/**",
     ":!:cli/tests/tsc/**",
     ":!:cli/tsc/*typescript.js",

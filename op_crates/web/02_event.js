@@ -1204,6 +1204,7 @@
   window.removeEventListener = EventTarget.prototype.removeEventListener;
   window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.eventTarget = {
+    EventTarget,
     setEventTargetData,
   };
   window.__bootstrap.event = {

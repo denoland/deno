@@ -1,12 +1,12 @@
 local: [WILDCARD]info_recursive_imports_test.ts
 type: TypeScript
-deps: 4 unique (total [WILDCARD])
+dependencies: 4 unique (total [WILDCARD])
 
 file://[WILDCARD]cli/tests/info_recursive_imports_test.ts ([WILDCARD])
 └─┬ file://[WILDCARD]cli/tests/recursive_imports/A.ts ([WILDCARD])
   ├─┬ file://[WILDCARD]cli/tests/recursive_imports/B.ts ([WILDCARD])
   │ ├─┬ file://[WILDCARD]cli/tests/recursive_imports/C.ts ([WILDCARD])
   │ │ ├── file://[WILDCARD]cli/tests/recursive_imports/A.ts *
-  │ │ └── file://[WILDCARD]cli/tests/recursive_imports/common.ts [WILDCARD]
-  │ └── file://[WILDCARD]cli/tests/recursive_imports/common.ts [WILDCARD]
-  └── file://[WILDCARD]cli/tests/recursive_imports/common.ts [WILDCARD]
+  │ │ └── file://[WILDCARD]cli/tests/recursive_imports/common.ts ([WILDCARD])
+  │ └── file://[WILDCARD]cli/tests/recursive_imports/common.ts *
+  └── file://[WILDCARD]cli/tests/recursive_imports/common.ts *

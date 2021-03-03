@@ -44,12 +44,10 @@ mod tsc_config;
 mod version;
 
 use crate::file_fetcher::File;
-use crate::file_fetcher::FileFetcher;
 use crate::file_watcher::ModuleResolutionResult;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::fmt_errors::PrettyJsError;
-use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
 use crate::program_state::exit_unstable;
@@ -67,8 +65,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
-use deno_doc as doc;
-use deno_doc::parser::DocFileLoader;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::web_worker::WebWorker;
@@ -230,7 +226,9 @@ pub fn create_main_worker(
   worker
 }
 
-fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
+pub fn write_to_stdout_ignore_sigpipe(
+  bytes: &[u8],
+) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
 
   match std::io::stdout().write_all(bytes) {
@@ -242,7 +240,7 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
+pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
 where
   T: ?Sized + serde::ser::Serialize,
 {
@@ -280,12 +278,13 @@ fn print_cache_info(
   }
 }
 
-fn get_types(unstable: bool) -> String {
+pub fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}\n{}\n{}",
     crate::tsc::DENO_NS_LIB,
     crate::tsc::DENO_WEB_LIB,
     crate::tsc::DENO_FETCH_LIB,
+    crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
@@ -389,11 +388,11 @@ async fn info_command(
     let info = graph.info()?;
 
     if json {
-      write_json_to_stdout(&json!(info))?;
+      write_json_to_stdout(&json!(info))
     } else {
-      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())?;
+      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())
+        .map_err(|err| err.into())
     }
-    Ok(())
   } else {
     // If it was just "deno info" print location of caches and exit
     print_cache_info(&program_state, json)
@@ -421,7 +420,7 @@ async fn install_command(
   tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
-async fn language_server_command() -> Result<(), AnyError> {
+async fn lsp_command() -> Result<(), AnyError> {
   lsp::start().await
 }
 
@@ -686,59 +685,6 @@ async fn bundle_command(
   Ok(())
 }
 
-struct DocLoader {
-  fetcher: FileFetcher,
-  maybe_import_map: Option<ImportMap>,
-}
-
-impl DocFileLoader for DocLoader {
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &str,
-  ) -> Result<String, doc::DocError> {
-    let maybe_resolved =
-      if let Some(import_map) = self.maybe_import_map.as_ref() {
-        import_map
-          .resolve(specifier, referrer)
-          .map_err(|e| doc::DocError::Resolve(e.to_string()))?
-      } else {
-        None
-      };
-
-    let resolved_specifier = if let Some(resolved) = maybe_resolved {
-      resolved
-    } else {
-      deno_core::resolve_import(specifier, referrer)
-        .map_err(|e| doc::DocError::Resolve(e.to_string()))?
-    };
-
-    Ok(resolved_specifier.to_string())
-  }
-
-  fn load_source_code(
-    &self,
-    specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
-    let fetcher = self.fetcher.clone();
-    let specifier =
-      resolve_url_or_path(specifier).expect("Expected valid specifier");
-    async move {
-      let source_file = fetcher
-        .fetch(&specifier, &Permissions::allow_all())
-        .await
-        .map_err(|e| {
-          doc::DocError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-          ))
-        })?;
-      Ok(source_file.source)
-    }
-    .boxed_local()
-  }
-}
-
 async fn doc_command(
   flags: Flags,
   source_file: Option<String>,
@@ -746,64 +692,7 @@ async fn doc_command(
   maybe_filter: Option<String>,
   private: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
-  let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
-
-  let loader = Box::new(DocLoader {
-    fetcher: program_state.file_fetcher.clone(),
-    maybe_import_map: program_state.maybe_import_map.clone(),
-  });
-  let doc_parser = doc::DocParser::new(loader, private);
-
-  let parse_result = if source_file == "--builtin" {
-    let syntax = ast::get_syntax(&MediaType::Dts);
-    doc_parser.parse_source(
-      "lib.deno.d.ts",
-      syntax,
-      get_types(flags.unstable).as_str(),
-    )
-  } else {
-    let path = PathBuf::from(&source_file);
-    let media_type = MediaType::from(&path);
-    let syntax = ast::get_syntax(&media_type);
-    let module_specifier = resolve_url_or_path(&source_file).unwrap();
-    doc_parser
-      .parse_with_reexports(&module_specifier.to_string(), syntax)
-      .await
-  };
-
-  let mut doc_nodes = match parse_result {
-    Ok(nodes) => nodes,
-    Err(e) => {
-      eprintln!("{}", e);
-      std::process::exit(1);
-    }
-  };
-
-  if json {
-    write_json_to_stdout(&doc_nodes)
-  } else {
-    doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
-    let details = if let Some(filter) = maybe_filter {
-      let nodes =
-        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
-      if nodes.is_empty() {
-        eprintln!("Node {} was not found!", filter);
-        std::process::exit(1);
-      }
-      format!(
-        "{}",
-        doc::DocPrinter::new(&nodes, colors::use_color(), private)
-      )
-    } else {
-      format!(
-        "{}",
-        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
-      )
-    };
-
-    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(AnyError::from)
-  }
+  tools::doc::print_docs(flags, source_file, json, maybe_filter, private).await
 }
 
 async fn format_command(
@@ -989,7 +878,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
-    exit_unstable("compile");
+    exit_unstable("coverage");
   }
 
   if files.is_empty() {
@@ -1117,6 +1006,8 @@ fn init_logger(maybe_level: Option<Level>) {
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", LevelFilter::Off)
+  // wgpu backend crates (gfx_backend), have a lot of useless INFO and WARN logs
+  .filter_module("gfx", LevelFilter::Error)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {
@@ -1194,7 +1085,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::LanguageServer => language_server_command().boxed_local(),
+    DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,
