@@ -354,7 +354,8 @@ async fn compile_command(
 
   info!("{} {}", colors::green("Emit"), output.display());
 
-  tools::standalone::write_standalone_binary(output.clone(), final_bin).await?;
+  tools::standalone::write_standalone_binary(output.clone(), target, final_bin)
+    .await?;
 
   Ok(())
 }

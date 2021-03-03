@@ -130,9 +130,15 @@ pub fn create_standalone_binary(
 pub async fn write_standalone_binary(
   output: PathBuf,
   final_bin: Vec<u8>,
+  target: Option<String>,
 ) -> Result<(), AnyError> {
   let output =
     if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
+      if let Some(target) = target {
+        if !target.contains("windows") {
+          output
+        }
+      }
       PathBuf::from(output.display().to_string() + ".exe")
     } else {
       output
