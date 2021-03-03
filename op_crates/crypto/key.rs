@@ -1,8 +1,10 @@
+use crate::error::WebCryptoError;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
+use std::convert::TryInto;
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -34,28 +36,30 @@ pub enum WebCryptoNamedCurve {
   P521,
 }
 
-impl Into<&RingAlgorithm> for WebCryptoNamedCurve {
-  fn into(self) -> &'static RingAlgorithm {
+impl TryInto<&RingAlgorithm> for WebCryptoNamedCurve {
+  type Error = WebCryptoError;
+
+  fn try_into(self) -> Result<&'static RingAlgorithm, Self::Error> {
     match self {
-      WebCryptoNamedCurve::P256 => &ring::agreement::ECDH_P256,
-      WebCryptoNamedCurve::P384 => &ring::agreement::ECDH_P384,
-      // XXX: Not implemented.
-      WebCryptoNamedCurve::P521 => panic!(),
+      WebCryptoNamedCurve::P256 => Ok(&ring::agreement::ECDH_P256),
+      WebCryptoNamedCurve::P384 => Ok(&ring::agreement::ECDH_P384),
+      WebCryptoNamedCurve::P521 => Err(WebCryptoError::Unsupported),
     }
   }
 }
 
-impl Into<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
-  fn into(self) -> &'static EcdsaSigningAlgorithm {
+impl TryInto<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
+  type Error = WebCryptoError;
+
+  fn try_into(self) -> Result<&'static EcdsaSigningAlgorithm, Self::Error> {
     match self {
       WebCryptoNamedCurve::P256 => {
-        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
+        Ok(&ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING)
       }
       WebCryptoNamedCurve::P384 => {
-        &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
+        Ok(&ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING)
       }
-      // TODO: Not implemented but don't panic.
-      WebCryptoNamedCurve::P521 => panic!(),
+      WebCryptoNamedCurve::P521 => Err(WebCryptoError::Unsupported),
     }
   }
 }
@@ -165,11 +169,6 @@ impl WebCryptoKeyPair {
       private_key,
     }
   }
-}
-
-pub struct CryptoKeyPair<A, B> {
-  pub public_key: A,
-  pub private_key: B,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

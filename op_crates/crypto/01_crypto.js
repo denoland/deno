@@ -47,10 +47,10 @@
   // The CryptoKey class. A JavaScript representation of a WebCrypto key.
   // Stores rid of the actual key along with read-only properties.
   class CryptoKey {
-    #usages
-    #extractable
-    #algorithm
-    #keyType
+    #usages;
+    #extractable;
+    #algorithm;
+    #keyType;
 
     constructor(key, rid) {
       this.#usages = key.usages;
@@ -77,17 +77,18 @@
     }
   }
 
-  class CryptoKeyPair {
-    constructor(privateKey, publicKey, rid) {
-      this.privateKey = new CryptoKey(privateKey);
-      this.publicKey = new CryptoKey(publicKey);
-      this[ridSymbol] = rid;
-    }
-  }
-
   async function generateKey(algorithm, extractable, keyUsages) {
-    let { rid, key } = await core.jsonOpAsync("op_webcrypto_generate_key", { algorithm, extractable, keyUsages });
-    return key.single ? new CryptoKey(key.single, rid) : new CryptoKeyPair(key.pair.privateKey, key.pair.publicKey, rid);
+    let { key } = await core.jsonOpAsync("op_webcrypto_generate_key", {
+      algorithm,
+      extractable,
+      keyUsages,
+    });
+    return key.single
+      ? new CryptoKey(key.single.key, key.single.rid)
+      : {
+        privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.rid),
+        publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.rid),
+      };
   }
 
   async function sign(algorithm, key, data) {
@@ -95,12 +96,17 @@
     let simpleParam = typeof algorithm == "string";
 
     // Normalize params. We've got serde doing the null to Option serialization.
-    let saltLength = simpleParam ? null: algorithm.saltLength || null;
+    let saltLength = simpleParam ? null : algorithm.saltLength || null;
     let hash = simpleParam ? null : algorithm.hash || null;
     algorithm = simpleParam ? algorithm : algorithm.name;
-    
-    console.log(rid)
-    return await core.jsonOpAsync("op_webcrypto_sign_key", { rid, algorithm, saltLength, hash }, data).data;
+
+    console.log(rid);
+    return await core.jsonOpAsync("op_webcrypto_sign_key", {
+      rid,
+      algorithm,
+      saltLength,
+      hash,
+    }, data).data;
   }
 
   const subtle = {
