@@ -142,6 +142,7 @@ pub async fn write_standalone_binary(
     }
     None => {
       if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
+        PathBuf::from(output.display().to_string() + ".exe")
       } else {
         output
       }
