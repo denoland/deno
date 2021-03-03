@@ -35,7 +35,7 @@ declare namespace Deno {
 
     /** Close the resource with the specified op id. */
     function close(rid: number): void;
-    
+
     /** Get heap stats for current isolate/worker */
     function heapStats(): Record<string, number>;
   }
