@@ -664,6 +664,32 @@ pub(crate) fn exception_to_err_result<'s, T>(
   Err(js_error)
 }
 
+
+pub fn compile_module(
+  scope: &mut v8::HandleScope,
+  specifier: &str,
+  source: &str,
+) -> Result<v8::Global<v8::Module>, AnyError> {
+  let specifier_str = v8::String::new(scope, specifier).unwrap();
+  let source_str = v8::String::new(scope, source).unwrap();
+
+  let origin = bindings::module_origin(scope, specifier_str);
+  let source = v8::script_compiler::Source::new(source_str, &origin);
+
+  let module = {
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
+    if tc_scope.has_caught() {
+      assert!(maybe_module.is_none());
+      let e = tc_scope.exception().unwrap();
+      return exception_to_err_result(tc_scope, e, false);
+    }
+    maybe_module.unwrap()
+  };
+
+  Ok(v8::Global::<v8::Module>::new(scope, module))
+}
+
 // Related to module loading
 impl JsRuntime {
   /// Low-level module creation.
@@ -672,55 +698,42 @@ impl JsRuntime {
   fn mod_new(
     &mut self,
     main: bool,
-    name: &str,
+    specifier: &str,
     source: &str,
   ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
-    let name_str = v8::String::new(scope, name).unwrap();
-    let source_str = v8::String::new(scope, source).unwrap();
+    let module_handle = compile_module(scope, specifier, source)?;
 
-    let origin = bindings::module_origin(scope, name_str);
-    let source = v8::script_compiler::Source::new(source_str, &origin);
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
-
-    let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
-
-    if tc_scope.has_caught() {
-      assert!(maybe_module.is_none());
-      let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e, false);
-    }
-
-    let module = maybe_module.unwrap();
-
+    // TODO(bartlomieju): If not for the loader we could do the whole thing
+    // inside `module_map`.
+    let module = module_handle.get(scope);
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     let module_requests = module.get_module_requests();
     for i in 0..module_requests.length() {
       let module_request = v8::Local::<v8::ModuleRequest>::try_from(
-        module_requests.get(tc_scope, i).unwrap(),
+        module_requests.get(scope, i).unwrap(),
       )
       .unwrap();
       let import_specifier = module_request
         .get_specifier()
-        .to_rust_string_lossy(tc_scope);
+        .to_rust_string_lossy(scope);
       let state = state_rc.borrow();
       let module_specifier = state.loader.resolve(
         state.op_state.clone(),
         &import_specifier,
-        name,
+        specifier,
         false,
       )?;
       import_specifiers.push(module_specifier);
     }
 
     let id = state_rc.borrow_mut().module_map.register(
-      name,
+      specifier,
       main,
-      v8::Global::<v8::Module>::new(tc_scope, module),
+      module_handle,
       import_specifiers,
     );
 
