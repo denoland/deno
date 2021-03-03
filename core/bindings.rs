@@ -940,25 +940,50 @@ fn heap_stats(
     let val = v8::Number::new(scope, value as f64);
     obj.set(scope, key.into(), val.into());
   }
-  
-  let s = get_heap_stats(scope);  
+
+  let s = get_heap_stats(scope);
 
   // TODO: use serde for this once we have serde_v8
   let obj = v8::Object::new(scope);
   set_prop(scope, obj, "total_heap_size", s.total_heap_size);
-  set_prop(scope, obj, "total_heap_size_executable", s.total_heap_size_executable);
+  set_prop(
+    scope,
+    obj,
+    "total_heap_size_executable",
+    s.total_heap_size_executable,
+  );
   set_prop(scope, obj, "total_physical_size", s.total_physical_size);
   set_prop(scope, obj, "total_available_size", s.total_available_size);
-  set_prop(scope, obj, "total_global_handles_size", s.total_global_handles_size);
-  set_prop(scope, obj, "used_global_handles_size", s.used_global_handles_size);
+  set_prop(
+    scope,
+    obj,
+    "total_global_handles_size",
+    s.total_global_handles_size,
+  );
+  set_prop(
+    scope,
+    obj,
+    "used_global_handles_size",
+    s.used_global_handles_size,
+  );
   set_prop(scope, obj, "used_heap_size", s.used_heap_size);
   set_prop(scope, obj, "heap_size_limit", s.heap_size_limit);
   set_prop(scope, obj, "malloced_memory", s.malloced_memory);
   set_prop(scope, obj, "external_memory", s.external_memory);
   set_prop(scope, obj, "peak_malloced_memory", s.peak_malloced_memory);
-  set_prop(scope, obj, "number_of_native_contexts", s.number_of_native_contexts);
-  set_prop(scope, obj, "number_of_detached_contexts", s.number_of_detached_contexts);
-  
+  set_prop(
+    scope,
+    obj,
+    "number_of_native_contexts",
+    s.number_of_native_contexts,
+  );
+  set_prop(
+    scope,
+    obj,
+    "number_of_detached_contexts",
+    s.number_of_detached_contexts,
+  );
+
   rv.set(obj.into());
 }
 
@@ -981,7 +1006,7 @@ struct HeapStats {
 fn get_heap_stats(isolate: &mut v8::Isolate) -> HeapStats {
   let mut s = v8::HeapStatistics::default();
   isolate.get_heap_statistics(&mut s);
-  
+
   HeapStats {
     total_heap_size: s.total_heap_size(),
     total_heap_size_executable: s.total_heap_size_executable(),
