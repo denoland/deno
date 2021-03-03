@@ -129,17 +129,21 @@ pub fn create_standalone_binary(
 /// is not already standalone binary it will return error instead.
 pub async fn write_standalone_binary(
   output: PathBuf,
-  final_bin: Vec<u8>,
   target: Option<String>,
+  final_bin: Vec<u8>,
 ) -> Result<(), AnyError> {
   let output =
     if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-      if let Some(target) = target {
-        if !target.contains("windows") {
-          output
+      match target {
+        Some(target) => {
+          if !target.contains("windows") {
+            output
+          } else {
+            PathBuf::from(output.display().to_string() + ".exe")
+          }
         }
+        None => PathBuf::from(output.display().to_string() + ".exe"),
       }
-      PathBuf::from(output.display().to_string() + ".exe")
     } else {
       output
     };
