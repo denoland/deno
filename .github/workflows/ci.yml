@@ -100,6 +100,7 @@ jobs:
           cd ~
           curl -LO $url
           tar -xzvf "$basename.tar.gz"
+          chmod u+x $basename/sccache
           . $basename/sccache --start-server
           echo "$(pwd)/$basename" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
