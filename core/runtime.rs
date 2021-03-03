@@ -613,11 +613,10 @@ impl JsRuntimeState {
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
-    let load = RecursiveModuleLoad::dynamic_import(
+    let load = self.module_map.dynamic_import_load(
       self.op_state.clone(),
       specifier,
       referrer,
-      self.loader.clone(),
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
@@ -1202,19 +1201,14 @@ impl JsRuntime {
   pub async fn load_module(
     &mut self,
     specifier: &ModuleSpecifier,
-    code: Option<String>,
+    maybe_code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
-    let loader = {
-      let state_rc = Self::state(self.v8_isolate());
-      let state = state_rc.borrow();
-      state.loader.clone()
-    };
+    let state_rc = Self::state(self.v8_isolate());
 
-    let load = RecursiveModuleLoad::main(
+    let load = state_rc.borrow().module_map.main_module_load(
       self.op_state(),
-      &specifier.to_string(),
-      code,
-      loader,
+      specifier.as_str(),
+      maybe_code,
     );
     let (_load_id, prepare_result) = load.prepare().await;
 

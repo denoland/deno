@@ -716,6 +716,36 @@ impl ModuleMap {
     Ok(())
   }
 
+  // TODO(bartlomieju): remove `op_state` param
+  pub fn dynamic_import_load(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    specifier: &str,
+    referrer: &str,
+  ) -> RecursiveModuleLoad {
+    RecursiveModuleLoad::dynamic_import(
+      op_state,
+      specifier,
+      referrer,
+      self.loader.clone(),
+    )
+  }
+
+  // TODO(bartlomieju): remove `op_state` param
+  pub fn main_module_load(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    specifier: &str,
+    maybe_code: Option<String>,
+  ) -> RecursiveModuleLoad {
+    RecursiveModuleLoad::main(
+      op_state,
+      specifier,
+      maybe_code,
+      self.loader.clone(),
+    )
+  }
+
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
   pub fn get_id(&self, name: &str) -> Option<ModuleId> {
