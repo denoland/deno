@@ -156,6 +156,15 @@ enum JSCryptoKey {
   },
 }
 
+macro_rules! validate_usage {
+  ($e: expr, $u: expr) => {
+    for usage in $e {
+      if !$u.contains(&usage) {
+        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }))
+      }
+    }
+  }
+}
 
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
@@ -169,7 +178,9 @@ pub async fn op_webcrypto_generate_key(
   let mut state = state.borrow_mut();
 
   let key = match algorithm {
-    Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
+    Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
+      validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+
       let exp = args.algorithm.public_exponent.ok_or(
         WebCryptoError::MissingArgument("publicExponent".to_string()),
       )?;
@@ -215,6 +226,8 @@ pub async fn op_webcrypto_generate_key(
       }
     }
     Algorithm::Ecdh => {
+      validate_usage!(args.key_usages, vec![KeyUsage::DeriveKey, KeyUsage::DeriveBits]);
+
       // Determine agreement from algorithm named_curve.
       let agreement: &RingAlgorithm = args
         .algorithm
@@ -251,7 +264,8 @@ pub async fn op_webcrypto_generate_key(
       }
     }
     Algorithm::Ecdsa => {
-      
+      validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+
       let curve: &EcdsaSigningAlgorithm = args
         .algorithm
         .named_curve
@@ -279,6 +293,8 @@ pub async fn op_webcrypto_generate_key(
       }
     }
     Algorithm::Hmac => {
+      validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+      
       let hash: HmacAlgorithm = args
         .algorithm
         .hash

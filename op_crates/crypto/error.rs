@@ -1,5 +1,6 @@
 use std::fmt;
 use crate::key::KeyUsage;
+use serde::Serialize;
 
 #[derive(Debug)]
 pub enum WebCryptoError {
@@ -20,8 +21,8 @@ impl fmt::Display for WebCryptoError {
 
 impl std::error::Error for WebCryptoError {}
 
-#[derive(Debug)]
-pub struct DOMError(String)
+#[derive(Debug, Serialize)]
+pub struct DOMError(pub String);
 
 impl fmt::Display for DOMError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
