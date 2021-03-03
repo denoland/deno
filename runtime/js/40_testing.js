@@ -149,7 +149,26 @@ finishing test case.`;
     core.jsonOpSync("op_report_test_summary", summary);
   }
 
-  async function runTests({} = {}) {
+  function createTestFilter(filter) {
+    return (def) => {
+      if (filter) {
+        if (filter.startsWith("/") && filter.endsWith("/")) {
+          const regex = new RegExp(filter.slice(1, filter.length - 1));
+          return regex.test(def.name);
+        } else {
+          return def.name.includes(filter);
+        }
+
+        return false;
+      }
+
+      return true;
+    }
+  }
+
+  async function runTests({
+    filter = null,
+  } = {}) {
     const summary = {
       failed: 0,
       ignored: 0,
@@ -158,11 +177,14 @@ finishing test case.`;
       filtered: 0,
     };
 
+    const filteredTests = tests.filter(createTestFilter(filter));
+    summary.filtered += tests.length - filteredTests.length;
+
     reportTestPlan({
-      count: tests.length,
+      count: filteredTests.length,
     });
 
-    for (const { name, ignore, fn } of tests) {
+    for (const { name, ignore, fn } of filteredTests) {
       try {
         if (!ignore) {
           await fn();

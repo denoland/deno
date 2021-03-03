@@ -1020,6 +1020,12 @@ async fn test_command(
   let program_state = Arc::new(ProgramState::build(flags.clone()).await?);
   let permissions = Permissions::from_options(&flags.clone().into());
 
+  let test_options = json!({
+    "filter": filter,
+  });
+
+  let test_code = format!("Deno[Deno.internal].runTests({});", test_options);
+
   let test_callback = move |file_path: PathBuf,
                             test_reporter: Arc<Mutex<TestReporter>>|
         -> Result<(), AnyError> {
@@ -1047,7 +1053,7 @@ async fn test_command(
         worker.execute("window.dispatchEvent(new Event('load'))")?;
         worker.run_event_loop().await?;
 
-        worker.execute("Deno[Deno.internal].runTests({});")?;
+        worker.execute(&test_code)?;
         worker.run_event_loop().await?;
 
         worker.execute("window.dispatchEvent(new Event('unload'))")?;
