@@ -13,7 +13,7 @@ let enc = new TextEncoder();
 let encoded = enc.encode("Hey")
 let signature = await window.crypto.subtle.sign(
   "RSA-PSS",
-  key,
+  key.privateKey,
   encoded
 );
 

@@ -45,6 +45,7 @@ mod error;
 mod key;
 
 use crate::error::WebCryptoError;
+use crate::error::DOMError;
 use crate::key::Algorithm;
 use crate::key::KeyUsage;
 use crate::key::WebCryptoHash;
@@ -155,6 +156,7 @@ enum JSCryptoKey {
   },
 }
 
+
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
   args: Value,
@@ -249,6 +251,7 @@ pub async fn op_webcrypto_generate_key(
       }
     }
     Algorithm::Ecdsa => {
+      
       let curve: &EcdsaSigningAlgorithm = args
         .algorithm
         .named_curve

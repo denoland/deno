@@ -75,7 +75,7 @@ impl Into<HmacAlgorithm> for WebCryptoHash {
   }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyUsage {
   Encrypt,

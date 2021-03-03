@@ -78,16 +78,20 @@
   }
 
   async function generateKey(algorithm, extractable, keyUsages) {
-    let { key } = await core.jsonOpAsync("op_webcrypto_generate_key", {
+    let { key, err } = await core.jsonOpAsync("op_webcrypto_generate_key", {
       algorithm,
       extractable,
       keyUsages,
     });
+
+    // A DOMError.
+    if(err) throw new Error(err);
+
     return key.single
       ? new CryptoKey(key.single.key, key.single.rid)
       : {
-        privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.rid),
-        publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.rid),
+        privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.privateRid),
+        publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.publicRid),
       };
   }
 
