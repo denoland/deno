@@ -184,6 +184,7 @@ pub fn module_resolve_callback<'s>(
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
   let resolved_specifier = state
+    .module_map
     .loader
     .resolve(
       state.op_state.clone(),
