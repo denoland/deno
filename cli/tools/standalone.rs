@@ -132,21 +132,21 @@ pub async fn write_standalone_binary(
   target: Option<String>,
   final_bin: Vec<u8>,
 ) -> Result<(), AnyError> {
-  let output =
-    if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-      match target {
-        Some(target) => {
-          if !target.contains("windows") {
-            output
-          } else {
-            PathBuf::from(output.display().to_string() + ".exe")
-          }
-        }
-        None => PathBuf::from(output.display().to_string() + ".exe"),
+  let output = match target {
+    Some(target) => {
+      if target.contains("windows") {
+        PathBuf::from(output.display().to_string() + ".exe")
+      } else {
+        output
       }
-    } else {
-      output
-    };
+    }
+    None => {
+      if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
+      } else {
+        output
+      }
+    }
+  };
 
   if output.exists() {
     // If the output is a directory, throw error
