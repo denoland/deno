@@ -11,7 +11,7 @@ use std::path::PathBuf;
 // Update carefully!
 #[allow(non_camel_case_types)]
 #[repr(i32)]
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum MediaType {
   JavaScript = 0,
   JSX = 1,
@@ -184,11 +184,17 @@ impl Serialize for MediaType {
 /// serialization for media types is and integer.
 ///
 /// TODO(@kitsonk) remove this once we stop sending MediaType into tsc.
-pub fn serialize_media_type<S>(mt: &MediaType, s: S) -> Result<S::Ok, S::Error>
+pub fn serialize_media_type<S>(
+  mmt: &Option<MediaType>,
+  s: S,
+) -> Result<S::Ok, S::Error>
 where
   S: Serializer,
 {
-  s.serialize_str(&mt.to_string())
+  match *mmt {
+    Some(ref mt) => s.serialize_some(&mt.to_string()),
+    None => s.serialize_none(),
+  }
 }
 
 #[cfg(test)]

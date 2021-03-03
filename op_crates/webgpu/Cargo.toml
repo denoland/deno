@@ -1,0 +1,21 @@
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_webgpu"
+version = "0.1.0"
+edition = "2018"
+description = "provides webgpu Web API to deno_core"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { version = "0.80.1", path = "../../core" }
+tokio = { version = "1.1.1", features = ["full"] }
+serde = { version = "1.0.123", features = ["derive"] }
+wgpu-core = { version = "0.7.0", features = ["trace"] }
+wgpu-types = "0.7.0"

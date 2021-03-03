@@ -17,6 +17,7 @@ fn create_snapshot(
   deno_fetch::init(&mut js_runtime);
   deno_websocket::init(&mut js_runtime);
   deno_crypto::init(&mut js_runtime);
+  deno_webgpu::init(&mut js_runtime);
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();

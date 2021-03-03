@@ -127,10 +127,16 @@ impl MainWorker {
       ops::crypto::init(js_runtime, options.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::reg_json_sync(js_runtime, "op_parse_url", deno_web::op_parse_url);
       ops::reg_json_sync(
         js_runtime,
-        "op_domain_to_ascii",
-        deno_web::op_domain_to_ascii,
+        "op_parse_url_search_params",
+        deno_web::op_parse_url_search_params,
+      );
+      ops::reg_json_sync(
+        js_runtime,
+        "op_stringify_url_search_params",
+        deno_web::op_stringify_url_search_params,
       );
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
@@ -143,6 +149,7 @@ impl MainWorker {
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),

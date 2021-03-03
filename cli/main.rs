@@ -278,10 +278,11 @@ fn print_cache_info(
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}\n{}\n{}",
     crate::tsc::DENO_NS_LIB,
     crate::tsc::DENO_WEB_LIB,
     crate::tsc::DENO_FETCH_LIB,
+    crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
@@ -385,11 +386,11 @@ async fn info_command(
     let info = graph.info()?;
 
     if json {
-      write_json_to_stdout(&json!(info))?;
+      write_json_to_stdout(&json!(info))
     } else {
-      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())?;
+      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())
+        .map_err(|err| err.into())
     }
-    Ok(())
   } else {
     // If it was just "deno info" print location of caches and exit
     print_cache_info(&program_state, json)
@@ -875,7 +876,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
-    exit_unstable("compile");
+    exit_unstable("coverage");
   }
 
   if files.is_empty() {
@@ -1022,6 +1023,8 @@ fn init_logger(maybe_level: Option<Level>) {
   )
   // https://github.com/denoland/deno/issues/6641
   .filter_module("rustyline", LevelFilter::Off)
+  // wgpu backend crates (gfx_backend), have a lot of useless INFO and WARN logs
+  .filter_module("gfx", LevelFilter::Error)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

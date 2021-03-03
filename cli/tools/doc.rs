@@ -22,6 +22,9 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
+use swc_ecmascript::parser::Syntax;
+
+type DocResult = Result<(Syntax, String), doc::DocError>;
 
 /// When parsing lib.deno.d.ts, only `DocParser::parse_source` is used,
 /// which never even references the loader, so this is just a stub for that scenario.
@@ -41,7 +44,7 @@ impl DocFileLoader for StubDocLoader {
   fn load_source_code(
     &self,
     _specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
+  ) -> Pin<Box<dyn Future<Output = DocResult>>> {
     unreachable!()
   }
 }
@@ -63,11 +66,14 @@ impl DocFileLoader for module_graph::Graph {
   fn load_source_code(
     &self,
     specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
+  ) -> Pin<Box<dyn Future<Output = DocResult>>> {
     let specifier =
       resolve_url_or_path(specifier).expect("Expected valid specifier");
     let source = self.get_source(&specifier).expect("Unknown dependency");
-    async move { Ok(source) }.boxed_local()
+    let media_type =
+      self.get_media_type(&specifier).expect("Unknown media type");
+    let syntax = ast::get_syntax(&media_type);
+    async move { Ok((syntax, source)) }.boxed_local()
   }
 }
 
@@ -122,10 +128,7 @@ pub async fn print_docs(
 
     let doc_parser = doc::DocParser::new(Box::new(graph), private);
     doc_parser
-      .parse_with_reexports(
-        root_specifier.as_str(),
-        ast::get_syntax(&MediaType::TypeScript),
-      )
+      .parse_with_reexports(root_specifier.as_str())
       .await
   };
 

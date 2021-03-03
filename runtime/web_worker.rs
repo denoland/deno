@@ -231,12 +231,19 @@ impl WebWorker {
       );
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::reg_json_sync(js_runtime, "op_parse_url", deno_web::op_parse_url);
       ops::reg_json_sync(
         js_runtime,
-        "op_domain_to_ascii",
-        deno_web::op_domain_to_ascii,
+        "op_parse_url_search_params",
+        deno_web::op_parse_url_search_params,
+      );
+      ops::reg_json_sync(
+        js_runtime,
+        "op_stringify_url_search_params",
+        deno_web::op_stringify_url_search_params,
       );
       ops::io::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),

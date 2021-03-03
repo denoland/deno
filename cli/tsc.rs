@@ -31,6 +31,7 @@ use std::sync::Mutex;
 pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
 pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
 pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
+pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
