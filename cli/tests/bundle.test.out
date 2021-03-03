@@ -11,17 +11,17 @@ function printHello2() {
 function returnsHi1() {
     return "Hi";
 }
-export { returnsHi1 as returnsHi };
 function returnsFoo21() {
     return returnsFoo();
 }
-export { returnsFoo21 as returnsFoo2 };
 function printHello31() {
     printHello2();
 }
-export { printHello31 as printHello3 };
 function throwsError1() {
     throw Error("exception from mod1");
 }
+export { returnsHi1 as returnsHi };
+export { returnsFoo21 as returnsFoo2 };
+export { printHello31 as printHello3 };
 export { throwsError1 as throwsError };
 
