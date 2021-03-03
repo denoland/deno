@@ -1672,10 +1672,6 @@ interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
     hash: KeyAlgorithm;
 }
 
-interface RsaHashedKeyGenParams extends RsaKeyGenParams {
-    hash: HashAlgorithmIdentifier;
-}
-
 interface RsaKeyAlgorithm extends KeyAlgorithm {
     modulusLength: number;
     publicExponent: BigInteger;

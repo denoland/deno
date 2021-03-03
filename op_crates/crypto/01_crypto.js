@@ -87,12 +87,11 @@
     // A DOMError.
     if(err) throw new Error(err);
 
-    console.log(key);
     return key.single
       ? new CryptoKey(key.single.key, key.single.rid)
       : {
-        privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.privateRid),
-        publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.publicRid),
+        privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.private_rid),
+        publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.public_rid),
       };
   }
 
