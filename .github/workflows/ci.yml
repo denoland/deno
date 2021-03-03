@@ -15,7 +15,7 @@ jobs:
         include:
           - os: macos-10.15
             kind: test_release
-          - os: windows-2019
+          - os: windows-latest-xl
             kind: test_release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             kind: bench
