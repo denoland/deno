@@ -11,9 +11,7 @@ use futures::future::FutureExt;
 use rusty_v8 as v8;
 use std::cell::Cell;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::io::{stdout, Write};
-use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
 
@@ -78,25 +76,6 @@ pub fn script_origin<'a>(
     true,
     false,
     false,
-  )
-}
-
-pub fn module_origin<'a>(
-  s: &mut v8::HandleScope<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::new(s, "").unwrap();
-  v8::ScriptOrigin::new(
-    s,
-    resource_name.into(),
-    0,
-    0,
-    false,
-    123,
-    source_map_url.into(),
-    true,
-    false,
-    true,
   )
 }
 
@@ -169,94 +148,6 @@ pub fn boxed_slice_to_uint8array<'sc>(
   let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
   v8::Uint8Array::new(scope, ab, 0, buf_len)
     .expect("Failed to create UintArray8")
-}
-
-pub extern "C" fn host_import_module_dynamically_callback(
-  context: v8::Local<v8::Context>,
-  referrer: v8::Local<v8::ScriptOrModule>,
-  specifier: v8::Local<v8::String>,
-  _import_assertions: v8::Local<v8::FixedArray>,
-) -> *mut v8::Promise {
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
-  // NOTE(bartlomieju): will crash for non-UTF-8 specifier
-  let specifier_str = specifier
-    .to_string(scope)
-    .unwrap()
-    .to_rust_string_lossy(scope);
-  let referrer_name = referrer.get_resource_name();
-  let referrer_name_str = referrer_name
-    .to_string(scope)
-    .unwrap()
-    .to_rust_string_lossy(scope);
-
-  // TODO(ry) I'm not sure what HostDefinedOptions is for or if we're ever going
-  // to use it. For now we check that it is not used. This check may need to be
-  // changed in the future.
-  let host_defined_options = referrer.get_host_defined_options();
-  assert_eq!(host_defined_options.length(), 0);
-
-  let resolver = v8::PromiseResolver::new(scope).unwrap();
-  let promise = resolver.get_promise(scope);
-
-  let resolver_handle = v8::Global::new(scope, resolver);
-  {
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
-    state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
-  }
-
-  // Map errors from module resolution (not JS errors from module execution) to
-  // ones rethrown from this scope, so they include the call stack of the
-  // dynamic import site. Error objects without any stack frames are assumed to
-  // be module resolution errors, other exception values are left as they are.
-  let map_err = |scope: &mut v8::HandleScope,
-                 args: v8::FunctionCallbackArguments,
-                 _rv: v8::ReturnValue| {
-    let arg = args.get(0);
-    if arg.is_native_error() {
-      let message = v8::Exception::create_message(scope, arg);
-      if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
-        let arg: v8::Local<v8::Object> = arg.clone().try_into().unwrap();
-        let message_key = v8::String::new(scope, "message").unwrap();
-        let message = arg.get(scope, message_key.into()).unwrap();
-        let exception =
-          v8::Exception::type_error(scope, message.try_into().unwrap());
-        scope.throw_exception(exception);
-        return;
-      }
-    }
-    scope.throw_exception(arg);
-  };
-  let map_err = v8::FunctionTemplate::new(scope, map_err);
-  let map_err = map_err.get_function(scope).unwrap();
-  let promise = promise.catch(scope, map_err).unwrap();
-
-  &*promise as *const _ as *mut _
-}
-
-pub extern "C" fn host_initialize_import_meta_object_callback(
-  context: v8::Local<v8::Context>,
-  module: v8::Local<v8::Module>,
-  meta: v8::Local<v8::Object>,
-) {
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
-
-  let module_global = v8::Global::new(scope, module);
-  let info = state
-    .module_map
-    .get_info(&module_global)
-    .expect("Module not found");
-
-  let url_key = v8::String::new(scope, "url").unwrap();
-  let url_val = v8::String::new(scope, &info.name).unwrap();
-  meta.create_data_property(scope, url_key.into(), url_val.into());
-
-  let main_key = v8::String::new(scope, "main").unwrap();
-  let main_val = v8::Boolean::new(scope, info.main);
-  meta.create_data_property(scope, main_key.into(), main_val.into());
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
@@ -780,51 +671,6 @@ fn shared_getter(
   rv.set(shared_ab.into())
 }
 
-// Called by V8 during `Isolate::mod_instantiate`.
-pub fn module_resolve_callback<'s>(
-  context: v8::Local<'s, v8::Context>,
-  specifier: v8::Local<'s, v8::String>,
-  _import_assertions: v8::Local<'s, v8::FixedArray>,
-  referrer: v8::Local<'s, v8::Module>,
-) -> Option<v8::Local<'s, v8::Module>> {
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
-
-  let referrer_global = v8::Global::new(scope, referrer);
-  let referrer_info = state
-    .module_map
-    .get_info(&referrer_global)
-    .expect("ModuleInfo not found");
-  let referrer_name = referrer_info.name.to_string();
-
-  let specifier_str = specifier.to_rust_string_lossy(scope);
-
-  let resolved_specifier = state
-    .loader
-    .resolve(
-      state.op_state.clone(),
-      &specifier_str,
-      &referrer_name,
-      false,
-    )
-    .expect("Module should have been already resolved");
-
-  if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
-    if let Some(handle) = state.module_map.get_handle(id) {
-      return Some(v8::Local::new(scope, handle));
-    }
-  }
-
-  let msg = format!(
-    r#"Cannot resolve module "{}" from "{}""#,
-    specifier_str, referrer_name
-  );
-  throw_type_error(scope, msg);
-  None
-}
-
 // Returns promise details or throw TypeError, if argument passed isn't a Promise.
 // Promise details is a js_two elements array.
 // promise_details = [State, Result]
@@ -915,7 +761,7 @@ fn get_proxy_details(
   rv.set(proxy_details.into());
 }
 
-fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
+pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);

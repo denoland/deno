@@ -10,6 +10,7 @@ use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
+use crate::modules;
 use crate::modules::LoadState;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -326,10 +327,10 @@ impl JsRuntime {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate.set_host_initialize_import_meta_object_callback(
-      bindings::host_initialize_import_meta_object_callback,
+      modules::host_initialize_import_meta_object_callback,
     );
     isolate.set_host_import_module_dynamically_callback(
-      bindings::host_import_module_dynamically_callback,
+      modules::host_import_module_dynamically_callback,
     );
     isolate
   }
@@ -664,32 +665,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
   Err(js_error)
 }
 
-
-pub fn compile_module(
-  scope: &mut v8::HandleScope,
-  specifier: &str,
-  source: &str,
-) -> Result<v8::Global<v8::Module>, AnyError> {
-  let specifier_str = v8::String::new(scope, specifier).unwrap();
-  let source_str = v8::String::new(scope, source).unwrap();
-
-  let origin = bindings::module_origin(scope, specifier_str);
-  let source = v8::script_compiler::Source::new(source_str, &origin);
-
-  let module = {
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
-    if tc_scope.has_caught() {
-      assert!(maybe_module.is_none());
-      let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e, false);
-    }
-    maybe_module.unwrap()
-  };
-
-  Ok(v8::Global::<v8::Module>::new(scope, module))
-}
-
 // Related to module loading
 impl JsRuntime {
   /// Low-level module creation.
@@ -705,7 +680,7 @@ impl JsRuntime {
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
-    let module_handle = compile_module(scope, specifier, source)?;
+    let module_handle = modules::compile_module(scope, specifier, source)?;
 
     // TODO(bartlomieju): If not for the loader we could do the whole thing
     // inside `module_map`.
@@ -717,9 +692,8 @@ impl JsRuntime {
         module_requests.get(scope, i).unwrap(),
       )
       .unwrap();
-      let import_specifier = module_request
-        .get_specifier()
-        .to_rust_string_lossy(scope);
+      let import_specifier =
+        module_request.get_specifier().to_rust_string_lossy(scope);
       let state = state_rc.borrow();
       let module_specifier = state.loader.resolve(
         state.op_state.clone(),
@@ -765,7 +739,7 @@ impl JsRuntime {
         .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
     } else {
       let instantiate_result =
-        module.instantiate_module(tc_scope, bindings::module_resolve_callback);
+        module.instantiate_module(tc_scope, modules::module_resolve_callback);
       match instantiate_result {
         Some(_) => Ok(()),
         None => {
