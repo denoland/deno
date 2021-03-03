@@ -16,6 +16,7 @@ use futures::stream::TryStreamExt;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::future::Future;
 use std::pin::Pin;
@@ -580,24 +581,139 @@ enum SymbolicModule {
 }
 
 /// A collection of JS modules.
-#[derive(Default)]
 pub struct ModuleMap {
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<String, SymbolicModule>,
   next_module_id: ModuleId,
+  pub loader: Rc<dyn ModuleLoader>,
 }
 
 impl ModuleMap {
-  pub fn new() -> ModuleMap {
+  pub fn new(loader: Rc<dyn ModuleLoader>) -> ModuleMap {
     Self {
       handles_by_id: HashMap::new(),
       ids_by_handle: HashMap::new(),
       info: HashMap::new(),
       by_name: HashMap::new(),
       next_module_id: 1,
+      loader,
     }
+  }
+
+  // TODO(bartlomieju): remove `op_state` param
+  pub fn create_module(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    specifier: &str,
+    source: &str,
+    main: bool,
+    op_state: Rc<RefCell<OpState>>,
+  ) -> Result<ModuleId, AnyError> {
+    let module_handle = compile_module(scope, specifier, source)?;
+
+    let module = module_handle.get(scope);
+    let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
+    let module_requests = module.get_module_requests();
+    for i in 0..module_requests.length() {
+      let module_request = v8::Local::<v8::ModuleRequest>::try_from(
+        module_requests.get(scope, i).unwrap(),
+      )
+      .unwrap();
+      let import_specifier =
+        module_request.get_specifier().to_rust_string_lossy(scope);
+      let module_specifier = self.loader.resolve(
+        op_state.clone(),
+        &import_specifier,
+        specifier,
+        false,
+      )?;
+      import_specifiers.push(module_specifier);
+    }
+
+    let id = self.register(specifier, main, module_handle, import_specifiers);
+
+    Ok(id)
+  }
+
+  // TODO(bartlomieju): remove `op_state` param
+  pub fn register_during_load(
+    &mut self,
+    info: ModuleSource,
+    load: &mut RecursiveModuleLoad,
+    scope: &mut v8::HandleScope,
+    op_state: Rc<RefCell<OpState>>,
+  ) -> Result<(), AnyError> {
+    let ModuleSource {
+      code,
+      module_url_specified,
+      module_url_found,
+    } = info;
+
+    let is_main =
+      load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
+    let referrer_specifier = crate::resolve_url(&module_url_found).unwrap();
+
+    // #A There are 3 cases to handle at this moment:
+    // 1. Source code resolved result have the same module name as requested
+    //    and is not yet registered
+    //     -> register
+    // 2. Source code resolved result have a different name as requested:
+    //   2a. The module with resolved module name has been registered
+    //     -> alias
+    //   2b. The module with resolved module name has not yet been registered
+    //     -> register & alias
+
+    // If necessary, register an alias.
+    // TODO(bartlomieju): handle multiple redirects
+    if module_url_specified != module_url_found {
+      self.alias(&module_url_specified, &module_url_found);
+    }
+
+    let maybe_mod_id = self.get_id(&module_url_found);
+
+    let module_id = match maybe_mod_id {
+      Some(id) => {
+        // Module has already been registered.
+        debug!(
+          "Already-registered module fetched again: {}",
+          module_url_found
+        );
+        id
+      }
+      // Module not registered yet, do it now.
+      None => self.create_module(
+        scope,
+        &module_url_found,
+        &code,
+        is_main,
+        op_state,
+      )?,
+    };
+
+    // Now we must iterate over all imports of the module and load them.
+    let imports = { self.get_children(module_id).unwrap().clone() };
+
+    for module_specifier in imports {
+      let is_registered = self.is_registered(&module_specifier);
+      if !is_registered {
+        load
+          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
+      }
+    }
+
+    // If we just finished loading the root module, store the root module id.
+    if load.state == LoadState::LoadingRoot {
+      load.root_module_id = Some(module_id);
+      load.state = LoadState::LoadingImports;
+    }
+
+    if load.pending.is_empty() {
+      load.state = LoadState::Done;
+    }
+
+    Ok(())
   }
 
   /// Get module id, following all aliases in case of module specifier

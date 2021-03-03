@@ -11,12 +11,10 @@ use crate::error::JsError;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules;
-use crate::modules::LoadState;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::modules::ModuleSource;
 use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
@@ -287,7 +285,7 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: false,
-      module_map: ModuleMap::new(),
+      module_map: ModuleMap::new(loader.clone()),
       loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
@@ -428,7 +426,10 @@ impl JsRuntime {
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
-    std::mem::take(&mut state.borrow_mut().module_map);
+    let module_map = ModuleMap::new(Rc::new(NoopModuleLoader));
+    let old_module_map =
+      std::mem::replace(&mut state.borrow_mut().module_map, module_map);
+    drop(old_module_map);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -667,6 +668,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 // Related to module loading
 impl JsRuntime {
+  // TODO(bartlomieju): remove
   /// Low-level module creation.
   ///
   /// Called during module loading or dynamic import loading.
@@ -676,40 +678,15 @@ impl JsRuntime {
     specifier: &str,
     source: &str,
   ) -> Result<ModuleId, AnyError> {
+    let op_state = self.op_state();
     let state_rc = Self::state(self.v8_isolate());
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
-    let module_handle = modules::compile_module(scope, specifier, source)?;
-
-    // TODO(bartlomieju): If not for the loader we could do the whole thing
-    // inside `module_map`.
-    let module = module_handle.get(scope);
-    let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
-    let module_requests = module.get_module_requests();
-    for i in 0..module_requests.length() {
-      let module_request = v8::Local::<v8::ModuleRequest>::try_from(
-        module_requests.get(scope, i).unwrap(),
-      )
-      .unwrap();
-      let import_specifier =
-        module_request.get_specifier().to_rust_string_lossy(scope);
-      let state = state_rc.borrow();
-      let module_specifier = state.loader.resolve(
-        state.op_state.clone(),
-        &import_specifier,
-        specifier,
-        false,
-      )?;
-      import_specifiers.push(module_specifier);
-    }
-
-    let id = state_rc.borrow_mut().module_map.register(
-      specifier,
-      main,
-      module_handle,
-      import_specifiers,
-    );
+    let id = state_rc
+      .borrow_mut()
+      .module_map
+      .create_module(scope, specifier, source, main, op_state)?;
 
     Ok(id)
   }
@@ -735,20 +712,20 @@ impl JsRuntime {
 
     if module.get_status() == v8::ModuleStatus::Errored {
       let exception = module.get_exception();
-      exception_to_err_result(tc_scope, exception, false)
-        .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
-    } else {
-      let instantiate_result =
-        module.instantiate_module(tc_scope, modules::module_resolve_callback);
-      match instantiate_result {
-        Some(_) => Ok(()),
-        None => {
-          let exception = tc_scope.exception().unwrap();
-          exception_to_err_result(tc_scope, exception, false)
-            .map_err(|err| attach_handle_to_error(tc_scope, err, exception))
-        }
-      }
+      return exception_to_err_result(tc_scope, exception, false)
+        .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
     }
+
+    let instantiate_result =
+      module.instantiate_module(tc_scope, modules::module_resolve_callback);
+
+    if instantiate_result.is_none() {
+      let exception = tc_scope.exception().unwrap();
+      return exception_to_err_result(tc_scope, exception, false)
+        .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
+    }
+
+    Ok(())
   }
 
   /// Evaluates an already instantiated ES module.
@@ -1060,7 +1037,19 @@ impl JsRuntime {
                 // A module (not necessarily the one dynamically imported) has been
                 // fetched. Create and register it, and if successful, poll for the
                 // next recursive-load event related to this dynamic import.
-                match self.register_during_load(info, &mut load) {
+                let register_result = {
+                  let op_state = self.op_state();
+                  let context = self.global_context();
+                  let scope = &mut v8::HandleScope::with_context(
+                    self.v8_isolate(),
+                    context,
+                  );
+                  state_rc
+                    .borrow_mut()
+                    .module_map
+                    .register_during_load(info, &mut load, scope, op_state)
+                };
+                match register_result {
                   Ok(()) => {
                     // Keep importing until it's fully drained
                     let state = state_rc.borrow_mut();
@@ -1206,90 +1195,6 @@ impl JsRuntime {
     }
   }
 
-  fn register_during_load(
-    &mut self,
-    info: ModuleSource,
-    load: &mut RecursiveModuleLoad,
-  ) -> Result<(), AnyError> {
-    let ModuleSource {
-      code,
-      module_url_specified,
-      module_url_found,
-    } = info;
-
-    let is_main =
-      load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_specifier = crate::resolve_url(&module_url_found).unwrap();
-
-    let state_rc = Self::state(self.v8_isolate());
-    // #A There are 3 cases to handle at this moment:
-    // 1. Source code resolved result have the same module name as requested
-    //    and is not yet registered
-    //     -> register
-    // 2. Source code resolved result have a different name as requested:
-    //   2a. The module with resolved module name has been registered
-    //     -> alias
-    //   2b. The module with resolved module name has not yet been registered
-    //     -> register & alias
-
-    // If necessary, register an alias.
-    if module_url_specified != module_url_found {
-      let mut state = state_rc.borrow_mut();
-      state
-        .module_map
-        .alias(&module_url_specified, &module_url_found);
-    }
-
-    let maybe_mod_id = {
-      let state = state_rc.borrow();
-      state.module_map.get_id(&module_url_found)
-    };
-
-    let module_id = match maybe_mod_id {
-      Some(id) => {
-        // Module has already been registered.
-        debug!(
-          "Already-registered module fetched again: {}",
-          module_url_found
-        );
-        id
-      }
-      // Module not registered yet, do it now.
-      None => self.mod_new(is_main, &module_url_found, &code)?,
-    };
-
-    // Now we must iterate over all imports of the module and load them.
-    let imports = {
-      let state_rc = Self::state(self.v8_isolate());
-      let state = state_rc.borrow();
-      state.module_map.get_children(module_id).unwrap().clone()
-    };
-
-    for module_specifier in imports {
-      let is_registered = {
-        let state_rc = Self::state(self.v8_isolate());
-        let state = state_rc.borrow();
-        state.module_map.is_registered(&module_specifier)
-      };
-      if !is_registered {
-        load
-          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
-      }
-    }
-
-    // If we just finished loading the root module, store the root module id.
-    if load.state == LoadState::LoadingRoot {
-      load.root_module_id = Some(module_id);
-      load.state = LoadState::LoadingImports;
-    }
-
-    if load.pending.is_empty() {
-      load.state = LoadState::Done;
-    }
-
-    Ok(())
-  }
-
   /// Asynchronously load specified module and all of its dependencies
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
@@ -1317,7 +1222,15 @@ impl JsRuntime {
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
-      self.register_during_load(info, &mut load)?;
+      let op_state = self.op_state();
+      let state_rc = Self::state(self.v8_isolate());
+      let context = self.global_context();
+      let scope =
+        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+      state_rc
+        .borrow_mut()
+        .module_map
+        .register_during_load(info, &mut load, scope, op_state)?;
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
@@ -1480,6 +1393,7 @@ impl JsRuntime {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::BufVec;
   use futures::future::lazy;
