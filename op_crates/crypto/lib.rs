@@ -36,7 +36,7 @@ use rsa::BigUint;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
 use sha1::Sha1;
-use sha2::{Digest, Sha256, Sha384, Sha512};
+use sha2::{Sha256, Sha384, Sha512};
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -202,7 +202,7 @@ pub async fn op_webcrypto_generate_key(
 
       // Create webcrypto keypair.
       let webcrypto_key_public =
-        WebCryptoKey::new_public(algorithm.clone(), extractable, vec![]);
+        WebCryptoKey::new_public(algorithm, extractable, vec![]);
       let webcrypto_key_private =
         WebCryptoKey::new_private(algorithm, extractable, vec![]);
       let crypto_key = WebCryptoKeyPair::new(
@@ -283,7 +283,7 @@ pub async fn op_webcrypto_generate_key(
       let private_key = EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?;
       // Create webcrypto keypair.
       let webcrypto_key_public =
-        WebCryptoKey::new_public(algorithm.clone(), extractable, vec![]);
+        WebCryptoKey::new_public(algorithm, extractable, vec![]);
       let crypto_key =
         WebCryptoKey::new_private(algorithm, extractable, vec![]);
 
@@ -417,6 +417,15 @@ pub async fn op_webcrypto_sign_key(
         .get::<CryptoKeyResource<EcdsaKeyPair>>(args.rid)
         .ok_or_else(bad_resource_id)?;
       let key_pair = &resource.key;
+
+      // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
+      // https://briansmith.org/rustdoc/ring/signature/index.html#statics
+      if let Some(hash) = args.hash {
+        match hash {
+          WebCryptoHash::Sha256 | WebCryptoHash::Sha384 => (),
+          _ => return Err(WebCryptoError::UnsupportedHash.into()),
+        }
+      };
 
       // Sign data using SecureRng and key.
       let rng = RingRand::SystemRandom::new();

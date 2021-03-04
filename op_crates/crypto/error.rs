@@ -1,4 +1,3 @@
-use crate::key::KeyUsage;
 use serde::Serialize;
 use std::fmt;
 
@@ -6,6 +5,7 @@ use std::fmt;
 pub enum WebCryptoError {
   MissingArgument(String),
   Unsupported,
+  UnsupportedHash,
 }
 
 impl fmt::Display for WebCryptoError {
@@ -15,6 +15,7 @@ impl fmt::Display for WebCryptoError {
         write!(f, "Missing argument {}", &s)
       }
       WebCryptoError::Unsupported => write!(f, "Unsupported algorithm"),
+      WebCryptoError::UnsupportedHash => write!(f, "Unsupported hash"),
     }
   }
 }
