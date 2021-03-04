@@ -181,13 +181,12 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
       validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let exp = args.algorithm.public_exponent.ok_or(
-        WebCryptoError::MissingArgument("publicExponent".to_string()),
-      )?;
-      let modulus_length = args
-        .algorithm
-        .modulus_length
-        .ok_or(WebCryptoError::MissingArgument("modulusLength".to_string()))?;
+      let exp = args.algorithm.public_exponent.ok_or_else(|| {
+        WebCryptoError::MissingArgument("publicExponent".to_string())
+      })?;
+      let modulus_length = args.algorithm.modulus_length.ok_or_else(|| {
+        WebCryptoError::MissingArgument("modulusLength".to_string())
+      })?;
 
       let exponent = BigUint::from(exp);
 
@@ -235,7 +234,9 @@ pub async fn op_webcrypto_generate_key(
       let agreement: &RingAlgorithm = args
         .algorithm
         .named_curve
-        .ok_or(WebCryptoError::MissingArgument("namedCurve".to_string()))?
+        .ok_or_else(|| {
+          WebCryptoError::MissingArgument("namedCurve".to_string())
+        })?
         .try_into()?;
       // Generate private key from agreement and ring rng.
       let rng = RingRand::SystemRandom::new();
@@ -244,7 +245,7 @@ pub async fn op_webcrypto_generate_key(
       let public_key = private_key.compute_public_key()?;
       // Create webcrypto keypair.
       let webcrypto_key_public =
-        WebCryptoKey::new_public(algorithm.clone(), extractable, vec![]);
+        WebCryptoKey::new_public(algorithm, extractable, vec![]);
       let webcrypto_key_private =
         WebCryptoKey::new_private(algorithm, extractable, vec![]);
       let crypto_key = WebCryptoKeyPair::new(
@@ -272,7 +273,9 @@ pub async fn op_webcrypto_generate_key(
       let curve: &EcdsaSigningAlgorithm = args
         .algorithm
         .named_curve
-        .ok_or(WebCryptoError::MissingArgument("namedCurve".to_string()))?
+        .ok_or_else(|| {
+          WebCryptoError::MissingArgument("namedCurve".to_string())
+        })?
         .try_into()?;
 
       let rng = RingRand::SystemRandom::new();
@@ -301,7 +304,7 @@ pub async fn op_webcrypto_generate_key(
       let hash: HmacAlgorithm = args
         .algorithm
         .hash
-        .ok_or(WebCryptoError::MissingArgument("hash".to_string()))?
+        .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
         .into();
       let rng = RingRand::SystemRandom::new();
       // TODO: change algorithm length when specified.
@@ -352,9 +355,24 @@ pub async fn op_webcrypto_sign_key(
         .ok_or_else(bad_resource_id)?;
 
       let private_key = &resource.key;
-      // TODO(littledivy): Modify resource to store args from generateKey.
-      // let hash = resource.crypto_key.private_key.hash;
-      let padding = PaddingScheme::PKCS1v15Sign { hash: None };
+
+      let padding = match resource
+        .hash
+        .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
+      {
+        WebCryptoHash::Sha1 => PaddingScheme::PKCS1v15Sign {
+          hash: Some(rsa::hash::Hash::SHA1),
+        },
+        WebCryptoHash::Sha256 => PaddingScheme::PKCS1v15Sign {
+          hash: Some(rsa::hash::Hash::SHA2_256),
+        },
+        WebCryptoHash::Sha384 => PaddingScheme::PKCS1v15Sign {
+          hash: Some(rsa::hash::Hash::SHA2_384),
+        },
+        WebCryptoHash::Sha512 => PaddingScheme::PKCS1v15Sign {
+          hash: Some(rsa::hash::Hash::SHA2_512),
+        },
+      };
 
       // Sign data based on computed padding and return buffer
       private_key.sign(padding, &data)?
@@ -368,14 +386,13 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       let rng = OsRng;
-      let salt_len = args
-        .salt_length
-        .ok_or(WebCryptoError::MissingArgument("saltLength".to_string()))?
-        as usize;
+      let salt_len = args.salt_length.ok_or_else(|| {
+        WebCryptoError::MissingArgument("saltLength".to_string())
+      })? as usize;
 
       let padding = match resource
         .hash
-        .ok_or(WebCryptoError::MissingArgument("hash".to_string()))?
+        .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
       {
         WebCryptoHash::Sha1 => {
           PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len)
