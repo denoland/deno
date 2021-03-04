@@ -118,7 +118,7 @@ Deno.test({
       workerOptions,
     );
     w.onmessage = (e): void => {
-      assertEquals(e.data, "true, true, true");
+      assertEquals(e.data, "true, true, true, true");
       promise.resolve();
     };
     w.postMessage("Hello, world!");
