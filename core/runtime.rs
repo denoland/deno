@@ -10,7 +10,6 @@ use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
-use crate::modules;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
@@ -324,10 +323,10 @@ impl JsRuntime {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate.set_host_initialize_import_meta_object_callback(
-      modules::host_initialize_import_meta_object_callback,
+      bindings::host_initialize_import_meta_object_callback,
     );
     isolate.set_host_import_module_dynamically_callback(
-      modules::host_import_module_dynamically_callback,
+      bindings::host_import_module_dynamically_callback,
     );
     isolate
   }
@@ -716,7 +715,7 @@ impl JsRuntime {
     }
 
     let instantiate_result =
-      module.instantiate_module(tc_scope, modules::module_resolve_callback);
+      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
 
     if instantiate_result.is_none() {
       let exception = tc_scope.exception().unwrap();
