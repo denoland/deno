@@ -3613,64 +3613,6 @@ console.log("finish");
     output: "redirect_cache.out",
   });
 
-  itest!(deno_lint {
-    args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
-    output: "lint/expected.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_quiet {
-    args: "lint --unstable --quiet lint/file1.js",
-    output: "lint/expected_quiet.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_json {
-    args:
-      "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
-    output: "lint/expected_json.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_ignore {
-    args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
-    output: "lint/expected_ignore.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_glob {
-    args: "lint --unstable --ignore=lint/malformed.js lint/",
-    output: "lint/expected_glob.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_from_stdin {
-    args: "lint --unstable -",
-    input: Some("let a: any;"),
-    output: "lint/expected_from_stdin.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_from_stdin_json {
-    args: "lint --unstable --json -",
-    input: Some("let a: any;"),
-    output: "lint/expected_from_stdin_json.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_rules {
-    args: "lint --unstable --rules",
-    output: "lint/expected_rules.out",
-    exit_code: 0,
-  });
-
-  // Make sure that the rules are printed if quiet option is enabled.
-  itest!(deno_lint_rules_quiet {
-    args: "lint --unstable --rules -q",
-    output: "lint/expected_rules.out",
-    exit_code: 0,
-  });
-
   itest!(deno_doc_types_header_direct {
     args: "doc --reload http://127.0.0.1:4545/xTypeScriptTypes.js",
     output: "doc/types_header.out",
@@ -3969,6 +3911,88 @@ console.log("finish");
       args: "doc --reload doc/types_header.ts",
       output: "doc/types_header.out",
       http_server: true,
+    });
+  }
+
+  mod lint {
+    use super::*;
+
+    #[test]
+    fn ignore_unexplicit_files() {
+      let output = util::deno_cmd()
+        .current_dir(util::root_path())
+        .env("NO_COLOR", "1")
+        .arg("lint")
+        .arg("--unstable")
+        .arg("--ignore=./")
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      assert!(!output.status.success());
+      assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "error: No target files found.\n"
+      );
+    }
+
+    itest!(all {
+      args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+      output: "lint/expected.out",
+      exit_code: 1,
+    });
+
+    itest!(quiet {
+      args: "lint --unstable --quiet lint/file1.js",
+      output: "lint/expected_quiet.out",
+      exit_code: 1,
+    });
+
+    itest!(json {
+      args:
+        "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+        output: "lint/expected_json.out",
+        exit_code: 1,
+    });
+
+    itest!(ignore {
+      args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
+      output: "lint/expected_ignore.out",
+      exit_code: 1,
+    });
+
+    itest!(glob {
+      args: "lint --unstable --ignore=lint/malformed.js lint/",
+      output: "lint/expected_glob.out",
+      exit_code: 1,
+    });
+
+    itest!(stdin {
+      args: "lint --unstable -",
+      input: Some("let a: any;"),
+      output: "lint/expected_from_stdin.out",
+      exit_code: 1,
+    });
+
+    itest!(stdin_json {
+      args: "lint --unstable --json -",
+      input: Some("let a: any;"),
+      output: "lint/expected_from_stdin_json.out",
+      exit_code: 1,
+    });
+
+    itest!(rules {
+      args: "lint --unstable --rules",
+      output: "lint/expected_rules.out",
+      exit_code: 0,
+    });
+
+    // Make sure that the rules are printed if quiet option is enabled.
+    itest!(rules_quiet {
+      args: "lint --unstable --rules -q",
+      output: "lint/expected_rules.out",
+      exit_code: 0,
     });
   }
 
@@ -5170,26 +5194,6 @@ console.log("finish");
       .unwrap();
     assert!(output.status.success());
     assert!(!output.stderr.is_empty());
-  }
-
-  #[test]
-  fn lint_ignore_unexplicit_files() {
-    let output = util::deno_cmd()
-      .current_dir(util::root_path())
-      .env("NO_COLOR", "1")
-      .arg("lint")
-      .arg("--unstable")
-      .arg("--ignore=./")
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(!output.status.success());
-    assert_eq!(
-      String::from_utf8_lossy(&output.stderr),
-      "error: No target files found.\n"
-    );
   }
 
   #[test]
