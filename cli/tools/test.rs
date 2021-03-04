@@ -126,6 +126,14 @@ where
     + Clone,
 {
   let target_files = collect_files(&args, &ignore, is_supported_test)?;
+  if target_files.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
   let reporter_lock = Arc::new(Mutex::new(TestReporter::new()));
 
   run_parallelized(target_files, {
