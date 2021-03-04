@@ -9,7 +9,7 @@ jobs:
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       matrix:
         include:
