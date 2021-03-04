@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-//#![deny(warnings)]
+#![deny(warnings)]
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
@@ -130,6 +130,7 @@ struct WebCryptoAlgorithmArg {
   public_exponent: Option<u32>,
   modulus_length: Option<u32>,
   hash: Option<WebCryptoHash>,
+  #[allow(dead_code)]
   length: Option<u32>,
   named_curve: Option<WebCryptoNamedCurve>,
 }
@@ -281,27 +282,35 @@ pub async fn op_webcrypto_generate_key(
       let rng = RingRand::SystemRandom::new();
       let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
       let private_key = EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?;
+
       // Create webcrypto keypair.
       let webcrypto_key_public =
         WebCryptoKey::new_public(algorithm, extractable, vec![]);
-      let crypto_key =
+      let webcrypto_key_private =
         WebCryptoKey::new_private(algorithm, extractable, vec![]);
+      let crypto_key = WebCryptoKeyPair::new(
+        webcrypto_key_public.clone(),
+        webcrypto_key_private.clone(),
+      );
 
-      let resource = CryptoKeyResource {
-        crypto_key: crypto_key.clone(),
+      let rid = state.resource_table.add(CryptoKeyResource {
+        crypto_key: webcrypto_key_private,
         key: private_key,
         hash: args.algorithm.hash,
-      };
+      });
 
-      JSCryptoKey::Single {
+      JSCryptoKey::Pair {
         key: crypto_key,
-        rid: state.resource_table.add(resource),
+        private_rid: rid,
+        // NOTE: We're using the same Resource for public and private key since they are part
+        //       of the same interface in `ring`.
+        public_rid: rid,
       }
     }
     Algorithm::Hmac => {
       validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let mut hash: HmacAlgorithm = args
+      let hash: HmacAlgorithm = args
         .algorithm
         .hash
         .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
@@ -361,6 +370,7 @@ pub async fn op_webcrypto_sign_key(
         .ok_or_else(bad_resource_id)?;
 
       let private_key = &resource.key;
+      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
 
       let padding = match resource
         .hash
@@ -390,6 +400,7 @@ pub async fn op_webcrypto_sign_key(
         .ok_or_else(bad_resource_id)?;
 
       let private_key = &resource.key;
+      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
 
       let rng = OsRng;
       let salt_len = args.salt_length.ok_or_else(|| {
@@ -423,6 +434,7 @@ pub async fn op_webcrypto_sign_key(
         .get::<CryptoKeyResource<EcdsaKeyPair>>(args.rid)
         .ok_or_else(bad_resource_id)?;
       let key_pair = &resource.key;
+      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
 
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
@@ -446,6 +458,7 @@ pub async fn op_webcrypto_sign_key(
         .get::<CryptoKeyResource<HmacKey>>(args.rid)
         .ok_or_else(bad_resource_id)?;
       let key = &resource.key;
+      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
 
       let signature = ring::hmac::sign(&key, &data);
       signature.as_ref().to_vec()
