@@ -307,7 +307,7 @@ pub async fn op_webcrypto_generate_key(
         .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
         .into();
       let rng = RingRand::SystemRandom::new();
-      
+
       // if let Some(length) = args.algorithm.length {
       //   let mut alg = hash.digest_algorithm();
       //   alg.output_len = length as usize;
