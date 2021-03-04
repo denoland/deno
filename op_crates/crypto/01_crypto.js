@@ -78,30 +78,28 @@
   }
 
   async function generateKey(algorithm, extractable, keyUsages) {
-    let { key, err } = await core.jsonOpAsync("op_webcrypto_generate_key", {
+    const { key, err } = await core.jsonOpAsync("op_webcrypto_generate_key", {
       algorithm,
       extractable,
       keyUsages,
     });
 
     // A DOMError.
-    if(err) throw new Error(err);
+    if (err) throw new Error(err);
 
-    return key.single
-      ? new CryptoKey(key.single.key, key.single.rid)
-      : {
-        privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.private_rid),
-        publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.public_rid),
-      };
+    return key.single ? new CryptoKey(key.single.key, key.single.rid) : {
+      privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.private_rid),
+      publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.public_rid),
+    };
   }
 
   async function sign(algorithm, key, data) {
-    let rid = key[ridSymbol];
-    let simpleParam = typeof algorithm == "string";
+    const rid = key[ridSymbol];
+    const simpleParam = typeof algorithm == "string";
 
     // Normalize params. We've got serde doing the null to Option serialization.
-    let saltLength = simpleParam ? null : algorithm.saltLength || null;
-    let hash = simpleParam ? null : algorithm.hash || null;
+    const saltLength = simpleParam ? null : algorithm.saltLength || null;
+    const hash = simpleParam ? null : algorithm.hash || null;
     algorithm = simpleParam ? algorithm : algorithm.name;
 
     return await core.jsonOpAsync("op_webcrypto_sign_key", {

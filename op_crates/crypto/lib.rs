@@ -44,8 +44,8 @@ pub use rand; // Re-export rand
 mod error;
 mod key;
 
-use crate::error::WebCryptoError;
 use crate::error::DOMError;
+use crate::error::WebCryptoError;
 use crate::key::Algorithm;
 use crate::key::KeyUsage;
 use crate::key::WebCryptoHash;
@@ -226,7 +226,10 @@ pub async fn op_webcrypto_generate_key(
       }
     }
     Algorithm::Ecdh => {
-      validate_usage!(args.key_usages, vec![KeyUsage::DeriveKey, KeyUsage::DeriveBits]);
+      validate_usage!(
+        args.key_usages,
+        vec![KeyUsage::DeriveKey, KeyUsage::DeriveBits]
+      );
 
       // Determine agreement from algorithm named_curve.
       let agreement: &RingAlgorithm = args
@@ -294,7 +297,7 @@ pub async fn op_webcrypto_generate_key(
     }
     Algorithm::Hmac => {
       validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
-      
+
       let hash: HmacAlgorithm = args
         .algorithm
         .hash
@@ -365,8 +368,15 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       let rng = OsRng;
-      let salt_len = args.salt_length.unwrap() as usize;
-      let padding = match resource.hash.unwrap() {
+      let salt_len = args
+        .salt_length
+        .ok_or(WebCryptoError::MissingArgument("saltLength".to_string()))?
+        as usize;
+
+      let padding = match resource
+        .hash
+        .ok_or(WebCryptoError::MissingArgument("hash".to_string()))?
+      {
         WebCryptoHash::Sha1 => {
           PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len)
         }

@@ -1,6 +1,6 @@
-use std::fmt;
 use crate::key::KeyUsage;
 use serde::Serialize;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum WebCryptoError {
@@ -25,10 +25,9 @@ impl std::error::Error for WebCryptoError {}
 pub struct DOMError(pub String);
 
 impl fmt::Display for DOMError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-      write!(f, "{}", &self.0)
-    }
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{}", &self.0)
+  }
 }
 
 impl std::error::Error for DOMError {}
-
