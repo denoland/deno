@@ -5244,6 +5244,37 @@ console.log("finish");
   }
 
   #[test]
+  #[cfg(windows)]
+  // https://github.com/denoland/deno/issues/9667
+  fn compile_windows_ext() {
+    let dir = TempDir::new().expect("tempdir fail");
+    let exe = dir.path().join("welcome");
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("--target")
+      .arg("x86_64-unknown-linux-gnu")
+      .arg("./test_util/std/examples/welcome.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let output = Command::new(exe)
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  }
+
+  #[test]
   fn standalone_args() {
     let dir = TempDir::new().expect("tempdir fail");
     let exe = if cfg!(windows) {
