@@ -144,6 +144,32 @@ pub fn initialize_context<'s>(
   scope.escape(context)
 }
 
+#[inline(always)]
+pub fn set_func(
+  scope: &mut v8::HandleScope<'_>,
+  obj: v8::Local<v8::Object>,
+  name: &'static str,
+  callback: impl v8::MapFnTo<v8::FunctionCallback>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let tmpl = v8::FunctionTemplate::new(scope, callback);
+  let val = tmpl.get_function(scope).unwrap();
+  obj.set(scope, key.into(), val.into());
+}
+
+pub fn boxed_slice_to_uint8array<'sc>(
+  scope: &mut v8::HandleScope<'sc>,
+  buf: Box<[u8]>,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  assert!(!buf.is_empty());
+  let buf_len = buf.len();
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+  v8::Uint8Array::new(scope, ab, 0, buf_len)
+    .expect("Failed to create UintArray8")
+}
+
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
@@ -230,32 +256,6 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let main_key = v8::String::new(scope, "main").unwrap();
   let main_val = v8::Boolean::new(scope, info.main);
   meta.create_data_property(scope, main_key.into(), main_val.into());
-}
-
-#[inline(always)]
-pub fn set_func(
-  scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
-  name: &'static str,
-  callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-  let key = v8::String::new(scope, name).unwrap();
-  let tmpl = v8::FunctionTemplate::new(scope, callback);
-  let val = tmpl.get_function(scope).unwrap();
-  obj.set(scope, key.into(), val.into());
-}
-
-pub fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut v8::HandleScope<'sc>,
-  buf: Box<[u8]>,
-) -> v8::Local<'sc, v8::Uint8Array> {
-  assert!(!buf.is_empty());
-  let buf_len = buf.len();
-  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let backing_store_shared = backing_store.make_shared();
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
@@ -915,7 +915,7 @@ fn get_proxy_details(
   rv.set(proxy_details.into());
 }
 
-pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
+fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);
