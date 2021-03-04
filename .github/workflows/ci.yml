@@ -47,7 +47,6 @@ jobs:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
-      RUSTC_WRAPPER: sccache
 
     steps:
       - name: Configure git
@@ -79,31 +78,6 @@ jobs:
         uses: hecrj/setup-rust-action@v1
         with:
           rust-version: 1.50.0
-
-      - name: Install and start sccache
-        shell: pwsh
-        env:
-          SCCACHE_DIR: ${{ github.workspace }}/target/sccache
-          SCCACHE_CACHE_SIZE: 128M
-          SCCACHE_IDLE_TIMEOUT: 0
-        run: |
-          $version = "v0.2.15"
-          $platform =
-            @{ "macOS"   = "x86_64-apple-darwin"
-               "Linux"   = "x86_64-unknown-linux-musl"
-               "Windows" = "x86_64-pc-windows-msvc"
-             }.${{ runner.os }}
-          $basename = "sccache-$version-$platform"
-          chmod u+x $basename/sccache
-          $url = "https://github.com/mozilla/sccache/releases/download/" +
-                 "$version/$basename.tar.gz"
-          cd ~
-          curl -LO $url
-          tar -xzvf "$basename.tar.gz"
-          chmod u+x $basename/sccache
-          . $basename/sccache --start-server
-          echo "$(pwd)/$basename" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -360,6 +334,3 @@ jobs:
             target/release/lib.deno.d.ts
           draft: true
 
-      - name: Stop sccache
-        if: always()
-        run: sccache --stop-server
