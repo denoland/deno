@@ -301,13 +301,19 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::Hmac => {
       validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let hash: HmacAlgorithm = args
+      let mut hash: HmacAlgorithm = args
         .algorithm
         .hash
         .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
         .into();
       let rng = RingRand::SystemRandom::new();
-      // TODO: change algorithm length when specified.
+      
+      // if let Some(length) = args.algorithm.length {
+      //   let mut alg = hash.digest_algorithm();
+      //   alg.output_len = length as usize;
+      //   alg.chaining_len = length as usize;
+      // };
+
       let key = HmacKey::generate(hash, &rng)?;
       let crypto_key = WebCryptoKey::new_secret(algorithm, extractable, vec![]);
       let resource = CryptoKeyResource {
