@@ -1,4 +1,4 @@
-let key = await window.crypto.subtle.generateKey(
+const key = await window.crypto.subtle.generateKey(
   {
     name: "RSA-PSS",
     modulusLength: 1024,
@@ -9,9 +9,9 @@ let key = await window.crypto.subtle.generateKey(
   ["sign", "verify"]
 );
 console.log(key)
-let enc = new TextEncoder();
-let encoded = enc.encode("Hey")
-let signature = await window.crypto.subtle.sign(
+const enc = new TextEncoder();
+const encoded = enc.encode("Hey")
+const signature = await window.crypto.subtle.sign(
   "RSA-PSS",
   key.privateKey,
   encoded
