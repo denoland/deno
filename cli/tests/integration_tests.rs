@@ -5249,7 +5249,7 @@ console.log("finish");
   // https://github.com/denoland/deno/issues/9667
   fn compile_windows_ext() {
     let dir = TempDir::new().expect("tempdir fail");
-    let exe = dir.path().join("welcome");
+    let exe = dir.path().join("welcome_9667");
     let output = util::deno_cmd()
       .current_dir(util::root_path())
       .arg("compile")
