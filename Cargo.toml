@@ -16,15 +16,15 @@ exclude = [
 ]
 
 
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 'z' # Optimize for size
+# [profile.release]
+# codegen-units = 1
+# lto = true
+# opt-level = 'z' # Optimize for size
 
-[profile.bench]
-codegen-units = 1
-lto = true
-opt-level = 'z' # Optimize for size
+# [profile.bench]
+# codegen-units = 1
+# lto = true
+# opt-level = 'z' # Optimize for size
 
 # Optimize these packages for perf
 [profile.release.package.rand]

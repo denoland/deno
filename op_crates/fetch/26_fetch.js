@@ -650,6 +650,8 @@
       }
     }
 
+    await stream.cancel();
+
     return buffer.bytes().buffer;
   }
 
