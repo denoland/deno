@@ -127,7 +127,6 @@ impl Resource for CryptoKeyResource<HmacKey> {
 #[serde(rename_all = "camelCase")]
 struct WebCryptoAlgorithmArg {
   name: Algorithm,
-  public_exponent: Option<u32>,
   modulus_length: Option<u32>,
   hash: Option<WebCryptoHash>,
   #[allow(dead_code)]
@@ -170,7 +169,7 @@ macro_rules! validate_usage {
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _zero_copy: BufVec,
+  zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let args: WebCryptoGenerateKeyArg = serde_json::from_value(args)?;
   let extractable = args.extractable;
@@ -182,14 +181,20 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
       validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let exp = args.algorithm.public_exponent.ok_or_else(|| {
+      let public_exponent = if zero_copy.len() > 0 {
+        Some(&*zero_copy[0])
+      } else {
+        None
+      };
+
+      let exp = public_exponent.ok_or_else(|| {
         WebCryptoError::MissingArgument("publicExponent".to_string())
       })?;
       let modulus_length = args.algorithm.modulus_length.ok_or_else(|| {
         WebCryptoError::MissingArgument("modulusLength".to_string())
       })?;
 
-      let exponent = BigUint::from(exp);
+      let exponent = BigUint::from_bytes_be(exp);
 
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
@@ -289,7 +294,7 @@ pub async fn op_webcrypto_generate_key(
       let webcrypto_key_private =
         WebCryptoKey::new_private(algorithm, extractable, vec![]);
       let crypto_key = WebCryptoKeyPair::new(
-        webcrypto_key_public.clone(),
+        webcrypto_key_public,
         webcrypto_key_private.clone(),
       );
 
@@ -370,7 +375,7 @@ pub async fn op_webcrypto_sign_key(
         .ok_or_else(bad_resource_id)?;
 
       let private_key = &resource.key;
-      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
+      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
 
       let padding = match resource
         .hash
@@ -400,7 +405,7 @@ pub async fn op_webcrypto_sign_key(
         .ok_or_else(bad_resource_id)?;
 
       let private_key = &resource.key;
-      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
+      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
 
       let rng = OsRng;
       let salt_len = args.salt_length.ok_or_else(|| {
@@ -434,7 +439,7 @@ pub async fn op_webcrypto_sign_key(
         .get::<CryptoKeyResource<EcdsaKeyPair>>(args.rid)
         .ok_or_else(bad_resource_id)?;
       let key_pair = &resource.key;
-      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
+      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
 
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
@@ -458,7 +463,7 @@ pub async fn op_webcrypto_sign_key(
         .get::<CryptoKeyResource<HmacKey>>(args.rid)
         .ok_or_else(bad_resource_id)?;
       let key = &resource.key;
-      validate_usage!(vec![KeyUsage::Sign], resource.crypto_key.usages);
+      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
 
       let signature = ring::hmac::sign(&key, &data);
       signature.as_ref().to_vec()

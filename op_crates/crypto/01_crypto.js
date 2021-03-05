@@ -78,11 +78,21 @@
   }
 
   async function generateKey(algorithm, extractable, keyUsages) {
+    
+    if(algorithm.publicExponent) {
+      if (!algorithm.publicExponent instanceof Uint8Array) {
+        throw new DOMException(
+          "The provided publicExponent is not an Uint8Array",
+          "TypeMismatchError",
+        );
+      }
+    }
+
     const { key, err } = await core.jsonOpAsync("op_webcrypto_generate_key", {
       algorithm,
       extractable,
       keyUsages,
-    });
+    }, algorithm.publicExponent || null);
 
     // A DOMError.
     if (err) throw new Error(err);

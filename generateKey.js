@@ -2,7 +2,7 @@ const key = await window.crypto.subtle.generateKey(
   {
     name: "RSA-PSS",
     modulusLength: 1024,
-    publicExponent: 65537,
+    publicExponent: new Uint8Array([1, 0, 1]),
     hash: "SHA-256",
   },
   true,
