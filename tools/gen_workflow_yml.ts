@@ -216,7 +216,7 @@ function generateTestJobs(): Record<string, unknown> {
         name: `test / ${os} / ${kind}`,
         "runs-on": slowRunners[os],
         "timeout-minutes": 60,
-        step: [`build_${os}_${kind}`],
+        needs: [`build_${os}_${kind}`],
         env,
         steps: [
           ...chechout,

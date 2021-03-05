@@ -331,7 +331,7 @@
       "name": "test / linux / release",
       "runs-on": "ubuntu-18.04",
       "timeout-minutes": 60,
-      "step": [
+      "needs": [
         "build_linux_release"
       ],
       "env": {
@@ -399,7 +399,7 @@
       "name": "test / linux / debug",
       "runs-on": "ubuntu-18.04",
       "timeout-minutes": 60,
-      "step": [
+      "needs": [
         "build_linux_debug"
       ],
       "env": {
@@ -467,7 +467,7 @@
       "name": "test / macos / release",
       "runs-on": "macos-10.15",
       "timeout-minutes": 60,
-      "step": [
+      "needs": [
         "build_macos_release"
       ],
       "env": {
@@ -535,7 +535,7 @@
       "name": "test / windows / release",
       "runs-on": "windows-2019",
       "timeout-minutes": 60,
-      "step": [
+      "needs": [
         "build_windows_release"
       ],
       "env": {
