@@ -120,7 +120,7 @@ function generateBuildJobs(): Record<string, unknown> {
 
 const ci = {
   name: "ci",
-  "runs-on": ["push", "pull_request"],
+  on: ["push", "pull_request"],
   jobs: {
     ...generateBuildJobs(),
   },
