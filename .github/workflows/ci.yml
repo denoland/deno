@@ -29,10 +29,7 @@
         },
         {
           "name": "Package sourcecode",
-          "run": [
-            "mkdir -p target/release",
-            "tar --exclude=.cargo_home --exclude=\".git*\" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno"
-          ]
+          "run": "mkdir -p target/release\ntar --exclude=.cargo_home --exclude=\".git*\" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno"
         },
         {
           "name": "Configure canary",
