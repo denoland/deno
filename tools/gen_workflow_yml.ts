@@ -166,12 +166,36 @@ function generateBuildJobs(): Record<string, unknown> {
   return jobs;
 }
 
+function generateTestJobs(): Record<string, unknown> {
+  const jobs: Record<string, unknown> = {};
+
+  for (const os of platforms) {
+    for (const kind of kinds) {
+      if (os != "linux" && kind == "debug") continue;
+
+      jobs[`test_${os}_${kind}`] = {
+        name: `test / ${os} / ${kind}`,
+        "runs-on": slowRunners[os],
+        "timeout-minutes": 60,
+        step: [`test_${os}_${kind}`],
+        env,
+        steps: [
+          ...chechout,
+        ],
+      };
+    }
+  }
+
+  return jobs;
+}
+
 const ci = {
   name: "ci",
   // FIXME
   on: [/*"push",*/ "pull_request"],
   jobs: {
     ...generateBuildJobs(),
+    ...generateTestJobs(),
   },
 };
 
