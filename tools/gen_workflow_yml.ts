@@ -172,6 +172,7 @@ function generateBuildJobs(): Record<string, unknown> {
               path: [
                 `target/${kind}/deno${os == "windows" ? ".exe" : ""}`,
                 `target/${kind}/denort${os == "windows" ? ".exe" : ""}`,
+                `target/${kind}/test_server${os == "windows" ? ".exe" : ""}`,
               ].join("\n"),
             },
           },
@@ -201,6 +202,9 @@ function downloadBuildCache(os: string, kind: string): unknown[] {
           run: [
             `chmod +x target/${kind}/deno${os == "windows" ? ".exe" : ""}`,
             `chmod +x target/${kind}/denort${os == "windows" ? ".exe" : ""}`,
+            `chmod +x target/${kind}/test_server${
+              os == "windows" ? ".exe" : ""
+            }`,
           ].join("\n"),
         },
       ]

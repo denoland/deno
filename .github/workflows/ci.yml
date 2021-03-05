@@ -73,7 +73,7 @@
           "uses": "actions/upload-artifact@v2",
           "with": {
             "name": "build-linux-release",
-            "path": "target/release/deno\ntarget/release/denort"
+            "path": "target/release/deno\ntarget/release/denort\ntarget/release/test_server"
           }
         },
         {
@@ -156,7 +156,7 @@
           "uses": "actions/upload-artifact@v2",
           "with": {
             "name": "build-linux-debug",
-            "path": "target/debug/deno\ntarget/debug/denort"
+            "path": "target/debug/deno\ntarget/debug/denort\ntarget/debug/test_server"
           }
         }
       ]
@@ -225,7 +225,7 @@
           "uses": "actions/upload-artifact@v2",
           "with": {
             "name": "build-macos-release",
-            "path": "target/release/deno\ntarget/release/denort"
+            "path": "target/release/deno\ntarget/release/denort\ntarget/release/test_server"
           }
         },
         {
@@ -308,7 +308,7 @@
           "uses": "actions/upload-artifact@v2",
           "with": {
             "name": "build-windows-release",
-            "path": "target/release/deno.exe\ntarget/release/denort.exe"
+            "path": "target/release/deno.exe\ntarget/release/denort.exe\ntarget/release/test_server.exe"
           }
         },
         {
@@ -388,7 +388,7 @@
         },
         {
           "name": "Make build artifacts executable",
-          "run": "chmod +x target/release/deno\nchmod +x target/release/denort"
+          "run": "chmod +x target/release/deno\nchmod +x target/release/denort\nchmod +x target/release/test_server"
         },
         {
           "name": "Test (release)",
@@ -457,7 +457,7 @@
         },
         {
           "name": "Make build artifacts executable",
-          "run": "chmod +x target/debug/deno\nchmod +x target/debug/denort"
+          "run": "chmod +x target/debug/deno\nchmod +x target/debug/denort\nchmod +x target/debug/test_server"
         },
         {
           "name": "Test (debug)",
@@ -526,7 +526,7 @@
         },
         {
           "name": "Make build artifacts executable",
-          "run": "chmod +x target/release/deno\nchmod +x target/release/denort"
+          "run": "chmod +x target/release/deno\nchmod +x target/release/denort\nchmod +x target/release/test_server"
         },
         {
           "name": "Test (release)",
