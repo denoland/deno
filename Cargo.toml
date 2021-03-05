@@ -15,7 +15,6 @@ exclude = [
   "std/hash/_wasm"
 ]
 
-
 # [profile.release]
 # codegen-units = 1
 # lto = true
@@ -26,16 +25,16 @@ exclude = [
 # lto = true
 # opt-level = 'z' # Optimize for size
 
-# Optimize these packages for perf
-[profile.release.package.rand]
-opt-level = 3
-[profile.release.package.flate2]
-opt-level = 3
-[profile.release.package.brotli]
-opt-level = 3
-[profile.release.package.miniz_oxide]
-opt-level = 3
-[profile.release.package.async-compression]
-opt-level = 3
-[profile.release.package.brotli-decompressor]
-opt-level = 3
+# # Optimize these packages for perf
+# [profile.release.package.rand]
+# opt-level = 3
+# [profile.release.package.flate2]
+# opt-level = 3
+# [profile.release.package.brotli]
+# opt-level = 3
+# [profile.release.package.miniz_oxide]
+# opt-level = 3
+# [profile.release.package.async-compression]
+# opt-level = 3
+# [profile.release.package.brotli-decompressor]
+# opt-level = 3

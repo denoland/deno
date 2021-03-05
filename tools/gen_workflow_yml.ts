@@ -79,6 +79,11 @@ function generateBuildJobs(): Record<string, unknown> {
     for (const kind of kinds) {
       if (os != "linux" && kind == "debug") continue;
 
+      const zipSourceStep = {
+        name: "Package sourcecode",
+        run:
+          `tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno`,
+      };
       const packageStep = {
         name: "Package",
         "working-directory": "target/release",
@@ -90,12 +95,7 @@ function generateBuildJobs(): Record<string, unknown> {
           : [
             `zip -r deno-${targets[os]}.zip deno`,
             `zip -r denort-${targets[os]}.zip denort`,
-            ...(os == "linux"
-              ? [
-                "./deno types > lib.deno.d.ts",
-                `tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno`,
-              ]
-              : []),
+            ...(os == "linux" ? ["./deno types > lib.deno.d.ts"] : []),
           ]).join("\n"),
       };
       const uploadPackageStep = {
@@ -124,6 +124,7 @@ function generateBuildJobs(): Record<string, unknown> {
         env,
         steps: [
           ...chechout,
+          ...(kind == "release" ? [zipSourceStep] : []),
           {
             name: "Configure canary",
             if: "!startsWith(github.ref, 'refs/tags/')",

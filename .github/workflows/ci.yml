@@ -28,6 +28,10 @@
           }
         },
         {
+          "name": "Package sourcecode",
+          "run": "tar --exclude=.cargo_home --exclude=\".git*\" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno"
+        },
+        {
           "name": "Configure canary",
           "if": "!startsWith(github.ref, 'refs/tags/')",
           "shell": "bash",
@@ -71,7 +75,7 @@
         {
           "name": "Package",
           "working-directory": "target/release",
-          "run": "zip -r deno-x86_64-unknown-linux-gnu.zip deno\nzip -r denort-x86_64-unknown-linux-gnu.zip denort\n./deno types > lib.deno.d.ts\ntar --exclude=.cargo_home --exclude=\".git*\" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno"
+          "run": "zip -r deno-x86_64-unknown-linux-gnu.zip deno\nzip -r denort-x86_64-unknown-linux-gnu.zip denort\n./deno types > lib.deno.d.ts"
         },
         {
           "name": "Upload package artifacts",
@@ -172,6 +176,10 @@
           }
         },
         {
+          "name": "Package sourcecode",
+          "run": "tar --exclude=.cargo_home --exclude=\".git*\" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno"
+        },
+        {
           "name": "Configure canary",
           "if": "!startsWith(github.ref, 'refs/tags/')",
           "shell": "bash",
@@ -249,6 +257,10 @@
             "fetch-depth": 5,
             "submodules": true
           }
+        },
+        {
+          "name": "Package sourcecode",
+          "run": "tar --exclude=.cargo_home --exclude=\".git*\" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno"
         },
         {
           "name": "Configure canary",
