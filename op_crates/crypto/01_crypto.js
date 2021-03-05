@@ -78,9 +78,8 @@
   }
 
   async function generateKey(algorithm, extractable, keyUsages) {
-    
-    if(algorithm.publicExponent) {
-      if (!algorithm.publicExponent instanceof Uint8Array) {
+    if (algorithm.publicExponent) {
+      if (!(algorithm.publicExponent instanceof Uint8Array)) {
         throw new DOMException(
           "The provided publicExponent is not an Uint8Array",
           "TypeMismatchError",

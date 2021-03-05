@@ -195,7 +195,7 @@ pub async fn op_webcrypto_generate_key(
       })?;
 
       let exponent = BigUint::from_bytes_be(exp);
-
+      println!("{}", &exponent);
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
       let private_key = RSAPrivateKey::new_with_exp(
