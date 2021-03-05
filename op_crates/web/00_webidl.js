@@ -596,6 +596,13 @@
 
   converters.VoidFunction = convertCallbackFunction;
 
+  converters["UVString?"] = createNullableConverter(
+    converters.USVString,
+  );
+  converters["sequence<double>"] = createSequenceConverter(
+    converters["double"],
+  );
+
   function requiredArguments(length, required, opts = {}) {
     if (length < required) {
       const errMsg = `${
@@ -737,6 +744,26 @@
     };
   }
 
+  function createRecordConverter(keyConverter, valueConverter) {
+    return (V, opts) => {
+      if (typeof V !== "object") {
+        throw makeException(
+          TypeError,
+          "can not be converted to dictionary.",
+          opts,
+        );
+      }
+      const result = {};
+      for (const key of V) {
+        const typedKey = keyConverter(key, opts);
+        const value = V[key];
+        const typedValue = valueConverter(value, opts);
+        result[typedKey] = typedValue;
+      }
+      return value;
+    };
+  }
+
   const brand = Symbol("[[webidl.brand]]");
 
   function createInterfaceConverter(name, prototype) {
@@ -766,12 +793,14 @@
 
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
+    makeException,
     converters,
     requiredArguments,
     createDictionaryConverter,
     createEnumConverter,
     createNullableConverter,
     createSequenceConverter,
+    createRecordConverter,
     createInterfaceConverter,
     brand,
     createBranded,
