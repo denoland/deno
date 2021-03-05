@@ -13,6 +13,12 @@ const fastRunners = {
   "windows": "windows-2019",
 };
 
+const targets = {
+  "linux": "x86_64-unknown-linux-gnu",
+  "macos": "x86_64-apple-darwin",
+  "windows": "denort-x86_64-pc-windows-msvc",
+};
+
 const env = {
   "CARGO_INCREMENTAL": "0",
   "RUST_BACKTRACE": "full",
@@ -73,6 +79,44 @@ function generateBuildJobs(): Record<string, unknown> {
     for (const kind of kinds) {
       if (os != "linux" && kind == "debug") continue;
 
+      const packageStep = {
+        name: "Package",
+        "working-directory": "target/release",
+        run: (os == "windows"
+          ? [
+            "Compress-Archive -CompressionLevel Optimal -Force -Path deno.exe -DestinationPath deno-x86_64-pc-windows-msvc.zip",
+            "Compress-Archive -CompressionLevel Optimal -Force -Path denort.exe -DestinationPath denort-x86_64-pc-windows-msvc.zip",
+          ]
+          : [
+            `zip -r deno-${targets[os]}.zip deno`,
+            `zip -r denort-${targets[os]}.zip denort`,
+            ...(os == "linux"
+              ? [
+                "./deno types > lib.deno.d.ts",
+                `tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno`,
+              ]
+              : []),
+          ]).join("\n"),
+      };
+      const uploadPackageStep = {
+        name: "Upload package artifacts",
+        uses: "actions/upload-artifact@v2",
+        with: {
+          name: "package",
+          path: [
+            "target/release/deno-x86_64-unknown-linux-gnu.zip",
+            "target/release/deno-x86_64-pc-windows-msvc.zip",
+            "target/release/deno-x86_64-apple-darwin.zip",
+            "target/release/denort-x86_64-unknown-linux-gnu.zip",
+            "target/release/denort-x86_64-pc-windows-msvc.zip",
+            "target/release/denort-x86_64-apple-darwin.zip",
+            "target/release/deno_src.tar.gz",
+            "target/release/lib.deno.d.ts",
+          ].join("\n"),
+          "retention-days": 7,
+        },
+      };
+
       jobs[`build_${os}_${kind}`] = {
         name: `build / ${os} / ${kind}`,
         "runs-on": fastRunners[os],
@@ -110,6 +154,7 @@ function generateBuildJobs(): Record<string, unknown> {
               ].join("\n"),
             },
           },
+          ...(kind == "release" ? [packageStep, uploadPackageStep] : []),
         ],
       };
     }

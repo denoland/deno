@@ -67,6 +67,20 @@
             "name": "build-linux-release",
             "path": "target/release/deno\ntarget/release/denort"
           }
+        },
+        {
+          "name": "Package",
+          "working-directory": "target/release",
+          "run": "zip -r deno-x86_64-unknown-linux-gnu.zip deno\nzip -r denort-x86_64-unknown-linux-gnu.zip denort\n./deno types > lib.deno.d.ts\ntar --exclude=.cargo_home --exclude=\".git*\" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno"
+        },
+        {
+          "name": "Upload package artifacts",
+          "uses": "actions/upload-artifact@v2",
+          "with": {
+            "name": "package",
+            "path": "target/release/deno-x86_64-unknown-linux-gnu.zip\ntarget/release/deno-x86_64-pc-windows-msvc.zip\ntarget/release/deno-x86_64-apple-darwin.zip\ntarget/release/denort-x86_64-unknown-linux-gnu.zip\ntarget/release/denort-x86_64-pc-windows-msvc.zip\ntarget/release/denort-x86_64-apple-darwin.zip\ntarget/release/deno_src.tar.gz\ntarget/release/lib.deno.d.ts",
+            "retention-days": 7
+          }
         }
       ]
     },
@@ -197,6 +211,20 @@
             "name": "build-macos-release",
             "path": "target/release/deno\ntarget/release/denort"
           }
+        },
+        {
+          "name": "Package",
+          "working-directory": "target/release",
+          "run": "zip -r deno-x86_64-apple-darwin.zip deno\nzip -r denort-x86_64-apple-darwin.zip denort"
+        },
+        {
+          "name": "Upload package artifacts",
+          "uses": "actions/upload-artifact@v2",
+          "with": {
+            "name": "package",
+            "path": "target/release/deno-x86_64-unknown-linux-gnu.zip\ntarget/release/deno-x86_64-pc-windows-msvc.zip\ntarget/release/deno-x86_64-apple-darwin.zip\ntarget/release/denort-x86_64-unknown-linux-gnu.zip\ntarget/release/denort-x86_64-pc-windows-msvc.zip\ntarget/release/denort-x86_64-apple-darwin.zip\ntarget/release/deno_src.tar.gz\ntarget/release/lib.deno.d.ts",
+            "retention-days": 7
+          }
         }
       ]
     },
@@ -261,6 +289,20 @@
           "with": {
             "name": "build-windows-release",
             "path": "target/release/deno.exe\ntarget/release/denort.exe"
+          }
+        },
+        {
+          "name": "Package",
+          "working-directory": "target/release",
+          "run": "Compress-Archive -CompressionLevel Optimal -Force -Path deno.exe -DestinationPath deno-x86_64-pc-windows-msvc.zip\nCompress-Archive -CompressionLevel Optimal -Force -Path denort.exe -DestinationPath denort-x86_64-pc-windows-msvc.zip"
+        },
+        {
+          "name": "Upload package artifacts",
+          "uses": "actions/upload-artifact@v2",
+          "with": {
+            "name": "package",
+            "path": "target/release/deno-x86_64-unknown-linux-gnu.zip\ntarget/release/deno-x86_64-pc-windows-msvc.zip\ntarget/release/deno-x86_64-apple-darwin.zip\ntarget/release/denort-x86_64-unknown-linux-gnu.zip\ntarget/release/denort-x86_64-pc-windows-msvc.zip\ntarget/release/denort-x86_64-apple-darwin.zip\ntarget/release/deno_src.tar.gz\ntarget/release/lib.deno.d.ts",
+            "retention-days": 7
           }
         }
       ]
