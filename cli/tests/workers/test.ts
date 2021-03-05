@@ -694,5 +694,6 @@ Deno.test({
       }
     };
     await result;
+    worker.terminate();
   },
 });
