@@ -84,7 +84,7 @@ function generateBuildJobs(): Record<string, unknown> {
         run: [
           "mkdir -p target/release",
           `tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno`,
-        ],
+        ].join("\n"),
       };
       const packageStep = {
         name: "Package",
