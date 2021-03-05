@@ -189,7 +189,10 @@ function downloadBuildCache(os: string, kind: string): unknown[] {
     {
       name: "Download build artifacts",
       uses: "actions/download-artifact@v2",
-      with: { name: `build-${os}-${kind}` },
+      with: {
+        name: `build-${os}-${kind}`,
+        path: `target/${kind}/`,
+      },
     },
     ...(os != "windows"
       ? [

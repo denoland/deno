@@ -382,7 +382,8 @@
           "name": "Download build artifacts",
           "uses": "actions/download-artifact@v2",
           "with": {
-            "name": "build-linux-release"
+            "name": "build-linux-release",
+            "path": "target/release/"
           }
         },
         {
@@ -450,7 +451,8 @@
           "name": "Download build artifacts",
           "uses": "actions/download-artifact@v2",
           "with": {
-            "name": "build-linux-debug"
+            "name": "build-linux-debug",
+            "path": "target/debug/"
           }
         },
         {
@@ -518,7 +520,8 @@
           "name": "Download build artifacts",
           "uses": "actions/download-artifact@v2",
           "with": {
-            "name": "build-macos-release"
+            "name": "build-macos-release",
+            "path": "target/release/"
           }
         },
         {
@@ -586,7 +589,8 @@
           "name": "Download build artifacts",
           "uses": "actions/download-artifact@v2",
           "with": {
-            "name": "build-windows-release"
+            "name": "build-windows-release",
+            "path": "target/release/"
           }
         },
         {
