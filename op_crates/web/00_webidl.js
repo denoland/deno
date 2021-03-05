@@ -760,7 +760,7 @@
         const typedValue = valueConverter(value, opts);
         result[typedKey] = typedValue;
       }
-      return value;
+      return result;
     };
   }
 
