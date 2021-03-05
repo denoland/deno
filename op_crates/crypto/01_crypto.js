@@ -91,7 +91,7 @@
       algorithm,
       extractable,
       keyUsages,
-    }, algorithm.publicExponent || null);
+    }, algorithm.publicExponent || new Uint8Array());
 
     // A DOMError.
     if (err) throw new Error(err);
