@@ -81,8 +81,10 @@ function generateBuildJobs(): Record<string, unknown> {
 
       const zipSourceStep = {
         name: "Package sourcecode",
-        run:
+        run: [
+          "mkdir -p target/release",
           `tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno`,
+        ],
       };
       const packageStep = {
         name: "Package",
@@ -124,7 +126,7 @@ function generateBuildJobs(): Record<string, unknown> {
         env,
         steps: [
           ...chechout,
-          ...(kind == "release" ? [zipSourceStep] : []),
+          ...(kind == "release" && os == "linux" ? [zipSourceStep] : []),
           {
             name: "Configure canary",
             if: "!startsWith(github.ref, 'refs/tags/')",
