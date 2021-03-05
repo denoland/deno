@@ -56,7 +56,11 @@
           }
         },
         {
-          "name": "Build release",
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version"
+        },
+        {
+          "name": "Build (release)",
           "uses": "actions-rs/cargo@v1",
           "with": {
             "use-cross": false,
@@ -135,7 +139,11 @@
           }
         },
         {
-          "name": "Build debug",
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version"
+        },
+        {
+          "name": "Build (debug)",
           "uses": "actions-rs/cargo@v1",
           "with": {
             "use-cross": false,
@@ -200,7 +208,11 @@
           }
         },
         {
-          "name": "Build release",
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version"
+        },
+        {
+          "name": "Build (release)",
           "uses": "actions-rs/cargo@v1",
           "with": {
             "use-cross": false,
@@ -279,7 +291,11 @@
           }
         },
         {
-          "name": "Build release",
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version"
+        },
+        {
+          "name": "Build (release)",
           "uses": "actions-rs/cargo@v1",
           "with": {
             "use-cross": false,
@@ -308,6 +324,274 @@
             "path": "target/release/deno-x86_64-unknown-linux-gnu.zip\ntarget/release/deno-x86_64-pc-windows-msvc.zip\ntarget/release/deno-x86_64-apple-darwin.zip\ntarget/release/denort-x86_64-unknown-linux-gnu.zip\ntarget/release/denort-x86_64-pc-windows-msvc.zip\ntarget/release/denort-x86_64-apple-darwin.zip\ntarget/release/deno_src.tar.gz\ntarget/release/lib.deno.d.ts",
             "retention-days": 7
           }
+        }
+      ]
+    },
+    "test_linux_release": {
+      "name": "test / linux / release",
+      "runs-on": "ubuntu-18.04",
+      "timeout-minutes": 60,
+      "step": [
+        "build_linux_release"
+      ],
+      "env": {
+        "CARGO_INCREMENTAL": "0",
+        "RUST_BACKTRACE": "full",
+        "CARGO_TERM_COLOR": "always"
+      },
+      "steps": [
+        {
+          "name": "Configure git",
+          "run": "git config --global core.symlinks true"
+        },
+        {
+          "name": "Checkout repository",
+          "uses": "actions/checkout@v2",
+          "with": {
+            "fetch-depth": 5,
+            "submodules": true
+          }
+        },
+        {
+          "name": "Setup Rust",
+          "uses": "actions-rs/toolchain@v1",
+          "with": {
+            "default": true,
+            "override": true,
+            "toolchain": "1.50.0"
+          }
+        },
+        {
+          "name": "Setup Deno",
+          "run": "curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2\necho \"$HOME/.deno/bin\" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH"
+        },
+        {
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version\ndeno --version"
+        },
+        {
+          "name": "Build cache",
+          "uses": "actions/cache@v2",
+          "with": {
+            "path": "~/.cargo/registry\n~/.cargo/git\n.cargo_home\ntarget/*/.*\ntarget/*/build\ntarget/*/deps",
+            "key": "linux-release-${{ hashFiles('Cargo.lock') }}",
+            "restore-keys": "linux-release-"
+          }
+        },
+        {
+          "name": "Download build artifacts",
+          "uses": "actions/download-artifact@v2",
+          "with": {
+            "name": "build-linux-release"
+          }
+        },
+        {
+          "name": "Make build artifacts executable",
+          "run": "chmod +x target/release/deno\nchmod +x target/release/denort"
+        },
+        {
+          "name": "Test (release)",
+          "run": "cargo test --release --locked --all-targets"
+        }
+      ]
+    },
+    "test_linux_debug": {
+      "name": "test / linux / debug",
+      "runs-on": "ubuntu-18.04",
+      "timeout-minutes": 60,
+      "step": [
+        "build_linux_debug"
+      ],
+      "env": {
+        "CARGO_INCREMENTAL": "0",
+        "RUST_BACKTRACE": "full",
+        "CARGO_TERM_COLOR": "always"
+      },
+      "steps": [
+        {
+          "name": "Configure git",
+          "run": "git config --global core.symlinks true"
+        },
+        {
+          "name": "Checkout repository",
+          "uses": "actions/checkout@v2",
+          "with": {
+            "fetch-depth": 5,
+            "submodules": true
+          }
+        },
+        {
+          "name": "Setup Rust",
+          "uses": "actions-rs/toolchain@v1",
+          "with": {
+            "default": true,
+            "override": true,
+            "toolchain": "1.50.0"
+          }
+        },
+        {
+          "name": "Setup Deno",
+          "run": "curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2\necho \"$HOME/.deno/bin\" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH"
+        },
+        {
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version\ndeno --version"
+        },
+        {
+          "name": "Build cache",
+          "uses": "actions/cache@v2",
+          "with": {
+            "path": "~/.cargo/registry\n~/.cargo/git\n.cargo_home\ntarget/*/.*\ntarget/*/build\ntarget/*/deps",
+            "key": "linux-debug-${{ hashFiles('Cargo.lock') }}",
+            "restore-keys": "linux-debug-"
+          }
+        },
+        {
+          "name": "Download build artifacts",
+          "uses": "actions/download-artifact@v2",
+          "with": {
+            "name": "build-linux-debug"
+          }
+        },
+        {
+          "name": "Make build artifacts executable",
+          "run": "chmod +x target/debug/deno\nchmod +x target/debug/denort"
+        },
+        {
+          "name": "Test (debug)",
+          "run": "cargo test --locked --doc\ncargo test --locked --all-targets"
+        }
+      ]
+    },
+    "test_macos_release": {
+      "name": "test / macos / release",
+      "runs-on": "macos-10.15",
+      "timeout-minutes": 60,
+      "step": [
+        "build_macos_release"
+      ],
+      "env": {
+        "CARGO_INCREMENTAL": "0",
+        "RUST_BACKTRACE": "full",
+        "CARGO_TERM_COLOR": "always"
+      },
+      "steps": [
+        {
+          "name": "Configure git",
+          "run": "git config --global core.symlinks true"
+        },
+        {
+          "name": "Checkout repository",
+          "uses": "actions/checkout@v2",
+          "with": {
+            "fetch-depth": 5,
+            "submodules": true
+          }
+        },
+        {
+          "name": "Setup Rust",
+          "uses": "actions-rs/toolchain@v1",
+          "with": {
+            "default": true,
+            "override": true,
+            "toolchain": "1.50.0"
+          }
+        },
+        {
+          "name": "Setup Deno",
+          "run": "curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2\necho \"$HOME/.deno/bin\" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH"
+        },
+        {
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version\ndeno --version"
+        },
+        {
+          "name": "Build cache",
+          "uses": "actions/cache@v2",
+          "with": {
+            "path": "~/.cargo/registry\n~/.cargo/git\n.cargo_home\ntarget/*/.*\ntarget/*/build\ntarget/*/deps",
+            "key": "macos-release-${{ hashFiles('Cargo.lock') }}",
+            "restore-keys": "macos-release-"
+          }
+        },
+        {
+          "name": "Download build artifacts",
+          "uses": "actions/download-artifact@v2",
+          "with": {
+            "name": "build-macos-release"
+          }
+        },
+        {
+          "name": "Make build artifacts executable",
+          "run": "chmod +x target/release/deno\nchmod +x target/release/denort"
+        },
+        {
+          "name": "Test (release)",
+          "run": "cargo test --release --locked --all-targets"
+        }
+      ]
+    },
+    "test_windows_release": {
+      "name": "test / windows / release",
+      "runs-on": "windows-2019",
+      "timeout-minutes": 60,
+      "step": [
+        "build_windows_release"
+      ],
+      "env": {
+        "CARGO_INCREMENTAL": "0",
+        "RUST_BACKTRACE": "full",
+        "CARGO_TERM_COLOR": "always"
+      },
+      "steps": [
+        {
+          "name": "Configure git",
+          "run": "git config --global core.symlinks true"
+        },
+        {
+          "name": "Checkout repository",
+          "uses": "actions/checkout@v2",
+          "with": {
+            "fetch-depth": 5,
+            "submodules": true
+          }
+        },
+        {
+          "name": "Setup Rust",
+          "uses": "actions-rs/toolchain@v1",
+          "with": {
+            "default": true,
+            "override": true,
+            "toolchain": "1.50.0"
+          }
+        },
+        {
+          "name": "Setup Deno",
+          "run": "curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2\necho \"$HOME/.deno/bin\" >> $${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH"
+        },
+        {
+          "name": "Log versions",
+          "run": "rustc --version\ncargo --version\ndeno --version"
+        },
+        {
+          "name": "Build cache",
+          "uses": "actions/cache@v2",
+          "with": {
+            "path": "~/.cargo/registry\n~/.cargo/git\n.cargo_home\ntarget/*/.*\ntarget/*/build\ntarget/*/deps",
+            "key": "windows-release-${{ hashFiles('Cargo.lock') }}",
+            "restore-keys": "windows-release-"
+          }
+        },
+        {
+          "name": "Download build artifacts",
+          "uses": "actions/download-artifact@v2",
+          "with": {
+            "name": "build-windows-release"
+          }
+        },
+        {
+          "name": "Test (release)",
+          "run": "cargo test --release --locked --all-targets"
         }
       ]
     }

@@ -1,5 +1,8 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
 
+const RUST_VERSION = "1.50.0";
+const DENO_VERSION = "v1.7.2";
+
 const slowRunners = {
   "linux": "ubuntu-18.04",
   "macos": "macos-10.15",
@@ -68,8 +71,16 @@ const setupRust = {
   with: {
     default: true,
     override: true,
-    toolchain: "1.50.0",
+    toolchain: RUST_VERSION,
   },
+};
+
+const setupDeno = {
+  name: "Setup Deno",
+  run: [
+    `curl -fsSL https://deno.land/x/install/install.sh | sh -s ${DENO_VERSION}`,
+    `echo "$HOME/.deno/bin" >> $\${{ runner.os == 'Windows' && 'env:' || '' }}GITHUB_PATH`,
+  ].join("\n"),
 };
 
 function generateBuildJobs(): Record<string, unknown> {
@@ -136,7 +147,14 @@ function generateBuildJobs(): Record<string, unknown> {
           buildCache(os, kind),
           setupRust,
           {
-            name: `Build ${kind}`,
+            name: "Log versions",
+            run: [
+              "rustc --version",
+              "cargo --version",
+            ].join("\n"),
+          },
+          {
+            name: `Build (${kind})`,
             uses: "actions-rs/cargo@v1",
             with: {
               "use-cross": false,
@@ -166,6 +184,27 @@ function generateBuildJobs(): Record<string, unknown> {
   return jobs;
 }
 
+function downloadBuildCache(os: string, kind: string): unknown[] {
+  return [
+    {
+      name: "Download build artifacts",
+      uses: "actions/download-artifact@v2",
+      with: { name: `build-${os}-${kind}` },
+    },
+    ...(os != "windows"
+      ? [
+        {
+          name: "Make build artifacts executable",
+          run: [
+            `chmod +x target/${kind}/deno${os == "windows" ? ".exe" : ""}`,
+            `chmod +x target/${kind}/denort${os == "windows" ? ".exe" : ""}`,
+          ].join("\n"),
+        },
+      ]
+      : []),
+  ];
+}
+
 function generateTestJobs(): Record<string, unknown> {
   const jobs: Record<string, unknown> = {};
 
@@ -177,10 +216,38 @@ function generateTestJobs(): Record<string, unknown> {
         name: `test / ${os} / ${kind}`,
         "runs-on": slowRunners[os],
         "timeout-minutes": 60,
-        step: [`test_${os}_${kind}`],
+        step: [`build_${os}_${kind}`],
         env,
         steps: [
           ...chechout,
+          setupRust,
+          setupDeno,
+          {
+            name: "Log versions",
+            run: [
+              "rustc --version",
+              "cargo --version",
+              "deno --version",
+            ].join("\n"),
+          },
+          buildCache(os, kind),
+          ...downloadBuildCache(os, kind),
+          ...(kind == "release"
+            ? [
+              {
+                name: "Test (release)",
+                run: "cargo test --release --locked --all-targets",
+              },
+            ]
+            : [
+              {
+                name: "Test (debug)",
+                run: [
+                  "cargo test --locked --doc",
+                  "cargo test --locked --all-targets",
+                ].join("\n"),
+              },
+            ]),
         ],
       };
     }
