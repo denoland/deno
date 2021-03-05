@@ -181,7 +181,7 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
       validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let public_exponent = if zero_copy.len() > 0 {
+      let public_exponent = if !zero_copy.is_empty() {
         Some(&*zero_copy[0])
       } else {
         None
