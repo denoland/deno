@@ -179,7 +179,7 @@ pub async fn op_webcrypto_generate_key(
 
   let key = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
-      validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
       let public_exponent = if !zero_copy.is_empty() {
         Some(&*zero_copy[0])
@@ -195,7 +195,7 @@ pub async fn op_webcrypto_generate_key(
       })?;
 
       let exponent = BigUint::from_bytes_be(exp);
-      println!("{}", &exponent);
+
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
       let private_key = RSAPrivateKey::new_with_exp(
@@ -207,10 +207,13 @@ pub async fn op_webcrypto_generate_key(
       let public_key = private_key.to_public_key();
 
       // Create webcrypto keypair.
-      let webcrypto_key_public =
-        WebCryptoKey::new_public(algorithm, extractable, vec![]);
+      let webcrypto_key_public = WebCryptoKey::new_public(
+        algorithm,
+        extractable,
+        args.key_usages.clone(),
+      );
       let webcrypto_key_private =
-        WebCryptoKey::new_private(algorithm, extractable, vec![]);
+        WebCryptoKey::new_private(algorithm, extractable, args.key_usages);
       let crypto_key = WebCryptoKeyPair::new(
         webcrypto_key_public.clone(),
         webcrypto_key_private.clone(),
@@ -232,7 +235,7 @@ pub async fn op_webcrypto_generate_key(
     }
     Algorithm::Ecdh => {
       validate_usage!(
-        args.key_usages,
+        &args.key_usages,
         vec![KeyUsage::DeriveKey, KeyUsage::DeriveBits]
       );
 
@@ -250,10 +253,13 @@ pub async fn op_webcrypto_generate_key(
       // Extract public key.
       let public_key = private_key.compute_public_key()?;
       // Create webcrypto keypair.
-      let webcrypto_key_public =
-        WebCryptoKey::new_public(algorithm, extractable, vec![]);
+      let webcrypto_key_public = WebCryptoKey::new_public(
+        algorithm,
+        extractable,
+        args.key_usages.clone(),
+      );
       let webcrypto_key_private =
-        WebCryptoKey::new_private(algorithm, extractable, vec![]);
+        WebCryptoKey::new_private(algorithm, extractable, args.key_usages);
       let crypto_key = WebCryptoKeyPair::new(
         webcrypto_key_public.clone(),
         webcrypto_key_private.clone(),
@@ -274,7 +280,7 @@ pub async fn op_webcrypto_generate_key(
       }
     }
     Algorithm::Ecdsa => {
-      validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
       let curve: &EcdsaSigningAlgorithm = args
         .algorithm
@@ -289,10 +295,13 @@ pub async fn op_webcrypto_generate_key(
       let private_key = EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?;
 
       // Create webcrypto keypair.
-      let webcrypto_key_public =
-        WebCryptoKey::new_public(algorithm, extractable, vec![]);
+      let webcrypto_key_public = WebCryptoKey::new_public(
+        algorithm,
+        extractable,
+        args.key_usages.clone(),
+      );
       let webcrypto_key_private =
-        WebCryptoKey::new_private(algorithm, extractable, vec![]);
+        WebCryptoKey::new_private(algorithm, extractable, args.key_usages);
       let crypto_key = WebCryptoKeyPair::new(
         webcrypto_key_public,
         webcrypto_key_private.clone(),
@@ -313,7 +322,7 @@ pub async fn op_webcrypto_generate_key(
       }
     }
     Algorithm::Hmac => {
-      validate_usage!(args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
       let hash: HmacAlgorithm = args
         .algorithm
@@ -329,7 +338,8 @@ pub async fn op_webcrypto_generate_key(
       // };
 
       let key = HmacKey::generate(hash, &rng)?;
-      let crypto_key = WebCryptoKey::new_secret(algorithm, extractable, vec![]);
+      let crypto_key =
+        WebCryptoKey::new_secret(algorithm, extractable, args.key_usages);
       let resource = CryptoKeyResource {
         crypto_key: crypto_key.clone(),
         key,
@@ -375,7 +385,10 @@ pub async fn op_webcrypto_sign_key(
         .ok_or_else(bad_resource_id)?;
 
       let private_key = &resource.key;
-      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
+
+      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
+        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+      }
 
       let padding = match resource
         .hash
@@ -405,7 +418,10 @@ pub async fn op_webcrypto_sign_key(
         .ok_or_else(bad_resource_id)?;
 
       let private_key = &resource.key;
-      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
+
+      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
+        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+      }
 
       let rng = OsRng;
       let salt_len = args.salt_length.ok_or_else(|| {
@@ -439,7 +455,10 @@ pub async fn op_webcrypto_sign_key(
         .get::<CryptoKeyResource<EcdsaKeyPair>>(args.rid)
         .ok_or_else(bad_resource_id)?;
       let key_pair = &resource.key;
-      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
+
+      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
+        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+      }
 
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
@@ -463,7 +482,10 @@ pub async fn op_webcrypto_sign_key(
         .get::<CryptoKeyResource<HmacKey>>(args.rid)
         .ok_or_else(bad_resource_id)?;
       let key = &resource.key;
-      validate_usage!(&[KeyUsage::Sign], resource.crypto_key.usages);
+
+      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
+        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+      }
 
       let signature = ring::hmac::sign(&key, &data);
       signature.as_ref().to_vec()

@@ -111,12 +111,15 @@
     const hash = simpleParam ? null : algorithm.hash || null;
     algorithm = simpleParam ? algorithm : algorithm.name;
 
-    return await core.jsonOpAsync("op_webcrypto_sign_key", {
+    let { signature, err } = await core.jsonOpAsync("op_webcrypto_sign_key", {
       rid,
       algorithm,
       saltLength,
       hash,
-    }, data).data;
+    }, data);
+
+    if(err) throw new DOMException(err);
+    return signature;
   }
 
   const subtle = {
