@@ -853,14 +853,19 @@ impl JsRuntime {
     Ok(())
   }
 
+  // TODO(bartlomieju): make it return `ModuleEvaluationFuture`?
   /// Evaluates an already instantiated ES module.
+  ///
+  /// Returns a receiver handle that resolves when module promise resolves.
+  /// Implementors must manually call `run_event_loop()` to drive module
+  /// evaluation future.
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   ///
   /// This function panics if module has not been instantiated.
-  fn mod_evaluate_inner(
+  pub fn mod_evaluate(
     &mut self,
     id: ModuleId,
   ) -> mpsc::Receiver<Result<(), AnyError>> {
@@ -927,24 +932,6 @@ impl JsRuntime {
     }
 
     receiver
-  }
-
-  pub async fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), AnyError> {
-    let mut receiver = self.mod_evaluate_inner(id);
-
-    poll_fn(|cx| {
-      if let Poll::Ready(maybe_result) = receiver.poll_next_unpin(cx) {
-        debug!("received module evaluate {:#?}", maybe_result);
-        // If `None` is returned it means that runtime was destroyed before
-        // evaluation was complete. This can happen in Web Worker when `self.close()`
-        // is called at top level.
-        let result = maybe_result.unwrap_or(Ok(()));
-        return Poll::Ready(result);
-      }
-      let _r = self.poll_event_loop(cx)?;
-      Poll::Pending
-    })
-    .await
   }
 
   fn dyn_import_error(&mut self, id: ModuleLoadId, err: AnyError) {
@@ -1140,7 +1127,8 @@ impl JsRuntime {
           v8::PromiseState::Fulfilled => {
             state.pending_mod_evaluate.take();
             scope.perform_microtask_checkpoint();
-            sender.try_send(Ok(())).unwrap();
+            // Receiver end might have been already dropped, ignore the result
+            let _ = sender.try_send(Ok(()));
           }
           v8::PromiseState::Rejected => {
             let exception = promise.result(scope);
@@ -1150,7 +1138,8 @@ impl JsRuntime {
             let err1 = exception_to_err_result::<()>(scope, exception, false)
               .map_err(|err| attach_handle_to_error(scope, err, exception))
               .unwrap_err();
-            sender.try_send(Err(err1)).unwrap();
+            // Receiver end might have been already dropped, ignore the result
+            let _ = sender.try_send(Err(err1));
           }
         }
       }
@@ -1937,7 +1926,7 @@ pub mod tests {
             throw Error("assert");
           }
         }
-        
+
         let asyncRecv = 0;
         Deno.core.setAsyncHandler(1, (buf) => {
           assert(buf.byteLength === 100 * 1024 * 1024);
@@ -2351,7 +2340,7 @@ pub mod tests {
     runtime.mod_instantiate(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    runtime.mod_evaluate_inner(mod_a);
+    runtime.mod_evaluate(mod_a);
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -2594,7 +2583,8 @@ pub mod tests {
     )
     .unwrap();
 
-    futures::executor::block_on(runtime.mod_evaluate(module_id)).unwrap();
+    runtime.mod_evaluate(module_id);
+    futures::executor::block_on(runtime.run_event_loop()).unwrap();
 
     let _snapshot = runtime.snapshot();
   }

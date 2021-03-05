@@ -675,3 +675,25 @@ Deno.test({
     w.terminate();
   },
 });
+
+Deno.test({
+  name: "Worker with top-level-await",
+  fn: async function (): Promise<void> {
+    const result = deferred();
+    const worker = new Worker(
+      new URL("worker_with_top_level_await.ts", import.meta.url).href,
+      { type: "module" },
+    );
+    worker.onmessage = (e): void => {
+      if (e.data == "ready") {
+        worker.postMessage("trigger worker handler");
+      } else if (e.data == "triggered worker handler") {
+        result.resolve();
+      } else {
+        result.reject(new Error("Handler didn't run during top-level delay."));
+      }
+    };
+    await result;
+    worker.terminate();
+  },
+});
