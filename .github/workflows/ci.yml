@@ -189,13 +189,13 @@ jobs:
           cargo --version
           deno --version
 
-      - name: lint.js
-        if: matrix.kind == 'lint'
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
-
       - name: test_format.js
         if: matrix.kind == 'lint'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
+
+      - name: lint.js
+        if: matrix.kind == 'lint'
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
       - name: Build release
         if: |
