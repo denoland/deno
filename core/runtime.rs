@@ -424,8 +424,10 @@ impl JsRuntime {
 
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
-    let source = v8::String::new_external_onebyte_static(scope, js_source).unwrap();
-    let name = v8::String::new_external_onebyte_static(scope, js_filename).unwrap();
+    let source =
+      v8::String::new_external_onebyte_static(scope, js_source).unwrap();
+    let name =
+      v8::String::new_external_onebyte_static(scope, js_filename).unwrap();
     let origin = bindings::script_origin(scope, name);
 
     let tc_scope = &mut v8::TryCatch::new(scope);
