@@ -343,7 +343,7 @@ pub async fn op_ws_next_event(
 /// Load and execute the javascript code.
 pub fn init(isolate: &mut JsRuntime) {
   isolate
-    .execute(
+    .execute_static(
       "deno:op_crates/websocket/01_websocket.js",
       include_str!("01_websocket.js"),
     )

@@ -22,7 +22,7 @@ pub fn init(isolate: &mut JsRuntime) {
     include_str!("01_crypto.js"),
   )];
   for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
+    isolate.execute_static(url, source_code).unwrap();
   }
 }
 

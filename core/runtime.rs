@@ -413,6 +413,41 @@ impl JsRuntime {
     }
   }
 
+  /// Same as execute() except intended for internal runtime JS code
+  /// exposed to v8 as external strings to reduce heap-usage (~1MB) per-isolate
+  pub fn execute_static(
+    &mut self,
+    js_filename: &'static str,
+    js_source: &'static str,
+  ) -> Result<(), AnyError> {
+    let context = self.global_context();
+
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+
+    let source = v8::String::new_external_onebyte_static(scope, js_source).unwrap();
+    let name = v8::String::new_external_onebyte_static(scope, js_filename).unwrap();
+    let origin = bindings::script_origin(scope, name);
+
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let script = match v8::Script::compile(tc_scope, source, Some(&origin)) {
+      Some(script) => script,
+      None => {
+        let exception = tc_scope.exception().unwrap();
+        return exception_to_err_result(tc_scope, exception, false);
+      }
+    };
+
+    match script.run(tc_scope) {
+      Some(_) => Ok(()),
+      None => {
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        exception_to_err_result(tc_scope, exception, false)
+      }
+    }
+  }
+
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
