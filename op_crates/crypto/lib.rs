@@ -36,7 +36,7 @@ use rsa::BigUint;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
 use sha1::Sha1;
-use sha2::{Sha256, Sha384, Sha512, Digest};
+use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -435,22 +435,34 @@ pub async fn op_webcrypto_sign_key(
         WebCryptoHash::Sha1 => {
           let mut hasher = Sha1::new();
           hasher.update(&data);
-          (PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len), hasher.finalize()[..].to_vec())
+          (
+            PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
+            hasher.finalize()[..].to_vec(),
+          )
         }
         WebCryptoHash::Sha256 => {
           let mut hasher = Sha256::new();
           hasher.update(&data);
-          (PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len), hasher.finalize()[..].to_vec())
+          (
+            PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
+            hasher.finalize()[..].to_vec(),
+          )
         }
         WebCryptoHash::Sha384 => {
           let mut hasher = Sha384::new();
           hasher.update(&data);
-          (PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len), hasher.finalize()[..].to_vec())
+          (
+            PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
+            hasher.finalize()[..].to_vec(),
+          )
         }
         WebCryptoHash::Sha512 => {
           let mut hasher = Sha512::new();
           hasher.update(&data);
-          (PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len), hasher.finalize()[..].to_vec())
+          (
+            PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
+            hasher.finalize()[..].to_vec(),
+          )
         }
       };
 
