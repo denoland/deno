@@ -81,8 +81,8 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo2-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo2-${{ runner.os }}-
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
