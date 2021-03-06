@@ -36,7 +36,7 @@ use rsa::BigUint;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
 use sha1::Sha1;
-use sha2::{Sha256, Sha384, Sha512};
+use sha2::{Sha256, Sha384, Sha512, Digest};
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -428,26 +428,34 @@ pub async fn op_webcrypto_sign_key(
         WebCryptoError::MissingArgument("saltLength".to_string())
       })? as usize;
 
-      let padding = match resource
+      let (padding, digest_in) = match resource
         .hash
         .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
       {
         WebCryptoHash::Sha1 => {
-          PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len)
+          let mut hasher = Sha1::new();
+          hasher.update(&data);
+          (PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len), hasher.finalize()[..].to_vec())
         }
         WebCryptoHash::Sha256 => {
-          PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len)
+          let mut hasher = Sha256::new();
+          hasher.update(&data);
+          (PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len), hasher.finalize()[..].to_vec())
         }
         WebCryptoHash::Sha384 => {
-          PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len)
+          let mut hasher = Sha384::new();
+          hasher.update(&data);
+          (PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len), hasher.finalize()[..].to_vec())
         }
         WebCryptoHash::Sha512 => {
-          PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len)
+          let mut hasher = Sha512::new();
+          hasher.update(&data);
+          (PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len), hasher.finalize()[..].to_vec())
         }
       };
 
       // Sign data based on computed padding and return buffer
-      private_key.sign(padding, &data)?
+      private_key.sign(padding, &digest_in)?
     }
     Algorithm::Ecdsa => {
       let resource = state
@@ -493,7 +501,7 @@ pub async fn op_webcrypto_sign_key(
     _ => return Err(WebCryptoError::Unsupported.into()),
   };
 
-  Ok(json!({ "data": signature }))
+  Ok(json!({ "signature": signature }))
 }
 
 pub fn get_declaration() -> PathBuf {
