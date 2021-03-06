@@ -35,21 +35,22 @@
     return ArrayBuffer.isView(x) && !(x instanceof DataView);
   }
 
-  const tableChars = {
-    middleMiddle: "─",
-    rowMiddle: "┼",
-    topRight: "┐",
-    topLeft: "┌",
-    leftMiddle: "├",
-    topMiddle: "┬",
-    bottomRight: "┘",
-    bottomLeft: "└",
-    bottomMiddle: "┴",
-    rightMiddle: "┤",
-    left: "│ ",
-    right: " │",
-    middle: " │ ",
-  };
+  // Strings are escaped so all JS source is ASCII
+  var tableChars = {
+    bottomLeft: "\u2514",
+    bottomMiddle: "\u2534",
+    bottomRight: "\u2518",
+    left: "\u2502 ",
+    leftMiddle: "\u251c",
+    middle: " \u2502 ",
+    middleMiddle: "\u2500",
+    right: " \u2502",
+    rightMiddle: "\u2524",
+    rowMiddle: "\u253c",
+    topLeft: "\u250c",
+    topMiddle: "\u252c",
+    topRight: "\u2510",
+};
 
   function isFullWidthCodePoint(code) {
     // Code points are partially derived from:
