@@ -50,7 +50,7 @@
     topLeft: "\u250c",
     topMiddle: "\u252c",
     topRight: "\u2510",
-};
+  };
 
   function isFullWidthCodePoint(code) {
     // Code points are partially derived from:
