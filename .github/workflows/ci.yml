@@ -72,6 +72,19 @@ jobs:
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
+      - name: Cargo Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .cargo_home
+            target/*/.*
+            target/*/build
+            target/*/deps
+          key: cargo2-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo2-${{ runner.os }}-
+
       - name: Sccache Cache
         uses: actions/cache@v2
         with:
