@@ -21,7 +21,7 @@ unitTest(function malformedJsonControlBuffer(): void {
 
 unitTest(function invalidPromiseId(): void {
   const opId = Deno.core.ops()["op_open_async"];
-  const reqBuf = new Uint8Array([0, 0, 0, 0, 0, 0, 0]);
+  const reqBuf = new Uint8Array([0, 0, 0]);
   const resBuf = Deno.core.send(opId, reqBuf);
   const resText = new TextDecoder().decode(resBuf);
   const resObj = JSON.parse(resText);

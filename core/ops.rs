@@ -190,10 +190,10 @@ where
   let try_dispatch_op =
     move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
       let promise_id = bufs[0]
-        .get(0..8)
-        .map(|b| u64::from_be_bytes(b.try_into().unwrap()))
+        .get(0..4)
+        .map(|b| u32::from_be_bytes(b.try_into().unwrap()))
         .ok_or_else(|| type_error("missing or invalid `promiseId`"))?;
-      let args = serde_json::from_slice(&bufs[0][8..])?;
+      let args = serde_json::from_slice(&bufs[0][4..])?;
       let bufs = bufs[1..].into();
       use crate::futures::FutureExt;
       let fut = op_fn(state.clone(), args, bufs).map(move |result| {
@@ -219,7 +219,7 @@ where
 }
 
 fn json_serialize_op_result<R: Serialize>(
-  promise_id: Option<u64>,
+  promise_id: Option<u32>,
   result: Result<R, AnyError>,
   get_error_class_fn: crate::runtime::GetErrorClassFn,
 ) -> Box<[u8]> {

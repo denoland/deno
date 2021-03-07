@@ -216,8 +216,8 @@ SharedQueue Binary Layout
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
     const promiseId = nextPromiseId++;
-    const reqBuf = core.encode("\0".repeat(8) + JSON.stringify(args));
-    new DataView(reqBuf.buffer).setBigUint64(0, BigInt(promiseId));
+    const reqBuf = core.encode("\0".repeat(4) + JSON.stringify(args));
+    new DataView(reqBuf.buffer).setUint32(0, promiseId);
     dispatch(opName, reqBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
