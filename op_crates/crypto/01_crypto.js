@@ -134,7 +134,6 @@
   window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.crypto = {
     getRandomValues,
-    generateKey,
     subtle,
   };
 })(this);
