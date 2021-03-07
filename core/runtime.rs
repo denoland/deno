@@ -1433,13 +1433,16 @@ impl JsRuntime {
 
     if shared_queue_size > 0 || overflown_responses_size > 0 {
       js_recv_cb.call(tc_scope, global, args.as_slice());
-      // The other side should have shifted off all the messages.
-      let shared_queue_size = state_rc.borrow().shared.size();
-      assert_eq!(shared_queue_size, 0);
     }
 
     match tc_scope.exception() {
-      None => Ok(()),
+      None => {
+        // The other side should have shifted off all the messages.
+        let shared_queue_size = state_rc.borrow().shared.size();
+        assert_eq!(shared_queue_size, 0);
+
+        Ok(())
+      }
       Some(exception) => exception_to_err_result(tc_scope, exception, false),
     }
   }
