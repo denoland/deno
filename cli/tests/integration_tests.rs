@@ -7,6 +7,7 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::fs;
 use std::io::{BufRead, Read, Write};
+use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -5245,6 +5246,31 @@ console.log("finish");
       .unwrap();
     assert!(output.status.success());
     assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  }
+
+  #[test]
+  #[cfg(windows)]
+  // https://github.com/denoland/deno/issues/9667
+  fn compile_windows_ext() {
+    let dir = TempDir::new().expect("tempdir fail");
+    let exe = dir.path().join("welcome_9667");
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("--target")
+      .arg("x86_64-unknown-linux-gnu")
+      .arg("./test_util/std/examples/welcome.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let exists = Path::new(&exe).exists();
+    assert!(exists, true);
   }
 
   #[test]
