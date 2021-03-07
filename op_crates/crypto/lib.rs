@@ -87,40 +87,24 @@ struct CryptoKeyResource<A> {
   hash: Option<WebCryptoHash>,
 }
 
-impl Resource for CryptoKeyResource<RSAPublicKey> {
-  fn name(&self) -> Cow<str> {
-    "RSAPublicCryptoKey".into()
+// `impl_resource` will use the type name as the resource name.
+macro_rules! impl_resource {
+  ($($t:ty),+) => {
+    $(impl Resource for CryptoKeyResource<$t> {
+      fn name(&self) -> Cow<str> {
+        stringify!($t).into()
+      }
+    })*
   }
 }
 
-impl Resource for CryptoKeyResource<RSAPrivateKey> {
-  fn name(&self) -> Cow<str> {
-    "RSAPrivateCryptoKey".into()
-  }
-}
-
-impl Resource for CryptoKeyResource<EcdsaKeyPair> {
-  fn name(&self) -> Cow<str> {
-    "ECDSACryptoKey".into()
-  }
-}
-
-impl Resource for CryptoKeyResource<ring::agreement::PublicKey> {
-  fn name(&self) -> Cow<str> {
-    "ECDHPublicKey".into()
-  }
-}
-
-impl Resource for CryptoKeyResource<EphemeralPrivateKey> {
-  fn name(&self) -> Cow<str> {
-    "ECDHPrivateKey".into()
-  }
-}
-
-impl Resource for CryptoKeyResource<HmacKey> {
-  fn name(&self) -> Cow<str> {
-    "HMACKey".into()
-  }
+impl_resource! {
+  RSAPublicKey,
+  RSAPrivateKey,
+  EcdsaKeyPair,
+  ring::agreement::PublicKey,
+  EphemeralPrivateKey,
+  HmacKey
 }
 
 #[derive(Deserialize)]
