@@ -25,6 +25,7 @@ type KeyUsage =
   | "unwrapKey"
   | "verify"
   | "wrapKey";
+
 type NamedCurve = string;
 
 interface HmacKeyGenParams extends Algorithm {
@@ -46,7 +47,7 @@ interface RsaHashedKeyGenParams extends RsaKeyGenParams {
 
 interface RsaKeyGenParams extends Algorithm {
   modulusLength: number;
-  publicExponent: number;
+  publicExponent: Uint8Array;
 }
 
 interface RsaPssParams extends Algorithm {
