@@ -773,6 +773,7 @@ impl Graph {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -814,6 +815,7 @@ impl Graph {
         // TODO(@kitsonk) consider enabling this by default
         //   see: https://github.com/denoland/deno/issues/7732
         "emitDecoratorMetadata": false,
+        "importsNotUsedAsValues": "remove",
         "inlineSourceMap": true,
         "outDir": "deno://",
         "removeComments": true,
@@ -942,6 +944,7 @@ impl Graph {
       "emitDecoratorMetadata": false,
       "esModuleInterop": true,
       "experimentalDecorators": true,
+      "importsNotUsedAsValues": "remove",
       "inlineSourceMap": false,
       "isolatedModules": true,
       "jsx": "react",
@@ -1589,6 +1592,7 @@ impl Graph {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
