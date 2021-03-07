@@ -176,7 +176,6 @@ pub async fn op_webcrypto_generate_key(
   let algorithm = args.algorithm.name;
 
   let mut state = state.borrow_mut();
-
   let key = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
       validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
@@ -198,11 +197,19 @@ pub async fn op_webcrypto_generate_key(
 
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
-      let private_key = RSAPrivateKey::new_with_exp(
-        &mut rng,
-        modulus_length as usize,
-        &exponent,
-      )?;
+
+      let private_key: RSAPrivateKey = tokio::task::spawn_blocking(
+        move || -> Result<RSAPrivateKey, rsa::errors::Error> {
+          Ok(RSAPrivateKey::new_with_exp(
+            &mut rng,
+            modulus_length as usize,
+            &exponent,
+          )?)
+        },
+      )
+      .await
+      .unwrap()?;
+
       // Extract public key from private key.
       let public_key = private_key.to_public_key();
 
@@ -249,7 +256,16 @@ pub async fn op_webcrypto_generate_key(
         .try_into()?;
       // Generate private key from agreement and ring rng.
       let rng = RingRand::SystemRandom::new();
-      let private_key = EphemeralPrivateKey::generate(&agreement, &rng)?;
+
+      let private_key: EphemeralPrivateKey = tokio::task::spawn_blocking(
+        move || -> Result<EphemeralPrivateKey, ring::error::Unspecified> {
+          let pk = EphemeralPrivateKey::generate(&agreement, &rng)?;
+          Ok(pk)
+        },
+      )
+      .await
+      .unwrap()?;
+
       // Extract public key.
       let public_key = private_key.compute_public_key()?;
       // Create webcrypto keypair.
@@ -291,8 +307,14 @@ pub async fn op_webcrypto_generate_key(
         .try_into()?;
 
       let rng = RingRand::SystemRandom::new();
-      let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
-      let private_key = EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?;
+      let private_key: EcdsaKeyPair = tokio::task::spawn_blocking(
+        move || -> Result<EcdsaKeyPair, ring::error::Unspecified> {
+          let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
+          Ok(EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?)
+        },
+      )
+      .await
+      .unwrap()?;
 
       // Create webcrypto keypair.
       let webcrypto_key_public = WebCryptoKey::new_public(
@@ -337,7 +359,14 @@ pub async fn op_webcrypto_generate_key(
       //   alg.chaining_len = length as usize;
       // };
 
-      let key = HmacKey::generate(hash, &rng)?;
+      let key: HmacKey = tokio::task::spawn_blocking(
+        move || -> Result<HmacKey, ring::error::Unspecified> {
+          Ok(HmacKey::generate(hash, &rng)?)
+        },
+      )
+      .await
+      .unwrap()?;
+
       let crypto_key =
         WebCryptoKey::new_secret(algorithm, extractable, args.key_usages);
       let resource = CryptoKeyResource {

@@ -589,6 +589,7 @@ dependencies = [
  "serde",
  "sha-1",
  "sha2",
+ "tokio",
 ]
 
 [[package]]

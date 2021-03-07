@@ -21,5 +21,4 @@ rsa = { git = "https://github.com/RustCrypto/RSA", rev = "616b08d" }
 sha-1 = "0.9.4"
 sha2 = "0.9.3"
 serde = { version = "1.0.123", features = ["derive"] }
-
-
+tokio = { version = "1.2.0", features = ["full"] }
