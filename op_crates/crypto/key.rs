@@ -1,3 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use crate::error::WebCryptoError;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::hmac::Algorithm as HmacAlgorithm;
