@@ -25,6 +25,11 @@ declare namespace globalThis {
          */
         context: string;
       }
+      declare function makeException(
+        ErrorType: any,
+        message: string,
+        opts: ValueConverterOpts,
+      ): any;
       declare interface IntConverterOpts extends ValueConverterOpts {
         /**
          * Wether to throw if the number is outside of the acceptable values for
@@ -191,6 +196,8 @@ declare namespace globalThis {
          * Convert a value into a `VoidFunction` (() => void).
          */
         VoidFunction(v: any, opts?: ValueConverterOpts): () => void;
+        ["UVString?"](v: any, opts?: ValueConverterOpts): string | null;
+        ["sequence<double>"](v: any, opts?: ValueConverterOpts): number[];
 
         [type: string]: (v: any, opts: ValueConverterOpts) => any;
       };
@@ -268,6 +275,17 @@ declare namespace globalThis {
         name: string,
         prototype: any,
       ): (v: any, opts: ValueConverterOpts) => any;
+
+      declare function createRecordConverter<
+        K extends string | number | symbol,
+        V,
+      >(
+        keyConverter: (v: any, opts: ValueConverterOpts) => K,
+        valueConverter: (v: any, opts: ValueConverterOpts) => V,
+      ): (
+        v: Record<K, V>,
+        opts: ValueConverterOpts,
+      ) => any;
     }
 
     declare var eventTarget: {
