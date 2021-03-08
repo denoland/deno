@@ -2053,13 +2053,12 @@ pub mod tests {
           Deno.core.dispatch(1, new Uint8Array([42]));
           Deno.core.dispatch(1, new Uint8Array([42]));
           "#,
-          )
-          .unwrap();
+        )
+        .unwrap();
 
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      match poll_until_ready(&mut runtime, 3) {
-        Ok(_) => panic!("Thrown error was not detected!"),
-        Err(_) => {},
+      if poll_until_ready(&mut runtime, 3).is_ok() {
+        panic!("Thrown error was not detected!")
       }
       runtime
         .execute("check.js", "assert(asyncRecv == 1);")
