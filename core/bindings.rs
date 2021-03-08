@@ -17,6 +17,9 @@ use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
 
+use serde::{Serialize};
+use serde_v8::{from_v8, to_v8};
+
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
@@ -470,16 +473,17 @@ fn eval_context(
   let url = v8::Local::<v8::String>::try_from(args.get(1))
     .map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
 
-  let output = v8::Array::new(scope, 2);
-  /*
-   output[0] = result
-   output[1] = ErrorInfo | null
-     ErrorInfo = {
-       thrown: Error | any,
-       isNativeError: boolean,
-       isCompileError: boolean,
-     }
-  */
+  #[derive(Serialize)]
+  struct Output<'s>(Option<serde_v8::Value<'s>>, Option<ErrInfo<'s>>);
+  
+  #[derive(Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct ErrInfo<'s> {
+    thrown: serde_v8::Value<'s>,
+    is_native_error: bool,
+    is_compile_error: bool,
+  };
+  
   let tc_scope = &mut v8::TryCatch::new(scope);
   let name = v8::String::new(
     tc_scope,
@@ -492,39 +496,12 @@ fn eval_context(
   if maybe_script.is_none() {
     assert!(tc_scope.has_caught());
     let exception = tc_scope.exception().unwrap();
-
-    let js_zero = v8::Integer::new(tc_scope, 0);
-    let js_null = v8::null(tc_scope);
-    output.set(tc_scope, js_zero.into(), js_null.into());
-
-    let errinfo_obj = v8::Object::new(tc_scope);
-
-    let is_compile_error_key =
-      v8::String::new(tc_scope, "isCompileError").unwrap();
-    let is_compile_error_val = v8::Boolean::new(tc_scope, true);
-    errinfo_obj.set(
-      tc_scope,
-      is_compile_error_key.into(),
-      is_compile_error_val.into(),
-    );
-
-    let is_native_error_key =
-      v8::String::new(tc_scope, "isNativeError").unwrap();
-    let is_native_error_val =
-      v8::Boolean::new(tc_scope, exception.is_native_error());
-    errinfo_obj.set(
-      tc_scope,
-      is_native_error_key.into(),
-      is_native_error_val.into(),
-    );
-
-    let thrown_key = v8::String::new(tc_scope, "thrown").unwrap();
-    errinfo_obj.set(tc_scope, thrown_key.into(), exception);
-
-    let js_one = v8::Integer::new(tc_scope, 1);
-    output.set(tc_scope, js_one.into(), errinfo_obj.into());
-
-    rv.set(output.into());
+    let output = Output(None, Some(ErrInfo{
+      thrown: exception.into(),
+      is_native_error: exception.is_native_error(),
+      is_compile_error: true,
+    }));
+    rv.set(to_v8(tc_scope, output).unwrap());
     return;
   }
 
@@ -533,48 +510,17 @@ fn eval_context(
   if result.is_none() {
     assert!(tc_scope.has_caught());
     let exception = tc_scope.exception().unwrap();
-
-    let js_zero = v8::Integer::new(tc_scope, 0);
-    let js_null = v8::null(tc_scope);
-    output.set(tc_scope, js_zero.into(), js_null.into());
-
-    let errinfo_obj = v8::Object::new(tc_scope);
-
-    let is_compile_error_key =
-      v8::String::new(tc_scope, "isCompileError").unwrap();
-    let is_compile_error_val = v8::Boolean::new(tc_scope, false);
-    errinfo_obj.set(
-      tc_scope,
-      is_compile_error_key.into(),
-      is_compile_error_val.into(),
-    );
-
-    let is_native_error_key =
-      v8::String::new(tc_scope, "isNativeError").unwrap();
-    let is_native_error_val =
-      v8::Boolean::new(tc_scope, exception.is_native_error());
-    errinfo_obj.set(
-      tc_scope,
-      is_native_error_key.into(),
-      is_native_error_val.into(),
-    );
-
-    let thrown_key = v8::String::new(tc_scope, "thrown").unwrap();
-    errinfo_obj.set(tc_scope, thrown_key.into(), exception);
-
-    let js_one = v8::Integer::new(tc_scope, 1);
-    output.set(tc_scope, js_one.into(), errinfo_obj.into());
-
-    rv.set(output.into());
+    let output = Output(None, Some(ErrInfo{
+      thrown: exception.into(),
+      is_native_error: exception.is_native_error(),
+      is_compile_error: false,
+    }));
+    rv.set(to_v8(tc_scope, output).unwrap());
     return;
   }
-
-  let js_zero = v8::Integer::new(tc_scope, 0);
-  let js_one = v8::Integer::new(tc_scope, 1);
-  let js_null = v8::null(tc_scope);
-  output.set(tc_scope, js_zero.into(), result.unwrap());
-  output.set(tc_scope, js_one.into(), js_null.into());
-  rv.set(output.into());
+  
+  let output = Output(Some(result.unwrap().into()), None);
+  rv.set(to_v8(tc_scope, output).unwrap());
 }
 
 fn encode(
@@ -835,6 +781,7 @@ fn get_promise_details(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
+  
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,
     Err(_) => {
@@ -842,31 +789,21 @@ fn get_promise_details(
       return;
     }
   };
-
-  let promise_details = v8::Array::new(scope, 2);
+    
+  #[derive(Serialize)]
+  struct PromiseDetails<'s>(u32, Option<serde_v8::Value<'s>>);
 
   match promise.state() {
     v8::PromiseState::Pending => {
-      let js_zero = v8::Integer::new(scope, 0);
-      promise_details.set(scope, js_zero.into(), js_zero.into());
-      rv.set(promise_details.into());
+      rv.set(to_v8(scope, PromiseDetails(0, None)).unwrap());
     }
     v8::PromiseState::Fulfilled => {
-      let js_zero = v8::Integer::new(scope, 0);
-      let js_one = v8::Integer::new(scope, 1);
       let promise_result = promise.result(scope);
-      promise_details.set(scope, js_zero.into(), js_one.into());
-      promise_details.set(scope, js_one.into(), promise_result);
-      rv.set(promise_details.into());
+      rv.set(to_v8(scope, PromiseDetails(1, Some(promise_result.into()))).unwrap());
     }
     v8::PromiseState::Rejected => {
-      let js_zero = v8::Integer::new(scope, 0);
-      let js_one = v8::Integer::new(scope, 1);
-      let js_two = v8::Integer::new(scope, 2);
       let promise_result = promise.result(scope);
-      promise_details.set(scope, js_zero.into(), js_two.into());
-      promise_details.set(scope, js_one.into(), promise_result);
-      rv.set(promise_details.into());
+      rv.set(to_v8(scope, PromiseDetails(2, Some(promise_result.into()))).unwrap());
     }
   }
 }
@@ -905,14 +842,10 @@ fn get_proxy_details(
     }
   };
 
-  let proxy_details = v8::Array::new(scope, 2);
-  let js_zero = v8::Integer::new(scope, 0);
-  let js_one = v8::Integer::new(scope, 1);
   let target = proxy.get_target(scope);
   let handler = proxy.get_handler(scope);
-  proxy_details.set(scope, js_zero.into(), target);
-  proxy_details.set(scope, js_one.into(), handler);
-  rv.set(proxy_details.into());
+  let p: (serde_v8::Value, serde_v8::Value) = (target.into(), handler.into());
+  rv.set(to_v8(scope, p).unwrap());
 }
 
 fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
