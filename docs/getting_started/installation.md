@@ -38,7 +38,7 @@ Using [Homebrew](https://formulae.brew.sh/formula/deno) (macOS):
 brew install deno
 ```
 
-Using [Cargo](https://crates.io/crates/deno):
+Build and install from source using [Cargo](https://crates.io/crates/deno):
 
 ```shell
 cargo install deno --locked
