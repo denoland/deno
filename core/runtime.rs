@@ -2028,6 +2028,50 @@ pub mod tests {
   }
 
   #[test]
+  fn shared_queue_not_empty_when_js_error() {
+    run_in_task(|_cx| {
+      let dispatch_count = Arc::new(AtomicUsize::new(0));
+      let mut runtime = JsRuntime::new(Default::default());
+      let op_state = runtime.op_state();
+      op_state.borrow_mut().put(TestState {
+        mode: Mode::Async,
+        dispatch_count: dispatch_count.clone(),
+      });
+
+      runtime.register_op("test", dispatch);
+      runtime
+        .execute(
+          "shared_queue_not_empty_when_js_error.js",
+          r#"
+          const assert = (cond) => {if (!cond) throw Error("assert")};
+          let asyncRecv = 0;
+          Deno.core.setAsyncHandler(1, (buf) => {
+            asyncRecv++;
+            throw Error('x');
+          });
+
+          Deno.core.dispatch(1, new Uint8Array([42]));
+          Deno.core.dispatch(1, new Uint8Array([42]));
+          "#,
+          )
+          .unwrap();
+
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+      match poll_until_ready(&mut runtime, 3) {
+        Ok(_) => panic!("Thrown error was not detected!"),
+        Err(_) => {},
+      }
+      runtime
+        .execute("check.js", "assert(asyncRecv == 1);")
+        .unwrap();
+
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
+      let shared_queue_size = state_rc.borrow().shared.size();
+      assert_eq!(shared_queue_size, 1);
+    });
+  }
+
+  #[test]
   fn test_pre_dispatch() {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::OverflowResAsync);
