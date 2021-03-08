@@ -849,10 +849,10 @@
       key: "code",
       converter: (V, opts) => {
         if (V instanceof Uint32Array) {
-          return webidl.converters["Uint32Array"];
+          return webidl.converters["Uint32Array"](V, opts);
         }
         if (typeof V === "string") {
-          return webidl.converters["DOMString"];
+          return webidl.converters["DOMString"](V, opts);
         }
         throw webidl.makeException(
           TypeError,
