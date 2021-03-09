@@ -6,6 +6,21 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.8.1 / 2021.03.09
+
+- fix(cli/ast): Pass importsNotUsedAsValues to swc (#9714)
+- fix(cli/compile): Do not append .exe depending on target (#9668)
+- fix(cli/coverage): Ensure single line functions don't yield false positives
+  (#9717)
+- fix(core): Shared queue assertion failure in case of js error (#9721)
+- fix(runtime): Add navigator interface objects (#9685)
+- fix(runtime/web_worker): Don't block self.onmessage with TLA (#9619)
+- fix(webgpu): Add Uint32Array type for code in ShaderModuleDescriptor (#9730)
+- fix(webgpu): Add webidl records and simple unions (#9698)
+
+Release notes for std version 0.90.0:
+https://github.com/denoland/deno_std/releases/tag/0.90.0
+
 ### 1.8.0 / 2021.03.02
 
 https://deno.land/posts/v1.8
