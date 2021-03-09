@@ -82,15 +82,15 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-          key: cargo2-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo2-${{ runner.os }}-
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
 
       - name: Sccache Cache
         uses: actions/cache@v2
         with:
           path:  ${{ github.workspace }}/_sccache
-          key: sccache2-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: sccache2-${{ runner.os }}-
+          key: sccache-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: sccache-${{ runner.os }}-
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
