@@ -460,7 +460,7 @@ declare class GPUShaderModule implements GPUObjectBase {
 }
 
 declare interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
-  code: string;
+  code: string | Uint32Array;
   sourceMap?: any;
 }
 
