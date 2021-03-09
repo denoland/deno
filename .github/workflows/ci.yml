@@ -61,6 +61,18 @@ jobs:
           fetch-depth: 5
           submodules: true
 
+      # Install gnu-tar because BSD tar is buggy on Github's macos machines.
+      # https://github.com/actions/cache/issues/403
+      # https://github.com/actions-rs/cargo/issues/111.
+      - name: Install GNU tar
+        if: matrix.build == 'macos'
+        run: |
+          brew install gnu-tar
+          echo "::add-path::/usr/local/opt/gnu-tar/libexec/gnubin"
+
+      - name: Write git_submodule_status.txt
+        run: git submodule status --recursive > git_submodule_status.txt
+
       - name: Create source tarballs (release, linux)
         if: |
           startsWith(matrix.os, 'ubuntu') &&
