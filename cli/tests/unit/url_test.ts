@@ -1,5 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(function urlParsing(): void {
   const url = new URL(
@@ -469,4 +475,23 @@ unitTest(function emptyPortForSchemeDefaultPort(): void {
   assertEquals(url2.port, "");
   url2.protocol = "http";
   assertEquals(url2.port, "");
+});
+
+unitTest(function assigningPortPropertyAffectsReceiverOnly() {
+  // Setting `.port` should update only the receiver.
+  const u1 = new URL("http://google.com/");
+  // deno-lint-ignore no-explicit-any
+  const u2 = new URL(u1 as any);
+  u2.port = "123";
+  assertStrictEquals(u1.port, "");
+  assertStrictEquals(u2.port, "123");
+});
+
+unitTest(function urlSearchParamsIdentityPreserved() {
+  // URLSearchParams identity should not be lost when URL is updated.
+  const u = new URL("http://foo.com/");
+  const sp1 = u.searchParams;
+  u.href = "http://bar.com/?baz=42";
+  const sp2 = u.searchParams;
+  assertStrictEquals(sp1, sp2);
 });

@@ -182,6 +182,13 @@ pub fn get_syntax(media_type: &MediaType) -> Syntax {
   }
 }
 
+#[derive(Debug, Clone)]
+pub enum ImportsNotUsedAsValues {
+  Remove,
+  Preserve,
+  Error,
+}
+
 /// Options which can be adjusted when transpiling a module.
 #[derive(Debug, Clone)]
 pub struct EmitOptions {
@@ -191,6 +198,10 @@ pub struct EmitOptions {
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
+  /// What to do with import statements that only import types i.e. whether to
+  /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
+  /// or error (`Error`). Defaults to `Remove`.
+  pub imports_not_used_as_values: ImportsNotUsedAsValues,
   /// Should the source map be inlined in the emitted code file, or provided
   /// as a separate file.  Defaults to `true`.
   pub inline_source_map: bool,
@@ -209,6 +220,7 @@ impl Default for EmitOptions {
     EmitOptions {
       check_js: false,
       emit_metadata: false,
+      imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
@@ -221,15 +233,41 @@ impl From<tsc_config::TsConfig> for EmitOptions {
   fn from(config: tsc_config::TsConfig) -> Self {
     let options: tsc_config::EmitConfigOptions =
       serde_json::from_value(config.0).unwrap();
+    let imports_not_used_as_values =
+      match options.imports_not_used_as_values.as_str() {
+        "preserve" => ImportsNotUsedAsValues::Preserve,
+        "error" => ImportsNotUsedAsValues::Error,
+        _ => ImportsNotUsedAsValues::Remove,
+      };
     EmitOptions {
       check_js: options.check_js,
       emit_metadata: options.emit_decorator_metadata,
+      imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
     }
   }
+}
+
+fn strip_config_from_emit_options(
+  options: &EmitOptions,
+) -> typescript::strip::Config {
+  let mut config = typescript::strip::Config::default();
+  config.import_not_used_as_values = match options.imports_not_used_as_values {
+    ImportsNotUsedAsValues::Remove => {
+      typescript::strip::ImportNotUsedAsValues::Remove
+    }
+    ImportsNotUsedAsValues::Preserve => {
+      typescript::strip::ImportNotUsedAsValues::Preserve
+    }
+    // `Error` only affects the type-checking stage. Fall back to `Remove` here.
+    ImportsNotUsedAsValues::Error => {
+      typescript::strip::ImportNotUsedAsValues::Remove
+    }
+  };
+  config
 }
 
 /// A logical structure to hold the value of a parsed module for further
@@ -299,7 +337,9 @@ impl ParsedModule {
         emit_metadata: options.emit_metadata
       }),
       helpers::inject_helpers(),
-      typescript::strip(),
+      typescript::strip::strip_with_config(strip_config_from_emit_options(
+        options
+      )),
       fixer(Some(&self.comments)),
       hygiene(),
     );
@@ -513,7 +553,9 @@ pub fn transpile_module(
       emit_metadata: emit_options.emit_metadata
     }),
     helpers::inject_helpers(),
-    typescript::strip(),
+    typescript::strip::strip_with_config(strip_config_from_emit_options(
+      emit_options
+    )),
     fixer(Some(&parsed_module.comments)),
   );
 

@@ -7,6 +7,7 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::fs;
 use std::io::{BufRead, Read, Write};
+use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -1473,7 +1474,7 @@ mod integration {
     assert!(std::str::from_utf8(&output.stdout)
       .unwrap()
       .trim()
-      .ends_with("f1\nf2"));
+      .ends_with("f2\nf1"));
     assert_eq!(output.stderr, b"");
   }
 
@@ -2836,6 +2837,11 @@ console.log("finish");
     output: "086_dynamic_import_already_rejected.ts.out",
   });
 
+  itest!(_087_no_check_imports_not_used_as_values {
+    args: "run --config preserve_imports.tsconfig.json --no-check 087_no_check_imports_not_used_as_values.ts",
+    output: "087_no_check_imports_not_used_as_values.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -3613,64 +3619,6 @@ console.log("finish");
     output: "redirect_cache.out",
   });
 
-  itest!(deno_lint {
-    args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
-    output: "lint/expected.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_quiet {
-    args: "lint --unstable --quiet lint/file1.js",
-    output: "lint/expected_quiet.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_json {
-    args:
-      "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
-    output: "lint/expected_json.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_ignore {
-    args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
-    output: "lint/expected_ignore.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_glob {
-    args: "lint --unstable --ignore=lint/malformed.js lint/",
-    output: "lint/expected_glob.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_from_stdin {
-    args: "lint --unstable -",
-    input: Some("let a: any;"),
-    output: "lint/expected_from_stdin.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_from_stdin_json {
-    args: "lint --unstable --json -",
-    input: Some("let a: any;"),
-    output: "lint/expected_from_stdin_json.out",
-    exit_code: 1,
-  });
-
-  itest!(deno_lint_rules {
-    args: "lint --unstable --rules",
-    output: "lint/expected_rules.out",
-    exit_code: 0,
-  });
-
-  // Make sure that the rules are printed if quiet option is enabled.
-  itest!(deno_lint_rules_quiet {
-    args: "lint --unstable --rules -q",
-    output: "lint/expected_rules.out",
-    exit_code: 0,
-  });
-
   itest!(deno_doc_types_header_direct {
     args: "doc --reload http://127.0.0.1:4545/xTypeScriptTypes.js",
     output: "doc/types_header.out",
@@ -3969,6 +3917,88 @@ console.log("finish");
       args: "doc --reload doc/types_header.ts",
       output: "doc/types_header.out",
       http_server: true,
+    });
+  }
+
+  mod lint {
+    use super::*;
+
+    #[test]
+    fn ignore_unexplicit_files() {
+      let output = util::deno_cmd()
+        .current_dir(util::root_path())
+        .env("NO_COLOR", "1")
+        .arg("lint")
+        .arg("--unstable")
+        .arg("--ignore=./")
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      assert!(!output.status.success());
+      assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "error: No target files found.\n"
+      );
+    }
+
+    itest!(all {
+      args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+      output: "lint/expected.out",
+      exit_code: 1,
+    });
+
+    itest!(quiet {
+      args: "lint --unstable --quiet lint/file1.js",
+      output: "lint/expected_quiet.out",
+      exit_code: 1,
+    });
+
+    itest!(json {
+      args:
+        "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+        output: "lint/expected_json.out",
+        exit_code: 1,
+    });
+
+    itest!(ignore {
+      args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
+      output: "lint/expected_ignore.out",
+      exit_code: 1,
+    });
+
+    itest!(glob {
+      args: "lint --unstable --ignore=lint/malformed.js lint/",
+      output: "lint/expected_glob.out",
+      exit_code: 1,
+    });
+
+    itest!(stdin {
+      args: "lint --unstable -",
+      input: Some("let a: any;"),
+      output: "lint/expected_from_stdin.out",
+      exit_code: 1,
+    });
+
+    itest!(stdin_json {
+      args: "lint --unstable --json -",
+      input: Some("let a: any;"),
+      output: "lint/expected_from_stdin_json.out",
+      exit_code: 1,
+    });
+
+    itest!(rules {
+      args: "lint --unstable --rules",
+      output: "lint/expected_rules.out",
+      exit_code: 0,
+    });
+
+    // Make sure that the rules are printed if quiet option is enabled.
+    itest!(rules_quiet {
+      args: "lint --unstable --rules -q",
+      output: "lint/expected_rules.out",
+      exit_code: 0,
     });
   }
 
@@ -5173,26 +5203,6 @@ console.log("finish");
   }
 
   #[test]
-  fn lint_ignore_unexplicit_files() {
-    let output = util::deno_cmd()
-      .current_dir(util::root_path())
-      .env("NO_COLOR", "1")
-      .arg("lint")
-      .arg("--unstable")
-      .arg("--ignore=./")
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(!output.status.success());
-    assert_eq!(
-      String::from_utf8_lossy(&output.stderr),
-      "error: No target files found.\n"
-    );
-  }
-
-  #[test]
   fn fmt_ignore_unexplicit_files() {
     let output = util::deno_cmd()
       .current_dir(util::root_path())
@@ -5241,6 +5251,32 @@ console.log("finish");
       .unwrap();
     assert!(output.status.success());
     assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  }
+
+  #[test]
+  #[ignore]
+  #[cfg(windows)]
+  // https://github.com/denoland/deno/issues/9667
+  fn compile_windows_ext() {
+    let dir = TempDir::new().expect("tempdir fail");
+    let exe = dir.path().join("welcome_9667");
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("--target")
+      .arg("x86_64-unknown-linux-gnu")
+      .arg("./test_util/std/examples/welcome.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let exists = Path::new(&exe).exists();
+    assert!(exists, true);
   }
 
   #[test]

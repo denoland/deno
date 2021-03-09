@@ -55,6 +55,7 @@ pub fn server_capabilities(
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: Some(CompletionOptions {
+      all_commit_characters: None,
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
