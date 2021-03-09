@@ -27,7 +27,9 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time;
 
-// 150ms between keystrokes is about 45 WPM.
+// 150ms between keystrokes is about 45 WPM, so we want something that is longer
+// than that, but not too long to introduce detectable UI delay.  200ms is a
+// decent compromise.
 const DIAGNOSTIC_DEBOUNCE_MS: u64 = 200;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -274,16 +276,14 @@ impl DiagnosticsServer {
             // 1 year in seconds
             time::Duration::new(31_622_400, 0)
           };
-          let debounce = time::sleep(duration);
-          tokio::pin!(debounce);
 
           // "race" the next message off the rx queue or the debounce timer.
           // if the next message comes off the queue, the next iteration of the
           // loop will reset the debounce future.  When the debounce future
-          // occurs, the diagnostics will be updated based on only the most
-          // recent snapshot, thereby "abandoning" any interim states.
+          // occurs, the diagnostics will be updated based on the snapshot that
+          // is retrieved, thereby "skipping" all the interim state changes.
           tokio::select! {
-            _ = &mut debounce => {
+            _ = time::sleep(duration) => {
               if dirty {
                 dirty = false;
                 let snapshot = {
