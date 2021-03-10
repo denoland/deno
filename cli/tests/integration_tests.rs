@@ -7,7 +7,6 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::fs;
 use std::io::{BufRead, Read, Write};
-use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -5275,7 +5274,7 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
-    let exists = Path::new(&exe).exists();
+    let exists = std::path::Path::new(&exe).exists();
     assert!(exists, true);
   }
 
