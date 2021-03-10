@@ -7,7 +7,6 @@ use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
 use std::fs;
 use std::io::{BufRead, Read, Write};
-use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
