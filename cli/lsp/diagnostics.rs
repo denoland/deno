@@ -4,7 +4,6 @@ use super::analysis::get_lint_references;
 use super::analysis::references_to_diagnostics;
 use super::analysis::ResolvedDependency;
 use super::language_server;
-use super::performance::Performance;
 use super::tsc;
 
 use crate::diagnostics;
@@ -56,9 +55,8 @@ async fn publish_diagnostics(
   client: &Client,
   collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
-  performance: &Performance,
 ) {
-  let mark = performance.mark("publish_diagnostics");
+  let mark = snapshot.performance.mark("publish_diagnostics");
   let maybe_changes = collection.take_changes();
   if let Some(diagnostic_changes) = maybe_changes {
     for specifier in diagnostic_changes {
@@ -94,7 +92,7 @@ async fn publish_diagnostics(
     }
   }
 
-  performance.measure(mark);
+  snapshot.performance.measure(mark);
 }
 
 async fn update_diagnostics(
@@ -102,7 +100,6 @@ async fn update_diagnostics(
   collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
   ts_server: &tsc::TsServer,
-  performance: &Performance,
 ) {
   let (enabled, lint_enabled) = {
     let config = &snapshot.config;
@@ -198,10 +195,10 @@ async fn update_diagnostics(
     }
     _ => (),
   }
-  performance.measure(mark);
+  snapshot.performance.measure(mark);
 
   if disturbed {
-    publish_diagnostics(client, collection, snapshot, performance).await
+    publish_diagnostics(client, collection, snapshot).await
   }
 }
 
@@ -250,7 +247,6 @@ impl DiagnosticsServer {
     language_server: Arc<tokio::sync::Mutex<language_server::Inner>>,
     client: Client,
     ts_server: Arc<tsc::TsServer>,
-    performance: Performance,
   ) {
     let (tx, mut rx) = mpsc::unbounded_channel::<DiagnosticRequest>();
     self.0 = Some(tx);
@@ -294,8 +290,7 @@ impl DiagnosticsServer {
                   &client,
                   &mut collection,
                   &snapshot,
-                  &ts_server,
-                  &performance
+                  &ts_server
                 ).await;
               }
               let maybe_request = next.await;

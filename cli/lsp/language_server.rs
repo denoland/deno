@@ -1606,12 +1606,10 @@ impl lspower::LanguageServer for LanguageServer {
     let mut language_server = self.0.lock().await;
     let client = language_server.client.clone();
     let ts_server = language_server.ts_server.clone();
-    let performance = language_server.performance.clone();
     language_server.diagnostics_server.start(
       self.0.clone(),
       client,
       ts_server,
-      performance,
     );
     language_server.initialize(params).await
   }
@@ -2701,7 +2699,7 @@ mod tests {
       ("initialize_request.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification_code_action.json", LspResponse::None),
-      ("", LspResponse::Delay(250)),
+      ("", LspResponse::Delay(500)),
       (
         "code_action_request.json",
         LspResponse::RequestFixture(2, "code_action_response.json".to_string()),
