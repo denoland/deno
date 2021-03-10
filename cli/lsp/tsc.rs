@@ -1099,13 +1099,19 @@ fn cache_snapshot(
     .snapshots
     .contains_key(&(specifier.clone(), version.clone().into()))
   {
-    let content = state
-      .state_snapshot
-      .documents
-      .content(specifier)?
-      .ok_or_else(|| {
-        anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
-      })?;
+    let content = if state.state_snapshot.documents.contains_key(specifier) {
+      state
+        .state_snapshot
+        .documents
+        .content(specifier)?
+        .ok_or_else(|| {
+          anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
+        })?
+    } else {
+      state.state_snapshot.sources.get_source(specifier).ok_or_else(|| {
+        anyhow!("Specifier (\"{}\") is not an in memory document or on disk resource.", specifier)
+      })?
+    };
     state
       .snapshots
       .insert((specifier.clone(), version.into()), content);
@@ -1156,16 +1162,14 @@ struct GetChangeRangeArgs {
 }
 
 /// The language service wants to compare an old snapshot with a new snapshot to
-/// determine what source hash changed.
+/// determine what source has changed.
 fn get_change_range(
   state: &mut State,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_change_range");
   let specifier = resolve_url(&args.specifier)?;
-  if state.state_snapshot.documents.contains_key(&specifier) {
-    cache_snapshot(state, &specifier, args.version.clone())?;
-  }
+  cache_snapshot(state, &specifier, args.version.clone())?;
   if let Some(current) = state
     .snapshots
     .get(&(specifier.clone(), args.version.clone().into()))
@@ -1211,7 +1215,7 @@ fn get_length(
   let specifier = resolve_url(&args.specifier)?;
   if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
     Ok(asset.length)
-  } else if state.state_snapshot.documents.contains_key(&specifier) {
+  } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
     let content = state
       .snapshots
@@ -1219,10 +1223,6 @@ fn get_length(
       .unwrap();
     state.state_snapshot.performance.measure(mark);
     Ok(content.encode_utf16().count())
-  } else {
-    let sources = &mut state.state_snapshot.sources;
-    state.state_snapshot.performance.measure(mark);
-    Ok(sources.get_length_utf16(&specifier).unwrap())
   }
 }
 
@@ -1241,15 +1241,13 @@ fn get_text(state: &mut State, args: GetTextArgs) -> Result<String, AnyError> {
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
       content.text.clone()
-    } else if state.state_snapshot.documents.contains_key(&specifier) {
+    } else {
       cache_snapshot(state, &specifier, args.version.clone())?;
       state
         .snapshots
         .get(&(specifier, args.version.into()))
         .unwrap()
         .clone()
-    } else {
-      state.state_snapshot.sources.get_source(&specifier).unwrap()
     };
   state.state_snapshot.performance.measure(mark);
   Ok(text::slice(&content, args.start..args.end).to_string())
@@ -1735,17 +1733,36 @@ pub fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::http_cache::HttpCache;
+  use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
+  use crate::lsp::sources::Sources;
+  use std::path::Path;
+  use std::path::PathBuf;
+  use tempfile::TempDir;
 
-  fn mock_state_snapshot(sources: Vec<(&str, &str, i32)>) -> StateSnapshot {
+  fn mock_state_snapshot(
+    fixtures: Vec<(&str, &str, i32)>,
+    location: &Path,
+  ) -> StateSnapshot {
     let mut documents = DocumentCache::default();
-    for (specifier, content, version) in sources {
+    for (specifier, source, version) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier, version, content);
+      documents.open(specifier.clone(), version, source);
+      if let Some((deps, _)) = analysis::analyze_dependencies(
+        &specifier,
+        source,
+        &MediaType::from(&specifier),
+        &None,
+      ) {
+        documents.set_dependencies(&specifier, Some(deps)).unwrap();
+      }
     }
+    let sources = Sources::new(location);
     StateSnapshot {
       documents,
+      sources,
       ..Default::default()
     }
   }
@@ -1754,8 +1771,10 @@ mod tests {
     debug: bool,
     config: Value,
     sources: Vec<(&str, &str, i32)>,
-  ) -> (JsRuntime, StateSnapshot) {
-    let state_snapshot = mock_state_snapshot(sources.clone());
+  ) -> (JsRuntime, StateSnapshot, PathBuf) {
+    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let location = temp_dir.path().join("deps");
+    let state_snapshot = mock_state_snapshot(sources.clone(), &location);
     let mut runtime = start(debug).expect("could not start server");
     let ts_config = TsConfig::new(config);
     assert_eq!(
@@ -1767,7 +1786,7 @@ mod tests {
       .expect("failed request"),
       json!(true)
     );
-    (runtime, state_snapshot)
+    (runtime, state_snapshot, location)
   }
 
   #[test]
@@ -1800,7 +1819,7 @@ mod tests {
 
   #[test]
   fn test_project_reconfigure() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1827,7 +1846,7 @@ mod tests {
 
   #[test]
   fn test_get_diagnostics() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1870,7 +1889,7 @@ mod tests {
 
   #[test]
   fn test_get_diagnostics_lib() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1894,7 +1913,7 @@ mod tests {
 
   #[test]
   fn test_module_resolution() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1927,7 +1946,7 @@ mod tests {
 
   #[test]
   fn test_bad_module_specifiers() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -1976,7 +1995,7 @@ mod tests {
 
   #[test]
   fn test_remote_modules() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -2009,7 +2028,7 @@ mod tests {
 
   #[test]
   fn test_partial_modules() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -2079,7 +2098,7 @@ mod tests {
 
   #[test]
   fn test_no_debug_failure() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -2102,7 +2121,7 @@ mod tests {
 
   #[test]
   fn test_request_asset() {
-    let (mut runtime, state_snapshot) = setup(
+    let (mut runtime, state_snapshot, _) = setup(
       false,
       json!({
         "target": "esnext",
@@ -2123,5 +2142,89 @@ mod tests {
     let response: Option<String> =
       serde_json::from_value(result.unwrap()).unwrap();
     assert!(response.is_some());
+  }
+
+  #[test]
+  fn test_modify_sources() {
+    let (mut runtime, state_snapshot, location) = setup(
+      true,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      vec![(
+        "file:///a.ts",
+        r#"
+          import * as a from "https://deno.land/x/example/a.ts";
+          if (a.a === "b") {
+            console.log("fail");
+          }
+        "#,
+        1,
+      )],
+    );
+    let cache = HttpCache::new(&location);
+    let specifier_dep =
+      resolve_url("https://deno.land/x/example/a.ts").unwrap();
+    cache
+      .set(
+        &specifier_dep,
+        Default::default(),
+        b"export const b = \"b\";\n",
+      )
+      .unwrap();
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetDiagnostics(vec![specifier]),
+    );
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(
+      response,
+      json!({
+        "file:///a.ts": [
+          {
+            "start": {
+              "line": 2,
+              "character": 16,
+            },
+            "end": {
+              "line": 2,
+              "character": 17
+            },
+            "fileName": "file:///a.ts",
+            "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
+            "sourceLine": "          if (a.a === \"b\") {",
+            "code": 2339,
+            "category": 1,
+          }
+        ]
+      })
+    );
+    cache
+      .set(
+        &specifier_dep,
+        Default::default(),
+        b"export const b = \"b\";\n\nexport const a = \"b\";\n",
+      )
+      .unwrap();
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetDiagnostics(vec![specifier]),
+    );
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(
+      response,
+      json!({
+        "file:///a.ts": []
+      })
+    );
   }
 }
