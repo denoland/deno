@@ -30,14 +30,18 @@ declare class WorkerGlobalScope {
   close: () => void;
   postMessage: (message: any) => void;
   Deno: typeof Deno;
+  WorkerNavigator: typeof WorkerNavigator;
   navigator: WorkerNavigator;
+  WorkerLocation: typeof WorkerLocation;
+  location: WorkerLocation;
+}
+
+declare class WorkerNavigator {
+  constructor();
+  readonly gpu: GPU;
 }
 
 declare var navigator: WorkerNavigator;
-
-declare interface WorkerNavigator {
-  readonly gpu: GPU;
-}
 
 declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   new(): DedicatedWorkerGlobalScope;

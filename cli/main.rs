@@ -344,7 +344,7 @@ async fn compile_command(
 
   // Select base binary based on `target` and `lite` arguments
   let original_binary =
-    tools::standalone::get_base_binary(deno_dir, target, lite).await?;
+    tools::standalone::get_base_binary(deno_dir, target.clone(), lite).await?;
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
@@ -354,7 +354,8 @@ async fn compile_command(
 
   info!("{} {}", colors::green("Emit"), output.display());
 
-  tools::standalone::write_standalone_binary(output.clone(), final_bin).await?;
+  tools::standalone::write_standalone_binary(output.clone(), target, final_bin)
+    .await?;
 
   Ok(())
 }

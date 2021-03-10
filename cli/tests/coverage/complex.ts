@@ -66,3 +66,6 @@ export function ƒ(): number {
     0
   );
 }
+
+// This arrow function should also show up as uncovered.
+console.log("%s", () => 1);

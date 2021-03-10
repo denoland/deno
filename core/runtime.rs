@@ -1433,13 +1433,16 @@ impl JsRuntime {
 
     if shared_queue_size > 0 || overflown_responses_size > 0 {
       js_recv_cb.call(tc_scope, global, args.as_slice());
-      // The other side should have shifted off all the messages.
-      let shared_queue_size = state_rc.borrow().shared.size();
-      assert_eq!(shared_queue_size, 0);
     }
 
     match tc_scope.exception() {
-      None => Ok(()),
+      None => {
+        // The other side should have shifted off all the messages.
+        let shared_queue_size = state_rc.borrow().shared.size();
+        assert_eq!(shared_queue_size, 0);
+
+        Ok(())
+      }
       Some(exception) => exception_to_err_result(tc_scope, exception, false),
     }
   }
@@ -2021,6 +2024,49 @@ pub mod tests {
       runtime
         .execute("check.js", "assert(asyncRecv == 2);")
         .unwrap();
+    });
+  }
+
+  #[test]
+  fn shared_queue_not_empty_when_js_error() {
+    run_in_task(|_cx| {
+      let dispatch_count = Arc::new(AtomicUsize::new(0));
+      let mut runtime = JsRuntime::new(Default::default());
+      let op_state = runtime.op_state();
+      op_state.borrow_mut().put(TestState {
+        mode: Mode::Async,
+        dispatch_count: dispatch_count.clone(),
+      });
+
+      runtime.register_op("test", dispatch);
+      runtime
+        .execute(
+          "shared_queue_not_empty_when_js_error.js",
+          r#"
+          const assert = (cond) => {if (!cond) throw Error("assert")};
+          let asyncRecv = 0;
+          Deno.core.setAsyncHandler(1, (buf) => {
+            asyncRecv++;
+            throw Error('x');
+          });
+
+          Deno.core.dispatch(1, new Uint8Array([42]));
+          Deno.core.dispatch(1, new Uint8Array([42]));
+          "#,
+        )
+        .unwrap();
+
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+      if poll_until_ready(&mut runtime, 3).is_ok() {
+        panic!("Thrown error was not detected!")
+      }
+      runtime
+        .execute("check.js", "assert(asyncRecv == 1);")
+        .unwrap();
+
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
+      let shared_queue_size = state_rc.borrow().shared.size();
+      assert_eq!(shared_queue_size, 1);
     });
   }
 

@@ -316,11 +316,7 @@ fn get_typescript_config(
 fn get_markdown_config() -> dprint_plugin_markdown::configuration::Configuration
 {
   dprint_plugin_markdown::configuration::ConfigurationBuilder::new()
-    // Matches `.dprintrc.json` in the repository
-    .text_wrap(dprint_plugin_markdown::configuration::TextWrap::Always)
-    .ignore_directive("deno-fmt-ignore")
-    .ignore_start_directive("deno-fmt-ignore-start")
-    .ignore_end_directive("deno-fmt-ignore-end")
+    .deno()
     .build()
 }
 
