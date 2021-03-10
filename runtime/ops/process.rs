@@ -95,6 +95,15 @@ fn op_run(
   let cwd = run_args.cwd;
 
   let mut c = Command::new(args.get(0).unwrap());
+
+  // tokio use std::process::Command, so need add cmd /C.
+  // see at: https://doc.rust-lang.org/std/process/struct.Command.html
+  if cfg!(target_os = "windows") {
+    c = Command::new("cmd");
+    c.arg("/C");
+    c.arg(args.get(0).unwrap());
+  }
+  
   (1..args.len()).for_each(|i| {
     let arg = args.get(i).unwrap();
     c.arg(arg);
