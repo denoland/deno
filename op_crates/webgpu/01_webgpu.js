@@ -2315,7 +2315,7 @@
      * @returns {GPUBindGroupLayout}
      */
     getBindGroupLayout(index) {
-      webidl.assertBranded(this, GPURenderPipeline);
+      webidl.assertBranded(this, GPUComputePipeline);
       const prefix =
         "Failed to execute 'getBindGroupLayout' on 'GPUComputePipeline'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
