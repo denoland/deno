@@ -2215,7 +2215,7 @@ mod tests {
     let specifier = resolve_url("file:///a.ts").unwrap();
     let result = request(
       &mut runtime,
-      state_snapshot.clone(),
+      state_snapshot,
       RequestMethod::GetDiagnostics(vec![specifier]),
     );
     assert!(result.is_ok());
