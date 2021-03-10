@@ -1814,7 +1814,7 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      &vec![],
+      &[],
     );
   }
 
@@ -1827,7 +1827,7 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      &vec![],
+      &[],
     );
     let ts_config = TsConfig::new(json!({
       "target": "esnext",
@@ -1854,7 +1854,7 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      &vec![("file:///a.ts", r#"console.log("hello deno");"#, 1)],
+      &[("file:///a.ts", r#"console.log("hello deno");"#, 1)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -1899,7 +1899,7 @@ mod tests {
         "lib": ["esnext", "dom", "deno.ns"],
         "noEmit": true,
       }),
-      &vec![("file:///a.ts", r#"console.log(document.location);"#, 1)],
+      &[("file:///a.ts", r#"console.log(document.location);"#, 1)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -1922,7 +1922,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &vec![(
+      &[(
         "file:///a.ts",
         r#"
         import { B } from "https://deno.land/x/b/mod.ts";
@@ -1955,7 +1955,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &vec![(
+      &[(
         "file:///a.ts",
         r#"
         import { A } from ".";
@@ -2004,7 +2004,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &vec![(
+      &[(
         "file:///a.ts",
         r#"
         import { B } from "https://deno.land/x/b/mod.ts";
@@ -2037,7 +2037,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &vec![(
+      &[(
         "file:///a.ts",
         r#"
         import {
@@ -2107,7 +2107,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &vec![("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
+      &[("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2130,7 +2130,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &vec![],
+      &[],
     );
     let specifier =
       resolve_url("asset:///lib.esnext.d.ts").expect("could not resolve url");
@@ -2155,7 +2155,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &vec![(
+      &[(
         "file:///a.ts",
         r#"
           import * as a from "https://deno.land/x/example/a.ts";
