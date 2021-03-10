@@ -1606,11 +1606,9 @@ impl lspower::LanguageServer for LanguageServer {
     let mut language_server = self.0.lock().await;
     let client = language_server.client.clone();
     let ts_server = language_server.ts_server.clone();
-    language_server.diagnostics_server.start(
-      self.0.clone(),
-      client,
-      ts_server,
-    );
+    language_server
+      .diagnostics_server
+      .start(self.0.clone(), client, ts_server);
     language_server.initialize(params).await
   }
 
