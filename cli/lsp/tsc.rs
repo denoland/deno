@@ -1084,7 +1084,7 @@ impl<'a> State<'a> {
       last_id: 1,
       response: None,
       state_snapshot,
-      snapshots: Default::default(),
+      snapshots: HashMap::default(),
     }
   }
 }
@@ -1734,6 +1734,7 @@ pub fn request(
 mod tests {
   use super::*;
   use crate::http_cache::HttpCache;
+  use crate::http_util::HeadersMap;
   use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
   use crate::lsp::sources::Sources;
@@ -1742,14 +1743,14 @@ mod tests {
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
-    fixtures: Vec<(&str, &str, i32)>,
+    fixtures: &[(&str, &str, i32)],
     location: &Path,
   ) -> StateSnapshot {
     let mut documents = DocumentCache::default();
     for (specifier, source, version) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), version, source);
+      documents.open(specifier.clone(), *version, source);
       if let Some((deps, _)) = analysis::analyze_dependencies(
         &specifier,
         source,
@@ -1770,11 +1771,11 @@ mod tests {
   fn setup(
     debug: bool,
     config: Value,
-    sources: Vec<(&str, &str, i32)>,
+    sources: &[(&str, &str, i32)],
   ) -> (JsRuntime, StateSnapshot, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    let state_snapshot = mock_state_snapshot(sources.clone(), &location);
+    let state_snapshot = mock_state_snapshot(sources, &location);
     let mut runtime = start(debug).expect("could not start server");
     let ts_config = TsConfig::new(config);
     assert_eq!(
@@ -1813,7 +1814,7 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      vec![],
+      &vec![],
     );
   }
 
@@ -1826,7 +1827,7 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      vec![],
+      &vec![],
     );
     let ts_config = TsConfig::new(json!({
       "target": "esnext",
@@ -1853,7 +1854,7 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      vec![("file:///a.ts", r#"console.log("hello deno");"#, 1)],
+      &vec![("file:///a.ts", r#"console.log("hello deno");"#, 1)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -1898,7 +1899,7 @@ mod tests {
         "lib": ["esnext", "dom", "deno.ns"],
         "noEmit": true,
       }),
-      vec![("file:///a.ts", r#"console.log(document.location);"#, 1)],
+      &vec![("file:///a.ts", r#"console.log(document.location);"#, 1)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -1921,7 +1922,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      vec![(
+      &vec![(
         "file:///a.ts",
         r#"
         import { B } from "https://deno.land/x/b/mod.ts";
@@ -1954,7 +1955,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      vec![(
+      &vec![(
         "file:///a.ts",
         r#"
         import { A } from ".";
@@ -2003,7 +2004,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      vec![(
+      &vec![(
         "file:///a.ts",
         r#"
         import { B } from "https://deno.land/x/b/mod.ts";
@@ -2036,7 +2037,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      vec![(
+      &vec![(
         "file:///a.ts",
         r#"
         import {
@@ -2106,7 +2107,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      vec![("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
+      &vec![("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2129,7 +2130,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      vec![],
+      &vec![],
     );
     let specifier =
       resolve_url("asset:///lib.esnext.d.ts").expect("could not resolve url");
@@ -2154,7 +2155,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      vec![(
+      &vec![(
         "file:///a.ts",
         r#"
           import * as a from "https://deno.land/x/example/a.ts";
@@ -2171,7 +2172,7 @@ mod tests {
     cache
       .set(
         &specifier_dep,
-        Default::default(),
+        HeadersMap::default(),
         b"export const b = \"b\";\n",
       )
       .unwrap();
@@ -2208,7 +2209,7 @@ mod tests {
     cache
       .set(
         &specifier_dep,
-        Default::default(),
+        HeadersMap::default(),
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
