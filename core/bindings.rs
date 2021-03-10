@@ -17,8 +17,8 @@ use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
 
-use serde::{Serialize};
-use serde_v8::{from_v8, to_v8};
+use serde::Serialize;
+use serde_v8::to_v8;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -482,7 +482,7 @@ fn eval_context(
     thrown: serde_v8::Value<'s>,
     is_native_error: bool,
     is_compile_error: bool,
-  };
+  }
   
   let tc_scope = &mut v8::TryCatch::new(scope);
   let name = v8::String::new(
@@ -781,7 +781,6 @@ fn get_promise_details(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,
     Err(_) => {
