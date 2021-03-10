@@ -5274,7 +5274,7 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
-    let exists = Path::new(&exe).exists();
+    let exists = std::path::Path::new(&exe).exists();
     assert!(exists, true);
   }
 
