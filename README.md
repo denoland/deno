@@ -91,5 +91,5 @@ To contribute, please read our
 [Build status]: https://github.com/denoland/deno/actions
 [Twitter badge]: https://twitter.com/intent/follow?screen_name=deno_land
 [Twitter handle]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
-[Discord badge]: https://img.shields.io/discord/442252698964721669?label=Discord&style=social
+[Discord badge]: https://img.shields.io/discord/684898665143206084?label=Discord&style=social
 [Discord server]: https://discord.gg/deno
