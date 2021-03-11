@@ -1,5 +1,6 @@
 ((window) => {
   const core = window.Deno.core;
+  const webidl = window.__bootstrap.webidl;
 
   class Storage {
     constructor(session = false) {
@@ -52,31 +53,63 @@
     }
 
     key(index) {
+      const prefix = "Failed to execute 'key' on 'Storage'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      index = webidl.converters["unsigned long"](index, {
+        prefix,
+        context: "Argument 1",
+      });
+
       return core.jsonOpSync("op_localstorage_key", {
         rid: this.#getRid(),
-        index: Number(index),
+        index,
       });
     }
 
-    setItem(keyName, keyValue) {
+    setItem(key, value) {
+      const prefix = "Failed to execute 'setItem' on 'Storage'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      key = webidl.converters.DOMString(key, {
+        prefix,
+        context: "Argument 1",
+      });
+      value = webidl.converters.DOMString(value, {
+        prefix,
+        context: "Argument 2",
+      });
+
       core.jsonOpSync("op_localstorage_set", {
         rid: this.#getRid(),
-        keyName: String(keyName),
-        keyValue: String(keyValue),
+        keyName: key,
+        keyValue: value,
       });
     }
 
-    getItem(keyName) {
+    getItem(key) {
+      const prefix = "Failed to execute 'getItem' on 'Storage'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      key = webidl.converters.DOMString(key, {
+        prefix,
+        context: "Argument 1",
+      });
+
       return core.jsonOpSync("op_localstorage_get", {
         rid: this.#getRid(),
-        keyName: String(keyName),
+        keyName: key,
       });
     }
 
-    removeItem(keyName) {
+    removeItem(key) {
+      const prefix = "Failed to execute 'removeItem' on 'Storage'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      key = webidl.converters.DOMString(key, {
+        prefix,
+        context: "Argument 1",
+      });
+
       core.jsonOpSync("op_localstorage_remove", {
         rid: this.#getRid(),
-        keyName: String(keyName),
+        keyName: key,
       });
     }
 
