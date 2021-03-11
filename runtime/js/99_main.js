@@ -364,6 +364,7 @@ delete Object.prototype.__proto__;
     prompt: util.writable(prompt.prompt),
     localStorage: util.nonEnumerable(webStorage.localStorage),
     sessionStorage: util.nonEnumerable(webStorage.sessionStorage),
+    Storage: util.nonEnumerable(webStorage.Storage),
   };
 
   const workerRuntimeGlobalProperties = {
