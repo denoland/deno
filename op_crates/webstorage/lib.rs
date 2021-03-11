@@ -28,6 +28,10 @@ pub fn init(isolate: &mut JsRuntime) {
     .unwrap();
 }
 
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
+}
+
 struct WebStorageConnectionResource(Connection);
 
 impl Resource for WebStorageConnectionResource {

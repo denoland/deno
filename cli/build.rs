@@ -13,6 +13,7 @@ use deno_runtime::deno_fetch;
 use deno_runtime::deno_web;
 use deno_runtime::deno_webgpu;
 use deno_runtime::deno_websocket;
+use deno_runtime::deno_webstorage;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
@@ -65,6 +66,7 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
   op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
+  op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
   op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
 
   // ensure we invalidate the build properly.
@@ -269,6 +271,10 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
     deno_websocket::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_WEBSTORAGE_LIB_PATH={}",
+    deno_webstorage::get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",
