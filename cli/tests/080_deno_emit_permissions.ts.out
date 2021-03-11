@@ -1,2 +1,2 @@
-[WILDCARD]error: Uncaught (in promise) PermissionDenied: Access to read "[WILDCARD]001_hello.js" required, run again with read permission
+[WILDCARD]error: Uncaught (in promise) PermissionDenied: Access to read "[WILDCARD]001_hello.js" required, run again with the --allow-read flag
 [WILDCARD]

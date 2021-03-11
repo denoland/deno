@@ -1,4 +1,4 @@
-error: Uncaught (in promise) TypeError: Access to network for "localhost:4545" required, run again with net permission
+error: Uncaught (in promise) TypeError: Access to network for "localhost:4545" required, run again with the --allow-net flag
   await import("http://localhost:4545/cli/tests/subdir/mod4.js");
   ^
     at async file:///[WILDCARD]/error_015_dynamic_import_permissions.js:2:3

@@ -40,7 +40,7 @@ impl PermissionState {
       return Ok(());
     }
     let message = format!(
-      "Access to {} required, run again with {} permission",
+      "Access to {} required, run again with the --allow-{} flag",
       description, name
     );
     Err(custom_error("PermissionDenied", message))

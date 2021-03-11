@@ -1,4 +1,4 @@
-[WILDCARD]error: Uncaught PermissionDenied: Access to read "non-existent" required, run again with read permission
+[WILDCARD]error: Uncaught PermissionDenied: Access to read "non-existent" required, run again with the --allow-read flag
 Deno.readFileSync("non-existent");
      ^
     at [WILDCARD]
