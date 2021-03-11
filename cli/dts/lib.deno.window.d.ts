@@ -31,6 +31,8 @@ declare var window: Window & typeof globalThis;
 declare var self: Window & typeof globalThis;
 declare var onload: ((this: Window, ev: Event) => any) | null;
 declare var onunload: ((this: Window, ev: Event) => any) | null;
+declare var localStorage: Storage;
+declare var sessionStorage: Storage;
 
 declare class Navigator {
   constructor();
