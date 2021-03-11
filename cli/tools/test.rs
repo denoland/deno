@@ -111,16 +111,18 @@ fn is_supported_test(p: &Path) -> bool {
   }
 }
 
-pub async fn test_files<F>(
+pub async fn test_files<F, G>(
   args: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   no_run: bool,
   fail_fast: bool,
   allow_none: bool,
-  test_file: F,
+  check_file: F,
+  test_file: G,
 ) -> Result<(), AnyError>
 where
-  F: FnOnce(PathBuf, Arc<Mutex<TestReporter>>) -> Result<(), AnyError>
+  F: FnOnce(PathBuf) -> Result<(), AnyError> + Send + 'static + Clone,
+  G: FnOnce(PathBuf, Arc<Mutex<TestReporter>>) -> Result<(), AnyError>
     + Send
     + 'static
     + Clone,
@@ -131,6 +133,23 @@ where
     if !allow_none {
       std::process::exit(1);
     }
+    return Ok(());
+  }
+
+  // This won't do, deno test --reload --no-run takes 1m10.663s
+  // Where-as canary takes about ~0m15s so until we get the same same programatically as we can with
+  // bundle, we should use the bundle.
+  //
+  // Comitting this as a reference point to be immediatly rewritten.
+  run_parallelized(target_files.clone(), {
+    move |file_path| {
+      check_file(file_path.clone())?;
+      Ok(())
+    }
+  })
+  .await?;
+
+  if no_run {
     return Ok(());
   }
 

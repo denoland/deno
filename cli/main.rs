@@ -909,14 +909,48 @@ async fn test_command(
   let program_state = Arc::new(ProgramState::build(flags.clone()).await?);
   let permissions = Permissions::from_options(&flags.clone().into());
 
+  let test_checker = {
+    let program_state = program_state.clone();
+
+    move |file_path: PathBuf| -> Result<(), AnyError> {
+      let join_handle = std::thread::spawn(move || -> Result<(), AnyError> {
+        tokio_util::run_basic(async move {
+          let main_module = resolve_url_or_path(&file_path.to_str().unwrap())?;
+
+          let lib = if flags.unstable {
+            module_graph::TypeLib::UnstableDenoWindow
+          } else {
+            module_graph::TypeLib::DenoWindow
+          };
+
+          program_state
+            .prepare_module_load(
+              main_module.clone(),
+              lib,
+              Permissions::allow_all(),
+              false,
+              program_state.maybe_import_map.clone(),
+            )
+            .await?;
+
+          Ok(())
+        })
+      });
+
+      join_handle.join().expect("Failed to join test thread");
+
+      Ok(())
+    }
+  };
+
   let test_options = json!({
     "filter": filter,
   });
 
   let test_code = format!("Deno[Deno.internal].runTests({});", test_options);
 
-  let test_callback = move |file_path: PathBuf,
-                            test_reporter: Arc<Mutex<TestReporter>>|
+  let test_runner = move |file_path: PathBuf,
+                          test_reporter: Arc<Mutex<TestReporter>>|
         -> Result<(), AnyError> {
     let join_handle = std::thread::spawn(move || -> Result<(), AnyError> {
       tokio_util::run_basic(async move {
@@ -964,7 +998,8 @@ async fn test_command(
     no_run,
     fail_fast,
     allow_none,
-    test_callback,
+    test_checker,
+    test_runner,
   )
   .await?;
 
