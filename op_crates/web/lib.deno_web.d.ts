@@ -102,7 +102,7 @@ declare class EventTarget {
      *
      * When set to true, options's passive indicates that the callback will not
      * cancel the event by invoking preventDefault(). This is used to enable
-     * performance optimizations described in § 2.8 Observing event listeners.
+     * performance optimizations described in section 2.8 Observing event listeners.
      *
      * When set to true, options's once indicates that the callback will only be
      * invoked once after which the event listener will be removed.

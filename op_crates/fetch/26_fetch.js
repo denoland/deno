@@ -333,7 +333,7 @@
       requiredArguments("FormData.set", arguments.length, 2);
       name = String(name);
 
-      // If there are any entries in the context object’s entry list whose name
+      // If there are any entries in the context object's entry list whose name
       // is name, replace the first such entry with entry and remove the others
       let found = false;
       let i = 0;
@@ -350,7 +350,7 @@
         i++;
       }
 
-      // Otherwise, append entry to the context object’s entry list.
+      // Otherwise, append entry to the context object's entry list.
       if (!found) {
         this[dataSymbol].push([name, parseFormDataValue(value, filename)]);
       }

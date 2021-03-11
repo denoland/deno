@@ -10,18 +10,18 @@
 
     fr.aborting = false;
 
-    // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
+    // 1. If fr's state is "loading", throw an InvalidStateError DOMException.
     if (fr.readyState === FileReader.LOADING) {
       throw new DOMException(
         "Invalid FileReader state.",
         "InvalidStateError",
       );
     }
-    // 2. Set fr’s state to "loading".
+    // 2. Set fr's state to "loading".
     fr.readyState = FileReader.LOADING;
-    // 3. Set fr’s result to null.
+    // 3. Set fr's result to null.
     fr.result = null;
-    // 4. Set fr’s error to null.
+    // 4. Set fr's error to null.
     fr.error = null;
 
     // 5. Let stream be the result of calling get stream on blob.
@@ -79,9 +79,9 @@
               return;
             }
 
-            // 1. Set fr’s state to "done".
+            // 1. Set fr's state to "done".
             fr.readyState = FileReader.DONE;
-            // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
+            // 2. Let result be the result of package data given bytes, type, blob's type, and encodingName.
             const size = chunks.reduce((p, i) => p + i.byteLength, 0);
             const bytes = new Uint8Array(size);
             let offs = 0;
@@ -115,7 +115,7 @@
               fr.dispatchEvent(ev);
             }
 
-            // 5. If fr’s state is not "loading", fire a progress event called loadend at the fr.
+            // 5. If fr's state is not "loading", fire a progress event called loadend at the fr.
             //Note: Event handler for the load or error events could have started another load, if that happens the loadend event for this load is not fired.
             if (fr.readyState !== FileReader.LOADING) {
               const ev = new ProgressEvent("loadend", {
@@ -143,7 +143,7 @@
           fr.dispatchEvent(ev);
         }
 
-        //If fr’s state is not "loading", fire a progress event called loadend at fr.
+        //If fr's state is not "loading", fire a progress event called loadend at fr.
         //Note: Event handler for the error event could have started another load, if that happens the loadend event for this load is not fired.
         if (fr.readyState !== FileReader.LOADING) {
           const ev = new ProgressEvent("loadend", {});
