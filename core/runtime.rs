@@ -200,7 +200,7 @@ impl JsRuntime {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       // Include 10MB ICU data file.
-      #[repr(C, align(16))]
+      #[repr(C, align(32))]
       struct ICUData(&'static [u8; 10413584]);
       const ICU_DATA: ICUData = ICUData(include_bytes!("icudtl.dat"));
       assert!(v8::icu::set_common_data(ICU_DATA.0).is_ok());
