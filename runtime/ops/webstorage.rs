@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use std::path::PathBuf;
-use deno_webstorage::LocationDataDir;
-use deno_webstorage::op_webstorage_open;
-use deno_webstorage::op_webstorage_length;
-use deno_webstorage::op_webstorage_key;
-use deno_webstorage::op_webstorage_set;
-use deno_webstorage::op_webstorage_get;
-use deno_webstorage::op_webstorage_remove;
 use deno_webstorage::op_webstorage_clear;
+use deno_webstorage::op_webstorage_get;
+use deno_webstorage::op_webstorage_key;
+use deno_webstorage::op_webstorage_length;
+use deno_webstorage::op_webstorage_open;
+use deno_webstorage::op_webstorage_remove;
+use deno_webstorage::op_webstorage_set;
+use deno_webstorage::LocationDataDir;
+use std::path::PathBuf;
 
 pub fn init(rt: &mut deno_core::JsRuntime, deno_dir: Option<PathBuf>) {
   {

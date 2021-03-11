@@ -2,9 +2,9 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::JsRuntime;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
@@ -27,7 +27,6 @@ pub fn init(isolate: &mut JsRuntime) {
     )
     .unwrap();
 }
-
 
 struct WebStorageConnectionResource(Connection);
 
@@ -96,9 +95,7 @@ pub fn op_webstorage_length(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.0
-    .prepare("SELECT COUNT(*) FROM data")
-    .unwrap();
+  let mut stmt = resource.0.prepare("SELECT COUNT(*) FROM data").unwrap();
 
   let length: u32 = stmt.query_row(params![], |row| row.get(0)).unwrap();
 
@@ -122,7 +119,8 @@ pub fn op_webstorage_key(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.0
+  let mut stmt = resource
+    .0
     .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")
     .unwrap();
 
@@ -157,7 +155,8 @@ pub fn op_webstorage_set(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource.0
+  resource
+    .0
     .execute(
       "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
       params![args.key_name, args.key_value],
@@ -184,7 +183,8 @@ pub fn op_webstorage_get(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.0
+  let mut stmt = resource
+    .0
     .prepare("SELECT value FROM data WHERE key = ?")
     .unwrap();
 
@@ -213,7 +213,8 @@ pub fn op_webstorage_remove(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource.0
+  resource
+    .0
     .execute("DELETE FROM data WHERE key = ?", params![args.key_name])
     .unwrap();
 
@@ -236,10 +237,9 @@ pub fn op_webstorage_clear(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource.0
-    .execute("DROP TABLE data", params![])
-    .unwrap();
-  resource.0
+  resource.0.execute("DROP TABLE data", params![]).unwrap();
+  resource
+    .0
     .execute(
       "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
       params![],

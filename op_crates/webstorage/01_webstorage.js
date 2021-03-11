@@ -128,9 +128,22 @@
     });
   }
 
+  let localStorage;
+  let sessionStorage;
+
   window.__bootstrap.webStorage = {
-    localStorage: () => createStorage(true),
-    sessionStorage: () => createStorage(false),
+    localStorage() {
+      if (!localStorage) {
+        localStorage = createStorage(true);
+      }
+      return localStorage;
+    },
+    sessionStorage() {
+      if (!sessionStorage) {
+        sessionStorage = createStorage(false);
+      }
+      return sessionStorage;
+    },
     Storage,
   };
 })(this);
