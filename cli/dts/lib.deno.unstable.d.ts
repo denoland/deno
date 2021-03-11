@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -21,28 +21,6 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Synchronously creates `newpath` as a hard link to `oldpath`.
-   *
-   * ```ts
-   * Deno.linkSync("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permissions. */
-  export function linkSync(oldpath: string, newpath: string): void;
-
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Creates `newpath` as a hard link to `oldpath`.
-   *
-   * ```ts
-   * await Deno.link("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permissions. */
-  export function link(oldpath: string, newpath: string): Promise<void>;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Gets the size of the console as columns/rows.
@@ -57,46 +35,6 @@ declare namespace Deno {
     columns: number;
     rows: number;
   };
-
-  export type SymlinkOptions = {
-    type: "file" | "dir";
-  };
-
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Creates `newpath` as a symbolic link to `oldpath`.
-   *
-   * The options.type parameter can be set to `file` or `dir`. This argument is only
-   * available on Windows and ignored on other platforms.
-   *
-   * ```ts
-   * Deno.symlinkSync("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-write` permission. */
-  export function symlinkSync(
-    oldpath: string,
-    newpath: string,
-    options?: SymlinkOptions,
-  ): void;
-
-  /** **UNSTABLE**: This API needs a security review.
-   *
-   * Creates `newpath` as a symbolic link to `oldpath`.
-   *
-   * The options.type parameter can be set to `file` or `dir`. This argument is only
-   * available on Windows and ignored on other platforms.
-   *
-   * ```ts
-   * await Deno.symlink("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-write` permission. */
-  export function symlink(
-    oldpath: string,
-    newpath: string,
-    options?: SymlinkOptions,
-  ): Promise<void>;
 
   /** **Unstable**  There are questions around which permission this needs. And
    * maybe should be renamed (loadAverage?)
@@ -259,7 +197,7 @@ declare namespace Deno {
    * user friendly format.
    *
    * ```ts
-   * const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
+   * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
    * console.table(diagnostics);  // Prints raw diagnostic data
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
    * ```
@@ -498,12 +436,14 @@ declare namespace Deno {
 
   interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is an ES module (`"esm"`). */
-    bundle?: "esm";
+     * JavaScript bundle that is a single ES module (`"esm"`) or a single file
+     * self contained script we executes in an immediately invoked function
+     * when loaded (`"iife"`). */
+    bundle?: "esm" | "iife";
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.
-     * 
+     *
      * *Note* by default, only TypeScript will be type checked, just like on
      * the command line.  Use the `compilerOptions` options of `checkJs` to
      * enable type checking of JavaScript. */
@@ -543,15 +483,15 @@ declare namespace Deno {
 
   /**
    * **UNSTABLE**: new API, yet to be vetted.
-   * 
+   *
    * Similar to the command line functionality of `deno run` or `deno cache`,
    * `Deno.emit()` provides a way to provide Deno arbitrary JavaScript
    * or TypeScript and have it return JavaScript based on the options and
    * settings provided. The source code can either be provided or the modules
    * can be fetched and resolved in line with the behavior of the command line.
-   * 
+   *
    * Requires `allow-read` and/or `allow-net` if sources are not provided.
-   * 
+   *
    * @param rootSpecifier The specifier that will be used as the entry point.
    *                      If no sources are provided, then the specifier would
    *                      be the same as if you typed it on the command line for
@@ -835,31 +775,91 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** **UNSTABLE**: Under consideration to remove `ShutdownMode` entirely.
-   *
-   * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
-   *
-   * See: http://man7.org/linux/man-pages/man2/shutdown.2.html */
-  export enum ShutdownMode {
-    Read = 0,
-    Write,
-    ReadWrite, // TODO(ry) panics on ReadWrite.
+  /** The type of the resource record.
+   * Only the listed types are supported currently. */
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "CNAME"
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
+
+  export interface ResolveDnsOptions {
+    /** The name server to be used for lookups.
+     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
+       * If not specified, defaults to 53. */
+      port?: number;
+    };
   }
 
-  /** **UNSTABLE**: Both the `how` parameter and `ShutdownMode` enum are under
-   * consideration for removal.
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
+
+  /** ** UNSTABLE**: new API, yet to be vetted.
    *
-   * Shutdown socket send and receive operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
+   * Performs DNS resolution against the given query, returning resolved records.
+   * Fails in the cases such as:
+   * - the query is in invalid format
+   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
+   * - timed out
    *
    * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 1234 },
+   * });
    * ```
+   *
+   * Requires `allow-net` permission.
    */
-  export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -1008,119 +1008,6 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
-
-  /** The name of a "powerful feature" which needs permission.
-   *
-   * See: https://w3c.github.io/permissions/#permission-registry
-   *
-   * Note that the definition of `PermissionName` in the above spec is swapped
-   * out for a set of Deno permissions which are not web-compatible. */
-  export type PermissionName =
-    | "run"
-    | "read"
-    | "write"
-    | "net"
-    | "env"
-    | "plugin"
-    | "hrtime";
-
-  /** The current status of the permission.
-   *
-   * See: https://w3c.github.io/permissions/#status-of-a-permission */
-  export type PermissionState = "granted" | "denied" | "prompt";
-
-  export interface RunPermissionDescriptor {
-    name: "run";
-  }
-
-  export interface ReadPermissionDescriptor {
-    name: "read";
-    path?: string;
-  }
-
-  export interface WritePermissionDescriptor {
-    name: "write";
-    path?: string;
-  }
-
-  export interface NetPermissionDescriptor {
-    name: "net";
-    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
-     *
-     *      "github.com"
-     *      "deno.land:8080"
-     */
-    host?: string;
-  }
-
-  export interface EnvPermissionDescriptor {
-    name: "env";
-  }
-
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
-  }
-
-  export interface HrtimePermissionDescriptor {
-    name: "hrtime";
-  }
-
-  /** Permission descriptors which define a permission and can be queried,
-   * requested, or revoked.
-   *
-   * See: https://w3c.github.io/permissions/#permission-descriptor */
-  export type PermissionDescriptor =
-    | RunPermissionDescriptor
-    | ReadPermissionDescriptor
-    | WritePermissionDescriptor
-    | NetPermissionDescriptor
-    | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
-    | HrtimePermissionDescriptor;
-
-  export class Permissions {
-    /** Resolves to the current status of a permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     * if (status.state === "granted") {
-     *   data = await Deno.readFile("/etc/passwd");
-     * }
-     * ```
-     */
-    query(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Revokes a permission, and resolves to the state of the permission.
-     *
-     *       const status = await Deno.permissions.revoke({ name: "run" });
-     *       assert(status.state !== "granted")
-     */
-    revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Requests the permission, and resolves to the state of the permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.request({ name: "env" });
-     * if (status.state === "granted") {
-     *   console.log("'env' permission is granted.");
-     * } else {
-     *   console.log("'env' permission is denied.");
-     * }
-     * ```
-     */
-    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
-  }
-
-  /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
-   * match web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
-   */
-  export const permissions: Permissions;
-
-  /** see: https://w3c.github.io/permissions/#permissionstatus */
-  export class PermissionStatus {
-    state: PermissionState;
-    constructor();
-  }
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
@@ -1281,9 +1168,105 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): Promise<void>;
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
+  }
+
+  export interface OpMetrics {
+    opsDispatched: number;
+    opsDispatchedSync: number;
+    opsDispatchedAsync: number;
+    opsDispatchedAsyncUnref: number;
+    opsCompleted: number;
+    opsCompletedSync: number;
+    opsCompletedAsync: number;
+    opsCompletedAsyncUnref: number;
+    bytesSentControl: number;
+    bytesSentData: number;
+    bytesReceived: number;
+  }
 }
 
 declare function fetch(
   input: Request | URL | string,
   init?: RequestInit & { client: Deno.HttpClient },
 ): Promise<Response>;
+
+declare interface WorkerOptions {
+  /** UNSTABLE: New API.
+   *
+   * Set deno.namespace to `true` to make `Deno` namespace and all of its
+   * methods available to the worker environment. Defaults to `false`.
+   *
+   * Configure deno.permissions options to change the level of access the worker will
+   * have. By default it will inherit the permissions of its parent thread. The permissions
+   * of a worker can't be extended beyond its parent's permissions reach.
+   * - "inherit" will take the permissions of the thread the worker is created in
+   * - You can disable/enable permissions all together by passing a boolean
+   * - You can provide a list of routes relative to the file the worker
+   *   is created in to limit the access of the worker (read/write permissions only)
+   *
+   * Example:
+   *
+   * ```ts
+   * // mod.ts
+   * const worker = new Worker(
+   *   new URL("deno_worker.ts", import.meta.url).href, {
+   *     type: "module",
+   *     deno: {
+   *       namespace: true,
+   *       permissions: {
+   *         read: true,
+   *       },
+   *     },
+   *   }
+   * );
+   * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
+   *
+   * // deno_worker.ts
+   *
+   *
+   * self.onmessage = async function (e) {
+   *     const { cmd, fileName } = e.data;
+   *     if (cmd !== "readFile") {
+   *         throw new Error("Invalid command");
+   *     }
+   *     const buf = await Deno.readFile(fileName);
+   *     const fileContents = new TextDecoder().decode(buf);
+   *     console.log(fileContents);
+   * }
+   *
+   * // $ cat log.txt
+   * // hello world
+   * // hello world 2
+   *
+   * // $ deno run --allow-read mod.ts
+   * // hello world
+   * // hello world2
+   * ```
+   */
+  // TODO(Soremwar)
+  // `deno: boolean` is kept for backwards compatibility with the previous
+  // worker options implementation. Remove for 2.0.
+  deno?: boolean | {
+    namespace?: boolean;
+    /** Set to `"none"` to disable all the permissions in the worker. */
+    permissions?: "inherit" | "none" | {
+      env?: "inherit" | boolean;
+      hrtime?: "inherit" | boolean;
+      /** The format of the net access list must be `hostname[:port]`
+       * in order to be resolved.
+       *
+       * ```
+       * net: ["https://deno.land", "localhost:8080"],
+       * ```
+       * */
+      net?: "inherit" | boolean | string[];
+      plugin?: "inherit" | boolean;
+      read?: "inherit" | boolean | Array<string | URL>;
+      run?: "inherit" | boolean;
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
+  };
+}

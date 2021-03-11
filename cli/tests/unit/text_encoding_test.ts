@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function btoaSuccess(): void {
@@ -50,11 +50,26 @@ unitTest(function atobThrows2(): void {
   assert(threw);
 });
 
+unitTest(function atobThrows3(): void {
+  let threw = false;
+  try {
+    atob("foobar!!");
+  } catch (e) {
+    if (
+      e instanceof DOMException &&
+      e.toString().startsWith("InvalidCharacterError:")
+    ) {
+      threw = true;
+    }
+  }
+  assert(threw);
+});
+
 unitTest(function btoaFailed(): void {
   const text = "你好";
   assertThrows(() => {
     btoa(text);
-  }, TypeError);
+  }, DOMException);
 });
 
 unitTest(function textDecoder2(): void {
@@ -84,17 +99,6 @@ unitTest(function textDecoderErrorEncoding(): void {
   } catch (e) {
     didThrow = true;
     assertEquals(e.message, "The encoding label provided ('Foo') is invalid.");
-  }
-  assert(didThrow);
-});
-
-unitTest(function textDecoderHandlesNotFoundInternalDecoder() {
-  let didThrow = false;
-  try {
-    new TextDecoder("gbk");
-  } catch (e) {
-    didThrow = true;
-    assert(e instanceof RangeError);
   }
   assert(didThrow);
 });

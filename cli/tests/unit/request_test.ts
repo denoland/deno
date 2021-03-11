@@ -1,7 +1,7 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import { assertEquals, unitTest } from "./test_util.ts";
 
-unitTest(function fromInit(): void {
+unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
     body: "ahoyhoy",
     method: "POST",
@@ -10,22 +10,18 @@ unitTest(function fromInit(): void {
     },
   });
 
-  // deno-lint-ignore no-explicit-any
-  assertEquals("ahoyhoy", (req as any)._bodySource);
+  assertEquals("ahoyhoy", await req.text());
   assertEquals(req.url, "http://foo/");
   assertEquals(req.headers.get("test-header"), "value");
 });
 
-unitTest(function fromRequest(): void {
-  const r = new Request("http://foo/");
-  // deno-lint-ignore no-explicit-any
-  (r as any)._bodySource = "ahoyhoy";
+unitTest(async function fromRequest(): Promise<void> {
+  const r = new Request("http://foo/", { body: "ahoyhoy" });
   r.headers.set("test-header", "value");
 
   const req = new Request(r);
 
-  // deno-lint-ignore no-explicit-any
-  assertEquals((req as any)._bodySource, (r as any)._bodySource);
+  assertEquals(await r.text(), await req.text());
   assertEquals(req.url, r.url);
   assertEquals(req.headers.get("test-header"), r.headers.get("test-header"));
 });
@@ -65,7 +61,4 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
   const b2 = await r2.text();
 
   assertEquals(b1, b2);
-
-  // deno-lint-ignore no-explicit-any
-  assert((r1 as any)._bodySource !== (r2 as any)._bodySource);
 });

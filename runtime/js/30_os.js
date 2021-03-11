@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -23,7 +24,26 @@
     return core.jsonOpSync("op_system_cpu_info");
   }
 
+  // This is an internal only method used by the test harness to override the
+  // behavior of exit when the exit sanitizer is enabled.
+  let exitHandler = null;
+  function setExitHandler(fn) {
+    exitHandler = fn;
+  }
+
   function exit(code = 0) {
+    // Dispatches `unload` only when it's not dispatched yet.
+    if (!window[Symbol.for("isUnloadDispatched")]) {
+      // Invokes the `unload` hooks before exiting
+      // ref: https://github.com/denoland/deno/issues/3603
+      window.dispatchEvent(new Event("unload"));
+    }
+
+    if (exitHandler) {
+      exitHandler(code);
+      return;
+    }
+
     core.jsonOpSync("op_exit", { code });
     throw new Error("Code not reachable");
   }
@@ -56,6 +76,7 @@
   window.__bootstrap.os = {
     env,
     execPath,
+    setExitHandler,
     exit,
     osRelease,
     systemMemoryInfo,

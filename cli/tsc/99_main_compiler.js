@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -18,6 +18,14 @@ delete Object.prototype.__proto__;
 
   let logDebug = false;
   let logSource = "JS";
+
+  // The map from the normalized specifier to the original.
+  // TypeScript normalizes the specifier in its internal processing,
+  // but the original specifier is needed when looking up the source from the runtime.
+  // This map stores that relationship, and the original can be restored by the
+  // normalized specifier.
+  // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
+  const normalizedToOriginalMap = new Map();
 
   function setLogDebug(debug, source) {
     logDebug = debug;
@@ -176,15 +184,15 @@ delete Object.prototype.__proto__;
     version;
     /**
      * @param {string} specifier
-     * @param {string} version 
+     * @param {string} version
      */
     constructor(specifier, version) {
       this.specifier = specifier;
       this.version = version;
     }
     /**
-     * @param {number} start 
-     * @param {number} end 
+     * @param {number} start
+     * @param {number} end
      * @returns {string}
      */
     getText(start, end) {
@@ -259,6 +267,9 @@ delete Object.prototype.__proto__;
       if (sourceFile) {
         return sourceFile;
       }
+
+      // Needs the original specifier
+      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
       /** @type {{ data: string; hash?: string; scriptKind: ts.ScriptKind }} */
       const { data, hash, scriptKind } = core.jsonOpSync(
@@ -394,7 +405,7 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {{ program: ts.Program | ts.EmitAndSemanticDiagnosticsBuilderProgram, fileCount?: number }} options 
+   * @param {{ program: ts.Program | ts.EmitAndSemanticDiagnosticsBuilderProgram, fileCount?: number }} options
    */
   function performanceProgram({ program, fileCount }) {
     if (program) {
@@ -436,6 +447,27 @@ delete Object.prototype.__proto__;
    * @property {string[]} rootNames
    */
 
+  /**
+   * Checks the normalized version of the root name and stores it in
+   * `normalizedToOriginalMap`. If the normalized specifier is already
+   * registered for the different root name, it throws an AssertionError.
+   *
+   * @param {string} rootName
+   */
+  function checkNormalizedPath(rootName) {
+    const normalized = ts.normalizePath(rootName);
+    const originalRootName = normalizedToOriginalMap.get(normalized);
+    if (typeof originalRootName === "undefined") {
+      normalizedToOriginalMap.set(normalized, rootName);
+    } else if (originalRootName !== rootName) {
+      // The different root names are normalizd to the same path.
+      // This will cause problem when looking up the source for each.
+      throw new AssertionError(
+        `The different names for the same normalized specifier are specified: normalized=${normalized}, rootNames=${originalRootName},${rootName}`,
+      );
+    }
+  }
+
   /** The API that is called by Rust when executing a request.
    * @param {Request} request
    */
@@ -444,6 +476,8 @@ delete Object.prototype.__proto__;
     performanceStart();
     debug(">>> exec start", { rootNames });
     debug(config);
+
+    rootNames.forEach(checkNormalizedPath);
 
     const { options, errors: configFileParsingDiagnostics } = ts
       .convertCompilerOptionsFromJson(config, "");
@@ -479,15 +513,15 @@ delete Object.prototype.__proto__;
   }
 
   /**
-   * @param {number} id 
-   * @param {any} data 
+   * @param {number} id
+   * @param {any} data
    */
   function respond(id, data = null) {
     core.jsonOpSync("op_respond", { id, data });
   }
 
   /**
-   * @param {LanguageServerRequest} request 
+   * @param {LanguageServerRequest} request
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
@@ -502,6 +536,18 @@ delete Object.prototype.__proto__;
         compilationSettings = options;
         return respond(id, true);
       }
+      case "findRenameLocations": {
+        return respond(
+          id,
+          languageService.findRenameLocations(
+            request.specifier,
+            request.position,
+            request.findInStrings,
+            request.findInComments,
+            request.providePrefixAndSuffixTextForRename,
+          ),
+        );
+      }
       case "getAsset": {
         const sourceFile = host.getSourceFile(
           request.specifier,
@@ -509,25 +555,42 @@ delete Object.prototype.__proto__;
         );
         return respond(id, sourceFile && sourceFile.text);
       }
-      case "getDiagnostics": {
-        try {
-          const diagnostics = [
-            ...languageService.getSemanticDiagnostics(request.specifier),
-            ...languageService.getSuggestionDiagnostics(request.specifier),
-            ...languageService.getSyntacticDiagnostics(request.specifier),
-          ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
-          return respond(id, fromTypeScriptDiagnostic(diagnostics));
-        } catch (e) {
-          error(e);
-          return respond(id, []);
-        }
-      }
-      case "getQuickInfo": {
+      case "getCodeFixes": {
         return respond(
           id,
-          languageService.getQuickInfoAtPosition(
+          languageService.getCodeFixesAtPosition(
             request.specifier,
-            request.position,
+            request.startPosition,
+            request.endPosition,
+            request.errorCodes.map((v) => Number(v)),
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Block,
+              semicolons: ts.SemicolonPreference.Insert,
+            },
+            {
+              quotePreference: "double",
+            },
+          ),
+        );
+      }
+      case "getCombinedCodeFix": {
+        return respond(
+          id,
+          languageService.getCombinedCodeFix(
+            {
+              type: "file",
+              fileName: request.specifier,
+            },
+            request.fixId,
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Block,
+              semicolons: ts.SemicolonPreference.Insert,
+            },
+            {
+              quotePreference: "double",
+            },
           ),
         );
       }
@@ -541,6 +604,36 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getDefinition": {
+        return respond(
+          id,
+          languageService.getDefinitionAndBoundSpan(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getDiagnostics": {
+        try {
+          /** @type {Record<string, any[]>} */
+          const diagnosticMap = {};
+          for (const specifier of request.specifiers) {
+            diagnosticMap[specifier] = fromTypeScriptDiagnostic([
+              ...languageService.getSemanticDiagnostics(specifier),
+              ...languageService.getSuggestionDiagnostics(specifier),
+              ...languageService.getSyntacticDiagnostics(specifier),
+            ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
+          }
+          return respond(id, diagnosticMap);
+        } catch (e) {
+          if ("stack" in e) {
+            error(e.stack);
+          } else {
+            error(e);
+          }
+          return respond(id, {});
+        }
+      }
       case "getDocumentHighlights": {
         return respond(
           id,
@@ -548,6 +641,30 @@ delete Object.prototype.__proto__;
             request.specifier,
             request.position,
             request.filesToSearch,
+          ),
+        );
+      }
+      case "getImplementation": {
+        return respond(
+          id,
+          languageService.getImplementationAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getNavigationTree": {
+        return respond(
+          id,
+          languageService.getNavigationTree(request.specifier),
+        );
+      }
+      case "getQuickInfo": {
+        return respond(
+          id,
+          languageService.getQuickInfoAtPosition(
+            request.specifier,
+            request.position,
           ),
         );
       }
@@ -560,25 +677,20 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getDefinition": {
+      case "getSignatureHelpItems": {
         return respond(
           id,
-          languageService.getDefinitionAndBoundSpan(
+          languageService.getSignatureHelpItems(
             request.specifier,
             request.position,
+            request.options,
           ),
         );
       }
-      case "findRenameLocations": {
+      case "getSupportedCodeFixes": {
         return respond(
           id,
-          languageService.findRenameLocations(
-            request.specifier,
-            request.position,
-            request.findInStrings,
-            request.findInComments,
-            request.providePrefixAndSuffixTextForRename,
-          ),
+          ts.getSupportedCodeFixes(),
         );
       }
       default:

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util;
 use crate::http_cache::url_to_filename;
@@ -67,7 +67,7 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
-      "http" | "https" | "data" => out = url_to_filename(url),
+      "http" | "https" | "data" => out = url_to_filename(url)?,
       "file" => {
         let path = match url.to_file_path() {
           Ok(path) => path,

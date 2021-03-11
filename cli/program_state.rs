@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
@@ -21,6 +21,7 @@ use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
@@ -56,7 +57,7 @@ pub struct ProgramState {
 }
 
 impl ProgramState {
-  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+  pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -94,11 +95,17 @@ impl ProgramState {
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => {
-          if !flags.unstable {
-            exit_unstable("--import-map")
-          }
-          Some(ImportMap::load(file_path)?)
+        Some(import_map_url) => {
+          let import_map_specifier =
+            deno_core::resolve_url_or_path(&import_map_url).context(
+              format!("Bad URL (\"{}\") for import map.", import_map_url),
+            )?;
+          let file = file_fetcher
+            .fetch(&import_map_specifier, &Permissions::allow_all())
+            .await?;
+          let import_map =
+            ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
+          Some(import_map)
         }
       };
 
@@ -276,32 +283,16 @@ impl ProgramState {
       None
     }
   }
-
-  #[cfg(test)]
-  pub fn mock(
-    argv: Vec<String>,
-    maybe_flags: Option<flags::Flags>,
-  ) -> Arc<ProgramState> {
-    ProgramState::new(flags::Flags {
-      argv,
-      ..maybe_flags.unwrap_or_default()
-    })
-    .unwrap()
-  }
 }
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
 // else, like a refactored file_fetcher.
 impl SourceMapGetter for ProgramState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
-      if let Some((code, maybe_map)) = self.get_emit(&specifier.as_url()) {
-        if maybe_map.is_some() {
-          maybe_map
-        } else {
-          let code = String::from_utf8(code).unwrap();
-          source_map_from_code(code)
-        }
+    if let Ok(specifier) = resolve_url(file_name) {
+      if let Some((code, maybe_map)) = self.get_emit(&specifier) {
+        let code = String::from_utf8(code).unwrap();
+        source_map_from_code(code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None) {
         source_map_from_code(source.code)
       } else {
@@ -317,7 +308,7 @@ impl SourceMapGetter for ProgramState {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
+    if let Ok(specifier) = resolve_url(file_name) {
       self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
@@ -349,10 +340,4 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
   } else {
     None
   }
-}
-
-#[test]
-fn thread_safe() {
-  fn f<S: Send + Sync>(_: S) {}
-  f(ProgramState::mock(vec![], None));
 }

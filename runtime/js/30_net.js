@@ -1,23 +1,13 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const { errors } = window.__bootstrap.errors;
   const { read, write } = window.__bootstrap.io;
 
-  const ShutdownMode = {
-    // See http://man7.org/linux/man-pages/man2/shutdown.2.html
-    // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
-    0: "Read",
-    1: "Write",
-    2: "ReadWrite",
-    Read: 0, // TODO: nonsense, remove me.
-    Write: 1,
-    ReadWrite: 2, // unused
-  };
-
-  function shutdown(rid, how) {
-    return core.jsonOpAsync("op_shutdown", { rid, how });
+  function shutdown(rid) {
+    return core.jsonOpAsync("op_shutdown", { rid });
   }
 
   function opAccept(rid, transport) {
@@ -42,6 +32,10 @@
 
   function opSend(args, zeroCopy) {
     return core.jsonOpAsync("op_datagram_send", args, zeroCopy);
+  }
+
+  function resolveDns(query, recordType, options) {
+    return core.jsonOpAsync("op_dns_resolve", { query, recordType, options });
   }
 
   class Conn {
@@ -78,9 +72,8 @@
       core.close(this.rid);
     }
 
-    // TODO(lucacasonato): make this unavailable in stable
     closeWrite() {
-      shutdown(this.rid, ShutdownMode.Write);
+      return shutdown(this.rid);
     }
   }
 
@@ -221,7 +214,7 @@
     opListen,
     Listener,
     shutdown,
-    ShutdownMode,
     Datagram,
+    resolveDns,
   };
 })(this);

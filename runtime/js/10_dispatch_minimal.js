@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -50,13 +51,13 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      const ErrorClass = core.getErrorClass(res.err.className);
+      const [ErrorClass, args] = core.getErrorClassAndArgs(res.err.className);
       if (!ErrorClass) {
         throw new Error(
           `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
         );
       }
-      throw new ErrorClass(res.err.message);
+      throw new ErrorClass(res.err.message, ...args);
     }
     return res.result;
   }

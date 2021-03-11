@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -28,7 +28,7 @@ pub fn create_http_client(
 
   builder
     .build()
-    .map_err(|_| generic_error("Unable to build http client"))
+    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
 }
 
 #[cfg(test)]

@@ -1,28 +1,97 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::deno_dir::DenoDir;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_runtime::deno_fetch::reqwest::Client;
+use std::env;
 use std::fs::read;
 use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
 
+pub async fn get_base_binary(
+  deno_dir: &DenoDir,
+  target: Option<String>,
+  lite: bool,
+) -> Result<Vec<u8>, AnyError> {
+  if target.is_none() && !lite {
+    let path = std::env::current_exe()?;
+    return Ok(tokio::fs::read(path).await?);
+  }
+
+  let target = target.unwrap_or_else(|| env!("TARGET").to_string());
+  let exe_name = if lite { "denort" } else { "deno" };
+  let binary_name = format!("{}-{}.zip", exe_name, target);
+
+  let binary_path_suffix = if crate::version::is_canary() {
+    format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
+  } else {
+    format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+  };
+
+  let download_directory = deno_dir.root.join("dl");
+  let binary_path = download_directory.join(&binary_path_suffix);
+
+  if !binary_path.exists() {
+    download_base_binary(&download_directory, &binary_path_suffix).await?;
+  }
+
+  let archive_data = tokio::fs::read(binary_path).await?;
+  let base_binary_path = crate::tools::upgrade::unpack(
+    archive_data,
+    exe_name,
+    target.contains("windows"),
+  )?;
+  let base_binary = tokio::fs::read(base_binary_path).await?;
+  Ok(base_binary)
+}
+
+async fn download_base_binary(
+  output_directory: &Path,
+  binary_path_suffix: &str,
+) -> Result<(), AnyError> {
+  let download_url = format!("https://dl.deno.land/{}", binary_path_suffix);
+
+  let client_builder = Client::builder();
+  let client = client_builder.build()?;
+
+  println!("Checking {}", &download_url);
+
+  let res = client.get(&download_url).send().await?;
+
+  let binary_content = if res.status().is_success() {
+    println!("Download has been found");
+    res.bytes().await?.to_vec()
+  } else {
+    println!("Download could not be found, aborting");
+    std::process::exit(1)
+  };
+
+  std::fs::create_dir_all(&output_directory)?;
+  let output_path = output_directory.join(binary_path_suffix);
+  std::fs::create_dir_all(&output_path.parent().unwrap())?;
+  tokio::fs::write(output_path, binary_content).await?;
+  Ok(())
+}
+
 /// This functions creates a standalone deno binary by appending a bundle
 /// and magic trailer to the currently executing binary.
-pub async fn create_standalone_binary(
+pub fn create_standalone_binary(
+  mut original_bin: Vec<u8>,
   source_code: String,
   flags: Flags,
-  output: PathBuf,
-) -> Result<(), AnyError> {
+) -> Result<Vec<u8>, AnyError> {
   let mut source_code = source_code.as_bytes().to_vec();
   let ca_data = match &flags.ca_file {
     Some(ca_file) => Some(read(ca_file)?),
@@ -39,8 +108,6 @@ pub async fn create_standalone_binary(
     ca_data,
   };
   let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
-  let original_binary_path = std::env::current_exe()?;
-  let mut original_bin = tokio::fs::read(original_binary_path).await?;
 
   let bundle_pos = original_bin.len();
   let metadata_pos = bundle_pos + source_code.len();
@@ -55,12 +122,32 @@ pub async fn create_standalone_binary(
   final_bin.append(&mut metadata);
   final_bin.append(&mut trailer);
 
-  let output =
-    if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-      PathBuf::from(output.display().to_string() + ".exe")
-    } else {
-      output
-    };
+  Ok(final_bin)
+}
+
+/// This function writes out a final binary to specified path. If output path
+/// is not already standalone binary it will return error instead.
+pub async fn write_standalone_binary(
+  output: PathBuf,
+  target: Option<String>,
+  final_bin: Vec<u8>,
+) -> Result<(), AnyError> {
+  let output = match target {
+    Some(target) => {
+      if target.contains("windows") {
+        PathBuf::from(output.display().to_string() + ".exe")
+      } else {
+        output
+      }
+    }
+    None => {
+      if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
+        PathBuf::from(output.display().to_string() + ".exe")
+      } else {
+        output
+      }
+    }
+  };
 
   if output.exists() {
     // If the output is a directory, throw error

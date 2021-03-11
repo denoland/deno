@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -255,7 +256,7 @@
     }
 
     close(code, reason) {
-      if (code && (code !== 1000 && !(3000 <= code > 5000))) {
+      if (code && !(code === 1000 || (3000 <= code && code < 5000))) {
         throw new DOMException(
           "The close code must be either 1000 or in the range of 3000 to 4999.",
           "NotSupportedError",
@@ -294,59 +295,80 @@
     }
 
     async #eventLoop() {
-      if (this.#readyState === OPEN) {
+      while (this.#readyState === OPEN) {
         const message = await core.jsonOpAsync(
           "op_ws_next_event",
           { rid: this.#rid },
         );
-        if (message.type === "string" || message.type === "binary") {
-          let data;
 
-          if (message.type === "string") {
-            data = message.data;
-          } else {
+        switch (message.kind) {
+          case "string": {
+            const event = new MessageEvent("message", {
+              data: message.data,
+              origin: this.#url,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
+
+            break;
+          }
+
+          case "binary": {
+            let data;
+
             if (this.binaryType === "blob") {
               data = new Blob([new Uint8Array(message.data)]);
             } else {
               data = new Uint8Array(message.data).buffer;
             }
+
+            const event = new MessageEvent("message", {
+              data,
+              origin: this.#url,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
+
+            break;
           }
 
-          const event = new MessageEvent("message", {
-            data,
-            origin: this.#url,
-          });
-          event.target = this;
-          this.dispatchEvent(event);
+          case "ping":
+            core.jsonOpAsync("op_ws_send", {
+              rid: this.#rid,
+              kind: "pong",
+            });
 
-          this.#eventLoop();
-        } else if (message.type === "ping") {
-          core.jsonOpAsync("op_ws_send", {
-            rid: this.#rid,
-            kind: "pong",
-          });
+            break;
 
-          this.#eventLoop();
-        } else if (message.type === "close") {
-          this.#readyState = CLOSED;
-          const event = new CloseEvent("close", {
-            wasClean: true,
-            code: message.code,
-            reason: message.reason,
-          });
-          event.target = this;
-          this.dispatchEvent(event);
-        } else if (message.type === "error") {
-          this.#readyState = CLOSED;
+          case "close": {
+            this.#readyState = CLOSED;
 
-          const errorEv = new ErrorEvent("error");
-          errorEv.target = this;
-          this.dispatchEvent(errorEv);
+            const event = new CloseEvent("close", {
+              wasClean: true,
+              code: message.data.code,
+              reason: message.data.reason,
+            });
+            event.target = this;
+            this.dispatchEvent(event);
+            core.close(this.#rid);
 
-          this.#readyState = CLOSED;
-          const closeEv = new CloseEvent("close");
-          closeEv.target = this;
-          this.dispatchEvent(closeEv);
+            break;
+          }
+
+          case "error": {
+            this.#readyState = CLOSED;
+
+            const errorEv = new ErrorEvent("error");
+            errorEv.target = this;
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            closeEv.target = this;
+            this.dispatchEvent(closeEv);
+            core.close(this.#rid);
+
+            break;
+          }
         }
       }
     }

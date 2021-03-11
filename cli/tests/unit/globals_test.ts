@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, unitTest } from "./test_util.ts";
 
 unitTest(function globalThisExists(): void {
@@ -46,6 +46,12 @@ unitTest(function globalThisConstructorLength(): void {
 
 unitTest(function globalThisInstanceofEventTarget(): void {
   assert(globalThis instanceof EventTarget);
+});
+
+unitTest(function navigatorInstanceofNavigator(): void {
+  // TODO(nayeemrmn): Add `Navigator` to deno_lint globals.
+  // deno-lint-ignore no-undef
+  assert(navigator instanceof Navigator);
 });
 
 unitTest(function DenoNamespaceExists(): void {

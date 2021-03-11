@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -47,6 +48,13 @@
   }
 
   function decodeMessage(dataIntArray) {
+    // Temporary solution until structured clone arrives in v8.
+    // Current clone is made by parsing json to byte array and from byte array back to json.
+    // In that case "undefined" transforms to empty byte array, but empty byte array does not transform back to undefined.
+    // Thats why this special is statement is needed.
+    if (dataIntArray.length == 0) {
+      return undefined;
+    }
     const dataJson = decoder.decode(dataIntArray);
     return JSON.parse(dataJson);
   }
@@ -136,10 +144,10 @@
       } = options;
 
       // TODO(Soremwar)
-      // `deno: true` is kept for backwards compatibility with the previous worker
-      // options implementation. Remove for 2.0
+      // `deno: boolean` is kept for backwards compatibility with the previous
+      // worker options implementation. Remove for 2.0
       let workerDenoAttributes;
-      if (deno === true) {
+      if (typeof deno == "boolean") {
         workerDenoAttributes = {
           // Change this to enable the Deno namespace by default
           namespace: deno,

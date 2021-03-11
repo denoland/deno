@@ -1,4 +1,4 @@
-import { assert } from "../../../std/testing/asserts.ts";
+import { assert } from "../../../test_util/std/testing/asserts.ts";
 import "./imported.ts";
 
 assert(window.hasOwnProperty("onload"));

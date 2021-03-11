@@ -1,0 +1,116 @@
+{
+  "$id": "https://deno.land/schemas/module-graph.json",
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "description": "A JSON representation of a Deno module dependency graph.",
+  "required": [
+    "root",
+    "modules",
+    "size"
+  ],
+  "title": "Deno Dependency Graph Schema",
+  "type": "object",
+  "properties": {
+    "root": {
+      "default": "",
+      "description": "The root specifier for the graph.",
+      "examples": [
+        "https://deno.land/x/mod.ts"
+      ],
+      "type": "string"
+    },
+    "modules": {
+      "default": [],
+      "description": "The modules that are part of the graph.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/module"
+      }
+    },
+    "size": {
+      "type": "integer",
+      "description": "The total size of all the unique dependencies in the graph in bytes.",
+      "default": 0
+    }
+  },
+  "definitions": {
+    "module": {
+      "type": "object",
+      "required": [
+        "specifier"
+      ],
+      "properties": {
+        "specifier": {
+          "type": "string",
+          "description": "The fully qualified module specifier (URL) for the module."
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "An array of dependencies of the module.",
+          "items": {
+            "$ref": "#/definitions/dependency"
+          }
+        },
+        "size": {
+          "type": "integer",
+          "description": "The size of the module on disk in bytes."
+        },
+        "mediaType": {
+          "type": "string",
+          "description": "How the file is treated within Deno.  All the possible media types that Deno considers are listed here, but in practice, several of them would never appear in a module graph.",
+          "enum": [
+            "JavaScript",
+            "TypeScript",
+            "JSX",
+            "TSX",
+            "Dts",
+            "Json",
+            "Wasm",
+            "TsBuildInfo",
+            "SourceMap",
+            "Unknown"
+          ]
+        },
+        "local": {
+          "type": "string",
+          "description": "The path to the local file. For local modules this will be the local file path, for remote modules and data URLs, this would be the path to the file in the Deno cache."
+        },
+        "checksum": {
+          "type": "string",
+          "description": "The checksum of the local source file. This can be used to validate if the current on disk version matches the version described here."
+        },
+        "emit": {
+          "type": "string",
+          "description": "The path to an emitted version of the module, if the module requires transpilation to be loaded into the Deno runtime."
+        },
+        "map": {
+          "type": "string",
+          "description": "The path to an optionally emitted source map between the original and emitted version of the file."
+        },
+        "error": {
+          "type": "string",
+          "description": "If when resolving the module, Deno encountered an error and the module is unavailable, the text of that error will be indicated here."
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "required": [
+        "specifier"
+      ],
+      "properties": {
+        "specifier": {
+          "type": "string",
+          "description": "The specifier provided from within the module."
+        },
+        "code": {
+          "type": "string",
+          "description": "The fully qualified module specifier (URL) for the code dependency."
+        },
+        "type": {
+          "type": "string",
+          "description": "The fully qualified module specifier (URL) for the type only dependency."
+        }
+      }
+    }
+  }
+}

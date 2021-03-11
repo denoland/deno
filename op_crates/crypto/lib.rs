@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #![deny(warnings)]
 
@@ -11,6 +11,7 @@ use deno_core::ZeroCopyBuf;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
+use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
@@ -25,7 +26,7 @@ pub fn init(isolate: &mut JsRuntime) {
   }
 }
 
-pub fn op_get_random_values(
+pub fn op_crypto_get_random_values(
   state: &mut OpState,
   _args: Value,
   zero_copy: &mut [ZeroCopyBuf],
@@ -40,4 +41,8 @@ pub fn op_get_random_values(
   }
 
   Ok(json!({}))
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
 }

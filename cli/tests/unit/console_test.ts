@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -12,9 +12,10 @@ import {
   assert,
   assertEquals,
   assertStringIncludes,
+  assertThrows,
   unitTest,
 } from "./test_util.ts";
-import { stripColor } from "../../../std/fmt/colors.ts";
+import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 
 const customInspect = Deno.customInspect;
 const {
@@ -309,11 +310,11 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
     stringify(JSON),
-    'JSON { [Symbol(Symbol.toStringTag)]: "JSON" }',
+    "JSON {}",
   );
   assertEquals(
     stringify(console),
-    `{
+    `console {
   log: [Function: log],
   debug: [Function: log],
   info: [Function: log],
@@ -358,6 +359,50 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   const agf = async function* agf() {};
   Reflect.setPrototypeOf(agf, null);
   assertEquals(stringify(agf), "[Function: agf]");
+});
+
+unitTest(function consoleTestStringifyFunctionWithProperties(): void {
+  const f = () => "test";
+  f.x = () => "foo";
+  f.y = 3;
+  f.z = () => "baz";
+  f.b = function bar() {};
+  f.a = new Map();
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
+}`,
+  );
+
+  const t = () => {};
+  t.x = f;
+  f.s = f;
+  f.t = t;
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] {
+    x: [Function],
+    y: 3,
+    z: [Function],
+    b: [Function: bar],
+    a: Map {},
+    s: [Circular],
+    t: [Function: t] { x: [Circular] }
+  }
+}`,
+  );
+
+  assertEquals(
+    stringify(Array),
+    `[Function: Array]`,
+  );
+
+  assertEquals(
+    stripColor(Deno.inspect(Array, { showHidden: true })),
+    `[Function: Array] { [Symbol(Symbol.species)]: [Getter] }`,
+  );
 });
 
 unitTest(function consoleTestStringifyWithDepth(): void {
@@ -833,19 +878,11 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     }
   }
 
-  assertEquals(stringify(new A()), "A {}");
-
-  class B {
-    constructor(public field: { a: string }) {}
-    [customInspect](): string {
-      return this.field.a;
-    }
-  }
-
-  assertEquals(stringify(new B({ a: "a" })), "a");
-  assertEquals(
-    stringify(B.prototype),
-    "B { [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
+  assertThrows(
+    () => stringify(new A()),
+    Error,
+    "BOOM",
+    "Custom inspect won't attempt to parse if user defined function throws",
   );
 });
 

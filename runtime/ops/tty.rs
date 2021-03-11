@@ -1,7 +1,6 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::io::std_file_resource;
-use super::io::StreamResource;
+use super::io::StdFileResource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
@@ -90,7 +89,7 @@ fn op_set_raw(
 
     let resource = state
       .resource_table
-      .get::<StreamResource>(rid)
+      .get::<StdFileResource>(rid)
       .ok_or_else(bad_resource_id)?;
 
     if cbreak {
@@ -157,7 +156,7 @@ fn op_set_raw(
 
     let resource = state
       .resource_table
-      .get::<StreamResource>(rid)
+      .get::<StdFileResource>(rid)
       .ok_or_else(bad_resource_id)?;
 
     if resource.fs_file.is_none() {
@@ -229,26 +228,27 @@ fn op_isatty(
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let isatty: bool = std_file_resource(state, rid as u32, move |r| match r {
-    Ok(std_file) => {
-      #[cfg(windows)]
-      {
-        use winapi::um::consoleapi;
+  let isatty: bool =
+    StdFileResource::with(state, rid as u32, move |r| match r {
+      Ok(std_file) => {
+        #[cfg(windows)]
+        {
+          use winapi::um::consoleapi;
 
-        let handle = get_windows_handle(&std_file)?;
-        let mut test_mode: DWORD = 0;
-        // If I cannot get mode out of console, it is not a console.
-        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
+          let handle = get_windows_handle(&std_file)?;
+          let mut test_mode: DWORD = 0;
+          // If I cannot get mode out of console, it is not a console.
+          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
+        }
+        #[cfg(unix)]
+        {
+          use std::os::unix::io::AsRawFd;
+          let raw_fd = std_file.as_raw_fd();
+          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+        }
       }
-      #[cfg(unix)]
-      {
-        use std::os::unix::io::AsRawFd;
-        let raw_fd = std_file.as_raw_fd();
-        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
-      }
-    }
-    _ => Ok(false),
-  })?;
+      _ => Ok(false),
+    })?;
   Ok(json!(isatty))
 }
 
@@ -273,7 +273,7 @@ fn op_console_size(
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let size = std_file_resource(state, rid as u32, move |r| match r {
+  let size = StdFileResource::with(state, rid as u32, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
       {

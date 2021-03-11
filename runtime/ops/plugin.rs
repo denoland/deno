@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::metrics::metrics_op;
 use crate::permissions::Permissions;
@@ -126,10 +126,13 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
         _ => unreachable!(),
       }
     };
-    self
-      .state
-      .op_table
-      .register_op(name, metrics_op(Box::new(plugin_op_fn)))
+    self.state.op_table.register_op(
+      name,
+      metrics_op(
+        Box::leak(Box::new(name.to_string())),
+        Box::new(plugin_op_fn),
+      ),
+    )
   }
 }
 

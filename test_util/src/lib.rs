@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 
@@ -8,20 +8,21 @@ extern crate lazy_static;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
-use futures::TryStreamExt;
 use hyper::header::HeaderValue;
+use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
-use hyper::Server;
 use hyper::StatusCode;
 use os_pipe::pipe;
 #[cfg(unix)]
 pub use pty;
 use regex::Regex;
+use serde::Serialize;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::env;
 use std::io;
 use std::io::Read;
@@ -48,14 +49,17 @@ use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
 const PORT: u16 = 4545;
+const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const REDIRECT_PORT: u16 = 4546;
 const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
+const AUTH_REDIRECT_PORT: u16 = 4551;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const WS_CLOSE_PORT: u16 = 4244;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -146,11 +150,9 @@ async fn hyper_hello(port: u16) {
   println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let hello_svc = make_service_fn(|_| async move {
-    Ok::<_, hyper::error::Error>(service_fn(
-      move |_: Request<Body>| async move {
-        Ok::<_, hyper::error::Error>(Response::new(Body::from("Hello World!")))
-      },
-    ))
+    Ok::<_, Infallible>(service_fn(move |_: Request<Body>| async move {
+      Ok::<_, Infallible>(Response::new(Body::from("Hello World!")))
+    }))
   });
 
   let server = Server::bind(&addr).serve(hello_svc);
@@ -202,8 +204,27 @@ async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   Ok(redirect_resp(url))
 }
 
+async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
+  if let Some(auth) = req
+    .headers()
+    .get("authorization")
+    .map(|v| v.to_str().unwrap())
+  {
+    if auth.to_lowercase() == format!("bearer {}", TEST_AUTH_TOKEN) {
+      let p = req.uri().path();
+      assert_eq!(&p[0..1], "/");
+      let url = format!("http://localhost:{}{}", PORT, p);
+      return Ok(redirect_resp(url));
+    }
+  }
+
+  let mut resp = Response::new(Body::empty());
+  *resp.status_mut() = StatusCode::NOT_FOUND;
+  Ok(resp)
+}
+
 async fn run_ws_server(addr: &SocketAddr) {
-  let mut listener = TcpListener::bind(addr).await.unwrap();
+  let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
       let ws_stream_fut = accept_async(stream);
@@ -218,6 +239,20 @@ async fn run_ws_server(addr: &SocketAddr) {
             }
           })
           .await;
+      }
+    });
+  }
+}
+
+async fn run_ws_close_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream_fut = accept_async(stream);
+
+      let ws_stream = ws_stream_fut.await;
+      if let Ok(mut ws_stream) = ws_stream {
+        ws_stream.close(None).await.unwrap();
       }
     });
   }
@@ -273,12 +308,12 @@ async fn get_tls_config(
 }
 
 async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
 
   let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
-  let mut listener = TcpListener::bind(addr).await.unwrap();
+  let listener = TcpListener::bind(addr).await.unwrap();
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -620,7 +655,7 @@ unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {
   let redirect_svc =
-    make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(redirect)) });
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(redirect)) });
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
   if let Err(e) = redirect_server.await {
@@ -630,7 +665,7 @@ async fn wrap_redirect_server() {
 
 async fn wrap_double_redirect_server() {
   let double_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(double_redirects))
+    Ok::<_, Infallible>(service_fn(double_redirects))
   });
   let double_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
@@ -643,7 +678,7 @@ async fn wrap_double_redirect_server() {
 
 async fn wrap_inf_redirect_server() {
   let inf_redirects_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(inf_redirects))
+    Ok::<_, Infallible>(service_fn(inf_redirects))
   });
   let inf_redirects_addr =
     SocketAddr::from(([127, 0, 0, 1], INF_REDIRECTS_PORT));
@@ -656,7 +691,7 @@ async fn wrap_inf_redirect_server() {
 
 async fn wrap_another_redirect_server() {
   let another_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(another_redirect))
+    Ok::<_, Infallible>(service_fn(another_redirect))
   });
   let another_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
@@ -667,9 +702,22 @@ async fn wrap_another_redirect_server() {
   }
 }
 
+async fn wrap_auth_redirect_server() {
+  let auth_redirect_svc = make_service_fn(|_| async {
+    Ok::<_, Infallible>(service_fn(auth_redirect))
+  });
+  let auth_redirect_addr =
+    SocketAddr::from(([127, 0, 0, 1], AUTH_REDIRECT_PORT));
+  let auth_redirect_server =
+    Server::bind(&auth_redirect_addr).serve(auth_redirect_svc);
+  if let Err(e) = auth_redirect_server.await {
+    eprintln!("Auth redirect error: {:?}", e);
+  }
+}
+
 async fn wrap_abs_redirect_server() {
   let abs_redirect_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(absolute_redirect))
+    Ok::<_, Infallible>(service_fn(absolute_redirect))
   });
   let abs_redirect_addr =
     SocketAddr::from(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
@@ -681,9 +729,8 @@ async fn wrap_abs_redirect_server() {
 }
 
 async fn wrap_main_server() {
-  let main_server_svc = make_service_fn(|_| async {
-    Ok::<_, hyper::Error>(service_fn(main_server))
-  });
+  let main_server_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
@@ -693,34 +740,29 @@ async fn wrap_main_server() {
 
 async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "std/http/testdata/tls/localhost.crt";
-  let key_file = "std/http/testdata/tls/localhost.key";
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
   let tls_config = get_tls_config(cert_file, key_file)
     .await
     .expect("Cannot get TLS config");
-  let mut tcp = TcpListener::bind(&main_server_https_addr)
-    .await
-    .expect("Cannot bind TCP");
   loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("tls ready");
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
-    let incoming_tls_stream = tcp
-      .incoming()
-      .map_err(|e| {
-        eprintln!("Error Incoming: {:?}", e);
-        io::Error::new(io::ErrorKind::Other, e)
-      })
-      .and_then(move |s| {
-        use futures::TryFutureExt;
-        tls_acceptor.accept(s).map_err(|e| {
-          eprintln!("TLS Error {:?}", e);
-          e
-        })
-      })
-      .boxed();
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+          let stream = tls_acceptor.accept(socket);
+          yield stream.await;
+      }
+    }
+    .boxed();
 
     let main_server_https_svc = make_service_fn(|_| async {
-      Ok::<_, hyper::Error>(service_fn(main_server))
+      Ok::<_, Infallible>(service_fn(main_server))
     });
     let main_server_https = Server::builder(HyperAcceptor {
       acceptor: incoming_tls_stream,
@@ -737,7 +779,7 @@ async fn wrap_main_https_server() {
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
 // comparing apples to apples if we use the default multi-threaded scheduler.
-#[tokio::main(basic_scheduler)]
+#[tokio::main(flavor = "current_thread")]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
@@ -747,12 +789,15 @@ pub async fn run_all_servers() {
   let double_redirects_server_fut = wrap_double_redirect_server();
   let inf_redirects_server_fut = wrap_inf_redirect_server();
   let another_redirect_server_fut = wrap_another_redirect_server();
+  let auth_redirect_server_fut = wrap_auth_redirect_server();
   let abs_redirect_server_fut = wrap_abs_redirect_server();
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
   let ws_server_fut = run_ws_server(&ws_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
+  let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
+  let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
@@ -762,7 +807,9 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      ws_close_server_fut,
       another_redirect_server_fut,
+      auth_redirect_server_fut,
       inf_redirects_server_fut,
       double_redirects_server_fut,
       abs_redirect_server_fut,
@@ -903,9 +950,17 @@ impl HttpServerCount {
       let stdout = test_server.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
       let lines = BufReader::new(stdout).lines();
+      let mut ready = false;
+      let mut tls_ready = false;
       for maybe_line in lines {
         if let Ok(line) = maybe_line {
           if line.starts_with("ready") {
+            ready = true;
+          }
+          if line.starts_with("tls ready") {
+            tls_ready = true;
+          }
+          if ready && tls_ready {
             break;
           }
         } else {
@@ -1096,11 +1151,15 @@ pub fn new_deno_dir() -> TempDir {
 }
 
 pub fn deno_cmd() -> Command {
-  let e = deno_exe_path();
   let deno_dir = new_deno_dir();
+  deno_cmd_with_deno_dir(deno_dir.path())
+}
+
+pub fn deno_cmd_with_deno_dir(deno_dir: &std::path::Path) -> Command {
+  let e = deno_exe_path();
   assert!(e.exists());
   let mut c = Command::new(e);
-  c.env("DENO_DIR", deno_dir.path());
+  c.env("DENO_DIR", deno_dir);
   c
 }
 
@@ -1366,7 +1425,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StraceOutput {
   pub percent_time: f64,
   pub seconds: f64,
@@ -1555,6 +1614,70 @@ mod tests {
       dbg!(pattern, string, expected);
       assert_eq!(actual, expected);
     }
+  }
+
+  #[test]
+  fn test_pattern_match() {
+    // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+
+    let wildcard = "[BAR]";
+    assert!(pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+    assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+    let multiline_pattern = "[BAR]
+foo:
+[BAR]baz[BAR]";
+
+    fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+      // If there is leading text add a newline so it's on it's own line
+      let head = match leading_text {
+        Some(v) => format!("{}\n", v),
+        None => "".to_string(),
+      };
+      format!(
+        "{}foo:
+quuz {} corge
+grault",
+        head, input
+      )
+    }
+
+    // Validate multi-line string builder
+    assert_eq!(
+      "QUUX=qux
+foo:
+quuz BAZ corge
+grault",
+      multi_line_builder("BAZ", Some("QUUX=qux"))
+    );
+
+    // Correct input & leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Correct input & no leading line
+    assert!(pattern_match(
+      multiline_pattern,
+      &multi_line_builder("baz", None),
+      wildcard
+    ));
+
+    // Incorrect input & leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", Some("QUX=quux")),
+      wildcard
+    ));
+
+    // Incorrect input & no leading line
+    assert!(!pattern_match(
+      multiline_pattern,
+      &multi_line_builder("garply", None),
+      wildcard
+    ));
   }
 
   #[test]

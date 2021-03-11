@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
@@ -14,6 +15,17 @@
       return false;
     }
     return Object.prototype.hasOwnProperty.call(obj, v);
+  }
+
+  function propertyIsEnumerable(obj, prop) {
+    if (
+      obj == null ||
+      typeof obj.propertyIsEnumerable !== "function"
+    ) {
+      return false;
+    }
+
+    return obj.propertyIsEnumerable(prop);
   }
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
@@ -158,6 +170,7 @@
     showProxy: false,
     colors: false,
     getters: false,
+    showHidden: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string
@@ -188,13 +201,10 @@
     return inspectOptions.colors ? fn : (s) => s;
   }
 
-  function inspectFunction(value, _ctx) {
+  function inspectFunction(value, ctx, level, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
     if (customInspect in value && typeof value[customInspect] === "function") {
-      try {
-        return String(value[customInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[customInspect]());
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
@@ -203,11 +213,32 @@
       // use generic 'Function' instead.
       cstrName = "Function";
     }
+
+    // Our function may have properties, so we want to format those
+    // as if our function was an object
+    // If we didn't find any properties, we will just append an
+    // empty suffix.
+    let suffix = ``;
+    if (
+      Object.keys(value).length > 0 ||
+      Object.getOwnPropertySymbols(value).length > 0
+    ) {
+      const propString = inspectRawObject(value, ctx, level, inspectOptions);
+      // Filter out the empty string for the case we only have
+      // non-enumerable symbols.
+      if (
+        propString.length > 0 &&
+        propString !== "{}"
+      ) {
+        suffix = ` ${propString}`;
+      }
+    }
+
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
-      return `[${cstrName}: ${value.name}]`;
+      return cyan(`[${cstrName}: ${value.name}]`) + suffix;
     }
-    return `[${cstrName}]`;
+    return cyan(`[${cstrName}]`) + suffix;
   }
 
   function inspectIterable(
@@ -432,7 +463,12 @@
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
-        return cyan(inspectFunction(value, ctx));
+        if (ctx.has(value)) {
+          // Circular string is cyan
+          return cyan("[Circular]");
+        }
+
+        return inspectFunction(value, ctx, level, inspectOptions);
       case "object": // null is bold
         if (value === null) {
           return bold("null");
@@ -800,6 +836,13 @@
     }
 
     for (const key of symbolKeys) {
+      if (
+        !inspectOptions.showHidden &&
+        !propertyIsEnumerable(value, key)
+      ) {
+        continue;
+      }
+
       if (inspectOptions.getters) {
         let propertyValue;
         let error;
@@ -865,11 +908,7 @@
     inspectOptions,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      try {
-        return String(value[customInspect]());
-      } catch {
-        // pass
-      }
+      return String(value[customInspect]());
     }
     // This non-unique symbol is used to support op_crates, ie.
     // in op_crates/web we don't want to depend on unique "Deno.customInspect"
@@ -880,11 +919,11 @@
       nonUniqueCustomInspect in value &&
       typeof value[nonUniqueCustomInspect] === "function"
     ) {
-      try {
-        return String(value[nonUniqueCustomInspect]());
-      } catch {
-        // pass
-      }
+      // TODO(nayeemrmn): `inspect` is passed as an argument because custom
+      // inspect implementations in `op_crates` need it, but may not have access
+      // to the `Deno` namespace in web workers. Remove when the `Deno`
+      // namespace is always enabled.
+      return String(value[nonUniqueCustomInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1449,7 +1488,14 @@
       // For historical web-compatibility reasons, the namespace object for
       // console must have as its [[Prototype]] an empty object, created as if
       // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
-      const console = Object.create({});
+      const console = Object.create({}, {
+        [Symbol.toStringTag]: {
+          enumerable: false,
+          writable: false,
+          configurable: true,
+          value: "console",
+        },
+      });
       Object.assign(console, this);
       return console;
     }

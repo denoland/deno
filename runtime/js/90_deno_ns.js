@@ -1,4 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const __bootstrap = window.__bootstrap;
@@ -87,6 +88,13 @@
     fsync: __bootstrap.fs.fsync,
     fdatasyncSync: __bootstrap.fs.fdatasyncSync,
     fdatasync: __bootstrap.fs.fdatasync,
+    symlink: __bootstrap.fs.symlink,
+    symlinkSync: __bootstrap.fs.symlinkSync,
+    link: __bootstrap.fs.link,
+    linkSync: __bootstrap.fs.linkSync,
+    permissions: __bootstrap.permissions.permissions,
+    Permissions: __bootstrap.permissions.Permissions,
+    PermissionStatus: __bootstrap.permissions.PermissionStatus,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -95,9 +103,6 @@
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
-    permissions: __bootstrap.permissions.permissions,
-    Permissions: __bootstrap.permissions.Permissions,
-    PermissionStatus: __bootstrap.permissions.PermissionStatus,
     openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
@@ -111,7 +116,7 @@
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     shutdown: __bootstrap.net.shutdown,
-    ShutdownMode: __bootstrap.net.ShutdownMode,
+    resolveDns: __bootstrap.net.resolveDns,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
@@ -121,14 +126,10 @@
     ftruncateSync: __bootstrap.fs.ftruncateSync,
     ftruncate: __bootstrap.fs.ftruncate,
     umask: __bootstrap.fs.umask,
-    link: __bootstrap.fs.link,
-    linkSync: __bootstrap.fs.linkSync,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
     utime: __bootstrap.fs.utime,
     utimeSync: __bootstrap.fs.utimeSync,
-    symlink: __bootstrap.fs.symlink,
-    symlinkSync: __bootstrap.fs.symlinkSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
   };

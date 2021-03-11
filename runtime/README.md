@@ -39,6 +39,6 @@ implemented using `WebWorker` structure.
 When creating a new instance of `MainWorker` implementors must provide a
 callback function that is used when creating a new instance of `Worker`.
 
-All `WebWorker` instances are decendents of `MainWorker` which is responsible
+All `WebWorker` instances are descendents of `MainWorker` which is responsible
 for setting up communication with child worker. Each `WebWorker` spawns a new OS
 thread that is dedicated solely to that worker.

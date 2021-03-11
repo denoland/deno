@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 pub use anyhow::anyhow;
 pub use anyhow::bail;
@@ -193,11 +193,9 @@ impl JsError {
 
       // Access error.stack to ensure that prepareStackTrace() has been called.
       // This should populate error.__callSiteEvals.
+      let stack = get_property(scope, exception, "stack");
       let stack: Option<v8::Local<v8::String>> =
-        get_property(scope, exception, "stack")
-          .unwrap()
-          .try_into()
-          .ok();
+        stack.and_then(|s| s.try_into().ok());
       let stack = stack.map(|s| s.to_rust_string_lossy(scope));
 
       // Read an array of structured frames from error.__callSiteEvals.

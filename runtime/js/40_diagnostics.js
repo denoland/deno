@@ -1,8 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // Diagnostic provides an abstraction for advice/errors received from a
 // compiler, which is strongly influenced by the format of TypeScript
 // diagnostics.
+"use strict";
 
 ((window) => {
   const DiagnosticCategory = {

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #![deny(warnings)]
 
@@ -10,6 +10,7 @@ extern crate log;
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_web;
+pub use deno_webgpu;
 pub use deno_websocket;
 
 pub mod colors;

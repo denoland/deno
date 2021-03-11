@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This test is executed as part of unit test suite.
 //
@@ -17,7 +17,6 @@ import "./custom_event_test.ts";
 import "./dir_test.ts";
 import "./dispatch_minimal_test.ts";
 import "./dispatch_json_test.ts";
-import "./dom_exception_test.ts";
 import "./error_stack_test.ts";
 import "./event_test.ts";
 import "./event_target_test.ts";
@@ -58,10 +57,7 @@ import "./response_test.ts";
 import "./signal_test.ts";
 import "./stat_test.ts";
 import "./stdio_test.ts";
-import "./streams_internal_test.ts";
-import "./streams_piping_test.ts";
-import "./streams_transform_test.ts";
-import "./streams_writable_test.ts";
+import "./streams_deprecated.ts";
 import "./symlink_test.ts";
 import "./sync_test.ts";
 import "./text_encoding_test.ts";
@@ -80,3 +76,4 @@ import "./write_text_file_test.ts";
 import "./performance_test.ts";
 import "./version_test.ts";
 import "./websocket_test.ts";
+import "./webgpu_test.ts";

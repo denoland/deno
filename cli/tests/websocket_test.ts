@@ -1,11 +1,11 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertThrows,
   fail,
-} from "../../std/testing/asserts.ts";
-import { deferred } from "../../std/async/deferred.ts";
+} from "../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../test_util/std/async/deferred.ts";
 
 Deno.test("invalid scheme", () => {
   assertThrows(() => new WebSocket("foo://localhost:4242"));
@@ -291,6 +291,17 @@ Deno.test("Event Handlers order", async () => {
   ws.onmessage = () => arr.push(2);
   ws.onopen = (): void => ws.send("Echo");
   ws.onclose = (): void => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test("Close without frame", async () => {
+  const promise = deferred();
+  const ws = new WebSocket("ws://localhost:4244");
+  ws.onerror = (): void => fail();
+  ws.onclose = (e): void => {
+    assertEquals(e.code, 1005);
     promise.resolve();
   };
   await promise;

@@ -1,4 +1,4 @@
-import { fromFileUrl } from "../../../std/path/mod.ts";
+import { fromFileUrl } from "../../../test_util/std/path/mod.ts";
 
 onmessage = async ({ data }) => {
   const { state } = await Deno.permissions.query({

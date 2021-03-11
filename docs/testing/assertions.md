@@ -16,12 +16,14 @@ The assertions module provides 10 assertions:
 
 - `assert(expr: unknown, msg = ""): asserts expr`
 - `assertEquals(actual: unknown, expected: unknown, msg?: string): void`
+- `assertExists(actual: unknown,msg?: string): void`
 - `assertNotEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertStrictEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertStringIncludes(actual: string, expected: string, msg?: string): void`
 - `assertArrayIncludes(actual: unknown[], expected: unknown[], msg?: string): void`
 - `assertMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertNotMatch(actual: string, expected: RegExp, msg?: string): void`
+- `assertObjectMatch( actual: Record<PropertyKey, unknown>, expected: Record<PropertyKey, unknown>): void`
 - `assertThrows(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
 - `assertThrowsAsync(fn: () => Promise<void>, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Promise<Error>`
 
@@ -35,6 +37,19 @@ Deno.test("Test Assert", () => {
   assert(1);
   assert("Hello");
   assert(true);
+});
+```
+
+### Exists
+
+The `assertExists` can be used to check if a value is not `null` or `undefined`.
+
+```js
+assertExists("Denosaurus");
+Deno.test("Test Assert Exists", () => {
+  assertExists("Denosaurus");
+  assertExists(false);
+  assertExists(0);
 });
 ```
 
@@ -134,6 +149,21 @@ Deno.test("Test Assert Not Match", () => {
   const basicUrl = new RegExp("^https?://[a-z.]+.com$");
   assertNotMatch("https://deno.land/", basicUrl);
 });
+```
+
+### Object
+
+Use `assertObjectMatch` to check that a JavaScript object matches a subset of
+the properties of an object.
+
+```js
+// Simple subset
+assertObjectMatch(
+  { foo: true, bar: false },
+  {
+    foo: true,
+  },
+);
 ```
 
 ### Throws

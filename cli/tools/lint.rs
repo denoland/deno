@@ -1,6 +1,6 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-//! This module provides file formating utilities using
+//! This module provides file formatting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 //!
 //! At the moment it is only consumed using CLI but in
@@ -47,7 +47,14 @@ pub async fn lint_files(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return lint_stdin(json);
   }
-  let target_files = collect_files(&args, &ignore, is_supported_ext)?;
+  let target_files =
+    collect_files(&args, &ignore, is_supported_ext).and_then(|files| {
+      if files.is_empty() {
+        Err(generic_error("No target files found."))
+      } else {
+        Ok(files)
+      }
+    })?;
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 

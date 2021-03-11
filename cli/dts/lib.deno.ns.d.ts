@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -108,6 +108,10 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
+
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -260,6 +264,27 @@ declare namespace Deno {
    * Requires --allow-read
    */
   export function cwd(): string;
+
+  /**
+   * Synchronously creates `newpath` as a hard link to `oldpath`.
+   *
+   * ```ts
+   * Deno.linkSync("old/name", "new/name");
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permissions. */
+  export function linkSync(oldpath: string, newpath: string): void;
+
+  /**
+   *
+   * Creates `newpath` as a hard link to `oldpath`.
+   *
+   * ```ts
+   * await Deno.link("old/name", "new/name");
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permissions. */
+  export function link(oldpath: string, newpath: string): Promise<void>;
 
   export enum SeekMode {
     Start = 0,
@@ -1710,13 +1735,9 @@ declare namespace Deno {
     readonly remoteAddr: Addr;
     /** The resource ID of the connection. */
     readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the writing side of the TCP connection. Most
-     * callers should just use `close()`.
-     *
-     * **Unstable** because of lack of testing and because Deno.shutdown is also
-     * unstable.
-     * */
-    closeWrite(): void;
+    /** Shuts down (`shutdown(2)`) the write side of the connection. Most
+     * callers should just use `close()`. */
+    closeWrite(): Promise<void>;
   }
 
   export interface ListenOptions {
@@ -1808,6 +1829,18 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+
+  /** Shutdown socket send operations.
+   *
+   * Matches behavior of POSIX shutdown(3).
+   *
+   * ```ts
+   * const listener = Deno.listen({ port: 80 });
+   * const conn = await listener.accept();
+   * Deno.shutdown(conn.rid);
+   * ```
+   */
+  export function shutdown(rid: number): Promise<void>;
 
   export interface Metrics {
     opsDispatched: number;
@@ -1902,7 +1935,29 @@ declare namespace Deno {
       : (Reader & Closer) | null;
     readonly stderr: T["stderr"] extends "piped" ? Reader & Closer
       : (Reader & Closer) | null;
-    /** Resolves to the current status of the process. */
+    /** Wait for the process to exit and return its exit status.
+     *
+     * Calling this function multiple times will return the same status.
+     *
+     * Stdin handle to the process will be closed before waiting to avoid
+     * a deadlock.
+     *
+     * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
+     * manually before the process can exit.
+     * 
+     * To run process to completion and collect output from both `stdout` and
+     * `stderr` use:
+     * 
+     * ```ts
+     * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
+     * const [status, stdout, stderr] = await Promise.all([
+     *   p.status(),
+     *   p.output(),
+     *   p.stderrOutput()
+     * ]);
+     * p.close();
+     * ```
+     **/
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *
@@ -2004,6 +2059,8 @@ declare namespace Deno {
     trailingComma?: boolean;
     /*** Evaluate the result of calling getters. Defaults to false. */
     getters?: boolean;
+    /** Show an object's non-enumerable properties. Defaults to false. */
+    showHidden?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by
@@ -2039,6 +2096,140 @@ declare namespace Deno {
    *
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
+
+  /** The name of a "powerful feature" which needs permission. */
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "plugin"
+    | "hrtime";
+
+  /** The current status of the permission. */
+  export type PermissionState = "granted" | "denied" | "prompt";
+
+  export interface RunPermissionDescriptor {
+    name: "run";
+  }
+
+  export interface ReadPermissionDescriptor {
+    name: "read";
+    path?: string;
+  }
+
+  export interface WritePermissionDescriptor {
+    name: "write";
+    path?: string;
+  }
+
+  export interface NetPermissionDescriptor {
+    name: "net";
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
+     *
+     *      "github.com"
+     *      "deno.land:8080"
+     */
+    host?: string;
+  }
+
+  export interface EnvPermissionDescriptor {
+    name: "env";
+  }
+
+  export interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
+
+  export interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+
+  /** Permission descriptors which define a permission and can be queried,
+   * requested, or revoked. */
+  export type PermissionDescriptor =
+    | RunPermissionDescriptor
+    | ReadPermissionDescriptor
+    | WritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
+    | HrtimePermissionDescriptor;
+
+  export interface PermissionStatusEventMap {
+    "change": Event;
+  }
+
+  export class PermissionStatus extends EventTarget {
+    // deno-lint-ignore no-explicit-any
+    onchange: ((this: PermissionStatus, ev: Event) => any) | null;
+    readonly state: PermissionState;
+    addEventListener<K extends keyof PermissionStatusEventMap>(
+      type: K,
+      listener: (
+        this: PermissionStatus,
+        ev: PermissionStatusEventMap[K],
+      ) => any,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    addEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    removeEventListener<K extends keyof PermissionStatusEventMap>(
+      type: K,
+      listener: (
+        this: PermissionStatus,
+        ev: PermissionStatusEventMap[K],
+      ) => any,
+      options?: boolean | EventListenerOptions,
+    ): void;
+    removeEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | EventListenerOptions,
+    ): void;
+  }
+
+  export class Permissions {
+    /** Resolves to the current status of a permission.
+     *
+     * ```ts
+     * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+     * if (status.state === "granted") {
+     *   data = await Deno.readFile("/etc/passwd");
+     * }
+     * ```
+     */
+    query(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Revokes a permission, and resolves to the state of the permission.
+     *
+     * ```ts
+     * const status = await Deno.permissions.revoke({ name: "run" });
+     * assert(status.state !== "granted")
+     * ```
+     */
+    revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Requests the permission, and resolves to the state of the permission.
+     *
+     * ```ts
+     * const status = await Deno.permissions.request({ name: "env" });
+     * if (status.state === "granted") {
+     *   console.log("'env' permission is granted.");
+     * } else {
+     *   console.log("'env' permission is denied.");
+     * }
+     * ```
+     */
+    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
+  }
+
+  /** Deno's permission management API. */
+  export const permissions: Permissions;
 
   /** Build related information. */
   export const build: {
@@ -2082,4 +2273,42 @@ declare namespace Deno {
 
   /** The URL of the entrypoint module entered from the command-line. */
   export const mainModule: string;
+
+  export type SymlinkOptions = {
+    type: "file" | "dir";
+  };
+
+  /**
+   * Creates `newpath` as a symbolic link to `oldpath`.
+   *
+   * The options.type parameter can be set to `file` or `dir`. This argument is only
+   * available on Windows and ignored on other platforms.
+   *
+   * ```ts
+   * Deno.symlinkSync("old/name", "new/name");
+   * ```
+   *
+   * Requires `allow-write` permission. */
+  export function symlinkSync(
+    oldpath: string,
+    newpath: string,
+    options?: SymlinkOptions,
+  ): void;
+
+  /**
+   * Creates `newpath` as a symbolic link to `oldpath`.
+   *
+   * The options.type parameter can be set to `file` or `dir`. This argument is only
+   * available on Windows and ignored on other platforms.
+   *
+   * ```ts
+   * await Deno.symlink("old/name", "new/name");
+   * ```
+   *
+   * Requires `allow-write` permission. */
+  export function symlink(
+    oldpath: string,
+    newpath: string,
+    options?: SymlinkOptions,
+  ): Promise<void>;
 }

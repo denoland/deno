@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
 use crate::module_graph::TypeLib;
@@ -76,7 +76,7 @@ impl ModuleLoader for CliModuleLoader {
   ) -> Result<ModuleSpecifier, AnyError> {
     // FIXME(bartlomieju): hacky way to provide compatibility with repl
     let referrer = if referrer.is_empty() && self.program_state.flags.repl {
-      "<unknown>"
+      deno_core::DUMMY_SPECIFIER
     } else {
       referrer
     };
@@ -90,8 +90,7 @@ impl ModuleLoader for CliModuleLoader {
       }
     }
 
-    let module_specifier =
-      ModuleSpecifier::resolve_import(specifier, referrer)?;
+    let module_specifier = deno_core::resolve_import(specifier, referrer)?;
 
     Ok(module_specifier)
   }

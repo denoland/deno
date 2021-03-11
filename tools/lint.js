@@ -1,13 +1,15 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   buildMode,
   getPrebuiltToolPath,
   getSources,
+  join,
   ROOT_PATH,
 } from "./util.js";
 
 async function dlint() {
+  const configFile = join(ROOT_PATH, ".dlint.json");
   const execPath = getPrebuiltToolPath("dlint");
   console.log("dlint");
 
@@ -24,6 +26,7 @@ async function dlint() {
     ":!:cli/dts/**",
     ":!:cli/tests/encoding/**",
     ":!:cli/tests/error_syntax.js",
+    ":!:cli/tests/unit/**",
     ":!:cli/tests/lint/**",
     ":!:cli/tests/tsc/**",
     ":!:cli/tsc/*typescript.js",
@@ -49,7 +52,7 @@ async function dlint() {
   }
   for (const chunk of chunks) {
     const p = Deno.run({
-      cmd: [execPath, "run", ...chunk],
+      cmd: [execPath, "run", "--config=" + configFile, ...chunk],
     });
     const { success } = await p.status();
     if (!success) {

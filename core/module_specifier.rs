@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
 use std::env::current_dir;
@@ -7,6 +7,8 @@ use std::fmt;
 use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
+
+pub const DUMMY_SPECIFIER: &str = "<unknown>";
 
 /// Error indicating the reason resolving a module specifier failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -48,170 +50,134 @@ impl fmt::Display for ModuleResolutionError {
   }
 }
 
-#[derive(
-  Debug, Clone, Eq, Hash, PartialEq, serde::Serialize, Ord, PartialOrd,
-)]
 /// Resolved module specifier
-pub struct ModuleSpecifier(Url);
+pub type ModuleSpecifier = Url;
 
-impl ModuleSpecifier {
-  fn is_dummy_specifier(specifier: &str) -> bool {
-    specifier == "<unknown>"
-  }
+/// Resolves module using this algorithm:
+/// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+pub fn resolve_import(
+  specifier: &str,
+  base: &str,
+) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  let url = match Url::parse(specifier) {
+    // 1. Apply the URL parser to specifier.
+    //    If the result is not failure, return he result.
+    Ok(url) => url,
 
-  pub fn as_url(&self) -> &Url {
-    &self.0
-  }
-
-  pub fn as_str(&self) -> &str {
-    self.0.as_str()
-  }
-
-  /// Resolves module using this algorithm:
-  /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
-  pub fn resolve_import(
-    specifier: &str,
-    base: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-    let url = match Url::parse(specifier) {
-      // 1. Apply the URL parser to specifier.
-      //    If the result is not failure, return he result.
-      Ok(url) => url,
-
-      // 2. If specifier does not start with the character U+002F SOLIDUS (/),
-      //    the two-character sequence U+002E FULL STOP, U+002F SOLIDUS (./),
-      //    or the three-character sequence U+002E FULL STOP, U+002E FULL STOP,
-      //    U+002F SOLIDUS (../), return failure.
-      Err(ParseError::RelativeUrlWithoutBase)
-        if !(specifier.starts_with('/')
-          || specifier.starts_with("./")
-          || specifier.starts_with("../")) =>
-      {
-        let maybe_referrer = if base.is_empty() {
-          None
-        } else {
-          Some(base.to_string())
-        };
-        return Err(ImportPrefixMissing(specifier.to_string(), maybe_referrer));
-      }
-
-      // 3. Return the result of applying the URL parser to specifier with base
-      //    URL as the base URL.
-      Err(ParseError::RelativeUrlWithoutBase) => {
-        let base = if ModuleSpecifier::is_dummy_specifier(base) {
-          // Handle <unknown> case, happening under e.g. repl.
-          // Use CWD for such case.
-
-          // Forcefully join base to current dir.
-          // Otherwise, later joining in Url would be interpreted in
-          // the parent directory (appending trailing slash does not work)
-          let path = current_dir().unwrap().join(base);
-          Url::from_file_path(path).unwrap()
-        } else {
-          Url::parse(base).map_err(InvalidBaseUrl)?
-        };
-        base.join(&specifier).map_err(InvalidUrl)?
-      }
-
-      // If parsing the specifier as a URL failed for a different reason than
-      // it being relative, always return the original error. We don't want to
-      // return `ImportPrefixMissing` or `InvalidBaseUrl` if the real
-      // problem lies somewhere else.
-      Err(err) => return Err(InvalidUrl(err)),
-    };
-
-    Ok(ModuleSpecifier(url))
-  }
-
-  /// Converts a string representing an absolute URL into a ModuleSpecifier.
-  pub fn resolve_url(
-    url_str: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-    Url::parse(url_str)
-      .map(ModuleSpecifier)
-      .map_err(ModuleResolutionError::InvalidUrl)
-  }
-
-  /// Takes a string representing either an absolute URL or a file path,
-  /// as it may be passed to deno as a command line argument.
-  /// The string is interpreted as a URL if it starts with a valid URI scheme,
-  /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
-  /// file path; if it is a relative path it's resolved relative to the current
-  /// working directory.
-  pub fn resolve_url_or_path(
-    specifier: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-    if Self::specifier_has_uri_scheme(specifier) {
-      Self::resolve_url(specifier)
-    } else {
-      Self::resolve_path(specifier)
+    // 2. If specifier does not start with the character U+002F SOLIDUS (/),
+    //    the two-character sequence U+002E FULL STOP, U+002F SOLIDUS (./),
+    //    or the three-character sequence U+002E FULL STOP, U+002E FULL STOP,
+    //    U+002F SOLIDUS (../), return failure.
+    Err(ParseError::RelativeUrlWithoutBase)
+      if !(specifier.starts_with('/')
+        || specifier.starts_with("./")
+        || specifier.starts_with("../")) =>
+    {
+      let maybe_referrer = if base.is_empty() {
+        None
+      } else {
+        Some(base.to_string())
+      };
+      return Err(ImportPrefixMissing(specifier.to_string(), maybe_referrer));
     }
-  }
 
-  /// Converts a string representing a relative or absolute path into a
-  /// ModuleSpecifier. A relative path is considered relative to the current
-  /// working directory.
-  pub fn resolve_path(
-    path_str: &str,
-  ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-    let path = current_dir().unwrap().join(path_str);
-    let path = normalize_path(&path);
-    Url::from_file_path(path.clone())
-      .map(ModuleSpecifier)
-      .map_err(|()| ModuleResolutionError::InvalidPath(path))
-  }
+    // 3. Return the result of applying the URL parser to specifier with base
+    //    URL as the base URL.
+    Err(ParseError::RelativeUrlWithoutBase) => {
+      let base = if base == DUMMY_SPECIFIER {
+        // Handle <unknown> case, happening under e.g. repl.
+        // Use CWD for such case.
 
-  /// Returns true if the input string starts with a sequence of characters
-  /// that could be a valid URI scheme, like 'https:', 'git+ssh:' or 'data:'.
-  ///
-  /// According to RFC 3986 (https://tools.ietf.org/html/rfc3986#section-3.1),
-  /// a valid scheme has the following format:
-  ///   scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
-  ///
-  /// We additionally require the scheme to be at least 2 characters long,
-  /// because otherwise a windows path like c:/foo would be treated as a URL,
-  /// while no schemes with a one-letter name actually exist.
-  fn specifier_has_uri_scheme(specifier: &str) -> bool {
-    let mut chars = specifier.chars();
-    let mut len = 0usize;
-    // THe first character must be a letter.
+        // Forcefully join base to current dir.
+        // Otherwise, later joining in Url would be interpreted in
+        // the parent directory (appending trailing slash does not work)
+        let path = current_dir().unwrap().join(base);
+        Url::from_file_path(path).unwrap()
+      } else {
+        Url::parse(base).map_err(InvalidBaseUrl)?
+      };
+      base.join(&specifier).map_err(InvalidUrl)?
+    }
+
+    // If parsing the specifier as a URL failed for a different reason than
+    // it being relative, always return the original error. We don't want to
+    // return `ImportPrefixMissing` or `InvalidBaseUrl` if the real
+    // problem lies somewhere else.
+    Err(err) => return Err(InvalidUrl(err)),
+  };
+
+  Ok(url)
+}
+
+/// Converts a string representing an absolute URL into a ModuleSpecifier.
+pub fn resolve_url(
+  url_str: &str,
+) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  Url::parse(url_str).map_err(ModuleResolutionError::InvalidUrl)
+}
+
+/// Takes a string representing either an absolute URL or a file path,
+/// as it may be passed to deno as a command line argument.
+/// The string is interpreted as a URL if it starts with a valid URI scheme,
+/// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
+/// file path; if it is a relative path it's resolved relative to the current
+/// working directory.
+pub fn resolve_url_or_path(
+  specifier: &str,
+) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  if specifier_has_uri_scheme(specifier) {
+    resolve_url(specifier)
+  } else {
+    resolve_path(specifier)
+  }
+}
+
+/// Converts a string representing a relative or absolute path into a
+/// ModuleSpecifier. A relative path is considered relative to the current
+/// working directory.
+pub fn resolve_path(
+  path_str: &str,
+) -> Result<ModuleSpecifier, ModuleResolutionError> {
+  let path = current_dir().unwrap().join(path_str);
+  let path = normalize_path(&path);
+  Url::from_file_path(path.clone())
+    .map_err(|()| ModuleResolutionError::InvalidPath(path))
+}
+
+/// Returns true if the input string starts with a sequence of characters
+/// that could be a valid URI scheme, like 'https:', 'git+ssh:' or 'data:'.
+///
+/// According to RFC 3986 (https://tools.ietf.org/html/rfc3986#section-3.1),
+/// a valid scheme has the following format:
+///   scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+///
+/// We additionally require the scheme to be at least 2 characters long,
+/// because otherwise a windows path like c:/foo would be treated as a URL,
+/// while no schemes with a one-letter name actually exist.
+fn specifier_has_uri_scheme(specifier: &str) -> bool {
+  let mut chars = specifier.chars();
+  let mut len = 0usize;
+  // THe first character must be a letter.
+  match chars.next() {
+    Some(c) if c.is_ascii_alphabetic() => len += 1,
+    _ => return false,
+  }
+  // Second and following characters must be either a letter, number,
+  // plus sign, minus sign, or dot.
+  loop {
     match chars.next() {
-      Some(c) if c.is_ascii_alphabetic() => len += 1,
+      Some(c) if c.is_ascii_alphanumeric() || "+-.".contains(c) => len += 1,
+      Some(':') if len >= 2 => return true,
       _ => return false,
     }
-    // Second and following characters must be either a letter, number,
-    // plus sign, minus sign, or dot.
-    loop {
-      match chars.next() {
-        Some(c) if c.is_ascii_alphanumeric() || "+-.".contains(c) => len += 1,
-        Some(':') if len >= 2 => return true,
-        _ => return false,
-      }
-    }
-  }
-}
-
-impl fmt::Display for ModuleSpecifier {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.0.fmt(f)
-  }
-}
-
-impl From<Url> for ModuleSpecifier {
-  fn from(url: Url) -> Self {
-    ModuleSpecifier(url)
-  }
-}
-
-impl PartialEq<String> for ModuleSpecifier {
-  fn eq(&self, other: &String) -> bool {
-    &self.to_string() == other
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::serde_json::from_value;
+  use crate::serde_json::json;
   use std::path::Path;
 
   #[test]
@@ -291,9 +257,7 @@ mod tests {
     ];
 
     for (specifier, base, expected_url) in tests {
-      let url = ModuleSpecifier::resolve_import(specifier, base)
-        .unwrap()
-        .to_string();
+      let url = resolve_import(specifier, base).unwrap().to_string();
       assert_eq!(url, expected_url);
     }
   }
@@ -370,7 +334,7 @@ mod tests {
     ];
 
     for (specifier, base, expected_err) in tests {
-      let err = ModuleSpecifier::resolve_import(specifier, base).unwrap_err();
+      let err = resolve_import(specifier, base).unwrap_err();
       assert_eq!(err, expected_err);
     }
   }
@@ -472,9 +436,7 @@ mod tests {
     }
 
     for (specifier, expected_url) in tests {
-      let url = ModuleSpecifier::resolve_url_or_path(specifier)
-        .unwrap()
-        .to_string();
+      let url = resolve_url_or_path(specifier).unwrap().to_string();
       assert_eq!(url, expected_url);
     }
   }
@@ -494,7 +456,7 @@ mod tests {
     }
 
     for (specifier, expected_err) in tests {
-      let err = ModuleSpecifier::resolve_url_or_path(specifier).unwrap_err();
+      let err = resolve_url_or_path(specifier).unwrap_err();
       assert_eq!(err, expected_err);
     }
   }
@@ -524,7 +486,7 @@ mod tests {
     ];
 
     for (specifier, expected) in tests {
-      let result = ModuleSpecifier::specifier_has_uri_scheme(specifier);
+      let result = specifier_has_uri_scheme(specifier);
       assert_eq!(result, expected);
     }
   }
@@ -544,5 +506,13 @@ mod tests {
         PathBuf::from("C:\\a\\c")
       );
     }
+  }
+
+  #[test]
+  fn test_deserialize_module_specifier() {
+    let actual: ModuleSpecifier =
+      from_value(json!("http://deno.land/x/mod.ts")).unwrap();
+    let expected = resolve_url("http://deno.land/x/mod.ts").unwrap();
+    assert_eq!(actual, expected);
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::diagnostics::Diagnostics;
 use crate::program_state::ProgramState;
@@ -42,7 +42,6 @@ fn op_apply_source_map(
       args.file_name,
       args.line_number.into(),
       args.column_number.into(),
-      None,
       &mut mappings_map,
       program_state,
     );

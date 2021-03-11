@@ -1,6 +1,36 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+use deno_core::serde::Serialize;
+
 #[derive(Default, Debug)]
-pub struct Metrics {
+pub struct RuntimeMetrics {
+  pub ops: HashMap<&'static str, OpMetrics>,
+}
+
+impl RuntimeMetrics {
+  pub fn combined_metrics(&self) -> OpMetrics {
+    let mut total = OpMetrics::default();
+
+    for metrics in self.ops.values() {
+      total.ops_dispatched += metrics.ops_dispatched;
+      total.ops_dispatched_sync += metrics.ops_dispatched_sync;
+      total.ops_dispatched_async += metrics.ops_dispatched_async;
+      total.ops_dispatched_async_unref += metrics.ops_dispatched_async_unref;
+      total.ops_completed += metrics.ops_completed;
+      total.ops_completed_sync += metrics.ops_completed_sync;
+      total.ops_completed_async += metrics.ops_completed_async;
+      total.ops_completed_async_unref += metrics.ops_completed_async_unref;
+      total.bytes_sent_control += metrics.bytes_sent_control;
+      total.bytes_sent_data += metrics.bytes_sent_data;
+      total.bytes_received += metrics.bytes_received;
+    }
+
+    total
+  }
+}
+
+#[derive(Default, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpMetrics {
   pub ops_dispatched: u64,
   pub ops_dispatched_sync: u64,
   pub ops_dispatched_async: u64,
@@ -14,7 +44,7 @@ pub struct Metrics {
   pub bytes_received: u64,
 }
 
-impl Metrics {
+impl OpMetrics {
   fn op_dispatched(
     &mut self,
     bytes_sent_control: usize,
@@ -76,9 +106,10 @@ use deno_core::Op;
 use deno_core::OpFn;
 use deno_core::OpState;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
+pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
   Box::new(move |op_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
     // TODOs:
     // * The 'bytes' metrics seem pretty useless, especially now that the
@@ -94,7 +125,14 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
 
     let op_state_ = op_state.clone();
     let mut s = op_state.borrow_mut();
-    let metrics = s.borrow_mut::<Metrics>();
+    let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
+
+    let metrics = if let Some(metrics) = runtime_metrics.ops.get_mut(name) {
+      metrics
+    } else {
+      runtime_metrics.ops.insert(name, OpMetrics::default());
+      runtime_metrics.ops.get_mut(name).unwrap()
+    };
 
     use deno_core::futures::future::FutureExt;
 
@@ -108,7 +146,8 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
         let fut = fut
           .inspect(move |buf| {
             let mut s = op_state_.borrow_mut();
-            let metrics = s.borrow_mut::<Metrics>();
+            let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
+            let metrics = runtime_metrics.ops.get_mut(name).unwrap();
             metrics.op_completed_async(buf.len());
           })
           .boxed_local();
@@ -119,7 +158,8 @@ pub fn metrics_op(op_fn: Box<OpFn>) -> Box<OpFn> {
         let fut = fut
           .inspect(move |buf| {
             let mut s = op_state_.borrow_mut();
-            let metrics = s.borrow_mut::<Metrics>();
+            let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
+            let metrics = runtime_metrics.ops.get_mut(name).unwrap();
             metrics.op_completed_async_unref(buf.len());
           })
           .boxed_local();

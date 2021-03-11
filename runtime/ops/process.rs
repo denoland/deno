@@ -1,6 +1,9 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::io::{std_file_resource, StreamResource};
+use super::io::ChildStderrResource;
+use super::io::ChildStdinResource;
+use super::io::ChildStdoutResource;
+use super::io::StdFileResource;
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
@@ -34,7 +37,7 @@ fn clone_file(
   state: &mut OpState,
   rid: u32,
 ) -> Result<std::fs::File, AnyError> {
-  std_file_resource(state, rid, move |r| match r {
+  StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
     Err(_) => Err(bad_resource_id()),
   })
@@ -134,7 +137,7 @@ fn op_run(
     Some(child_stdin) => {
       let rid = state
         .resource_table
-        .add(StreamResource::child_stdin(child_stdin));
+        .add(ChildStdinResource::from(child_stdin));
       Some(rid)
     }
     None => None,
@@ -144,7 +147,7 @@ fn op_run(
     Some(child_stdout) => {
       let rid = state
         .resource_table
-        .add(StreamResource::child_stdout(child_stdout));
+        .add(ChildStdoutResource::from(child_stdout));
       Some(rid)
     }
     None => None,
@@ -154,7 +157,7 @@ fn op_run(
     Some(child_stderr) => {
       let rid = state
         .resource_table
-        .add(StreamResource::child_stderr(child_stderr));
+        .add(ChildStderrResource::from(child_stderr));
       Some(rid)
     }
     None => None,
@@ -199,7 +202,7 @@ async fn op_run_status(
     .get::<ChildResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut child = resource.borrow_mut().await;
-  let run_status = (&mut *child).await?;
+  let run_status = child.wait().await?;
   let code = run_status.code();
 
   #[cfg(unix)]
@@ -219,23 +222,6 @@ async fn op_run_status(
   }))
 }
 
-#[cfg(not(unix))]
-const SIGINT: i32 = 2;
-#[cfg(not(unix))]
-const SIGKILL: i32 = 9;
-#[cfg(not(unix))]
-const SIGTERM: i32 = 15;
-
-#[cfg(not(unix))]
-use winapi::{
-  shared::minwindef::DWORD,
-  um::{
-    handleapi::CloseHandle,
-    processthreadsapi::{OpenProcess, TerminateProcess},
-    winnt::PROCESS_TERMINATE,
-  },
-};
-
 #[cfg(unix)]
 pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
   use nix::sys::signal::{kill as unix_kill, Signal};
@@ -248,30 +234,43 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
   use std::io::Error;
-  match signal {
-    SIGINT | SIGKILL | SIGTERM => {
-      if pid <= 0 {
-        return Err(type_error("unsupported pid"));
+  use std::io::ErrorKind::NotFound;
+  use winapi::shared::minwindef::DWORD;
+  use winapi::shared::minwindef::FALSE;
+  use winapi::shared::minwindef::TRUE;
+  use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
+  use winapi::um::errhandlingapi::GetLastError;
+  use winapi::um::handleapi::CloseHandle;
+  use winapi::um::processthreadsapi::OpenProcess;
+  use winapi::um::processthreadsapi::TerminateProcess;
+  use winapi::um::winnt::PROCESS_TERMINATE;
+
+  const SIGINT: i32 = 2;
+  const SIGKILL: i32 = 9;
+  const SIGTERM: i32 = 15;
+
+  if !matches!(signal, SIGINT | SIGKILL | SIGTERM) {
+    Err(type_error("unsupported signal"))
+  } else if pid <= 0 {
+    Err(type_error("unsupported pid"))
+  } else {
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+    if handle.is_null() {
+      let err = match unsafe { GetLastError() } {
+        ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
+        errno => Error::from_raw_os_error(errno as i32),
+      };
+      Err(err.into())
+    } else {
+      let r = unsafe { TerminateProcess(handle, 1) };
+      unsafe { CloseHandle(handle) };
+      match r {
+        FALSE => Err(Error::last_os_error().into()),
+        TRUE => Ok(()),
+        _ => unreachable!(),
       }
-      unsafe {
-        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
-        if handle.is_null() {
-          return Err(Error::last_os_error().into());
-        }
-        if TerminateProcess(handle, 1) == 0 {
-          CloseHandle(handle);
-          return Err(Error::last_os_error().into());
-        }
-        if CloseHandle(handle) == 0 {
-          return Err(Error::last_os_error().into());
-        }
-      }
-    }
-    _ => {
-      return Err(type_error("unsupported signal"));
     }
   }
-  Ok(())
 }
 
 #[derive(Deserialize)]

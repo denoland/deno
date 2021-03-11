@@ -1,9 +1,10 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
-  const { exit } = window.__bootstrap.os;
+  const { setExitHandler, exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
   const { exposeForTest } = window.__bootstrap.internals;
@@ -33,11 +34,14 @@
   function assertOps(fn) {
     return async function asyncOpSanitizer() {
       const pre = metrics();
-      await fn();
-      // Defer until next event loop turn - that way timeouts and intervals
-      // cleared can actually be removed from resource table, otherwise
-      // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await delay(0);
+      try {
+        await fn();
+      } finally {
+        // Defer until next event loop turn - that way timeouts and intervals
+        // cleared can actually be removed from resource table, otherwise
+        // false positives may occur (https://github.com/denoland/deno/issues/4591)
+        await delay(0);
+      }
       const post = metrics();
       // We're checking diff because one might spawn HTTP server in the background
       // that will be a pending async op before test starts.
@@ -82,6 +86,27 @@ finishing test case.`;
     };
   }
 
+  // Wrap test function in additional assertion that makes sure
+  // that the test case does not accidentally exit prematurely.
+  function assertExit(fn) {
+    return async function exitSanitizer() {
+      setExitHandler((exitCode) => {
+        assert(
+          false,
+          `Test case attempted to exit with exit code: ${exitCode}`,
+        );
+      });
+
+      try {
+        await fn();
+      } catch (err) {
+        throw err;
+      } finally {
+        setExitHandler(null);
+      }
+    };
+  }
+
   const TEST_REGISTRY = [];
 
   // Main test function provided by Deno, as you can see it merely
@@ -96,6 +121,7 @@ finishing test case.`;
       only: false,
       sanitizeOps: true,
       sanitizeResources: true,
+      sanitizeExit: true,
     };
 
     if (typeof t === "string") {
@@ -122,6 +148,10 @@ finishing test case.`;
 
     if (testDef.sanitizeResources) {
       testDef.fn = assertResources(testDef.fn);
+    }
+
+    if (testDef.sanitizeExit) {
+      testDef.fn = assertExit(testDef.fn);
     }
 
     TEST_REGISTRY.push(testDef);
@@ -199,8 +229,8 @@ finishing test case.`;
 
   exposeForTest("reportToConsole", reportToConsole);
 
-  // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
-  // TODO: implements PromiseLike<RunTestsEndResult>
+  // TODO(bartlomieju): already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
+  // TODO(bartlomieju): implements PromiseLike<RunTestsEndResult>
   class TestRunner {
     #usedOnly = false;
 

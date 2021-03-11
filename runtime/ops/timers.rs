@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! This module helps deno implement timers.
 //!
@@ -60,7 +60,7 @@ impl GlobalTimer {
     let (tx, rx) = oneshot::channel();
     self.tx = Some(tx);
 
-    let delay = tokio::time::delay_until(deadline.into());
+    let delay = tokio::time::sleep_until(deadline.into()).boxed_local();
     let rx = rx
       .map_err(|err| panic!("Unexpected error in receiving channel {:?}", err));
 
@@ -81,10 +81,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
   super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
-  rt.register_op("op_now", metrics_op(minimal_op(op_now)));
+  rt.register_op("op_now", metrics_op("op_now", minimal_op(op_now)));
   super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_global_timer_stop(
   state: &mut OpState,
   _args: Value,

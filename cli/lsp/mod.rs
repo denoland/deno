@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use lspower::LspService;
 use lspower::Server;
@@ -7,12 +7,13 @@ mod analysis;
 mod capabilities;
 mod config;
 mod diagnostics;
+mod documents;
 mod language_server;
-mod memory_cache;
+mod performance;
 mod sources;
 mod text;
 mod tsc;
-mod utils;
+mod urls;
 
 pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();

@@ -1,8 +1,7 @@
-// Copyright 2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
-use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -45,7 +44,7 @@ async fn main() -> Result<(), AnyError> {
 
   let js_path =
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/hello_runtime.js");
-  let main_module = ModuleSpecifier::resolve_path(&js_path.to_string_lossy())?;
+  let main_module = deno_core::resolve_path(&js_path.to_string_lossy())?;
   let permissions = Permissions::allow_all();
 
   let mut worker =

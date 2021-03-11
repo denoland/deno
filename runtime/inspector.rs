@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
 //! https://chromedevtools.github.io/devtools-protocol/
@@ -16,6 +16,7 @@ use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::stream::StreamExt;
 use deno_core::futures::task;
 use deno_core::futures::task::Context;
 use deno_core::futures::task::Poll;
@@ -58,10 +59,10 @@ impl InspectorServer {
     let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
 
     let thread_handle = thread::spawn(move || {
-      let mut rt = crate::tokio_util::create_basic_runtime();
+      let rt = crate::tokio_util::create_basic_runtime();
       let local = tokio::task::LocalSet::new();
       local.block_on(
-        &mut rt,
+        &rt,
         server(host, register_inspector_rx, shutdown_server_rx, name),
       )
     });
@@ -182,9 +183,13 @@ fn handle_ws_request(
           .status(http::StatusCode::BAD_REQUEST)
           .body("Not a valid Websocket Request".into()),
       });
+
+    let (parts, _) = req.into_parts();
+    let req = http::Request::from_parts(parts, body);
+
     if resp.is_ok() {
       tokio::task::spawn_local(async move {
-        let upgraded = body.on_upgrade().await.unwrap();
+        let upgraded = hyper::upgrade::on(req).await.unwrap();
         let websocket =
           deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
             upgraded,
@@ -400,7 +405,7 @@ enum PollState {
 
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
-  v8_inspector: v8::UniqueRef<v8::inspector::V8Inspector>,
+  v8_inspector: v8::UniquePtr<v8::inspector::V8Inspector>,
   sessions: RefCell<InspectorSessions>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
@@ -412,13 +417,13 @@ pub struct DenoInspector {
 impl Deref for DenoInspector {
   type Target = v8::inspector::V8Inspector;
   fn deref(&self) -> &Self::Target {
-    &self.v8_inspector
+    self.v8_inspector.as_ref().unwrap()
   }
 }
 
 impl DerefMut for DenoInspector {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.v8_inspector
+    self.v8_inspector.as_mut().unwrap()
   }
 }
 
@@ -489,8 +494,6 @@ impl DenoInspector {
     let mut self_ = new_box_with(|self_ptr| {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
-      let v8_inspector =
-        v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
 
       let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new();
@@ -514,7 +517,7 @@ impl DenoInspector {
 
       Self {
         v8_inspector_client,
-        v8_inspector,
+        v8_inspector: Default::default(),
         sessions,
         flags,
         waker,
@@ -523,6 +526,8 @@ impl DenoInspector {
         debugger_url,
       }
     });
+    self_.v8_inspector =
+      v8::inspector::V8Inspector::create(scope, &mut *self_).into();
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);

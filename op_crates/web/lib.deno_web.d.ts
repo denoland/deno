@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -9,6 +9,7 @@ declare class DOMException extends Error {
   constructor(message?: string, name?: string);
   readonly name: string;
   readonly message: string;
+  readonly code: number;
 }
 
 interface EventInit {
@@ -313,68 +314,171 @@ declare var FileReader: {
   readonly LOADING: number;
 };
 
-/** The location (URL) of the object it is linked to. Changes done on it are
- * reflected on the object it relates to. Accessible via
- * `globalThis.location`. */
-declare class Location {
-  constructor();
-  /** Returns a DOMStringList object listing the origins of the ancestor
-   * browsing contexts, from the parent browsing context to the top-level
-   * browsing context.
+declare class URLSearchParams {
+  constructor(
+    init?: string[][] | Record<string, string> | string | URLSearchParams,
+  );
+  static toString(): string;
+
+  /** Appends a specified key/value pair as a new search parameter.
    *
-   * Always empty in Deno. */
-  readonly ancestorOrigins: DOMStringList;
-  /** Returns the Location object's URL's fragment (includes leading "#" if non-empty).
+   * ```ts
+   * let searchParams = new URLSearchParams();
+   * searchParams.append('name', 'first');
+   * searchParams.append('name', 'second');
+   * ```
+   */
+  append(name: string, value: string): void;
+
+  /** Deletes the given search parameter and its associated value,
+   * from the list of all search parameters.
    *
-   * Cannot be set in Deno. */
-  hash: string;
-  /** Returns the Location object's URL's host and port (if different from the default port for the scheme).
+   * ```ts
+   * let searchParams = new URLSearchParams([['name', 'value']]);
+   * searchParams.delete('name');
+   * ```
+   */
+  delete(name: string): void;
+
+  /** Returns all the values associated with a given search parameter
+   * as an array.
    *
-   * Cannot be set in Deno. */
-  host: string;
-  /** Returns the Location object's URL's host.
+   * ```ts
+   * searchParams.getAll('name');
+   * ```
+   */
+  getAll(name: string): string[];
+
+  /** Returns the first value associated to the given search parameter.
    *
-   * Cannot be set in Deno. */
-  hostname: string;
-  /** Returns the Location object's URL.
+   * ```ts
+   * searchParams.get('name');
+   * ```
+   */
+  get(name: string): string | null;
+
+  /** Returns a Boolean that indicates whether a parameter with the
+   * specified name exists.
    *
-   * Cannot be set in Deno. */
-  href: string;
+   * ```ts
+   * searchParams.has('name');
+   * ```
+   */
+  has(name: string): boolean;
+
+  /** Sets the value associated with a given search parameter to the
+   * given value. If there were several matching values, this method
+   * deletes the others. If the search parameter doesn't exist, this
+   * method creates it.
+   *
+   * ```ts
+   * searchParams.set('name', 'value');
+   * ```
+   */
+  set(name: string, value: string): void;
+
+  /** Sort all key/value pairs contained in this object in place and
+   * return undefined. The sort order is according to Unicode code
+   * points of the keys.
+   *
+   * ```ts
+   * searchParams.sort();
+   * ```
+   */
+  sort(): void;
+
+  /** Calls a function for each element contained in this object in
+   * place and return undefined. Optionally accepts an object to use
+   * as this when executing callback as second argument.
+   *
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * params.forEach((value, key, parent) => {
+   *   console.log(value, key, parent);
+   * });
+   * ```
+   *
+   */
+  forEach(
+    callbackfn: (value: string, key: string, parent: this) => void,
+    thisArg?: any,
+  ): void;
+
+  /** Returns an iterator allowing to go through all keys contained
+   * in this object.
+   *
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const key of params.keys()) {
+   *   console.log(key);
+   * }
+   * ```
+   */
+  keys(): IterableIterator<string>;
+
+  /** Returns an iterator allowing to go through all values contained
+   * in this object.
+   *
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const value of params.values()) {
+   *   console.log(value);
+   * }
+   * ```
+   */
+  values(): IterableIterator<string>;
+
+  /** Returns an iterator allowing to go through all key/value
+   * pairs contained in this object.
+   *
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params.entries()) {
+   *   console.log(key, value);
+   * }
+   * ```
+   */
+  entries(): IterableIterator<[string, string]>;
+
+  /** Returns an iterator allowing to go through all key/value
+   * pairs contained in this object.
+   *
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params) {
+   *   console.log(key, value);
+   * }
+   * ```
+   */
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+
+  /** Returns a query string suitable for use in a URL.
+   *
+   * ```ts
+   * searchParams.toString();
+   * ```
+   */
   toString(): string;
-  /** Returns the Location object's URL's origin. */
-  readonly origin: string;
-  /** Returns the Location object's URL's path.
-   *
-   * Cannot be set in Deno. */
-  pathname: string;
-  /** Returns the Location object's URL's port.
-   *
-   * Cannot be set in Deno. */
-  port: string;
-  /** Returns the Location object's URL's scheme.
-   *
-   * Cannot be set in Deno. */
-  protocol: string;
-  /** Returns the Location object's URL's query (includes leading "?" if
-   * non-empty).
-   *
-   * Cannot be set in Deno. */
-  search: string;
-  /** Navigates to the given URL.
-   *
-   * Cannot be set in Deno. */
-  assign(url: string): void;
-  /** Reloads the current page.
-   *
-   * Disabled in Deno. */
-  reload(): void;
-  /** @deprecated */
-  reload(forcedReload: boolean): void;
-  /** Removes the current page from the session history and navigates to the
-   * given URL.
-   *
-   * Disabled in Deno. */
-  replace(url: string): void;
 }
 
-declare var location: Location;
+/** The URL interface represents an object providing static methods used for creating object URLs. */
+declare class URL {
+  constructor(url: string, base?: string | URL);
+  createObjectURL(object: any): string;
+  revokeObjectURL(url: string): void;
+
+  hash: string;
+  host: string;
+  hostname: string;
+  href: string;
+  toString(): string;
+  readonly origin: string;
+  password: string;
+  pathname: string;
+  port: string;
+  protocol: string;
+  search: string;
+  readonly searchParams: URLSearchParams;
+  username: string;
+  toJSON(): string;
+}

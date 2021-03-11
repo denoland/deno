@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #[macro_use]
 extern crate lazy_static;
@@ -42,8 +42,13 @@ pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
 pub use crate::flags::v8_set_flags;
+pub use crate::module_specifier::resolve_import;
+pub use crate::module_specifier::resolve_path;
+pub use crate::module_specifier::resolve_url;
+pub use crate::module_specifier::resolve_url_or_path;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
+pub use crate::module_specifier::DUMMY_SPECIFIER;
 pub use crate::modules::FsModuleLoader;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoadId;
@@ -78,7 +83,12 @@ pub fn v8_version() -> &'static str {
   v8::V8::get_version()
 }
 
-#[test]
-fn test_v8_version() {
-  assert!(v8_version().len() > 3);
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_v8_version() {
+    assert!(v8_version().len() > 3);
+  }
 }
