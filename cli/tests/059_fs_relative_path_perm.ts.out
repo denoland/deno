@@ -1,4 +1,4 @@
 [WILDCARD]error: Uncaught PermissionDenied: Access to read "non-existent" required, run again with read permission
-    throw new ErrorClass(res.err.message);
-          ^
+Deno.readFileSync("non-existent");
+     ^
     at [WILDCARD]

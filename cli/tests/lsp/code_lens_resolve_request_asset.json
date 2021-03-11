@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "method": "codeLens/resolve",
+  "params": {
+    "range": {
+      "start": {
+        "line": 416,
+        "character": 12
+      },
+      "end": {
+        "line": 416,
+        "character": 19
+      }
+    },
+    "data": {
+      "specifier": "asset:///lib.deno.shared_globals.d.ts",
+      "source": "references"
+    }
+  }
+}

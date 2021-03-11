@@ -4,6 +4,7 @@ use crate::media_type::MediaType;
 use crate::tsc_config;
 
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use std::error::Error;
@@ -11,7 +12,7 @@ use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use swc_common::chain;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
@@ -78,7 +79,7 @@ impl Into<Location> for swc_common::Loc {
 
 impl Into<ModuleSpecifier> for Location {
   fn into(self) -> ModuleSpecifier {
-    ModuleSpecifier::resolve_url_or_path(&self.filename).unwrap()
+    resolve_url_or_path(&self.filename).unwrap()
   }
 }
 
@@ -106,7 +107,7 @@ impl DiagnosticBuffer {
   where
     F: Fn(Span) -> Loc,
   {
-    let s = error_buffer.0.read().unwrap().clone();
+    let s = error_buffer.0.lock().unwrap().clone();
     let diagnostics = s
       .iter()
       .map(|d| {
@@ -133,18 +134,12 @@ impl DiagnosticBuffer {
 }
 
 /// A buffer for collecting errors from the AST parser.
-#[derive(Debug, Clone)]
-pub struct ErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
-
-impl ErrorBuffer {
-  pub fn new() -> Self {
-    Self(Arc::new(RwLock::new(Vec::new())))
-  }
-}
+#[derive(Debug, Clone, Default)]
+pub struct ErrorBuffer(Arc<Mutex<Vec<Diagnostic>>>);
 
 impl Emitter for ErrorBuffer {
   fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().push((**db).clone());
+    self.0.lock().unwrap().push((**db).clone());
   }
 }
 
@@ -187,6 +182,13 @@ pub fn get_syntax(media_type: &MediaType) -> Syntax {
   }
 }
 
+#[derive(Debug, Clone)]
+pub enum ImportsNotUsedAsValues {
+  Remove,
+  Preserve,
+  Error,
+}
+
 /// Options which can be adjusted when transpiling a module.
 #[derive(Debug, Clone)]
 pub struct EmitOptions {
@@ -196,6 +198,10 @@ pub struct EmitOptions {
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
+  /// What to do with import statements that only import types i.e. whether to
+  /// remove them (`Remove`), keep them as side-effect imports (`Preserve`)
+  /// or error (`Error`). Defaults to `Remove`.
+  pub imports_not_used_as_values: ImportsNotUsedAsValues,
   /// Should the source map be inlined in the emitted code file, or provided
   /// as a separate file.  Defaults to `true`.
   pub inline_source_map: bool,
@@ -214,6 +220,7 @@ impl Default for EmitOptions {
     EmitOptions {
       check_js: false,
       emit_metadata: false,
+      imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
@@ -226,15 +233,41 @@ impl From<tsc_config::TsConfig> for EmitOptions {
   fn from(config: tsc_config::TsConfig) -> Self {
     let options: tsc_config::EmitConfigOptions =
       serde_json::from_value(config.0).unwrap();
+    let imports_not_used_as_values =
+      match options.imports_not_used_as_values.as_str() {
+        "preserve" => ImportsNotUsedAsValues::Preserve,
+        "error" => ImportsNotUsedAsValues::Error,
+        _ => ImportsNotUsedAsValues::Remove,
+      };
     EmitOptions {
       check_js: options.check_js,
       emit_metadata: options.emit_decorator_metadata,
+      imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
     }
   }
+}
+
+fn strip_config_from_emit_options(
+  options: &EmitOptions,
+) -> typescript::strip::Config {
+  let mut config = typescript::strip::Config::default();
+  config.import_not_used_as_values = match options.imports_not_used_as_values {
+    ImportsNotUsedAsValues::Remove => {
+      typescript::strip::ImportNotUsedAsValues::Remove
+    }
+    ImportsNotUsedAsValues::Preserve => {
+      typescript::strip::ImportNotUsedAsValues::Preserve
+    }
+    // `Error` only affects the type-checking stage. Fall back to `Remove` here.
+    ImportsNotUsedAsValues::Error => {
+      typescript::strip::ImportNotUsedAsValues::Remove
+    }
+  };
+  config
 }
 
 /// A logical structure to hold the value of a parsed module for further
@@ -304,7 +337,9 @@ impl ParsedModule {
         emit_metadata: options.emit_metadata
       }),
       helpers::inject_helpers(),
-      typescript::strip(),
+      typescript::strip::strip_with_config(strip_config_from_emit_options(
+        options
+      )),
       fixer(Some(&self.comments)),
       hygiene(),
     );
@@ -364,7 +399,7 @@ pub fn parse_with_source_map(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
   );
-  let error_buffer = ErrorBuffer::new();
+  let error_buffer = ErrorBuffer::default();
   let syntax = get_syntax(media_type);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
@@ -518,7 +553,9 @@ pub fn transpile_module(
       emit_metadata: emit_options.emit_metadata
     }),
     helpers::inject_helpers(),
-    typescript::strip(),
+    typescript::strip::strip_with_config(strip_config_from_emit_options(
+      emit_options
+    )),
     fixer(Some(&parsed_module.comments)),
   );
 
@@ -588,13 +625,12 @@ impl swc_bundler::Hook for BundleHook {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::collections::HashMap;
   use swc_ecmascript::dep_graph::DependencyKind;
 
   #[test]
   fn test_parsed_module_analyze_dependencies() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.js")
-        .unwrap();
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.js").unwrap();
     let source = r#"import * as bar from "./test.ts";
     const foo = await import("./foo.ts");
     "#;
@@ -614,6 +650,7 @@ mod tests {
           specifier: "./test.ts".into(),
           specifier_col: 21,
           specifier_line: 1,
+          import_assertions: HashMap::default(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
@@ -624,6 +661,7 @@ mod tests {
           specifier: "./foo.ts".into(),
           specifier_col: 29,
           specifier_line: 2,
+          import_assertions: HashMap::default(),
         }
       ]
     );
@@ -631,9 +669,8 @@ mod tests {
 
   #[test]
   fn test_transpile() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     enum D {
       A,
@@ -665,9 +702,8 @@ mod tests {
 
   #[test]
   fn test_transpile_tsx() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     export class A {
       render() {
@@ -685,9 +721,8 @@ mod tests {
 
   #[test]
   fn test_transpile_decorators() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/mod.ts")
-        .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
     let source = r#"
     function enumerable(value: boolean) {
       return function (
@@ -698,7 +733,7 @@ mod tests {
         descriptor.enumerable = value;
       };
     }
-    
+
     export class A {
       @enumerable(false)
       a() {

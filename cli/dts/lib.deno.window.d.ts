@@ -3,6 +3,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
+/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 
 declare class Window extends EventTarget {
@@ -17,12 +18,23 @@ declare class Window extends EventTarget {
   confirm: (message?: string) => boolean;
   prompt: (message?: string, defaultValue?: string) => string | null;
   Deno: typeof Deno;
+  Navigator: typeof Navigator;
+  navigator: Navigator;
+  Location: typeof Location;
+  location: Location;
 }
 
 declare var window: Window & typeof globalThis;
 declare var self: Window & typeof globalThis;
 declare var onload: ((this: Window, ev: Event) => any) | null;
 declare var onunload: ((this: Window, ev: Event) => any) | null;
+
+declare class Navigator {
+  constructor();
+  readonly gpu: GPU;
+}
+
+declare var navigator: Navigator;
 
 /**
  * Shows the given message and waits for the enter key pressed.

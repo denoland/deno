@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
-use deno_core::error::AnyError;
+use deno_core::error::{type_error, AnyError};
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -56,6 +56,12 @@ fn op_set_env(
 ) -> Result<Value, AnyError> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().env.check()?;
+  let invalid_key =
+    args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
+  let invalid_value = args.value.contains('\0');
+  if invalid_key || invalid_value {
+    return Err(type_error("Key or value contains invalid characters."));
+  }
   env::set_var(args.key, args.value);
   Ok(json!({}))
 }
@@ -82,6 +88,9 @@ fn op_get_env(
 ) -> Result<Value, AnyError> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().env.check()?;
+  if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error("Key contains invalid characters."));
+  }
   let r = match env::var(args.key) {
     Err(env::VarError::NotPresent) => json!([]),
     v => json!([v?]),
@@ -101,6 +110,9 @@ fn op_delete_env(
 ) -> Result<Value, AnyError> {
   let args: DeleteEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().env.check()?;
+  if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error("Key contains invalid characters."));
+  }
   env::remove_var(args.key);
   Ok(json!({}))
 }

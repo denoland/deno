@@ -15,6 +15,7 @@ SharedQueue Binary Layout
 |                        RECORDS (*MAX_RECORDS)               ...
 +---------------------------------------------------------------+
  */
+"use strict";
 
 ((window) => {
   const MAX_RECORDS = 100;
@@ -154,12 +155,7 @@ SharedQueue Binary Layout
     asyncHandlers[opId] = cb;
   }
 
-  function handleAsyncMsgFromRust(opId, buf) {
-    if (buf) {
-      // This is the overflow_response case of deno::JsRuntime::poll().
-      asyncHandlers[opId](buf);
-      return;
-    }
+  function handleAsyncMsgFromRust() {
     while (true) {
       const opIdBuf = shift();
       if (opIdBuf == null) {
@@ -168,21 +164,25 @@ SharedQueue Binary Layout
       assert(asyncHandlers[opIdBuf[0]] != null);
       asyncHandlers[opIdBuf[0]](opIdBuf[1]);
     }
+
+    for (let i = 0; i < arguments.length; i += 2) {
+      asyncHandlers[arguments[i]](arguments[i + 1]);
+    }
   }
 
   function dispatch(opName, control, ...zeroCopy) {
     return send(opsCache[opName], control, ...zeroCopy);
   }
 
-  function registerErrorClass(errorName, className) {
+  function registerErrorClass(errorName, className, args) {
     if (typeof errorMap[errorName] !== "undefined") {
       throw new TypeError(`Error class for "${errorName}" already registered`);
     }
-    errorMap[errorName] = className;
+    errorMap[errorName] = [className, args ?? []];
   }
 
-  function getErrorClass(errorName) {
-    return errorMap[errorName];
+  function getErrorClassAndArgs(errorName) {
+    return errorMap[errorName] ?? [undefined, []];
   }
 
   // Returns Uint8Array
@@ -203,21 +203,22 @@ SharedQueue Binary Layout
     if ("ok" in res) {
       return res.ok;
     }
-    const ErrorClass = getErrorClass(res.err.className);
+    const [ErrorClass, args] = getErrorClassAndArgs(res.err.className);
     if (!ErrorClass) {
       throw new Error(
         `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
     }
-    throw new ErrorClass(res.err.message);
+    throw new ErrorClass(res.err.message, ...args);
   }
 
-  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
+  async function jsonOpAsync(opName, args = null, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
-    args.promiseId = nextPromiseId++;
-    const argsBuf = encodeJson(args);
-    dispatch(opName, argsBuf, ...zeroCopy);
+    const promiseId = nextPromiseId++;
+    const reqBuf = core.encode("\0".repeat(8) + JSON.stringify(args));
+    new DataView(reqBuf.buffer).setBigUint64(0, BigInt(promiseId));
+    dispatch(opName, reqBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
@@ -225,11 +226,11 @@ SharedQueue Binary Layout
     });
     promise.resolve = resolve;
     promise.reject = reject;
-    promiseTable[args.promiseId] = promise;
+    promiseTable[promiseId] = promise;
     return processResponse(await promise);
   }
 
-  function jsonOpSync(opName, args = {}, ...zeroCopy) {
+  function jsonOpSync(opName, args = null, ...zeroCopy) {
     const argsBuf = encodeJson(args);
     const res = dispatch(opName, argsBuf, ...zeroCopy);
     return processResponse(decodeJson(res));
@@ -261,7 +262,7 @@ SharedQueue Binary Layout
     close,
     resources,
     registerErrorClass,
-    getErrorClass,
+    getErrorClassAndArgs,
     sharedQueueInit: init,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {

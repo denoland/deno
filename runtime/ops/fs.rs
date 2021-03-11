@@ -1022,20 +1022,19 @@ fn op_read_dir_sync(
   let entries: Vec<_> = std::fs::read_dir(path)?
     .filter_map(|entry| {
       let entry = entry.unwrap();
-      let file_type = entry.file_type().unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
       if let Ok(name) = into_string(entry.file_name()) {
         Some(json!({
           "name": name,
-          "isFile": file_type.is_file(),
-          "isDirectory": file_type.is_dir(),
-          "isSymlink": file_type.is_symlink()
+          "isFile": entry.file_type().map_or(false, |file_type| file_type.is_file()),
+          "isDirectory": entry.file_type().map_or(false, |file_type| file_type.is_dir()),
+          "isSymlink": entry.file_type().map_or(false, |file_type| file_type.is_symlink()),
         }))
       } else {
         None
       }
     })
-    .collect();
+  .collect();
 
   Ok(json!({ "entries": entries }))
 }
@@ -1056,25 +1055,24 @@ async fn op_read_dir_async(
     let entries: Vec<_> = std::fs::read_dir(path)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
-        let file_type = entry.file_type().unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
         if let Ok(name) = into_string(entry.file_name()) {
           Some(json!({
             "name": name,
-            "isFile": file_type.is_file(),
-            "isDirectory": file_type.is_dir(),
-            "isSymlink": file_type.is_symlink()
+            "isFile": entry.file_type().map_or(false, |file_type| file_type.is_file()),
+            "isDirectory": entry.file_type().map_or(false, |file_type| file_type.is_dir()),
+            "isSymlink": entry.file_type().map_or(false, |file_type| file_type.is_symlink()),
           }))
         } else {
           None
         }
       })
-      .collect();
+    .collect();
 
     Ok(json!({ "entries": entries }))
   })
   .await
-  .unwrap()
+    .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -1142,13 +1140,14 @@ fn op_link_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
   let permissions = state.borrow::<Permissions>();
   permissions.read.check(&oldpath)?;
+  permissions.write.check(&oldpath)?;
+  permissions.read.check(&newpath)?;
   permissions.write.check(&newpath)?;
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
@@ -1161,8 +1160,6 @@ async fn op_link_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.link");
-
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1171,6 +1168,8 @@ async fn op_link_async(
     let state = state.borrow();
     let permissions = state.borrow::<Permissions>();
     permissions.read.check(&oldpath)?;
+    permissions.write.check(&oldpath)?;
+    permissions.read.check(&newpath)?;
     permissions.write.check(&newpath)?;
   }
 
@@ -1204,7 +1203,6 @@ fn op_symlink_sync(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1255,8 +1253,6 @@ async fn op_symlink_async(
   args: Value,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  super::check_unstable2(&state, "Deno.symlink");
-
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);

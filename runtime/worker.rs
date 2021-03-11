@@ -4,12 +4,13 @@ use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::inspector::InspectorSession;
 use crate::js;
-use crate::metrics::Metrics;
+use crate::metrics::RuntimeMetrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -104,9 +105,9 @@ impl MainWorker {
       {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
-        op_state.put::<Metrics>(Default::default());
+        op_state.put(RuntimeMetrics::default());
         op_state.put::<Permissions>(permissions);
-        op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+        op_state.put(ops::UnstableChecker {
           unstable: options.unstable,
         });
       }
@@ -126,10 +127,16 @@ impl MainWorker {
       ops::crypto::init(js_runtime, options.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::reg_json_sync(js_runtime, "op_parse_url", deno_web::op_parse_url);
       ops::reg_json_sync(
         js_runtime,
-        "op_domain_to_ascii",
-        deno_web::op_domain_to_ascii,
+        "op_parse_url_search_params",
+        deno_web::op_parse_url_search_params,
+      );
+      ops::reg_json_sync(
+        js_runtime,
+        "op_stringify_url_search_params",
+        deno_web::op_stringify_url_search_params,
       );
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
@@ -142,6 +149,7 @@ impl MainWorker {
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),
@@ -214,7 +222,21 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id).await
+    let mut receiver = self.js_runtime.mod_evaluate(id);
+    tokio::select! {
+      maybe_result = receiver.next() => {
+        debug!("received module evaluate {:#?}", maybe_result);
+        let result = maybe_result.expect("Module evaluation result not provided.");
+        return result;
+      }
+
+      event_loop_result = self.run_event_loop() => {
+        event_loop_result?;
+        let maybe_result = receiver.next().await;
+        let result = maybe_result.expect("Module evaluation result not provided.");
+        return result;
+      }
+    }
   }
 
   fn wait_for_inspector_session(&mut self) {
@@ -260,10 +282,10 @@ impl Drop for MainWorker {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url_or_path;
 
   fn create_test_worker() -> MainWorker {
-    let main_module =
-      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let main_module = resolve_url_or_path("./hello.js").unwrap();
     let permissions = Permissions::default();
 
     let options = WorkerOptions {
@@ -296,8 +318,7 @@ mod tests {
       .parent()
       .unwrap()
       .join("cli/tests/esm_imports_a.js");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_module(&module_specifier).await;
     if let Err(err) = result {
@@ -314,8 +335,7 @@ mod tests {
       .parent()
       .unwrap()
       .join("tests/circular1.js");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_module(&module_specifier).await;
     if let Err(err) = result {
@@ -330,8 +350,7 @@ mod tests {
   async fn execute_mod_resolve_error() {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path("does-not-exist").unwrap();
+    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_err());
   }
@@ -345,8 +364,7 @@ mod tests {
       .parent()
       .unwrap()
       .join("cli/tests/001_hello.js");
-    let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_ok());
   }

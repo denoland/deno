@@ -6,13 +6,11 @@ use crate::ast::transpile_module;
 use crate::ast::BundleHook;
 use crate::ast::Location;
 use crate::ast::ParsedModule;
+use crate::checksum;
 use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
-use crate::info::ModuleGraphInfo;
-use crate::info::ModuleInfo;
-use crate::info::ModuleInfoMap;
-use crate::info::ModuleInfoMapItem;
+use crate::info;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
 use crate::specifier_handler::CachedModule;
@@ -33,6 +31,7 @@ use deno_core::error::get_custom_error_class;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
+use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -43,8 +42,8 @@ use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
+use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -150,7 +149,7 @@ impl swc_bundler::Load for BundleLoader<'_> {
   ) -> Result<swc_bundler::ModuleData, AnyError> {
     match file {
       swc_common::FileName::Custom(filename) => {
-        let specifier = ModuleSpecifier::resolve_url_or_path(filename)
+        let specifier = resolve_url_or_path(filename)
           .context("Failed to convert swc FileName to ModuleSpecifier.")?;
         if let Some(src) = self.graph.get_source(&specifier) {
           let media_type = self
@@ -259,7 +258,7 @@ impl Default for Module {
       maybe_types: None,
       maybe_version: None,
       media_type: MediaType::Unknown,
-      specifier: ModuleSpecifier::resolve_url("file:///example.js").unwrap(),
+      specifier: deno_core::resolve_url("file:///example.js").unwrap(),
       source: "".to_string(),
       source_path: PathBuf::new(),
     }
@@ -449,11 +448,11 @@ impl Module {
       remapped_import = true;
       module_specifier
     } else {
-      ModuleSpecifier::resolve_import(specifier, self.specifier.as_str())?
+      deno_core::resolve_import(specifier, self.specifier.as_str())?
     };
 
-    let referrer_scheme = self.specifier.as_url().scheme();
-    let specifier_scheme = specifier.as_url().scheme();
+    let referrer_scheme = self.specifier.scheme();
+    let specifier_scheme = specifier.scheme();
     let location = maybe_location.unwrap_or(Location {
       filename: self.specifier.to_string(),
       line: 0,
@@ -614,8 +613,10 @@ pub enum BundleType {
   /// Return the emitted contents of the program as a single "flattened" ES
   /// module.
   Esm,
-  // TODO(@kitsonk) once available in swc
-  // Iife,
+  /// Return the emitted contents of the program as a single script that
+  /// executes the program using an immediately invoked function execution
+  /// (IIFE).
+  Iife,
   /// Do not bundle the emit, instead returning each of the modules that are
   /// part of the program as individual files.
   None,
@@ -772,6 +773,7 @@ impl Graph {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -780,7 +782,8 @@ impl Graph {
     let maybe_ignored_options =
       ts_config.merge_tsconfig(options.maybe_config_path)?;
 
-    let s = self.emit_bundle(&root_specifier, &ts_config.into())?;
+    let s =
+      self.emit_bundle(&root_specifier, &ts_config.into(), &BundleType::Esm)?;
     let stats = Stats(vec![
       ("Files".to_string(), self.modules.len() as u32),
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
@@ -799,6 +802,7 @@ impl Graph {
       // Enabled by default to align to transpile/swc defaults
       "experimentalDecorators": true,
       "incremental": true,
+      "jsx": "react",
       "isolatedModules": true,
       "lib": options.lib,
       "module": "esnext",
@@ -811,7 +815,7 @@ impl Graph {
         // TODO(@kitsonk) consider enabling this by default
         //   see: https://github.com/denoland/deno/issues/7732
         "emitDecoratorMetadata": false,
-        "jsx": "react",
+        "importsNotUsedAsValues": "remove",
         "inlineSourceMap": true,
         "outDir": "deno://",
         "removeComments": true,
@@ -940,6 +944,7 @@ impl Graph {
       "emitDecoratorMetadata": false,
       "esModuleInterop": true,
       "experimentalDecorators": true,
+      "importsNotUsedAsValues": "remove",
       "inlineSourceMap": false,
       "isolatedModules": true,
       "jsx": "react",
@@ -951,7 +956,7 @@ impl Graph {
       "target": "esnext",
     }));
     let opts = match options.bundle_type {
-      BundleType::Esm => json!({
+      BundleType::Esm | BundleType::Iife => json!({
         "noEmit": true,
       }),
       BundleType::None => json!({
@@ -992,7 +997,7 @@ impl Graph {
 
       let graph = graph.lock().unwrap();
       match options.bundle_type {
-        BundleType::Esm => {
+        BundleType::Esm | BundleType::Iife => {
           assert!(
             response.emitted_files.is_empty(),
             "No files should have been emitted from tsc."
@@ -1003,7 +1008,11 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &graph.roots[0];
-          let s = graph.emit_bundle(specifier, &config.into())?;
+          let s = graph.emit_bundle(
+            specifier,
+            &config.into(),
+            &options.bundle_type,
+          )?;
           emitted_files.insert("deno:///bundle.js".to_string(), s);
         }
         BundleType::None => {
@@ -1044,14 +1053,18 @@ impl Graph {
       let start = Instant::now();
       let mut emit_count = 0_u32;
       match options.bundle_type {
-        BundleType::Esm => {
+        BundleType::Esm | BundleType::Iife => {
           assert_eq!(
             self.roots.len(),
             1,
             "Only a single root module supported."
           );
           let specifier = &self.roots[0];
-          let s = self.emit_bundle(specifier, &config.into())?;
+          let s = self.emit_bundle(
+            specifier,
+            &config.into(),
+            &options.bundle_type,
+          )?;
           emit_count += 1;
           emitted_files.insert("deno:///bundle.js".to_string(), s);
         }
@@ -1104,6 +1117,7 @@ impl Graph {
     &self,
     specifier: &ModuleSpecifier,
     emit_options: &ast::EmitOptions,
+    bundle_type: &BundleType,
   ) -> Result<String, AnyError> {
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
@@ -1111,12 +1125,20 @@ impl Graph {
     let globals = swc_common::Globals::new();
     let loader = BundleLoader::new(self, emit_options, &globals, cm.clone());
     let hook = Box::new(BundleHook);
+    let module = match bundle_type {
+      BundleType::Esm => swc_bundler::ModuleType::Es,
+      BundleType::Iife => swc_bundler::ModuleType::Iife,
+      _ => unreachable!("invalid bundle type"),
+    };
     let bundler = swc_bundler::Bundler::new(
       &globals,
       cm.clone(),
       loader,
       self,
-      swc_bundler::Config::default(),
+      swc_bundler::Config {
+        module,
+        ..Default::default()
+      },
       hook,
     );
     let mut entries = HashMap::new();
@@ -1170,95 +1192,6 @@ impl Graph {
     }
 
     Ok(())
-  }
-
-  fn get_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    seen: &mut HashSet<ModuleSpecifier>,
-    totals: &mut HashMap<ModuleSpecifier, usize>,
-  ) -> ModuleInfo {
-    let not_seen = seen.insert(specifier.clone());
-    let module = match self.get_module(specifier) {
-      ModuleSlot::Module(module) => module,
-      ModuleSlot::Err(err) => {
-        error!("{}: {}", colors::red_bold("error"), err.to_string());
-        std::process::exit(1);
-      }
-      _ => unreachable!(),
-    };
-    let mut deps = Vec::new();
-    let mut total_size = None;
-
-    if not_seen {
-      let mut seen_deps = HashSet::new();
-      // TODO(@kitsonk) https://github.com/denoland/deno/issues/7927
-      for (_, dep) in module.dependencies.iter() {
-        // Check the runtime code dependency
-        if let Some(code_dep) = &dep.maybe_code {
-          if seen_deps.insert(code_dep.clone()) {
-            deps.push(self.get_info(code_dep, seen, totals));
-          }
-        }
-      }
-      deps.sort();
-      total_size = if let Some(total) = totals.get(specifier) {
-        Some(total.to_owned())
-      } else {
-        let mut total = deps
-          .iter()
-          .map(|d| {
-            if let Some(total_size) = d.total_size {
-              total_size
-            } else {
-              0
-            }
-          })
-          .sum();
-        total += module.size();
-        totals.insert(specifier.clone(), total);
-        Some(total)
-      };
-    }
-
-    ModuleInfo {
-      deps,
-      name: specifier.clone(),
-      size: module.size(),
-      total_size,
-    }
-  }
-
-  fn get_info_map(&self) -> ModuleInfoMap {
-    let map = self
-      .modules
-      .iter()
-      .filter_map(|(specifier, module_slot)| {
-        if let ModuleSlot::Module(module) = module_slot {
-          let mut deps = BTreeSet::new();
-          for (_, dep) in module.dependencies.iter() {
-            if let Some(code_dep) = &dep.maybe_code {
-              deps.insert(code_dep.clone());
-            }
-            if let Some(type_dep) = &dep.maybe_type {
-              deps.insert(type_dep.clone());
-            }
-          }
-          if let Some((_, types_dep)) = &module.maybe_types {
-            deps.insert(types_dep.clone());
-          }
-          let item = ModuleInfoMapItem {
-            deps: deps.into_iter().collect(),
-            size: module.size(),
-          };
-          Some((specifier.clone(), item))
-        } else {
-          None
-        }
-      })
-      .collect();
-
-    ModuleInfoMap::new(map)
   }
 
   /// Retrieve a map that contains a representation of each module in the graph
@@ -1404,51 +1337,75 @@ impl Graph {
   /// Return a structure which provides information about the module graph and
   /// the relationship of the modules in the graph.  This structure is used to
   /// provide information for the `info` subcommand.
-  pub fn info(&self) -> Result<ModuleGraphInfo, AnyError> {
+  pub fn info(&self) -> Result<info::ModuleGraphInfo, AnyError> {
     if self.roots.is_empty() || self.roots.len() > 1 {
       return Err(GraphError::NotSupported(format!("Info is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
 
-    let module = self.roots[0].clone();
-    let m = if let ModuleSlot::Module(module) = self.get_module(&module) {
-      module
-    } else {
-      return Err(GraphError::MissingSpecifier(module.clone()).into());
-    };
-
-    let mut seen = HashSet::new();
-    let mut totals = HashMap::new();
-    let info = self.get_info(&module, &mut seen, &mut totals);
-
-    let files = self.get_info_map();
-    let total_size = totals.get(&module).unwrap_or(&m.size()).to_owned();
-    let (compiled, map) =
-      if let Some((emit_path, maybe_map_path)) = &m.maybe_emit_path {
-        (Some(emit_path.clone()), maybe_map_path.clone())
-      } else {
-        (None, None)
-      };
-
-    let dep_count = self
+    let root = self.resolve_specifier(&self.roots[0]).clone();
+    let mut modules: Vec<info::ModuleGraphInfoMod> = self
       .modules
       .iter()
-      .filter_map(|(_, m)| match m {
-        ModuleSlot::Module(_) => Some(1),
+      .filter_map(|(sp, sl)| match sl {
+        ModuleSlot::Module(module) => {
+          let mut dependencies: Vec<info::ModuleGraphInfoDep> = module
+            .dependencies
+            .iter()
+            .map(|(k, v)| info::ModuleGraphInfoDep {
+              specifier: k.clone(),
+              is_dynamic: v.is_dynamic,
+              maybe_code: v
+                .maybe_code
+                .clone()
+                .map(|s| self.resolve_specifier(&s).clone()),
+              maybe_type: v
+                .maybe_type
+                .clone()
+                .map(|s| self.resolve_specifier(&s).clone()),
+            })
+            .collect();
+          dependencies.sort();
+          let (emit, map) =
+            if let Some((emit, maybe_map)) = &module.maybe_emit_path {
+              (Some(emit.clone()), maybe_map.clone())
+            } else {
+              (None, None)
+            };
+          Some(info::ModuleGraphInfoMod {
+            specifier: sp.clone(),
+            dependencies,
+            size: Some(module.size()),
+            media_type: Some(module.media_type),
+            local: Some(module.source_path.clone()),
+            checksum: Some(checksum::gen(&[module.source.as_bytes()])),
+            emit,
+            map,
+            ..Default::default()
+          })
+        }
+        ModuleSlot::Err(err) => Some(info::ModuleGraphInfoMod {
+          specifier: sp.clone(),
+          error: Some(err.to_string()),
+          ..Default::default()
+        }),
         _ => None,
       })
-      .count()
-      - 1;
+      .collect();
 
-    Ok(ModuleGraphInfo {
-      compiled,
-      dep_count,
-      file_type: m.media_type,
-      files,
-      info,
-      local: m.source_path.clone(),
-      map,
-      module,
-      total_size,
+    modules.sort();
+
+    let size = modules.iter().fold(0_usize, |acc, m| {
+      if let Some(size) = &m.size {
+        acc + size
+      } else {
+        acc
+      }
+    });
+
+    Ok(info::ModuleGraphInfo {
+      root,
+      modules,
+      size,
     })
   }
 
@@ -1635,6 +1592,7 @@ impl Graph {
     let mut ts_config = TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
+      "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -1749,7 +1707,7 @@ impl swc_bundler::Resolve for Graph {
     specifier: &str,
   ) -> Result<swc_common::FileName, AnyError> {
     let referrer = if let swc_common::FileName::Custom(referrer) = referrer {
-      ModuleSpecifier::resolve_url_or_path(referrer)
+      resolve_url_or_path(referrer)
         .context("Cannot resolve swc FileName to a module specifier")?
     } else {
       unreachable!(
@@ -1975,7 +1933,7 @@ pub mod tests {
       let media_type = MediaType::from(&source_path);
       let source = fs::read_to_string(&source_path)
         .map_err(|err| (specifier.clone(), err.into()))?;
-      let is_remote = specifier.as_url().scheme() != "file";
+      let is_remote = specifier.scheme() != "file";
 
       Ok(CachedModule {
         source,
@@ -2180,7 +2138,7 @@ pub mod tests {
     let fixtures = c.join("tests/bundle");
 
     for (specifier, expected_str) in tests {
-      let specifier = ModuleSpecifier::resolve_url_or_path(specifier).unwrap();
+      let specifier = resolve_url_or_path(specifier).unwrap();
       let handler = Arc::new(Mutex::new(MockSpecifierHandler {
         fixtures: fixtures.clone(),
         ..MockSpecifierHandler::default()
@@ -2204,9 +2162,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_emit() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2227,9 +2184,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_ignores_dynamic_import_errors() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/dynamicimport.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/dynamicimport.ts")
+      .expect("could not resolve module");
     let (graph, _) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2245,9 +2201,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_check_emit_diagnostics() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/diag.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/diag.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2270,9 +2225,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_no_emit() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2293,7 +2247,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_check_mjs_root() {
-    let specifier = ModuleSpecifier::resolve_url_or_path("file:///tests/a.mjs")
+    let specifier = resolve_url_or_path("file:///tests/a.mjs")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier).await;
     let result_info = graph
@@ -2314,7 +2268,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_check_types_root() {
-    let specifier = ModuleSpecifier::resolve_url_or_path("file:///typesref.js")
+    let specifier = resolve_url_or_path("file:///typesref.js")
       .expect("could not resolve module");
     let (graph, _) = setup(specifier).await;
     let result_info = graph
@@ -2331,9 +2285,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_check_user_config() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/checkwithconfig.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
+      .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
     let result_info = graph
       .check(CheckOptions {
@@ -2377,8 +2330,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_emit() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
     let graph = setup_memory(
       specifier,
       map!(
@@ -2418,8 +2370,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_emit_bundle() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
     let graph = setup_memory(
       specifier,
       map!(
@@ -2454,8 +2405,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn fix_graph_emit_declaration() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///a.ts").unwrap();
+    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
     let graph = setup_memory(
       specifier,
       map!(
@@ -2499,29 +2449,19 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_info() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
-    let (graph, _) = setup(specifier).await;
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
+    let (graph, _) = setup(specifier.clone()).await;
     let info = graph.info().expect("could not get info");
-    assert!(info.compiled.is_none());
-    assert_eq!(info.dep_count, 6);
-    assert_eq!(info.file_type, MediaType::TypeScript);
-    assert_eq!(info.files.0.len(), 7);
-    assert!(info.local.to_string_lossy().ends_with("file_tests-main.ts"));
-    assert!(info.map.is_none());
-    assert_eq!(
-      info.module,
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts").unwrap()
-    );
-    assert_eq!(info.total_size, 344);
+    assert_eq!(info.root, specifier);
+    assert_eq!(info.modules.len(), 7);
+    assert_eq!(info.size, 518);
   }
 
   #[tokio::test]
   async fn test_graph_import_json() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/importjson.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/importjson.ts")
+      .expect("could not resolve module");
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let fixtures = c.join("tests/module_graph");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
@@ -2544,9 +2484,8 @@ pub mod tests {
     // to be actually emitted.
     //
     // This also exercises "@deno-types" and type references.
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
     let result_info = graph.transpile(TranspileOptions::default()).unwrap();
     assert_eq!(result_info.stats.0.len(), 3);
@@ -2572,19 +2511,17 @@ pub mod tests {
     assert_eq!(h.deps_calls.len(), 7);
     assert_eq!(
       h.deps_calls[0].0,
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts").unwrap()
+      resolve_url_or_path("file:///tests/main.ts").unwrap()
     );
     assert_eq!(h.deps_calls[0].1.len(), 1);
     assert_eq!(
       h.deps_calls[1].0,
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.js")
-        .unwrap()
+      resolve_url_or_path("https://deno.land/x/lib/mod.js").unwrap()
     );
     assert_eq!(h.deps_calls[1].1.len(), 3);
     assert_eq!(
       h.deps_calls[2].0,
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/lib/mod.d.ts")
-        .unwrap()
+      resolve_url_or_path("https://deno.land/x/lib/mod.d.ts").unwrap()
     );
     assert_eq!(h.deps_calls[2].1.len(), 3, "should have 3 dependencies");
     // sometimes the calls are not deterministic, and so checking the contents
@@ -2597,9 +2534,8 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_transpile_user_config() {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("https://deno.land/x/transpile.tsx")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
+      .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
     let result_info = graph
       .transpile(TranspileOptions {
@@ -2647,9 +2583,8 @@ pub mod tests {
       ..Default::default()
     }));
     let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/importremap.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/importremap.ts")
+      .expect("could not resolve module");
     builder.add(&specifier, false).await.expect("could not add");
     builder.get_graph();
   }
@@ -2667,9 +2602,8 @@ pub mod tests {
       ..MockSpecifierHandler::default()
     }));
     let mut builder = GraphBuilder::new(handler.clone(), None, maybe_lockfile);
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path("file:///tests/main.ts")
-        .expect("could not resolve module");
+    let specifier = resolve_url_or_path("file:///tests/main.ts")
+      .expect("could not resolve module");
     builder
       .add(&specifier, false)
       .await

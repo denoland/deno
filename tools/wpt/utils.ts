@@ -162,7 +162,7 @@ export async function checkPy3Available() {
     output.includes("Python 3."),
     `The ${
       Deno.build.os == "windows" ? "python.exe" : "python3"
-    } in your path is not is not Python 3.`,
+    } in your path is not Python 3.`,
   );
 }
 

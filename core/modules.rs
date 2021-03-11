@@ -145,7 +145,7 @@ impl ModuleLoader for FsModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    Ok(ModuleSpecifier::resolve_import(specifier, referrer)?)
+    Ok(crate::resolve_import(specifier, referrer)?)
   }
 
   fn load(
@@ -157,7 +157,7 @@ impl ModuleLoader for FsModuleLoader {
   ) -> Pin<Box<ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     async move {
-      let path = module_specifier.as_url().to_file_path().map_err(|_| {
+      let path = module_specifier.to_file_path().map_err(|_| {
         generic_error(format!(
           "Provided module specifier \"{}\" is not a file URL.",
           module_specifier
@@ -398,26 +398,33 @@ enum SymbolicModule {
   Mod(ModuleId),
 }
 
+/// A collection of JS modules.
 #[derive(Default)]
-/// Alias-able module name map
-struct ModuleNameMap {
-  inner: HashMap<String, SymbolicModule>,
+pub struct ModuleMap {
+  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
+  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
+  info: HashMap<ModuleId, ModuleInfo>,
+  by_name: HashMap<String, SymbolicModule>,
+  next_module_id: ModuleId,
 }
 
-impl ModuleNameMap {
-  pub fn new() -> Self {
-    ModuleNameMap {
-      inner: HashMap::new(),
+impl ModuleMap {
+  pub fn new() -> ModuleMap {
+    Self {
+      handles_by_id: HashMap::new(),
+      ids_by_handle: HashMap::new(),
+      info: HashMap::new(),
+      by_name: HashMap::new(),
+      next_module_id: 1,
     }
   }
 
-  /// Get the id of a module.
-  /// If this module is internally represented as an alias,
-  /// follow the alias chain to get the final module id.
-  pub fn get(&self, name: &str) -> Option<ModuleId> {
+  /// Get module id, following all aliases in case of module specifier
+  /// that had been redirected.
+  pub fn get_id(&self, name: &str) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
-      let symbolic_module = self.inner.get(mod_name)?;
+      let symbolic_module = self.by_name.get(mod_name)?;
       match symbolic_module {
         SymbolicModule::Alias(target) => {
           mod_name = target;
@@ -427,55 +434,12 @@ impl ModuleNameMap {
     }
   }
 
-  /// Insert a name associated module id.
-  pub fn insert(&mut self, name: String, id: ModuleId) {
-    self.inner.insert(name, SymbolicModule::Mod(id));
-  }
-
-  /// Create an alias to another module.
-  pub fn alias(&mut self, name: String, target: String) {
-    self.inner.insert(name, SymbolicModule::Alias(target));
-  }
-
-  /// Check if a name is an alias to another module.
-  #[cfg(test)]
-  pub fn is_alias(&self, name: &str) -> bool {
-    let cond = self.inner.get(name);
-    matches!(cond, Some(SymbolicModule::Alias(_)))
-  }
-}
-
-/// A collection of JS modules.
-#[derive(Default)]
-pub struct Modules {
-  ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
-  handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
-  info: HashMap<ModuleId, ModuleInfo>,
-  by_name: ModuleNameMap,
-  next_module_id: ModuleId,
-}
-
-impl Modules {
-  pub fn new() -> Modules {
-    Self {
-      handles_by_id: HashMap::new(),
-      ids_by_handle: HashMap::new(),
-      info: HashMap::new(),
-      by_name: ModuleNameMap::new(),
-      next_module_id: 1,
-    }
-  }
-
-  pub fn get_id(&self, name: &str) -> Option<ModuleId> {
-    self.by_name.get(name)
-  }
-
   pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
     self.info.get(&id).map(|i| &i.import_specifiers)
   }
 
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
-    self.by_name.get(&specifier.to_string()).is_some()
+    self.get_id(&specifier.to_string()).is_some()
   }
 
   pub fn register(
@@ -488,7 +452,9 @@ impl Modules {
     let name = String::from(name);
     let id = self.next_module_id;
     self.next_module_id += 1;
-    self.by_name.insert(name.clone(), id);
+    self
+      .by_name
+      .insert(name.to_string(), SymbolicModule::Mod(id));
     self.handles_by_id.insert(id, handle.clone());
     self.ids_by_handle.insert(handle, id);
     self.info.insert(
@@ -504,12 +470,15 @@ impl Modules {
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {
-    self.by_name.alias(name.to_owned(), target.to_owned());
+    self
+      .by_name
+      .insert(name.to_string(), SymbolicModule::Alias(target.to_string()));
   }
 
   #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
-    self.by_name.is_alias(name)
+    let cond = self.by_name.get(name);
+    matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
   pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
@@ -649,11 +618,10 @@ mod tests {
 
       eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
 
-      let output_specifier =
-        match ModuleSpecifier::resolve_import(specifier, referrer) {
-          Ok(specifier) => specifier,
-          Err(..) => return Err(MockError::ResolveErr.into()),
-        };
+      let output_specifier = match crate::resolve_import(specifier, referrer) {
+        Ok(specifier) => specifier,
+        Err(..) => return Err(MockError::ResolveErr.into()),
+      };
 
       if mock_source_code(&output_specifier.to_string()).is_some() {
         Ok(output_specifier)
@@ -715,11 +683,12 @@ mod tests {
       module_loader: Some(loader),
       ..Default::default()
     });
-    let spec = ModuleSpecifier::resolve_url("file:///a.js").unwrap();
+    let spec = crate::resolve_url("file:///a.js").unwrap();
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    futures::executor::block_on(runtime.mod_evaluate(a_id)).unwrap();
+    runtime.mod_evaluate(a_id);
+    futures::executor::block_on(runtime.run_event_loop()).unwrap();
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -733,7 +702,7 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -741,17 +710,17 @@ mod tests {
     assert_eq!(
       modules.get_children(a_id),
       Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+        crate::resolve_url("file:///b.js").unwrap(),
+        crate::resolve_url("file:///c.js").unwrap()
       ])
     );
     assert_eq!(
       modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///c.js").unwrap()])
     );
     assert_eq!(
       modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///d.js").unwrap()])
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
@@ -782,11 +751,12 @@ mod tests {
     });
 
     let fut = async move {
-      let spec = ModuleSpecifier::resolve_url("file:///circular1.js").unwrap();
+      let spec = crate::resolve_url("file:///circular1.js").unwrap();
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      runtime.mod_evaluate(circular1_id).await.unwrap();
+      runtime.mod_evaluate(circular1_id);
+      runtime.run_event_loop().await.unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -800,23 +770,19 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
 
       assert_eq!(
         modules.get_children(circular1_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
-        ])
+        Some(&vec![crate::resolve_url("file:///circular2.js").unwrap()])
       );
 
       assert_eq!(
         modules.get_children(circular2_id),
-        Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular3.js").unwrap()
-        ])
+        Some(&vec![crate::resolve_url("file:///circular3.js").unwrap()])
       );
 
       assert!(modules.get_id("file:///circular3.js").is_some());
@@ -824,8 +790,8 @@ mod tests {
       assert_eq!(
         modules.get_children(circular3_id),
         Some(&vec![
-          ModuleSpecifier::resolve_url("file:///circular1.js").unwrap(),
-          ModuleSpecifier::resolve_url("file:///circular2.js").unwrap()
+          crate::resolve_url("file:///circular1.js").unwrap(),
+          crate::resolve_url("file:///circular2.js").unwrap()
         ])
       );
     }
@@ -858,12 +824,13 @@ mod tests {
     });
 
     let fut = async move {
-      let spec = ModuleSpecifier::resolve_url("file:///redirect1.js").unwrap();
+      let spec = crate::resolve_url("file:///redirect1.js").unwrap();
       let result = runtime.load_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      runtime.mod_evaluate(redirect1_id).await.unwrap();
+      runtime.mod_evaluate(redirect1_id);
+      runtime.run_event_loop().await.unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -876,7 +843,7 @@ mod tests {
 
       let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.modules;
+      let modules = &state.module_map;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -923,7 +890,7 @@ mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      let spec = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+      let spec = crate::resolve_url("file:///main.js").unwrap();
       let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
@@ -971,7 +938,7 @@ mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      let spec = ModuleSpecifier::resolve_url("file:///bad_import.js").unwrap();
+      let spec = crate::resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
@@ -1005,15 +972,15 @@ mod tests {
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
-    let spec =
-      ModuleSpecifier::resolve_url("file:///main_with_code.js").unwrap();
+    let spec = crate::resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = runtime
       .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    futures::executor::block_on(runtime.mod_evaluate(main_id)).unwrap();
+    runtime.mod_evaluate(main_id);
+    futures::executor::block_on(runtime.run_event_loop()).unwrap();
 
     let l = loads.lock().unwrap();
     assert_eq!(
@@ -1023,7 +990,7 @@ mod tests {
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.modules;
+    let modules = &state.module_map;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
@@ -1033,17 +1000,17 @@ mod tests {
     assert_eq!(
       modules.get_children(main_id),
       Some(&vec![
-        ModuleSpecifier::resolve_url("file:///b.js").unwrap(),
-        ModuleSpecifier::resolve_url("file:///c.js").unwrap()
+        crate::resolve_url("file:///b.js").unwrap(),
+        crate::resolve_url("file:///c.js").unwrap()
       ])
     );
     assert_eq!(
       modules.get_children(b_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///c.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///c.js").unwrap()])
     );
     assert_eq!(
       modules.get_children(c_id),
-      Some(&vec![ModuleSpecifier::resolve_url("file:///d.js").unwrap()])
+      Some(&vec![crate::resolve_url("file:///d.js").unwrap()])
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }

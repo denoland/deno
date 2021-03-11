@@ -5,10 +5,10 @@ use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use serde::Deserialize;
-use serde::Serialize;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -573,9 +573,8 @@ impl Permissions {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let url = specifier.as_url();
-    match url.scheme() {
-      "file" => match url.to_file_path() {
+    match specifier.scheme() {
+      "file" => match specifier.to_file_path() {
         Ok(path) => self.read.check(&path),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {}",
@@ -583,7 +582,7 @@ impl Permissions {
         ))),
       },
       "data" => Ok(()),
-      _ => self.net.check_url(url),
+      _ => self.net.check_url(specifier),
     }
   }
 }
@@ -593,7 +592,7 @@ impl deno_fetch::FetchPermissions for Permissions {
     self.net.check_url(url)
   }
 
-  fn check_read(&self, path: &PathBuf) -> Result<(), AnyError> {
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.read.check(path)
   }
 }
@@ -729,6 +728,7 @@ fn set_prompt_result(value: bool) {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url_or_path;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -985,42 +985,27 @@ mod tests {
 
     let mut fixtures = vec![
       (
-        ModuleSpecifier::resolve_url_or_path("http://localhost:4545/mod.ts")
-          .unwrap(),
+        resolve_url_or_path("http://localhost:4545/mod.ts").unwrap(),
         true,
       ),
       (
-        ModuleSpecifier::resolve_url_or_path("http://deno.land/x/mod.ts")
-          .unwrap(),
+        resolve_url_or_path("http://deno.land/x/mod.ts").unwrap(),
         false,
       ),
       (
-        ModuleSpecifier::resolve_url_or_path(
-          "data:text/plain,Hello%2C%20Deno!",
-        )
-        .unwrap(),
+        resolve_url_or_path("data:text/plain,Hello%2C%20Deno!").unwrap(),
         true,
       ),
     ];
 
     if cfg!(target_os = "windows") {
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///C:/a/mod.ts").unwrap(),
-        true,
-      ));
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///C:/b/mod.ts").unwrap(),
-        false,
-      ));
+      fixtures
+        .push((resolve_url_or_path("file:///C:/a/mod.ts").unwrap(), true));
+      fixtures
+        .push((resolve_url_or_path("file:///C:/b/mod.ts").unwrap(), false));
     } else {
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///a/mod.ts").unwrap(),
-        true,
-      ));
-      fixtures.push((
-        ModuleSpecifier::resolve_url_or_path("file:///b/mod.ts").unwrap(),
-        false,
-      ));
+      fixtures.push((resolve_url_or_path("file:///a/mod.ts").unwrap(), true));
+      fixtures.push((resolve_url_or_path("file:///b/mod.ts").unwrap(), false));
     }
 
     for (specifier, expected) in fixtures {
@@ -1043,7 +1028,7 @@ mod tests {
 
     for url in test_cases {
       assert!(perms
-        .check_specifier(&ModuleSpecifier::resolve_url_or_path(url).unwrap())
+        .check_specifier(&resolve_url_or_path(url).unwrap())
         .is_err());
     }
   }

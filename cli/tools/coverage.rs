@@ -3,6 +3,8 @@
 use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;
+use crate::flags::Flags;
+use crate::fs_util::collect_files;
 use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
@@ -11,15 +13,14 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_runtime::inspector::InspectorSession;
 use deno_runtime::permissions::Permissions;
+use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use sourcemap::SourceMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use swc_common::Span;
 use uuid::Uuid;
 
@@ -35,7 +36,6 @@ impl CoverageCollector {
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Debugger.enable", None).await?;
-
     self.session.post_message("Profiler.enable", None).await?;
 
     self
@@ -66,11 +66,6 @@ impl CoverageCollector {
       let json = serde_json::to_string(&script_coverage)?;
       fs::write(self.dir.join(filename), &json)?;
     }
-
-    self
-      .session
-      .post_message("Profiler.stopPreciseCoverage", None)
-      .await?;
 
     self.session.post_message("Profiler.disable", None).await?;
     self.session.post_message("Debugger.disable", None).await?;
@@ -105,7 +100,7 @@ pub struct ScriptCoverage {
   pub functions: Vec<FunctionCoverage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TakePreciseCoverageResult {
   result: Vec<ScriptCoverage>,
@@ -118,17 +113,261 @@ pub struct GetScriptSourceResult {
   pub bytecode: Option<String>,
 }
 
-pub struct PrettyCoverageReporter {
-  quiet: bool,
+pub enum CoverageReporterKind {
+  Pretty,
+  Lcov,
 }
 
-// TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
-impl PrettyCoverageReporter {
-  pub fn new(quiet: bool) -> PrettyCoverageReporter {
-    PrettyCoverageReporter { quiet }
+fn create_reporter(
+  kind: CoverageReporterKind,
+) -> Box<dyn CoverageReporter + Send> {
+  match kind {
+    CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
+    CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
+  }
+}
+
+pub trait CoverageReporter {
+  fn visit_coverage(
+    &mut self,
+    script_coverage: &ScriptCoverage,
+    script_source: &str,
+    maybe_source_map: Option<Vec<u8>>,
+    maybe_original_source: Option<String>,
+  );
+
+  fn done(&mut self);
+}
+
+pub struct LcovCoverageReporter {}
+
+impl LcovCoverageReporter {
+  pub fn new() -> LcovCoverageReporter {
+    LcovCoverageReporter {}
+  }
+}
+
+impl CoverageReporter for LcovCoverageReporter {
+  fn visit_coverage(
+    &mut self,
+    script_coverage: &ScriptCoverage,
+    script_source: &str,
+    maybe_source_map: Option<Vec<u8>>,
+    _maybe_original_source: Option<String>,
+  ) {
+    // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
+    // elsewhere.
+    let maybe_source_map = if let Some(source_map) = maybe_source_map {
+      Some(SourceMap::from_slice(&source_map).unwrap())
+    } else {
+      None
+    };
+
+    let url = Url::parse(&script_coverage.url).unwrap();
+    let file_path = url.to_file_path().unwrap();
+    println!("SF:{}", file_path.to_str().unwrap());
+
+    let mut functions_found = 0;
+    for function in &script_coverage.functions {
+      if function.function_name.is_empty() {
+        continue;
+      }
+
+      let source_line = script_source[0..function.ranges[0].start_offset]
+        .split('\n')
+        .count();
+
+      let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
+        source_map
+          .tokens()
+          .find(|token| token.get_dst_line() as usize == source_line)
+          .map(|token| token.get_src_line() as usize)
+          .unwrap_or(0)
+      } else {
+        source_line
+      };
+
+      let function_name = &function.function_name;
+
+      println!("FN:{},{}", line_index + 1, function_name);
+
+      functions_found += 1;
+    }
+
+    let mut functions_hit = 0;
+    for function in &script_coverage.functions {
+      if function.function_name.is_empty() {
+        continue;
+      }
+
+      let execution_count = function.ranges[0].count;
+      let function_name = &function.function_name;
+
+      println!("FNDA:{},{}", execution_count, function_name);
+
+      if execution_count != 0 {
+        functions_hit += 1;
+      }
+    }
+
+    println!("FNF:{}", functions_found);
+    println!("FNH:{}", functions_hit);
+
+    let mut branches_found = 0;
+    let mut branches_hit = 0;
+    for (block_number, function) in script_coverage.functions.iter().enumerate()
+    {
+      let block_hits = function.ranges[0].count;
+      for (branch_number, range) in function.ranges[1..].iter().enumerate() {
+        let source_line =
+          script_source[0..range.start_offset].split('\n').count();
+
+        let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
+          source_map
+            .tokens()
+            .find(|token| token.get_dst_line() as usize == source_line)
+            .map(|token| token.get_src_line() as usize)
+            .unwrap_or(0)
+        } else {
+          source_line
+        };
+
+        // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
+        //
+        // Block number and branch number are gcc internal IDs for the branch. Taken is either '-'
+        // if the basic block containing the branch was never executed or a number indicating how
+        // often that branch was taken.
+        //
+        // However with the data we get from v8 coverage profiles it seems we can't actually hit
+        // this as appears it won't consider any nested branches it hasn't seen but its here for
+        // the sake of accuracy.
+        let taken = if block_hits > 0 {
+          range.count.to_string()
+        } else {
+          "-".to_string()
+        };
+
+        println!(
+          "BRDA:{},{},{},{}",
+          line_index + 1,
+          block_number,
+          branch_number,
+          taken
+        );
+
+        branches_found += 1;
+        if range.count > 0 {
+          branches_hit += 1;
+        }
+      }
+    }
+
+    println!("BRF:{}", branches_found);
+    println!("BRH:{}", branches_hit);
+
+    let lines = script_source.split('\n').collect::<Vec<_>>();
+    let line_offsets = {
+      let mut offsets: Vec<(usize, usize)> = Vec::new();
+      let mut index = 0;
+
+      for line in &lines {
+        offsets.push((index, index + line.len() + 1));
+        index += line.len() + 1;
+      }
+
+      offsets
+    };
+
+    let line_counts = line_offsets
+      .iter()
+      .map(|(line_start_offset, line_end_offset)| {
+        let mut count = 0;
+
+        // Count the hits of ranges that include the entire line which will always be at-least one
+        // as long as the code has been evaluated.
+        for function in &script_coverage.functions {
+          for range in &function.ranges {
+            if range.start_offset <= *line_start_offset
+              && range.end_offset >= *line_end_offset
+            {
+              count += range.count;
+            }
+          }
+        }
+
+        // We reset the count if any block with a zero count overlaps with the line range.
+        for function in &script_coverage.functions {
+          for range in &function.ranges {
+            if range.count > 0 {
+              continue;
+            }
+
+            let overlaps = std::cmp::max(line_end_offset, &range.end_offset)
+              - std::cmp::min(line_start_offset, &range.start_offset)
+              < (line_end_offset - line_start_offset)
+                + (range.end_offset - range.start_offset);
+
+            if overlaps {
+              count = 0;
+            }
+          }
+        }
+
+        count
+      })
+      .collect::<Vec<usize>>();
+
+    let found_lines = if let Some(source_map) = maybe_source_map.as_ref() {
+      let mut found_lines = line_counts
+        .iter()
+        .enumerate()
+        .map(|(index, count)| {
+          source_map
+            .tokens()
+            .filter(move |token| token.get_dst_line() as usize == index)
+            .map(move |token| (token.get_src_line() as usize, *count))
+        })
+        .flatten()
+        .collect::<Vec<(usize, usize)>>();
+
+      found_lines.sort_unstable_by_key(|(index, _)| *index);
+      found_lines.dedup_by_key(|(index, _)| *index);
+      found_lines
+    } else {
+      line_counts
+        .iter()
+        .enumerate()
+        .map(|(index, count)| (index, *count))
+        .collect::<Vec<(usize, usize)>>()
+    };
+
+    for (index, count) in &found_lines {
+      println!("DA:{},{}", index + 1, count);
+    }
+
+    let lines_hit = found_lines.iter().filter(|(_, count)| *count != 0).count();
+
+    println!("LH:{}", lines_hit);
+
+    let lines_found = found_lines.len();
+    println!("LF:{}", lines_found);
+
+    println!("end_of_record");
   }
 
-  pub fn visit_coverage(
+  fn done(&mut self) {}
+}
+
+pub struct PrettyCoverageReporter {}
+
+impl PrettyCoverageReporter {
+  pub fn new() -> PrettyCoverageReporter {
+    PrettyCoverageReporter {}
+  }
+}
+
+impl CoverageReporter for PrettyCoverageReporter {
+  fn visit_coverage(
     &mut self,
     script_coverage: &ScriptCoverage,
     script_source: &str,
@@ -164,6 +403,8 @@ impl PrettyCoverageReporter {
       offsets
     };
 
+    // TODO(caspervonb): collect uncovered ranges on the lines so that we can highlight specific
+    // parts of a line in color (word diff style) instead of the entire line.
     let line_counts = line_offsets
       .iter()
       .enumerate()
@@ -191,22 +432,19 @@ impl PrettyCoverageReporter {
           }
         }
 
-        // Reset the count if any block intersects with the current line has a count of
-        // zero.
-        //
-        // We check for intersection instead of inclusion here because a block may be anywhere
-        // inside a line.
+        // We reset the count if any block with a zero count overlaps with the line range.
         for function in &script_coverage.functions {
           for range in &function.ranges {
             if range.count > 0 {
               continue;
             }
 
-            if (range.start_offset < *line_start_offset
-              && range.end_offset > *line_start_offset)
-              || (range.start_offset < *line_end_offset
-                && range.end_offset > *line_end_offset)
-            {
+            let overlaps = std::cmp::max(line_end_offset, &range.end_offset)
+              - std::cmp::min(line_start_offset, &range.start_offset)
+              < (line_end_offset - line_start_offset)
+                + (range.end_offset - range.start_offset);
+
+            if overlaps {
               count = 0;
             }
           }
@@ -242,67 +480,72 @@ impl PrettyCoverageReporter {
       line_counts
     };
 
-    if !self.quiet {
-      print!("cover {} ... ", script_coverage.url);
+    print!("cover {} ... ", script_coverage.url);
 
-      let hit_lines = line_counts
-        .iter()
-        .filter(|(_, count)| *count != 0)
-        .map(|(index, _)| *index);
+    let hit_lines = line_counts
+      .iter()
+      .filter(|(_, count)| *count != 0)
+      .map(|(index, _)| *index);
 
-      let missed_lines = line_counts
-        .iter()
-        .filter(|(_, count)| *count == 0)
-        .map(|(index, _)| *index);
+    let missed_lines = line_counts
+      .iter()
+      .filter(|(_, count)| *count == 0)
+      .map(|(index, _)| *index);
 
-      let lines_found = line_counts.len();
-      let lines_hit = hit_lines.count();
-      let line_ratio = lines_hit as f32 / lines_found as f32;
+    let lines_found = line_counts.len();
+    let lines_hit = hit_lines.count();
+    let line_ratio = lines_hit as f32 / lines_found as f32;
 
-      let line_coverage =
-        format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found,);
+    let line_coverage =
+      format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found,);
 
-      if line_ratio >= 0.9 {
-        println!("{}", colors::green(&line_coverage));
-      } else if line_ratio >= 0.75 {
-        println!("{}", colors::yellow(&line_coverage));
-      } else {
-        println!("{}", colors::red(&line_coverage));
-      }
+    if line_ratio >= 0.9 {
+      println!("{}", colors::green(&line_coverage));
+    } else if line_ratio >= 0.75 {
+      println!("{}", colors::yellow(&line_coverage));
+    } else {
+      println!("{}", colors::red(&line_coverage));
+    }
 
-      let mut last_line = None;
-      for line_index in missed_lines {
-        const WIDTH: usize = 4;
-        const SEPERATOR: &str = "|";
+    let mut last_line = None;
+    for line_index in missed_lines {
+      const WIDTH: usize = 4;
+      const SEPERATOR: &str = "|";
 
-        // Put a horizontal separator between disjoint runs of lines
-        if let Some(last_line) = last_line {
-          if last_line + 1 != line_index {
-            let dash = colors::gray(&"-".repeat(WIDTH + 1));
-            println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
-          }
+      // Put a horizontal separator between disjoint runs of lines
+      if let Some(last_line) = last_line {
+        if last_line + 1 != line_index {
+          let dash = colors::gray("-".repeat(WIDTH + 1));
+          println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
         }
-
-        println!(
-          "{:width$} {} {}",
-          line_index + 1,
-          colors::gray(SEPERATOR),
-          colors::red(&lines[line_index]),
-          width = WIDTH
-        );
-
-        last_line = Some(line_index);
       }
+
+      println!(
+        "{:width$} {} {}",
+        line_index + 1,
+        colors::gray(SEPERATOR),
+        colors::red(&lines[line_index]),
+        width = WIDTH
+      );
+
+      last_line = Some(line_index);
     }
   }
+
+  fn done(&mut self) {}
 }
 
-fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
+fn collect_coverages(
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
+  let file_paths = collect_files(&files, &ignore, |file_path| {
+    file_path.extension().map_or(false, |ext| ext == "json")
+  })?;
 
-  let entries = fs::read_dir(dir)?;
-  for entry in entries {
-    let json = fs::read_to_string(entry.unwrap().path())?;
+  for file_path in file_paths {
+    let json = fs::read_to_string(file_path.as_path())?;
     let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
 
     let existing_coverage =
@@ -345,51 +588,54 @@ fn collect_coverages(dir: &PathBuf) -> Result<Vec<ScriptCoverage>, AnyError> {
 
 fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
-  exclude: Vec<Url>,
+  include: Vec<String>,
+  exclude: Vec<String>,
 ) -> Vec<ScriptCoverage> {
+  let include: Vec<Regex> =
+    include.iter().map(|e| Regex::new(e).unwrap()).collect();
+
+  let exclude: Vec<Regex> =
+    exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
+
   coverages
     .into_iter()
     .filter(|e| {
-      if let Ok(url) = Url::parse(&e.url) {
-        if url.path().ends_with("__anonymous__") {
-          return false;
-        }
+      let is_internal = e.url.starts_with("deno:")
+        || e.url.ends_with("__anonymous__")
+        || e.url.ends_with("$deno$test.ts");
 
-        for module_url in &exclude {
-          if &url == module_url {
-            return false;
-          }
-        }
+      let is_included = include.iter().any(|p| p.is_match(&e.url));
+      let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
 
-        if let Ok(path) = url.to_file_path() {
-          for module_url in &exclude {
-            if let Ok(module_path) = module_url.to_file_path() {
-              if path.starts_with(module_path.parent().unwrap()) {
-                return true;
-              }
-            }
-          }
-        }
-      }
-
-      false
+      (include.is_empty() || is_included) && !is_excluded && !is_internal
     })
     .collect::<Vec<ScriptCoverage>>()
 }
 
-pub async fn report_coverages(
-  program_state: Arc<ProgramState>,
-  dir: &PathBuf,
-  quiet: bool,
-  exclude: Vec<Url>,
+pub async fn cover_files(
+  flags: Flags,
+  files: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
+  include: Vec<String>,
+  exclude: Vec<String>,
+  lcov: bool,
 ) -> Result<(), AnyError> {
-  let coverages = collect_coverages(dir)?;
-  let coverages = filter_coverages(coverages, exclude);
+  let program_state = ProgramState::build(flags).await?;
 
-  let mut coverage_reporter = PrettyCoverageReporter::new(quiet);
-  for script_coverage in coverages {
+  let script_coverages = collect_coverages(files, ignore)?;
+  let script_coverages = filter_coverages(script_coverages, include, exclude);
+
+  let reporter_kind = if lcov {
+    CoverageReporterKind::Lcov
+  } else {
+    CoverageReporterKind::Pretty
+  };
+
+  let mut reporter = create_reporter(reporter_kind);
+
+  for script_coverage in script_coverages {
     let module_specifier =
-      ModuleSpecifier::resolve_url_or_path(&script_coverage.url)?;
+      deno_core::resolve_url_or_path(&script_coverage.url)?;
     program_state
       .prepare_module_load(
         module_specifier.clone(),
@@ -409,13 +655,15 @@ pub async fn report_coverages(
       .get_source(&module_specifier)
       .map(|f| f.source);
 
-    coverage_reporter.visit_coverage(
+    reporter.visit_coverage(
       &script_coverage,
       &script_source,
       maybe_source_map,
       maybe_cached_source,
     );
   }
+
+  reporter.done();
 
   Ok(())
 }

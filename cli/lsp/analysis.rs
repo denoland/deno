@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::language_server;
+use super::tsc;
+
 use crate::ast;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
@@ -8,16 +11,52 @@ use crate::module_graph::parse_ts_reference;
 use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
+
+lazy_static! {
+  /// Diagnostic error codes which actually are the same, and so when grouping
+  /// fixes we treat them the same.
+  static ref FIX_ALL_ERROR_CODES: HashMap<&'static str, &'static str> =
+    (&[("2339", "2339"), ("2345", "2339"),])
+      .iter()
+      .cloned()
+      .collect();
+
+  /// Fixes which help determine if there is a preferred fix when there are
+  /// multiple fixes available.
+  static ref PREFERRED_FIXES: HashMap<&'static str, (u32, bool)> = (&[
+    ("annotateWithTypeFromJSDoc", (1, false)),
+    ("constructorForDerivedNeedSuperCall", (1, false)),
+    ("extendsInterfaceBecomesImplements", (1, false)),
+    ("awaitInSyncFunction", (1, false)),
+    ("classIncorrectlyImplementsInterface", (3, false)),
+    ("classDoesntImplementInheritedAbstractMember", (3, false)),
+    ("unreachableCode", (1, false)),
+    ("unusedIdentifier", (1, false)),
+    ("forgottenThisPropertyAccess", (1, false)),
+    ("spelling", (2, false)),
+    ("addMissingAwait", (1, false)),
+    ("fixImport", (0, true)),
+  ])
+  .iter()
+  .cloned()
+  .collect();
+}
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
@@ -107,9 +146,49 @@ pub struct Dependency {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedDependencyErr {
+  InvalidDowngrade,
+  InvalidLocalImport,
+  InvalidSpecifier(ModuleResolutionError),
+  Missing,
+}
+
+impl ResolvedDependencyErr {
+  pub fn as_code(&self) -> lsp::NumberOrString {
+    match self {
+      Self::InvalidDowngrade => {
+        lsp::NumberOrString::String("invalid-downgrade".to_string())
+      }
+      Self::InvalidLocalImport => {
+        lsp::NumberOrString::String("invalid-local-import".to_string())
+      }
+      Self::InvalidSpecifier(_) => {
+        lsp::NumberOrString::String("invalid-specifier".to_string())
+      }
+      Self::Missing => lsp::NumberOrString::String("missing".to_string()),
+    }
+  }
+}
+
+impl fmt::Display for ResolvedDependencyErr {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::InvalidDowngrade => {
+        write!(f, "HTTPS modules cannot import HTTP modules.")
+      }
+      Self::InvalidLocalImport => {
+        write!(f, "Remote modules cannot import local modules.")
+      }
+      Self::InvalidSpecifier(err) => write!(f, "{}", err),
+      Self::Missing => write!(f, "The module is unexpectedly missing."),
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedDependency {
   Resolved(ModuleSpecifier),
-  Err(String),
+  Err(ResolvedDependencyErr),
 }
 
 pub fn resolve_import(
@@ -132,24 +211,25 @@ pub fn resolve_import(
   let specifier = if let Some(remapped) = maybe_mapped {
     remapped
   } else {
-    match ModuleSpecifier::resolve_import(specifier, referrer.as_str()) {
+    match deno_core::resolve_import(specifier, referrer.as_str()) {
       Ok(resolved) => resolved,
-      Err(err) => return ResolvedDependency::Err(err.to_string()),
+      Err(err) => {
+        return ResolvedDependency::Err(
+          ResolvedDependencyErr::InvalidSpecifier(err),
+        )
+      }
     }
   };
-  let referrer_scheme = referrer.as_url().scheme();
-  let specifier_scheme = specifier.as_url().scheme();
+  let referrer_scheme = referrer.scheme();
+  let specifier_scheme = specifier.scheme();
   if referrer_scheme == "https" && specifier_scheme == "http" {
-    return ResolvedDependency::Err(
-      "Modules imported via https are not allowed to import http modules."
-        .to_string(),
-    );
+    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidDowngrade);
   }
   if (referrer_scheme == "https" || referrer_scheme == "http")
     && !(specifier_scheme == "https" || specifier_scheme == "http")
     && !remapped
   {
-    return ResolvedDependency::Err("Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.".to_string());
+    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidLocalImport);
   }
 
   ResolvedDependency::Resolved(specifier)
@@ -205,8 +285,8 @@ pub fn analyze_dependencies(
       let resolved_import =
         resolve_import(&desc.specifier, specifier, maybe_import_map);
 
-      // Check for `@deno-types` pragmas that effect the import
-      let maybe_resolved_type_import =
+      let maybe_resolved_type_dependency =
+        // Check for `@deno-types` pragmas that affect the import
         if let Some(comment) = desc.leading_comments.last() {
           if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
             Some(resolve_import(deno_types, specifier, maybe_import_map))
@@ -240,8 +320,8 @@ pub fn analyze_dependencies(
           dep.maybe_code = Some(resolved_import);
         }
       }
-      if maybe_resolved_type_import.is_some() && dep.maybe_type.is_none() {
-        dep.maybe_type = maybe_resolved_type_import;
+      if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
+        dep.maybe_type = maybe_resolved_type_dependency;
       }
     }
 
@@ -253,6 +333,8 @@ pub fn analyze_dependencies(
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum CodeLensSource {
+  #[serde(rename = "implementations")]
+  Implementations,
   #[serde(rename = "references")]
   References,
 }
@@ -264,9 +346,311 @@ pub struct CodeLensData {
   pub specifier: ModuleSpecifier,
 }
 
+fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
+  match code {
+    Some(lsp::NumberOrString::String(str)) => str.clone(),
+    Some(lsp::NumberOrString::Number(num)) => num.to_string(),
+    _ => "".to_string(),
+  }
+}
+
+/// Determines if two TypeScript diagnostic codes are effectively equivalent.
+fn is_equivalent_code(
+  a: &Option<lsp::NumberOrString>,
+  b: &Option<lsp::NumberOrString>,
+) -> bool {
+  let a_code = code_as_string(a);
+  let b_code = code_as_string(b);
+  FIX_ALL_ERROR_CODES.get(a_code.as_str())
+    == FIX_ALL_ERROR_CODES.get(b_code.as_str())
+}
+
+/// Return a boolean flag to indicate if the specified action is the preferred
+/// action for a given set of actions.
+fn is_preferred(
+  action: &tsc::CodeFixAction,
+  actions: &[CodeActionKind],
+  fix_priority: u32,
+  only_one: bool,
+) -> bool {
+  actions.iter().all(|i| {
+    if let CodeActionKind::Tsc(_, a) = i {
+      if action == a {
+        return true;
+      }
+      if a.fix_id.is_some() {
+        return true;
+      }
+      if let Some((other_fix_priority, _)) =
+        PREFERRED_FIXES.get(a.fix_name.as_str())
+      {
+        match other_fix_priority.cmp(&fix_priority) {
+          Ordering::Less => return true,
+          Ordering::Greater => return false,
+          Ordering::Equal => (),
+        }
+        if only_one && action.fix_name == a.fix_name {
+          return false;
+        }
+      }
+      true
+    } else {
+      true
+    }
+  })
+}
+
+/// Convert changes returned from a TypeScript quick fix action into edits
+/// for an LSP CodeAction.
+pub(crate) async fn ts_changes_to_edit(
+  changes: &[tsc::FileTextChanges],
+  language_server: &mut language_server::Inner,
+) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
+  let mut text_document_edits = Vec::new();
+  for change in changes {
+    let text_document_edit =
+      change.to_text_document_edit(language_server).await?;
+    text_document_edits.push(text_document_edit);
+  }
+  Ok(Some(lsp::WorkspaceEdit {
+    changes: None,
+    document_changes: Some(lsp::DocumentChanges::Edits(text_document_edits)),
+    change_annotations: None,
+  }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeActionData {
+  pub specifier: ModuleSpecifier,
+  pub fix_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DenoFixData {
+  pub specifier: ModuleSpecifier,
+}
+
+#[derive(Debug, Clone)]
+enum CodeActionKind {
+  Deno(lsp::CodeAction),
+  Tsc(lsp::CodeAction, tsc::CodeFixAction),
+}
+
+#[derive(Debug, Hash, PartialEq, Eq)]
+enum FixAllKind {
+  Tsc(String),
+}
+
+#[derive(Debug, Default)]
+pub struct CodeActionCollection {
+  actions: Vec<CodeActionKind>,
+  fix_all_actions: HashMap<FixAllKind, CodeActionKind>,
+}
+
+impl CodeActionCollection {
+  pub(crate) fn add_deno_fix_action(
+    &mut self,
+    diagnostic: &lsp::Diagnostic,
+  ) -> Result<(), AnyError> {
+    if let Some(data) = diagnostic.data.clone() {
+      let fix_data: DenoFixData = serde_json::from_value(data)?;
+      let title = if matches!(&diagnostic.code, Some(lsp::NumberOrString::String(code)) if code == "no-cache-data")
+      {
+        "Cache the data URL and its dependencies.".to_string()
+      } else {
+        format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
+      };
+      let code_action = lsp::CodeAction {
+        title,
+        kind: Some(lsp::CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        edit: None,
+        command: Some(lsp::Command {
+          title: "".to_string(),
+          command: "deno.cache".to_string(),
+          arguments: Some(vec![json!([fix_data.specifier])]),
+        }),
+        is_preferred: None,
+        disabled: None,
+        data: None,
+      };
+      self.actions.push(CodeActionKind::Deno(code_action));
+    }
+    Ok(())
+  }
+
+  /// Add a TypeScript code fix action to the code actions collection.
+  pub(crate) async fn add_ts_fix_action(
+    &mut self,
+    action: &tsc::CodeFixAction,
+    diagnostic: &lsp::Diagnostic,
+    language_server: &mut language_server::Inner,
+  ) -> Result<(), AnyError> {
+    if action.commands.is_some() {
+      // In theory, tsc can return actions that require "commands" to be applied
+      // back into TypeScript.  Currently there is only one command, `install
+      // package` but Deno doesn't support that.  The problem is that the
+      // `.applyCodeActionCommand()` returns a promise, and with the current way
+      // we wrap tsc, we can't handle the asynchronous response, so it is
+      // actually easier to return errors if we ever encounter one of these,
+      // which we really wouldn't expect from the Deno lsp.
+      return Err(custom_error(
+        "UnsupportedFix",
+        "The action returned from TypeScript is unsupported.",
+      ));
+    }
+    let edit = ts_changes_to_edit(&action.changes, language_server).await?;
+    let code_action = lsp::CodeAction {
+      title: action.description.clone(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      edit,
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+    };
+    self.actions.retain(|i| match i {
+      CodeActionKind::Tsc(c, a) => {
+        !(action.fix_name == a.fix_name && code_action.edit == c.edit)
+      }
+      _ => true,
+    });
+    self
+      .actions
+      .push(CodeActionKind::Tsc(code_action, action.clone()));
+
+    if let Some(fix_id) = &action.fix_id {
+      if let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =
+        self.fix_all_actions.get(&FixAllKind::Tsc(fix_id.clone()))
+      {
+        self.actions.retain(|i| match i {
+          CodeActionKind::Tsc(c, _) => c != existing_fix_all,
+          _ => true,
+        });
+        self.actions.push(CodeActionKind::Tsc(
+          existing_fix_all.clone(),
+          existing_action.clone(),
+        ));
+      }
+    }
+    Ok(())
+  }
+
+  /// Add a TypeScript action to the actions as a "fix all" action, where it
+  /// will fix all occurrences of the diagnostic in the file.
+  pub fn add_ts_fix_all_action(
+    &mut self,
+    action: &tsc::CodeFixAction,
+    specifier: &ModuleSpecifier,
+    diagnostic: &lsp::Diagnostic,
+  ) {
+    let data = Some(json!({
+      "specifier": specifier,
+      "fixId": action.fix_id,
+    }));
+    let title = if let Some(description) = &action.fix_all_description {
+      description.clone()
+    } else {
+      format!("{} (Fix all in file)", action.description)
+    };
+
+    let code_action = lsp::CodeAction {
+      title,
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      edit: None,
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data,
+    };
+    if let Some(CodeActionKind::Tsc(existing, _)) = self
+      .fix_all_actions
+      .get(&FixAllKind::Tsc(action.fix_id.clone().unwrap()))
+    {
+      self.actions.retain(|i| match i {
+        CodeActionKind::Tsc(c, _) => c != existing,
+        _ => true,
+      });
+    }
+    self
+      .actions
+      .push(CodeActionKind::Tsc(code_action.clone(), action.clone()));
+    self.fix_all_actions.insert(
+      FixAllKind::Tsc(action.fix_id.clone().unwrap()),
+      CodeActionKind::Tsc(code_action, action.clone()),
+    );
+  }
+
+  /// Move out the code actions and return them as a `CodeActionResponse`.
+  pub fn get_response(self) -> lsp::CodeActionResponse {
+    self
+      .actions
+      .into_iter()
+      .map(|i| match i {
+        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
+      })
+      .collect()
+  }
+
+  /// Determine if a action can be converted into a "fix all" action.
+  pub fn is_fix_all_action(
+    &self,
+    action: &tsc::CodeFixAction,
+    diagnostic: &lsp::Diagnostic,
+    file_diagnostics: &[lsp::Diagnostic],
+  ) -> bool {
+    // If the action does not have a fix id (indicating it can be "bundled up")
+    // or if the collection already contains a "bundled" action return false
+    if action.fix_id.is_none()
+      || self
+        .fix_all_actions
+        .contains_key(&FixAllKind::Tsc(action.fix_id.clone().unwrap()))
+    {
+      false
+    } else {
+      // else iterate over the diagnostic in the file and see if there are any
+      // other diagnostics that could be bundled together in a "fix all" code
+      // action
+      file_diagnostics.iter().any(|d| {
+        if d == diagnostic || d.code.is_none() || diagnostic.code.is_none() {
+          false
+        } else {
+          d.code == diagnostic.code
+            || is_equivalent_code(&d.code, &diagnostic.code)
+        }
+      })
+    }
+  }
+
+  /// Set the `.is_preferred` flag on code actions, this should be only executed
+  /// when all actions are added to the collection.
+  pub fn set_preferred_fixes(&mut self) {
+    let actions = self.actions.clone();
+    for entry in self.actions.iter_mut() {
+      if let CodeActionKind::Tsc(code_action, action) = entry {
+        if action.fix_id.is_some() {
+          continue;
+        }
+        if let Some((fix_priority, only_one)) =
+          PREFERRED_FIXES.get(action.fix_name.as_str())
+        {
+          code_action.is_preferred =
+            Some(is_preferred(action, &actions, *fix_priority, *only_one));
+        }
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url;
 
   #[test]
   fn test_as_lsp_range() {
@@ -300,8 +684,7 @@ mod tests {
 
   #[test]
   fn test_analyze_dependencies() {
-    let specifier =
-      ModuleSpecifier::resolve_url("file:///a.ts").expect("bad specifier");
+    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = r#"import {
       Application,
       Context,
@@ -323,14 +706,10 @@ mod tests {
       Some(Dependency {
         is_dynamic: false,
         maybe_code: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url("https://cdn.skypack.dev/react")
-            .unwrap()
+          resolve_url("https://cdn.skypack.dev/react").unwrap()
         )),
         maybe_type: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url(
-            "https://deno.land/x/types/react/index.d.ts"
-          )
-          .unwrap()
+          resolve_url("https://deno.land/x/types/react/index.d.ts").unwrap()
         )),
         maybe_code_specifier_range: Some(Range {
           start: Position {
@@ -349,8 +728,7 @@ mod tests {
       Some(Dependency {
         is_dynamic: false,
         maybe_code: Some(ResolvedDependency::Resolved(
-          ModuleSpecifier::resolve_url("https://deno.land/x/oak@v6.3.2/mod.ts")
-            .unwrap()
+          resolve_url("https://deno.land/x/oak@v6.3.2/mod.ts").unwrap()
         )),
         maybe_type: None,
         maybe_code_specifier_range: Some(Range {

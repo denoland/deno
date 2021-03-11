@@ -15,10 +15,13 @@ pub struct ClientCapabilities {
   pub workspace_did_change_watched_files: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
-  /// Flag for providing reference code lens.
+  /// Flag for providing implementation code lenses.
+  #[serde(default)]
+  pub implementations: bool,
+  /// Flag for providing reference code lenses.
   #[serde(default)]
   pub references: bool,
   /// Flag for providing reference code lens on all functions.  For this to have
@@ -27,7 +30,7 @@ pub struct CodeLensSettings {
   pub references_all_functions: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   pub enable: bool,
@@ -47,7 +50,15 @@ impl WorkspaceSettings {
   pub fn enabled_code_lens(&self) -> bool {
     if let Some(code_lens) = &self.code_lens {
       // This should contain all the "top level" code lens references
-      code_lens.references
+      code_lens.implementations || code_lens.references
+    } else {
+      false
+    }
+  }
+
+  pub fn enabled_code_lens_implementations(&self) -> bool {
+    if let Some(code_lens) = &self.code_lens {
+      code_lens.implementations
     } else {
       false
     }
@@ -70,7 +81,7 @@ impl WorkspaceSettings {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,

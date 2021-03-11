@@ -6,6 +6,9 @@
 ///! client.
 ///!
 use lspower::lsp::ClientCapabilities;
+use lspower::lsp::CodeActionKind;
+use lspower::lsp::CodeActionOptions;
+use lspower::lsp::CodeActionProviderCapability;
 use lspower::lsp::CodeLensOptions;
 use lspower::lsp::CompletionOptions;
 use lspower::lsp::HoverProviderCapability;
@@ -13,14 +16,33 @@ use lspower::lsp::ImplementationProviderCapability;
 use lspower::lsp::OneOf;
 use lspower::lsp::SaveOptions;
 use lspower::lsp::ServerCapabilities;
+use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
 use lspower::lsp::WorkDoneProgressOptions;
 
+fn code_action_capabilities(
+  client_capabilities: &ClientCapabilities,
+) -> CodeActionProviderCapability {
+  client_capabilities
+    .text_document
+    .as_ref()
+    .and_then(|it| it.code_action.as_ref())
+    .and_then(|it| it.code_action_literal_support.as_ref())
+    .map_or(CodeActionProviderCapability::Simple(true), |_| {
+      CodeActionProviderCapability::Options(CodeActionOptions {
+        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+        resolve_provider: Some(true),
+        work_done_progress_options: Default::default(),
+      })
+    })
+}
+
 pub fn server_capabilities(
-  _client_capabilities: &ClientCapabilities,
+  client_capabilities: &ClientCapabilities,
 ) -> ServerCapabilities {
+  let code_action_provider = code_action_capabilities(client_capabilities);
   ServerCapabilities {
     text_document_sync: Some(TextDocumentSyncCapability::Options(
       TextDocumentSyncOptions {
@@ -33,6 +55,7 @@ pub fn server_capabilities(
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: Some(CompletionOptions {
+      all_commit_characters: None,
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
@@ -48,7 +71,17 @@ pub fn server_capabilities(
         work_done_progress: None,
       },
     }),
-    signature_help_provider: None,
+    signature_help_provider: Some(SignatureHelpOptions {
+      trigger_characters: Some(vec![
+        ",".to_string(),
+        "(".to_string(),
+        "<".to_string(),
+      ]),
+      retrigger_characters: None,
+      work_done_progress_options: WorkDoneProgressOptions {
+        work_done_progress: None,
+      },
+    }),
     declaration_provider: None,
     definition_provider: Some(OneOf::Left(true)),
     type_definition_provider: None,
@@ -59,7 +92,7 @@ pub fn server_capabilities(
     document_highlight_provider: Some(OneOf::Left(true)),
     document_symbol_provider: None,
     workspace_symbol_provider: None,
-    code_action_provider: None,
+    code_action_provider: Some(code_action_provider),
     code_lens_provider: Some(CodeLensOptions {
       resolve_provider: Some(true),
     }),

@@ -572,7 +572,7 @@ fn op_create_worker(
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
   state.put::<WorkerId>(worker_id + 1);
 
-  let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
+  let module_specifier = deno_core::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
   let (handle_sender, handle_receiver) =

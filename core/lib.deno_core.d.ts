@@ -7,17 +7,17 @@
 
 declare namespace Deno {
   declare namespace core {
-    /** Send a JSON op to Rust, and synchronously recieve the result. */
+    /** Send a JSON op to Rust, and synchronously receive the result. */
     function jsonOpSync(
       opName: string,
-      args: any,
+      args?: any,
       ...zeroCopy: Uint8Array[]
     ): any;
 
-    /** Send a JSON op to Rust, and asynchronously recieve the result. */
+    /** Send a JSON op to Rust, and asynchronously receive the result. */
     function jsonOpAsync(
       opName: string,
-      args: any,
+      args?: any,
       ...zeroCopy: Uint8Array[]
     ): Promise<any>;
 

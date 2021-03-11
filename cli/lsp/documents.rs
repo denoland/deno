@@ -2,10 +2,6 @@
 
 use super::analysis;
 use super::text::LineIndex;
-use super::tsc::NavigationTree;
-
-use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
 
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -34,7 +30,6 @@ impl IndexValid {
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   line_index: Option<LineIndex>,
-  navigation_tree: Option<NavigationTree>,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
 }
@@ -74,14 +69,14 @@ impl DocumentData {
     } else {
       Some(LineIndex::new(&content))
     };
-    self.navigation_tree = None;
     Ok(())
   }
 
   pub fn content(&self) -> Result<Option<String>, AnyError> {
-    if let Some(bytes) = self.bytes.clone() {
+    if let Some(bytes) = &self.bytes {
       Ok(Some(
-        String::from_utf8(bytes).context("cannot decode bytes to string")?,
+        String::from_utf8(bytes.clone())
+          .context("cannot decode bytes to string")?,
       ))
     } else {
       Ok(None)
@@ -95,47 +90,13 @@ pub struct DocumentCache {
 }
 
 impl DocumentCache {
-  pub fn analyze_dependencies(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    maybe_import_map: &Option<ImportMap>,
-  ) -> Result<(), AnyError> {
-    if !self.contains(specifier) {
-      return Err(custom_error(
-        "NotFound",
-        format!(
-          "The specifier (\"{}\") does not exist in the document cache.",
-          specifier
-        ),
-      ));
-    }
-
-    let doc = self.docs.get_mut(specifier).unwrap();
-    if let Some(source) = &doc.content()? {
-      if let Some((dependencies, _)) = analysis::analyze_dependencies(
-        specifier,
-        source,
-        &MediaType::from(specifier),
-        maybe_import_map,
-      ) {
-        doc.dependencies = Some(dependencies);
-      } else {
-        doc.dependencies = None;
-      }
-    } else {
-      doc.dependencies = None;
-    }
-
-    Ok(())
-  }
-
   pub fn change(
     &mut self,
     specifier: &ModuleSpecifier,
     version: i32,
     content_changes: Vec<TextDocumentContentChangeEvent>,
-  ) -> Result<(), AnyError> {
-    if !self.contains(specifier) {
+  ) -> Result<Option<String>, AnyError> {
+    if !self.contains_key(specifier) {
       return Err(custom_error(
         "NotFound",
         format!(
@@ -148,7 +109,7 @@ impl DocumentCache {
     let doc = self.docs.get_mut(specifier).unwrap();
     doc.apply_content_changes(content_changes)?;
     doc.version = Some(version);
-    Ok(())
+    doc.content()
   }
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
@@ -158,7 +119,7 @@ impl DocumentCache {
     }
   }
 
-  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
     self.docs.contains_key(specifier)
   }
 
@@ -190,20 +151,7 @@ impl DocumentCache {
     doc.line_index.clone()
   }
 
-  pub fn navigation_tree(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<NavigationTree> {
-    let doc = self.docs.get(specifier)?;
-    doc.navigation_tree.clone()
-  }
-
-  pub fn open(
-    &mut self,
-    specifier: ModuleSpecifier,
-    version: i32,
-    text: String,
-  ) {
+  pub fn open(&mut self, specifier: ModuleSpecifier, version: i32, text: &str) {
     self.docs.insert(
       specifier,
       DocumentData {
@@ -229,18 +177,21 @@ impl DocumentCache {
       .collect()
   }
 
-  pub fn set_navigation_tree(
+  pub fn set_dependencies(
     &mut self,
     specifier: &ModuleSpecifier,
-    navigation_tree: NavigationTree,
+    maybe_dependencies: Option<HashMap<String, analysis::Dependency>>,
   ) -> Result<(), AnyError> {
-    if let Some(mut doc) = self.docs.get_mut(specifier) {
-      doc.navigation_tree = Some(navigation_tree);
+    if let Some(doc) = self.docs.get_mut(specifier) {
+      doc.dependencies = maybe_dependencies;
       Ok(())
     } else {
       Err(custom_error(
         "NotFound",
-        "The document \"{}\" was unexpectedly missing.",
+        format!(
+          "The specifier (\"{}\") does not exist in the document cache.",
+          specifier
+        ),
       ))
     }
   }
@@ -253,32 +204,24 @@ impl DocumentCache {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url;
   use lspower::lsp;
 
   #[test]
   fn test_document_cache_contains() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
-    let missing_specifier =
-      ModuleSpecifier::resolve_url("file:///a/c.ts").unwrap();
-    document_cache.open(
-      specifier.clone(),
-      1,
-      "console.log(\"Hello Deno\");\n".to_owned(),
-    );
-    assert!(document_cache.contains(&specifier));
-    assert!(!document_cache.contains(&missing_specifier));
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
+    let missing_specifier = resolve_url("file:///a/c.ts").unwrap();
+    document_cache.open(specifier.clone(), 1, "console.log(\"Hello Deno\");\n");
+    assert!(document_cache.contains_key(&specifier));
+    assert!(!document_cache.contains_key(&missing_specifier));
   }
 
   #[test]
   fn test_document_cache_change() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
-    document_cache.open(
-      specifier.clone(),
-      1,
-      "console.log(\"Hello deno\");\n".to_owned(),
-    );
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
+    document_cache.open(specifier.clone(), 1, "console.log(\"Hello deno\");\n");
     document_cache
       .change(
         &specifier,
@@ -308,12 +251,8 @@ mod tests {
   #[test]
   fn test_document_cache_change_utf16() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
-    document_cache.open(
-      specifier.clone(),
-      1,
-      "console.log(\"Hello 🦕\");\n".to_owned(),
-    );
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
+    document_cache.open(specifier.clone(), 1, "console.log(\"Hello 🦕\");\n");
     document_cache
       .change(
         &specifier,
