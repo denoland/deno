@@ -38,5 +38,5 @@ interface Storage {
 
 declare var Storage: {
   prototype: Storage;
-  new(): Storage;
+  new (): Storage;
 };
