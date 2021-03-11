@@ -139,7 +139,7 @@
     );
   }
 
-  window.__bootstrap.dispatchMinimal = {
+  window.__bootstrap.dispatchBuffer = {
     bufferOpSync,
     bufferOpAsync,
   };

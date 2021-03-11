@@ -4,7 +4,7 @@
 ((window) => {
   const assert = window.__bootstrap.util.assert;
   const core = window.Deno.core;
-  const { bufferOpSync } = window.__bootstrap.dispatchMinimal;
+  const { bufferOpSync } = window.__bootstrap.dispatchBuffer;
 
   function opStopGlobalTimer() {
     core.jsonOpSync("op_global_timer_stop");

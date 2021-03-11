@@ -11,7 +11,6 @@ delete Object.prototype.__proto__;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
-  const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;

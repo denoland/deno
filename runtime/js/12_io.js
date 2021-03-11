@@ -7,7 +7,7 @@
 
 ((window) => {
   const DEFAULT_BUFFER_SIZE = 32 * 1024;
-  const { bufferOpSync, bufferOpAsync } = window.__bootstrap.dispatchMinimal;
+  const { bufferOpSync, bufferOpAsync } = window.__bootstrap.dispatchBuffer;
   // Seek whence values.
   // https://golang.org/pkg/io/#pkg-constants
   const SeekMode = {
