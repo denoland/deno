@@ -2,7 +2,6 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::JsRuntime;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -30,9 +29,7 @@ pub fn init(isolate: &mut JsRuntime) {
 }
 
 
-struct WebStorageConnectionResource {
-  connection: Connection,
-}
+struct WebStorageConnectionResource(Connection);
 
 impl Resource for WebStorageConnectionResource {
   fn name(&self) -> Cow<str> {
@@ -42,30 +39,16 @@ impl Resource for WebStorageConnectionResource {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OpenArgs {
-  session: bool,
+pub struct OpenArgs {
+  persistent: bool,
 }
 
-pub fn op_localstorage_open(
+pub fn op_webstorage_open(
   state: &mut OpState,
-  args: Value,
+  args: OpenArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: OpenArgs = serde_json::from_value(args)?;
-
-  if args.session {
-    let connection = Connection::open_in_memory().unwrap();
-    connection
-      .execute(
-        "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
-        params![],
-      )
-      .unwrap();
-    let rid = state
-      .resource_table
-      .add(WebStorageConnectionResource { connection });
-    Ok(json!({ "rid": rid }))
-  } else {
+  if args.persistent {
     let path = &state.borrow::<LocationDataDir>().0.clone().unwrap();
     std::fs::create_dir_all(&path).unwrap();
 
@@ -80,30 +63,40 @@ pub fn op_localstorage_open(
 
     let rid = state
       .resource_table
-      .add(WebStorageConnectionResource { connection });
+      .add(WebStorageConnectionResource(connection));
+    Ok(json!({ "rid": rid }))
+  } else {
+    let connection = Connection::open_in_memory().unwrap();
+    connection
+      .execute(
+        "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
+        params![],
+      )
+      .unwrap();
+    let rid = state
+      .resource_table
+      .add(WebStorageConnectionResource(connection));
     Ok(json!({ "rid": rid }))
   }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LengthArgs {
+pub struct LengthArgs {
   rid: u32,
 }
 
-pub fn op_localstorage_length(
+pub fn op_webstorage_length(
   state: &mut OpState,
-  args: Value,
+  args: LengthArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: LengthArgs = serde_json::from_value(args)?;
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource
-    .connection
+  let mut stmt = resource.0
     .prepare("SELECT COUNT(*) FROM data")
     .unwrap();
 
@@ -114,24 +107,22 @@ pub fn op_localstorage_length(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct KeyArgs {
+pub struct KeyArgs {
   rid: u32,
   index: u32,
 }
 
-pub fn op_localstorage_key(
+pub fn op_webstorage_key(
   state: &mut OpState,
-  args: Value,
+  args: KeyArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: KeyArgs = serde_json::from_value(args)?;
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource
-    .connection
+  let mut stmt = resource.0
     .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")
     .unwrap();
 
@@ -150,25 +141,23 @@ pub fn op_localstorage_key(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SetArgs {
+pub struct SetArgs {
   rid: u32,
   key_name: String,
   key_value: String,
 }
 
-pub fn op_localstorage_set(
+pub fn op_webstorage_set(
   state: &mut OpState,
-  args: Value,
+  args: SetArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: SetArgs = serde_json::from_value(args)?;
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource
-    .connection
+  resource.0
     .execute(
       "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
       params![args.key_name, args.key_value],
@@ -180,24 +169,22 @@ pub fn op_localstorage_set(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GetArgs {
+pub struct GetArgs {
   rid: u32,
   key_name: String,
 }
 
-pub fn op_localstorage_get(
+pub fn op_webstorage_get(
   state: &mut OpState,
-  args: Value,
+  args: GetArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: GetArgs = serde_json::from_value(args)?;
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource
-    .connection
+  let mut stmt = resource.0
     .prepare("SELECT value FROM data WHERE key = ?")
     .unwrap();
 
@@ -211,24 +198,22 @@ pub fn op_localstorage_get(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RemoveArgs {
+pub struct RemoveArgs {
   rid: u32,
   key_name: String,
 }
 
-pub fn op_localstorage_remove(
+pub fn op_webstorage_remove(
   state: &mut OpState,
-  args: Value,
+  args: RemoveArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RemoveArgs = serde_json::from_value(args)?;
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource
-    .connection
+  resource.0
     .execute("DELETE FROM data WHERE key = ?", params![args.key_name])
     .unwrap();
 
@@ -237,27 +222,24 @@ pub fn op_localstorage_remove(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ClearArgs {
+pub struct ClearArgs {
   rid: u32,
 }
 
-pub fn op_localstorage_clear(
+pub fn op_webstorage_clear(
   state: &mut OpState,
-  args: Value,
+  args: ClearArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ClearArgs = serde_json::from_value(args)?;
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource
-    .connection
+  resource.0
     .execute("DROP TABLE data", params![])
     .unwrap();
-  resource
-    .connection
+  resource.0
     .execute(
       "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
       params![],

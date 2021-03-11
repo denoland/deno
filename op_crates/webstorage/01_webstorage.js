@@ -2,53 +2,18 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
+  const _rid = Symbol("[[rid]]");
+
   class Storage {
-    constructor(session = false) {
-      this.#session = session;
+    [_rid];
 
-      return new Proxy(this, {
-        deleteProperty(target, prop) {
-          target.removeItem(prop);
-        },
-
-        get(target, p) {
-          if (p in target) {
-            return Reflect.get(...arguments);
-          } else {
-            return target.getItem(p);
-          }
-        },
-
-        set(target, p, value) {
-          if (p in target) {
-            return false;
-          } else {
-            target.setItem(p, value);
-
-            return true;
-          }
-        },
-      });
-    }
-
-    #rid;
-    #session;
-
-    #getRid() {
-      if (!this.#session) window.location;
-
-      if (!this.#rid) {
-        const data = core.jsonOpSync("op_localstorage_open", {
-          session: this.#session,
-        });
-        this.#rid = data.rid;
-      }
-      return this.#rid;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     get length() {
-      return core.jsonOpSync("op_localstorage_length", {
-        rid: this.#getRid(),
+      return core.jsonOpSync("op_webstorage_length", {
+        rid: this[_rid],
       });
     }
 
@@ -60,8 +25,8 @@
         context: "Argument 1",
       });
 
-      return core.jsonOpSync("op_localstorage_key", {
-        rid: this.#getRid(),
+      return core.jsonOpSync("op_webstorage_key", {
+        rid: this[_rid],
         index,
       });
     }
@@ -78,8 +43,8 @@
         context: "Argument 2",
       });
 
-      core.jsonOpSync("op_localstorage_set", {
-        rid: this.#getRid(),
+      core.jsonOpSync("op_webstorage_set", {
+        rid: this[_rid],
         keyName: key,
         keyValue: value,
       });
@@ -93,8 +58,8 @@
         context: "Argument 1",
       });
 
-      return core.jsonOpSync("op_localstorage_get", {
-        rid: this.#getRid(),
+      return core.jsonOpSync("op_webstorage_get", {
+        rid: this[_rid],
         keyName: key,
       });
     }
@@ -107,22 +72,65 @@
         context: "Argument 1",
       });
 
-      core.jsonOpSync("op_localstorage_remove", {
-        rid: this.#getRid(),
+      core.jsonOpSync("op_webstorage_remove", {
+        rid: this[_rid],
         keyName: key,
       });
     }
 
     clear() {
-      core.jsonOpSync("op_localstorage_clear", {
-        rid: this.#getRid(),
+      core.jsonOpSync("op_webstorage_clear", {
+        rid: this[_rid],
       });
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          length: this.length,
+        })
+      }`;
     }
   }
 
+  function createStorage(persistent) {
+    if (persistent) window.location;
+
+    const data = core.jsonOpSync("op_webstorage_open", {
+      persistent,
+    });
+
+    const storage = webidl.createBranded(Storage);
+    storage[_rid] = data.rid;
+
+    return new Proxy(storage, {
+      deleteProperty(target, prop) {
+        target.removeItem(prop);
+      },
+
+      get(target, p) {
+        if (p in target) {
+          return Reflect.get(...arguments);
+        } else {
+          return target.getItem(p);
+        }
+      },
+
+      set(target, p, value) {
+        if (p in target) {
+          return false;
+        } else {
+          target.setItem(p, value);
+
+          return true;
+        }
+      },
+    });
+  }
+
   window.__bootstrap.webStorage = {
-    localStorage: new Storage(false),
-    sessionStorage: new Storage(true),
+    localStorage: () => createStorage(true),
+    sessionStorage: () => createStorage(false),
     Storage,
   };
 })(this);

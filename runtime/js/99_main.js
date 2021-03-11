@@ -362,8 +362,16 @@ delete Object.prototype.__proto__;
     alert: util.writable(prompt.alert),
     confirm: util.writable(prompt.confirm),
     prompt: util.writable(prompt.prompt),
-    localStorage: util.nonEnumerable(webStorage.localStorage),
-    sessionStorage: util.nonEnumerable(webStorage.sessionStorage),
+    localStorage: {
+      configurable: true,
+      enumerable: false,
+      get: webStorage.localStorage,
+    },
+    sessionStorage: {
+      configurable: true,
+      enumerable: false,
+      get: webStorage.sessionStorage,
+    },
     Storage: util.nonEnumerable(webStorage.Storage),
   };
 
