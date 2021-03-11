@@ -34,7 +34,7 @@ declare global {
 }
 
 unitTest(function bufferOpsHeaderTooShort(): void {
-  for (let op in ["op_read_sync", "op_read_async"]) {
+  for (const op of ["op_read_sync", "op_read_async"]) {
     const readOpId = Deno.core.ops()[op];
     const res = Deno.core.send(
       readOpId,
