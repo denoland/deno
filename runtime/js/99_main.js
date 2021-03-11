@@ -142,12 +142,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    const opsMap = core.ops();
-    for (const [name, opId] of Object.entries(opsMap)) {
-      if (name === "op_write" || name === "op_read") {
-        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
-      }
-    }
+    core.ops();
 
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
