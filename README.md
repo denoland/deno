@@ -92,4 +92,4 @@ To contribute, please read our
 [Twitter badge]: https://twitter.com/intent/follow?screen_name=deno_land
 [Twitter handle]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
 [Discord badge]: https://img.shields.io/discord/442252698964721669?label=Discord&style=social
-[Discord server]: https://discord.gg/GSSz635q7F
+[Discord server]: https://discord.gg/deno
