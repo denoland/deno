@@ -8,6 +8,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
+use deno_runtime::deno_console;
 use deno_runtime::deno_crypto;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_url;
@@ -62,6 +63,7 @@ fn create_compiler_snapshot(
 ) {
   // libs that are being provided by op crates.
   let mut op_crate_libs = HashMap::new();
+  op_crate_libs.insert("deno.console", deno_console::get_declaration());
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
@@ -256,6 +258,10 @@ fn main() {
 
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
+  println!(
+    "cargo:rustc-env=DENO_CONSOLE_LIB_PATH={}",
+    deno_console::get_declaration().display()
+  );
   println!(
     "cargo:rustc-env=DENO_URL_LIB_PATH={}",
     deno_url::get_declaration().display()
