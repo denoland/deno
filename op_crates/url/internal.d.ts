@@ -5,12 +5,9 @@
 
 declare namespace globalThis {
   declare namespace __bootstrap {
-    declare var eventTarget: {
-      EventTarget: typeof EventTarget;
-    };
-
-    declare var location: {
-      getLocationHref(): string | undefined;
+    declare var url: {
+      URL: typeof URL;
+      URLSearchParams: typeof URLSearchParams;
     };
   }
 }

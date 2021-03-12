@@ -15,7 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.80.2", path = "../../core" }
-serde = { version = "1.0.123", features = ["derive"] }
 
 [dev-dependencies]
 futures = "0.3.12"

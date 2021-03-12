@@ -1,1 +1,5 @@
-This crate provides the web standard fetch API to `deno_core`.
+# deno_fetch
+
+This crate implements the Fetch API.
+
+Spec: https://fetch.spec.whatwg.org/
