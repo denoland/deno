@@ -13,7 +13,6 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-align-data = "0.1"
 anyhow = "1.0.38"
 futures = "0.3.12"
 indexmap = "1.6.1"
