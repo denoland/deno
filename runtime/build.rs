@@ -14,6 +14,7 @@ fn create_snapshot(
   files: Vec<PathBuf>,
 ) {
   deno_webidl::init(&mut js_runtime);
+  deno_console::init(&mut js_runtime);
   deno_url::init(&mut js_runtime);
   deno_web::init(&mut js_runtime);
   deno_fetch::init(&mut js_runtime);

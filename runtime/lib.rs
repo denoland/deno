@@ -7,6 +7,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_url;
