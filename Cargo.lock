@@ -561,7 +561,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.80.2"
+version = "0.81.0"
 dependencies = [
  "align-data",
  "anyhow",
@@ -581,7 +581,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.22.3"
+version = "0.23.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -689,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.30.3"
+version = "0.31.0"
 dependencies = [
  "deno_core",
  "futures",
@@ -697,7 +697,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.5.3"
+version = "0.6.0"
 dependencies = [
  "deno_core",
  "http",
