@@ -22,6 +22,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::Mutex;
+#[cfg(not(test))]
+use std::time;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
@@ -645,25 +647,39 @@ fn permission_prompt(message: &str) -> bool {
     "️{}  {}. Grant? [g/d (g = grant, d = deny)] ",
     PERMISSION_EMOJI, message
   );
-  // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", colors::bold(&msg));
   loop {
     let mut input = String::new();
     let stdin = io::stdin();
+    let start = time::Instant::now();
     let result = stdin.read_line(&mut input);
+    if start.elapsed() < time::Duration::from_millis(150) {
+      // there were buffered lines so let just drop them
+      continue;
+    }
     if result.is_err() {
       return false;
     };
-    let ch = input.chars().next().unwrap();
-    match ch.to_ascii_lowercase() {
-      'g' => return true,
-      'd' => return false,
-      _ => {
+    input.pop();
+    if input.chars().count() > 1 {
+      let msg_again = format!(
+        "Unrecognized option '{}' [g/d (g = grant, d = deny)] ",
+        input
+      );
+      eprint!("{}", colors::bold(&msg_again));
+      continue;
+    }
+    let ch = input.pop();
+    match ch.map(|c| c.to_ascii_lowercase()) {
+      Some('g') => return true,
+      Some('d') => return false,
+      Some(ch) => {
         // If we don't get a recognized option try again.
         let msg_again =
           format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
         eprint!("{}", colors::bold(&msg_again));
       }
+      _ => (),
     };
   }
 }
