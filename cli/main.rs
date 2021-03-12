@@ -1188,12 +1188,10 @@ pub fn main() {
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
-      if err.kind == clap::ErrorKind::HelpDisplayed
-        || err.kind == clap::ErrorKind::VersionDisplayed =>
+      if err.kind == clap::ErrorKind::DisplayHelp
+        || err.kind == clap::ErrorKind::DisplayVersion =>
     {
-      err.write_to(&mut std::io::stdout()).unwrap();
-      std::io::stdout().write_all(b"\n").unwrap();
-      std::process::exit(0);
+      err.exit();
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
   };
