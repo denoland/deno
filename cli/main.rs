@@ -496,8 +496,10 @@ async fn eval_command(
       MediaType::TypeScript
     } else if ext.as_str() == "tsx" {
       MediaType::TSX
-    } else {
+    } else if ext.as_str() == "jsx" || ext.as_str() == "js" {
       MediaType::JSX
+    } else {
+      MediaType::Unknown
     },
     source: String::from_utf8(source_code)?,
     specifier: main_module.clone(),
