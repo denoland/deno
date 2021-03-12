@@ -184,6 +184,22 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
   return_features
 }
 
+pub fn op_webgpu_create_instance(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  check_unstable(&state, "navigator.gpu.requestAdapter");
+
+  state.put(wgpu_core::hub::Global::new(
+    "webgpu",
+    wgpu_core::hub::IdentityManagerFactory,
+    wgpu_types::BackendBit::PRIMARY,
+  ));
+
+  Ok(json!({}))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestAdapterArgs {
@@ -196,7 +212,6 @@ pub async fn op_webgpu_request_adapter(
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
-  check_unstable(&state, "navigator.gpu.requestAdapter");
   let instance = state.borrow::<Instance>();
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
