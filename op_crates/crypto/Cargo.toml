@@ -4,7 +4,7 @@
 name = "deno_crypto"
 version = "0.14.1"
 edition = "2018"
-description = "Collection of WebCrypto APIs"
+description = "Web Cryptography API implementation for Deno"
 authors = ["the Deno authors"]
 license = "MIT"
 readme = "README.md"

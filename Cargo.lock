@@ -635,8 +635,10 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_url",
  "deno_web",
  "deno_webgpu",
+ "deno_webidl",
  "deno_websocket",
  "deno_webstorage",
  "dlopen",
@@ -670,12 +672,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_url"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "idna",
+ "serde",
+]
+
+[[package]]
 name = "deno_web"
 version = "0.30.3"
 dependencies = [
  "deno_core",
  "futures",
- "serde",
 ]
 
 [[package]]
@@ -687,6 +697,13 @@ dependencies = [
  "tokio",
  "wgpu-core",
  "wgpu-types",
+]
+
+[[package]]
+name = "deno_webidl"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
 ]
 
 [[package]]

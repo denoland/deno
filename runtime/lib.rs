@@ -9,8 +9,10 @@ extern crate log;
 
 pub use deno_crypto;
 pub use deno_fetch;
+pub use deno_url;
 pub use deno_web;
 pub use deno_webgpu;
+pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
 
