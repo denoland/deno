@@ -551,6 +551,7 @@ name = "deno_console"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "serde",
 ]
 
 [[package]]
