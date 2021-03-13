@@ -535,14 +535,8 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = Some(vec![]);
   flags.allow_plugin = true;
   flags.allow_hrtime = true;
-  // TODO(@satyarohith): remove this flag in 2.0.
-  let as_typescript = matches.is_present("ts");
-  let ext = if as_typescript {
-    "ts".to_string()
-  } else {
-    matches.value_of("ext").unwrap().to_string()
-  };
 
+  let ext = matches.value_of("ext").unwrap().to_string();
   let print = matches.is_present("print");
   let mut code: Vec<String> = matches
     .values_of("code_arg")
@@ -1026,16 +1020,6 @@ To evaluate as TypeScript:
   deno eval --ext=ts \"const v: string = 'hello'; console.log(v)\"
 
 This command has implicit access to all permissions (--allow-all).",
-    )
-    .arg(
-      // TODO(@satyarohith): remove this argument in 2.0.
-      Arg::with_name("ts")
-        .long("ts")
-        .short("T")
-        .help("Treat eval input as TypeScript")
-        .takes_value(false)
-        .multiple(false)
-        .hidden(true),
     )
     .arg(
       Arg::with_name("ext")
@@ -2439,7 +2423,7 @@ mod tests {
   #[test]
   fn eval_typescript() {
     let r =
-      flags_from_vec(svec!["deno", "eval", "-T", "'console.log(\"hello\")'"]);
+      flags_from_vec(svec!["deno", "eval", "--ext=ts", "'console.log(\"hello\")'"]);
     assert_eq!(
       r.unwrap(),
       Flags {
