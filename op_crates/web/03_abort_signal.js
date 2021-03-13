@@ -50,6 +50,12 @@
     get [Symbol.toStringTag]() {
       return "AbortSignal";
     }
+
+    static abort() {
+      const as = new AbortSignal(illegalConstructorKey);
+      as[signalAbort]();
+      return as;
+    }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
   class AbortController {

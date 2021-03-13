@@ -54,3 +54,8 @@ unitTest(function controllerHasProperToString() {
   const actual = Object.prototype.toString.call(new AbortController());
   assertEquals(actual, "[object AbortController]");
 });
+
+unitTest(function signalHasMethodAbort() {
+  const aborted = AbortSignal.abort();
+  assertEquals(abort.aborted, true);
+});
