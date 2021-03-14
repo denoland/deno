@@ -314,6 +314,7 @@ impl Inner {
       "noEmit": true,
       "strict": true,
       "target": "esnext",
+      "useDefineForClassFields": true,
     }));
     let (maybe_config, maybe_root_uri) = {
       let config = &self.config;
