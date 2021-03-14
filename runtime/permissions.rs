@@ -641,6 +641,12 @@ fn permission_prompt(message: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
+  #[cfg(unix)]
+  unsafe {
+    if -1 == libc::tcflush(libc::STDIN_FILENO, libc::TCIFLUSH) {
+      return false;
+    }
+  }
   let msg = format!(
     "️{}  {}. Grant? [g/d (g = grant, d = deny)] ",
     PERMISSION_EMOJI, message
