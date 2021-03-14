@@ -2,6 +2,12 @@
 
 import { assert } from "../../../test_util/std/testing/asserts.ts";
 
+setTimeout(function () {
+  // This timeout isn't expected to be actually called and is just here keep
+  // the event loop alive and ensure that the test runner closes once all tests
+  // have run even if there are pending promises.
+}, 3600 * 1000);
+
 Deno.test("fail1", function () {
   assert(false, "fail1 assertion");
 });

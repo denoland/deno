@@ -89,6 +89,8 @@ pub fn render_test_file(
     options
   ));
 
+  test_file.push_str("close();\n");
+
   test_file
 }
 
