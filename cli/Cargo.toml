@@ -74,7 +74,7 @@ swc_ecmascript = { version = "0.24.1", features = ["codegen", "dep_graph", "pars
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"
-tokio = { version = "1.2.0", features = ["full"] }
+tokio = { version = "1.3.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 walkdir = "2.3.1"
