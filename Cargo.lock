@@ -515,7 +515,7 @@ dependencies = [
  "libc",
  "log",
  "lspower",
- "nix",
+ "nix 0.19.1",
  "notify",
  "os_pipe",
  "percent-encoding",
@@ -651,7 +651,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "nix",
+ "nix 0.19.1",
  "notify",
  "percent-encoding",
  "regex",
@@ -1920,6 +1920,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa9b4819da1bc61c0ea48b63b7bc8604064dd43013e7cc325df098d49cd7c18a"
+dependencies = [
+ "bitflags",
+ "cc",
+ "cfg-if 1.0.0",
+ "libc",
+]
+
+[[package]]
 name = "notify"
 version = "5.0.0-pre.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2592,9 +2604,9 @@ dependencies = [
 
 [[package]]
 name = "rustyline"
-version = "7.1.0"
+version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8227301bfc717136f0ecbd3d064ba8199e44497a0bdd46bb01ede4387cfd2cec"
+checksum = "b9e1b597fcd1eeb1d6b25b493538e5aa19629eb08932184b85fef931ba87e893"
 dependencies = [
  "bitflags",
  "cfg-if 1.0.0",
@@ -2602,8 +2614,10 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix",
+ "nix 0.20.0",
+ "radix_trie",
  "scopeguard",
+ "smallvec",
  "unicode-segmentation",
  "unicode-width",
  "utf8parse",
