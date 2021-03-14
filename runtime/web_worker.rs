@@ -239,6 +239,7 @@ impl WebWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       );
+      ops::crypto::init(js_runtime, options.seed);
 
       if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
@@ -248,7 +249,6 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::crypto::init(js_runtime, options.seed);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
