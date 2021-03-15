@@ -83,13 +83,11 @@ walkdir = "2.3.1"
 fwdansi = "1.1.0"
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
-[target.'cfg(unix)'.dependencies]
-nix = "0.19.1"
-
 [dev-dependencies]
 # Used in benchmark
 chrono = "0.4.19"
 os_pipe = "0.9.2"
+
 test_util = { path = "../test_util" }
 tower-test = "0.4.0"
 trust-dns-server = "0.20.0"
@@ -97,6 +95,7 @@ trust-dns-client = "0.20.0"
 
 [target.'cfg(unix)'.dev-dependencies]
 exec = "0.3.1" # Used in test_raw_tty
+nix = "0.20.0"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

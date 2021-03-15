@@ -515,7 +515,7 @@ dependencies = [
  "libc",
  "log",
  "lspower",
- "nix 0.19.1",
+ "nix",
  "notify",
  "os_pipe",
  "percent-encoding",
@@ -651,7 +651,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "nix 0.19.1",
+ "nix",
  "notify",
  "percent-encoding",
  "regex",
@@ -1909,18 +1909,6 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.19.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if 1.0.0",
- "libc",
-]
-
-[[package]]
-name = "nix"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa9b4819da1bc61c0ea48b63b7bc8604064dd43013e7cc325df098d49cd7c18a"
@@ -2614,7 +2602,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix 0.20.0",
+ "nix",
  "radix_trie",
  "scopeguard",
  "smallvec",
