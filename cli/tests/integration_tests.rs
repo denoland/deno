@@ -2841,12 +2841,6 @@ console.log("finish");
     output: "087_no_check_imports_not_used_as_values.ts.out",
   });
 
-  itest!(_088_use_define_for_class_fields {
-    args: "run 088_use_define_for_class_fields.ts",
-    output: "088_use_define_for_class_fields.ts.out",
-    exit_code: 1,
-  });
-
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",

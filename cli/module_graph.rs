@@ -809,7 +809,6 @@ impl Graph {
       "strict": true,
       "target": "esnext",
       "tsBuildInfoFile": "deno:///.tsbuildinfo",
-      "useDefineForClassFields": true,
     }));
     if options.emit {
       config.merge(&json!({
@@ -955,7 +954,6 @@ impl Graph {
       "module": "esnext",
       "strict": true,
       "target": "esnext",
-      "useDefineForClassFields": true,
     }));
     let opts = match options.bundle_type {
       BundleType::Esm | BundleType::Iife => json!({
