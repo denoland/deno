@@ -945,42 +945,42 @@ fn heap_stats(
 
   // TODO: use serde for this once we have serde_v8
   let obj = v8::Object::new(scope);
-  set_prop(scope, obj, "total_heap_size", s.total_heap_size);
+  set_prop(scope, obj, "totalHeapSize", s.total_heap_size);
   set_prop(
     scope,
     obj,
-    "total_heap_size_executable",
+    "totalHeapSizexecutable",
     s.total_heap_size_executable,
   );
-  set_prop(scope, obj, "total_physical_size", s.total_physical_size);
-  set_prop(scope, obj, "total_available_size", s.total_available_size);
+  set_prop(scope, obj, "totalPhysicalSize", s.total_physical_size);
+  set_prop(scope, obj, "totalAvailableSize", s.total_available_size);
   set_prop(
     scope,
     obj,
-    "total_global_handles_size",
+    "totalGlobalHandlesSize",
     s.total_global_handles_size,
   );
   set_prop(
     scope,
     obj,
-    "used_global_handles_size",
+    "usedGlobalHandlesSize",
     s.used_global_handles_size,
   );
-  set_prop(scope, obj, "used_heap_size", s.used_heap_size);
-  set_prop(scope, obj, "heap_size_limit", s.heap_size_limit);
-  set_prop(scope, obj, "malloced_memory", s.malloced_memory);
-  set_prop(scope, obj, "external_memory", s.external_memory);
-  set_prop(scope, obj, "peak_malloced_memory", s.peak_malloced_memory);
+  set_prop(scope, obj, "usedHeapSize", s.used_heap_size);
+  set_prop(scope, obj, "heapSizeLimit", s.heap_size_limit);
+  set_prop(scope, obj, "mallocedMemory", s.malloced_memory);
+  set_prop(scope, obj, "externalMemory", s.external_memory);
+  set_prop(scope, obj, "peakMallocedMemory", s.peak_malloced_memory);
   set_prop(
     scope,
     obj,
-    "number_of_native_contexts",
+    "numberOfNativeContexts",
     s.number_of_native_contexts,
   );
   set_prop(
     scope,
     obj,
-    "number_of_detached_contexts",
+    "numberOfDetachedContexts",
     s.number_of_detached_contexts,
   );
 
