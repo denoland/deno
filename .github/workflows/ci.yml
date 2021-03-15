@@ -19,6 +19,8 @@ jobs:
             kind: test_release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             kind: bench
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+            kind: test_regression
           # TODO(ry) Ideally we could use ubuntu-latest-xl for lint but there's
           # a bug with dprint that is preventing this from running.
           - os: ubuntu-latest
@@ -195,7 +197,8 @@ jobs:
       - name: Build release
         if: |
           matrix.kind == 'test_release' ||
-          matrix.kind == 'bench'
+          matrix.kind == 'bench' ||
+          matrix.kind == 'test_regression'
         run: cargo build --release --locked --all-targets -vv
 
       - name: Build debug
@@ -285,6 +288,20 @@ jobs:
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet
+
+      - name: Run deno_std regression tests
+        if: matrix.kind == 'test_regression'
+        run: |
+          git clone --depth 1 https://github.com/denoland/deno_std.git deno_std
+          cd deno_std
+          deno test --unstable --allow-all
+      
+      - name: Run 3rd party regression tests
+        if: matrix.kind == 'test_regression'
+        run: |
+          git clone --depth 1 https://github.com/oakserver/oak.git oak
+          cd oak
+          deno test --allow-read --allow-write
 
       - name: Run Benchmarks
         if: matrix.kind == 'bench'
