@@ -918,7 +918,7 @@ impl Inner {
       let mut code_lenses = cl.borrow_mut();
 
       // TSC Implementations Code Lens
-      if self.config.settings.enabled_code_lens_implementations() {
+      if self.config.settings.code_lens.implementations {
         let source = CodeLensSource::Implementations;
         match i.kind {
           tsc::ScriptElementKind::InterfaceElement => {
@@ -942,7 +942,7 @@ impl Inner {
       }
 
       // TSC References Code Lens
-      if self.config.settings.enabled_code_lens_references() {
+      if self.config.settings.code_lens.references {
         let source = CodeLensSource::References;
         if let Some(parent) = &mp {
           if parent.kind == tsc::ScriptElementKind::EnumElement {
@@ -951,11 +951,7 @@ impl Inner {
         }
         match i.kind {
           tsc::ScriptElementKind::FunctionElement => {
-            if self
-              .config
-              .settings
-              .enabled_code_lens_references_all_functions()
-            {
+            if self.config.settings.code_lens.references_all_functions {
               code_lenses.push(i.to_code_lens(
                 &line_index,
                 &specifier,
@@ -1359,7 +1355,6 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    // TODO(lucacasonato): handle error correctly
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1369,13 +1364,22 @@ impl Inner {
           specifier
         )));
       };
+    let trigger_character = if let Some(context) = &params.context {
+      context.trigger_character.clone()
+    } else {
+      None
+    };
+    let position =
+      line_index.offset_tsc(params.text_document_position.position)?;
     let req = tsc::RequestMethod::GetCompletions((
-      specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
-      tsc::UserPreferences {
-        // TODO(lucacasonato): enable this. see https://github.com/denoland/deno/pull/8651
-        include_completions_with_insert_text: Some(false),
-        ..Default::default()
+      specifier.clone(),
+      position,
+      tsc::GetCompletionsAtPositionOptions {
+        user_preferences: tsc::UserPreferences {
+          include_completions_with_insert_text: Some(true),
+          ..Default::default()
+        },
+        trigger_character,
       },
     ));
     let maybe_completion_info: Option<tsc::CompletionInfo> = self
@@ -1388,12 +1392,58 @@ impl Inner {
       })?;
 
     if let Some(completions) = maybe_completion_info {
-      let results = completions.into_completion_response(&line_index);
+      let results = completions.as_completion_response(
+        &line_index,
+        &self.config.settings.suggest,
+        &specifier,
+        position,
+      );
       self.performance.measure(mark);
       Ok(Some(results))
     } else {
       self.performance.measure(mark);
       Ok(None)
+    }
+  }
+
+  async fn completion_resolve(
+    &mut self,
+    params: CompletionItem,
+  ) -> LspResult<CompletionItem> {
+    let mark = self.performance.mark("completion_resolve");
+    if let Some(data) = &params.data {
+      let data: tsc::CompletionItemData = serde_json::from_value(data.clone())
+        .map_err(|err| {
+          error!("{}", err);
+          LspError::invalid_params(
+            "Could not decode data field of completion item.",
+          )
+        })?;
+      let req = tsc::RequestMethod::GetCompletionDetails(data.into());
+      let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Unable to get completion info from TypeScript: {}", err);
+          LspError::internal_error()
+        })?;
+      if let Some(completion_info) = maybe_completion_info {
+        let completion_item = completion_info.as_completion_item(&params);
+        self.performance.measure(mark);
+        Ok(completion_item)
+      } else {
+        error!(
+          "Received an undefined response from tsc for completion details."
+        );
+        self.performance.measure(mark);
+        Ok(params)
+      }
+    } else {
+      self.performance.measure(mark);
+      Err(LspError::invalid_params(
+        "The completion item is missing the data field.",
+      ))
     }
   }
 
@@ -1714,6 +1764,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
     self.0.lock().await.completion(params).await
+  }
+
+  async fn completion_resolve(
+    &self,
+    params: CompletionItem,
+  ) -> LspResult<CompletionItem> {
+    self.0.lock().await.completion_resolve(params).await
   }
 
   async fn goto_implementation(
@@ -2730,6 +2787,58 @@ mod tests {
         LspResponse::RequestFixture(
           2,
           "code_action_response_cache.json".to_string(),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[derive(Deserialize)]
+  struct CompletionResult {
+    pub result: Option<CompletionResponse>,
+  }
+
+  #[tokio::test]
+  async fn test_completions() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_completions.json", LspResponse::None),
+      (
+        "completion_request.json",
+        LspResponse::RequestAssert(|value| {
+          let response: CompletionResult =
+            serde_json::from_value(value).unwrap();
+          let result = response.result.unwrap();
+          match result {
+            CompletionResponse::List(list) => {
+              // there should be at least 90 completions for `Deno.`
+              assert!(list.items.len() > 90);
+            }
+            _ => panic!("unexpected result"),
+          }
+        }),
+      ),
+      (
+        "completion_resolve_request.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "build",
+            "kind": 6,
+            "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\";\n    os: \"darwin\" | \"linux\" | \"windows\";\n    vendor: string;\n    env?: string | undefined;\n}",
+            "documentation": {
+              "kind": "markdown",
+              "value": "Build related information."
+            },
+            "sortText": "1",
+            "insertTextFormat": 1,
+          }),
         ),
       ),
       (

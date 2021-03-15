@@ -3,6 +3,7 @@
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::analysis::ResolvedDependencyErr;
+use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::text;
@@ -35,10 +36,14 @@ use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::thread;
 use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+
+const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
+  &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
 
 type Request = (
   RequestMethod,
@@ -170,10 +175,10 @@ pub async fn get_asset(
   }
 }
 
-fn display_parts_to_string(parts: Vec<SymbolDisplayPart>) -> String {
+fn display_parts_to_string(parts: &[SymbolDisplayPart]) -> String {
   parts
-    .into_iter()
-    .map(|p| p.text)
+    .iter()
+    .map(|p| p.text.to_string())
     .collect::<Vec<String>>()
     .join("")
 }
@@ -276,7 +281,12 @@ fn replace_links(text: &str) -> String {
     .to_string()
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
+  let re = Regex::new(r",|\s+").unwrap();
+  re.split(kind_modifiers).collect()
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
   Unknown,
@@ -348,42 +358,58 @@ pub enum ScriptElementKind {
   String,
 }
 
+impl Default for ScriptElementKind {
+  fn default() -> Self {
+    Self::Unknown
+  }
+}
+
 impl From<ScriptElementKind> for lsp::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
-    use lspower::lsp::CompletionItemKind;
-
     match kind {
       ScriptElementKind::PrimitiveType | ScriptElementKind::Keyword => {
-        CompletionItemKind::Keyword
+        lsp::CompletionItemKind::Keyword
       }
-      ScriptElementKind::ConstElement => CompletionItemKind::Constant,
-      ScriptElementKind::LetElement
+      ScriptElementKind::ConstElement
+      | ScriptElementKind::LetElement
       | ScriptElementKind::VariableElement
       | ScriptElementKind::LocalVariableElement
-      | ScriptElementKind::Alias => CompletionItemKind::Variable,
+      | ScriptElementKind::Alias
+      | ScriptElementKind::ParameterElement => {
+        lsp::CompletionItemKind::Variable
+      }
       ScriptElementKind::MemberVariableElement
       | ScriptElementKind::MemberGetAccessorElement
       | ScriptElementKind::MemberSetAccessorElement => {
-        CompletionItemKind::Field
+        lsp::CompletionItemKind::Field
       }
-      ScriptElementKind::FunctionElement => CompletionItemKind::Function,
+      ScriptElementKind::FunctionElement
+      | ScriptElementKind::LocalFunctionElement => {
+        lsp::CompletionItemKind::Function
+      }
       ScriptElementKind::MemberFunctionElement
       | ScriptElementKind::ConstructSignatureElement
       | ScriptElementKind::CallSignatureElement
-      | ScriptElementKind::IndexSignatureElement => CompletionItemKind::Method,
-      ScriptElementKind::EnumElement => CompletionItemKind::Enum,
+      | ScriptElementKind::IndexSignatureElement => {
+        lsp::CompletionItemKind::Method
+      }
+      ScriptElementKind::EnumElement => lsp::CompletionItemKind::Enum,
+      ScriptElementKind::EnumMemberElement => {
+        lsp::CompletionItemKind::EnumMember
+      }
       ScriptElementKind::ModuleElement
-      | ScriptElementKind::ExternalModuleName => CompletionItemKind::Module,
+      | ScriptElementKind::ExternalModuleName => {
+        lsp::CompletionItemKind::Module
+      }
       ScriptElementKind::ClassElement | ScriptElementKind::TypeElement => {
-        CompletionItemKind::Class
+        lsp::CompletionItemKind::Class
       }
-      ScriptElementKind::InterfaceElement => CompletionItemKind::Interface,
-      ScriptElementKind::Warning | ScriptElementKind::ScriptElement => {
-        CompletionItemKind::File
-      }
-      ScriptElementKind::Directory => CompletionItemKind::Folder,
-      ScriptElementKind::String => CompletionItemKind::Constant,
-      _ => CompletionItemKind::Property,
+      ScriptElementKind::InterfaceElement => lsp::CompletionItemKind::Interface,
+      ScriptElementKind::Warning => lsp::CompletionItemKind::Text,
+      ScriptElementKind::ScriptElement => lsp::CompletionItemKind::File,
+      ScriptElementKind::Directory => lsp::CompletionItemKind::Folder,
+      ScriptElementKind::String => lsp::CompletionItemKind::Constant,
+      _ => lsp::CompletionItemKind::Property,
     }
   }
 }
@@ -432,16 +458,20 @@ pub struct QuickInfo {
 impl QuickInfo {
   pub fn to_hover(&self, line_index: &LineIndex) -> lsp::Hover {
     let mut contents = Vec::<lsp::MarkedString>::new();
-    if let Some(display_string) =
-      self.display_parts.clone().map(display_parts_to_string)
+    if let Some(display_string) = self
+      .display_parts
+      .clone()
+      .map(|p| display_parts_to_string(&p))
     {
       contents.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
         display_string,
       ));
     }
-    if let Some(documentation) =
-      self.documentation.clone().map(display_parts_to_string)
+    if let Some(documentation) = self
+      .documentation
+      .clone()
+      .map(|p| display_parts_to_string(&p))
     {
       contents.push(lsp::MarkedString::from_markdown(documentation));
     }
@@ -824,6 +854,15 @@ impl FileTextChanges {
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeAction {
+  description: String,
+  changes: Vec<FileTextChanges>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  commands: Option<Vec<Value>>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeFixAction {
@@ -882,99 +921,310 @@ impl ReferenceEntry {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionInfo {
-  entries: Vec<CompletionEntry>,
-  is_member_completion: bool,
+pub struct CompletionEntryDetails {
+  name: String,
+  kind: ScriptElementKind,
+  kind_modifiers: String,
+  display_parts: Vec<SymbolDisplayPart>,
+  documentation: Option<Vec<SymbolDisplayPart>>,
+  tags: Option<Vec<JSDocTagInfo>>,
+  code_actions: Option<Vec<CodeAction>>,
+  source: Option<Vec<SymbolDisplayPart>>,
 }
 
-impl CompletionInfo {
-  pub fn into_completion_response(
-    self,
-    line_index: &LineIndex,
-  ) -> lsp::CompletionResponse {
-    let items = self
-      .entries
-      .into_iter()
-      .map(|entry| entry.into_completion_item(line_index))
-      .collect();
-    lsp::CompletionResponse::Array(items)
+impl CompletionEntryDetails {
+  pub fn as_completion_item(
+    &self,
+    original_item: &lsp::CompletionItem,
+  ) -> lsp::CompletionItem {
+    let detail = if original_item.detail.is_some() {
+      original_item.detail.clone()
+    } else if !self.display_parts.is_empty() {
+      Some(replace_links(&display_parts_to_string(&self.display_parts)))
+    } else {
+      None
+    };
+    let documentation = if let Some(parts) = &self.documentation {
+      let mut value = display_parts_to_string(parts);
+      if let Some(tags) = &self.tags {
+        let tag_documentation = tags
+          .iter()
+          .map(get_tag_documentation)
+          .collect::<Vec<String>>()
+          .join("");
+        value = format!("{}\n\n{}", value, tag_documentation);
+      }
+      Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
+        kind: lsp::MarkupKind::Markdown,
+        value,
+      }))
+    } else {
+      None
+    };
+    // TODO(@kitsonk) add `self.code_actions`
+    // TODO(@kitsonk) add `use_code_snippet`
+
+    lsp::CompletionItem {
+      data: None,
+      detail,
+      documentation,
+      ..original_item.clone()
+    }
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionInfo {
+  entries: Vec<CompletionEntry>,
+  is_global_completion: bool,
+  is_member_completion: bool,
+  is_new_identifier_location: bool,
+  metadata: Option<Value>,
+  optional_replacement_span: Option<TextSpan>,
+}
+
+impl CompletionInfo {
+  pub fn as_completion_response(
+    &self,
+    line_index: &LineIndex,
+    settings: &config::CompletionSettings,
+    specifier: &ModuleSpecifier,
+    position: u32,
+  ) -> lsp::CompletionResponse {
+    let items = self
+      .entries
+      .iter()
+      .map(|entry| {
+        entry
+          .as_completion_item(line_index, self, settings, specifier, position)
+      })
+      .collect();
+    let is_incomplete = self
+      .metadata
+      .clone()
+      .map(|v| {
+        v.as_object()
+          .unwrap()
+          .get("isIncomplete")
+          .unwrap_or_else(|| &json!(false))
+          .as_bool()
+          .unwrap()
+      })
+      .unwrap_or(false);
+    lsp::CompletionResponse::List(lsp::CompletionList {
+      is_incomplete,
+      items,
+    })
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionItemData {
+  pub specifier: ModuleSpecifier,
+  pub position: u32,
+  pub name: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub source: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub data: Option<Value>,
+  pub use_code_snippet: bool,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntry {
-  kind: ScriptElementKind,
-  kind_modifiers: Option<String>,
   name: String,
+  kind: ScriptElementKind,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  kind_modifiers: Option<String>,
   sort_text: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
   insert_text: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   replacement_span: Option<TextSpan>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   has_action: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   source: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   is_recommended: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_from_unchecked_file: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  data: Option<Value>,
 }
 
 impl CompletionEntry {
-  pub fn into_completion_item(
-    self,
+  fn get_commit_characters(
+    &self,
+    info: &CompletionInfo,
+    settings: &config::CompletionSettings,
+  ) -> Option<Vec<String>> {
+    if info.is_new_identifier_location {
+      return None;
+    }
+
+    let mut commit_characters = vec![];
+    match self.kind {
+      ScriptElementKind::MemberGetAccessorElement
+      | ScriptElementKind::MemberSetAccessorElement
+      | ScriptElementKind::ConstructSignatureElement
+      | ScriptElementKind::CallSignatureElement
+      | ScriptElementKind::IndexSignatureElement
+      | ScriptElementKind::EnumElement
+      | ScriptElementKind::InterfaceElement => {
+        commit_characters.push(".");
+        commit_characters.push(";");
+      }
+      ScriptElementKind::ModuleElement
+      | ScriptElementKind::Alias
+      | ScriptElementKind::ConstElement
+      | ScriptElementKind::LetElement
+      | ScriptElementKind::VariableElement
+      | ScriptElementKind::LocalVariableElement
+      | ScriptElementKind::MemberVariableElement
+      | ScriptElementKind::ClassElement
+      | ScriptElementKind::FunctionElement
+      | ScriptElementKind::MemberFunctionElement
+      | ScriptElementKind::Keyword
+      | ScriptElementKind::ParameterElement => {
+        commit_characters.push(".");
+        commit_characters.push(",");
+        commit_characters.push(";");
+        if !settings.complete_function_calls {
+          commit_characters.push("(");
+        }
+      }
+      _ => (),
+    }
+
+    if commit_characters.is_empty() {
+      None
+    } else {
+      Some(commit_characters.into_iter().map(String::from).collect())
+    }
+  }
+
+  fn get_filter_text(&self) -> Option<String> {
+    // TODO(@kitsonk) this is actually quite a bit more complex.
+    // See `MyCompletionItem.getFilterText` in vscode completion.ts.
+    if self.name.starts_with("#") {
+      if self.insert_text.is_none() {
+        return Some(self.name.clone());
+      }
+    }
+
+    if let Some(insert_text) = &self.insert_text {
+      if insert_text.starts_with("this.") {
+        return None;
+      }
+      if insert_text.starts_with("[") {
+        let re = Regex::new(r#"^\[['"](.+)['"]\]$"#).unwrap();
+        let insert_text = re.replace(insert_text, ".$1").to_string();
+        return Some(insert_text);
+      }
+    }
+
+    self.insert_text.clone()
+  }
+
+  pub fn as_completion_item(
+    &self,
     line_index: &LineIndex,
+    info: &CompletionInfo,
+    settings: &config::CompletionSettings,
+    specifier: &ModuleSpecifier,
+    position: u32,
   ) -> lsp::CompletionItem {
-    let mut item = lsp::CompletionItem {
-      label: self.name,
-      kind: Some(self.kind.into()),
-      sort_text: Some(self.sort_text.clone()),
-      // TODO(lucacasonato): missing commit_characters
-      ..Default::default()
+    let mut label = self.name.clone();
+    let mut kind: Option<lsp::CompletionItemKind> =
+      Some(self.kind.clone().into());
+
+    let sort_text = if self.source.is_some() {
+      Some(format!("\u{ffff}{}", self.sort_text))
+    } else {
+      Some(self.sort_text.clone())
     };
 
-    if let Some(true) = self.is_recommended {
-      // Make sure isRecommended property always comes first
-      // https://github.com/Microsoft/vscode/issues/40325
-      item.preselect = Some(true);
-    } else if self.source.is_some() {
-      // De-prioritze auto-imports
-      // https://github.com/Microsoft/vscode/issues/40311
-      item.sort_text = Some("\u{ffff}".to_string() + &self.sort_text)
-    }
+    let preselect = self.is_recommended;
+    let use_code_snippet = settings.complete_function_calls
+      && (kind == Some(lsp::CompletionItemKind::Function)
+        || kind == Some(lsp::CompletionItemKind::Method));
+    // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp-types/issues/204
+    let _commit_characters = self.get_commit_characters(info, settings);
+    let mut insert_text = self.insert_text.clone();
+    let range = self.replacement_span.clone();
+    let mut filter_text = self.get_filter_text();
+    let mut tags = None;
+    let mut detail = None;
 
-    match item.kind {
-      Some(lsp::CompletionItemKind::Function)
-      | Some(lsp::CompletionItemKind::Method) => {
-        item.insert_text_format = Some(lsp::InsertTextFormat::Snippet);
-      }
-      _ => {}
-    }
-
-    let mut insert_text = self.insert_text;
-    let replacement_range: Option<lsp::Range> =
-      self.replacement_span.map(|span| span.to_range(line_index));
-
-    // TODO(lucacasonato): port other special cases from https://github.com/theia-ide/typescript-language-server/blob/fdf28313833cd6216d00eb4e04dc7f00f4c04f09/server/src/completion.ts#L49-L55
-
-    if let Some(kind_modifiers) = self.kind_modifiers {
-      if kind_modifiers.contains("\\optional\\") {
+    if let Some(kind_modifiers) = &self.kind_modifiers {
+      let kind_modifiers = parse_kind_modifier(kind_modifiers);
+      if kind_modifiers.contains("optional") {
         if insert_text.is_none() {
-          insert_text = Some(item.label.clone());
+          insert_text = Some(label.clone());
         }
-        if item.filter_text.is_none() {
-          item.filter_text = Some(item.label.clone());
+        if filter_text.is_none() {
+          filter_text = Some(label.clone());
         }
-        item.label += "?";
+        label += "?";
+      }
+      if kind_modifiers.contains("deprecated") {
+        tags = Some(vec![lsp::CompletionItemTag::Deprecated]);
+      }
+      if kind_modifiers.contains("color") {
+        kind = Some(lsp::CompletionItemKind::Color);
+      }
+      if self.kind == ScriptElementKind::ScriptElement {
+        for ext_modifier in FILE_EXTENSION_KIND_MODIFIERS {
+          if kind_modifiers.contains(ext_modifier) {
+            detail = if self.name.to_lowercase().ends_with(ext_modifier) {
+              Some(self.name.clone())
+            } else {
+              Some(format!("{}{}", self.name, ext_modifier))
+            };
+            break;
+          }
+        }
       }
     }
 
-    if let Some(insert_text) = insert_text {
-      if let Some(replacement_range) = replacement_range {
-        item.text_edit = Some(lsp::CompletionTextEdit::Edit(
-          lsp::TextEdit::new(replacement_range, insert_text),
-        ));
+    let text_edit =
+      if let (Some(text_span), Some(new_text)) = (range, insert_text) {
+        let range = text_span.to_range(line_index);
+        let insert_replace_edit = lsp::InsertReplaceEdit {
+          new_text,
+          insert: range.clone(),
+          replace: range,
+        };
+        Some(insert_replace_edit.into())
       } else {
-        item.insert_text = Some(insert_text);
-      }
-    }
+        None
+      };
 
-    item
+    let data = CompletionItemData {
+      specifier: specifier.clone(),
+      position,
+      name: self.name.clone(),
+      source: self.source.clone(),
+      data: self.data.clone(),
+      use_code_snippet,
+    };
+
+    lsp::CompletionItem {
+      label,
+      kind,
+      sort_text,
+      preselect,
+      text_edit,
+      filter_text,
+      detail,
+      tags,
+      data: Some(serde_json::to_value(data).unwrap()),
+      ..Default::default()
+    }
   }
 }
 
@@ -1016,18 +1266,18 @@ pub struct SignatureHelpItem {
 
 impl SignatureHelpItem {
   pub fn into_signature_information(self) -> lsp::SignatureInformation {
-    let prefix_text = display_parts_to_string(self.prefix_display_parts);
+    let prefix_text = display_parts_to_string(&self.prefix_display_parts);
     let params_text = self
       .parameters
       .iter()
-      .map(|param| display_parts_to_string(param.display_parts.clone()))
+      .map(|param| display_parts_to_string(&param.display_parts))
       .collect::<Vec<String>>()
       .join(", ");
-    let suffix_text = display_parts_to_string(self.suffix_display_parts);
+    let suffix_text = display_parts_to_string(&self.suffix_display_parts);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
       documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        self.documentation,
+        &self.documentation,
       ))),
       parameters: Some(
         self
@@ -1054,10 +1304,10 @@ impl SignatureHelpParameter {
   pub fn into_parameter_information(self) -> lsp::ParameterInformation {
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
-        self.display_parts,
+        &self.display_parts,
       )),
       documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        self.documentation,
+        &self.documentation,
       ))),
     }
   }
@@ -1481,6 +1731,15 @@ pub enum IncludePackageJsonAutoImports {
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetCompletionsAtPositionOptions {
+  #[serde(flatten)]
+  pub user_preferences: UserPreferences,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trigger_character: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub disable_suggestions: Option<bool>,
@@ -1542,6 +1801,30 @@ pub struct SignatureHelpTriggerReason {
   pub trigger_character: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCompletionDetailsArgs {
+  pub specifier: ModuleSpecifier,
+  pub position: u32,
+  pub name: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub source: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub data: Option<Value>,
+}
+
+impl From<CompletionItemData> for GetCompletionDetailsArgs {
+  fn from(item_data: CompletionItemData) -> Self {
+    Self {
+      specifier: item_data.specifier,
+      position: item_data.position,
+      name: item_data.name,
+      source: item_data.source,
+      data: item_data.data,
+    }
+  }
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 #[derive(Debug)]
 pub enum RequestMethod {
@@ -1554,7 +1837,9 @@ pub enum RequestMethod {
   /// Retrieve code fixes for a range of a file with the provided error codes.
   GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>)),
   /// Get completion information at a given position (IntelliSense).
-  GetCompletions((ModuleSpecifier, u32, UserPreferences)),
+  GetCompletions((ModuleSpecifier, u32, GetCompletionsAtPositionOptions)),
+  /// Get details about a specific completion entry.
+  GetCompletionDetails(GetCompletionDetailsArgs),
   /// Retrieve the combined code fixes for a fix id for a module.
   GetCombinedCodeFix((ModuleSpecifier, Value)),
   /// Get declaration information for a specific position.
@@ -1625,6 +1910,11 @@ impl RequestMethod {
         "method": "getCombinedCodeFix",
         "specifier": specifier,
         "fixId": fix_id,
+      }),
+      RequestMethod::GetCompletionDetails(args) => json!({
+        "id": id,
+        "method": "getCompletionDetails",
+        "args": args
       }),
       RequestMethod::GetCompletions((specifier, position, preferences)) => {
         json!({
@@ -1738,6 +2028,7 @@ mod tests {
   use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
   use crate::lsp::sources::Sources;
+  use crate::lsp::text::LineIndex;
   use std::path::Path;
   use std::path::PathBuf;
   use tempfile::TempDir;
@@ -2225,6 +2516,172 @@ mod tests {
       response,
       json!({
         "file:///a.ts": []
+      })
+    );
+  }
+
+  #[test]
+  fn test_completion_entry_filter_text() {
+    let fixture = CompletionEntry {
+      kind: ScriptElementKind::MemberVariableElement,
+      name: "['foo']".to_string(),
+      insert_text: Some("['foo']".to_string()),
+      ..Default::default()
+    };
+    let actual = fixture.get_filter_text();
+    assert_eq!(actual, Some(".foo".to_string()));
+  }
+
+  #[test]
+  fn test_completions() {
+    let fixture = r#"
+      import { B } from "https://deno.land/x/b/mod.ts";
+
+      const b = new B();
+
+      console.
+    "#;
+    let line_index = LineIndex::new(fixture);
+    let position = line_index
+      .offset_tsc(lsp::Position {
+        line: 5,
+        character: 16,
+      })
+      .unwrap();
+    let (mut runtime, state_snapshot, _) = setup(
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[("file:///a.ts", fixture, 1)],
+    );
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetDiagnostics(vec![specifier.clone()]),
+    );
+    assert!(result.is_ok());
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetCompletions((
+        specifier.clone(),
+        position,
+        GetCompletionsAtPositionOptions {
+          user_preferences: UserPreferences {
+            include_completions_with_insert_text: Some(true),
+            ..Default::default()
+          },
+          trigger_character: Some(".".to_string()),
+        },
+      )),
+    );
+    assert!(result.is_ok());
+    let response: CompletionInfo =
+      serde_json::from_value(result.unwrap()).unwrap();
+    assert_eq!(response.entries.len(), 20);
+    let result = request(
+      &mut runtime,
+      state_snapshot,
+      RequestMethod::GetCompletionDetails(GetCompletionDetailsArgs {
+        specifier,
+        position,
+        name: "log".to_string(),
+        source: None,
+        data: None,
+      }),
+    );
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(
+      response,
+      json!({
+        "name": "log",
+        "kindModifiers": "declare",
+        "kind": "method",
+        "displayParts": [
+          {
+            "text": "(",
+            "kind": "punctuation"
+          },
+          {
+            "text": "method",
+            "kind": "text"
+          },
+          {
+            "text": ")",
+            "kind": "punctuation"
+          },
+          {
+            "text": " ",
+            "kind": "space"
+          },
+          {
+            "text": "Console",
+            "kind": "interfaceName"
+          },
+          {
+            "text": ".",
+            "kind": "punctuation"
+          },
+          {
+            "text": "log",
+            "kind": "methodName"
+          },
+          {
+            "text": "(",
+            "kind": "punctuation"
+          },
+          {
+            "text": "...",
+            "kind": "punctuation"
+          },
+          {
+            "text": "data",
+            "kind": "parameterName"
+          },
+          {
+            "text": ":",
+            "kind": "punctuation"
+          },
+          {
+            "text": " ",
+            "kind": "space"
+          },
+          {
+            "text": "any",
+            "kind": "keyword"
+          },
+          {
+            "text": "[",
+            "kind": "punctuation"
+          },
+          {
+            "text": "]",
+            "kind": "punctuation"
+          },
+          {
+            "text": ")",
+            "kind": "punctuation"
+          },
+          {
+            "text": ":",
+            "kind": "punctuation"
+          },
+          {
+            "text": " ",
+            "kind": "space"
+          },
+          {
+            "text": "void",
+            "kind": "keyword"
+          }
+        ],
+        "documentation": []
       })
     );
   }
