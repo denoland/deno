@@ -292,7 +292,7 @@ jobs:
       - name: Run deno_std regression tests
         if: matrix.kind == 'test_regression'
         run: |
-          git clone --depth 1 https://github.com/denoland/deno_std.git deno_std
+          git clone --recurse-submodules -j8 --depth 1 https://github.com/denoland/deno_std.git deno_std
           cd deno_std
           deno test --unstable --allow-all
       
