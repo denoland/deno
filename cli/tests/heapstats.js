@@ -8,7 +8,7 @@ function allocTest(alloc, allocAssert, deallocAssert) {
     gc();
     return Deno.core.heapStats();
   };
-  const delta = (t1, t2) => t2.used_heap_size - t1.used_heap_size;
+  const delta = (t1, t2) => t2.usedHeapSize - t1.usedHeapSize;
 
   // Sample "clean" heapStats
   const t1 = sample();
