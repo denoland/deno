@@ -18,6 +18,7 @@ mod ops;
 pub mod plugin_api;
 mod resources;
 mod runtime;
+mod runtime_modules;
 mod shared_queue;
 mod zero_copy_buf;
 
@@ -76,6 +77,13 @@ pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
+pub use crate::runtime_modules::JsRuntimeModule;
+pub use crate::runtime_modules::MultiModule;
+pub use crate::runtime_modules::PureJSModule;
+pub use crate::runtime_modules::SimpleModule;
+pub use crate::runtime_modules::SimpleOpModule;
+pub use crate::runtime_modules::OpRegistrar;
+pub use crate::runtime_modules::RcOpRegistrar;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 

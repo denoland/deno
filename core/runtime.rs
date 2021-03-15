@@ -22,8 +22,9 @@ use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
-use crate::BufVec;
 use crate::OpState;
+use crate::OpRegistrar;
+use crate::JsRuntimeModule;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;
@@ -179,6 +180,10 @@ pub struct RuntimeOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
+  
+  /// JsRuntime modules, not to be confused with ES modules
+  /// these are deno modules containing JS + ops
+  pub modules: Option<Vec<Box<dyn JsRuntimeModule>>>,
 
   /// V8 snapshot that should be loaded on startup.
   ///
@@ -434,27 +439,6 @@ impl JsRuntime {
     self.has_snapshotted = true;
 
     snapshot
-  }
-
-  /// Registers an op that can be called from JavaScript.
-  ///
-  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
-  /// which can be called using the provided `name`.
-  ///
-  /// This function provides byte-level bindings. To pass data via JSON, the
-  /// following functions can be passed as an argument for `op_fn`:
-  /// * [json_op_sync()](fn.json_op_sync.html)
-  /// * [json_op_async()](fn.json_op_async.html)
-  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
-  where
-    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
-  {
-    Self::state(self.v8_isolate())
-      .borrow_mut()
-      .op_state
-      .borrow_mut()
-      .op_table
-      .register_op(name, op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
@@ -1477,6 +1461,27 @@ impl JsRuntime {
     }
 
     Ok(())
+  }
+}
+
+impl OpRegistrar for JsRuntime {
+  /// Registers an op that can be called from JavaScript.
+  ///
+  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
+  /// which can be called using the provided `name`.
+  ///
+  /// This function provides byte-level bindings. To pass data via JSON, the
+  /// following functions can be passed as an argument for `op_fn`:
+  /// * [json_op_sync()](fn.json_op_sync.html)
+  /// * [json_op_async()](fn.json_op_async.html)
+  fn register_op(&mut self, name: &str, op_fn: Box<OpFn>) -> OpId
+  {
+    Self::state(self.v8_isolate())
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .register_op(name, op_fn)
   }
 }
 
