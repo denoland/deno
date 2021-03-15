@@ -73,7 +73,7 @@ fwdansi = "1.1.0"
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.19.1"
+nix = "0.20.0"
 
 [dev-dependencies]
 # Used in benchmark
