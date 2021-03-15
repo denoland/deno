@@ -1007,7 +1007,7 @@ impl CompletionInfo {
         v.as_object()
           .unwrap()
           .get("isIncomplete")
-          .unwrap_or_else(|| &json!(false))
+          .unwrap_or(&json!(false))
           .as_bool()
           .unwrap()
       })
@@ -1110,7 +1110,7 @@ impl CompletionEntry {
   fn get_filter_text(&self) -> Option<String> {
     // TODO(@kitsonk) this is actually quite a bit more complex.
     // See `MyCompletionItem.getFilterText` in vscode completion.ts.
-    if self.name.starts_with("#") && self.insert_text.is_none() {
+    if self.name.starts_with('#') && self.insert_text.is_none() {
       return Some(self.name.clone());
     }
 
@@ -1118,7 +1118,7 @@ impl CompletionEntry {
       if insert_text.starts_with("this.") {
         return None;
       }
-      if insert_text.starts_with("[") {
+      if insert_text.starts_with('[') {
         let re = Regex::new(r#"^\[['"](.+)['"]\]$"#).unwrap();
         let insert_text = re.replace(insert_text, ".$1").to_string();
         return Some(insert_text);
@@ -1194,7 +1194,7 @@ impl CompletionEntry {
         let range = text_span.to_range(line_index);
         let insert_replace_edit = lsp::InsertReplaceEdit {
           new_text,
-          insert: range.clone(),
+          insert: range,
           replace: range,
         };
         Some(insert_replace_edit.into())
