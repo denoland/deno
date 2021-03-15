@@ -89,13 +89,7 @@ pub fn render_test_file(
     options
   ));
 
-  test_file.push_str(
-    r"
-if ('close' in globalThis) {
-  globalThis.close();
-}
-    ",
-  );
+  test_file.push_str("Deno.exit(0);");
 
   test_file
 }
