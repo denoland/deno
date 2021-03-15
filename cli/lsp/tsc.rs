@@ -1110,10 +1110,8 @@ impl CompletionEntry {
   fn get_filter_text(&self) -> Option<String> {
     // TODO(@kitsonk) this is actually quite a bit more complex.
     // See `MyCompletionItem.getFilterText` in vscode completion.ts.
-    if self.name.starts_with("#") {
-      if self.insert_text.is_none() {
-        return Some(self.name.clone());
-      }
+    if self.name.starts_with("#") && self.insert_text.is_none() {
+      return Some(self.name.clone());
     }
 
     if let Some(insert_text) = &self.insert_text {
