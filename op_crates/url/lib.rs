@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::declare_ops;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
@@ -25,17 +26,12 @@ pub fn init() -> SimpleOpModule {
       root "deno:op_crates/url",
       "00_url.js",
     ),
-    vec![
-      ("op_url_parse", json_op_sync(op_url_parse)),
-      (
-        "op_url_parse_search_params",
-        json_op_sync(op_url_parse_search_params),
-      ),
-      (
-        "op_url_stringify_search_params",
-        json_op_sync(op_url_stringify_search_params),
-      ),
-    ],
+    declare_ops!(
+      with(json_op_sync),
+      op_url_parse,
+      op_url_parse_search_params,
+      op_url_stringify_search_params,
+    ),
   )
 }
 
