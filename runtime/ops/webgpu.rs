@@ -9,11 +9,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     state.put(Unstable(unstable));
   }
 
-  super::reg_json_sync(
-    rt,
-    "op_webgpu_create_instance",
-    op_webgpu_create_instance,
-  );
   super::reg_json_async(
     rt,
     "op_webgpu_request_adapter",

@@ -5012,16 +5012,8 @@
   }
   GPUObjectBaseMixin("GPUQuerySet", GPUQuerySet);
 
-  let instance;
-
   window.__bootstrap.webgpu = {
-    get gpu() {
-      if (!instance) {
-        core.jsonOpSync("op_webgpu_create_instance", {});
-        instance = webidl.createBranded(GPU);
-      }
-      return instance;
-    },
+    gpu: webidl.createBranded(GPU),
     GPU,
     GPUAdapter,
     GPUAdapterLimits,
