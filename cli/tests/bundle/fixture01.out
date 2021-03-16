@@ -1,7 +1,7 @@
+const a = "a";
 const mod = function() {
-    const a = "a";
     return {
-        a
+        a: a
     };
 }();
 console.log(mod);

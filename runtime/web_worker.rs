@@ -231,17 +231,15 @@ impl WebWorker {
       );
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::reg_json_sync(
-        js_runtime,
-        "op_domain_to_ascii",
-        deno_web::op_domain_to_ascii,
-      );
+      ops::url::init(js_runtime);
       ops::io::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),
         options.ca_data.clone(),
       );
+      ops::crypto::init(js_runtime, options.seed);
 
       if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
@@ -251,7 +249,6 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::crypto::init(js_runtime, options.seed);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
@@ -318,7 +315,28 @@ impl WebWorker {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.js_runtime.load_module(module_specifier, None).await?;
-    self.js_runtime.mod_evaluate(id).await
+
+    let mut receiver = self.js_runtime.mod_evaluate(id);
+    tokio::select! {
+      maybe_result = receiver.next() => {
+        debug!("received worker module evaluate {:#?}", maybe_result);
+        // If `None` is returned it means that runtime was destroyed before
+        // evaluation was complete. This can happen in Web Worker when `self.close()`
+        // is called at top level.
+        let result = maybe_result.unwrap_or(Ok(()));
+        return result;
+      }
+
+      event_loop_result = self.run_event_loop() => {
+        if self.has_been_terminated() {
+          return Ok(());
+        }
+        event_loop_result?;
+        let maybe_result = receiver.next().await;
+        let result = maybe_result.unwrap_or(Ok(()));
+        return result;
+      }
+    }
   }
 
   /// Returns a way to communicate with the Worker from other threads.
@@ -377,6 +395,8 @@ impl WebWorker {
       let msg = String::from_utf8(msg.to_vec()).unwrap();
       let script = format!("workerMessageRecvCallback({})", msg);
 
+      // TODO(bartlomieju): set proper script name like "deno:runtime/web_worker.js"
+      // so it's dimmed in stack trace instead of using "__anonymous__"
       if let Err(e) = self.execute(&script) {
         // If execution was terminated during message callback then
         // just ignore it

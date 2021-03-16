@@ -10,6 +10,7 @@ use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -126,11 +127,7 @@ impl MainWorker {
       ops::crypto::init(js_runtime, options.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::reg_json_sync(
-        js_runtime,
-        "op_domain_to_ascii",
-        deno_web::op_domain_to_ascii,
-      );
+      ops::url::init(js_runtime);
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
       ops::io::init(js_runtime);
@@ -142,6 +139,7 @@ impl MainWorker {
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),
@@ -214,7 +212,21 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier).await?;
     self.wait_for_inspector_session();
-    self.js_runtime.mod_evaluate(id).await
+    let mut receiver = self.js_runtime.mod_evaluate(id);
+    tokio::select! {
+      maybe_result = receiver.next() => {
+        debug!("received module evaluate {:#?}", maybe_result);
+        let result = maybe_result.expect("Module evaluation result not provided.");
+        return result;
+      }
+
+      event_loop_result = self.run_event_loop() => {
+        event_loop_result?;
+        let maybe_result = receiver.next().await;
+        let result = maybe_result.expect("Module evaluation result not provided.");
+        return result;
+      }
+    }
   }
 
   fn wait_for_inspector_session(&mut self) {

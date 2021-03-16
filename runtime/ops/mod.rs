@@ -20,7 +20,9 @@ pub mod signal;
 pub mod timers;
 pub mod tls;
 pub mod tty;
+pub mod url;
 pub mod web_worker;
+pub mod webgpu;
 pub mod websocket;
 pub mod worker_host;
 

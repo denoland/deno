@@ -14,7 +14,6 @@ use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tempfile::TempDir;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
@@ -34,6 +33,13 @@ pub enum DenoSubcommand {
   },
   Completions {
     buf: Box<[u8]>,
+  },
+  Coverage {
+    files: Vec<PathBuf>,
+    ignore: Vec<PathBuf>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    lcov: bool,
   },
   Doc {
     private: bool,
@@ -63,7 +69,7 @@ pub enum DenoSubcommand {
     root: Option<PathBuf>,
     force: bool,
   },
-  LanguageServer,
+  Lsp,
   Lint {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
@@ -228,6 +234,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
+    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
@@ -300,6 +307,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     types_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("cache") {
     cache_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("coverage") {
+    coverage_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("info") {
     info_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("eval") {
@@ -323,7 +332,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   } else if let Some(m) = matches.subcommand_matches("compile") {
     compile_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("lsp") {
-    language_server_parse(&mut flags, m);
+    lsp_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -375,12 +384,13 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(cache_subcommand())
     .subcommand(compile_subcommand())
     .subcommand(completions_subcommand())
+    .subcommand(coverage_subcommand())
     .subcommand(doc_subcommand())
     .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
-    .subcommand(language_server_subcommand())
+    .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
@@ -569,6 +579,33 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Cache { files };
 }
 
+fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let files = match matches.values_of("files") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
+  let include = match matches.values_of("include") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+  let exclude = match matches.values_of("exclude") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+  let lcov = matches.is_present("lcov");
+  flags.subcommand = DenoSubcommand::Coverage {
+    files,
+    ignore,
+    include,
+    exclude,
+    lcov,
+  };
+}
+
 fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
     let lockfile = matches.value_of("lock").unwrap();
@@ -672,23 +709,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
 
-  flags.coverage_dir = if matches.is_present("coverage") {
-    if let Some(coverage_dir) = matches.value_of("coverage") {
-      Some(coverage_dir.to_string())
-    } else {
-      Some(
-        TempDir::new()
-          .unwrap()
-          .into_path()
-          .to_str()
-          .unwrap()
-          .to_string(),
-      )
-    }
-  } else {
-    None
-  };
-
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
       .values_of("script_arg")
@@ -712,6 +732,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+  flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
     no_run,
     fail_fast,
@@ -762,8 +783,8 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn language_server_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::LanguageServer;
+fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Lsp;
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -1099,6 +1120,77 @@ Future runs of this module will trigger no downloads or compilation unless
     )
 }
 
+fn coverage_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("coverage")
+    .about("Print coverage reports")
+    .long_about(
+      "Print coverage reports from coverage profiles.
+
+Collect a coverage profile with deno test:
+  deno test --coverage=cov_profile
+
+Print a report to stdout:
+  deno coverage cov_profile
+
+Include urls that start with the file schema:
+  deno coverage --include=\"^file:\" cov_profile
+
+Exclude urls ending with test.ts and test.js:
+  deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
+
+Include urls that start with the file schema and exclude files ending with test.ts and test.js, for
+an url to match it must match the include pattern and not match the exclude pattern:
+  deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
+
+Write a report using the lcov format:
+  deno coverage --lcov cov_profile > cov.lcov
+
+Generate html reports from lcov:
+  genhtml -o html_cov cov.lcov
+",
+    )
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore coverage files"),
+    )
+    .arg(
+      Arg::with_name("include")
+        .long("include")
+        .takes_value(true)
+        .value_name("regex")
+        .multiple(true)
+        .require_equals(true)
+        .default_value(r"^file:")
+        .help("Include source files in the report"),
+    )
+    .arg(
+      Arg::with_name("exclude")
+        .long("exclude")
+        .takes_value(true)
+        .value_name("regex")
+        .multiple(true)
+        .require_equals(true)
+        .default_value(r"test\.(js|mjs|ts|jsx|tsx)$")
+        .help("Exclude source files from the report"),
+    )
+    .arg(
+      Arg::with_name("lcov")
+        .long("lcov")
+        .help("Output coverage report in lcov format")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("files")
+        .takes_value(true)
+        .multiple(true)
+        .required(true),
+    )
+}
+
 fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("upgrade")
     .about("Upgrade deno executable to given version")
@@ -1197,15 +1289,17 @@ Show documentation for runtime built-ins:
     )
 }
 
-fn language_server_subcommand<'a, 'b>() -> App<'a, 'b> {
+fn lsp_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lsp")
     .about("Start the language server")
     .long_about(
-      r#"Start the Deno language server which will take input
-from stdin and provide output to stdout.
-  deno lsp
-"#,
-    )
+      "The 'deno lsp' subcommand provides a way for code editors and IDEs to
+interact with Deno using the Language Server Protocol. Usually humans do not
+use this subcommand directly. For example, 'deno lsp' can provide IDEs with
+go-to-definition support and automatic code formatting.
+
+How to connect various editors and IDEs to 'deno lsp':
+https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides")
 }
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1391,14 +1485,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("coverage")
         .long("coverage")
-        .min_values(0)
-        .max_values(1)
         .require_equals(true)
         .takes_value(true)
         .requires("unstable")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage information"),
+        .help("Collect coverage profile data"),
     )
     .arg(
       Arg::with_name("files")
@@ -1599,11 +1691,9 @@ fn import_map_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long("import-map")
     .alias("importmap")
     .value_name("FILE")
-    .requires("unstable")
-    .help("UNSTABLE: Load import map file")
+    .help("Load import map file")
     .long_help(
-      "UNSTABLE:
-Load import map file
+      "Load import map file from local file or remote URL.
 Docs: https://deno.land/manual/linking_to_external_code/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
@@ -2097,12 +2187,12 @@ mod tests {
   }
 
   #[test]
-  fn language_server() {
+  fn lsp() {
     let r = flags_from_vec(svec!["deno", "lsp"]);
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::LanguageServer,
+        subcommand: DenoSubcommand::Lsp,
         ..Flags::default()
       }
     );
@@ -2373,7 +2463,7 @@ mod tests {
   #[test]
   fn eval_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "eval", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
+    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2382,7 +2472,6 @@ mod tests {
           code: "42".to_string(),
           ext: "js".to_string(),
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -2461,13 +2550,12 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         repl: true,
         subcommand: DenoSubcommand::Repl,
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -2700,7 +2788,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2710,7 +2797,6 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2722,7 +2808,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "info",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2733,7 +2818,6 @@ mod tests {
           file: Some("script.ts".to_string()),
           json: false,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2745,7 +2829,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "cache",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2755,7 +2838,6 @@ mod tests {
         subcommand: DenoSubcommand::Cache {
           files: svec!["script.ts"],
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2767,7 +2849,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "doc",
-      "--unstable",
       "--import-map=import_map.json",
       "script.ts"
     ]);
@@ -2780,7 +2861,6 @@ mod tests {
           json: false,
           filter: None,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
       }
@@ -2866,7 +2946,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2877,7 +2957,6 @@ mod tests {
           root: Some(PathBuf::from("/foo")),
           force: true,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -3398,7 +3477,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--unstable", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3409,7 +3488,6 @@ mod tests {
           target: None,
           lite: false,
         },
-        unstable: true,
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -3424,6 +3502,24 @@ mod tests {
         allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn coverage() {
+    let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Coverage {
+          files: vec![PathBuf::from("foo.json")],
+          ignore: vec![],
+          include: vec![r"^file:".to_string()],
+          exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
+          lcov: false,
+        },
         ..Flags::default()
       }
     );
