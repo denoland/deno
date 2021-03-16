@@ -22,6 +22,7 @@ use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use crate::BufVec;
 use crate::JsRuntimeModule;
 use crate::OpRegistrar;
 use crate::OpState;
@@ -82,6 +83,7 @@ pub struct JsRuntime {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   allocations: IsolateAllocations,
+  modules: Vec<Box<dyn JsRuntimeModule>>,
 }
 
 struct DynImportModEvaluate {
@@ -183,7 +185,7 @@ pub struct RuntimeOptions {
 
   /// JsRuntime modules, not to be confused with ES modules
   /// these are deno modules containing JS + ops
-  pub modules: Option<Vec<Box<dyn JsRuntimeModule>>>,
+  pub modules: Vec<Box<dyn JsRuntimeModule>>,
 
   /// V8 snapshot that should be loaded on startup.
   ///
@@ -302,6 +304,7 @@ impl JsRuntime {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       allocations: IsolateAllocations::default(),
+      modules: options.modules,
     };
 
     if !has_startup_snapshot {
@@ -352,6 +355,34 @@ impl JsRuntime {
     self
       .execute("deno:core/error.js", include_str!("error.js"))
       .unwrap();
+  }
+
+  // Inits JS of provided JsRuntimeModules
+  // NOTE: this will probably change when streamlining snapshot flow
+  pub fn init_mod_js(&mut self) -> Result<(), AnyError> {
+    let mut modules: Vec<Box<dyn JsRuntimeModule>> =
+      self.modules.drain(..).collect();
+    let selfish = Rc::new(RefCell::new(self));
+    for m in modules.iter_mut() {
+      let js_files = m.init_js()?;
+      for (filename, source) in js_files {
+        selfish.borrow_mut().execute_static(filename, source)?;
+      }
+    }
+    selfish.borrow_mut().modules = modules;
+    Ok(())
+  }
+
+  // Inits JS of provided JsRuntimeModules
+  // NOTE: this will probably change when streamlining snapshot flow
+  pub fn init_mod_ops(&mut self) -> Result<(), AnyError> {
+    let registrar =
+      Rc::new(RefCell::new(JsRuntimeOpRegistrar(self.op_state())));
+
+    for m in self.modules.iter_mut() {
+      m.init_ops(registrar.clone())?;
+    }
+    Ok(())
   }
 
   /// Executes a JavaScript code to initialize shared queue binding
@@ -416,6 +447,40 @@ impl JsRuntime {
     }
   }
 
+  // same as execute() but for internal JS code
+  fn execute_static(
+    &mut self,
+    js_filename: &'static str,
+    js_source: &'static str,
+  ) -> Result<(), AnyError> {
+    let context = self.global_context();
+
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+
+    let source = v8::String::new(scope, js_source).unwrap();
+    let name = v8::String::new(scope, js_filename).unwrap();
+    let origin = bindings::script_origin(scope, name);
+
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let script = match v8::Script::compile(tc_scope, source, Some(&origin)) {
+      Some(script) => script,
+      None => {
+        let exception = tc_scope.exception().unwrap();
+        return exception_to_err_result(tc_scope, exception, false);
+      }
+    };
+
+    match script.run(tc_scope) {
+      Some(_) => Ok(()),
+      None => {
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        exception_to_err_result(tc_scope, exception, false)
+      }
+    }
+  }
+
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
@@ -439,6 +504,27 @@ impl JsRuntime {
     self.has_snapshotted = true;
 
     snapshot
+  }
+
+  /// Registers an op that can be called from JavaScript.
+  ///
+  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
+  /// which can be called using the provided `name`.
+  ///
+  /// This function provides byte-level bindings. To pass data via JSON, the
+  /// following functions can be passed as an argument for `op_fn`:
+  /// * [json_op_sync()](fn.json_op_sync.html)
+  /// * [json_op_async()](fn.json_op_async.html)
+  pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
+  {
+    Self::state(self.v8_isolate())
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .register_op(name, op_fn)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
@@ -1464,23 +1550,11 @@ impl JsRuntime {
   }
 }
 
-impl OpRegistrar for JsRuntime {
-  /// Registers an op that can be called from JavaScript.
-  ///
-  /// The _op_ mechanism allows to expose Rust functions to the JS runtime,
-  /// which can be called using the provided `name`.
-  ///
-  /// This function provides byte-level bindings. To pass data via JSON, the
-  /// following functions can be passed as an argument for `op_fn`:
-  /// * [json_op_sync()](fn.json_op_sync.html)
-  /// * [json_op_async()](fn.json_op_async.html)
+struct JsRuntimeOpRegistrar(Rc<RefCell<OpState>>);
+
+impl OpRegistrar for JsRuntimeOpRegistrar {
   fn register_op(&mut self, name: &str, op_fn: Box<OpFn>) -> OpId {
-    Self::state(self.v8_isolate())
-      .borrow_mut()
-      .op_state
-      .borrow_mut()
-      .op_table
-      .register_op(name, op_fn)
+    self.0.borrow_mut().op_table.register_op(name, op_fn)
   }
 }
 
