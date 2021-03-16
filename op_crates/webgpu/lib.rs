@@ -2,13 +2,13 @@
 
 #![deny(warnings)]
 
+use deno_core::declare_ops;
+use deno_core::declare_ops_group;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::include_js_files;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
-use deno_core::declare_ops;
-use deno_core::declare_ops_group;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpFn;
