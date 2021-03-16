@@ -182,3 +182,18 @@ pub trait OpRegistrar {
   // register_json_op_sync(...)
   // register_json_op_async(...)
 }
+
+////
+// Helper macros to reduce verbosity / redundant decls
+////
+#[macro_export]
+macro_rules! include_js_files {
+  (root $root:expr, $($file:expr,)+) => {
+    vec![
+      $((
+        concat!($root, "/", $file),
+        include_str!($file),
+      ),)+
+    ]
+  };
+}
