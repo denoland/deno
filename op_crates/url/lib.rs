@@ -32,7 +32,7 @@ pub fn init() -> BasicModule {
       op_url_parse_search_params,
       op_url_stringify_search_params,
     ),
-    None
+    None,
   )
 }
 

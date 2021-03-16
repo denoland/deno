@@ -60,14 +60,22 @@ impl BasicModule {
     ops: Option<Vec<OpPair>>,
     opstate_fn: Option<Box<OpStateFn>>,
   ) -> Self {
-    Self { js_files, ops, opstate_fn }
+    Self {
+      js_files,
+      ops,
+      opstate_fn,
+    }
   }
-  
+
   pub fn pure_js(js_files: Vec<SourcePair>) -> Self {
     Self::new(Some(js_files), None, None)
   }
-  
-  pub fn with_ops(js_files: Vec<SourcePair>, ops: Vec<OpPair>, opstate_fn: Option<Box<OpStateFn>>) -> Self {
+
+  pub fn with_ops(
+    js_files: Vec<SourcePair>,
+    ops: Vec<OpPair>,
+    opstate_fn: Option<Box<OpStateFn>>,
+  ) -> Self {
     Self::new(Some(js_files), Some(ops), opstate_fn)
   }
 }
@@ -79,7 +87,7 @@ impl JsRuntimeModule for BasicModule {
       None => vec![],
     })
   }
-  
+
   fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
     // NOTE: not idempotent
     // TODO: fail if called twice ?
@@ -90,7 +98,7 @@ impl JsRuntimeModule for BasicModule {
     }
     Ok(())
   }
-  
+
   fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
     match &self.opstate_fn {
       Some(ofn) => ofn(state),

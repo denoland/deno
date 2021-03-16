@@ -14,13 +14,13 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::AsyncRefCell;
+use deno_core::BasicModule;
 use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::BasicModule;
 use deno_core::{serde_json, ZeroCopyBuf};
 
 use http::{Method, Request, Uri};
