@@ -32,7 +32,7 @@ fn is_supported(p: &Path) -> bool {
   }
 }
 
-pub fn prepare_test_modules_urls(
+pub fn collect_test_module_specifiers(
   include: Vec<String>,
   root_path: &PathBuf,
 ) -> Result<Vec<Url>, AnyError> {

@@ -137,6 +137,72 @@ impl ProgramState {
     Ok(Arc::new(program_state))
   }
 
+  /// Prepares a set of module specifiers for loading in one shot.
+  ///
+  pub async fn prepare_module_graph(
+    self: &Arc<Self>,
+    specifiers: Vec<ModuleSpecifier>,
+    lib: TypeLib,
+    runtime_permissions: Permissions,
+    maybe_import_map: Option<ImportMap>,
+  ) -> Result<(), AnyError> {
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      runtime_permissions.clone(),
+    )?));
+
+    let mut builder =
+      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
+
+    for specifier in specifiers {
+      builder.add(&specifier, false).await?;
+    }
+
+    let mut graph = builder.get_graph();
+    let debug = self.flags.log_level == Some(log::Level::Debug);
+    let maybe_config_path = self.flags.config_path.clone();
+
+    let result_modules = if self.flags.no_check {
+      let result_info = graph.transpile(TranspileOptions {
+        debug,
+        maybe_config_path,
+        reload: self.flags.reload,
+      })?;
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        warn!("{}", ignored_options);
+      }
+      result_info.loadable_modules
+    } else {
+      let result_info = graph.check(CheckOptions {
+        debug,
+        emit: true,
+        lib,
+        maybe_config_path,
+        reload: self.flags.reload,
+      })?;
+
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        eprintln!("{}", ignored_options);
+      }
+      if !result_info.diagnostics.is_empty() {
+        return Err(anyhow!(result_info.diagnostics));
+      }
+      result_info.loadable_modules
+    };
+
+    let mut loadable_modules = self.modules.lock().unwrap();
+    loadable_modules.extend(result_modules);
+
+    if let Some(ref lockfile) = self.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    }
+
+    Ok(())
+  }
+
   /// This function is called when new module load is
   /// initialized by the JsRuntime. Its resposibility is to collect
   /// all dependencies and if it is required then also perform TS typecheck

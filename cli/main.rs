@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
+// #![deny(warnings)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -896,71 +896,17 @@ async fn coverage_command(
   .await
 }
 
-async fn test_command(
-  flags: Flags,
-  include: Option<Vec<String>>,
-  no_run: bool,
+async fn run_test(
+  program_state: Arc<ProgramState>,
+  main_module: ModuleSpecifier,
+  permissions: Permissions,
   fail_fast: bool,
   quiet: bool,
-  allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let cwd = std::env::current_dir().expect("No current directory");
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules =
-    tools::test_runner::prepare_test_modules_urls(include, &cwd)?;
-
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(());
-  }
-  let main_module = deno_core::resolve_path("$deno$test.ts")?;
-  // Create a dummy source file.
-  let source_file = File {
-    local: main_module.to_file_path().unwrap(),
-    maybe_types: None,
-    media_type: MediaType::TypeScript,
-    source: tools::test_runner::render_test_file(
-      test_modules.clone(),
-      fail_fast,
-      quiet,
-      filter,
-    ),
-    specifier: main_module.clone(),
-  };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  program_state.file_fetcher.insert_cached(source_file);
-
-  if no_run {
-    let lib = if flags.unstable {
-      module_graph::TypeLib::UnstableDenoWindow
-    } else {
-      module_graph::TypeLib::DenoWindow
-    };
-    program_state
-      .prepare_module_load(
-        main_module.clone(),
-        lib,
-        Permissions::allow_all(),
-        false,
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
-    return Ok(());
-  }
-
+  println!("run test");
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
-
-  if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
-  }
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
@@ -975,15 +921,85 @@ async fn test_command(
       None
     };
 
+  let options = if let Some(filter) = filter {
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
+  } else {
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
+  };
+
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute(&format!("Deno[Deno.internal].runTests({})", options))?;
+
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   worker.run_event_loop().await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     coverage_collector.stop_collecting().await?;
+  }
+
+  Ok(())
+}
+
+async fn test_command(
+  flags: Flags,
+  include: Option<Vec<String>>,
+  no_run: bool,
+  fail_fast: bool,
+  quiet: bool,
+  allow_none: bool,
+  filter: Option<String>,
+) -> Result<(), AnyError> {
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let permissions = Permissions::from_options(&flags.clone().into());
+  let cwd = std::env::current_dir().expect("No current directory");
+  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let test_modules =
+    tools::test_runner::collect_test_module_specifiers(include, &cwd)?;
+
+  if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
+  let lib = if flags.unstable {
+    module_graph::TypeLib::UnstableDenoWindow
+  } else {
+    module_graph::TypeLib::DenoWindow
+  };
+
+  program_state
+    .prepare_module_graph(
+      test_modules.clone(),
+      lib.clone(),
+      permissions.clone(),
+      program_state.maybe_import_map.clone(),
+    )
+    .await?;
+
+  if no_run {
+    return Ok(());
+  }
+
+  if let Some(ref coverage_dir) = flags.coverage_dir {
+    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+  }
+
+  for module_specifier in &test_modules {
+    run_test(
+      program_state.clone(),
+      module_specifier.clone(),
+      permissions.clone(),
+      fail_fast,
+      quiet,
+      filter.clone(),
+    )
+    .await?;
   }
 
   Ok(())
