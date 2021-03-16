@@ -189,7 +189,7 @@ pub fn op_webgpu_create_instance(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  check_unstable(&state, "navigator.gpu.requestAdapter");
+  check_unstable(&state, "navigator.gpu");
 
   state.put(wgpu_core::hub::Global::new(
     "webgpu",
