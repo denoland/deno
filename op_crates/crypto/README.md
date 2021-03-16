@@ -1,6 +1,8 @@
-# deno crypto
+# deno_crypto
 
-Op crate that implements the WebCrypto API functions.
+This crate implements the Web Cryptography API.
+
+Spec: https://www.w3.org/TR/WebCryptoAPI/
 
 ## Supported algorithms
 
@@ -18,3 +20,4 @@ and functions.
 
 All WebCrypto algorithms can be found
 [here](https://www.w3.org/TR/WebCryptoAPI/#algorithm-overview).
+

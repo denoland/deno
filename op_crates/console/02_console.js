@@ -3,7 +3,6 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const exposeForTest = window.__bootstrap.internals.exposeForTest;
   const colors = window.__bootstrap.colors;
 
   function isInvalidDate(x) {
@@ -1762,11 +1761,14 @@
   }
 
   // Expose these fields to internalObject for tests.
-  exposeForTest("Console", Console);
-  exposeForTest("cssToAnsi", cssToAnsi);
-  exposeForTest("inspectArgs", inspectArgs);
-  exposeForTest("parseCss", parseCss);
-  exposeForTest("parseCssColor", parseCssColor);
+  window.__bootstrap.internals = {
+    ...window.__bootstrap.internals ?? {},
+    Console,
+    cssToAnsi,
+    inspectArgs,
+    parseCss,
+    parseCssColor,
+  };
 
   window.__bootstrap.console = {
     CSI,

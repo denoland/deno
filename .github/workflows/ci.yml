@@ -89,7 +89,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .cargo_home
             target/*/.*
             target/*/build
             target/*/deps
