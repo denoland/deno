@@ -17,6 +17,7 @@ use deno_core::url::Url;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeModule;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -73,11 +74,30 @@ impl MainWorker {
     permissions: Permissions,
     options: &WorkerOptions,
   ) -> Self {
+    // Internal modules
+    let deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
+      Box::new(deno_webidl::init()),
+      Box::new(deno_console::init()),
+      Box::new(deno_url::init()),
+      Box::new(deno_web::init()),
+      Box::new(deno_fetch::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      )),
+      Box::new(deno_websocket::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      )),
+      Box::new(deno_crypto::init(options.seed)),
+      Box::new(deno_webgpu::init(options.unstable)),
+    ];
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      modules: deno_modules,
       ..Default::default()
     });
 
@@ -112,22 +132,18 @@ impl MainWorker {
         });
       }
 
+      // Init module ops
+      js_runtime.init_mod_ops().unwrap();
+
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
         None,
         options.create_web_worker_cb.clone(),
       );
-      ops::crypto::init(js_runtime, options.seed);
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::url::init(js_runtime);
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
       ops::io::init(js_runtime);
@@ -139,12 +155,6 @@ impl MainWorker {
       ops::signal::init(js_runtime);
       ops::tls::init(js_runtime);
       ops::tty::init(js_runtime);
-      ops::webgpu::init(js_runtime);
-      ops::websocket::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
     }
     {
       let op_state = js_runtime.op_state();

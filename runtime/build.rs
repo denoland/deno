@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeModule;
 use deno_core::RuntimeOptions;
 use std::env;
 use std::path::Path;
@@ -13,14 +14,9 @@ fn create_snapshot(
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
-  deno_webidl::init(&mut js_runtime);
-  deno_console::init(&mut js_runtime);
-  deno_url::init(&mut js_runtime);
-  deno_web::init(&mut js_runtime);
-  deno_fetch::init(&mut js_runtime);
-  deno_websocket::init(&mut js_runtime);
-  deno_crypto::init(&mut js_runtime);
-  deno_webgpu::init(&mut js_runtime);
+  // Init internal modules JS
+  js_runtime.init_mod_js().unwrap();
+
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -44,8 +40,28 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
+  let deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
+    Box::new(deno_webidl::init()),
+    Box::new(deno_console::init()),
+    Box::new(deno_url::init()),
+    Box::new(deno_web::init()),
+    Box::new(deno_fetch::init::<deno_fetch::NoFetchPermissions>(
+      "".to_owned(),
+      None,
+    )),
+    Box::new(
+      deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
+        "".to_owned(),
+        None,
+      ),
+    ),
+    Box::new(deno_crypto::init(None)),
+    Box::new(deno_webgpu::init(false)),
+  ];
+
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
+    modules: deno_modules,
     ..Default::default()
   });
   create_snapshot(js_runtime, snapshot_path, files);

@@ -21,6 +21,7 @@ use deno_core::v8;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeModule;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
@@ -165,11 +166,33 @@ impl WebWorker {
     worker_id: u32,
     options: &WebWorkerOptions,
   ) -> Self {
+    // Internal modules
+    let mut deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
+      Box::new(deno_webidl::init()),
+      Box::new(deno_console::init()),
+      Box::new(deno_url::init()),
+      Box::new(deno_web::init()),
+      Box::new(deno_fetch::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      )),
+      Box::new(deno_websocket::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      )),
+      Box::new(deno_webgpu::init(options.unstable)),
+    ];
+    // Crypto uses Deno namespace
+    if options.use_deno_namespace {
+      deno_modules.push(Box::new(deno_crypto::init(options.seed)));
+    }
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      modules: deno_modules,
       ..Default::default()
     });
 
@@ -216,13 +239,11 @@ impl WebWorker {
         });
       }
 
+      // Init module ops
+      js_runtime.init_mod_ops().unwrap();
+
       ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module);
-      ops::fetch::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
@@ -231,14 +252,7 @@ impl WebWorker {
       );
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::url::init(js_runtime);
       ops::io::init(js_runtime);
-      ops::webgpu::init(js_runtime);
-      ops::websocket::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
 
       if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
@@ -248,7 +262,7 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::crypto::init(js_runtime, options.seed);
+        // ops::crypto::init(js_runtime, options.seed);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
