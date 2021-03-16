@@ -62,8 +62,8 @@
     if (!ErrorClass) {
       return new Error(
         `Unregistered error class: "${className}"\n` +
-        `  ${message}\n` +
-        `  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+          `  ${message}\n` +
+          `  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
     }
     return new ErrorClass(message, ...args);
