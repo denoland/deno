@@ -188,7 +188,7 @@ pub trait OpRegistrar {
 ////
 #[macro_export]
 macro_rules! include_js_files {
-  (root $root:expr, $($file:expr,)+) => {
+  (root $root:literal, $($file:literal,)+) => {
     vec![
       $((
         concat!($root, "/", $file),
@@ -196,4 +196,35 @@ macro_rules! include_js_files {
       ),)+
     ]
   };
+}
+
+#[macro_export]
+macro_rules! declare_ops {
+  (with($wrapper:path), $($path:ident::$opfn:ident,)+) => {
+    vec![$((
+      stringify!($opfn),
+      $wrapper($path::$opfn),
+    ),)+]
+  };
+
+  (with($wrapper:path), $($opfn:ident,)+) => {
+    vec![$((
+      stringify!($opfn),
+      $wrapper($opfn),
+    ),)+]
+  };
+}
+
+// Groups a sequence of declare_ops!() calls into a single vec
+pub fn declare_ops_group(
+  groups: Vec<Vec<(&'static str, Box<OpFn>)>>,
+) -> Vec<(&'static str, Box<OpFn>)> {
+  groups
+    .into_iter()
+    .fold(vec![].into_iter(), |v, g| {
+      v.chain(g.into_iter())
+        .collect::<Vec<(&'static str, Box<OpFn>)>>()
+        .into_iter()
+    })
+    .collect()
 }
