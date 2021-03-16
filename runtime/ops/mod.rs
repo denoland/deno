@@ -3,8 +3,6 @@
 mod dispatch_minimal;
 pub use dispatch_minimal::MinimalOp;
 
-pub mod crypto;
-pub mod fetch;
 pub mod fs;
 pub mod fs_events;
 pub mod io;
@@ -20,10 +18,7 @@ pub mod signal;
 pub mod timers;
 pub mod tls;
 pub mod tty;
-pub mod url;
 pub mod web_worker;
-pub mod webgpu;
-pub mod websocket;
 pub mod worker_host;
 
 use crate::metrics::metrics_op;
