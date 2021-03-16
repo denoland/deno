@@ -61,7 +61,9 @@
     const [ErrorClass, args] = core.getErrorClassAndArgs(className);
     if (!ErrorClass) {
       return new Error(
-        `Unregistered error class: "${className}"\n  ${message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        `Unregistered error class: "${className}"\n` +
+        `  ${message}\n` +
+        `  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
     }
     return new ErrorClass(message, ...args);
@@ -115,9 +117,11 @@
     // Rest of response buffer is passed as reference or as a copy
     let respBuffer = null;
     if (isCopyNeeded) {
-      respBuffer = bufUi8.slice(0, result); // Copy part of the response array (if sent through shared array buf)
+      // Copy part of the response array (if sent through shared array buf)
+      respBuffer = bufUi8.slice(0, result);
     } else {
-      respBuffer = bufUi8.subarray(0, result); // Create view on existing array (if sent through overflow)
+      // Create view on existing array (if sent through overflow)
+      respBuffer = bufUi8.subarray(0, result);
     }
 
     return [requestId, respBuffer, null];
