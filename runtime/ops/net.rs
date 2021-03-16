@@ -650,16 +650,14 @@ fn rdata_to_return_record(
 
 #[cfg(test)]
 mod tests {
+  use super::*;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
-
   use trust_dns_proto::rr::rdata::mx::MX;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
   use trust_dns_proto::rr::record_data::RData;
   use trust_dns_proto::rr::Name;
-
-  use super::*;
 
   #[test]
   fn rdata_to_return_record_a() {

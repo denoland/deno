@@ -1,15 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::convert::From;
-use std::fmt;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::thread::JoinHandle;
-
+use crate::permissions::resolve_read_allowlist;
+use crate::permissions::resolve_write_allowlist;
+use crate::permissions::BooleanPermission;
+use crate::permissions::NetPermission;
+use crate::permissions::PermissionState;
+use crate::permissions::Permissions;
+use crate::permissions::ReadPermission;
+use crate::permissions::UnaryPermission;
+use crate::permissions::WritePermission;
+use crate::web_worker::run_web_worker;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WorkerEvent;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -26,17 +29,15 @@ use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-
-use crate::permissions::PermissionState;
-use crate::permissions::UnaryPermission;
-use crate::permissions::{
-  resolve_read_allowlist, resolve_write_allowlist, BooleanPermission,
-  NetPermission, Permissions, ReadPermission, WritePermission,
-};
-use crate::web_worker::run_web_worker;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WorkerEvent;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::convert::From;
+use std::fmt;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
