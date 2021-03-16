@@ -1,43 +1,21 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::JsRuntime;
+use deno_core::include_js_files;
+use deno_core::PureJsModule;
 use std::path::PathBuf;
 
 /// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![
-    (
-      "deno:op_crates/web/01_dom_exception.js",
-      include_str!("01_dom_exception.js"),
-    ),
-    (
-      "deno:op_crates/web/02_event.js",
-      include_str!("02_event.js"),
-    ),
-    (
-      "deno:op_crates/web/03_abort_signal.js",
-      include_str!("03_abort_signal.js"),
-    ),
-    (
-      "deno:op_crates/web/04_global_interfaces.js",
-      include_str!("04_global_interfaces.js"),
-    ),
-    (
-      "deno:op_crates/web/08_text_encoding.js",
-      include_str!("08_text_encoding.js"),
-    ),
-    (
-      "deno:op_crates/web/12_location.js",
-      include_str!("12_location.js"),
-    ),
-    (
-      "deno:op_crates/web/21_filereader.js",
-      include_str!("21_filereader.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+pub fn init() -> PureJsModule {
+  PureJsModule::new(include_js_files!(
+    root "deno:op_crates/web",
+    "01_dom_exception.js",
+    "02_event.js",
+    "03_abort_signal.js",
+    "04_global_interfaces.js",
+    "08_text_encoding.js",
+    "12_location.js",
+    "21_filereader.js",
+  ))
 }
 
 pub fn get_declaration() -> PathBuf {

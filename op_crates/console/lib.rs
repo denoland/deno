@@ -1,23 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::JsRuntime;
+use deno_core::include_js_files;
+use deno_core::PureJsModule;
 use std::path::PathBuf;
 
-/// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![
-    (
-      "deno:op_crates/console/01_colors.js",
-      include_str!("01_colors.js"),
-    ),
-    (
-      "deno:op_crates/console/02_console.js",
-      include_str!("02_console.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+pub fn init() -> PureJsModule {
+  PureJsModule::new(include_js_files!(
+    root "deno:op_crates/console",
+    "01_colors.js",
+    "02_console.js",
+  ))
 }
 
 pub fn get_declaration() -> PathBuf {

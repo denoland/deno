@@ -9,6 +9,9 @@ use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::include_js_files;
+use deno_core::json_op_async;
+use deno_core::json_op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -18,14 +21,16 @@ use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::SimpleModule;
 use deno_core::ZeroCopyBuf;
 
+use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
@@ -48,37 +53,42 @@ use tokio_util::io::StreamReader;
 
 pub use reqwest; // Re-export reqwest
 
-/// Execute this crates' JS source files.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![
-    (
-      "deno:op_crates/fetch/01_fetch_util.js",
-      include_str!("01_fetch_util.js"),
+pub fn init<P: FetchPermissions + 'static>(
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
+) -> SimpleModule {
+  SimpleModule::new(
+    include_js_files!(
+      root "deno:op_crates/fetch",
+      "01_fetch_util.js",
+      "03_dom_iterable.js",
+      "11_streams.js",
+      "20_headers.js",
+      "21_file.js",
+      "26_fetch.js",
     ),
-    (
-      "deno:op_crates/fetch/03_dom_iterable.js",
-      include_str!("03_dom_iterable.js"),
-    ),
-    (
-      "deno:op_crates/fetch/11_streams.js",
-      include_str!("11_streams.js"),
-    ),
-    (
-      "deno:op_crates/fetch/20_headers.js",
-      include_str!("20_headers.js"),
-    ),
-    (
-      "deno:op_crates/fetch/21_file.js",
-      include_str!("21_file.js"),
-    ),
-    (
-      "deno:op_crates/fetch/26_fetch.js",
-      include_str!("26_fetch.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+    vec![
+      ("op_fetch", json_op_sync(op_fetch::<P>)),
+      ("op_fetch_send", json_op_async(op_fetch_send)),
+      (
+        "op_fetch_request_write",
+        json_op_async(op_fetch_request_write),
+      ),
+      (
+        "op_fetch_response_read",
+        json_op_async(op_fetch_response_read),
+      ),
+      (
+        "op_create_http_client",
+        json_op_sync(op_create_http_client::<P>),
+      ),
+    ],
+    Box::new(move |state| {
+      state
+        .put(create_http_client(user_agent.clone(), ca_data.clone()).unwrap());
+      Ok(())
+    }),
+  )
 }
 
 pub trait FetchPermissions {
@@ -409,30 +419,48 @@ where
   }
 
   let client =
-    create_http_client(args.ca_file.as_deref(), args.ca_data.as_deref())
+    create_http_client2(args.ca_file.as_deref(), args.ca_data.as_deref())
       .unwrap();
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(json!(rid))
 }
 
-/// Create new instance of async reqwest::Client. This client supports
-/// proxies and doesn't follow redirects.
-fn create_http_client(
+// Internal version used by ops
+fn create_http_client2(
   ca_file: Option<&str>,
   ca_data: Option<&str>,
 ) -> Result<Client, AnyError> {
-  let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
-  if let Some(ca_data) = ca_data {
-    let ca_data_vec = ca_data.as_bytes().to_vec();
-    let cert = reqwest::Certificate::from_pem(&ca_data_vec)?;
-    builder = builder.add_root_certificate(cert);
+  let ca_data_vec = if let Some(ca_data) = ca_data {
+    Some(ca_data.as_bytes().to_vec())
   } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
+    Some(buf)
+  } else {
+    None
+  };
+  create_http_client("".to_owned(), ca_data_vec)
+}
+
+/// Create new instance of async reqwest::Client. This client supports
+/// proxies and doesn't follow redirects.
+pub fn create_http_client(
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
+) -> Result<Client, AnyError> {
+  let mut headers = HeaderMap::new();
+  headers.insert(USER_AGENT, user_agent.parse().unwrap());
+  let mut builder = Client::builder()
+    .redirect(Policy::none())
+    .default_headers(headers)
+    .use_rustls_tls();
+
+  if let Some(ca_data) = ca_data {
+    let cert = reqwest::Certificate::from_pem(&ca_data)?;
     builder = builder.add_root_certificate(cert);
   }
+
   builder
     .build()
     .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))

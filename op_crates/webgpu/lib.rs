@@ -4,9 +4,14 @@
 
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
+use deno_core::include_js_files;
+use deno_core::json_op_async;
+use deno_core::json_op_sync;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::OpFn;
 use deno_core::OpState;
+use deno_core::SimpleModule;
 use deno_core::ZeroCopyBuf;
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
@@ -91,21 +96,28 @@ impl Resource for WebGPUQuerySet {
   }
 }
 
-/// Execute this crates' JS source files.
-pub fn init(isolate: &mut deno_core::JsRuntime) {
-  let files = vec![
-    (
-      "deno:op_crates/webgpu/01_webgpu.js",
-      include_str!("01_webgpu.js"),
+pub fn init(unstable: bool) -> SimpleModule {
+  SimpleModule::new(
+    include_js_files!(
+      root "deno:op_crates/webgpu",
+      "01_webgpu.js",
+      "02_idl_types.js",
     ),
-    (
-      "deno:op_crates/webgpu/02_idl_types.js",
-      include_str!("02_idl_types.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+    declare_webgpu_ops(),
+    Box::new(move |state| {
+      state.put(wgpu_core::hub::Global::new(
+        "webgpu",
+        wgpu_core::hub::IdentityManagerFactory,
+        wgpu_types::BackendBit::PRIMARY,
+      ));
+      // TODO: check & possibly streamline this
+      // Unstable might be able to be OpMiddleware
+      // let unstable_checker = state.borrow::<super::UnstableChecker>();
+      // let unstable = unstable_checker.unstable;
+      state.put(Unstable(unstable));
+      Ok(())
+    }),
+  )
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -538,4 +550,337 @@ pub fn op_webgpu_create_query_set(
     "rid": rid,
     "err": maybe_err.map(WebGPUError::from),
   }))
+}
+
+// TODO: shorten this with a macro
+fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
+  vec![
+    (
+      "op_webgpu_request_adapter",
+      json_op_async(op_webgpu_request_adapter),
+    ),
+    (
+      "op_webgpu_request_device",
+      json_op_async(op_webgpu_request_device),
+    ),
+    (
+      "op_webgpu_create_query_set",
+      json_op_sync(op_webgpu_create_query_set),
+    ),
+    // buffer
+    (
+      "op_webgpu_create_buffer",
+      json_op_sync(buffer::op_webgpu_create_buffer),
+    ),
+    (
+      "op_webgpu_buffer_get_map_async",
+      json_op_async(buffer::op_webgpu_buffer_get_map_async),
+    ),
+    (
+      "op_webgpu_buffer_get_mapped_range",
+      json_op_sync(buffer::op_webgpu_buffer_get_mapped_range),
+    ),
+    (
+      "op_webgpu_buffer_unmap",
+      json_op_sync(buffer::op_webgpu_buffer_unmap),
+    ),
+    // texture
+    (
+      "op_webgpu_create_texture",
+      json_op_sync(texture::op_webgpu_create_texture),
+    ),
+    (
+      "op_webgpu_create_texture_view",
+      json_op_sync(texture::op_webgpu_create_texture_view),
+    ),
+    // sampler
+    (
+      "op_webgpu_create_sampler",
+      json_op_sync(sampler::op_webgpu_create_sampler),
+    ),
+    // binding
+    (
+      "op_webgpu_create_bind_group_layout",
+      json_op_sync(binding::op_webgpu_create_bind_group_layout),
+    ),
+    (
+      "op_webgpu_create_pipeline_layout",
+      json_op_sync(binding::op_webgpu_create_pipeline_layout),
+    ),
+    (
+      "op_webgpu_create_bind_group",
+      json_op_sync(binding::op_webgpu_create_bind_group),
+    ),
+    // pipeline
+    (
+      "op_webgpu_create_compute_pipeline",
+      json_op_sync(pipeline::op_webgpu_create_compute_pipeline),
+    ),
+    (
+      "op_webgpu_compute_pipeline_get_bind_group_layout",
+      json_op_sync(pipeline::op_webgpu_compute_pipeline_get_bind_group_layout),
+    ),
+    (
+      "op_webgpu_create_render_pipeline",
+      json_op_sync(pipeline::op_webgpu_create_render_pipeline),
+    ),
+    (
+      "op_webgpu_render_pipeline_get_bind_group_layout",
+      json_op_sync(pipeline::op_webgpu_render_pipeline_get_bind_group_layout),
+    ),
+    // command_encoder
+    (
+      "op_webgpu_create_command_encoder",
+      json_op_sync(command_encoder::op_webgpu_create_command_encoder),
+    ),
+    (
+      "op_webgpu_command_encoder_begin_render_pass",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_begin_render_pass,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_begin_compute_pass",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_begin_compute_pass,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_copy_buffer_to_buffer",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_copy_buffer_to_buffer,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_copy_buffer_to_texture",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_copy_buffer_to_texture,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_copy_texture_to_buffer",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_copy_texture_to_buffer,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_copy_texture_to_texture",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_copy_texture_to_texture,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_push_debug_group",
+      json_op_sync(command_encoder::op_webgpu_command_encoder_push_debug_group),
+    ),
+    (
+      "op_webgpu_command_encoder_pop_debug_group",
+      json_op_sync(command_encoder::op_webgpu_command_encoder_pop_debug_group),
+    ),
+    (
+      "op_webgpu_command_encoder_insert_debug_marker",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_insert_debug_marker,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_write_timestamp",
+      json_op_sync(command_encoder::op_webgpu_command_encoder_write_timestamp),
+    ),
+    (
+      "op_webgpu_command_encoder_resolve_query_set",
+      json_op_sync(
+        command_encoder::op_webgpu_command_encoder_resolve_query_set,
+      ),
+    ),
+    (
+      "op_webgpu_command_encoder_finish",
+      json_op_sync(command_encoder::op_webgpu_command_encoder_finish),
+    ),
+    // render_pass
+    (
+      "op_webgpu_render_pass_set_viewport",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_viewport),
+    ),
+    (
+      "op_webgpu_render_pass_set_scissor_rect",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_scissor_rect),
+    ),
+    (
+      "op_webgpu_render_pass_set_blend_color",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_blend_color),
+    ),
+    (
+      "op_webgpu_render_pass_set_stencil_reference",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_stencil_reference),
+    ),
+    (
+      "op_webgpu_render_pass_begin_pipeline_statistics_query",
+      json_op_sync(
+        render_pass::op_webgpu_render_pass_begin_pipeline_statistics_query,
+      ),
+    ),
+    (
+      "op_webgpu_render_pass_end_pipeline_statistics_query",
+      json_op_sync(
+        render_pass::op_webgpu_render_pass_end_pipeline_statistics_query,
+      ),
+    ),
+    (
+      "op_webgpu_render_pass_write_timestamp",
+      json_op_sync(render_pass::op_webgpu_render_pass_write_timestamp),
+    ),
+    (
+      "op_webgpu_render_pass_execute_bundles",
+      json_op_sync(render_pass::op_webgpu_render_pass_execute_bundles),
+    ),
+    (
+      "op_webgpu_render_pass_end_pass",
+      json_op_sync(render_pass::op_webgpu_render_pass_end_pass),
+    ),
+    (
+      "op_webgpu_render_pass_set_bind_group",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_bind_group),
+    ),
+    (
+      "op_webgpu_render_pass_push_debug_group",
+      json_op_sync(render_pass::op_webgpu_render_pass_push_debug_group),
+    ),
+    (
+      "op_webgpu_render_pass_pop_debug_group",
+      json_op_sync(render_pass::op_webgpu_render_pass_pop_debug_group),
+    ),
+    (
+      "op_webgpu_render_pass_insert_debug_marker",
+      json_op_sync(render_pass::op_webgpu_render_pass_insert_debug_marker),
+    ),
+    (
+      "op_webgpu_render_pass_set_pipeline",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_pipeline),
+    ),
+    (
+      "op_webgpu_render_pass_set_index_buffer",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_index_buffer),
+    ),
+    (
+      "op_webgpu_render_pass_set_vertex_buffer",
+      json_op_sync(render_pass::op_webgpu_render_pass_set_vertex_buffer),
+    ),
+    (
+      "op_webgpu_render_pass_draw",
+      json_op_sync(render_pass::op_webgpu_render_pass_draw),
+    ),
+    (
+      "op_webgpu_render_pass_draw_indexed",
+      json_op_sync(render_pass::op_webgpu_render_pass_draw_indexed),
+    ),
+    (
+      "op_webgpu_render_pass_draw_indirect",
+      json_op_sync(render_pass::op_webgpu_render_pass_draw_indirect),
+    ),
+    (
+      "op_webgpu_render_pass_draw_indexed_indirect",
+      json_op_sync(render_pass::op_webgpu_render_pass_draw_indexed_indirect),
+    ),
+    // compute_pass
+    (
+      "op_webgpu_compute_pass_set_pipeline",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_set_pipeline),
+    ),
+    (
+      "op_webgpu_compute_pass_dispatch",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_dispatch),
+    ),
+    (
+      "op_webgpu_compute_pass_dispatch_indirect",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_dispatch_indirect),
+    ),
+    (
+      "op_webgpu_compute_pass_end_pass",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_end_pass),
+    ),
+    (
+      "op_webgpu_compute_pass_set_bind_group",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_set_bind_group),
+    ),
+    (
+      "op_webgpu_compute_pass_push_debug_group",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_push_debug_group),
+    ),
+    (
+      "op_webgpu_compute_pass_pop_debug_group",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_pop_debug_group),
+    ),
+    (
+      "op_webgpu_compute_pass_insert_debug_marker",
+      json_op_sync(compute_pass::op_webgpu_compute_pass_insert_debug_marker),
+    ),
+    // bundle
+    (
+      "op_webgpu_create_render_bundle_encoder",
+      json_op_sync(bundle::op_webgpu_create_render_bundle_encoder),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_finish",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_finish),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_set_bind_group",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_set_bind_group),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_push_debug_group",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_push_debug_group),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_pop_debug_group",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_pop_debug_group),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_insert_debug_marker",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_insert_debug_marker),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_set_pipeline",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_set_pipeline),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_set_index_buffer",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_set_index_buffer),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_set_vertex_buffer",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_set_vertex_buffer),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_draw",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_draw),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_draw_indexed",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_draw_indexed),
+    ),
+    (
+      "op_webgpu_render_bundle_encoder_draw_indirect",
+      json_op_sync(bundle::op_webgpu_render_bundle_encoder_draw_indirect),
+    ),
+    // queue
+    (
+      "op_webgpu_queue_submit",
+      json_op_sync(queue::op_webgpu_queue_submit),
+    ),
+    (
+      "op_webgpu_write_buffer",
+      json_op_sync(queue::op_webgpu_write_buffer),
+    ),
+    (
+      "op_webgpu_write_texture",
+      json_op_sync(queue::op_webgpu_write_texture),
+    ),
+    // shader
+    (
+      "op_webgpu_create_shader_module",
+      json_op_sync(shader::op_webgpu_create_shader_module),
+    ),
+  ]
 }

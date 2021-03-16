@@ -4,18 +4,40 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
+use deno_core::json_op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
+use deno_core::SimpleOpModule;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
+
+pub fn init() -> SimpleOpModule {
+  SimpleOpModule::new(
+    include_js_files!(
+      root "deno:op_crates/url",
+      "00_url.js",
+    ),
+    vec![
+      ("op_url_parse", json_op_sync(op_url_parse)),
+      (
+        "op_url_parse_search_params",
+        json_op_sync(op_url_parse_search_params),
+      ),
+      (
+        "op_url_stringify_search_params",
+        json_op_sync(op_url_stringify_search_params),
+      ),
+    ],
+  )
+}
 
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
@@ -140,14 +162,6 @@ pub fn op_url_stringify_search_params(
     .extend_pairs(search_params)
     .finish();
   Ok(json!(search))
-}
-
-/// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![("deno:op_crates/url/00_url.js", include_str!("00_url.js"))];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
 }
 
 pub fn get_declaration() -> PathBuf {
