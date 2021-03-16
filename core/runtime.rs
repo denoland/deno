@@ -376,10 +376,12 @@ impl JsRuntime {
   // Inits JS of provided JsRuntimeModules
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_mod_ops(&mut self) -> Result<(), AnyError> {
+    let op_state = self.op_state();
     let registrar =
-      Rc::new(RefCell::new(JsRuntimeOpRegistrar(self.op_state())));
+      Rc::new(RefCell::new(JsRuntimeOpRegistrar(op_state.clone())));
 
     for m in self.modules.iter_mut() {
+      m.init_state(&mut op_state.borrow_mut())?;
       m.init_ops(registrar.clone())?;
     }
     Ok(())
