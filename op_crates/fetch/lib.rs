@@ -24,7 +24,7 @@ use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::SimpleModule;
+use deno_core::BasicModule;
 use deno_core::ZeroCopyBuf;
 
 use reqwest::header::HeaderMap;
@@ -56,8 +56,8 @@ pub use reqwest; // Re-export reqwest
 pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
-) -> SimpleModule {
-  SimpleModule::new(
+) -> BasicModule {
+  BasicModule::with_ops(
     include_js_files!(
       root "deno:op_crates/fetch",
       "01_fetch_util.js",
@@ -83,11 +83,11 @@ pub fn init<P: FetchPermissions + 'static>(
         json_op_sync(op_create_http_client::<P>),
       ),
     ],
-    Box::new(move |state| {
+    Some(Box::new(move |state| {
       state
         .put(create_http_client(user_agent.clone(), ca_data.clone()).unwrap());
       Ok(())
-    }),
+    })),
   )
 }
 

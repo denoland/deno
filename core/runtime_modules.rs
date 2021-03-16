@@ -47,87 +47,55 @@ pub trait JsRuntimeModule {
   }
 }
 
-// A simple JsRuntimeModule that containing only JS
-pub struct PureJsModule {
-  js_files: Vec<SourcePair>,
+// A simple JsRuntimeModule
+pub struct BasicModule {
+  js_files: Option<Vec<SourcePair>>,
+  ops: Option<Vec<OpPair>>,
+  opstate_fn: Option<Box<OpStateFn>>,
 }
 
-impl PureJsModule {
-  pub fn new(js_files: Vec<SourcePair>) -> Self {
-    PureJsModule { js_files }
+impl BasicModule {
+  pub fn new(
+    js_files: Option<Vec<SourcePair>>,
+    ops: Option<Vec<OpPair>>,
+    opstate_fn: Option<Box<OpStateFn>>,
+  ) -> Self {
+    Self { js_files, ops, opstate_fn }
+  }
+  
+  pub fn pure_js(js_files: Vec<SourcePair>) -> Self {
+    Self::new(Some(js_files), None, None)
+  }
+  
+  pub fn with_ops(js_files: Vec<SourcePair>, ops: Vec<OpPair>, opstate_fn: Option<Box<OpStateFn>>) -> Self {
+    Self::new(Some(js_files), Some(ops), opstate_fn)
   }
 }
 
-impl JsRuntimeModule for PureJsModule {
+impl JsRuntimeModule for BasicModule {
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
-    Ok(self.js_files.clone())
+    Ok(match &self.js_files {
+      Some(files) => files.clone(),
+      None => vec![],
+    })
   }
-}
-
-// A simple JsRuntimeModule with JS & ops, but no op-state
-pub struct SimpleOpModule {
-  js: PureJsModule,
-  ops: Vec<OpPair>,
-}
-
-impl SimpleOpModule {
-  pub fn new(js_files: Vec<SourcePair>, ops: Vec<OpPair>) -> Self {
-    Self {
-      js: PureJsModule::new(js_files),
-      ops,
-    }
-  }
-}
-
-impl JsRuntimeModule for SimpleOpModule {
-  fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
-    self.js.init_js()
-  }
-
+  
   fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
     // NOTE: not idempotent
-    // TODO: fail if self.ops is empty
-    for (name, opfn) in self.ops.drain(..) {
-      registrar.borrow_mut().register_op(name, opfn);
+    // TODO: fail if called twice ?
+    if let Some(ops) = self.ops.take() {
+      for (name, opfn) in ops {
+        registrar.borrow_mut().register_op(name, opfn);
+      }
     }
     Ok(())
   }
-}
-
-// A simple JsRuntimeModule with JS, ops & op-state
-// TODO: review this name
-// has originally named it SimpleOpStateModule which is a bit verbose
-// but clarified that it was more involved than SimpleOpModule ...
-pub struct SimpleModule {
-  opmod: SimpleOpModule,
-  opstate_fn: Box<OpStateFn>,
-}
-
-impl SimpleModule {
-  pub fn new(
-    js_files: Vec<SourcePair>,
-    ops: Vec<OpPair>,
-    opstate_fn: Box<OpStateFn>,
-  ) -> Self {
-    Self {
-      opmod: SimpleOpModule::new(js_files, ops),
-      opstate_fn,
-    }
-  }
-}
-
-impl JsRuntimeModule for SimpleModule {
-  fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
-    self.opmod.init_js()
-  }
-
-  fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
-    self.opmod.init_ops(registrar)
-  }
-
+  
   fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
-    let ofn = &self.opstate_fn;
-    ofn(state)
+    match &self.opstate_fn {
+      Some(ofn) => ofn(state),
+      None => Ok(()),
+    }
   }
 }
 

@@ -8,7 +8,7 @@ use deno_core::json_op_sync;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::SimpleModule;
+use deno_core::BasicModule;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -18,8 +18,8 @@ use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
-pub fn init(maybe_seed: Option<u64>) -> SimpleModule {
-  SimpleModule::new(
+pub fn init(maybe_seed: Option<u64>) -> BasicModule {
+  BasicModule::with_ops(
     include_js_files!(
       root "deno:op_crates/crypto",
       "01_crypto.js",
@@ -28,12 +28,12 @@ pub fn init(maybe_seed: Option<u64>) -> SimpleModule {
       "op_crypto_get_random_values",
       json_op_sync(op_crypto_get_random_values),
     )],
-    Box::new(move |state| {
+    Some(Box::new(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));
       }
       Ok(())
-    }),
+    })),
   )
 }
 

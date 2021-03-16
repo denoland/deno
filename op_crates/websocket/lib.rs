@@ -20,7 +20,7 @@ use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::SimpleModule;
+use deno_core::BasicModule;
 use deno_core::{serde_json, ZeroCopyBuf};
 
 use http::{Method, Request, Uri};
@@ -346,8 +346,8 @@ pub async fn op_ws_next_event(
 pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
-) -> SimpleModule {
-  SimpleModule::new(
+) -> BasicModule {
+  BasicModule::with_ops(
     include_js_files!(
       root "deno:op_crates/websocket",
       "01_websocket.js",
@@ -362,13 +362,13 @@ pub fn init<P: WebSocketPermissions + 'static>(
       ("op_ws_close", json_op_async(op_ws_close)),
       ("op_ws_next_event", json_op_async(op_ws_next_event)),
     ],
-    Box::new(move |state| {
+    Some(Box::new(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
       if let Some(ca_data) = ca_data.clone() {
         state.put::<WsCaData>(WsCaData(ca_data));
       }
       Ok(())
-    }),
+    })),
   )
 }
 

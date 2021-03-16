@@ -13,7 +13,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpFn;
 use deno_core::OpState;
-use deno_core::SimpleModule;
+use deno_core::BasicModule;
 use deno_core::ZeroCopyBuf;
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
@@ -98,15 +98,15 @@ impl Resource for WebGPUQuerySet {
   }
 }
 
-pub fn init(unstable: bool) -> SimpleModule {
-  SimpleModule::new(
+pub fn init(unstable: bool) -> BasicModule {
+  BasicModule::with_ops(
     include_js_files!(
       root "deno:op_crates/webgpu",
       "01_webgpu.js",
       "02_idl_types.js",
     ),
     declare_webgpu_ops(),
-    Box::new(move |state| {
+    Some(Box::new(move |state| {
       state.put(wgpu_core::hub::Global::new(
         "webgpu",
         wgpu_core::hub::IdentityManagerFactory,
@@ -118,7 +118,7 @@ pub fn init(unstable: bool) -> SimpleModule {
       // let unstable = unstable_checker.unstable;
       state.put(Unstable(unstable));
       Ok(())
-    }),
+    })),
   )
 }
 

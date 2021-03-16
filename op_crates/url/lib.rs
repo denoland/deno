@@ -13,15 +13,15 @@ use deno_core::serde_json::Value;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::SimpleOpModule;
+use deno_core::BasicModule;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 
-pub fn init() -> SimpleOpModule {
-  SimpleOpModule::new(
+pub fn init() -> BasicModule {
+  BasicModule::with_ops(
     include_js_files!(
       root "deno:op_crates/url",
       "00_url.js",
@@ -32,6 +32,7 @@ pub fn init() -> SimpleOpModule {
       op_url_parse_search_params,
       op_url_stringify_search_params,
     ),
+    None
   )
 }
 

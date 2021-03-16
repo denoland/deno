@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::include_js_files;
-use deno_core::PureJsModule;
+use deno_core::BasicModule;
 use std::path::PathBuf;
 
-pub fn init() -> PureJsModule {
-  PureJsModule::new(include_js_files!(
+pub fn init() -> BasicModule {
+  BasicModule::pure_js(include_js_files!(
     root "deno:op_crates/console",
     "01_colors.js",
     "02_console.js",
