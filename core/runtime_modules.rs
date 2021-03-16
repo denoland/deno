@@ -2,12 +2,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::AnyError;
-use crate::{OpId, OpState, OpFn};
+use crate::{OpFn, OpId, OpState};
 
 pub type SourcePair = (&'static str, &'static str);
 pub type OpPair = (&'static str, Box<OpFn>);
 pub type RcOpRegistrar = Rc<RefCell<dyn OpRegistrar>>;
-pub trait OpStateFn: Fn(&mut OpState) -> Result<(), AnyError> {}
+pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), AnyError>;
 
 // JsRuntimeModule defines a common interface followed by all op_crates
 // so the JsRuntime can handle initialization consistently (e.g: snapshots or not)
@@ -19,20 +19,23 @@ pub trait OpStateFn: Fn(&mut OpState) -> Result<(), AnyError> {}
 // })
 pub trait JsRuntimeModule {
   /// This function returns JS source code to be loaded into the isolate (either at snapshotting, or at startup).
-  /// as a vector of a tuple of the file name, and the source code. 
+  /// as a vector of a tuple of the file name, and the source code.
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
     // default implementation of `init_js` is to load no runtime code
     Ok(vec![])
   }
 
-  /// This function can set up the initial op-state of an isolate at startup. 
+  /// This function can set up the initial op-state of an isolate at startup.
   fn init_state(&self, _state: &mut OpState) -> Result<(), AnyError> {
     // default implementation of `init_state is to not mutate the state
     Ok(())
   }
 
   /// This function lets you middleware the op registrations. This function gets called before this module's init_ops.
-  fn init_op_registrar_middleware(&self, registrar: RcOpRegistrar) -> RcOpRegistrar {
+  fn init_op_registrar_middleware(
+    &self,
+    registrar: RcOpRegistrar,
+  ) -> RcOpRegistrar {
     // default implementation is to not change the registrar
     registrar
   }
@@ -45,17 +48,17 @@ pub trait JsRuntimeModule {
 }
 
 // A simple JsRuntimeModule that containing only JS
-pub struct PureJSModule {
+pub struct PureJsModule {
   js_files: Vec<SourcePair>,
 }
 
-impl PureJSModule {
+impl PureJsModule {
   pub fn new(js_files: Vec<SourcePair>) -> Self {
-    PureJSModule { js_files }
+    PureJsModule { js_files }
   }
 }
 
-impl JsRuntimeModule for PureJSModule {
+impl JsRuntimeModule for PureJsModule {
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
     Ok(self.js_files.clone())
   }
@@ -63,14 +66,14 @@ impl JsRuntimeModule for PureJSModule {
 
 // A simple JsRuntimeModule with JS & ops, but no op-state
 pub struct SimpleOpModule {
-  js: PureJSModule,
+  js: PureJsModule,
   ops: Vec<OpPair>,
 }
 
 impl SimpleOpModule {
   pub fn new(js_files: Vec<SourcePair>, ops: Vec<OpPair>) -> Self {
     Self {
-      js: PureJSModule::new(js_files),
+      js: PureJsModule::new(js_files),
       ops,
     }
   }
@@ -80,7 +83,7 @@ impl JsRuntimeModule for SimpleOpModule {
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
     self.js.init_js()
   }
-  
+
   fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
     // NOTE: not idempotent
     // TODO: fail if self.ops is empty
@@ -97,13 +100,15 @@ impl JsRuntimeModule for SimpleOpModule {
 // but clarified that it was more involved than SimpleOpModule ...
 pub struct SimpleModule {
   opmod: SimpleOpModule,
-  opstate_fn: Box<dyn OpStateFn>,
+  opstate_fn: Box<OpStateFn>,
 }
 
 impl SimpleModule {
   pub fn new(
-    js_files: Vec<SourcePair>, ops: Vec<OpPair>,
-    opstate_fn: Box<dyn OpStateFn>) -> Self {
+    js_files: Vec<SourcePair>,
+    ops: Vec<OpPair>,
+    opstate_fn: Box<OpStateFn>,
+  ) -> Self {
     Self {
       opmod: SimpleOpModule::new(js_files, ops),
       opstate_fn,
@@ -115,17 +120,16 @@ impl JsRuntimeModule for SimpleModule {
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
     self.opmod.init_js()
   }
-  
+
   fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
     self.opmod.init_ops(registrar)
   }
-  
+
   fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
     let ofn = &self.opstate_fn;
     ofn(state)
   }
 }
-
 
 // MultiModule allows grouping multiple sub-JsRuntimeModules into one,
 // allowing things such as:
@@ -140,16 +144,26 @@ pub struct MultiModule<'s> {
 
 impl MultiModule<'_> {
   fn new<'s>(modules: &mut Vec<impl JsRuntimeModule + 's>) -> MultiModule<'s> {
-    let modules = modules.drain(..).map(|m| Box::<dyn JsRuntimeModule + 's>::from(Box::new(m))).collect();
+    let modules = modules
+      .drain(..)
+      .map(|m| Box::<dyn JsRuntimeModule + 's>::from(Box::new(m)))
+      .collect();
     MultiModule { modules }
   }
 }
 
 impl JsRuntimeModule for MultiModule<'_> {
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
-    Ok(self.modules.iter().map(|m| m.init_js().unwrap()).flatten().collect())
+    Ok(
+      self
+        .modules
+        .iter()
+        .map(|m| m.init_js().unwrap())
+        .flatten()
+        .collect(),
+    )
   }
-  
+
   fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
     for m in self.modules.iter_mut() {
       m.init_ops(registrar.clone())?;

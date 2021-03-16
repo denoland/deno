@@ -22,9 +22,9 @@ use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
-use crate::OpState;
-use crate::OpRegistrar;
 use crate::JsRuntimeModule;
+use crate::OpRegistrar;
+use crate::OpState;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;
@@ -180,7 +180,7 @@ pub struct RuntimeOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
-  
+
   /// JsRuntime modules, not to be confused with ES modules
   /// these are deno modules containing JS + ops
   pub modules: Option<Vec<Box<dyn JsRuntimeModule>>>,
@@ -1474,8 +1474,7 @@ impl OpRegistrar for JsRuntime {
   /// following functions can be passed as an argument for `op_fn`:
   /// * [json_op_sync()](fn.json_op_sync.html)
   /// * [json_op_async()](fn.json_op_async.html)
-  fn register_op(&mut self, name: &str, op_fn: Box<OpFn>) -> OpId
-  {
+  fn register_op(&mut self, name: &str, op_fn: Box<OpFn>) -> OpId {
     Self::state(self.v8_isolate())
       .borrow_mut()
       .op_state
