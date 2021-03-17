@@ -110,9 +110,9 @@ async fn op_start_tls(
     super::check_unstable2(&state, "Deno.startTls");
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
-    permissions.check_net(&(&domain, Some(0)))?;
+    permissions.net.check(&(&domain, Some(0)))?;
     if let Some(path) = &args.cert_file {
-      permissions.check_read(Path::new(&path))?;
+      permissions.read.check(Path::new(&path))?;
     }
   }
 
@@ -174,9 +174,9 @@ async fn op_connect_tls(
   {
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
-    permissions.check_net(&(&args.hostname, Some(args.port)))?;
+    permissions.net.check(&(&args.hostname, Some(args.port)))?;
     if let Some(path) = &args.cert_file {
-      permissions.check_read(Path::new(&path))?;
+      permissions.read.check(Path::new(&path))?;
     }
   }
   let mut domain = args.hostname.as_str();
@@ -318,9 +318,9 @@ fn op_listen_tls(
   let key_file = args.key_file;
   {
     let permissions = state.borrow::<Permissions>();
-    permissions.check_net(&(&args.hostname, Some(args.port)))?;
-    permissions.check_read(Path::new(&cert_file))?;
-    permissions.check_read(Path::new(&key_file))?;
+    permissions.net.check(&(&args.hostname, Some(args.port)))?;
+    permissions.read.check(Path::new(&cert_file))?;
+    permissions.read.check(Path::new(&key_file))?;
   }
   let mut config = ServerConfig::new(NoClientAuth::new());
   config

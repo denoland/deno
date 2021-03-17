@@ -166,7 +166,7 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if op_state.borrow::<Permissions>().check_hrtime().is_err() {
+  if op_state.borrow::<Permissions>().hrtime.check().is_err() {
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 

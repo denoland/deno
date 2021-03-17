@@ -112,7 +112,8 @@ fn op_fs_events_open(
   for path in &args.paths {
     state
       .borrow::<Permissions>()
-      .check_read(&PathBuf::from(path))?;
+      .read
+      .check(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource {

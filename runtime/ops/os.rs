@@ -34,7 +34,8 @@ fn op_exec_path(
   let current_exe = env::current_exe().unwrap();
   state
     .borrow::<Permissions>()
-    .check_read_blind(&current_exe, "exec_path")?;
+    .read
+    .check_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -54,7 +55,7 @@ fn op_set_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: SetEnv = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   let invalid_key =
     args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
   let invalid_value = args.value.contains('\0');
@@ -70,7 +71,7 @@ fn op_env(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   let v = env::vars().collect::<HashMap<String, String>>();
   Ok(json!(v))
 }
@@ -86,7 +87,7 @@ fn op_get_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: GetEnv = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -108,7 +109,7 @@ fn op_delete_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: DeleteEnv = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -136,7 +137,7 @@ fn op_loadavg(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.loadavg");
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(json!([loadavg.one, loadavg.five, loadavg.fifteen])),
     Err(_) => Ok(json!([0f64, 0f64, 0f64])),
@@ -149,7 +150,7 @@ fn op_hostname(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.hostname");
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(json!(hostname))
 }
@@ -160,7 +161,7 @@ fn op_os_release(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(json!(release))
 }
@@ -171,7 +172,7 @@ fn op_system_memory_info(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(json!({
       "total": info.total,
@@ -192,7 +193,7 @@ fn op_system_cpu_info(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.systemCpuInfo");
-  state.borrow::<Permissions>().check_env()?;
+  state.borrow::<Permissions>().env.check()?;
 
   let cores = sys_info::cpu_num().ok();
   let speed = sys_info::cpu_speed().ok();

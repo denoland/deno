@@ -204,7 +204,8 @@ async fn op_datagram_send(
       {
         let s = state.borrow();
         s.borrow::<Permissions>()
-          .check_net(&(&args.hostname, Some(args.port)))?;
+          .net
+          .check(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -229,7 +230,7 @@ async fn op_datagram_send(
       let address_path = Path::new(&args.path);
       {
         let s = state.borrow();
-        s.borrow::<Permissions>().check_write(&address_path)?;
+        s.borrow::<Permissions>().write.check(&address_path)?;
       }
       let resource = state
         .borrow()
@@ -269,7 +270,8 @@ async fn op_connect(
         let state_ = state.borrow();
         state_
           .borrow::<Permissions>()
-          .check_net(&(&args.hostname, Some(args.port)))?;
+          .net
+          .check(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -306,8 +308,8 @@ async fn op_connect(
       super::check_unstable2(&state, "Deno.connect");
       {
         let state_ = state.borrow();
-        state_.borrow::<Permissions>().check_read(&address_path)?;
-        state_.borrow::<Permissions>().check_write(&address_path)?;
+        state_.borrow::<Permissions>().read.check(&address_path)?;
+        state_.borrow::<Permissions>().write.check(&address_path)?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
@@ -433,7 +435,7 @@ fn op_listen(
         if transport == "udp" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        permissions.check_net(&(&args.hostname, Some(args.port)))?;
+        permissions.net.check(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
@@ -471,8 +473,8 @@ fn op_listen(
         if transport == "unixpacket" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        permissions.check_read(&address_path)?;
-        permissions.check_write(&address_path)?;
+        permissions.read.check(&address_path)?;
+        permissions.write.check(&address_path)?;
       }
       let (rid, local_addr) = if transport == "unix" {
         net_unix::listen_unix(state, &address_path)?
@@ -580,7 +582,7 @@ async fn op_dns_resolve(
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.check_net(&(ip, Some(port)))?;
+      perm.net.check(&(ip, Some(port)))?;
     }
   }
 
