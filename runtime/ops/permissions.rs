@@ -35,10 +35,10 @@ pub fn op_query_permission(
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.query(&path.as_deref().map(Path::new)),
-    "write" => permissions.write.query(&path.as_deref().map(Path::new)),
+    "read" => permissions.read.query(path.as_deref().map(Path::new)),
+    "write" => permissions.write.query(path.as_deref().map(Path::new)),
     "net" => permissions.net.query(
-      &match args.host.as_deref() {
+      match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
@@ -67,10 +67,10 @@ pub fn op_revoke_permission(
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.revoke(&path.as_deref().map(Path::new)),
-    "write" => permissions.write.revoke(&path.as_deref().map(Path::new)),
+    "read" => permissions.read.revoke(path.as_deref().map(Path::new)),
+    "write" => permissions.write.revoke(path.as_deref().map(Path::new)),
     "net" => permissions.net.revoke(
-      &match args.host.as_deref() {
+      match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
@@ -99,10 +99,10 @@ pub fn op_request_permission(
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.read.request(&path.as_deref().map(Path::new)),
-    "write" => permissions.write.request(&path.as_deref().map(Path::new)),
+    "read" => permissions.read.request(path.as_deref().map(Path::new)),
+    "write" => permissions.write.request(path.as_deref().map(Path::new)),
     "net" => permissions.net.request(
-      &match args.host.as_deref() {
+      match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }

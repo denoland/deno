@@ -84,7 +84,7 @@ pub struct UnaryPermission<T: Eq + Hash> {
 pub struct ReadPermission(pub PathBuf);
 
 impl UnaryPermission<ReadPermission> {
-  pub fn query(&self, path: &Option<&Path>) -> PermissionState {
+  pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
@@ -111,10 +111,10 @@ impl UnaryPermission<ReadPermission> {
     }
   }
 
-  pub fn request(&mut self, path: &Option<&Path>) -> PermissionState {
+  pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let (resolved_path, display_path) = resolved_and_display_path(path);
-      let state = self.query(&Some(&resolved_path));
+      let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!(
           "read access to \"{}\"",
@@ -137,7 +137,7 @@ impl UnaryPermission<ReadPermission> {
         state
       }
     } else {
-      let state = self.query(&None);
+      let state = self.query(None);
       if state == PermissionState::Prompt {
         if permission_prompt("read access") {
           self.granted_list.clear();
@@ -153,7 +153,7 @@ impl UnaryPermission<ReadPermission> {
     }
   }
 
-  pub fn revoke(&mut self, path: &Option<&Path>) -> PermissionState {
+  pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let path = resolve_from_cwd(path).unwrap();
       self
@@ -171,7 +171,7 @@ impl UnaryPermission<ReadPermission> {
   pub fn check(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
     self
-      .query(&Some(&resolved_path))
+      .query(Some(&resolved_path))
       .check(self.name, Some(&format!("\"{}\"", display_path.display())))
   }
 
@@ -184,7 +184,7 @@ impl UnaryPermission<ReadPermission> {
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
     self
-      .query(&Some(&resolved_path))
+      .query(Some(&resolved_path))
       .check(self.name, Some(&format!("<{}>", display)))
   }
 }
@@ -193,7 +193,7 @@ impl UnaryPermission<ReadPermission> {
 pub struct WritePermission(pub PathBuf);
 
 impl UnaryPermission<WritePermission> {
-  pub fn query(&self, path: &Option<&Path>) -> PermissionState {
+  pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
@@ -220,10 +220,10 @@ impl UnaryPermission<WritePermission> {
     }
   }
 
-  pub fn request(&mut self, path: &Option<&Path>) -> PermissionState {
+  pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let (resolved_path, display_path) = resolved_and_display_path(path);
-      let state = self.query(&Some(&resolved_path));
+      let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!(
           "write access to \"{}\"",
@@ -246,7 +246,7 @@ impl UnaryPermission<WritePermission> {
         state
       }
     } else {
-      let state = self.query(&None);
+      let state = self.query(None);
       if state == PermissionState::Prompt {
         if permission_prompt("write access") {
           self.granted_list.clear();
@@ -262,7 +262,7 @@ impl UnaryPermission<WritePermission> {
     }
   }
 
-  pub fn revoke(&mut self, path: &Option<&Path>) -> PermissionState {
+  pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let path = resolve_from_cwd(path).unwrap();
       self
@@ -280,7 +280,7 @@ impl UnaryPermission<WritePermission> {
   pub fn check(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
     self
-      .query(&Some(&resolved_path))
+      .query(Some(&resolved_path))
       .check(self.name, Some(&format!("\"{}\"", display_path.display())))
   }
 }
@@ -313,7 +313,7 @@ impl fmt::Display for NetPermission {
 impl UnaryPermission<NetPermission> {
   pub fn query<T: AsRef<str>>(
     &self,
-    host: &Option<&(T, Option<u16>)>,
+    host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if self.global_state == PermissionState::Denied
       && match host.as_ref() {
@@ -348,12 +348,12 @@ impl UnaryPermission<NetPermission> {
 
   pub fn request<T: AsRef<str>>(
     &mut self,
-    host: &Option<&(T, Option<u16>)>,
+    host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if let Some(host) = host {
-      let state = self.query(&Some(host));
+      let state = self.query(Some(host));
       if state == PermissionState::Prompt {
-        let host = NetPermission::new(host);
+        let host = NetPermission::new(&host);
         if permission_prompt(&format!("network access to \"{}\"", host)) {
           if host.1.is_none() {
             self.granted_list.retain(|h| h.0 != host.0);
@@ -372,7 +372,7 @@ impl UnaryPermission<NetPermission> {
         state
       }
     } else {
-      let state = self.query::<&str>(&None);
+      let state = self.query::<&str>(None);
       if state == PermissionState::Prompt {
         if permission_prompt("network access") {
           self.granted_list.clear();
@@ -390,10 +390,10 @@ impl UnaryPermission<NetPermission> {
 
   pub fn revoke<T: AsRef<str>>(
     &mut self,
-    host: &Option<&(T, Option<u16>)>,
+    host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if let Some(host) = host {
-      self.granted_list.remove(&NetPermission::new(host));
+      self.granted_list.remove(&NetPermission::new(&host));
       if host.1.is_none() {
         self.granted_list.retain(|h| h.0 != host.0.as_ref());
       }
@@ -410,7 +410,7 @@ impl UnaryPermission<NetPermission> {
     &self,
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
-    self.query(&Some(host)).check(
+    self.query(Some(host)).check(
       self.name,
       Some(&format!("\"{}\"", NetPermission::new(&host))),
     )
@@ -426,7 +426,7 @@ impl UnaryPermission<NetPermission> {
       Some(port) => format!("{}:{}", hostname, port),
     };
     self
-      .query(&Some(&(hostname, url.port_or_known_default())))
+      .query(Some(&(hostname, url.port_or_known_default())))
       .check(self.name, Some(&format!("\"{}\"", display_host)))
   }
 }
@@ -1073,20 +1073,20 @@ mod tests {
     };
     #[rustfmt::skip]
     {
-      assert_eq!(perms1.read.query(&None), PermissionState::Granted);
-      assert_eq!(perms1.read.query(&Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.read.query(&None), PermissionState::Prompt);
-      assert_eq!(perms2.read.query(&Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.read.query(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms1.write.query(&None), PermissionState::Granted);
-      assert_eq!(perms1.write.query(&Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.write.query(&None), PermissionState::Prompt);
-      assert_eq!(perms2.write.query(&Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.write.query(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms1.net.query::<&str>(&None), PermissionState::Granted);
-      assert_eq!(perms1.net.query(&Some(&("127.0.0.1", None))), PermissionState::Granted);
-      assert_eq!(perms2.net.query::<&str>(&None), PermissionState::Prompt);
-      assert_eq!(perms2.net.query(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms1.read.query(None), PermissionState::Granted);
+      assert_eq!(perms1.read.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.read.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.read.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.read.query(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms1.write.query(None), PermissionState::Granted);
+      assert_eq!(perms1.write.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.write.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.write.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms1.net.query::<&str>(None), PermissionState::Granted);
+      assert_eq!(perms1.net.query(Some(&("127.0.0.1", None))), PermissionState::Granted);
+      assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
+      assert_eq!(perms2.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms1.env.query(), PermissionState::Granted);
       assert_eq!(perms2.env.query(), PermissionState::Prompt);
       assert_eq!(perms1.run.query(), PermissionState::Granted);
@@ -1105,19 +1105,19 @@ mod tests {
     {
       let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
       set_prompt_result(true);
-      assert_eq!(perms.read.request(&Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms.read.query(&None), PermissionState::Prompt);
+      assert_eq!(perms.read.request(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms.read.query(None), PermissionState::Prompt);
       set_prompt_result(false);
-      assert_eq!(perms.read.request(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.request(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
       set_prompt_result(false);
-      assert_eq!(perms.write.request(&Some(&Path::new("/foo"))), PermissionState::Denied);
-      assert_eq!(perms.write.query(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.request(Some(&Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
       set_prompt_result(true);
-      assert_eq!(perms.write.request(&None), PermissionState::Denied);
+      assert_eq!(perms.write.request(None), PermissionState::Denied);
       set_prompt_result(true);
-      assert_eq!(perms.net.request(&Some(&("127.0.0.1", None))), PermissionState::Granted);
+      assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
       set_prompt_result(false);
-      assert_eq!(perms.net.request(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       set_prompt_result(true);
       assert_eq!(perms.env.request(), PermissionState::Granted);
       set_prompt_result(false);
@@ -1171,14 +1171,14 @@ mod tests {
     };
     #[rustfmt::skip]
     {
-      assert_eq!(perms.read.revoke(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms.read.revoke(&Some(&Path::new("/foo"))), PermissionState::Prompt);
-      assert_eq!(perms.read.query(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.write.revoke(&Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms.write.revoke(&None), PermissionState::Prompt);
-      assert_eq!(perms.write.query(&Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.net.revoke(&Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      assert_eq!(perms.net.revoke(&Some(&("127.0.0.1", None))), PermissionState::Prompt);
+      assert_eq!(perms.read.revoke(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.revoke(Some(&Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.read.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.revoke(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.write.revoke(None), PermissionState::Prompt);
+      assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(), PermissionState::Prompt);
       assert_eq!(perms.plugin.revoke(), PermissionState::Prompt);
