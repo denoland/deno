@@ -98,9 +98,9 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_prepare_test_modules_urls() {
+  fn test_collect_test_module_specifiers() {
     let test_data_path = test_util::root_path().join("cli/tests/subdir");
-    let mut matched_urls = prepare_test_modules_urls(
+    let mut matched_urls = collect_test_module_specifiers(
       vec![
         "https://example.com/colors_test.ts".to_string(),
         "./mod1.ts".to_string(),
@@ -158,7 +158,7 @@ mod tests {
       .join("http");
     println!("root {:?}", root);
     let mut matched_urls =
-      prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();
+      collect_test_module_specifiers(vec![".".to_string()], &root).unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);
