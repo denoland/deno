@@ -44,7 +44,7 @@ unitTest({ perms: { read: false } }, function dirCwdPermError(): void {
       Deno.cwd();
     },
     Deno.errors.PermissionDenied,
-    "Access to read <CWD> required, run again with the --allow-read flag",
+    "Requires read access to <CWD>, run again with the --allow-read flag",
   );
 });
 
