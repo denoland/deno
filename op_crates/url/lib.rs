@@ -4,7 +4,6 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::form_urlencoded;
@@ -17,31 +16,31 @@ use serde::Serialize;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UrlParseArgs {
+  href: String,
+  base_href: Option<String>,
+  // If one of the following are present, this is a setter call. Apply the
+  // proper `Url::set_*()` method after (re)parsing `href`.
+  set_hash: Option<String>,
+  set_host: Option<String>,
+  set_hostname: Option<String>,
+  set_password: Option<String>,
+  set_pathname: Option<String>,
+  set_port: Option<String>,
+  set_protocol: Option<String>,
+  set_search: Option<String>,
+  set_username: Option<String>,
+}
+
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
 pub fn op_url_parse(
   _state: &mut deno_core::OpState,
-  args: Value,
+  args: UrlParseArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct UrlParseArgs {
-    href: String,
-    base_href: Option<String>,
-    // If one of the following are present, this is a setter call. Apply the
-    // proper `Url::set_*()` method after (re)parsing `href`.
-    set_hash: Option<String>,
-    set_host: Option<String>,
-    set_hostname: Option<String>,
-    set_password: Option<String>,
-    set_pathname: Option<String>,
-    set_port: Option<String>,
-    set_protocol: Option<String>,
-    set_search: Option<String>,
-    set_username: Option<String>,
-  }
-  let args: UrlParseArgs = serde_json::from_value(args)?;
   let base_url = args
     .base_href
     .as_ref()
@@ -120,11 +119,10 @@ pub fn op_url_parse(
 
 pub fn op_url_parse_search_params(
   _state: &mut deno_core::OpState,
-  args: Value,
+  args: String,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let search: String = serde_json::from_value(args)?;
-  let search_params: Vec<_> = form_urlencoded::parse(search.as_bytes())
+  let search_params: Vec<_> = form_urlencoded::parse(args.as_bytes())
     .into_iter()
     .collect();
   Ok(json!(search_params))
@@ -132,12 +130,11 @@ pub fn op_url_parse_search_params(
 
 pub fn op_url_stringify_search_params(
   _state: &mut deno_core::OpState,
-  args: Value,
+  args: Vec<(String, String)>,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let search_params: Vec<(String, String)> = serde_json::from_value(args)?;
   let search = form_urlencoded::Serializer::new(String::new())
-    .extend_pairs(search_params)
+    .extend_pairs(args)
     .finish();
   Ok(json!(search))
 }
