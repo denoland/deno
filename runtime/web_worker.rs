@@ -180,12 +180,9 @@ impl WebWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       )),
+      Box::new(deno_crypto::init(options.seed))
       Box::new(deno_webgpu::init(options.unstable)),
     ];
-    // Crypto uses Deno namespace
-    if options.use_deno_namespace {
-      deno_modules.push(Box::new(deno_crypto::init(options.seed)));
-    }
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -262,7 +259,6 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        // ops::crypto::init(js_runtime, options.seed);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
