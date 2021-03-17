@@ -34,14 +34,20 @@ pub enum PermissionState {
 
 impl PermissionState {
   /// Check the permission state.
-  fn check(self, description: &str, name: &str) -> Result<(), AnyError> {
+  fn check(self, name: &str, info: Option<&str>) -> Result<(), AnyError> {
     if self == PermissionState::Granted {
-      log_perm_access(&format!("Access to {}", description));
+      log_perm_access(&format!(
+        "{} access{}",
+        name,
+        info.map_or(Default::default(), |info| { format!(" to {}", info) }),
+      ));
       return Ok(());
     }
     let message = format!(
-      "Access to {} required, run again with the --allow-{} flag",
-      description, name
+      "Requires {} access{}, run again with the --allow-{} flag",
+      name,
+      info.map_or(Default::default(), |info| { format!(" to {}", info) }),
+      name
     );
     Err(custom_error("PermissionDenied", message))
   }
@@ -166,7 +172,7 @@ impl UnaryPermission<ReadPermission> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
     self
       .query(&Some(&resolved_path))
-      .check(&format!("read \"{}\"", display_path.display()), self.name)
+      .check(self.name, Some(&format!("\"{}\"", display_path.display())))
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -179,7 +185,7 @@ impl UnaryPermission<ReadPermission> {
     let resolved_path = resolve_from_cwd(path).unwrap();
     self
       .query(&Some(&resolved_path))
-      .check(&format!("read <{}>", display), self.name)
+      .check(self.name, Some(&format!("<{}>", display)))
   }
 }
 
@@ -273,10 +279,9 @@ impl UnaryPermission<WritePermission> {
 
   pub fn check(&self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    self.query(&Some(&resolved_path)).check(
-      &format!("write to \"{}\"", display_path.display()),
-      self.name,
-    )
+    self
+      .query(&Some(&resolved_path))
+      .check(self.name, Some(&format!("\"{}\"", display_path.display())))
   }
 }
 
@@ -406,8 +411,8 @@ impl UnaryPermission<NetPermission> {
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
     self.query(&Some(host)).check(
-      &format!("network for \"{}\"", NetPermission::new(&host)),
       self.name,
+      Some(&format!("\"{}\"", NetPermission::new(&host))),
     )
   }
 
@@ -422,7 +427,7 @@ impl UnaryPermission<NetPermission> {
     };
     self
       .query(&Some(&(hostname, url.port_or_known_default())))
-      .check(&format!("network for \"{}\"", display_host), self.name)
+      .check(self.name, Some(&format!("\"{}\"", display_host)))
   }
 }
 
@@ -457,7 +462,7 @@ impl BooleanPermission {
   }
 
   pub fn check(&self) -> Result<(), AnyError> {
-    self.state.check(self.description, self.name)
+    self.state.check(self.name, None)
   }
 }
 
