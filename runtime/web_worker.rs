@@ -167,7 +167,7 @@ impl WebWorker {
     options: &WebWorkerOptions,
   ) -> Self {
     // Internal modules
-    let mut deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
+    let deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
       Box::new(deno_webidl::init()),
       Box::new(deno_console::init()),
       Box::new(deno_url::init()),
