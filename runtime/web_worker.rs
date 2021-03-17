@@ -180,7 +180,7 @@ impl WebWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       )),
-      Box::new(deno_crypto::init(options.seed))
+      Box::new(deno_crypto::init(options.seed)),
       Box::new(deno_webgpu::init(options.unstable)),
     ];
 
