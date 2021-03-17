@@ -59,6 +59,7 @@ use crate::test_dispatcher::TestMessage;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::resolve_url_or_path;
@@ -1011,16 +1012,31 @@ async fn test_command(
     })
   };
 
-  for module_specifier in &test_modules {
-    run_test(
-      program_state.clone(),
-      module_specifier.clone(),
-      permissions.clone(),
-      sender.clone(),
-      filter.clone(),
-    )
-    .await?;
-  }
+  let join_handles = test_modules.iter().map(|module_specifier| {
+    let program_state = program_state.clone();
+    let module_specifier = module_specifier.clone();
+    let permissions = permissions.clone();
+    let sender = sender.clone();
+    let filter = filter.clone();
+
+    tokio::task::spawn_blocking(move || {
+      let join_handle = std::thread::spawn(move || {
+        let future = run_test(
+          program_state.clone(),
+          module_specifier.clone(),
+          permissions.clone(),
+          sender.clone(),
+          filter.clone(),
+        );
+
+        tokio_util::run_basic(future)
+      });
+
+      join_handle.join()
+    })
+  });
+
+  let join_results = future::join_all(join_handles);
 
   Ok(())
 }
