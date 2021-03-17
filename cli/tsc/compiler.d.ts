@@ -51,6 +51,7 @@ declare global {
     | GetAsset
     | GetCodeFixes
     | GetCombinedCodeFix
+    | GetCompletionDetails
     | GetCompletionsRequest
     | GetDefinitionRequest
     | GetDiagnosticsRequest
@@ -102,11 +103,22 @@ declare global {
     fixId: {};
   }
 
+  interface GetCompletionDetails extends BaseLanguageServerRequest {
+    method: "getCompletionDetails";
+    args: {
+      specifier: string;
+      position: number;
+      name: string;
+      source?: string;
+      data?: unknown;
+    };
+  }
+
   interface GetCompletionsRequest extends BaseLanguageServerRequest {
     method: "getCompletions";
     specifier: string;
     position: number;
-    preferences: ts.UserPreferences;
+    preferences: ts.GetCompletionsAtPositionOptions;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {

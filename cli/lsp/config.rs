@@ -15,7 +15,7 @@ pub struct ClientCapabilities {
   pub workspace_did_change_watched_files: bool,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -30,13 +30,50 @@ pub struct CodeLensSettings {
   pub references_all_functions: bool,
 }
 
+impl Default for CodeLensSettings {
+  fn default() -> Self {
+    Self {
+      implementations: false,
+      references: false,
+      references_all_functions: false,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionSettings {
+  #[serde(default)]
+  pub complete_function_calls: bool,
+  #[serde(default)]
+  pub names: bool,
+  #[serde(default)]
+  pub paths: bool,
+  #[serde(default)]
+  pub auto_imports: bool,
+}
+
+impl Default for CompletionSettings {
+  fn default() -> Self {
+    Self {
+      complete_function_calls: false,
+      names: true,
+      paths: true,
+      auto_imports: true,
+    }
+  }
+}
+
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
-  pub code_lens: Option<CodeLensSettings>,
+  #[serde(default)]
+  pub code_lens: CodeLensSettings,
+  #[serde(default)]
+  pub suggest: CompletionSettings,
 
   #[serde(default)]
   pub lint: bool,
@@ -48,36 +85,7 @@ impl WorkspaceSettings {
   /// Determine if any code lenses are enabled at all.  This allows short
   /// circuiting when there are no code lenses enabled.
   pub fn enabled_code_lens(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      // This should contain all the "top level" code lens references
-      code_lens.implementations || code_lens.references
-    } else {
-      false
-    }
-  }
-
-  pub fn enabled_code_lens_implementations(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      code_lens.implementations
-    } else {
-      false
-    }
-  }
-
-  pub fn enabled_code_lens_references(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      code_lens.references
-    } else {
-      false
-    }
-  }
-
-  pub fn enabled_code_lens_references_all_functions(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      code_lens.references_all_functions
-    } else {
-      false
-    }
+    self.code_lens.implementations || self.code_lens.references
   }
 }
 
