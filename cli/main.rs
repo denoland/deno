@@ -36,6 +36,7 @@ mod program_state;
 mod source_maps;
 mod specifier_handler;
 mod standalone;
+mod test_dispatcher;
 mod text_encoding;
 mod tokio_util;
 mod tools;
@@ -54,6 +55,7 @@ use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
+use crate::test_dispatcher::TestMessage;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -79,6 +81,8 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -218,6 +222,7 @@ pub fn create_main_worker(
     // above
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
+    ops::test_dispatcher::init(js_runtime);
   }
   worker.bootstrap(&options);
 
@@ -900,13 +905,19 @@ async fn run_test(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  fail_fast: bool,
-  quiet: bool,
+  channel: Sender<TestMessage>,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
-  println!("run test");
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions);
+
+  {
+    let js_runtime = &mut worker.js_runtime;
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<Sender<TestMessage>>(channel.clone());
+  }
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
@@ -921,11 +932,9 @@ async fn run_test(
       None
     };
 
-  let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
-  } else {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
-  };
+  let options = json!({
+    "filter": filter,
+  });
 
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
@@ -990,13 +999,24 @@ async fn test_command(
     env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
   }
 
+  let (sender, receiver) = channel::<TestMessage>();
+
+  let dispatcher = {
+    let test_modules = test_modules.clone();
+
+    tokio::task::spawn_blocking(move || {
+      for message in receiver.iter() {
+        println!("{:?}", message);
+      }
+    })
+  };
+
   for module_specifier in &test_modules {
     run_test(
       program_state.clone(),
       module_specifier.clone(),
       permissions.clone(),
-      fail_fast,
-      quiet,
+      sender.clone(),
       filter.clone(),
     )
     .await?;

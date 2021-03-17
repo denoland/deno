@@ -2,6 +2,7 @@
 
 pub mod errors;
 pub mod runtime_compiler;
+pub mod test_dispatcher;
 
 use deno_core::error::AnyError;
 use deno_core::json_op_async;

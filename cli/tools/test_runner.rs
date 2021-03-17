@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util;
+use crate::test_dispatcher::TestMessage;
 use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
