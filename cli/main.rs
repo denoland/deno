@@ -56,6 +56,7 @@ use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
 use crate::test_dispatcher::TestMessage;
+use crate::test_dispatcher::TestResult;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -1002,16 +1003,6 @@ async fn test_command(
 
   let (sender, receiver) = channel::<TestMessage>();
 
-  let dispatcher = {
-    let test_modules = test_modules.clone();
-
-    tokio::task::spawn_blocking(move || {
-      for message in receiver.iter() {
-        println!("{:?}", message);
-      }
-    })
-  };
-
   let join_handles = test_modules.iter().map(|module_specifier| {
     let program_state = program_state.clone();
     let module_specifier = module_specifier.clone();
@@ -1037,6 +1028,63 @@ async fn test_command(
   });
 
   let join_results = future::join_all(join_handles);
+
+  let handler = {
+    let test_modules = test_modules.clone();
+
+    tokio::task::spawn_blocking(move || {
+      let mut has_error = false;
+
+      for message in receiver.iter() {
+        match message {
+          TestMessage::Result {
+            name,
+            duration,
+            result,
+          } => match result {
+            TestResult::Ok => {
+              println!(
+                "test {} ... {} {}",
+                name,
+                colors::green("ok"),
+                colors::gray(format!("({}ms)", duration))
+              );
+            }
+            TestResult::Ignored => {
+              println!(
+                "test {} ... {} {}",
+                name,
+                colors::yellow("ignored"),
+                colors::gray(format!("({}ms)", duration))
+              );
+            }
+            TestResult::Failed(_) => {
+              println!(
+                "test {} ... {} {}",
+                name,
+                colors::red("FAILED"),
+                colors::gray(format!("({}ms)", duration))
+              );
+
+              has_error = true;
+            }
+          },
+          _ => {}
+        }
+
+        if has_error && fail_fast {
+          break;
+        }
+      }
+
+      has_error
+    })
+  };
+
+  let has_error = handler.await?;
+  if has_error {
+    std::process::exit(1);
+  }
 
   Ok(())
 }
