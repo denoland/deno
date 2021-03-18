@@ -2,7 +2,6 @@
 
 use crate::permissions::Permissions;
 use deno_core::error::{type_error, AnyError};
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
@@ -44,17 +43,16 @@ fn op_exec_path(
 }
 
 #[derive(Deserialize)]
-struct SetEnv {
+pub struct SetEnv {
   key: String,
   value: String,
 }
 
 fn op_set_env(
   state: &mut OpState,
-  args: Value,
+  args: SetEnv,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: SetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().env.check()?;
   let invalid_key =
     args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
@@ -77,16 +75,15 @@ fn op_env(
 }
 
 #[derive(Deserialize)]
-struct GetEnv {
+pub struct GetEnv {
   key: String,
 }
 
 fn op_get_env(
   state: &mut OpState,
-  args: Value,
+  args: GetEnv,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: GetEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().env.check()?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
@@ -99,16 +96,15 @@ fn op_get_env(
 }
 
 #[derive(Deserialize)]
-struct DeleteEnv {
+pub struct DeleteEnv {
   key: String,
 }
 
 fn op_delete_env(
   state: &mut OpState,
-  args: Value,
+  args: DeleteEnv,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: DeleteEnv = serde_json::from_value(args)?;
   state.borrow::<Permissions>().env.check()?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
@@ -118,16 +114,15 @@ fn op_delete_env(
 }
 
 #[derive(Deserialize)]
-struct Exit {
+pub struct Exit {
   code: i32,
 }
 
 fn op_exit(
   _state: &mut OpState,
-  args: Value,
+  args: Exit,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
 }
 

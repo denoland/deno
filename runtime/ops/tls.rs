@@ -11,7 +11,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
@@ -79,7 +78,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ConnectTLSArgs {
+pub struct ConnectTLSArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -96,10 +95,9 @@ struct StartTLSArgs {
 
 async fn op_start_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: StartTLSArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let mut domain = args.hostname.as_str();
@@ -167,10 +165,9 @@ async fn op_start_tls(
 
 async fn op_connect_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ConnectTLSArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: ConnectTLSArgs = serde_json::from_value(args)?;
   {
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
@@ -298,7 +295,7 @@ impl Resource for TlsListenerResource {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ListenTlsArgs {
+pub struct ListenTlsArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -308,10 +305,9 @@ struct ListenTlsArgs {
 
 fn op_listen_tls(
   state: &mut OpState,
-  args: Value,
+  args: ListenTlsArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
   let cert_file = args.cert_file;
@@ -353,16 +349,15 @@ fn op_listen_tls(
 }
 
 #[derive(Deserialize)]
-struct AcceptTlsArgs {
+pub struct AcceptTlsArgs {
   rid: i32,
 }
 
 async fn op_accept_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: AcceptTlsArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let resource = state

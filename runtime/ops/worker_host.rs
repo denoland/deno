@@ -22,7 +22,6 @@ use deno_core::serde::de;
 use deno_core::serde::de::SeqAccess;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
@@ -96,9 +95,8 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_host_unhandled_error",
-    move |_state, args, _zero_copy| {
+    move |_state, args: HostUnhandledErrorArgs, _zero_copy| {
       if let Some(mut sender) = sender.clone() {
-        let args: HostUnhandledErrorArgs = serde_json::from_value(args)?;
         sender
           .try_send(WorkerEvent::Error(generic_error(args.message)))
           .expect("Failed to propagate error event to parent worker");
@@ -532,7 +530,7 @@ where
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateWorkerArgs {
+pub struct CreateWorkerArgs {
   has_source_code: bool,
   name: Option<String>,
   permissions: Option<PermissionsArg>,
@@ -544,11 +542,9 @@ struct CreateWorkerArgs {
 /// Create worker as the host
 fn op_create_worker(
   state: &mut OpState,
-  args: Value,
+  args: CreateWorkerArgs,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateWorkerArgs = serde_json::from_value(args)?;
-
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
     Some(args.source_code.clone())
@@ -627,16 +623,16 @@ fn op_create_worker(
 }
 
 #[derive(Deserialize)]
-struct WorkerArgs {
+pub struct WorkerArgs {
   id: i32,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_host_terminate_worker(
   state: &mut OpState,
-  args: Value,
+  args: WorkerArgs,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let worker_thread = state
     .borrow_mut::<WorkersTable>()
@@ -710,10 +706,9 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: WorkerArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
 
   let worker_handle = {
@@ -745,11 +740,10 @@ async fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &mut OpState,
-  args: Value,
+  args: WorkerArgs,
   data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
-  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 
