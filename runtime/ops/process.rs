@@ -178,7 +178,7 @@ fn op_run(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunStatusArgs {
-  rid: i32,
+  rid: u32,
 }
 
 async fn op_run_status(
@@ -186,7 +186,7 @@ async fn op_run_status(
   args: RunStatusArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   {
     let s = state.borrow();

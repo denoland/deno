@@ -63,7 +63,7 @@ pub struct BindSignalArgs {
 #[cfg(unix)]
 #[derive(Deserialize)]
 pub struct SignalArgs {
-  rid: i32,
+  rid: u32,
 }
 
 #[cfg(unix)]
@@ -93,7 +93,7 @@ async fn op_signal_poll(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.signal");
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
@@ -116,7 +116,7 @@ pub fn op_signal_unbind(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.signal");
-  let rid = args.rid as u32;
+  let rid = args.rid;
   state
     .resource_table
     .close(rid)
