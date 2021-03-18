@@ -33,10 +33,7 @@ pub trait JsRuntimeModule {
   }
 
   /// This function lets you middleware the op registrations. This function gets called before this module's init_ops.
-  fn init_registrar(
-    &mut self,
-    registrar: RcOpRegistrar,
-  ) -> RcOpRegistrar {
+  fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
     // default implementation is to not change the registrar
     registrar
   }
@@ -207,6 +204,21 @@ impl JsRuntimeModule for MultiModule<'_> {
       m.init_ops(registrar.clone())?;
     }
     Ok(())
+  }
+  
+  fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
+    for m in self.modules.iter() {
+      m.init_state(state)?;
+    }
+    Ok(())
+  }
+  
+  fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
+    let mut registrar = registrar;
+    for m in self.modules.iter_mut() {
+      registrar = m.init_registrar(registrar.clone());
+    }
+    registrar
   }
 }
 
