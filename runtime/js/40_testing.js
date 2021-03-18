@@ -19,6 +19,9 @@
       try {
         await fn();
       } finally {
+        // Defer until next event loop turn - that way timeouts and intervals
+        // cleared can actually be removed from resource table, otherwise
+        // false positives may occur (https://github.com/denoland/deno/issues/4591)
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
