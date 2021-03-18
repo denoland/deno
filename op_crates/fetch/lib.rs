@@ -412,7 +412,7 @@ where
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
   let client = create_http_client(
     defaults.user_agent.clone(),
-    cert_data.or(defaults.ca_data.clone()),
+    cert_data.or_else(|| defaults.ca_data.clone()),
   )
   .unwrap();
 
