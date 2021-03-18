@@ -2076,15 +2076,15 @@ mod tests {
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier.clone(), *version, source);
       let media_type = MediaType::from(&specifier);
-      let parsed_module =
-        analysis::parse_module(&specifier, source, &media_type).unwrap();
-      let (deps, _) = analysis::analyze_dependencies(
-        &specifier,
-        &media_type,
-        &parsed_module,
-        &None,
-      );
-      documents.set_dependencies(&specifier, Some(deps)).unwrap();
+      if let Ok(parsed_module) = analysis::parse_module(&specifier, source, &media_type) {
+        let (deps, _) = analysis::analyze_dependencies(
+          &specifier,
+          &media_type,
+          &parsed_module,
+          &None,
+        );
+        documents.set_dependencies(&specifier, Some(deps)).unwrap();
+      }
     }
     let sources = Sources::new(location);
     StateSnapshot {
