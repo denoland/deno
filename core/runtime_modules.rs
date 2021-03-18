@@ -79,9 +79,11 @@ impl BasicModule {
   ) -> Self {
     Self::new(Some(js_files), Some(ops), opstate_fn)
   }
-  
+
   pub fn builder() -> BasicModuleBuilder {
-    BasicModuleBuilder { ..Default::default() }
+    BasicModuleBuilder {
+      ..Default::default()
+    }
   }
 }
 
@@ -110,10 +112,10 @@ impl JsRuntimeModule for BasicModule {
       None => Ok(()),
     }
   }
-  
+
   fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
     match self.middleware_fn.take() {
-      Some(middleware_fn) => Rc::new(RefCell::new(OpMiddleware{ 
+      Some(middleware_fn) => Rc::new(RefCell::new(OpMiddleware {
         registrar,
         middleware_fn,
       })),
@@ -136,24 +138,28 @@ impl BasicModuleBuilder {
     self.js_files.extend(js_files);
     self
   }
-  
+
   pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
     self.ops.extend(ops);
     self
   }
-  
+
   pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
-    where F: Fn(&mut OpState) -> Result<(), AnyError> + 'static {
+  where
+    F: Fn(&mut OpState) -> Result<(), AnyError> + 'static,
+  {
     self.opstate_fn = Some(Box::new(opstate_fn));
     self
   }
-  
+
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
-    where F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static {
+  where
+    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
+  {
     self.middleware_fn = Some(Box::new(middleware_fn));
     self
   }
-  
+
   pub fn build(&mut self) -> BasicModule {
     let js_files = Some(self.js_files.drain(..).collect());
     let ops = Some(self.ops.drain(..).collect());
@@ -205,14 +211,14 @@ impl JsRuntimeModule for MultiModule<'_> {
     }
     Ok(())
   }
-  
+
   fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
     for m in self.modules.iter() {
       m.init_state(state)?;
     }
     Ok(())
   }
-  
+
   fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
     let mut registrar = registrar;
     for m in self.modules.iter_mut() {
