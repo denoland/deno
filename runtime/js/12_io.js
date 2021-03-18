@@ -7,7 +7,7 @@
 
 ((window) => {
   const DEFAULT_BUFFER_SIZE = 32 * 1024;
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchMinimal;
+  const { bufferOpSync, bufferOpAsync } = window.__bootstrap.dispatchBuffer;
   // Seek whence values.
   // https://golang.org/pkg/io/#pkg-constants
   const SeekMode = {
@@ -81,7 +81,7 @@
       return 0;
     }
 
-    const nread = sendSync("op_read", rid, buffer);
+    const nread = bufferOpSync("op_read_sync", rid, buffer);
     if (nread < 0) {
       throw new Error("read error");
     }
@@ -97,7 +97,7 @@
       return 0;
     }
 
-    const nread = await sendAsync("op_read", rid, buffer);
+    const nread = await bufferOpAsync("op_read_async", rid, buffer);
     if (nread < 0) {
       throw new Error("read error");
     }
@@ -106,7 +106,7 @@
   }
 
   function writeSync(rid, data) {
-    const result = sendSync("op_write", rid, data);
+    const result = bufferOpSync("op_write_sync", rid, data);
     if (result < 0) {
       throw new Error("write error");
     }
@@ -115,7 +115,7 @@
   }
 
   async function write(rid, data) {
-    const result = await sendAsync("op_write", rid, data);
+    const result = await bufferOpAsync("op_write_async", rid, data);
     if (result < 0) {
       throw new Error("write error");
     }

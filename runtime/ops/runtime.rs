@@ -29,7 +29,8 @@ fn op_main_module(
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state
       .borrow::<Permissions>()
-      .check_read_blind(&main_path, "main_module")?;
+      .read
+      .check_blind(&main_path, "main_module")?;
   }
   Ok(json!(&main))
 }

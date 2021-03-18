@@ -12,7 +12,6 @@ use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
@@ -113,27 +112,25 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchArgs {
+  method: Option<String>,
+  url: String,
+  base_url: Option<String>,
+  headers: Vec<(String, String)>,
+  client_rid: Option<u32>,
+  has_body: bool,
+}
+
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  args: Value,
+  args: FetchArgs,
   data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct FetchArgs {
-    method: Option<String>,
-    url: String,
-    base_url: Option<String>,
-    headers: Vec<(String, String)>,
-    client_rid: Option<u32>,
-    has_body: bool,
-  }
-
-  let args: FetchArgs = serde_json::from_value(args)?;
-
   let client = if let Some(rid) = args.client_rid {
     let r = state
       .resource_table
@@ -213,19 +210,17 @@ where
   }))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchSendArgs {
+  rid: u32,
+}
+
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FetchSendArgs,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct Args {
-    rid: u32,
-  }
-
-  let args: Args = serde_json::from_value(args)?;
-
   let request = state
     .borrow_mut()
     .resource_table
@@ -283,18 +278,17 @@ pub async fn op_fetch_send(
   }))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchRequestWriteArgs {
+  rid: u32,
+}
+
 pub async fn op_fetch_request_write(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FetchRequestWriteArgs,
   data: BufVec,
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct Args {
-    rid: u32,
-  }
-
-  let args: Args = serde_json::from_value(args)?;
   let rid = args.rid;
 
   let buf = match data.len() {
@@ -314,18 +308,17 @@ pub async fn op_fetch_request_write(
   Ok(json!({}))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchResponseReadArgs {
+  rid: u32,
+}
+
 pub async fn op_fetch_response_read(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FetchResponseReadArgs,
   data: BufVec,
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct Args {
-    rid: u32,
-  }
-
-  let args: Args = serde_json::from_value(args)?;
   let rid = args.rid;
 
   if data.len() != 1 {
@@ -395,24 +388,22 @@ impl HttpClientResource {
   }
 }
 
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CreateHttpClientOptions {
+  ca_file: Option<String>,
+  ca_data: Option<String>,
+}
+
 pub fn op_create_http_client<FP>(
   state: &mut OpState,
-  args: Value,
+  args: CreateHttpClientOptions,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  #[derive(Deserialize, Default, Debug)]
-  #[serde(rename_all = "camelCase")]
-  #[serde(default)]
-  struct CreateHttpClientOptions {
-    ca_file: Option<String>,
-    ca_data: Option<String>,
-  }
-
-  let args: CreateHttpClientOptions = serde_json::from_value(args)?;
-
   if let Some(ca_file) = args.ca_file.clone() {
     let permissions = state.borrow::<FP>();
     permissions.check_read(&PathBuf::from(ca_file))?;

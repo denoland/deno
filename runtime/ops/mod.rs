@@ -1,14 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-mod dispatch_minimal;
-pub use dispatch_minimal::MinimalOp;
-
 pub mod fs;
 pub mod fs_events;
 pub mod io;
 pub mod net;
 #[cfg(unix)]
 mod net_unix;
+mod ops_buffer;
 pub mod os;
 pub mod permissions;
 pub mod plugin;
@@ -31,6 +29,9 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use ops_buffer::buffer_op_async;
+use ops_buffer::buffer_op_sync;
+use ops_buffer::ValueOrVector;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
@@ -55,6 +56,26 @@ where
   R: Serialize,
 {
   rt.register_op(name, metrics_op(name, json_op_sync(op_fn)));
+}
+
+pub fn reg_buffer_async<F, R, RV>(
+  rt: &mut JsRuntime,
+  name: &'static str,
+  op_fn: F,
+) where
+  F: Fn(Rc<RefCell<OpState>>, u32, BufVec) -> R + 'static,
+  R: Future<Output = Result<RV, AnyError>> + 'static,
+  RV: ValueOrVector,
+{
+  rt.register_op(name, metrics_op(name, buffer_op_async(op_fn)));
+}
+
+pub fn reg_buffer_sync<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+where
+  F: Fn(&mut OpState, u32, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  R: ValueOrVector,
+{
+  rt.register_op(name, metrics_op(name, buffer_op_sync(op_fn)));
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;

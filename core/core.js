@@ -155,6 +155,10 @@ SharedQueue Binary Layout
     asyncHandlers[opId] = cb;
   }
 
+  function setAsyncHandlerByName(opName, cb) {
+    setAsyncHandler(opsCache[opName], cb);
+  }
+
   function handleAsyncMsgFromRust() {
     while (true) {
       const opIdBuf = shift();
@@ -256,6 +260,7 @@ SharedQueue Binary Layout
     jsonOpAsync,
     jsonOpSync,
     setAsyncHandler,
+    setAsyncHandlerByName,
     dispatch: send,
     dispatchByName: dispatch,
     ops,
