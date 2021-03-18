@@ -520,42 +520,42 @@ enum DnsReturnRecord {
   TXT(Vec<String>),
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveAddrArgs {
+  query: String,
+  record_type: RecordType,
+  options: Option<ResolveDnsOption>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveDnsOption {
+  name_server: Option<NameServer>,
+}
+
+fn default_port() -> u16 {
+  53
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NameServer {
+  ip_addr: String,
+  #[serde(default = "default_port")]
+  port: u16,
+}
+
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ResolveAddrArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  fn default_port() -> u16 {
-    53
-  }
-
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct ResolveAddrArgs {
-    query: String,
-    record_type: RecordType,
-    options: Option<ResolveDnsOption>,
-  }
-
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct ResolveDnsOption {
-    name_server: Option<NameServer>,
-  }
-
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct NameServer {
-    ip_addr: String,
-    #[serde(default = "default_port")]
-    port: u16,
-  }
-
   let ResolveAddrArgs {
     query,
     record_type,
     options,
-  } = serde_json::from_value(args)?;
+  } = args;
 
   let (config, opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())

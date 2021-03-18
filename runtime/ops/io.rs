@@ -3,7 +3,6 @@
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
@@ -615,14 +614,13 @@ struct ShutdownArgs {
 
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ShutdownArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = serde_json::from_value::<ShutdownArgs>(args)?.rid;
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
+    .get_any(args.rid)
     .ok_or_else(bad_resource_id)?;
   if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.shutdown().await?;

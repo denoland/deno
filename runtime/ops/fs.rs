@@ -118,7 +118,7 @@ fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OpenArgs {
+pub struct OpenArgs {
   path: String,
   mode: Option<u32>,
   options: OpenOptions,
@@ -127,7 +127,7 @@ struct OpenArgs {
 #[derive(Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-struct OpenOptions {
+pub struct OpenOptions {
   read: bool,
   write: bool,
   create: bool,
@@ -138,9 +138,8 @@ struct OpenOptions {
 
 fn open_helper(
   state: &mut OpState,
-  args: Value,
+  args: OpenArgs,
 ) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
-  let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
   let mut open_options = std::fs::OpenOptions::new();
@@ -181,7 +180,7 @@ fn open_helper(
 
 fn op_open_sync(
   state: &mut OpState,
-  args: Value,
+  args: OpenArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let (path, open_options) = open_helper(state, args)?;
@@ -194,7 +193,7 @@ fn op_open_sync(
 
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: OpenArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
@@ -208,14 +207,13 @@ async fn op_open_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SeekArgs {
+pub struct SeekArgs {
   rid: i32,
   offset: i64,
   whence: i32,
 }
 
-fn seek_helper(args: Value) -> Result<(u32, SeekFrom), AnyError> {
-  let args: SeekArgs = serde_json::from_value(args)?;
+fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
   let rid = args.rid as u32;
   let offset = args.offset;
   let whence = args.whence as u32;
@@ -234,7 +232,7 @@ fn seek_helper(args: Value) -> Result<(u32, SeekFrom), AnyError> {
 
 fn op_seek_sync(
   state: &mut OpState,
-  args: Value,
+  args: SeekArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
@@ -249,7 +247,7 @@ fn op_seek_sync(
 
 async fn op_seek_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: SeekArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
@@ -274,16 +272,15 @@ async fn op_seek_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FdatasyncArgs {
+pub struct FdatasyncArgs {
   rid: i32,
 }
 
 fn op_fdatasync_sync(
   state: &mut OpState,
-  args: Value,
+  args: FdatasyncArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
@@ -294,10 +291,9 @@ fn op_fdatasync_sync(
 
 async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FdatasyncArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let resource = state
@@ -320,16 +316,15 @@ async fn op_fdatasync_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FsyncArgs {
+pub struct FsyncArgs {
   rid: i32,
 }
 
 fn op_fsync_sync(
   state: &mut OpState,
-  args: Value,
+  args: FsyncArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
@@ -340,10 +335,9 @@ fn op_fsync_sync(
 
 async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FsyncArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let resource = state
@@ -366,17 +360,16 @@ async fn op_fsync_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FstatArgs {
+pub struct FstatArgs {
   rid: i32,
 }
 
 fn op_fstat_sync(
   state: &mut OpState,
-  args: Value,
+  args: FstatArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.fstat");
-  let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let metadata = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
@@ -387,12 +380,11 @@ fn op_fstat_sync(
 
 async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FstatArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.fstat");
 
-  let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let resource = state
@@ -414,17 +406,17 @@ async fn op_fstat_async(
 }
 
 #[derive(Deserialize)]
-struct UmaskArgs {
+pub struct UmaskArgs {
   mask: Option<u32>,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_umask(
   state: &mut OpState,
-  args: Value,
+  args: UmaskArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.umask");
-  let args: UmaskArgs = serde_json::from_value(args)?;
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
   // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
@@ -452,16 +444,15 @@ fn op_umask(
 }
 
 #[derive(Deserialize)]
-struct ChdirArgs {
+pub struct ChdirArgs {
   directory: String,
 }
 
 fn op_chdir(
   state: &mut OpState,
-  args: Value,
+  args: ChdirArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
   state.borrow::<Permissions>().read.check(&d)?;
   set_current_dir(&d)?;
@@ -470,7 +461,7 @@ fn op_chdir(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct MkdirArgs {
+pub struct MkdirArgs {
   path: String,
   recursive: bool,
   mode: Option<u32>,
@@ -478,10 +469,9 @@ struct MkdirArgs {
 
 fn op_mkdir_sync(
   state: &mut OpState,
-  args: Value,
+  args: MkdirArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
   state.borrow::<Permissions>().write.check(&path)?;
@@ -499,10 +489,9 @@ fn op_mkdir_sync(
 
 async fn op_mkdir_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: MkdirArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
@@ -529,17 +518,16 @@ async fn op_mkdir_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ChmodArgs {
+pub struct ChmodArgs {
   path: String,
   mode: u32,
 }
 
 fn op_chmod_sync(
   state: &mut OpState,
-  args: Value,
+  args: ChmodArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
@@ -563,10 +551,9 @@ fn op_chmod_sync(
 
 async fn op_chmod_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ChmodArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
@@ -598,7 +585,7 @@ async fn op_chmod_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ChownArgs {
+pub struct ChownArgs {
   path: String,
   uid: Option<u32>,
   gid: Option<u32>,
@@ -606,10 +593,9 @@ struct ChownArgs {
 
 fn op_chown_sync(
   state: &mut OpState,
-  args: Value,
+  args: ChownArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   state.borrow::<Permissions>().write.check(&path)?;
   debug!(
@@ -635,10 +621,9 @@ fn op_chown_sync(
 
 async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ChownArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
   {
@@ -671,17 +656,16 @@ async fn op_chown_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RemoveArgs {
+pub struct RemoveArgs {
   path: String,
   recursive: bool,
 }
 
 fn op_remove_sync(
   state: &mut OpState,
-  args: Value,
+  args: RemoveArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RemoveArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
@@ -721,10 +705,9 @@ fn op_remove_sync(
 
 async fn op_remove_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: RemoveArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: RemoveArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
@@ -771,17 +754,16 @@ async fn op_remove_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CopyFileArgs {
+pub struct CopyFileArgs {
   from: String,
   to: String,
 }
 
 fn op_copy_file_sync(
   state: &mut OpState,
-  args: Value,
+  args: CopyFileArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
@@ -804,10 +786,9 @@ fn op_copy_file_sync(
 
 async fn op_copy_file_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: CopyFileArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
@@ -895,17 +876,16 @@ fn get_stat_json(metadata: std::fs::Metadata) -> Value {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StatArgs {
+pub struct StatArgs {
   path: String,
   lstat: bool,
 }
 
 fn op_stat_sync(
   state: &mut OpState,
-  args: Value,
+  args: StatArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
   state.borrow::<Permissions>().read.check(&path)?;
@@ -920,10 +900,9 @@ fn op_stat_sync(
 
 async fn op_stat_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: StatArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
@@ -947,16 +926,15 @@ async fn op_stat_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RealpathArgs {
+pub struct RealpathArgs {
   path: String,
 }
 
 fn op_realpath_sync(
   state: &mut OpState,
-  args: Value,
+  args: RealpathArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   let permissions = state.borrow::<Permissions>();
@@ -975,10 +953,9 @@ fn op_realpath_sync(
 
 async fn op_realpath_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: RealpathArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   {
@@ -1004,16 +981,15 @@ async fn op_realpath_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReadDirArgs {
+pub struct ReadDirArgs {
   path: String,
 }
 
 fn op_read_dir_sync(
   state: &mut OpState,
-  args: Value,
+  args: ReadDirArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.borrow::<Permissions>().read.check(&path)?;
@@ -1041,10 +1017,9 @@ fn op_read_dir_sync(
 
 async fn op_read_dir_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ReadDirArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   {
     let state = state.borrow();
@@ -1077,17 +1052,16 @@ async fn op_read_dir_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RenameArgs {
+pub struct RenameArgs {
   oldpath: String,
   newpath: String,
 }
 
 fn op_rename_sync(
   state: &mut OpState,
-  args: Value,
+  args: RenameArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1102,10 +1076,9 @@ fn op_rename_sync(
 
 async fn op_rename_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: RenameArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
   {
@@ -1130,17 +1103,16 @@ async fn op_rename_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LinkArgs {
+pub struct LinkArgs {
   oldpath: String,
   newpath: String,
 }
 
 fn op_link_sync(
   state: &mut OpState,
-  args: Value,
+  args: LinkArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1157,10 +1129,9 @@ fn op_link_sync(
 
 async fn op_link_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: LinkArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1184,7 +1155,7 @@ async fn op_link_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SymlinkArgs {
+pub struct SymlinkArgs {
   oldpath: String,
   newpath: String,
   #[cfg(not(unix))]
@@ -1194,16 +1165,15 @@ struct SymlinkArgs {
 #[cfg(not(unix))]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SymlinkOptions {
+pub struct SymlinkOptions {
   _type: String,
 }
 
 fn op_symlink_sync(
   state: &mut OpState,
-  args: Value,
+  args: SymlinkArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1250,10 +1220,9 @@ fn op_symlink_sync(
 
 async fn op_symlink_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: SymlinkArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1303,16 +1272,15 @@ async fn op_symlink_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReadLinkArgs {
+pub struct ReadLinkArgs {
   path: String,
 }
 
 fn op_read_link_sync(
   state: &mut OpState,
-  args: Value,
+  args: ReadLinkArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.borrow::<Permissions>().read.check(&path)?;
@@ -1325,10 +1293,9 @@ fn op_read_link_sync(
 
 async fn op_read_link_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ReadLinkArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   {
     let state = state.borrow();
@@ -1346,18 +1313,17 @@ async fn op_read_link_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FtruncateArgs {
+pub struct FtruncateArgs {
   rid: i32,
   len: i32,
 }
 
 fn op_ftruncate_sync(
   state: &mut OpState,
-  args: Value,
+  args: FtruncateArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.ftruncate");
-  let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
   StdFileResource::with(state, rid, |r| match r {
@@ -1369,11 +1335,10 @@ fn op_ftruncate_sync(
 
 async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FtruncateArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.ftruncate");
-  let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
 
@@ -1397,17 +1362,16 @@ async fn op_ftruncate_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TruncateArgs {
+pub struct TruncateArgs {
   path: String,
   len: u64,
 }
 
 fn op_truncate_sync(
   state: &mut OpState,
-  args: Value,
+  args: TruncateArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
@@ -1421,10 +1385,9 @@ fn op_truncate_sync(
 
 async fn op_truncate_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: TruncateArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
   {
@@ -1488,7 +1451,7 @@ fn make_temp(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct MakeTempArgs {
+pub struct MakeTempArgs {
   dir: Option<String>,
   prefix: Option<String>,
   suffix: Option<String>,
@@ -1496,11 +1459,9 @@ struct MakeTempArgs {
 
 fn op_make_temp_dir_sync(
   state: &mut OpState,
-  args: Value,
+  args: MakeTempArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: MakeTempArgs = serde_json::from_value(args)?;
-
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1527,11 +1488,9 @@ fn op_make_temp_dir_sync(
 
 async fn op_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: MakeTempArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: MakeTempArgs = serde_json::from_value(args)?;
-
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1563,11 +1522,9 @@ async fn op_make_temp_dir_async(
 
 fn op_make_temp_file_sync(
   state: &mut OpState,
-  args: Value,
+  args: MakeTempArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: MakeTempArgs = serde_json::from_value(args)?;
-
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1594,11 +1551,9 @@ fn op_make_temp_file_sync(
 
 async fn op_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: MakeTempArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: MakeTempArgs = serde_json::from_value(args)?;
-
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1630,7 +1585,7 @@ async fn op_make_temp_file_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FutimeArgs {
+pub struct FutimeArgs {
   rid: i32,
   atime: (i64, u32),
   mtime: (i64, u32),
@@ -1638,11 +1593,10 @@ struct FutimeArgs {
 
 fn op_futime_sync(
   state: &mut OpState,
-  args: Value,
+  args: FutimeArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.futimeSync");
-  let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
@@ -1662,11 +1616,10 @@ fn op_futime_sync(
 
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FutimeArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.futime");
-  let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
@@ -1704,7 +1657,7 @@ async fn op_futime_async(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct UtimeArgs {
+pub struct UtimeArgs {
   path: String,
   atime: (i64, u32),
   mtime: (i64, u32),
@@ -1712,12 +1665,11 @@ struct UtimeArgs {
 
 fn op_utime_sync(
   state: &mut OpState,
-  args: Value,
+  args: UtimeArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.utime");
 
-  let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
@@ -1729,12 +1681,11 @@ fn op_utime_sync(
 
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: UtimeArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable(&state.borrow(), "Deno.utime");
 
-  let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
