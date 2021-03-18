@@ -8,7 +8,6 @@ pub mod io;
 pub mod net;
 #[cfg(unix)]
 mod net_unix;
-mod ops_buffer;
 pub mod os;
 pub mod permissions;
 pub mod plugin;
@@ -25,6 +24,8 @@ pub mod websocket;
 pub mod worker_host;
 
 use crate::metrics::metrics_op;
+use deno_core::buffer_op_async;
+use deno_core::buffer_op_sync;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
@@ -33,10 +34,8 @@ use deno_core::serde::Serialize;
 use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
+use deno_core::ValueOrVector;
 use deno_core::ZeroCopyBuf;
-use ops_buffer::buffer_op_async;
-use ops_buffer::buffer_op_sync;
-use ops_buffer::ValueOrVector;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;

@@ -8,9 +8,9 @@ import {
 
 const readErrorStackPattern = new RegExp(
   `^.*
-    at handleError \\(.*10_dispatch_buffer\\.js:.*\\)
-    at bufferOpParseResult \\(.*10_dispatch_buffer\\.js:.*\\)
-    at Array.<anonymous> \\(.*10_dispatch_buffer\\.js:.*\\).*$`,
+    at handleError \\(.*core\\.js:.*\\)
+    at bufferOpParseResult \\(.*core\\.js:.*\\)
+    at asyncHandle \\(.*core\\.js:.*\\).*$`,
   "ms",
 );
 

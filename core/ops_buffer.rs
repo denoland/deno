@@ -1,12 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::futures::future::FutureExt;
-use deno_core::BufVec;
-use deno_core::Op;
-use deno_core::OpFn;
-use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
+use crate::error::AnyError;
+use crate::futures::future::FutureExt;
+use crate::BufVec;
+use crate::Op;
+use crate::OpFn;
+use crate::OpState;
+use crate::ZeroCopyBuf;
 use std::boxed::Box;
 use std::cell::RefCell;
 use std::convert::TryInto;
