@@ -25,6 +25,13 @@ use std::path::PathBuf;
 use swc_common::Span;
 use uuid::Uuid;
 
+pub struct CoverageThreshold {
+  pub check: bool,
+  pub lines: f32,
+  pub functions: f32,
+  pub branches: f32,
+}
+
 pub struct CoverageCollector {
   pub dir: PathBuf,
   session: Box<InspectorSession>,
@@ -372,7 +379,7 @@ impl CoverageReporter for LcovCoverageReporter {
 
     println!("end_of_record");
 
-    return TotalVisitCoverage {
+    TotalVisitCoverage {
       lines: Some(CoverageValues {
         hit: lines_hit as f32,
         found: lines_found as f32,
@@ -385,7 +392,7 @@ impl CoverageReporter for LcovCoverageReporter {
         hit: functions_hit as f32,
         found: functions_found as f32,
       }),
-    };
+    }
   }
 
   fn done(&mut self) {}
@@ -563,14 +570,14 @@ impl CoverageReporter for PrettyCoverageReporter {
 
       last_line = Some(line_index);
     }
-    return TotalVisitCoverage {
+    TotalVisitCoverage {
       lines: Some(CoverageValues {
         hit: lines_hit as f32,
         found: lines_found as f32,
       }),
       branches: None,
       functions: None,
-    };
+    }
   }
 
   fn done(&mut self) {}
@@ -667,13 +674,16 @@ pub async fn cover_files(
   ignore: Vec<PathBuf>,
   include: Vec<String>,
   exclude: Vec<String>,
-  check: bool,
-  lines: f32,
-  functions: f32,
-  branches: f32,
+  threshold: CoverageThreshold,
   lcov: bool,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags).await?;
+  let CoverageThreshold {
+    check,
+    lines,
+    functions,
+    branches,
+  } = threshold;
   let mut total_coverages = TotalCoverages {
     lines: CoverageValues {
       hit: 0.0,
@@ -801,7 +811,7 @@ pub async fn cover_files(
     if !threshold_met {
       return Err(custom_error(
         "CoverageThreshold",
-        colors::red(format!("The coverage threshold is not met",)).to_string(),
+        "The coverage threshold is not met",
       ));
     }
   }
