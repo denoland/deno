@@ -91,7 +91,6 @@ impl MainWorker {
       )),
       Box::new(deno_crypto::init(options.seed)),
       Box::new(deno_webgpu::init(options.unstable)),
-      
       // Metrics
       Box::new(metrics::init()),
     ];
