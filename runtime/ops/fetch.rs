@@ -12,7 +12,8 @@ pub fn init(
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
     state.put::<reqwest::Client>({
-      deno_fetch::create_http_client(user_agent.clone(), ca_data.clone()).unwrap()
+      deno_fetch::create_http_client(user_agent.clone(), ca_data.clone())
+        .unwrap()
     });
     state.put::<HttpClientDefaults>(HttpClientDefaults {
       ca_data: ca_data.clone(),
