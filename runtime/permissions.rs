@@ -435,18 +435,18 @@ impl UnaryPermission<NetPermission> {
 pub struct EnvPermission(pub String);
 
 impl UnaryPermission<EnvPermission> {
-  pub fn query(&self, env: Option<&String>) -> PermissionState {
+  pub fn query(&self, env: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
       && match env {
         None => true,
-        Some(env) => self.denied_list.iter().any(|env_| &env_.0 == env),
+        Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match env {
         None => false,
-        Some(env) => self.granted_list.iter().any(|env_| &env_.0 == env),
+        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
       }
     {
       PermissionState::Granted
@@ -455,17 +455,17 @@ impl UnaryPermission<EnvPermission> {
     }
   }
 
-  pub fn request(&mut self, env: Option<&String>) -> PermissionState {
+  pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
       let state = self.query(Some(&env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
-          self.granted_list.retain(|env_| &env_.0 != env);
-          self.granted_list.insert(EnvPermission(env.clone()));
+          self.granted_list.retain(|env_| env_.0 != env);
+          self.granted_list.insert(EnvPermission(env.to_string()));
           PermissionState::Granted
         } else {
-          self.denied_list.retain(|env_| &env_.0 != env);
-          self.denied_list.insert(EnvPermission(env.clone()));
+          self.denied_list.retain(|env_| env_.0 != env);
+          self.denied_list.insert(EnvPermission(env.to_string()));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
@@ -489,9 +489,9 @@ impl UnaryPermission<EnvPermission> {
     }
   }
 
-  pub fn revoke(&mut self, env: Option<&String>) -> PermissionState {
+  pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      self.granted_list.retain(|env_| &env_.0 != env);
+      self.granted_list.retain(|env_| env_.0 != env);
     } else {
       self.granted_list.clear();
       if self.global_state == PermissionState::Granted {
@@ -501,14 +501,14 @@ impl UnaryPermission<EnvPermission> {
     self.query(env)
   }
 
-  pub fn check(&self, env: &String) -> Result<(), AnyError> {
+  pub fn check(&self, env: &str) -> Result<(), AnyError> {
     self
       .query(Some(env))
       .check(self.name, Some(&format!("\"{}\"", env)))
   }
 
   pub fn check_all(&self) -> Result<(), AnyError> {
-    self.query(None).check(self.name, None)
+    self.query(None).check(self.name, Some("all"))
   }
 }
 

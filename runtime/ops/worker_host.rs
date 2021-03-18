@@ -226,15 +226,6 @@ fn check_write_permissions(
     .all(|x| current_permissions.write.check(&x.0).is_ok())
 }
 
-fn check_env_permissions(
-  allow_list: &HashSet<EnvPermission>,
-  current_permissions: &Permissions,
-) -> bool {
-  allow_list
-    .iter()
-    .all(|x| current_permissions.env.check(&x.0).is_ok())
-}
-
 fn merge_read_permissions(
   target: &UnaryPermission<ReadPermission>,
   incoming: Option<UnaryPermission<ReadPermission>>,
@@ -365,10 +356,16 @@ fn merge_write_permissions(
   }
 }
 
+fn check_env_permission_contains(
+  a: &HashSet<EnvPermission>,
+  b: &HashSet<EnvPermission>,
+) -> bool {
+  b.iter().all(|x| a.contains(x))
+}
+
 fn merge_env_permissions(
   target: &UnaryPermission<EnvPermission>,
   incoming: Option<UnaryPermission<EnvPermission>>,
-  current_permissions: &Permissions,
 ) -> Result<UnaryPermission<EnvPermission>, AnyError> {
   if incoming.is_none() {
     return Ok(target.clone());
@@ -390,9 +387,9 @@ fn merge_env_permissions(
       )),
       //Merge
       PermissionState::Prompt => {
-        if check_env_permissions(
+        if check_env_permission_contains(
+          &target.granted_list,
           &new_permissions.granted_list,
-          current_permissions,
         ) {
           Ok(UnaryPermission::<EnvPermission> {
             global_state: new_permissions.global_state,
@@ -438,7 +435,6 @@ fn create_worker_permissions(
     env: merge_env_permissions(
       &main_thread_permissions.env,
       permission_args.env,
-      &main_thread_permissions,
     )?,
     hrtime: merge_boolean_permission(
       &main_thread_permissions.hrtime,

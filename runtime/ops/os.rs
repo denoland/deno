@@ -66,6 +66,7 @@ fn op_set_env(
   Ok(json!({}))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_env(
   state: &mut OpState,
   _args: Value,
