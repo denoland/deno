@@ -7,7 +7,7 @@ use std::path::PathBuf;
 /// Load and execute the javascript code.
 pub fn init() -> BasicModule {
   BasicModule::pure_js(include_js_files!(
-    root "deno:op_crates/web",
+    prefix "deno:op_crates/web",
     "01_dom_exception.js",
     "02_event.js",
     "03_abort_signal.js",

@@ -349,7 +349,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
 ) -> BasicModule {
   BasicModule::with_ops(
     include_js_files!(
-      root "deno:op_crates/websocket",
+      prefix "deno:op_crates/websocket",
       "01_websocket.js",
     ),
     vec![

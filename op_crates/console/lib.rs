@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 pub fn init() -> BasicModule {
   BasicModule::pure_js(include_js_files!(
-    root "deno:op_crates/console",
+    prefix "deno:op_crates/console",
     "01_colors.js",
     "02_console.js",
   ))

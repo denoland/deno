@@ -59,7 +59,7 @@ pub fn init<P: FetchPermissions + 'static>(
 ) -> BasicModule {
   BasicModule::with_ops(
     include_js_files!(
-      root "deno:op_crates/fetch",
+      prefix "deno:op_crates/fetch",
       "01_fetch_util.js",
       "03_dom_iterable.js",
       "11_streams.js",

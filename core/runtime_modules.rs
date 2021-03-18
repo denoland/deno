@@ -162,36 +162,70 @@ pub trait OpRegistrar {
 ////
 // Helper macros to reduce verbosity / redundant decls
 ////
+
+// include_js_files! helps embed JS files in an extension
+// Example:
+// ```
+// include_js_files!(
+//   prefix "deno:op_crates/hello",
+//   "01_hello.js",
+//   "02_goodbye.js",
+// )
+// ```
 #[macro_export]
 macro_rules! include_js_files {
-  (root $root:literal, $($file:literal,)+) => {
+  (prefix $prefix:literal, $($file:literal,)+) => {
     vec![
       $((
-        concat!($root, "/", $file),
+        concat!($prefix, "/", $file),
         include_str!($file),
       ),)+
     ]
   };
 }
 
+// declare_ops! helps declare ops for an extension.
+// Example:
+// ```
+//  declare_ops(json_op_sync[
+//    op_foo,
+//    op_bar,
+//  ]),
+// ```
+// TODO: improve robustness by handling different func patterns in a single block
 #[macro_export]
 macro_rules! declare_ops {
-  (with($wrapper:path), $($path:ident::$opfn:ident,)+) => {
+  // Match plain function identifiers, e.g: op_foo
+  ($wrapper:path[$($opfn:ident,)+]) => {
+    vec![$((
+      stringify!($opfn),
+      $wrapper($opfn),
+    ),)+]
+  };
+
+  // Match prefixed function identifiers, e.g: mod_a::op_foo
+  ($wrapper:path[$($path:ident::$opfn:ident,)+]) => {
     vec![$((
       stringify!($opfn),
       $wrapper($path::$opfn),
     ),)+]
   };
 
-  (with($wrapper:path), $($opfn:ident,)+) => {
-    vec![$((
-      stringify!($opfn),
-      $wrapper($opfn),
-    ),)+]
-  };
+  // TODO: support matching funcs with type-parameters (e.g: permissions)
 }
 
-// Groups a sequence of declare_ops!() calls into a single vec
+// Groups a sequence of declare_ops!() calls into a single vec.
+// Example:
+// ```
+// declare_ops_group(vec![
+//  declare_ops(json_op_sync[
+//    ...,
+//  ]),
+//  declare_ops(json_op_async[
+//    ...,
+//  ]),
+// ])
+// ```
 pub fn declare_ops_group(
   groups: Vec<Vec<(&'static str, Box<OpFn>)>>,
 ) -> Vec<(&'static str, Box<OpFn>)> {

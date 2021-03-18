@@ -23,15 +23,14 @@ use std::path::PathBuf;
 pub fn init() -> BasicModule {
   BasicModule::with_ops(
     include_js_files!(
-      root "deno:op_crates/url",
+      prefix "deno:op_crates/url",
       "00_url.js",
     ),
-    declare_ops!(
-      with(json_op_sync),
+    declare_ops!(json_op_sync[
       op_url_parse,
       op_url_parse_search_params,
       op_url_stringify_search_params,
-    ),
+    ]),
     None,
   )
 }

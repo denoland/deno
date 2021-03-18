@@ -2,6 +2,7 @@
 
 #![deny(warnings)]
 
+use deno_core::declare_ops;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::json_op_sync;
@@ -21,13 +22,12 @@ pub use rand; // Re-export rand
 pub fn init(maybe_seed: Option<u64>) -> BasicModule {
   BasicModule::with_ops(
     include_js_files!(
-      root "deno:op_crates/crypto",
+      prefix "deno:op_crates/crypto",
       "01_crypto.js",
     ),
-    vec![(
-      "op_crypto_get_random_values",
-      json_op_sync(op_crypto_get_random_values),
-    )],
+    declare_ops!(json_op_sync[
+      op_crypto_get_random_values,
+    ]),
     Some(Box::new(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));

@@ -101,7 +101,7 @@ impl Resource for WebGPUQuerySet {
 pub fn init(unstable: bool) -> BasicModule {
   BasicModule::with_ops(
     include_js_files!(
-      root "deno:op_crates/webgpu",
+      prefix "deno:op_crates/webgpu",
       "01_webgpu.js",
       "02_idl_types.js",
     ),
@@ -557,25 +557,22 @@ pub fn op_webgpu_create_query_set(
 fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
   declare_ops_group(vec![
     // Request device/adapter
-    declare_ops!(
-      with(json_op_async),
+    declare_ops!(json_op_async[
       op_webgpu_request_adapter,
       op_webgpu_request_device,
-    ),
+    ]),
     // Query Set
-    declare_ops!(with(json_op_sync), op_webgpu_create_query_set,),
+    declare_ops!(json_op_sync[ op_webgpu_create_query_set, ]),
     // buffer
-    declare_ops!(
-      with(json_op_sync),
+    declare_ops!(json_op_sync[
       buffer::op_webgpu_create_buffer,
       buffer::op_webgpu_buffer_get_mapped_range,
       buffer::op_webgpu_buffer_unmap,
-    ),
+    ]),
     // buffer async
-    declare_ops!(with(json_op_async), buffer::op_webgpu_buffer_get_map_async,),
+    declare_ops!(json_op_async[ buffer::op_webgpu_buffer_get_map_async, ]),
     // remaining sync ops
-    declare_ops!(
-      with(json_op_sync),
+    declare_ops!(json_op_sync[
       // texture
       texture::op_webgpu_create_texture,
       texture::op_webgpu_create_texture_view,
@@ -653,6 +650,6 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
       queue::op_webgpu_write_texture,
       // shader
       shader::op_webgpu_create_shader_module,
-    ),
+    ]),
   ])
 }
