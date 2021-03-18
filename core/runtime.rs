@@ -360,16 +360,16 @@ impl JsRuntime {
   // Inits JS of provided JsRuntimeModules
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_mod_js(&mut self) -> Result<(), AnyError> {
+    // Take modules to avoid double-borrow
     let mut modules: Vec<Box<dyn JsRuntimeModule>> =
       self.modules.drain(..).collect();
-    let selfish = Rc::new(RefCell::new(self));
     for m in modules.iter_mut() {
       let js_files = m.init_js()?;
       for (filename, source) in js_files {
-        selfish.borrow_mut().execute_static(filename, source)?;
+        self.execute_static(filename, source)?;
       }
     }
-    selfish.borrow_mut().modules = modules;
+    self.modules = modules;
     Ok(())
   }
 
