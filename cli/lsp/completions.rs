@@ -419,7 +419,9 @@ mod tests {
         "https://deno.land/x/a/b/d.ts?foo=bar",
         "./c.ts",
       ),
+      #[cfg(not(windows))]
       ("file:///a/b/c.ts", "file:///a/b/d.ts", "./c.ts"),
+      #[cfg(not(windows))]
       (
         "file:///a/b/c.ts",
         "https://deno.land/x/a/b/c.ts",
