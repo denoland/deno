@@ -42,13 +42,11 @@ unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
-unitTest(function envPermissionDenied1(): void {
-  assertThrows(() => {
-    Deno.env.toObject();
-  }, Deno.errors.PermissionDenied);
+unitTest(function envToObjectWithoutPermission(): void {
+  assertEquals(Deno.env.toObject(), {});
 });
 
-unitTest(function envPermissionDenied2(): void {
+unitTest(function envPermissionDenied(): void {
   assertThrows(() => {
     Deno.env.get("PATH");
   }, Deno.errors.PermissionDenied);
