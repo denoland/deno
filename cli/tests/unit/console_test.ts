@@ -1191,9 +1191,9 @@ function mockConsole(f: ConsoleExamineFunc): void {
   const err = new StringBuffer();
   const both = new StringBuffer();
   const csl = new Console(
-    (x: string, isErr: boolean, printsNewLine: boolean): void => {
+    (x: string, level: number, printsNewLine: boolean): void => {
       const content = x + (printsNewLine ? "\n" : "");
-      const buf = isErr ? err : out;
+      const buf = level > 1 ? err : out;
       buf.add(content);
       both.add(content);
     },
