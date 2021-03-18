@@ -9,6 +9,7 @@ use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -27,6 +28,23 @@ use uuid::Uuid;
 pub struct CoverageCollector {
   pub dir: PathBuf,
   session: Box<InspectorSession>,
+}
+
+struct CoverageValues {
+  hit: f32,
+  found: f32,
+}
+
+pub struct TotalVisitCoverage {
+  lines: Option<CoverageValues>,
+  functions: Option<CoverageValues>,
+  branches: Option<CoverageValues>,
+}
+
+pub struct TotalCoverages {
+  lines: CoverageValues,
+  functions: CoverageValues,
+  branches: CoverageValues,
 }
 
 impl CoverageCollector {
@@ -134,7 +152,7 @@ pub trait CoverageReporter {
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
     maybe_original_source: Option<String>,
-  );
+  ) -> TotalVisitCoverage;
 
   fn done(&mut self);
 }
@@ -154,7 +172,7 @@ impl CoverageReporter for LcovCoverageReporter {
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
     _maybe_original_source: Option<String>,
-  ) {
+  ) -> TotalVisitCoverage {
     // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
     // elsewhere.
     let maybe_source_map = if let Some(source_map) = maybe_source_map {
@@ -353,6 +371,21 @@ impl CoverageReporter for LcovCoverageReporter {
     println!("LF:{}", lines_found);
 
     println!("end_of_record");
+
+    return TotalVisitCoverage {
+      lines: Some(CoverageValues {
+        hit: lines_hit as f32,
+        found: lines_found as f32,
+      }),
+      branches: Some(CoverageValues {
+        hit: branches_hit as f32,
+        found: branches_found as f32,
+      }),
+      functions: Some(CoverageValues {
+        hit: functions_hit as f32,
+        found: functions_found as f32,
+      }),
+    };
   }
 
   fn done(&mut self) {}
@@ -373,7 +406,7 @@ impl CoverageReporter for PrettyCoverageReporter {
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
     maybe_original_source: Option<String>,
-  ) {
+  ) -> TotalVisitCoverage {
     let maybe_source_map = if let Some(source_map) = maybe_source_map {
       Some(SourceMap::from_slice(&source_map).unwrap())
     } else {
@@ -530,6 +563,14 @@ impl CoverageReporter for PrettyCoverageReporter {
 
       last_line = Some(line_index);
     }
+    return TotalVisitCoverage {
+      lines: Some(CoverageValues {
+        hit: lines_hit as f32,
+        found: lines_found as f32,
+      }),
+      branches: None,
+      functions: None,
+    };
   }
 
   fn done(&mut self) {}
@@ -612,15 +653,41 @@ fn filter_coverages(
     .collect::<Vec<ScriptCoverage>>()
 }
 
+fn coverage_threshold_error(coverage_type: &str, actual: f32, expected: f32) {
+  let coverage = format!(
+    "The coverage threshold for {} ({:.2}%) not met: {:.2}%",
+    coverage_type, expected, actual
+  );
+  println!("{}", colors::red(&coverage));
+}
+
 pub async fn cover_files(
   flags: Flags,
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   include: Vec<String>,
   exclude: Vec<String>,
+  check: bool,
+  lines: f32,
+  functions: f32,
+  branches: f32,
   lcov: bool,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags).await?;
+  let mut total_coverages = TotalCoverages {
+    lines: CoverageValues {
+      hit: 0.0,
+      found: 0.0,
+    },
+    functions: CoverageValues {
+      hit: 0.0,
+      found: 0.0,
+    },
+    branches: CoverageValues {
+      hit: 0.0,
+      found: 0.0,
+    },
+  };
 
   let script_coverages = collect_coverages(files, ignore)?;
   let script_coverages = filter_coverages(script_coverages, include, exclude);
@@ -655,12 +722,88 @@ pub async fn cover_files(
       .get_source(&module_specifier)
       .map(|f| f.source);
 
-    reporter.visit_coverage(
+    let total_coverage = reporter.visit_coverage(
       &script_coverage,
       &script_source,
       maybe_source_map,
       maybe_cached_source,
     );
+
+    if total_coverage.lines.is_some() {
+      let coverage_lines = total_coverage.lines.unwrap();
+      total_coverages.lines.hit += coverage_lines.hit;
+      total_coverages.lines.found += coverage_lines.found;
+    }
+
+    if total_coverage.functions.is_some() {
+      let coverage_functions = total_coverage.functions.unwrap();
+      total_coverages.functions.hit += coverage_functions.hit;
+      total_coverages.functions.found += coverage_functions.found;
+    }
+
+    if total_coverage.branches.is_some() {
+      let coverage_branches = total_coverage.branches.unwrap();
+      total_coverages.branches.hit += coverage_branches.hit;
+      total_coverages.branches.found += coverage_branches.found;
+    }
+  }
+
+  let total_coverage_lines = if total_coverages.lines.found != 0.0 {
+    let lines = total_coverages.lines;
+    Some((lines.hit * 100.0) / lines.found)
+  } else {
+    None
+  };
+
+  let total_coverage_functions = if total_coverages.functions.found != 0.0 {
+    let functions = total_coverages.functions;
+    Some((functions.hit * 100.0) / functions.found)
+  } else {
+    None
+  };
+
+  let total_coverage_branches = if total_coverages.branches.found != 0.0 {
+    let branches = total_coverages.branches;
+    Some((branches.hit * 100.0) / branches.found)
+  } else {
+    None
+  };
+
+  if check {
+    let mut threshold_met = true;
+    if total_coverage_lines.is_some() && total_coverage_lines.unwrap() < lines {
+      coverage_threshold_error("lines", total_coverage_lines.unwrap(), lines);
+      threshold_met = false;
+    };
+
+    if total_coverage_functions.is_some()
+      && total_coverage_functions.unwrap() < functions
+    {
+      coverage_threshold_error(
+        "functions",
+        total_coverage_functions.unwrap(),
+        functions,
+      );
+      threshold_met = false;
+    };
+
+    if total_coverage_branches.is_some()
+      && total_coverage_branches.unwrap() < branches
+    {
+      coverage_threshold_error(
+        "branches",
+        total_coverage_branches.unwrap(),
+        branches,
+      );
+      threshold_met = false;
+    };
+
+    if !threshold_met {
+      return Err(custom_error(
+        "CoverageThreshold",
+        colors::red(format!("The coverage threshold is not met",)).to_string(),
+      ));
+    }
   }
 
   reporter.done();
