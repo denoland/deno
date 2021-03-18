@@ -876,6 +876,10 @@ async fn coverage_command(
   ignore: Vec<PathBuf>,
   include: Vec<String>,
   exclude: Vec<String>,
+  check: bool,
+  lines: f32,
+  functions: f32,
+  branches: f32,
   lcov: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
@@ -893,6 +897,10 @@ async fn coverage_command(
     ignore,
     include,
     exclude,
+    check,
+    lines,
+    functions,
+    branches,
     lcov,
   )
   .await
@@ -1084,9 +1092,16 @@ fn get_subcommand(
       ignore,
       include,
       exclude,
+      check,
+      lines,
+      functions,
+      branches,
       lcov,
-    } => coverage_command(flags, files, ignore, include, exclude, lcov)
-      .boxed_local(),
+    } => coverage_command(
+      flags, files, ignore, include, exclude, check, lines, functions,
+      branches, lcov,
+    )
+    .boxed_local(),
     DenoSubcommand::Fmt {
       check,
       files,

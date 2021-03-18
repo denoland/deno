@@ -39,6 +39,10 @@ pub enum DenoSubcommand {
     ignore: Vec<PathBuf>,
     include: Vec<String>,
     exclude: Vec<String>,
+    check: bool,
+    lines: f32,
+    functions: f32,
+    branches: f32,
     lcov: bool,
   },
   Doc {
@@ -596,12 +600,29 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
+  let check = matches.is_present("check");
+  let lines = match matches.value_of("lines") {
+    Some(f) => f32::from_str(f).unwrap(),
+    None => 80.0,
+  };
+  let branches = match matches.value_of("branches") {
+    Some(f) => f32::from_str(f).unwrap(),
+    None => 80.0,
+  };
+  let functions = match matches.value_of("functions") {
+    Some(f) => f32::from_str(f).unwrap(),
+    None => 80.0,
+  };
   let lcov = matches.is_present("lcov");
   flags.subcommand = DenoSubcommand::Coverage {
     files,
     ignore,
     include,
     exclude,
+    check,
+    lines,
+    branches,
+    functions,
     lcov,
   };
 }
@@ -1138,6 +1159,18 @@ Include urls that start with the file schema:
 Exclude urls ending with test.ts and test.js:
   deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
+Set the coverage threshold, it will set the default threshold percentage for lines, functions and branches to 80%:
+  deno coverage --check cov_profile
+
+Set the lines coverage threshold percentage:
+  deno coverage --check --lines=\"90\" cov_profile
+
+Set the functions coverage threshold percentage:
+  deno coverage --check --functions=\"90\" cov_profile
+
+Set the branches coverage threshold percentage:
+  deno coverage --check --branches=\"90\" cov_profile
+
 Include urls that start with the file schema and exclude files ending with test.ts and test.js, for
 an url to match it must match the include pattern and not match the exclude pattern:
   deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
@@ -1176,6 +1209,30 @@ Generate html reports from lcov:
         .require_equals(true)
         .default_value(r"test\.(js|mjs|ts|jsx|tsx)$")
         .help("Exclude source files from the report"),
+    )
+    .arg(
+      Arg::with_name("check")
+        .long("check")
+        .takes_value(false)
+        .help("Set the coverage threshold"),
+    )
+    .arg(
+      Arg::with_name("lines")
+        .long("lines")
+        .takes_value(true)
+        .help("Set the lines coverage percentage threshold"),
+    )
+    .arg(
+      Arg::with_name("functions")
+        .long("functions")
+        .takes_value(true)
+        .help("Set the functions coverage percentage threshold"),
+    )
+    .arg(
+      Arg::with_name("branches")
+        .long("branches")
+        .takes_value(true)
+        .help("Set the branches coverage percentage threshold"),
     )
     .arg(
       Arg::with_name("lcov")
@@ -3518,6 +3575,10 @@ mod tests {
           ignore: vec![],
           include: vec![r"^file:".to_string()],
           exclude: vec![r"test\.(js|mjs|ts|jsx|tsx)$".to_string()],
+          check: false,
+          lines: 80.0,
+          functions: 80.0,
+          branches: 80.0,
           lcov: false,
         },
         ..Flags::default()
