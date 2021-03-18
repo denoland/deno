@@ -4175,29 +4175,21 @@ console.log("finish");
         .current_dir(util::root_path())
         .arg("coverage")
         .arg("--check")
-        .arg("--lines=70")
-        .arg("--branches=80")
+        .arg("--lines=99")
+        .arg("--branches=99")
         .arg("--unstable")
         .arg("--lcov")
         .arg(format!("{}/", tempdir.path().to_str().unwrap()))
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .output()
-        .expect("failed to spawn coverage reporter");
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
 
-      let actual =
-        util::strip_ansi_codes(std::str::from_utf8(&output.stderr).unwrap())
-          .to_string();
+      assert!(!output.status.success());
+      let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
 
-      let expected = "The coverage threshold is not met";
-
-      if !util::wildcard_match(&expected, &actual) {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        println!("EXPECTED\n{}\nEXPECTED", expected);
-        panic!("pattern match failed");
-      }
-
-      assert!(output.status.success());
+      assert!(stderr.contains("The coverage threshold is not met"));
     }
   }
 
