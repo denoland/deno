@@ -81,19 +81,19 @@ pub fn init(isolate: &mut JsRuntime) {
 }
 
 pub trait FetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError>;
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
 /// For use with `op_fetch` when the user does not want permissions.
 pub struct NoFetchPermissions;
 
 impl FetchPermissions for NoFetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError> {
     Ok(())
   }
 
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -151,7 +151,7 @@ where
     return Err(type_error(format!("scheme '{}' not supported", scheme)));
   }
 
-  let permissions = state.borrow::<FP>();
+  let permissions = state.borrow_mut::<FP>();
   permissions.check_net_url(&url)?;
 
   let mut request = client.request(method, url);
@@ -395,7 +395,7 @@ where
   FP: FetchPermissions + 'static,
 {
   if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow::<FP>();
+    let permissions = state.borrow_mut::<FP>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 

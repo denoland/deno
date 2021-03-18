@@ -157,7 +157,7 @@ fn op_now(
     }
   }
 
-  let op_state = state.borrow();
+  let mut op_state = state.borrow_mut();
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
   let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
@@ -166,7 +166,7 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if op_state.borrow::<Permissions>().hrtime.check().is_err() {
+  if op_state.borrow_mut::<Permissions>().hrtime.check().is_err() {
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 

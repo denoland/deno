@@ -31,7 +31,7 @@ fn op_main_module(
   if main_url.scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .read
       .check_blind(&main_path, "main_module")?;
   }

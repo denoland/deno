@@ -157,7 +157,7 @@ fn merge_net_permissions(
       global_state: new_permissions.global_state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
-      ..Permissions::new_net(&None)
+      ..Permissions::new_net(&None, false)
     }),
     PermissionState::Prompt => match new_permissions.global_state {
       //Throw
@@ -175,7 +175,7 @@ fn merge_net_permissions(
             global_state: new_permissions.global_state,
             granted_list: new_permissions.granted_list,
             denied_list: target.denied_list.clone(),
-            ..Permissions::new_net(&None)
+            ..Permissions::new_net(&None, false)
           })
         } else {
           Err(custom_error(
@@ -189,7 +189,7 @@ fn merge_net_permissions(
         global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_net(&None)
+        ..Permissions::new_net(&None, false)
       }),
     },
     PermissionState::Denied => match new_permissions.global_state {
@@ -197,7 +197,7 @@ fn merge_net_permissions(
         global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_net(&None)
+        ..Permissions::new_net(&None, false)
       }),
       _ => Err(custom_error(
         "PermissionDenied",
@@ -209,7 +209,7 @@ fn merge_net_permissions(
 
 fn check_read_permissions(
   allow_list: &HashSet<ReadPermission>,
-  current_permissions: &Permissions,
+  current_permissions: &mut Permissions,
 ) -> bool {
   allow_list
     .iter()
@@ -218,7 +218,7 @@ fn check_read_permissions(
 
 fn check_write_permissions(
   allow_list: &HashSet<WritePermission>,
-  current_permissions: &Permissions,
+  current_permissions: &mut Permissions,
 ) -> bool {
   allow_list
     .iter()
@@ -226,12 +226,12 @@ fn check_write_permissions(
 }
 
 fn merge_read_permissions(
-  target: &UnaryPermission<ReadPermission>,
+  target: UnaryPermission<ReadPermission>,
   incoming: Option<UnaryPermission<ReadPermission>>,
-  current_permissions: &Permissions,
+  current_permissions: &mut Permissions,
 ) -> Result<UnaryPermission<ReadPermission>, AnyError> {
   if incoming.is_none() {
-    return Ok(target.clone());
+    return Ok(target);
   };
 
   let new_permissions = incoming.unwrap();
@@ -240,7 +240,7 @@ fn merge_read_permissions(
       global_state: new_permissions.global_state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
-      ..Permissions::new_read(&None)
+      ..Permissions::new_read(&None, false)
     }),
     PermissionState::Prompt => match new_permissions.global_state {
       //Throw
@@ -257,8 +257,8 @@ fn merge_read_permissions(
           Ok(UnaryPermission::<ReadPermission> {
             global_state: new_permissions.global_state,
             granted_list: new_permissions.granted_list,
-            denied_list: target.denied_list.clone(),
-            ..Permissions::new_read(&None)
+            denied_list: target.denied_list,
+            ..Permissions::new_read(&None, false)
           })
         } else {
           Err(custom_error(
@@ -272,7 +272,7 @@ fn merge_read_permissions(
         global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_read(&None)
+        ..Permissions::new_read(&None, false)
       }),
     },
     PermissionState::Denied => match new_permissions.global_state {
@@ -280,7 +280,7 @@ fn merge_read_permissions(
         global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_read(&None)
+        ..Permissions::new_read(&None, false)
       }),
       _ => Err(custom_error(
         "PermissionDenied",
@@ -291,12 +291,12 @@ fn merge_read_permissions(
 }
 
 fn merge_write_permissions(
-  target: &UnaryPermission<WritePermission>,
+  target: UnaryPermission<WritePermission>,
   incoming: Option<UnaryPermission<WritePermission>>,
-  current_permissions: &Permissions,
+  current_permissions: &mut Permissions,
 ) -> Result<UnaryPermission<WritePermission>, AnyError> {
   if incoming.is_none() {
-    return Ok(target.clone());
+    return Ok(target);
   };
 
   let new_permissions = incoming.unwrap();
@@ -305,7 +305,7 @@ fn merge_write_permissions(
       global_state: new_permissions.global_state,
       granted_list: new_permissions.granted_list,
       denied_list: new_permissions.denied_list,
-      ..Permissions::new_write(&None)
+      ..Permissions::new_write(&None, false)
     }),
     PermissionState::Prompt => match new_permissions.global_state {
       //Throw
@@ -322,8 +322,8 @@ fn merge_write_permissions(
           Ok(UnaryPermission::<WritePermission> {
             global_state: new_permissions.global_state,
             granted_list: new_permissions.granted_list,
-            denied_list: target.denied_list.clone(),
-            ..Permissions::new_write(&None)
+            denied_list: target.denied_list,
+            ..Permissions::new_write(&None, false)
           })
         } else {
           Err(custom_error(
@@ -337,7 +337,7 @@ fn merge_write_permissions(
         global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_write(&None)
+        ..Permissions::new_write(&None, false)
       }),
     },
     PermissionState::Denied => match new_permissions.global_state {
@@ -345,7 +345,7 @@ fn merge_write_permissions(
         global_state: new_permissions.global_state,
         granted_list: new_permissions.granted_list,
         denied_list: new_permissions.denied_list,
-        ..Permissions::new_write(&None)
+        ..Permissions::new_write(&None, false)
       }),
       _ => Err(custom_error(
         "PermissionDenied",
@@ -356,7 +356,7 @@ fn merge_write_permissions(
 }
 
 fn create_worker_permissions(
-  main_thread_permissions: &Permissions,
+  main_thread_permissions: &mut Permissions,
   permission_args: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
   Ok(Permissions {
@@ -377,18 +377,18 @@ fn create_worker_permissions(
       permission_args.plugin,
     )?,
     read: merge_read_permissions(
-      &main_thread_permissions.read,
+      main_thread_permissions.read.clone(),
       permission_args.read,
-      &main_thread_permissions,
+      main_thread_permissions,
     )?,
     run: merge_boolean_permission(
       &main_thread_permissions.run,
       permission_args.run,
     )?,
     write: merge_write_permissions(
-      &main_thread_permissions.write,
+      main_thread_permissions.write.clone(),
       permission_args.write,
-      &main_thread_permissions,
+      main_thread_permissions,
     )?,
   })
 }
@@ -560,10 +560,10 @@ fn op_create_worker(
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno.namespace");
   }
-  let parent_permissions = state.borrow::<Permissions>().clone();
+  let mut parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {
     super::check_unstable(state, "Worker.deno.permissions");
-    create_worker_permissions(&parent_permissions, permissions)?
+    create_worker_permissions(&mut parent_permissions, permissions)?
   } else {
     parent_permissions.clone()
   };

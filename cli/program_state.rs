@@ -101,7 +101,7 @@ impl ProgramState {
               format!("Bad URL (\"{}\") for import map.", import_map_url),
             )?;
           let file = file_fetcher
-            .fetch(&import_map_specifier, &Permissions::allow_all())
+            .fetch(&import_map_specifier, &mut Permissions::allow_all())
             .await?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
@@ -145,7 +145,7 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     lib: TypeLib,
-    runtime_permissions: Permissions,
+    mut runtime_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
