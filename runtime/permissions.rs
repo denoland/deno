@@ -1148,7 +1148,7 @@ mod tests {
       },
       env: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::env_net(&Some(svec!["HOME"]))
+        ..Permissions::new_env(&Some(svec!["HOME"]))
       },
       run: BooleanPermission {
         state: PermissionState::Prompt,
@@ -1213,9 +1213,10 @@ mod tests {
       set_prompt_result(false);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       set_prompt_result(true);
-      assert_eq!(perms.env.request(), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms.env.query(None), PermissionState::Prompt);
       set_prompt_result(false);
-      assert_eq!(perms.env.request(), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
       set_prompt_result(false);
       assert_eq!(perms.run.request(), PermissionState::Denied);
       set_prompt_result(true);

@@ -71,8 +71,10 @@ fn op_env(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  state.borrow::<Permissions>().env.check_all()?;
-  let v = env::vars().collect::<HashMap<String, String>>();
+  let perm = &state.borrow::<Permissions>().env;
+  let v = env::vars()
+    .filter(|(var, _)| perm.check(var).is_ok())
+    .collect::<HashMap<String, String>>();
   Ok(json!(v))
 }
 
@@ -137,7 +139,7 @@ fn op_loadavg(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.loadavg");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check_all()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(json!([loadavg.one, loadavg.five, loadavg.fifteen])),
     Err(_) => Ok(json!([0f64, 0f64, 0f64])),
@@ -150,7 +152,7 @@ fn op_hostname(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.hostname");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check_all()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(json!(hostname))
 }
@@ -161,7 +163,7 @@ fn op_os_release(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check_all()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(json!(release))
 }
@@ -172,7 +174,7 @@ fn op_system_memory_info(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check_all()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(json!({
       "total": info.total,
@@ -193,7 +195,7 @@ fn op_system_cpu_info(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.systemCpuInfo");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check_all()?;
 
   let cores = sys_info::cpu_num().ok();
   let speed = sys_info::cpu_speed().ok();

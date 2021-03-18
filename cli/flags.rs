@@ -202,10 +202,6 @@ impl Flags {
       _ => {}
     }
 
-    if self.allow_env {
-      args.push("--allow-env".to_string());
-    }
-
     if self.allow_run {
       args.push("--allow-run".to_string());
     }
