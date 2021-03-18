@@ -1,11 +1,10 @@
 use rusty_v8 as v8;
-use serde;
 
 use std::fmt;
 use std::marker::PhantomData;
 
-pub const FIELD: &'static str = "$__v8_magic_value";
-pub const NAME: &'static str = "$__v8_magic_Value";
+pub const FIELD: &str = "$__v8_magic_value";
+pub const NAME: &str = "$__v8_magic_Value";
 
 pub struct Value<'s> {
   pub v8_value: v8::Local<'s, v8::Value>,

@@ -1,5 +1,4 @@
 use rusty_v8 as v8;
-use serde_v8;
 
 use serde::Deserialize;
 
@@ -52,7 +51,7 @@ fn de_basic() {
 
     let v: v8::Local<v8::Value> = v8::Number::new(scope, 12345.0).into();
     let x: f64 = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(x, 12345.0);
+    assert!((x - 12345.0).abs() < f64::EPSILON);
   }
 
   v8_shutdown();

@@ -13,10 +13,7 @@ type JsResult<'s> = Result<JsValue<'s>>;
 
 type ScopePtr<'a, 'b> = Rc<RefCell<v8::EscapableHandleScope<'a, 'b>>>;
 
-pub fn to_v8<'a, 'b, T>(
-  scope: &mut v8::HandleScope<'a>,
-  input: T,
-) -> JsResult<'a>
+pub fn to_v8<'a, T>(scope: &mut v8::HandleScope<'a>, input: T) -> JsResult<'a>
 where
   T: Serialize,
 {
@@ -604,5 +601,4 @@ fn v8_struct_key<'s>(
     v8::NewStringType::Internalized,
   )
   .unwrap()
-  .into()
 }

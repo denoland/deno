@@ -268,8 +268,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     // Regular struct
     let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
     let map = ObjectAccess {
-      fields: fields,
-      obj: obj,
+      fields,
+      obj,
       pos: 0,
       scope: self.scope,
       _cache: None,
@@ -387,7 +387,6 @@ fn v8_struct_key<'s>(
     v8::NewStringType::Internalized,
   )
   .unwrap()
-  .into()
 
   // TODO: consider external strings later
   // right now non-deduped external strings (without KeyCache)
