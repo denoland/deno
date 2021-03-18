@@ -39,6 +39,7 @@ use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::capabilities;
+use super::completions;
 use super::config::Config;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
@@ -146,12 +147,16 @@ impl Inner {
     specifier: &ModuleSpecifier,
     source: &str,
   ) {
-    if let Some((mut deps, _)) = analysis::analyze_dependencies(
-      specifier,
-      source,
-      &MediaType::from(specifier),
-      &self.maybe_import_map,
-    ) {
+    let media_type = MediaType::from(specifier);
+    if let Ok(parsed_module) =
+      analysis::parse_module(specifier, source, &media_type)
+    {
+      let (mut deps, _) = analysis::analyze_dependencies(
+        specifier,
+        &media_type,
+        &parsed_module,
+        &self.maybe_import_map,
+      );
       for (_, dep) in deps.iter_mut() {
         if dep.maybe_type.is_none() {
           if let Some(ResolvedDependency::Resolved(resolved)) = &dep.maybe_code
@@ -1354,55 +1359,68 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
+    // Import specifiers are something wholly internal to Deno, so for
+    // completions, we will use internal logic and if there are completions
+    // for imports, we will return those and not send a message into tsc, where
+    // other completions come from.
+    let response = if let Some(response) = completions::get_import_completions(
+      &specifier,
+      &params.text_document_position.position,
+      &self.snapshot(),
+    ) {
+      Some(response)
+    } else {
+      let line_index =
+        if let Some(line_index) = self.get_line_index_sync(&specifier) {
+          line_index
+        } else {
+          return Err(LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          )));
+        };
+      let trigger_character = if let Some(context) = &params.context {
+        context.trigger_character.clone()
       } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
+        None
       };
-    let trigger_character = if let Some(context) = &params.context {
-      context.trigger_character.clone()
-    } else {
-      None
-    };
-    let position =
-      line_index.offset_tsc(params.text_document_position.position)?;
-    let req = tsc::RequestMethod::GetCompletions((
-      specifier.clone(),
-      position,
-      tsc::GetCompletionsAtPositionOptions {
-        user_preferences: tsc::UserPreferences {
-          include_completions_with_insert_text: Some(true),
-          ..Default::default()
-        },
-        trigger_character,
-      },
-    ));
-    let maybe_completion_info: Option<tsc::CompletionInfo> = self
-      .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get completion info from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
-
-    if let Some(completions) = maybe_completion_info {
-      let results = completions.as_completion_response(
-        &line_index,
-        &self.config.settings.suggest,
-        &specifier,
+      let position =
+        line_index.offset_tsc(params.text_document_position.position)?;
+      let req = tsc::RequestMethod::GetCompletions((
+        specifier.clone(),
         position,
-      );
-      self.performance.measure(mark);
-      Ok(Some(results))
-    } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
+        tsc::GetCompletionsAtPositionOptions {
+          user_preferences: tsc::UserPreferences {
+            include_completions_with_insert_text: Some(true),
+            ..Default::default()
+          },
+          trigger_character,
+        },
+      ));
+      let maybe_completion_info: Option<tsc::CompletionInfo> = self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Unable to get completion info from TypeScript: {}", err);
+          LspError::internal_error()
+        })?;
+
+      let response = if let Some(completions) = maybe_completion_info {
+        let results = completions.as_completion_response(
+          &line_index,
+          &self.config.settings.suggest,
+          &specifier,
+          position,
+        );
+        Some(results)
+      } else {
+        None
+      };
+      response
+    };
+    self.performance.measure(mark);
+    Ok(response)
   }
 
   async fn completion_resolve(
@@ -1410,7 +1428,7 @@ impl Inner {
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
     let mark = self.performance.mark("completion_resolve");
-    if let Some(data) = &params.data {
+    let completion_item = if let Some(data) = &params.data {
       let data: tsc::CompletionItemData = serde_json::from_value(data.clone())
         .map_err(|err| {
           error!("{}", err);
@@ -1428,22 +1446,18 @@ impl Inner {
           LspError::internal_error()
         })?;
       if let Some(completion_info) = maybe_completion_info {
-        let completion_item = completion_info.as_completion_item(&params);
-        self.performance.measure(mark);
-        Ok(completion_item)
+        completion_info.as_completion_item(&params)
       } else {
         error!(
           "Received an undefined response from tsc for completion details."
         );
-        self.performance.measure(mark);
-        Ok(params)
+        params
       }
     } else {
-      self.performance.measure(mark);
-      Err(LspError::invalid_params(
-        "The completion item is missing the data field.",
-      ))
-    }
+      params
+    };
+    self.performance.measure(mark);
+    Ok(completion_item)
   }
 
   async fn goto_implementation(
