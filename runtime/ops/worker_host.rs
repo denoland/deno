@@ -7,6 +7,7 @@ use crate::permissions::NetPermission;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
 use crate::permissions::ReadPermission;
+use crate::permissions::RunPermission;
 use crate::permissions::UnaryPermission;
 use crate::permissions::WritePermission;
 use crate::web_worker::run_web_worker;
@@ -355,6 +356,77 @@ fn merge_write_permissions(
   }
 }
 
+fn check_run_permission_contains(
+  a: &HashSet<RunPermission>,
+  b: &HashSet<RunPermission>,
+) -> bool {
+  b.iter().all(|x| a.contains(x))
+}
+
+fn merge_run_permissions(
+  target: &UnaryPermission<RunPermission>,
+  incoming: Option<UnaryPermission<RunPermission>>,
+) -> Result<UnaryPermission<RunPermission>, AnyError> {
+  if incoming.is_none() {
+    return Ok(target.clone());
+  };
+
+  let new_permissions = incoming.unwrap();
+  match &target.global_state {
+    PermissionState::Granted => Ok(UnaryPermission::<RunPermission> {
+      global_state: new_permissions.global_state,
+      granted_list: new_permissions.granted_list,
+      denied_list: new_permissions.denied_list,
+      ..Permissions::new_run(&None)
+    }),
+    PermissionState::Prompt => match new_permissions.global_state {
+      //Throw
+      PermissionState::Granted => Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      )),
+      //Merge
+      PermissionState::Prompt => {
+        if check_run_permission_contains(
+          &target.granted_list,
+          &new_permissions.granted_list,
+        ) {
+          Ok(UnaryPermission::<RunPermission> {
+            global_state: new_permissions.global_state,
+            granted_list: new_permissions.granted_list,
+            denied_list: target.denied_list.clone(),
+            ..Permissions::new_run(&None)
+          })
+        } else {
+          Err(custom_error(
+            "PermissionDenied",
+            "Can't escalate parent thread permissions",
+          ))
+        }
+      }
+      //Copy
+      PermissionState::Denied => Ok(UnaryPermission::<RunPermission> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+        ..Permissions::new_run(&None)
+      }),
+    },
+    PermissionState::Denied => match new_permissions.global_state {
+      PermissionState::Denied => Ok(UnaryPermission::<RunPermission> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+        ..Permissions::new_run(&None)
+      }),
+      _ => Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      )),
+    },
+  }
+}
+
 fn create_worker_permissions(
   main_thread_permissions: &Permissions,
   permission_args: PermissionsArg,
@@ -381,7 +453,7 @@ fn create_worker_permissions(
       permission_args.read,
       &main_thread_permissions,
     )?,
-    run: merge_boolean_permission(
+    run: merge_run_permissions(
       &main_thread_permissions.run,
       permission_args.run,
     )?,
@@ -405,8 +477,8 @@ struct PermissionsArg {
   plugin: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadPermission>>,
-  #[serde(default, deserialize_with = "as_permission_state")]
-  run: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_run_permission")]
+  run: Option<UnaryPermission<RunPermission>>,
   #[serde(default, deserialize_with = "as_unary_write_permission")]
   write: Option<UnaryPermission<WritePermission>>,
 }
@@ -526,6 +598,22 @@ where
   Ok(Some(UnaryPermission::<WritePermission> {
     global_state: value.global_state,
     granted_list: resolve_write_allowlist(&Some(paths)),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_run_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<RunPermission>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<RunPermission> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(RunPermission).collect(),
     ..Default::default()
   }))
 }
