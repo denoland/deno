@@ -70,7 +70,7 @@ unitTest(
 // Test that ops from op_crates have metrics (via OpMiddleware)
 unitTest(function metricsForOpCrates(): void {
   const _ = new URL("https://deno.land");
-  
+
   const m1 = Deno.metrics().ops["op_url_parse"];
   assert(m1.opsDispatched > 0);
   assert(m1.opsCompleted > 0);
