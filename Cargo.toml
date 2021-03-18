@@ -5,6 +5,7 @@ members = [
   "cli",
   "core",
   "runtime",
+  "serde_v8",
   "test_plugin",
   "test_util",
   "op_crates/crypto",
