@@ -1216,7 +1216,7 @@ mod tests {
       assert_eq!(perms.env.request(), PermissionState::Granted);
       set_prompt_result(false);
       assert_eq!(perms.env.request(), PermissionState::Granted);
-      set_prompt_result(false);
+      set_prompt_result(true);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
       set_prompt_result(false);
