@@ -260,8 +260,8 @@ fn relative_specifier(
               parts.push(PARENT_PATH);
             }
             // actually the clippy suggestions here are less readable for once
+            #[allow(clippy::same_item_push)]
             for _ in segments_b {
-              #[allow(clippy::same_item_push)]
               parts.push(PARENT_PATH);
             }
             parts.push(a);
