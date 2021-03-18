@@ -100,6 +100,11 @@ pub struct HttpClientDefaults {
   pub ca_data: Option<Vec<u8>>,
 }
 
+pub struct HttpClientDefaults {
+  pub user_agent: String,
+  pub ca_data: Option<Vec<u8>>,
+}
+
 pub trait FetchPermissions {
   fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
   fn check_read(&self, _p: &Path) -> Result<(), AnyError>;
