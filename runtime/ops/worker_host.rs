@@ -3,6 +3,7 @@
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::BooleanPermission;
+use crate::permissions::EnvPermission;
 use crate::permissions::NetPermission;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
@@ -225,6 +226,15 @@ fn check_write_permissions(
     .all(|x| current_permissions.write.check(&x.0).is_ok())
 }
 
+fn check_env_permissions(
+  allow_list: &HashSet<EnvPermission>,
+  current_permissions: &Permissions,
+) -> bool {
+  allow_list
+    .iter()
+    .all(|x| current_permissions.env.check(&x.0).is_ok())
+}
+
 fn merge_read_permissions(
   target: &UnaryPermission<ReadPermission>,
   incoming: Option<UnaryPermission<ReadPermission>>,
@@ -355,14 +365,80 @@ fn merge_write_permissions(
   }
 }
 
+fn merge_env_permissions(
+  target: &UnaryPermission<EnvPermission>,
+  incoming: Option<UnaryPermission<EnvPermission>>,
+  current_permissions: &Permissions,
+) -> Result<UnaryPermission<EnvPermission>, AnyError> {
+  if incoming.is_none() {
+    return Ok(target.clone());
+  };
+
+  let new_permissions = incoming.unwrap();
+  match &target.global_state {
+    PermissionState::Granted => Ok(UnaryPermission::<EnvPermission> {
+      global_state: new_permissions.global_state,
+      granted_list: new_permissions.granted_list,
+      denied_list: new_permissions.denied_list,
+      ..Permissions::new_env(&None)
+    }),
+    PermissionState::Prompt => match new_permissions.global_state {
+      //Throw
+      PermissionState::Granted => Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      )),
+      //Merge
+      PermissionState::Prompt => {
+        if check_env_permissions(
+          &new_permissions.granted_list,
+          current_permissions,
+        ) {
+          Ok(UnaryPermission::<EnvPermission> {
+            global_state: new_permissions.global_state,
+            granted_list: new_permissions.granted_list,
+            denied_list: target.denied_list.clone(),
+            ..Permissions::new_env(&None)
+          })
+        } else {
+          Err(custom_error(
+            "PermissionDenied",
+            "Can't escalate parent thread permissions",
+          ))
+        }
+      }
+      //Copy
+      PermissionState::Denied => Ok(UnaryPermission::<EnvPermission> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+        ..Permissions::new_env(&None)
+      }),
+    },
+    PermissionState::Denied => match new_permissions.global_state {
+      PermissionState::Denied => Ok(UnaryPermission::<EnvPermission> {
+        global_state: new_permissions.global_state,
+        granted_list: new_permissions.granted_list,
+        denied_list: new_permissions.denied_list,
+        ..Permissions::new_env(&None)
+      }),
+      _ => Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      )),
+    },
+  }
+}
+
 fn create_worker_permissions(
   main_thread_permissions: &Permissions,
   permission_args: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
   Ok(Permissions {
-    env: merge_boolean_permission(
+    env: merge_env_permissions(
       &main_thread_permissions.env,
       permission_args.env,
+      &main_thread_permissions,
     )?,
     hrtime: merge_boolean_permission(
       &main_thread_permissions.hrtime,
@@ -395,8 +471,8 @@ fn create_worker_permissions(
 
 #[derive(Debug, Deserialize)]
 struct PermissionsArg {
-  #[serde(default, deserialize_with = "as_permission_state")]
-  env: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_env_permission")]
+  env: Option<UnaryPermission<EnvPermission>>,
   #[serde(default, deserialize_with = "as_permission_state")]
   hrtime: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_net_permission")]
@@ -526,6 +602,22 @@ where
   Ok(Some(UnaryPermission::<WritePermission> {
     global_state: value.global_state,
     granted_list: resolve_write_allowlist(&Some(paths)),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_env_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<EnvPermission>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<EnvPermission> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(EnvPermission).collect(),
     ..Default::default()
   }))
 }

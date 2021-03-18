@@ -55,7 +55,7 @@ fn op_set_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: SetEnv = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check(&args.key)?;
   let invalid_key =
     args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
   let invalid_value = args.value.contains('\0');
@@ -71,7 +71,7 @@ fn op_env(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check_all()?;
   let v = env::vars().collect::<HashMap<String, String>>();
   Ok(json!(v))
 }
@@ -87,7 +87,7 @@ fn op_get_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: GetEnv = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check(&args.key)?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -109,7 +109,7 @@ fn op_delete_env(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   let args: DeleteEnv = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow::<Permissions>().env.check(&args.key)?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }

@@ -44,7 +44,7 @@ pub fn op_query_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.query(),
+    "env" => permissions.env.query(args.path.as_ref()),
     "run" => permissions.run.query(),
     "plugin" => permissions.plugin.query(),
     "hrtime" => permissions.hrtime.query(),
