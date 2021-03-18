@@ -384,7 +384,7 @@ impl JsRuntime {
 
     // Wrap registrar
     for m in self.modules.iter_mut() {
-      registrar = m.init_op_registrar_middleware(registrar.clone());
+      registrar = m.init_registrar(registrar.clone());
     }
 
     for m in self.modules.iter_mut() {

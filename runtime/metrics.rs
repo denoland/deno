@@ -11,18 +11,16 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 
 pub fn init() -> BasicModule {
-  // TODO: add middleware
-  BasicModule::with_ops(
-    vec![],
-    declare_ops!(json_op_sync[
+  BasicModule::builder()
+    .ops(declare_ops!(json_op_sync[
       op_metrics,
-    ]),
-    Some(Box::new(|state| {
+    ]))
+    .state(|state| {
       state.put(RuntimeMetrics::default());
       Ok(())
-    }))
-  )
-  // .middleware(metrics_op)
+    })
+    .middleware(metrics_op)
+    .build()
 }
 
 #[allow(clippy::unnecessary_wraps)]
