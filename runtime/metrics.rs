@@ -1,5 +1,47 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+use crate::ops::UnstableChecker;
+use deno_core::declare_ops;
+use deno_core::error::AnyError;
+use deno_core::json_op_sync;
 use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::BasicModule;
+use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
+
+pub fn init() -> BasicModule {
+  // TODO: add middleware
+  BasicModule::with_ops(
+    vec![],
+    declare_ops!(json_op_sync[
+      op_metrics,
+    ]),
+    Some(Box::new(|state| {
+      state.put(RuntimeMetrics::default());
+      Ok(())
+    }))
+  )
+  // .middleware(metrics_op)
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn op_metrics(
+  state: &mut OpState,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let m = state.borrow::<RuntimeMetrics>();
+  let combined = m.combined_metrics();
+  let unstable_checker = state.borrow::<UnstableChecker>();
+  let maybe_ops = if unstable_checker.unstable {
+    Some(&m.ops)
+  } else {
+    None
+  };
+  Ok(json!({ "combined": combined, "ops": maybe_ops }))
+}
+
 
 #[derive(Default, Debug)]
 pub struct RuntimeMetrics {
@@ -104,7 +146,6 @@ impl OpMetrics {
 use deno_core::BufVec;
 use deno_core::Op;
 use deno_core::OpFn;
-use deno_core::OpState;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::metrics::RuntimeMetrics;
-use crate::ops::UnstableChecker;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -18,7 +16,6 @@ pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
     state.put::<ModuleSpecifier>(main_module);
   }
   super::reg_json_sync(rt, "op_main_module", op_main_module);
-  super::reg_json_sync(rt, "op_metrics", op_metrics);
 }
 
 fn op_main_module(
@@ -35,23 +32,6 @@ fn op_main_module(
       .check_read_blind(&main_path, "main_module")?;
   }
   Ok(json!(&main))
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn op_metrics(
-  state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let m = state.borrow::<RuntimeMetrics>();
-  let combined = m.combined_metrics();
-  let unstable_checker = state.borrow::<UnstableChecker>();
-  let maybe_ops = if unstable_checker.unstable {
-    Some(&m.ops)
-  } else {
-    None
-  };
-  Ok(json!({ "combined": combined, "ops": maybe_ops }))
 }
 
 pub fn ppid() -> Value {

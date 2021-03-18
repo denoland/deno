@@ -4,7 +4,7 @@ use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::inspector::InspectorSession;
 use crate::js;
-use crate::metrics::RuntimeMetrics;
+use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
@@ -76,6 +76,7 @@ impl MainWorker {
   ) -> Self {
     // Internal modules
     let deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
+      // Web APIs
       Box::new(deno_webidl::init()),
       Box::new(deno_console::init()),
       Box::new(deno_url::init()),
@@ -90,6 +91,9 @@ impl MainWorker {
       )),
       Box::new(deno_crypto::init(options.seed)),
       Box::new(deno_webgpu::init(options.unstable)),
+      
+      // Metrics
+      Box::new(metrics::init()),
     ];
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -125,7 +129,6 @@ impl MainWorker {
       {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
-        op_state.put(RuntimeMetrics::default());
         op_state.put::<Permissions>(permissions);
         op_state.put(ops::UnstableChecker {
           unstable: options.unstable,

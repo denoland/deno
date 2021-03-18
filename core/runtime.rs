@@ -26,6 +26,7 @@ use crate::BufVec;
 use crate::JsRuntimeModule;
 use crate::OpRegistrar;
 use crate::OpState;
+use crate::RcOpRegistrar;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;
@@ -377,8 +378,14 @@ impl JsRuntime {
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_mod_ops(&mut self) -> Result<(), AnyError> {
     let op_state = self.op_state();
-    let registrar =
+    // Original OpRegistrar
+    let mut registrar: RcOpRegistrar =
       Rc::new(RefCell::new(JsRuntimeOpRegistrar(op_state.clone())));
+
+    // Wrap registrar
+    for m in self.modules.iter_mut() {
+      registrar = m.init_op_registrar_middleware(registrar.clone());
+    }
 
     for m in self.modules.iter_mut() {
       m.init_state(&mut op_state.borrow_mut())?;
