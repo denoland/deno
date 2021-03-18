@@ -192,11 +192,11 @@ fn is_module_specifier_position(
     analysis::parse_module(specifier, source, media_type)
   {
     let mut import_locator =
-      ImportLocator::new(position.clone(), parsed_module.source_map.clone());
+      ImportLocator::new(*position, parsed_module.source_map.clone());
     parsed_module
       .module
       .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut import_locator);
-    import_locator.maybe_specifier.clone()
+    import_locator.maybe_specifier
   } else {
     None
   }
@@ -259,7 +259,9 @@ fn relative_specifier(
             } else {
               parts.push(PARENT_PATH);
             }
+            // actually the clippy suggestions here are less readable for once
             for _ in segments_b {
+              #[allow(clippy::same_item_push)]
               parts.push(PARENT_PATH);
             }
             parts.push(a);
@@ -342,9 +344,7 @@ mod tests {
   fn setup(documents: &[(&str, &str, i32)]) -> language_server::StateSnapshot {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    let state_snapshot = mock_state_snapshot(documents, &location);
-
-    state_snapshot
+    mock_state_snapshot(documents, &location)
   }
 
   #[test]

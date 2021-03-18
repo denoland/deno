@@ -1406,7 +1406,7 @@ impl Inner {
           LspError::internal_error()
         })?;
 
-      let response = if let Some(completions) = maybe_completion_info {
+      if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
           &line_index,
           &self.config.settings.suggest,
@@ -1416,8 +1416,7 @@ impl Inner {
         Some(results)
       } else {
         None
-      };
-      response
+      }
     };
     self.performance.measure(mark);
     Ok(response)
