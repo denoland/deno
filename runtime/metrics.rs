@@ -40,7 +40,6 @@ fn op_metrics(
   Ok(json!({ "combined": combined, "ops": maybe_ops }))
 }
 
-
 #[derive(Default, Debug)]
 pub struct RuntimeMetrics {
   pub ops: HashMap<&'static str, OpMetrics>,

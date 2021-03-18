@@ -84,11 +84,20 @@ pub fn init<P: FetchPermissions + 'static>(
       ),
     ],
     Some(Box::new(move |state| {
+      state.put(HttpClientDefaults {
+        user_agent: user_agent.clone(),
+        ca_data: ca_data.clone(),
+      });
       state
         .put(create_http_client(user_agent.clone(), ca_data.clone()).unwrap());
       Ok(())
     })),
   )
+}
+
+struct HttpClientDefaults {
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
 }
 
 pub trait FetchPermissions {
@@ -418,29 +427,33 @@ where
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
-  let client =
-    create_http_client2(args.ca_file.as_deref(), args.ca_data.as_deref())
-      .unwrap();
+  let defaults = state.borrow::<HttpClientDefaults>();
+
+  let cert_data =
+    get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+  let client = create_http_client(
+    defaults.user_agent.clone(),
+    cert_data.or(defaults.ca_data.clone()),
+  )
+  .unwrap();
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(json!(rid))
 }
 
-// Internal version used by ops
-fn create_http_client2(
+fn get_cert_data(
   ca_file: Option<&str>,
   ca_data: Option<&str>,
-) -> Result<Client, AnyError> {
-  let ca_data_vec = if let Some(ca_data) = ca_data {
-    Some(ca_data.as_bytes().to_vec())
+) -> Result<Option<Vec<u8>>, AnyError> {
+  if let Some(ca_data) = ca_data {
+    Ok(Some(ca_data.as_bytes().to_vec()))
   } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
-    Some(buf)
+    Ok(Some(buf))
   } else {
-    None
-  };
-  create_http_client("".to_owned(), ca_data_vec)
+    Ok(None)
+  }
 }
 
 /// Create new instance of async reqwest::Client. This client supports
