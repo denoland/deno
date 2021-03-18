@@ -1404,7 +1404,15 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Allow environment access"),
+        .help("Allow environment access")
+        .validator(|keys| {
+          for key in keys.split(',') {
+            if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+              return Err(format!("invalid key \"{}\"", key));
+            }
+          }
+          Ok(())
+        }),
     )
     .arg(
       Arg::with_name("allow-run")
