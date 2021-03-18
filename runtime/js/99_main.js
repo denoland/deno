@@ -19,7 +19,7 @@ delete Object.prototype.__proto__;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
-  const { internalSymbol, internalObject } = window.__bootstrap.internals;
+  const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
@@ -423,10 +423,12 @@ delete Object.prototype.__proto__;
 
     registerErrors();
 
+    const internalSymbol = Symbol("Deno.internal");
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
       ...denoNs,
@@ -485,10 +487,12 @@ delete Object.prototype.__proto__;
     fetch.setBaseUrl(locationHref);
     registerErrors();
 
+    const internalSymbol = Symbol("Deno.internal");
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
       ...denoNs,

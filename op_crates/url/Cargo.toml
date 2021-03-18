@@ -1,0 +1,19 @@
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_url"
+version = "0.1.0"
+edition = "2018"
+description = "URL API implementation for Deno"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { version = "0.81.0", path = "../../core" }
+idna = "0.2.1"
+serde = { version = "1.0.123", features = ["derive"] }

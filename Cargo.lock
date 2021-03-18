@@ -43,12 +43,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "align-data"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1926655ba000b19e21f0402be09a1d52d318c8a8a68622870bfb7af2a71315cd"
-
-[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -553,10 +547,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_core"
-version = "0.80.2"
+name = "deno_console"
+version = "0.1.0"
 dependencies = [
- "align-data",
+ "deno_core",
+]
+
+[[package]]
+name = "deno_core"
+version = "0.81.0"
+dependencies = [
  "anyhow",
  "futures",
  "indexmap",
@@ -574,7 +574,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.22.3"
+version = "0.23.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -632,11 +632,14 @@ name = "deno_runtime"
 version = "0.9.3"
 dependencies = [
  "atty",
+ "deno_console",
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_url",
  "deno_web",
  "deno_webgpu",
+ "deno_webidl",
  "deno_websocket",
  "dlopen",
  "encoding_rs",
@@ -669,17 +672,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_web"
-version = "0.30.3"
+name = "deno_url"
+version = "0.1.0"
 dependencies = [
  "deno_core",
- "futures",
+ "idna",
  "serde",
 ]
 
 [[package]]
+name = "deno_web"
+version = "0.31.0"
+dependencies = [
+ "deno_core",
+ "futures",
+]
+
+[[package]]
 name = "deno_webgpu"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -689,8 +700,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_webidl"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "deno_websocket"
-version = "0.5.3"
+version = "0.6.0"
 dependencies = [
  "deno_core",
  "http",
@@ -1891,9 +1909,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.19.1"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
+checksum = "fa9b4819da1bc61c0ea48b63b7bc8604064dd43013e7cc325df098d49cd7c18a"
 dependencies = [
  "bitflags",
  "cc",
@@ -2574,9 +2592,9 @@ dependencies = [
 
 [[package]]
 name = "rustyline"
-version = "7.1.0"
+version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8227301bfc717136f0ecbd3d064ba8199e44497a0bdd46bb01ede4387cfd2cec"
+checksum = "b9e1b597fcd1eeb1d6b25b493538e5aa19629eb08932184b85fef931ba87e893"
 dependencies = [
  "bitflags",
  "cfg-if 1.0.0",
@@ -2585,7 +2603,9 @@ dependencies = [
  "log",
  "memchr",
  "nix",
+ "radix_trie",
  "scopeguard",
+ "smallvec",
  "unicode-segmentation",
  "unicode-width",
  "utf8parse",
@@ -3394,9 +3414,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8190d04c665ea9e6b6a0dc45523ade572c088d2e6566244c1122671dbf4ae3a"
+checksum = "8d56477f6ed99e10225f38f9f75f872f29b8b8bd8c0b946f63345bb144e9eeda"
 dependencies = [
  "autocfg",
  "bytes",

@@ -46,7 +46,7 @@ pub fn op_open_plugin(
 
   super::check_unstable(state, "Deno.openPlugin");
   let permissions = state.borrow::<Permissions>();
-  permissions.check_plugin(&filename)?;
+  permissions.plugin.check()?;
 
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;

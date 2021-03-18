@@ -7,7 +7,6 @@
   const { setExitHandler, exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
-  const { exposeForTest } = window.__bootstrap.internals;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
 
@@ -227,8 +226,6 @@ finishing test case.`;
     }
   }
 
-  exposeForTest("reportToConsole", reportToConsole);
-
   // TODO(bartlomieju): already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
   // TODO(bartlomieju): implements PromiseLike<RunTestsEndResult>
   class TestRunner {
@@ -327,8 +324,6 @@ finishing test case.`;
     };
   }
 
-  exposeForTest("createFilterFn", createFilterFn);
-
   async function runTests({
     exitOnFail = true,
     failFast = false,
@@ -372,7 +367,12 @@ finishing test case.`;
     return endMsg;
   }
 
-  exposeForTest("runTests", runTests);
+  window.__bootstrap.internals = {
+    ...window.__bootstrap.internals ?? {},
+    reportToConsole,
+    createFilterFn,
+    runTests,
+  };
 
   window.__bootstrap.testing = {
     test,

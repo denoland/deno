@@ -3,7 +3,6 @@
 
 ((window) => {
   const { requiredArguments } = window.__bootstrap.fetchUtil;
-  // const { exposeForTest } = window.__bootstrap.internals;
 
   function DomIterableMixin(
     Base,
@@ -70,7 +69,10 @@
     return DomIterable;
   }
 
-  // exposeForTest("DomIterableMixin", DomIterableMixin);
+  window.__bootstrap.internals = {
+    ...window.__bootstrap.internals ?? {},
+    DomIterableMixin,
+  };
 
   window.__bootstrap.domIterable = {
     DomIterableMixin,
