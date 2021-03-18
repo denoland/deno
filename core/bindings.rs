@@ -475,7 +475,7 @@ fn eval_context(
 
   #[derive(Serialize)]
   struct Output<'s>(Option<serde_v8::Value<'s>>, Option<ErrInfo<'s>>);
-  
+
   #[derive(Serialize)]
   #[serde(rename_all = "camelCase")]
   struct ErrInfo<'s> {
@@ -483,7 +483,7 @@ fn eval_context(
     is_native_error: bool,
     is_compile_error: bool,
   }
-  
+
   let tc_scope = &mut v8::TryCatch::new(scope);
   let name = v8::String::new(
     tc_scope,
@@ -496,11 +496,14 @@ fn eval_context(
   if maybe_script.is_none() {
     assert!(tc_scope.has_caught());
     let exception = tc_scope.exception().unwrap();
-    let output = Output(None, Some(ErrInfo{
-      thrown: exception.into(),
-      is_native_error: exception.is_native_error(),
-      is_compile_error: true,
-    }));
+    let output = Output(
+      None,
+      Some(ErrInfo {
+        thrown: exception.into(),
+        is_native_error: exception.is_native_error(),
+        is_compile_error: true,
+      }),
+    );
     rv.set(to_v8(tc_scope, output).unwrap());
     return;
   }
@@ -510,15 +513,18 @@ fn eval_context(
   if result.is_none() {
     assert!(tc_scope.has_caught());
     let exception = tc_scope.exception().unwrap();
-    let output = Output(None, Some(ErrInfo{
-      thrown: exception.into(),
-      is_native_error: exception.is_native_error(),
-      is_compile_error: false,
-    }));
+    let output = Output(
+      None,
+      Some(ErrInfo {
+        thrown: exception.into(),
+        is_native_error: exception.is_native_error(),
+        is_compile_error: false,
+      }),
+    );
     rv.set(to_v8(tc_scope, output).unwrap());
     return;
   }
-  
+
   let output = Output(Some(result.unwrap().into()), None);
   rv.set(to_v8(tc_scope, output).unwrap());
 }
@@ -788,7 +794,7 @@ fn get_promise_details(
       return;
     }
   };
-    
+
   #[derive(Serialize)]
   struct PromiseDetails<'s>(u32, Option<serde_v8::Value<'s>>);
 
@@ -798,11 +804,15 @@ fn get_promise_details(
     }
     v8::PromiseState::Fulfilled => {
       let promise_result = promise.result(scope);
-      rv.set(to_v8(scope, PromiseDetails(1, Some(promise_result.into()))).unwrap());
+      rv.set(
+        to_v8(scope, PromiseDetails(1, Some(promise_result.into()))).unwrap(),
+      );
     }
     v8::PromiseState::Rejected => {
       let promise_result = promise.result(scope);
-      rv.set(to_v8(scope, PromiseDetails(2, Some(promise_result.into()))).unwrap());
+      rv.set(
+        to_v8(scope, PromiseDetails(2, Some(promise_result.into()))).unwrap(),
+      );
     }
   }
 }
