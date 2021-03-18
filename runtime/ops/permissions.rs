@@ -4,7 +4,6 @@ use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
@@ -20,7 +19,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 }
 
 #[derive(Deserialize)]
-struct PermissionArgs {
+pub struct PermissionArgs {
   name: String,
   path: Option<String>,
   host: Option<String>,
@@ -29,10 +28,9 @@ struct PermissionArgs {
 
 pub fn op_query_permission(
   state: &mut OpState,
-  args: Value,
+  args: PermissionArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -61,10 +59,9 @@ pub fn op_query_permission(
 
 pub fn op_revoke_permission(
   state: &mut OpState,
-  args: Value,
+  args: PermissionArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -93,10 +90,9 @@ pub fn op_revoke_permission(
 
 pub fn op_request_permission(
   state: &mut OpState,
-  args: Value,
+  args: PermissionArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
