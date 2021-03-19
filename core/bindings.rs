@@ -315,16 +315,19 @@ fn print(
   _rv: v8::ReturnValue,
 ) {
   let arg_len = args.length();
-  assert!((0..=2).contains(&arg_len));
+  if !(0..=2).contains(&arg_len) {
+    return throw_type_error(scope, "Expected a maximum of 2 arguments.");
+  }
 
   let obj = args.get(0);
   let is_err_arg = args.get(1);
 
   let mut is_err = false;
   if arg_len == 2 {
-    let int_val = is_err_arg
-      .integer_value(scope)
-      .expect("Unable to convert to integer");
+    let int_val = match is_err_arg.integer_value(scope) {
+      Some(v) => v,
+      None => return throw_type_error(scope, "Arugment 2 is invalid."),
+    };
     is_err = int_val != 0;
   };
   let tc_scope = &mut v8::TryCatch::new(scope);
