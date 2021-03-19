@@ -201,10 +201,7 @@ fn merge_run_permission(
 ) -> Result<UnaryPermission<RunPermission>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
-      || !worker
-        .granted_list
-        .iter()
-        .all(|x| main.check(&x.0).is_ok())
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
