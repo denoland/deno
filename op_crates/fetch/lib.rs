@@ -21,6 +21,7 @@ use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
 use reqwest::header::HeaderMap;
@@ -210,7 +211,7 @@ where
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchSendArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_send(
@@ -278,7 +279,7 @@ pub async fn op_fetch_send(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchRequestWriteArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_request_write(
@@ -308,7 +309,7 @@ pub async fn op_fetch_request_write(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchResponseReadArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_response_read(

@@ -4,6 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -63,7 +64,7 @@ pub struct BindSignalArgs {
 #[cfg(unix)]
 #[derive(Deserialize)]
 pub struct SignalArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 #[cfg(unix)]

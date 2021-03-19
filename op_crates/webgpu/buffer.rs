@@ -6,6 +6,7 @@ use deno_core::futures::channel::oneshot;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
@@ -34,7 +35,7 @@ impl Resource for WebGPUBufferMapped {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBufferArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   size: u64,
   usage: u32,
@@ -77,8 +78,8 @@ pub fn op_webgpu_create_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferGetMapAsyncArgs {
-  buffer_rid: u32,
-  device_rid: u32,
+  buffer_rid: ResourceId,
+  device_rid: ResourceId,
   mode: u32,
   offset: u64,
   size: u64,
@@ -168,7 +169,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferGetMappedRangeArgs {
-  buffer_rid: u32,
+  buffer_rid: ResourceId,
   offset: u64,
   size: u64,
 }
@@ -209,8 +210,8 @@ pub fn op_webgpu_buffer_get_mapped_range(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferUnmapArgs {
-  buffer_rid: u32,
-  mapped_rid: u32,
+  buffer_rid: ResourceId,
+  mapped_rid: ResourceId,
 }
 
 pub fn op_webgpu_buffer_unmap(
