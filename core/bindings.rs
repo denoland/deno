@@ -326,7 +326,7 @@ fn print(
   if arg_len == 2 {
     let int_val = match is_err_arg.integer_value(scope) {
       Some(v) => v,
-      None => return throw_type_error(scope, "Arugment 2 is invalid."),
+      None => return throw_type_error(scope, "Invalid arugment. Argument 2 should indicate wheter or not to print to stderr."),
     };
     is_err = int_val != 0;
   };
