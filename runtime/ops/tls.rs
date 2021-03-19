@@ -20,6 +20,7 @@ use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -88,7 +89,7 @@ pub struct ConnectTLSArgs {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StartTLSArgs {
-  rid: u32,
+  rid: ResourceId,
   cert_file: Option<String>,
   hostname: String,
 }
@@ -98,7 +99,7 @@ async fn op_start_tls(
   args: StartTLSArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let mut domain = args.hostname.as_str();
   if domain.is_empty() {
@@ -350,7 +351,7 @@ fn op_listen_tls(
 
 #[derive(Deserialize)]
 pub struct AcceptTlsArgs {
-  rid: i32,
+  rid: ResourceId,
 }
 
 async fn op_accept_tls(
@@ -358,7 +359,7 @@ async fn op_accept_tls(
   args: AcceptTlsArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow()

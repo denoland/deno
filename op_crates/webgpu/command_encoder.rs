@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -41,7 +42,7 @@ fn serialize_store_op(store_op: String) -> wgpu_core::command::StoreOp {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCommandEncoderArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   _measure_execution_time: Option<bool>, // not yet implemented
 }
@@ -105,7 +106,7 @@ struct GPURenderPassDepthStencilAttachment {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderBeginRenderPassArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   label: Option<String>,
   color_attachments: Vec<GPURenderPassColorAttachment>,
   depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachment>,
@@ -243,7 +244,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderBeginComputePassArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   label: Option<String>,
 }
 
@@ -280,7 +281,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyBufferToBufferArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   source: u32,
   source_offset: u64,
   destination: u32,
@@ -351,7 +352,7 @@ pub struct GPUImageCopyTexture {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyBufferToTextureArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   source: GPUImageCopyBuffer,
   destination: GPUImageCopyTexture,
   copy_size: super::texture::GPUExtent3D,
@@ -414,7 +415,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyTextureToBufferArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   source: GPUImageCopyTexture,
   destination: GPUImageCopyBuffer,
   copy_size: super::texture::GPUExtent3D,
@@ -476,7 +477,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyTextureToTextureArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   source: GPUImageCopyTexture,
   destination: GPUImageCopyTexture,
   copy_size: super::texture::GPUExtent3D,
@@ -542,7 +543,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderPushDebugGroupArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   group_label: String,
 }
 
@@ -568,7 +569,7 @@ pub fn op_webgpu_command_encoder_push_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderPopDebugGroupArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
 }
 
 pub fn op_webgpu_command_encoder_pop_debug_group(
@@ -591,7 +592,7 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderInsertDebugMarkerArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   marker_label: String,
 }
 
@@ -618,7 +619,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderWriteTimestampArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   query_set: u32,
   query_index: u32,
 }
@@ -653,7 +654,7 @@ pub fn op_webgpu_command_encoder_write_timestamp(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderResolveQuerySetArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   query_set: u32,
   first_query: u32,
   query_count: u32,
@@ -698,7 +699,7 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderFinishArgs {
-  command_encoder_rid: u32,
+  command_encoder_rid: ResourceId,
   label: Option<String>,
 }
 
