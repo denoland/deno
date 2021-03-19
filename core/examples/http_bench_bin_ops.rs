@@ -12,6 +12,7 @@ use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
@@ -122,7 +123,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct Record {
   promise_id: u32,
-  rid: u32,
+  rid: ResourceId,
   result: i32,
 }
 
@@ -162,7 +163,7 @@ fn create_js_runtime() -> JsRuntime {
 
 fn op_listen(
   state: &mut OpState,
-  _rid: u32,
+  _rid: ResourceId,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("listen");
@@ -176,7 +177,7 @@ fn op_listen(
 
 fn op_close(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
@@ -189,7 +190,7 @@ fn op_close(
 
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
-  rid: u32,
+  rid: ResourceId,
   _bufs: BufVec,
 ) -> Result<u32, Error> {
   debug!("accept rid={}", rid);
@@ -206,7 +207,7 @@ async fn op_accept(
 
 async fn op_read(
   state: Rc<RefCell<OpState>>,
-  rid: u32,
+  rid: ResourceId,
   mut bufs: BufVec,
 ) -> Result<usize, Error> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
@@ -222,7 +223,7 @@ async fn op_read(
 
 async fn op_write(
   state: Rc<RefCell<OpState>>,
-  rid: u32,
+  rid: ResourceId,
   bufs: BufVec,
 ) -> Result<usize, Error> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");

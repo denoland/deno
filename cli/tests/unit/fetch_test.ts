@@ -1064,6 +1064,27 @@ MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
 );
 
 unitTest(
+  { perms: { net: true } },
+  async function fetchCustomClientUserAgent(): Promise<
+    void
+  > {
+    const data = "Hello World";
+    const client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/echo_server", {
+      client,
+      method: "POST",
+      body: new TextEncoder().encode(data),
+    });
+    assertEquals(
+      response.headers.get("user-agent"),
+      `Deno/${Deno.version.deno}`,
+    );
+    await response.text();
+    client.close();
+  },
+);
+
+unitTest(
   {
     perms: { net: true },
   },

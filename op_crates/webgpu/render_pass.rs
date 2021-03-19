@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -24,7 +25,7 @@ impl Resource for WebGPURenderPass {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetViewportArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   x: f32,
   y: f32,
   width: f32,
@@ -59,7 +60,7 @@ pub fn op_webgpu_render_pass_set_viewport(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetScissorRectArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   x: u32,
   y: u32,
   width: u32,
@@ -99,7 +100,7 @@ pub struct GPUColor {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetBlendColorArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   color: GPUColor,
 }
 
@@ -129,7 +130,7 @@ pub fn op_webgpu_render_pass_set_blend_color(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetStencilReferenceArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   reference: u32,
 }
 
@@ -154,7 +155,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassBeginPipelineStatisticsQueryArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   query_set: u32,
   query_index: u32,
 }
@@ -187,7 +188,7 @@ pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassEndPipelineStatisticsQueryArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
 }
 
 pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
@@ -212,7 +213,7 @@ pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassWriteTimestampArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   query_set: u32,
   query_index: u32,
 }
@@ -245,7 +246,7 @@ pub fn op_webgpu_render_pass_write_timestamp(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassExecuteBundlesArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   bundles: Vec<u32>,
 }
 
@@ -283,8 +284,8 @@ pub fn op_webgpu_render_pass_execute_bundles(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassEndPassArgs {
-  command_encoder_rid: u32,
-  render_pass_rid: u32,
+  command_encoder_rid: ResourceId,
+  render_pass_rid: ResourceId,
 }
 
 pub fn op_webgpu_render_pass_end_pass(
@@ -314,7 +315,7 @@ pub fn op_webgpu_render_pass_end_pass(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetBindGroupArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   index: u32,
   bind_group: u32,
   dynamic_offsets_data: Option<Vec<u32>>,
@@ -373,7 +374,7 @@ pub fn op_webgpu_render_pass_set_bind_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassPushDebugGroupArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   group_label: String,
 }
 
@@ -402,7 +403,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassPopDebugGroupArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
 }
 
 pub fn op_webgpu_render_pass_pop_debug_group(
@@ -425,7 +426,7 @@ pub fn op_webgpu_render_pass_pop_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassInsertDebugMarkerArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   marker_label: String,
 }
 
@@ -454,7 +455,7 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetPipelineArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   pipeline: u32,
 }
 
@@ -483,7 +484,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetIndexBufferArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   buffer: u32,
   index_format: String,
   offset: u64,
@@ -517,7 +518,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetVertexBufferArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   slot: u32,
   buffer: u32,
   offset: u64,
@@ -552,7 +553,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassDrawArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   vertex_count: u32,
   instance_count: u32,
   first_vertex: u32,
@@ -583,7 +584,7 @@ pub fn op_webgpu_render_pass_draw(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassDrawIndexedArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   index_count: u32,
   instance_count: u32,
   first_index: u32,
@@ -616,7 +617,7 @@ pub fn op_webgpu_render_pass_draw_indexed(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassDrawIndirectArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   indirect_buffer: u32,
   indirect_offset: u64,
 }
@@ -647,7 +648,7 @@ pub fn op_webgpu_render_pass_draw_indirect(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassDrawIndexedIndirectArgs {
-  render_pass_rid: u32,
+  render_pass_rid: ResourceId,
   indirect_buffer: u32,
   indirect_offset: u64,
 }
