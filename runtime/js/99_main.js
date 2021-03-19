@@ -290,7 +290,9 @@ delete Object.prototype.__proto__;
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(new Console(core.print)),
+    console: util.writable(
+      new Console((msg, level) => core.print(msg, level > 1)),
+    ),
     crypto: util.readOnly(crypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),

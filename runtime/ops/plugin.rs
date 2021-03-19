@@ -5,7 +5,6 @@ use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
@@ -32,16 +31,15 @@ pub fn init(rt: &mut JsRuntime) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OpenPluginArgs {
+pub struct OpenPluginArgs {
   filename: String,
 }
 
 pub fn op_open_plugin(
   state: &mut OpState,
-  args: Value,
+  args: OpenPluginArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: OpenPluginArgs = serde_json::from_value(args)?;
   let filename = PathBuf::from(&args.filename);
 
   super::check_unstable(state, "Deno.openPlugin");

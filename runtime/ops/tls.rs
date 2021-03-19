@@ -11,7 +11,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
@@ -21,6 +20,7 @@ use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -79,7 +79,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ConnectTLSArgs {
+pub struct ConnectTLSArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -89,18 +89,17 @@ struct ConnectTLSArgs {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StartTLSArgs {
-  rid: u32,
+  rid: ResourceId,
   cert_file: Option<String>,
   hostname: String,
 }
 
 async fn op_start_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: StartTLSArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: StartTLSArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let mut domain = args.hostname.as_str();
   if domain.is_empty() {
@@ -167,10 +166,9 @@ async fn op_start_tls(
 
 async fn op_connect_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ConnectTLSArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: ConnectTLSArgs = serde_json::from_value(args)?;
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<Permissions>();
@@ -298,7 +296,7 @@ impl Resource for TlsListenerResource {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ListenTlsArgs {
+pub struct ListenTlsArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -308,10 +306,9 @@ struct ListenTlsArgs {
 
 fn op_listen_tls(
   state: &mut OpState,
-  args: Value,
+  args: ListenTlsArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
   let cert_file = args.cert_file;
@@ -353,17 +350,16 @@ fn op_listen_tls(
 }
 
 #[derive(Deserialize)]
-struct AcceptTlsArgs {
-  rid: i32,
+pub struct AcceptTlsArgs {
+  rid: ResourceId,
 }
 
 async fn op_accept_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: AcceptTlsArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: AcceptTlsArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow()

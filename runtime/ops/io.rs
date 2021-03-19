@@ -3,7 +3,6 @@
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
@@ -15,6 +14,7 @@ use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -460,7 +460,7 @@ impl StdFileResource {
 
   pub fn with<F, R>(
     state: &mut OpState,
-    rid: u32,
+    rid: ResourceId,
     mut f: F,
   ) -> Result<R, AnyError>
   where
@@ -522,7 +522,7 @@ impl Resource for StdFileResource {
 
 fn op_read_sync(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
   bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, AnyError> {
   StdFileResource::with(state, rid, move |r| match r {
@@ -536,7 +536,7 @@ fn op_read_sync(
 
 async fn op_read_async(
   state: Rc<RefCell<OpState>>,
-  rid: u32,
+  rid: ResourceId,
   mut bufs: BufVec,
 ) -> Result<u32, AnyError> {
   let buf = &mut bufs[0];
@@ -567,7 +567,7 @@ async fn op_read_async(
 
 fn op_write_sync(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
   bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, AnyError> {
   StdFileResource::with(state, rid, move |r| match r {
@@ -581,7 +581,7 @@ fn op_write_sync(
 
 async fn op_write_async(
   state: Rc<RefCell<OpState>>,
-  rid: u32,
+  rid: ResourceId,
   bufs: BufVec,
 ) -> Result<u32, AnyError> {
   let buf = &bufs[0];
@@ -610,19 +610,18 @@ async fn op_write_async(
 
 #[derive(Deserialize)]
 struct ShutdownArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ShutdownArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = serde_json::from_value::<ShutdownArgs>(args)?.rid;
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
+    .get_any(args.rid)
     .ok_or_else(bad_resource_id)?;
   if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.shutdown().await?;

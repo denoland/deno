@@ -1505,18 +1505,35 @@
           ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
-        false,
+        1,
       );
     };
 
-    debug = this.log;
-    info = this.log;
+    debug = (...args) => {
+      this.#printFunc(
+        inspectArgs(args, {
+          ...getConsoleInspectOptions(),
+          indentLevel: this.indentLevel,
+        }) + "\n",
+        0,
+      );
+    };
+
+    info = (...args) => {
+      this.#printFunc(
+        inspectArgs(args, {
+          ...getConsoleInspectOptions(),
+          indentLevel: this.indentLevel,
+        }) + "\n",
+        1,
+      );
+    };
 
     dir = (obj, options = {}) => {
       this.#printFunc(
         inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
           "\n",
-        false,
+        1,
       );
     };
 
@@ -1528,11 +1545,19 @@
           ...getConsoleInspectOptions(),
           indentLevel: this.indentLevel,
         }) + "\n",
-        true,
+        2,
       );
     };
 
-    error = this.warn;
+    error = (...args) => {
+      this.#printFunc(
+        inspectArgs(args, {
+          ...getConsoleInspectOptions(),
+          indentLevel: this.indentLevel,
+        }) + "\n",
+        3,
+      );
+    };
 
     assert = (condition = false, ...args) => {
       if (condition) {
@@ -1724,8 +1749,8 @@
 
     clear = () => {
       this.indentLevel = 0;
-      this.#printFunc(CSI.kClear, false);
-      this.#printFunc(CSI.kClearScreenDown, false);
+      this.#printFunc(CSI.kClear, 1);
+      this.#printFunc(CSI.kClearScreenDown, 1);
     };
 
     trace = (...args) => {

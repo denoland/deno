@@ -15,7 +15,6 @@ use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
@@ -94,7 +93,7 @@ fn op_global_timer_stop(
 }
 
 #[derive(Deserialize)]
-struct GlobalTimerArgs {
+pub struct GlobalTimerArgs {
   timeout: u64,
 }
 
@@ -105,12 +104,12 @@ struct GlobalTimerArgs {
 //
 // See https://github.com/denoland/deno/issues/7599 for more
 // details.
+#[allow(clippy::unnecessary_wraps)]
 fn op_global_timer_start(
   state: &mut OpState,
-  args: Value,
+  args: GlobalTimerArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
@@ -170,17 +169,17 @@ fn op_now(
 }
 
 #[derive(Deserialize)]
-struct SleepArgs {
+pub struct SleepArgs {
   millis: u64,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_sleep_sync(
   state: &mut OpState,
-  args: Value,
+  args: SleepArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.sleepSync");
-  let args: SleepArgs = serde_json::from_value(args)?;
   sleep(Duration::from_millis(args.millis));
   Ok(json!({}))
 }

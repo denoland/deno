@@ -3148,6 +3148,12 @@ console.log("finish");
     http_server: true,
   });
 
+  itest!(error_027_bare_import_error {
+    args: "bundle error_027_bare_import_error.ts",
+    output: "error_027_bare_import_error.ts.out",
+    exit_code: 1,
+  });
+
   itest!(error_missing_module_named_import {
     args: "run --reload error_missing_module_named_import.ts",
     output: "error_missing_module_named_import.ts.out",

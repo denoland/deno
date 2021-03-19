@@ -21,10 +21,13 @@ use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
+use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
@@ -78,6 +81,11 @@ pub fn init(isolate: &mut JsRuntime) {
   for (url, source_code) in files {
     isolate.execute(url, source_code).unwrap();
   }
+}
+
+pub struct HttpClientDefaults {
+  pub user_agent: String,
+  pub ca_data: Option<Vec<u8>>,
 }
 
 pub trait FetchPermissions {
@@ -203,7 +211,7 @@ where
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchSendArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_send(
@@ -271,7 +279,7 @@ pub async fn op_fetch_send(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchRequestWriteArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_request_write(
@@ -289,7 +297,7 @@ pub async fn op_fetch_request_write(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchRequestBodyResource>(rid as u32)
+    .get::<FetchRequestBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
@@ -301,7 +309,7 @@ pub async fn op_fetch_request_write(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchResponseReadArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_response_read(
@@ -318,7 +326,7 @@ pub async fn op_fetch_response_read(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchResponseBodyResource>(rid as u32)
+    .get::<FetchResponseBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
@@ -399,31 +407,53 @@ where
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
-  let client =
-    create_http_client(args.ca_file.as_deref(), args.ca_data.as_deref())
-      .unwrap();
+  let defaults = state.borrow::<HttpClientDefaults>();
+
+  let cert_data =
+    get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+  let client = create_http_client(
+    defaults.user_agent.clone(),
+    cert_data.or_else(|| defaults.ca_data.clone()),
+  )
+  .unwrap();
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(json!(rid))
 }
 
-/// Create new instance of async reqwest::Client. This client supports
-/// proxies and doesn't follow redirects.
-fn create_http_client(
+fn get_cert_data(
   ca_file: Option<&str>,
   ca_data: Option<&str>,
-) -> Result<Client, AnyError> {
-  let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
+) -> Result<Option<Vec<u8>>, AnyError> {
   if let Some(ca_data) = ca_data {
-    let ca_data_vec = ca_data.as_bytes().to_vec();
-    let cert = reqwest::Certificate::from_pem(&ca_data_vec)?;
-    builder = builder.add_root_certificate(cert);
+    Ok(Some(ca_data.as_bytes().to_vec()))
   } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
+    Ok(Some(buf))
+  } else {
+    Ok(None)
+  }
+}
+
+/// Create new instance of async reqwest::Client. This client supports
+/// proxies and doesn't follow redirects.
+pub fn create_http_client(
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
+) -> Result<Client, AnyError> {
+  let mut headers = HeaderMap::new();
+  headers.insert(USER_AGENT, user_agent.parse().unwrap());
+  let mut builder = Client::builder()
+    .redirect(Policy::none())
+    .default_headers(headers)
+    .use_rustls_tls();
+
+  if let Some(ca_data) = ca_data {
+    let cert = reqwest::Certificate::from_pem(&ca_data)?;
     builder = builder.add_root_certificate(cert);
   }
+
   builder
     .build()
     .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))

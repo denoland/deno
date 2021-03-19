@@ -3,7 +3,6 @@
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
@@ -13,7 +12,9 @@ use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -83,17 +84,17 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
+#[derive(Deserialize)]
+pub struct OpenArgs {
+  recursive: bool,
+  paths: Vec<String>,
+}
+
 fn op_fs_events_open(
   state: &mut OpState,
-  args: Value,
+  args: OpenArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  struct OpenArgs {
-    recursive: bool,
-    paths: Vec<String>,
-  }
-  let args: OpenArgs = serde_json::from_value(args)?;
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
@@ -125,21 +126,20 @@ fn op_fs_events_open(
   Ok(json!(rid))
 }
 
+#[derive(Deserialize)]
+pub struct PollArgs {
+  rid: ResourceId,
+}
+
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: PollArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  struct PollArgs {
-    rid: u32,
-  }
-  let PollArgs { rid } = serde_json::from_value(args)?;
-
   let resource = state
     .borrow()
     .resource_table
-    .get::<FsEventsResource>(rid)
+    .get::<FsEventsResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
