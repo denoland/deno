@@ -5,10 +5,9 @@ import {
   assertThrows,
   assertThrowsAsync,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
+Deno.test("readFileSyncSuccess", function (): void {
   const data = Deno.readFileSync("cli/tests/fixture.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -17,7 +16,7 @@ unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: true } }, function readFileSyncUrl(): void {
+Deno.test("readFileSyncUrl", function (): void {
   const data = Deno.readFileSync(
     pathToAbsoluteFileUrl("cli/tests/fixture.json"),
   );
@@ -28,19 +27,13 @@ unitTest({ perms: { read: true } }, function readFileSyncUrl(): void {
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: false } }, function readFileSyncPerm(): void {
-  assertThrows(() => {
-    Deno.readFileSync("cli/tests/fixture.json");
-  }, Deno.errors.PermissionDenied);
-});
-
-unitTest({ perms: { read: true } }, function readFileSyncNotFound(): void {
+Deno.test("readFileSyncNotFound", function (): void {
   assertThrows(() => {
     Deno.readFileSync("bad_filename");
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { read: true } }, async function readFileUrl(): Promise<
+Deno.test("readFileUrl", async function (): Promise<
   void
 > {
   const data = await Deno.readFile(
@@ -53,7 +46,7 @@ unitTest({ perms: { read: true } }, async function readFileUrl(): Promise<
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: true } }, async function readFileSuccess(): Promise<
+Deno.test("readFileSuccess", async function (): Promise<
   void
 > {
   const data = await Deno.readFile("cli/tests/fixture.json");
@@ -64,16 +57,26 @@ unitTest({ perms: { read: true } }, async function readFileSuccess(): Promise<
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: false } }, async function readFilePerm(): Promise<
-  void
-> {
-  await assertThrowsAsync(async () => {
-    await Deno.readFile("cli/tests/fixture.json");
-  }, Deno.errors.PermissionDenied);
-});
-
-unitTest({ perms: { read: true } }, function readFileSyncLoop(): void {
+Deno.test("readFileSyncLoop", function (): void {
   for (let i = 0; i < 256; i++) {
     Deno.readFileSync("cli/tests/fixture.json");
   }
+});
+
+Deno.test("readFileSyncPerm", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "read" });
+
+  assertThrows(() => {
+    Deno.readFileSync("cli/tests/fixture.json");
+  }, Deno.errors.PermissionDenied);
+});
+
+Deno.test("readFilePerm", async function (): Promise<
+  void
+> {
+  await Deno.permissions.revoke({ name: "read" });
+
+  await assertThrowsAsync(async () => {
+    await Deno.readFile("cli/tests/fixture.json");
+  }, Deno.errors.PermissionDenied);
 });

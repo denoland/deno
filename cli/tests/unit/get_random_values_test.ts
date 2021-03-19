@@ -1,49 +1,49 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertNotEquals, assertStrictEquals, unitTest } from "./test_util.ts";
+import { assertNotEquals, assertStrictEquals } from "./test_util.ts";
 
-unitTest(function getRandomValuesInt8Array(): void {
+Deno.test("getRandomValuesInt8Array", function (): void {
   const arr = new Int8Array(32);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Int8Array(32));
 });
 
-unitTest(function getRandomValuesUint8Array(): void {
+Deno.test("getRandomValuesUint8Array", function (): void {
   const arr = new Uint8Array(32);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint8Array(32));
 });
 
-unitTest(function getRandomValuesUint8ClampedArray(): void {
+Deno.test("getRandomValuesUint8ClampedArray", function (): void {
   const arr = new Uint8ClampedArray(32);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint8ClampedArray(32));
 });
 
-unitTest(function getRandomValuesInt16Array(): void {
+Deno.test("getRandomValuesInt16Array", function (): void {
   const arr = new Int16Array(4);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Int16Array(4));
 });
 
-unitTest(function getRandomValuesUint16Array(): void {
+Deno.test("getRandomValuesUint16Array", function (): void {
   const arr = new Uint16Array(4);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint16Array(4));
 });
 
-unitTest(function getRandomValuesInt32Array(): void {
+Deno.test("getRandomValuesInt32Array", function (): void {
   const arr = new Int32Array(8);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Int32Array(8));
 });
 
-unitTest(function getRandomValuesUint32Array(): void {
+Deno.test("getRandomValuesUint32Array", function (): void {
   const arr = new Uint32Array(8);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint32Array(8));
 });
 
-unitTest(function getRandomValuesReturnValue(): void {
+Deno.test("getRandomValuesReturnValue", function (): void {
   const arr = new Uint32Array(8);
   const rtn = crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint32Array(8));

@@ -4,12 +4,12 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
-  function chmodSyncSuccess(): void {
+Deno.test({
+  name: "chmodSyncSuccess",
+  ignore: Deno.build.os === "windows",
+  fn(): void {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -22,11 +22,12 @@ unitTest(
     assert(fileInfo.mode);
     assertEquals(fileInfo.mode & 0o777, 0o777);
   },
-);
+});
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
-  function chmodSyncUrl(): void {
+Deno.test({
+  name: "chmodSyncUrl",
+  ignore: Deno.build.os === "windows",
+  fn(): void {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -41,15 +42,12 @@ unitTest(
 
     Deno.removeSync(tempDir, { recursive: true });
   },
-);
+});
 
-// Check symlink when not on windows
-unitTest(
-  {
-    ignore: Deno.build.os === "windows",
-    perms: { read: true, write: true },
-  },
-  function chmodSyncSymlinkSuccess(): void {
+Deno.test({
+  name: "chmodSyncSymlinkSuccess",
+  ignore: Deno.build.os === "windows",
+  fn(): void {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -73,24 +71,19 @@ unitTest(
     assert(symlinkInfo.mode);
     assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
   },
-);
+});
 
-unitTest({ perms: { write: true } }, function chmodSyncFailure(): void {
+Deno.test("chmodSyncFailure", function (): void {
   assertThrows(() => {
     const filename = "/badfile.txt";
     Deno.chmodSync(filename, 0o777);
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { write: false } }, function chmodSyncPerm(): void {
-  assertThrows(() => {
-    Deno.chmodSync("/somefile.txt", 0o777);
-  }, Deno.errors.PermissionDenied);
-});
-
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
-  async function chmodSuccess(): Promise<void> {
+Deno.test({
+  name: "chmodSuccess",
+  ignore: Deno.build.os === "windows",
+  async fn(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -103,11 +96,12 @@ unitTest(
     assert(fileInfo.mode);
     assertEquals(fileInfo.mode & 0o777, 0o777);
   },
-);
+});
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
-  async function chmodUrl(): Promise<void> {
+Deno.test({
+  name: "chmodUrl",
+  ignore: Deno.build.os === "windows",
+  async fn(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -122,16 +116,12 @@ unitTest(
 
     Deno.removeSync(tempDir, { recursive: true });
   },
-);
+});
 
-// Check symlink when not on windows
-
-unitTest(
-  {
-    ignore: Deno.build.os === "windows",
-    perms: { read: true, write: true },
-  },
-  async function chmodSymlinkSuccess(): Promise<void> {
+Deno.test({
+  name: "chmodSymlinkSuccess",
+  ignore: Deno.build.os === "windows",
+  async fn(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -155,9 +145,9 @@ unitTest(
     assert(symlinkInfo.mode);
     assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
   },
-);
+});
 
-unitTest({ perms: { write: true } }, async function chmodFailure(): Promise<
+Deno.test("chmodFailure", async function (): Promise<
   void
 > {
   await assertThrowsAsync(async () => {
@@ -166,9 +156,19 @@ unitTest({ perms: { write: true } }, async function chmodFailure(): Promise<
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { write: false } }, async function chmodPerm(): Promise<
+Deno.test("chmodSyncPerm", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "write" });
+
+  assertThrows(() => {
+    Deno.chmodSync("/somefile.txt", 0o777);
+  }, Deno.errors.PermissionDenied);
+});
+
+Deno.test("chmodPerm", async function (): Promise<
   void
 > {
+  await Deno.permissions.revoke({ name: "write" });
+
   await assertThrowsAsync(async () => {
     await Deno.chmod("/somefile.txt", 0o777);
   }, Deno.errors.PermissionDenied);

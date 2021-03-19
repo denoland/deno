@@ -13,7 +13,6 @@ import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 
@@ -64,7 +63,7 @@ function cssToAnsiEsc(css: Css, prevCss: Css | null = null): string {
 
 // test cases from web-platform-tests
 // via https://github.com/web-platform-tests/wpt/blob/master/console/console-is-a-namespace.any.js
-unitTest(function consoleShouldBeANamespace(): void {
+Deno.test("consoleShouldBeANamespace", function (): void {
   const prototype1 = Object.getPrototypeOf(console);
   const prototype2 = Object.getPrototypeOf(prototype1);
 
@@ -72,12 +71,12 @@ unitTest(function consoleShouldBeANamespace(): void {
   assertEquals(prototype2, Object.prototype);
 });
 
-unitTest(function consoleHasRightInstance(): void {
+Deno.test("consoleHasRightInstance", function (): void {
   assert(console instanceof Console);
   assertEquals({} instanceof Console, false);
 });
 
-unitTest(function consoleTestAssertShouldNotThrowError(): void {
+Deno.test("consoleTestAssertShouldNotThrowError", function (): void {
   mockConsole((console) => {
     console.assert(true);
     let hasThrown = undefined;
@@ -91,40 +90,39 @@ unitTest(function consoleTestAssertShouldNotThrowError(): void {
   });
 });
 
-unitTest(function consoleTestStringifyComplexObjects(): void {
+Deno.test("consoleTestStringifyComplexObjects", function (): void {
   assertEquals(stringify("foo"), "foo");
   assertEquals(stringify(["foo", "bar"]), `[ "foo", "bar" ]`);
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
-unitTest(
-  function consoleTestStringifyComplexObjectsWithEscapedSequences(): void {
-    assertEquals(
-      stringify(
-        ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
-      ),
-      `[
+Deno.test("consoleTestStringifyComplexObjectsWithEscapedSequences", function (): void {
+  assertEquals(
+    stringify(
+      ["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v", "foo\0"],
+    ),
+    `[
   "foo\\b",   "foo\\f",
   "foo\\n",   "foo\\r",
   "foo\\t",   "foo\\v",
   "foo\\x00"
 ]`,
-    );
-    assertEquals(
-      stringify(
-        [
-          Symbol(),
-          Symbol(""),
-          Symbol("foo\b"),
-          Symbol("foo\f"),
-          Symbol("foo\n"),
-          Symbol("foo\r"),
-          Symbol("foo\t"),
-          Symbol("foo\v"),
-          Symbol("foo\0"),
-        ],
-      ),
-      `[
+  );
+  assertEquals(
+    stringify(
+      [
+        Symbol(),
+        Symbol(""),
+        Symbol("foo\b"),
+        Symbol("foo\f"),
+        Symbol("foo\n"),
+        Symbol("foo\r"),
+        Symbol("foo\t"),
+        Symbol("foo\v"),
+        Symbol("foo\0"),
+      ],
+    ),
+    `[
   Symbol(),
   Symbol(""),
   Symbol("foo\\b"),
@@ -135,46 +133,45 @@ unitTest(
   Symbol("foo\\v"),
   Symbol("foo\\x00")
 ]`,
-    );
-    assertEquals(
-      stringify(
-        { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
-      ),
-      `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
-    );
-    assertEquals(
-      stringify(
-        {
-          [Symbol("foo\b")]: `Symbol("foo\n")`,
-          [Symbol("bar\n")]: `Symbol("bar\n")`,
-          [Symbol("bar\r")]: `Symbol("bar\r")`,
-          [Symbol("baz\t")]: `Symbol("baz\t")`,
-          [Symbol("qux\0")]: `Symbol("qux\0")`,
-        },
-      ),
-      `{
+  );
+  assertEquals(
+    stringify(
+      { "foo\b": "bar\n", "bar\r": "baz\t", "qux\0": "qux\0" },
+    ),
+    `{ "foo\\b": "bar\\n", "bar\\r": "baz\\t", "qux\\x00": "qux\\x00" }`,
+  );
+  assertEquals(
+    stringify(
+      {
+        [Symbol("foo\b")]: `Symbol("foo\n")`,
+        [Symbol("bar\n")]: `Symbol("bar\n")`,
+        [Symbol("bar\r")]: `Symbol("bar\r")`,
+        [Symbol("baz\t")]: `Symbol("baz\t")`,
+        [Symbol("qux\0")]: `Symbol("qux\0")`,
+      },
+    ),
+    `{
   [Symbol("foo\\b")]: 'Symbol("foo\\n\")',
   [Symbol("bar\\n")]: 'Symbol("bar\\n\")',
   [Symbol("bar\\r")]: 'Symbol("bar\\r\")',
   [Symbol("baz\\t")]: 'Symbol("baz\\t\")',
   [Symbol("qux\\x00")]: 'Symbol(\"qux\\x00")'
 }`,
-    );
-    assertEquals(
-      stringify(new Set(["foo\n", "foo\r", "foo\0"])),
-      `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
-    );
-  },
-);
+  );
+  assertEquals(
+    stringify(new Set(["foo\n", "foo\r", "foo\0"])),
+    `Set { "foo\\n", "foo\\r", "foo\\x00" }`,
+  );
+});
 
-unitTest(function consoleTestStringifyQuotes(): void {
+Deno.test("consoleTestStringifyQuotes", function (): void {
   assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
   assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
   assertEquals(stringify([`\\,",'`]), `[ \`\\\\,",'\` ]`);
   assertEquals(stringify(["\\,\",',`"]), `[ "\\\\,\\",',\`" ]`);
 });
 
-unitTest(function consoleTestStringifyLongStrings(): void {
+Deno.test("consoleTestStringifyLongStrings", function (): void {
   const veryLongString = "a".repeat(200);
   // If we stringify an object containing the long string, it gets abbreviated.
   let actual = stringify({ veryLongString });
@@ -185,7 +182,7 @@ unitTest(function consoleTestStringifyLongStrings(): void {
   assertEquals(actual, veryLongString);
 });
 
-unitTest(function consoleTestStringifyCircular(): void {
+Deno.test("consoleTestStringifyCircular", function (): void {
   class Base {
     a = 1;
     m1() {}
@@ -346,7 +343,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 
-unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
+Deno.test("consoleTestStringifyFunctionWithPrototypeRemoved", function (): void {
   const f = function f() {};
   Reflect.setPrototypeOf(f, null);
   assertEquals(stringify(f), "[Function: f]");
@@ -361,7 +358,7 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   assertEquals(stringify(agf), "[Function: agf]");
 });
 
-unitTest(function consoleTestStringifyFunctionWithProperties(): void {
+Deno.test("consoleTestStringifyFunctionWithProperties", function (): void {
   const f = () => "test";
   f.x = () => "foo";
   f.y = 3;
@@ -405,7 +402,7 @@ unitTest(function consoleTestStringifyFunctionWithProperties(): void {
   );
 });
 
-unitTest(function consoleTestStringifyWithDepth(): void {
+Deno.test("consoleTestStringifyWithDepth", function (): void {
   // deno-lint-ignore no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
@@ -428,7 +425,7 @@ unitTest(function consoleTestStringifyWithDepth(): void {
   );
 });
 
-unitTest(function consoleTestStringifyLargeObject(): void {
+Deno.test("consoleTestStringifyLargeObject", function (): void {
   const obj = {
     a: 2,
     o: {
@@ -464,7 +461,7 @@ unitTest(function consoleTestStringifyLargeObject(): void {
   );
 });
 
-unitTest(function consoleTestStringifyIterable() {
+Deno.test("consoleTestStringifyIterable", function () {
   const shortArray = [1, 2, 3, 4, 5];
   assertEquals(stringify(shortArray), "[ 1, 2, 3, 4, 5 ]");
 
@@ -760,7 +757,7 @@ unitTest(function consoleTestStringifyIterable() {
   */
 });
 
-unitTest(function consoleTestStringifyIterableWhenGrouped(): void {
+Deno.test("consoleTestStringifyIterableWhenGrouped", function (): void {
   const withOddNumberOfEls = new Float64Array(
     [
       2.1,
@@ -838,7 +835,7 @@ unitTest(function consoleTestStringifyIterableWhenGrouped(): void {
   );
 });
 
-unitTest(async function consoleTestStringifyPromises(): Promise<void> {
+Deno.test("consoleTestStringifyPromises", async function (): Promise<void> {
   const pendingPromise = new Promise((_res, _rej) => {});
   assertEquals(stringify(pendingPromise), "Promise { <pending> }");
 
@@ -861,7 +858,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
   assertEquals(strLines[1], "  <rejected> Error: Whoops");
 });
 
-unitTest(function consoleTestWithCustomInspector(): void {
+Deno.test("consoleTestWithCustomInspector", function (): void {
   class A {
     [customInspect](): string {
       return "b";
@@ -871,7 +868,7 @@ unitTest(function consoleTestWithCustomInspector(): void {
   assertEquals(stringify(new A()), "b");
 });
 
-unitTest(function consoleTestWithCustomInspectorError(): void {
+Deno.test("consoleTestWithCustomInspectorError", function (): void {
   class A {
     [customInspect](): never {
       throw new Error("BOOM");
@@ -886,7 +883,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   );
 });
 
-unitTest(function consoleTestWithCustomInspectFunction(): void {
+Deno.test("consoleTestWithCustomInspectFunction", function (): void {
   function a() {}
   Object.assign(a, {
     [customInspect]() {
@@ -897,7 +894,7 @@ unitTest(function consoleTestWithCustomInspectFunction(): void {
   assertEquals(stringify(a), "b");
 });
 
-unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
+Deno.test("consoleTestWithIntegerFormatSpecifier", function (): void {
   assertEquals(stringify("%i"), "%i");
   assertEquals(stringify("%i", 42.0), "42");
   assertEquals(stringify("%i", 42), "42");
@@ -915,7 +912,7 @@ unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
   );
 });
 
-unitTest(function consoleTestWithFloatFormatSpecifier(): void {
+Deno.test("consoleTestWithFloatFormatSpecifier", function (): void {
   assertEquals(stringify("%f"), "%f");
   assertEquals(stringify("%f", 42.0), "42");
   assertEquals(stringify("%f", 42), "42");
@@ -930,7 +927,7 @@ unitTest(function consoleTestWithFloatFormatSpecifier(): void {
   assertEquals(stringify("%f %f", 42), "42 %f");
 });
 
-unitTest(function consoleTestWithStringFormatSpecifier(): void {
+Deno.test("consoleTestWithStringFormatSpecifier", function (): void {
   assertEquals(stringify("%s"), "%s");
   assertEquals(stringify("%s", undefined), "undefined");
   assertEquals(stringify("%s", "foo"), "foo");
@@ -941,7 +938,7 @@ unitTest(function consoleTestWithStringFormatSpecifier(): void {
   assertEquals(stringify("%s", Symbol("foo")), "Symbol(foo)");
 });
 
-unitTest(function consoleTestWithObjectFormatSpecifier(): void {
+Deno.test("consoleTestWithObjectFormatSpecifier", function (): void {
   assertEquals(stringify("%o"), "%o");
   assertEquals(stringify("%o", 42), "42");
   assertEquals(stringify("%o", "foo"), `"foo"`);
@@ -953,13 +950,13 @@ unitTest(function consoleTestWithObjectFormatSpecifier(): void {
   );
 });
 
-unitTest(function consoleTestWithStyleSpecifier(): void {
+Deno.test("consoleTestWithStyleSpecifier", function (): void {
   assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
   assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
   assertEquals(stripColor(stringify("%cfoo%cbar", "", "color: red")), "foobar");
 });
 
-unitTest(function consoleParseCssColor(): void {
+Deno.test("consoleParseCssColor", function (): void {
   assertEquals(parseCssColor("black"), [0, 0, 0]);
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
@@ -978,7 +975,7 @@ unitTest(function consoleParseCssColor(): void {
   );
 });
 
-unitTest(function consoleParseCss(): void {
+Deno.test("consoleParseCss", function (): void {
   assertEquals(
     parseCss("background-color: red"),
     { ...DEFAULT_CSS, backgroundColor: [255, 0, 0] },
@@ -1032,7 +1029,7 @@ unitTest(function consoleParseCss(): void {
   );
 });
 
-unitTest(function consoleCssToAnsi(): void {
+Deno.test("consoleCssToAnsi", function (): void {
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
     "_[48;2;200;201;202m",
@@ -1072,7 +1069,7 @@ unitTest(function consoleCssToAnsi(): void {
   );
 });
 
-unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
+Deno.test("consoleTestWithVariousOrInvalidFormatSpecifier", function (): void {
   assertEquals(stringify("%s:%s"), "%s:%s");
   assertEquals(stringify("%i:%i"), "%i:%i");
   assertEquals(stringify("%d:%d"), "%d:%d");
@@ -1088,7 +1085,7 @@ unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
   assertEquals(stringify("abc%", 1), "abc% 1");
 });
 
-unitTest(function consoleTestCallToStringOnLabel(): void {
+Deno.test("consoleTestCallToStringOnLabel", function (): void {
   const methods = ["count", "countReset", "time", "timeLog", "timeEnd"];
   mockConsole((console) => {
     for (const method of methods) {
@@ -1103,7 +1100,7 @@ unitTest(function consoleTestCallToStringOnLabel(): void {
   });
 });
 
-unitTest(function consoleTestError(): void {
+Deno.test("consoleTestError", function (): void {
   class MyError extends Error {
     constructor(errStr: string) {
       super(errStr);
@@ -1121,7 +1118,7 @@ unitTest(function consoleTestError(): void {
   }
 });
 
-unitTest(function consoleTestClear(): void {
+Deno.test("consoleTestClear", function (): void {
   mockConsole((console, out) => {
     console.clear();
     assertEquals(out.toString(), "\x1b[1;1H" + "\x1b[0J");
@@ -1129,7 +1126,7 @@ unitTest(function consoleTestClear(): void {
 });
 
 // Test bound this issue
-unitTest(function consoleDetachedLog(): void {
+Deno.test("consoleDetachedLog", function (): void {
   mockConsole((console) => {
     const log = console.log;
     const dir = console.dir;
@@ -1202,7 +1199,7 @@ function mockConsole(f: ConsoleExamineFunc): void {
 }
 
 // console.group test
-unitTest(function consoleGroup(): void {
+Deno.test("consoleGroup", function (): void {
   mockConsole((console, out): void => {
     console.group("1");
     console.log("2");
@@ -1227,7 +1224,7 @@ unitTest(function consoleGroup(): void {
 });
 
 // console.group with console.warn test
-unitTest(function consoleGroupWarn(): void {
+Deno.test("consoleGroupWarn", function (): void {
   mockConsole((console, _out, _err, both): void => {
     assert(both);
     console.warn("1");
@@ -1257,7 +1254,7 @@ unitTest(function consoleGroupWarn(): void {
 });
 
 // console.table test
-unitTest(function consoleTable(): void {
+Deno.test("consoleTable", function (): void {
   mockConsole((console, out): void => {
     console.table({ a: "test", b: 1 });
     assertEquals(
@@ -1472,7 +1469,7 @@ unitTest(function consoleTable(): void {
 });
 
 // console.log(Error) test
-unitTest(function consoleLogShouldNotThrowError(): void {
+Deno.test("consoleLogShouldNotThrowError", function (): void {
   mockConsole((console) => {
     let result = 0;
     try {
@@ -1492,7 +1489,7 @@ unitTest(function consoleLogShouldNotThrowError(): void {
 });
 
 // console.log(Invalid Date) test
-unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed(): void {
+Deno.test("consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed", function (): void {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
@@ -1501,7 +1498,7 @@ unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed(): void {
 });
 
 // console.dir test
-unitTest(function consoleDir(): void {
+Deno.test("consoleDir", function (): void {
   mockConsole((console, out): void => {
     console.dir("DIR");
     assertEquals(out.toString(), "DIR\n");
@@ -1513,7 +1510,7 @@ unitTest(function consoleDir(): void {
 });
 
 // console.dir test
-unitTest(function consoleDirXml(): void {
+Deno.test("consoleDirXml", function (): void {
   mockConsole((console, out): void => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
@@ -1525,7 +1522,7 @@ unitTest(function consoleDirXml(): void {
 });
 
 // console.trace test
-unitTest(function consoleTrace(): void {
+Deno.test("consoleTrace", function (): void {
   mockConsole((console, _out, err): void => {
     console.trace("%s", "custom message");
     assert(err);
@@ -1533,7 +1530,7 @@ unitTest(function consoleTrace(): void {
   });
 });
 
-unitTest(function inspectString(): void {
+Deno.test("inspectString", function (): void {
   assertEquals(
     stripColor(Deno.inspect("\0")),
     `"\\x00"`,
@@ -1544,7 +1541,7 @@ unitTest(function inspectString(): void {
   );
 });
 
-unitTest(function inspectGetters(): void {
+Deno.test("inspectGetters", function (): void {
   assertEquals(
     stripColor(Deno.inspect({
       get foo() {
@@ -1573,12 +1570,12 @@ unitTest(function inspectGetters(): void {
   );
 });
 
-unitTest(function inspectPrototype(): void {
+Deno.test("inspectPrototype", function (): void {
   class A {}
   assertEquals(Deno.inspect(A.prototype), "A {}");
 });
 
-unitTest(function inspectSorted(): void {
+Deno.test("inspectSorted", function (): void {
   assertEquals(
     stripColor(Deno.inspect({ b: 2, a: 1 }, { sorted: true })),
     "{ a: 1, b: 2 }",
@@ -1599,7 +1596,7 @@ unitTest(function inspectSorted(): void {
   );
 });
 
-unitTest(function inspectTrailingComma(): void {
+Deno.test("inspectTrailingComma", function (): void {
   assertEquals(
     stripColor(Deno.inspect(
       [
@@ -1654,7 +1651,7 @@ unitTest(function inspectTrailingComma(): void {
   );
 });
 
-unitTest(function inspectCompact(): void {
+Deno.test("inspectCompact", function (): void {
   assertEquals(
     stripColor(Deno.inspect({ a: 1, b: 2 }, { compact: false })),
     `{
@@ -1664,7 +1661,7 @@ unitTest(function inspectCompact(): void {
   );
 });
 
-unitTest(function inspectIterableLimit(): void {
+Deno.test("inspectIterableLimit", function (): void {
   assertEquals(
     stripColor(Deno.inspect(["a", "b", "c"], { iterableLimit: 2 })),
     `[ "a", "b", ... 1 more items ]`,
@@ -1686,7 +1683,7 @@ unitTest(function inspectIterableLimit(): void {
   );
 });
 
-unitTest(function inspectProxy(): void {
+Deno.test("inspectProxy", function (): void {
   assertEquals(
     stripColor(Deno.inspect(
       new Proxy([1, 2, 3], { get(): void {} }),
@@ -1736,7 +1733,7 @@ unitTest(function inspectProxy(): void {
   );
 });
 
-unitTest(function inspectColors(): void {
+Deno.test("inspectColors", function (): void {
   assertEquals(Deno.inspect(1), "1");
   assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
 });

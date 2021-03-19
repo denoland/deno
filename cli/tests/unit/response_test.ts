@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
-unitTest(async function responseText() {
+Deno.test("responseText", async function () {
   const response = new Response("hello world");
   const textPromise = response.text();
   assert(textPromise instanceof Promise);
@@ -10,7 +10,7 @@ unitTest(async function responseText() {
   assertEquals(text, "hello world");
 });
 
-unitTest(async function responseArrayBuffer() {
+Deno.test("responseArrayBuffer", async function () {
   const response = new Response(new Uint8Array([1, 2, 3]));
   const arrayBufferPromise = response.arrayBuffer();
   assert(arrayBufferPromise instanceof Promise);
@@ -19,7 +19,7 @@ unitTest(async function responseArrayBuffer() {
   assertEquals(new Uint8Array(arrayBuffer), new Uint8Array([1, 2, 3]));
 });
 
-unitTest(async function responseJson() {
+Deno.test("responseJson", async function () {
   const response = new Response('{"hello": "world"}');
   const jsonPromise = response.json();
   assert(jsonPromise instanceof Promise);
@@ -28,7 +28,7 @@ unitTest(async function responseJson() {
   assertEquals(json, { hello: "world" });
 });
 
-unitTest(async function responseBlob() {
+Deno.test("responseBlob", async function () {
   const response = new Response(new Uint8Array([1, 2, 3]));
   const blobPromise = response.blob();
   assert(blobPromise instanceof Promise);
@@ -37,7 +37,7 @@ unitTest(async function responseBlob() {
   assertEquals(blob, new Blob([new Uint8Array([1, 2, 3])]));
 });
 
-unitTest(async function responseFormData() {
+Deno.test("responseFormData", async function () {
   const input = new FormData();
   input.append("hello", "world");
   const response = new Response(input, {

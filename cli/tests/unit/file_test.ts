@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 // deno-lint-ignore no-explicit-any
 function testFirstArgument(arg1: any[], expectedSize: number): void {
@@ -10,47 +10,47 @@ function testFirstArgument(arg1: any[], expectedSize: number): void {
   assertEquals(file.type, "");
 }
 
-unitTest(function fileEmptyFileBits(): void {
+Deno.test("fileEmptyFileBits", function (): void {
   testFirstArgument([], 0);
 });
 
-unitTest(function fileStringFileBits(): void {
+Deno.test("fileStringFileBits", function (): void {
   testFirstArgument(["bits"], 4);
 });
 
-unitTest(function fileUnicodeStringFileBits(): void {
+Deno.test("fileUnicodeStringFileBits", function (): void {
   testFirstArgument(["𝓽𝓮𝔁𝓽"], 16);
 });
 
-unitTest(function fileStringObjectFileBits(): void {
+Deno.test("fileStringObjectFileBits", function (): void {
   testFirstArgument([new String("string object")], 13);
 });
 
-unitTest(function fileEmptyBlobFileBits(): void {
+Deno.test("fileEmptyBlobFileBits", function (): void {
   testFirstArgument([new Blob()], 0);
 });
 
-unitTest(function fileBlobFileBits(): void {
+Deno.test("fileBlobFileBits", function (): void {
   testFirstArgument([new Blob(["bits"])], 4);
 });
 
-unitTest(function fileEmptyFileFileBits(): void {
+Deno.test("fileEmptyFileFileBits", function (): void {
   testFirstArgument([new File([], "world.txt")], 0);
 });
 
-unitTest(function fileFileFileBits(): void {
+Deno.test("fileFileFileBits", function (): void {
   testFirstArgument([new File(["bits"], "world.txt")], 4);
 });
 
-unitTest(function fileArrayBufferFileBits(): void {
+Deno.test("fileArrayBufferFileBits", function (): void {
   testFirstArgument([new ArrayBuffer(8)], 8);
 });
 
-unitTest(function fileTypedArrayFileBits(): void {
+Deno.test("fileTypedArrayFileBits", function (): void {
   testFirstArgument([new Uint8Array([0x50, 0x41, 0x53, 0x53])], 4);
 });
 
-unitTest(function fileVariousFileBits(): void {
+Deno.test("fileVariousFileBits", function (): void {
   testFirstArgument(
     [
       "bits",
@@ -64,15 +64,15 @@ unitTest(function fileVariousFileBits(): void {
   );
 });
 
-unitTest(function fileNumberInFileBits(): void {
+Deno.test("fileNumberInFileBits", function (): void {
   testFirstArgument([12], 2);
 });
 
-unitTest(function fileArrayInFileBits(): void {
+Deno.test("fileArrayInFileBits", function (): void {
   testFirstArgument([[1, 2, 3]], 5);
 });
 
-unitTest(function fileObjectInFileBits(): void {
+Deno.test("fileObjectInFileBits", function (): void {
   // "[object Object]"
   testFirstArgument([{}], 15);
 });
@@ -84,22 +84,22 @@ function testSecondArgument(arg2: any, expectedFileName: string): void {
   assertEquals(file.name, expectedFileName);
 }
 
-unitTest(function fileUsingFileName(): void {
+Deno.test("fileUsingFileName", function (): void {
   testSecondArgument("dummy", "dummy");
 });
 
-unitTest(function fileUsingSpecialCharacterInFileName(): void {
+Deno.test("fileUsingSpecialCharacterInFileName", function (): void {
   testSecondArgument("dummy/foo", "dummy:foo");
 });
 
-unitTest(function fileUsingNullFileName(): void {
+Deno.test("fileUsingNullFileName", function (): void {
   testSecondArgument(null, "null");
 });
 
-unitTest(function fileUsingNumberFileName(): void {
+Deno.test("fileUsingNumberFileName", function (): void {
   testSecondArgument(1, "1");
 });
 
-unitTest(function fileUsingEmptyStringFileName(): void {
+Deno.test("fileUsingEmptyStringFileName", function (): void {
   testSecondArgument("", "");
 });

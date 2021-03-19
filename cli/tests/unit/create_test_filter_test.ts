@@ -1,10 +1,10 @@
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
-const { createFilterFn } = Deno[Deno.internal];
+const { createTestFilter } = Deno[Deno.internal];
 
-unitTest(function filterAsString(): void {
-  const filterFn = createFilterFn("my-test");
+Deno.test("filterAsString", function (): void {
+  const testFilter = createTestFilter("my-test");
   const tests = [
     {
       fn(): void {},
@@ -15,12 +15,12 @@ unitTest(function filterAsString(): void {
       name: "other-test",
     },
   ];
-  const filteredTests = tests.filter(filterFn);
+  const filteredTests = tests.filter(testFilter);
   assertEquals(filteredTests.length, 1);
 });
 
-unitTest(function filterAsREGEX(): void {
-  const filterFn = createFilterFn("/.+-test/");
+Deno.test("filterAsREGEX", function (): void {
+  const testFilter = createTestFilter("/.+-test/");
   const tests = [
     {
       fn(): void {},
@@ -31,12 +31,12 @@ unitTest(function filterAsREGEX(): void {
       name: "other-test",
     },
   ];
-  const filteredTests = tests.filter(filterFn);
+  const filteredTests = tests.filter(testFilter);
   assertEquals(filteredTests.length, 2);
 });
 
-unitTest(function filterAsEscapedREGEX(): void {
-  const filterFn = createFilterFn("/\\w+-test/");
+Deno.test("filterAsEscapedREGEX", function (): void {
+  const testFilter = createTestFilter("/\\w+-test/");
   const tests = [
     {
       fn(): void {},
@@ -47,6 +47,6 @@ unitTest(function filterAsEscapedREGEX(): void {
       name: "other-test",
     },
   ];
-  const filteredTests = tests.filter(filterFn);
+  const filteredTests = tests.filter(testFilter);
   assertEquals(filteredTests.length, 2);
 });

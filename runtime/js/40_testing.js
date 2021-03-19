@@ -206,7 +206,9 @@ finishing test case.`;
     filter = null,
   } = {}) {
     const only = tests.filter((test) => test.only);
-    const pending = (only.length > 0 ? only : tests).filter(createTestFilter(filter));
+    const pending = (only.length > 0 ? only : tests).filter(
+      createTestFilter(filter),
+    );
     sendTestMessage("plan", {
       filtered: tests.length - pending.length,
       pending: pending.length,
@@ -220,6 +222,7 @@ finishing test case.`;
 
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
+    createTestFilter,
     runTests,
   };
 

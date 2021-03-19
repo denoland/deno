@@ -1,32 +1,32 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
-unitTest(async function stdioStdinRead() {
+Deno.test("stdioStdinRead", async function () {
   const nread = await Deno.stdin.read(new Uint8Array(0));
   assertEquals(nread, 0);
 });
 
-unitTest(function stdioStdinReadSync() {
+Deno.test("stdioStdinReadSync", function () {
   const nread = Deno.stdin.readSync(new Uint8Array(0));
   assertEquals(nread, 0);
 });
 
-unitTest(async function stdioStdoutWrite() {
+Deno.test("stdioStdoutWrite", async function () {
   const nwritten = await Deno.stdout.write(new Uint8Array(0));
   assertEquals(nwritten, 0);
 });
 
-unitTest(function stdioStdoutWriteSync() {
+Deno.test("stdioStdoutWriteSync", function () {
   const nwritten = Deno.stdout.writeSync(new Uint8Array(0));
   assertEquals(nwritten, 0);
 });
 
-unitTest(async function stdioStderrWrite() {
+Deno.test("stdioStderrWrite", async function () {
   const nwritten = await Deno.stderr.write(new Uint8Array(0));
   assertEquals(nwritten, 0);
 });
 
-unitTest(function stdioStderrWriteSync() {
+Deno.test("stdioStderrWriteSync", function () {
   const nwritten = Deno.stderr.writeSync(new Uint8Array(0));
   assertEquals(nwritten, 0);
 });

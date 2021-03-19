@@ -1,45 +1,34 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertThrows,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assertEquals, assertThrows, assertThrowsAsync } from "./test_util.ts";
 
-unitTest(
-  { perms: { read: true, write: true } },
-  function writeFileSyncSuccess(): void {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = Deno.makeTempDirSync() + "/test.txt";
-    Deno.writeFileSync(filename, data);
-    const dataRead = Deno.readFileSync(filename);
-    const dec = new TextDecoder("utf-8");
-    const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-  },
-);
+Deno.test("writeFileSyncSuccess", function (): void {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = Deno.makeTempDirSync() + "/test.txt";
+  Deno.writeFileSync(filename, data);
+  const dataRead = Deno.readFileSync(filename);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+});
 
-unitTest(
-  { perms: { read: true, write: true } },
-  function writeFileSyncUrl(): void {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const tempDir = Deno.makeTempDirSync();
-    const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
-    );
-    Deno.writeFileSync(fileUrl, data);
-    const dataRead = Deno.readFileSync(fileUrl);
-    const dec = new TextDecoder("utf-8");
-    const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
+Deno.test("writeFileSyncUrl", function (): void {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const tempDir = Deno.makeTempDirSync();
+  const fileUrl = new URL(
+    `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
+  );
+  Deno.writeFileSync(fileUrl, data);
+  const dataRead = Deno.readFileSync(fileUrl);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
 
-    Deno.removeSync(tempDir, { recursive: true });
-  },
-);
+  Deno.removeSync(tempDir, { recursive: true });
+});
 
-unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
+Deno.test("writeFileSyncFail", function (): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -49,7 +38,150 @@ unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { write: false } }, function writeFileSyncPerm(): void {
+Deno.test("writeFileSyncUpdateMode", function (): void {
+  if (Deno.build.os !== "windows") {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    Deno.writeFileSync(filename, data, { mode: 0o755 });
+    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+    Deno.writeFileSync(filename, data, { mode: 0o666 });
+    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+  }
+});
+
+Deno.test("writeFileSyncCreate", function (): void {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = Deno.makeTempDirSync() + "/test.txt";
+  // if create turned off, the file won't be created
+  assertThrows(() => {
+    Deno.writeFileSync(filename, data, { create: false });
+  }, Deno.errors.NotFound);
+
+  // Turn on create, should have no error
+  Deno.writeFileSync(filename, data, { create: true });
+  Deno.writeFileSync(filename, data, { create: false });
+  const dataRead = Deno.readFileSync(filename);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+});
+
+Deno.test("writeFileSyncAppend", function (): void {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = Deno.makeTempDirSync() + "/test.txt";
+  Deno.writeFileSync(filename, data);
+  Deno.writeFileSync(filename, data, { append: true });
+  let dataRead = Deno.readFileSync(filename);
+  const dec = new TextDecoder("utf-8");
+  let actual = dec.decode(dataRead);
+  assertEquals("HelloHello", actual);
+  // Now attempt overwrite
+  Deno.writeFileSync(filename, data, { append: false });
+  dataRead = Deno.readFileSync(filename);
+  actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+  // append not set should also overwrite
+  Deno.writeFileSync(filename, data);
+  dataRead = Deno.readFileSync(filename);
+  actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+});
+
+Deno.test("writeFileSuccess", async function (): Promise<void> {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = Deno.makeTempDirSync() + "/test.txt";
+  await Deno.writeFile(filename, data);
+  const dataRead = Deno.readFileSync(filename);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+});
+
+Deno.test("writeFileUrl", async function (): Promise<void> {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const tempDir = await Deno.makeTempDir();
+  const fileUrl = new URL(
+    `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
+  );
+  await Deno.writeFile(fileUrl, data);
+  const dataRead = Deno.readFileSync(fileUrl);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+
+  Deno.removeSync(tempDir, { recursive: true });
+});
+
+Deno.test("writeFileNotFound", async function (): Promise<void> {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = "/baddir/test.txt";
+  // The following should fail because /baddir doesn't exist (hopefully).
+  await assertThrowsAsync(async () => {
+    await Deno.writeFile(filename, data);
+  }, Deno.errors.NotFound);
+});
+
+Deno.test("writeFileUpdateMode", async function (): Promise<void> {
+  if (Deno.build.os !== "windows") {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, data, { mode: 0o755 });
+    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+    await Deno.writeFile(filename, data, { mode: 0o666 });
+    assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+  }
+});
+
+Deno.test("writeFileCreate", async function (): Promise<void> {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = Deno.makeTempDirSync() + "/test.txt";
+  // if create turned off, the file won't be created
+  await assertThrowsAsync(async () => {
+    await Deno.writeFile(filename, data, { create: false });
+  }, Deno.errors.NotFound);
+
+  // Turn on create, should have no error
+  await Deno.writeFile(filename, data, { create: true });
+  await Deno.writeFile(filename, data, { create: false });
+  const dataRead = Deno.readFileSync(filename);
+  const dec = new TextDecoder("utf-8");
+  const actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+});
+
+Deno.test("writeFileAppend", async function (): Promise<void> {
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = Deno.makeTempDirSync() + "/test.txt";
+  await Deno.writeFile(filename, data);
+  await Deno.writeFile(filename, data, { append: true });
+  let dataRead = Deno.readFileSync(filename);
+  const dec = new TextDecoder("utf-8");
+  let actual = dec.decode(dataRead);
+  assertEquals("HelloHello", actual);
+  // Now attempt overwrite
+  await Deno.writeFile(filename, data, { append: false });
+  dataRead = Deno.readFileSync(filename);
+  actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+  // append not set should also overwrite
+  await Deno.writeFile(filename, data);
+  dataRead = Deno.readFileSync(filename);
+  actual = dec.decode(dataRead);
+  assertEquals("Hello", actual);
+});
+
+Deno.test("writeFileSyncPerm", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "write" });
+
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -59,183 +191,14 @@ unitTest({ perms: { write: false } }, function writeFileSyncPerm(): void {
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
-  { perms: { read: true, write: true } },
-  function writeFileSyncUpdateMode(): void {
-    if (Deno.build.os !== "windows") {
-      const enc = new TextEncoder();
-      const data = enc.encode("Hello");
-      const filename = Deno.makeTempDirSync() + "/test.txt";
-      Deno.writeFileSync(filename, data, { mode: 0o755 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
-      Deno.writeFileSync(filename, data, { mode: 0o666 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
-    }
-  },
-);
+Deno.test("writeFilePerm", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "write" });
 
-unitTest(
-  { perms: { read: true, write: true } },
-  function writeFileSyncCreate(): void {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = Deno.makeTempDirSync() + "/test.txt";
-    // if create turned off, the file won't be created
-    assertThrows(() => {
-      Deno.writeFileSync(filename, data, { create: false });
-    }, Deno.errors.NotFound);
-
-    // Turn on create, should have no error
-    Deno.writeFileSync(filename, data, { create: true });
-    Deno.writeFileSync(filename, data, { create: false });
-    const dataRead = Deno.readFileSync(filename);
-    const dec = new TextDecoder("utf-8");
-    const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  function writeFileSyncAppend(): void {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = Deno.makeTempDirSync() + "/test.txt";
-    Deno.writeFileSync(filename, data);
-    Deno.writeFileSync(filename, data, { append: true });
-    let dataRead = Deno.readFileSync(filename);
-    const dec = new TextDecoder("utf-8");
-    let actual = dec.decode(dataRead);
-    assertEquals("HelloHello", actual);
-    // Now attempt overwrite
-    Deno.writeFileSync(filename, data, { append: false });
-    dataRead = Deno.readFileSync(filename);
-    actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-    // append not set should also overwrite
-    Deno.writeFileSync(filename, data);
-    dataRead = Deno.readFileSync(filename);
-    actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function writeFileSuccess(): Promise<void> {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = Deno.makeTempDirSync() + "/test.txt";
+  const enc = new TextEncoder();
+  const data = enc.encode("Hello");
+  const filename = "/baddir/test.txt";
+  // The following should fail due to no write permission
+  await assertThrowsAsync(async () => {
     await Deno.writeFile(filename, data);
-    const dataRead = Deno.readFileSync(filename);
-    const dec = new TextDecoder("utf-8");
-    const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function writeFileUrl(): Promise<void> {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const tempDir = await Deno.makeTempDir();
-    const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
-    );
-    await Deno.writeFile(fileUrl, data);
-    const dataRead = Deno.readFileSync(fileUrl);
-    const dec = new TextDecoder("utf-8");
-    const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-
-    Deno.removeSync(tempDir, { recursive: true });
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function writeFileNotFound(): Promise<void> {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = "/baddir/test.txt";
-    // The following should fail because /baddir doesn't exist (hopefully).
-    await assertThrowsAsync(async () => {
-      await Deno.writeFile(filename, data);
-    }, Deno.errors.NotFound);
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: false } },
-  async function writeFilePerm(): Promise<void> {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = "/baddir/test.txt";
-    // The following should fail due to no write permission
-    await assertThrowsAsync(async () => {
-      await Deno.writeFile(filename, data);
-    }, Deno.errors.PermissionDenied);
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function writeFileUpdateMode(): Promise<void> {
-    if (Deno.build.os !== "windows") {
-      const enc = new TextEncoder();
-      const data = enc.encode("Hello");
-      const filename = Deno.makeTempDirSync() + "/test.txt";
-      await Deno.writeFile(filename, data, { mode: 0o755 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
-      await Deno.writeFile(filename, data, { mode: 0o666 });
-      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
-    }
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function writeFileCreate(): Promise<void> {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = Deno.makeTempDirSync() + "/test.txt";
-    // if create turned off, the file won't be created
-    await assertThrowsAsync(async () => {
-      await Deno.writeFile(filename, data, { create: false });
-    }, Deno.errors.NotFound);
-
-    // Turn on create, should have no error
-    await Deno.writeFile(filename, data, { create: true });
-    await Deno.writeFile(filename, data, { create: false });
-    const dataRead = Deno.readFileSync(filename);
-    const dec = new TextDecoder("utf-8");
-    const actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function writeFileAppend(): Promise<void> {
-    const enc = new TextEncoder();
-    const data = enc.encode("Hello");
-    const filename = Deno.makeTempDirSync() + "/test.txt";
-    await Deno.writeFile(filename, data);
-    await Deno.writeFile(filename, data, { append: true });
-    let dataRead = Deno.readFileSync(filename);
-    const dec = new TextDecoder("utf-8");
-    let actual = dec.decode(dataRead);
-    assertEquals("HelloHello", actual);
-    // Now attempt overwrite
-    await Deno.writeFile(filename, data, { append: false });
-    dataRead = Deno.readFileSync(filename);
-    actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-    // append not set should also overwrite
-    await Deno.writeFile(filename, data);
-    dataRead = Deno.readFileSync(filename);
-    actual = dec.decode(dataRead);
-    assertEquals("Hello", actual);
-  },
-);
+  }, Deno.errors.PermissionDenied);
+});

@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, unitTest } from "./test_util.ts";
+import { assert } from "./test_util.ts";
 
-unitTest(async function metrics(): Promise<void> {
+Deno.test("metrics", async function (): Promise<void> {
   // Write to stdout to ensure a "data" message gets sent instead of just
   // control messages.
   const dataMsg = new Uint8Array([13, 13, 13]); // "\r\r\r",
@@ -38,31 +38,25 @@ unitTest(async function metrics(): Promise<void> {
   assert(m2OpWrite.bytesReceived > m1OpWrite.bytesReceived);
 });
 
-unitTest(
-  { perms: { write: true } },
-  function metricsUpdatedIfNoResponseSync(): void {
-    const filename = Deno.makeTempDirSync() + "/test.txt";
+Deno.test("metricsUpdatedIfNoResponseSync", function (): void {
+  const filename = Deno.makeTempDirSync() + "/test.txt";
 
-    const data = new Uint8Array([41, 42, 43]);
-    Deno.writeFileSync(filename, data, { mode: 0o666 });
+  const data = new Uint8Array([41, 42, 43]);
+  Deno.writeFileSync(filename, data, { mode: 0o666 });
 
-    const metrics = Deno.metrics();
-    assert(metrics.opsDispatched === metrics.opsCompleted);
-    assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
-  },
-);
+  const metrics = Deno.metrics();
+  assert(metrics.opsDispatched === metrics.opsCompleted);
+  assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
+});
 
-unitTest(
-  { perms: { write: true } },
-  async function metricsUpdatedIfNoResponseAsync(): Promise<void> {
-    const filename = Deno.makeTempDirSync() + "/test.txt";
+Deno.test("metricsUpdatedIfNoResponseAsync", async function (): Promise<void> {
+  const filename = Deno.makeTempDirSync() + "/test.txt";
 
-    const data = new Uint8Array([41, 42, 43]);
-    await Deno.writeFile(filename, data, { mode: 0o666 });
+  const data = new Uint8Array([41, 42, 43]);
+  await Deno.writeFile(filename, data, { mode: 0o666 });
 
-    const metrics = Deno.metrics();
-    assert(metrics.opsDispatched === metrics.opsCompleted);
-    assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
-    assert(metrics.opsDispatchedAsync === metrics.opsCompletedAsync);
-  },
-);
+  const metrics = Deno.metrics();
+  assert(metrics.opsDispatched === metrics.opsCompleted);
+  assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
+  assert(metrics.opsDispatchedAsync === metrics.opsCompletedAsync);
+});

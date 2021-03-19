@@ -1,19 +1,19 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
-unitTest(function btoaSuccess(): void {
+Deno.test("btoaSuccess", function (): void {
   const text = "hello world";
   const encoded = btoa(text);
   assertEquals(encoded, "aGVsbG8gd29ybGQ=");
 });
 
-unitTest(function atobSuccess(): void {
+Deno.test("atobSuccess", function (): void {
   const encoded = "aGVsbG8gd29ybGQ=";
   const decoded = atob(encoded);
   assertEquals(decoded, "hello world");
 });
 
-unitTest(function atobWithAsciiWhitespace(): void {
+Deno.test("atobWithAsciiWhitespace", function (): void {
   const encodedList = [
     " aGVsbG8gd29ybGQ=",
     "  aGVsbG8gd29ybGQ=",
@@ -30,7 +30,7 @@ unitTest(function atobWithAsciiWhitespace(): void {
   }
 });
 
-unitTest(function atobThrows(): void {
+Deno.test("atobThrows", function (): void {
   let threw = false;
   try {
     atob("aGVsbG8gd29ybGQ==");
@@ -40,7 +40,7 @@ unitTest(function atobThrows(): void {
   assert(threw);
 });
 
-unitTest(function atobThrows2(): void {
+Deno.test("atobThrows2", function (): void {
   let threw = false;
   try {
     atob("aGVsbG8gd29ybGQ===");
@@ -50,7 +50,7 @@ unitTest(function atobThrows2(): void {
   assert(threw);
 });
 
-unitTest(function atobThrows3(): void {
+Deno.test("atobThrows3", function (): void {
   let threw = false;
   try {
     atob("foobar!!");
@@ -65,14 +65,14 @@ unitTest(function atobThrows3(): void {
   assert(threw);
 });
 
-unitTest(function btoaFailed(): void {
+Deno.test("btoaFailed", function (): void {
   const text = "你好";
   assertThrows(() => {
     btoa(text);
   }, DOMException);
 });
 
-unitTest(function textDecoder2(): void {
+Deno.test("textDecoder2", function (): void {
   // deno-fmt-ignore
   const fixture = new Uint8Array([
     0xf0, 0x9d, 0x93, 0xbd,
@@ -86,13 +86,13 @@ unitTest(function textDecoder2(): void {
 
 // ignoreBOM is tested through WPT
 
-unitTest(function textDecoderASCII(): void {
+Deno.test("textDecoderASCII", function (): void {
   const fixture = new Uint8Array([0x89, 0x95, 0x9f, 0xbf]);
   const decoder = new TextDecoder("ascii");
   assertEquals(decoder.decode(fixture), "‰•Ÿ¿");
 });
 
-unitTest(function textDecoderErrorEncoding(): void {
+Deno.test("textDecoderErrorEncoding", function (): void {
   let didThrow = false;
   try {
     new TextDecoder("Foo");
@@ -103,7 +103,7 @@ unitTest(function textDecoderErrorEncoding(): void {
   assert(didThrow);
 });
 
-unitTest(function textEncoder(): void {
+Deno.test("textEncoder", function (): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
   // deno-fmt-ignore
@@ -115,7 +115,7 @@ unitTest(function textEncoder(): void {
   ]);
 });
 
-unitTest(function textEncodeInto(): void {
+Deno.test("textEncodeInto", function (): void {
   const fixture = "text";
   const encoder = new TextEncoder();
   const bytes = new Uint8Array(5);
@@ -128,7 +128,7 @@ unitTest(function textEncodeInto(): void {
   ]);
 });
 
-unitTest(function textEncodeInto2(): void {
+Deno.test("textEncodeInto2", function (): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
   const bytes = new Uint8Array(17);
@@ -144,7 +144,7 @@ unitTest(function textEncodeInto2(): void {
   ]);
 });
 
-unitTest(function textEncodeInto3(): void {
+Deno.test("textEncodeInto3", function (): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
   const bytes = new Uint8Array(5);
@@ -157,7 +157,7 @@ unitTest(function textEncodeInto3(): void {
   ]);
 });
 
-unitTest(function textDecoderSharedUint8Array(): void {
+Deno.test("textDecoderSharedUint8Array", function (): void {
   const ab = new SharedArrayBuffer(6);
   const dataView = new DataView(ab);
   const charCodeA = "A".charCodeAt(0);
@@ -170,7 +170,7 @@ unitTest(function textDecoderSharedUint8Array(): void {
   assertEquals(actual, "ABCDEF");
 });
 
-unitTest(function textDecoderSharedInt32Array(): void {
+Deno.test("textDecoderSharedInt32Array", function (): void {
   const ab = new SharedArrayBuffer(8);
   const dataView = new DataView(ab);
   const charCodeA = "A".charCodeAt(0);
@@ -183,14 +183,14 @@ unitTest(function textDecoderSharedInt32Array(): void {
   assertEquals(actual, "ABCDEFGH");
 });
 
-unitTest(function toStringShouldBeWebCompatibility(): void {
+Deno.test("toStringShouldBeWebCompatibility", function (): void {
   const encoder = new TextEncoder();
   assertEquals(encoder.toString(), "[object TextEncoder]");
 
   const decoder = new TextDecoder();
   assertEquals(decoder.toString(), "[object TextDecoder]");
 });
-unitTest(function textEncoderShouldCoerceToString(): void {
+Deno.test("textEncoderShouldCoerceToString", function (): void {
   const encoder = new TextEncoder();
   const fixutreText = "text";
   const fixture = {

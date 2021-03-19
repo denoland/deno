@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
-unitTest(function fileReaderConstruct(): void {
+Deno.test("fileReaderConstruct", function (): void {
   const fr = new FileReader();
   assertEquals(fr.readyState, FileReader.EMPTY);
 
@@ -10,7 +10,7 @@ unitTest(function fileReaderConstruct(): void {
   assertEquals(FileReader.DONE, 2);
 });
 
-unitTest(async function fileReaderLoadBlob(): Promise<void> {
+Deno.test("fileReaderLoadBlob", async function (): Promise<void> {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -77,7 +77,7 @@ unitTest(async function fileReaderLoadBlob(): Promise<void> {
   });
 });
 
-unitTest(async function fileReaderLoadBlobDouble(): Promise<void> {
+Deno.test("fileReaderLoadBlobDouble", async function (): Promise<void> {
   // impl note from https://w3c.github.io/FileAPI/
   // Event handler for the load or error events could have started another load,
   // if that happens the loadend event for the first load is not fired
@@ -107,7 +107,7 @@ unitTest(async function fileReaderLoadBlobDouble(): Promise<void> {
   });
 });
 
-unitTest(async function fileReaderLoadBlobArrayBuffer(): Promise<void> {
+Deno.test("fileReaderLoadBlobArrayBuffer", async function (): Promise<void> {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -129,7 +129,7 @@ unitTest(async function fileReaderLoadBlobArrayBuffer(): Promise<void> {
   });
 });
 
-unitTest(async function fileReaderLoadBlobDataUrl(): Promise<void> {
+Deno.test("fileReaderLoadBlobDataUrl", async function (): Promise<void> {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -149,7 +149,7 @@ unitTest(async function fileReaderLoadBlobDataUrl(): Promise<void> {
   });
 });
 
-unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
+Deno.test("fileReaderLoadBlobAbort", async function (): Promise<void> {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -184,7 +184,7 @@ unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
   });
 });
 
-unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
+Deno.test("fileReaderLoadBlobAbort", async function (): Promise<void> {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -219,24 +219,24 @@ unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
   });
 });
 
-unitTest(
-  async function fileReaderDispatchesEventsInCorrectOrder(): Promise<void> {
-    await new Promise<void>((resolve) => {
-      const fr = new FileReader();
-      const b1 = new Blob(["Hello World"]);
-      let out = "";
-      fr.addEventListener("loadend", () => {
-        out += "1";
-      });
-      fr.onloadend = (ev): void => {
-        out += "2";
-      };
-      fr.addEventListener("loadend", () => {
-        assertEquals(out, "12");
-        resolve();
-      });
-
-      fr.readAsDataURL(b1);
+Deno.test("fileReaderDispatchesEventsInCorrectOrder", async function (): Promise<
+  void
+> {
+  await new Promise<void>((resolve) => {
+    const fr = new FileReader();
+    const b1 = new Blob(["Hello World"]);
+    let out = "";
+    fr.addEventListener("loadend", () => {
+      out += "1";
     });
-  },
-);
+    fr.onloadend = (ev): void => {
+      out += "2";
+    };
+    fr.addEventListener("loadend", () => {
+      assertEquals(out, "12");
+      resolve();
+    });
+
+    fr.readAsDataURL(b1);
+  });
+});

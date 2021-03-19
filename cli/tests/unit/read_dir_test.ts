@@ -5,7 +5,6 @@ import {
   assertThrows,
   assertThrowsAsync,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
 function assertSameContent(files: Deno.DirEntry[]): void {
@@ -21,35 +20,29 @@ function assertSameContent(files: Deno.DirEntry[]): void {
   assertEquals(counter, 1);
 }
 
-unitTest({ perms: { read: true } }, function readDirSyncSuccess(): void {
+Deno.test("readDirSyncSuccess", function (): void {
   const files = [...Deno.readDirSync("cli/tests/")];
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: true } }, function readDirSyncWithUrl(): void {
+Deno.test("readDirSyncWithUrl", function (): void {
   const files = [...Deno.readDirSync(pathToAbsoluteFileUrl("cli/tests"))];
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: false } }, function readDirSyncPerm(): void {
-  assertThrows(() => {
-    Deno.readDirSync("tests/");
-  }, Deno.errors.PermissionDenied);
-});
-
-unitTest({ perms: { read: true } }, function readDirSyncNotDir(): void {
+Deno.test("readDirSyncNotDir", function (): void {
   assertThrows(() => {
     Deno.readDirSync("cli/tests/fixture.json");
   }, Error);
 });
 
-unitTest({ perms: { read: true } }, function readDirSyncNotFound(): void {
+Deno.test("readDirSyncNotFound", function (): void {
   assertThrows(() => {
     Deno.readDirSync("bad_dir_name");
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { read: true } }, async function readDirSuccess(): Promise<
+Deno.test("readDirSuccess", async function (): Promise<
   void
 > {
   const files = [];
@@ -59,7 +52,7 @@ unitTest({ perms: { read: true } }, async function readDirSuccess(): Promise<
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
+Deno.test("readDirWithUrl", async function (): Promise<
   void
 > {
   const files = [];
@@ -71,30 +64,42 @@ unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: false } }, async function readDirPerm(): Promise<
-  void
-> {
-  await assertThrowsAsync(async () => {
-    await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
-  }, Deno.errors.PermissionDenied);
-});
-
-unitTest(
-  { perms: { read: true }, ignore: Deno.build.os == "windows" },
-  async function readDirDevFd(): Promise<
+Deno.test({
+  name: "readDirDevFd",
+  ignore: Deno.build.os == "windows",
+  async fn(): Promise<
     void
   > {
     for await (const _ of Deno.readDir("/dev/fd")) {
       // We don't actually care whats in here; just that we don't panic on non regular entries
     }
   },
-);
+});
 
-unitTest(
-  { perms: { read: true }, ignore: Deno.build.os == "windows" },
-  function readDirDevFdSync(): void {
+Deno.test({
+  name: "readDirDevFdSync",
+  ignore: Deno.build.os == "windows",
+  fn(): void {
     for (const _ of Deno.readDirSync("/dev/fd")) {
       // We don't actually care whats in here; just that we don't panic on non regular file entries
     }
   },
-);
+});
+
+Deno.test("readDirPerm", async function (): Promise<
+  void
+> {
+  await Deno.permissions.revoke({ name: "read" });
+
+  await assertThrowsAsync(async () => {
+    await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
+  }, Deno.errors.PermissionDenied);
+});
+
+Deno.test("readDirSyncPerm", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "read" });
+
+  assertThrows(() => {
+    Deno.readDirSync("tests/");
+  }, Deno.errors.PermissionDenied);
+});

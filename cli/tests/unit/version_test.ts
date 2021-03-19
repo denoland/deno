@@ -1,6 +1,6 @@
-import { assert, unitTest } from "./test_util.ts";
+import { assert } from "./test_util.ts";
 
-unitTest(function version(): void {
+Deno.test("version", function (): void {
   const pattern = /^\d+\.\d+\.\d+/;
   assert(pattern.test(Deno.version.deno));
   assert(pattern.test(Deno.version.v8));

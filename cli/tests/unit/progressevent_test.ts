@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
-unitTest(function progressEventConstruct(): void {
+Deno.test("progressEventConstruct", function (): void {
   const progressEventDefs = new ProgressEvent("progressEventType", {});
   assertEquals(progressEventDefs.lengthComputable, false);
   assertEquals(progressEventDefs.loaded, 0);

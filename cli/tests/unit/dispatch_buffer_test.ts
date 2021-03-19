@@ -1,10 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertMatch,
-  unitTest,
-  unreachable,
-} from "./test_util.ts";
+import { assert, assertEquals, assertMatch, unreachable } from "./test_util.ts";
 
 const readErrorStackPattern = new RegExp(
   `^.*
@@ -14,7 +8,7 @@ const readErrorStackPattern = new RegExp(
   "ms",
 );
 
-unitTest(async function sendAsyncStackTrace(): Promise<void> {
+Deno.test("sendAsyncStackTrace", async function (): Promise<void> {
   const buf = new Uint8Array(10);
   const rid = 10;
   try {
@@ -33,7 +27,7 @@ declare global {
   }
 }
 
-unitTest(function bufferOpsHeaderTooShort(): void {
+Deno.test("bufferOpsHeaderTooShort", function (): void {
   for (const op of ["op_read_sync", "op_read_async"]) {
     const readOpId = Deno.core.ops()[op];
     const res = Deno.core.send(

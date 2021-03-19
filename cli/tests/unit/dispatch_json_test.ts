@@ -1,4 +1,4 @@
-import { assertMatch, assertStrictEquals, unitTest } from "./test_util.ts";
+import { assertMatch, assertStrictEquals } from "./test_util.ts";
 
 declare global {
   // deno-lint-ignore no-namespace
@@ -8,7 +8,7 @@ declare global {
   }
 }
 
-unitTest(function malformedJsonControlBuffer(): void {
+Deno.test("malformedJsonControlBuffer", function (): void {
   const opId = Deno.core.ops()["op_open_sync"];
   const argsBuf = new Uint8Array([1, 2, 3, 4, 5]);
   const resBuf = Deno.core.send(opId, argsBuf);
@@ -19,7 +19,7 @@ unitTest(function malformedJsonControlBuffer(): void {
   assertMatch(resObj.err.message, /\bexpected value\b/);
 });
 
-unitTest(function invalidPromiseId(): void {
+Deno.test("invalidPromiseId", function (): void {
   const opId = Deno.core.ops()["op_open_async"];
   const reqBuf = new Uint8Array([0, 0, 0, 0, 0, 0, 0]);
   const resBuf = Deno.core.send(opId, reqBuf);

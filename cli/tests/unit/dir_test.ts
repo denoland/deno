@@ -1,27 +1,24 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
-unitTest({ perms: { read: true } }, function dirCwdNotNull(): void {
+Deno.test("dirCwdNotNull", function (): void {
   assert(Deno.cwd() != null);
 });
 
-unitTest(
-  { perms: { read: true, write: true } },
-  function dirCwdChdirSuccess(): void {
-    const initialdir = Deno.cwd();
-    const path = Deno.makeTempDirSync();
-    Deno.chdir(path);
-    const current = Deno.cwd();
-    if (Deno.build.os === "darwin") {
-      assertEquals(current, "/private" + path);
-    } else {
-      assertEquals(current, path);
-    }
-    Deno.chdir(initialdir);
-  },
-);
+Deno.test("dirCwdChdirSuccess", function (): void {
+  const initialdir = Deno.cwd();
+  const path = Deno.makeTempDirSync();
+  Deno.chdir(path);
+  const current = Deno.cwd();
+  if (Deno.build.os === "darwin") {
+    assertEquals(current, "/private" + path);
+  } else {
+    assertEquals(current, path);
+  }
+  Deno.chdir(initialdir);
+});
 
-unitTest({ perms: { read: true, write: true } }, function dirCwdError(): void {
+Deno.test("dirCwdError", function (): void {
   // excluding windows since it throws resource busy, while removeSync
   if (["linux", "darwin"].includes(Deno.build.os)) {
     const initialdir = Deno.cwd();
@@ -38,7 +35,16 @@ unitTest({ perms: { read: true, write: true } }, function dirCwdError(): void {
   }
 });
 
-unitTest({ perms: { read: false } }, function dirCwdPermError(): void {
+Deno.test("dirChdirError", function (): void {
+  const path = Deno.makeTempDirSync() + "test";
+  assertThrows(() => {
+    Deno.chdir(path);
+  }, Deno.errors.NotFound);
+});
+
+Deno.test("dirCwdPermError", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "read" });
+
   assertThrows(
     () => {
       Deno.cwd();
@@ -47,13 +53,3 @@ unitTest({ perms: { read: false } }, function dirCwdPermError(): void {
     "Requires read access to <CWD>, run again with the --allow-read flag",
   );
 });
-
-unitTest(
-  { perms: { read: true, write: true } },
-  function dirChdirError(): void {
-    const path = Deno.makeTempDirSync() + "test";
-    assertThrows(() => {
-      Deno.chdir(path);
-    }, Deno.errors.NotFound);
-  },
-);

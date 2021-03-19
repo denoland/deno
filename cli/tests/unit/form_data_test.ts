@@ -1,22 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertStringIncludes,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertStringIncludes } from "./test_util.ts";
 
-unitTest(function formDataHasCorrectNameProp(): void {
+Deno.test("formDataHasCorrectNameProp", function (): void {
   assertEquals(FormData.name, "FormData");
 });
 
-unitTest(function formDataParamsAppendSuccess(): void {
+Deno.test("formDataParamsAppendSuccess", function (): void {
   const formData = new FormData();
   formData.append("a", "true");
   assertEquals(formData.get("a"), "true");
 });
 
-unitTest(function formDataParamsDeleteSuccess(): void {
+Deno.test("formDataParamsDeleteSuccess", function (): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -26,7 +21,7 @@ unitTest(function formDataParamsDeleteSuccess(): void {
   assertEquals(formData.get("b"), null);
 });
 
-unitTest(function formDataParamsGetAllSuccess(): void {
+Deno.test("formDataParamsGetAllSuccess", function (): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -36,7 +31,7 @@ unitTest(function formDataParamsGetAllSuccess(): void {
   assertEquals(formData.getAll("c"), []);
 });
 
-unitTest(function formDataParamsGetSuccess(): void {
+Deno.test("formDataParamsGetSuccess", function (): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -52,7 +47,7 @@ unitTest(function formDataParamsGetSuccess(): void {
   assertEquals(formData.get("e"), "null");
 });
 
-unitTest(function formDataParamsHasSuccess(): void {
+Deno.test("formDataParamsHasSuccess", function (): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -61,7 +56,7 @@ unitTest(function formDataParamsHasSuccess(): void {
   assert(!formData.has("c"));
 });
 
-unitTest(function formDataParamsSetSuccess(): void {
+Deno.test("formDataParamsSetSuccess", function (): void {
   const formData = new FormData();
   formData.append("a", "true");
   formData.append("b", "false");
@@ -78,7 +73,7 @@ unitTest(function formDataParamsSetSuccess(): void {
   assertEquals(formData.get("e"), "null");
 });
 
-unitTest(function fromDataUseFile(): void {
+Deno.test("fromDataUseFile", function (): void {
   const formData = new FormData();
   const file = new File(["foo"], "bar", {
     type: "text/plain",
@@ -87,7 +82,7 @@ unitTest(function fromDataUseFile(): void {
   assertEquals(formData.get("file"), file);
 });
 
-unitTest(function formDataSetEmptyBlobSuccess(): void {
+Deno.test("formDataSetEmptyBlobSuccess", function (): void {
   const formData = new FormData();
   formData.set("a", new Blob([]), "blank.txt");
   formData.get("a");
@@ -99,7 +94,7 @@ unitTest(function formDataSetEmptyBlobSuccess(): void {
   */
 });
 
-unitTest(function formDataBlobFilename(): void {
+Deno.test("formDataBlobFilename", function (): void {
   const formData = new FormData();
   const content = new TextEncoder().encode("deno");
   formData.set("a", new Blob([content]));
@@ -108,7 +103,7 @@ unitTest(function formDataBlobFilename(): void {
   assertEquals(file.name, "blob");
 });
 
-unitTest(function formDataParamsForEachSuccess(): void {
+Deno.test("formDataParamsForEachSuccess", function (): void {
   const init = [
     ["a", "54"],
     ["b", "true"],
@@ -127,7 +122,7 @@ unitTest(function formDataParamsForEachSuccess(): void {
   assertEquals(callNum, init.length);
 });
 
-unitTest(function formDataParamsArgumentsCheck(): void {
+Deno.test("formDataParamsArgumentsCheck", function (): void {
   const methodRequireOneParam = [
     "delete",
     "getAll",
@@ -206,7 +201,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
   });
 });
 
-unitTest(function toStringShouldBeWebCompatibility(): void {
+Deno.test("toStringShouldBeWebCompatibility", function (): void {
   const formData = new FormData();
   assertEquals(formData.toString(), "[object FormData]");
 });

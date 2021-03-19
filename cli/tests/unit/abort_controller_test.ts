@@ -1,6 +1,6 @@
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
-unitTest(function basicAbortController() {
+Deno.test("basicAbortController", function () {
   const controller = new AbortController();
   assert(controller);
   const { signal } = controller;
@@ -10,7 +10,7 @@ unitTest(function basicAbortController() {
   assertEquals(signal.aborted, true);
 });
 
-unitTest(function signalCallsOnabort() {
+Deno.test("signalCallsOnabort", function () {
   const controller = new AbortController();
   const { signal } = controller;
   let called = false;
@@ -23,7 +23,7 @@ unitTest(function signalCallsOnabort() {
   assert(called);
 });
 
-unitTest(function signalEventListener() {
+Deno.test("signalEventListener", function () {
   const controller = new AbortController();
   const { signal } = controller;
   let called = false;
@@ -36,7 +36,7 @@ unitTest(function signalEventListener() {
   assert(called);
 });
 
-unitTest(function onlyAbortsOnce() {
+Deno.test("onlyAbortsOnce", function () {
   const controller = new AbortController();
   const { signal } = controller;
   let called = 0;
@@ -50,7 +50,7 @@ unitTest(function onlyAbortsOnce() {
   assertEquals(called, 2);
 });
 
-unitTest(function controllerHasProperToString() {
+Deno.test("controllerHasProperToString", function () {
   const actual = Object.prototype.toString.call(new AbortController());
   assertEquals(actual, "[object AbortController]");
 });

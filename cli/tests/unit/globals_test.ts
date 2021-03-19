@@ -1,72 +1,72 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, unitTest } from "./test_util.ts";
+import { assert } from "./test_util.ts";
 
-unitTest(function globalThisExists(): void {
+Deno.test("globalThisExists", function (): void {
   assert(globalThis != null);
 });
 
-unitTest(function noInternalGlobals(): void {
+Deno.test("noInternalGlobals", function (): void {
   // globalThis.__bootstrap should not be there.
   for (const key of Object.keys(globalThis)) {
     assert(!key.startsWith("_"));
   }
 });
 
-unitTest(function windowExists(): void {
+Deno.test("windowExists", function (): void {
   assert(window != null);
 });
 
-unitTest(function selfExists(): void {
+Deno.test("selfExists", function (): void {
   assert(self != null);
 });
 
-unitTest(function windowWindowExists(): void {
+Deno.test("windowWindowExists", function (): void {
   assert(window.window === window);
 });
 
-unitTest(function windowSelfExists(): void {
+Deno.test("windowSelfExists", function (): void {
   assert(window.self === window);
 });
 
-unitTest(function globalThisEqualsWindow(): void {
+Deno.test("globalThisEqualsWindow", function (): void {
   assert(globalThis === window);
 });
 
-unitTest(function globalThisEqualsSelf(): void {
+Deno.test("globalThisEqualsSelf", function (): void {
   assert(globalThis === self);
 });
 
-unitTest(function globalThisInstanceofWindow(): void {
+Deno.test("globalThisInstanceofWindow", function (): void {
   assert(globalThis instanceof Window);
 });
 
-unitTest(function globalThisConstructorLength(): void {
+Deno.test("globalThisConstructorLength", function (): void {
   assert(globalThis.constructor.length === 0);
 });
 
-unitTest(function globalThisInstanceofEventTarget(): void {
+Deno.test("globalThisInstanceofEventTarget", function (): void {
   assert(globalThis instanceof EventTarget);
 });
 
-unitTest(function navigatorInstanceofNavigator(): void {
+Deno.test("navigatorInstanceofNavigator", function (): void {
   // TODO(nayeemrmn): Add `Navigator` to deno_lint globals.
   // deno-lint-ignore no-undef
   assert(navigator instanceof Navigator);
 });
 
-unitTest(function DenoNamespaceExists(): void {
+Deno.test("DenoNamespaceExists", function (): void {
   assert(Deno != null);
 });
 
-unitTest(function DenoNamespaceEqualsWindowDeno(): void {
+Deno.test("DenoNamespaceEqualsWindowDeno", function (): void {
   assert(Deno === window.Deno);
 });
 
-unitTest(function DenoNamespaceIsFrozen(): void {
+Deno.test("DenoNamespaceIsFrozen", function (): void {
   assert(Object.isFrozen(Deno));
 });
 
-unitTest(function webAssemblyExists(): void {
+Deno.test("webAssemblyExists", function (): void {
   assert(typeof WebAssembly.compile === "function");
 });
 
@@ -78,7 +78,7 @@ declare global {
   }
 }
 
-unitTest(function DenoNamespaceImmutable(): void {
+Deno.test("DenoNamespaceImmutable", function (): void {
   const denoCopy = window.Deno;
   try {
     // deno-lint-ignore no-explicit-any
@@ -133,7 +133,7 @@ unitTest(function DenoNamespaceImmutable(): void {
   assert(print === Deno.core.print);
 });
 
-unitTest(async function windowQueueMicrotask(): Promise<void> {
+Deno.test("windowQueueMicrotask", async function (): Promise<void> {
   let resolve1: () => void | undefined;
   let resolve2: () => void | undefined;
   let microtaskDone = false;
