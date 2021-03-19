@@ -1019,7 +1019,7 @@ async fn test_command(
           module_specifier.clone(),
           permissions.clone(),
           sender.clone(),
-          filter.clone(),
+          filter,
         );
 
         tokio_util::run_basic(future)
@@ -1108,7 +1108,7 @@ async fn test_command(
         for (name, error) in &failures {
           println!("{}", name);
           println!("{}", error);
-          println!("");
+          println!();
         }
 
         println!("failures:\n");

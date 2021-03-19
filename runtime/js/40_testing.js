@@ -151,11 +151,9 @@ finishing test case.`;
         if (filter.startsWith("/") && filter.endsWith("/")) {
           const regex = new RegExp(filter.slice(1, filter.length - 1));
           return regex.test(def.name);
-        } else {
-          return def.name.includes(filter);
         }
 
-        return false;
+        return def.name.includes(filter);
       }
 
       return true;
