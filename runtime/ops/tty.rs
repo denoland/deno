@@ -9,6 +9,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::RcRef;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -58,7 +59,7 @@ pub struct SetRawOptions {
 
 #[derive(Deserialize)]
 pub struct SetRawArgs {
-  rid: u32,
+  rid: ResourceId,
   mode: bool,
   options: SetRawOptions,
 }
@@ -215,7 +216,7 @@ fn op_set_raw(
 
 #[derive(Deserialize)]
 pub struct IsattyArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 fn op_isatty(
@@ -225,33 +226,32 @@ fn op_isatty(
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
-  let isatty: bool =
-    StdFileResource::with(state, rid as u32, move |r| match r {
-      Ok(std_file) => {
-        #[cfg(windows)]
-        {
-          use winapi::um::consoleapi;
+  let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
+    Ok(std_file) => {
+      #[cfg(windows)]
+      {
+        use winapi::um::consoleapi;
 
-          let handle = get_windows_handle(&std_file)?;
-          let mut test_mode: DWORD = 0;
-          // If I cannot get mode out of console, it is not a console.
-          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
-        }
-        #[cfg(unix)]
-        {
-          use std::os::unix::io::AsRawFd;
-          let raw_fd = std_file.as_raw_fd();
-          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
-        }
+        let handle = get_windows_handle(&std_file)?;
+        let mut test_mode: DWORD = 0;
+        // If I cannot get mode out of console, it is not a console.
+        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
       }
-      _ => Ok(false),
-    })?;
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        let raw_fd = std_file.as_raw_fd();
+        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      }
+    }
+    _ => Ok(false),
+  })?;
   Ok(json!(isatty))
 }
 
 #[derive(Deserialize)]
 pub struct ConsoleSizeArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 #[derive(Serialize)]
@@ -269,7 +269,7 @@ fn op_console_size(
 
   let rid = args.rid;
 
-  let size = StdFileResource::with(state, rid as u32, move |r| match r {
+  let size = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
       {

@@ -25,7 +25,7 @@ use std::sync::Mutex;
 const PERMISSION_EMOJI: &str = "⚠️";
 
 /// Tri-state value for storing permission state
-#[derive(PartialEq, Debug, Clone, Copy, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
 pub enum PermissionState {
   Granted = 0,
   Prompt = 1,

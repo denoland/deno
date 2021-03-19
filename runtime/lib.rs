@@ -19,7 +19,6 @@ pub use deno_websocket;
 pub mod colors;
 pub mod errors;
 pub mod fs_util;
-pub mod http_util;
 pub mod inspector;
 pub mod js;
 pub mod metrics;

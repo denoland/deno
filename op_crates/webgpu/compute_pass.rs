@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -24,7 +25,7 @@ impl Resource for WebGPUComputePass {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassSetPipelineArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   pipeline: u32,
 }
 
@@ -53,7 +54,7 @@ pub fn op_webgpu_compute_pass_set_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassDispatchArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   x: u32,
   y: u32,
   z: u32,
@@ -82,7 +83,7 @@ pub fn op_webgpu_compute_pass_dispatch(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassDispatchIndirectArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   indirect_buffer: u32,
   indirect_offset: u64,
 }
@@ -113,7 +114,7 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassBeginPipelineStatisticsQueryArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   query_set: u32,
   query_index: u32,
 }
@@ -146,7 +147,7 @@ pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassEndPipelineStatisticsQueryArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
 }
 
 pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
@@ -171,7 +172,7 @@ pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassWriteTimestampArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   query_set: u32,
   query_index: u32,
 }
@@ -204,8 +205,8 @@ pub fn op_webgpu_compute_pass_write_timestamp(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassEndPassArgs {
-  command_encoder_rid: u32,
-  compute_pass_rid: u32,
+  command_encoder_rid: ResourceId,
+  compute_pass_rid: ResourceId,
 }
 
 pub fn op_webgpu_compute_pass_end_pass(
@@ -240,7 +241,7 @@ pub fn op_webgpu_compute_pass_end_pass(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassSetBindGroupArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   index: u32,
   bind_group: u32,
   dynamic_offsets_data: Option<Vec<u32>>,
@@ -286,7 +287,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassPushDebugGroupArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   group_label: String,
 }
 
@@ -315,7 +316,7 @@ pub fn op_webgpu_compute_pass_push_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassPopDebugGroupArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
 }
 
 pub fn op_webgpu_compute_pass_pop_debug_group(
@@ -338,7 +339,7 @@ pub fn op_webgpu_compute_pass_pop_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassInsertDebugMarkerArgs {
-  compute_pass_rid: u32,
+  compute_pass_rid: ResourceId,
   marker_label: String,
 }
 

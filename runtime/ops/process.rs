@@ -16,6 +16,7 @@ use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -34,7 +35,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 fn clone_file(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
 ) -> Result<std::fs::File, AnyError> {
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
@@ -60,9 +61,9 @@ pub struct RunArgs {
   stdin: String,
   stdout: String,
   stderr: String,
-  stdin_rid: u32,
-  stdout_rid: u32,
-  stderr_rid: u32,
+  stdin_rid: ResourceId,
+  stdout_rid: ResourceId,
+  stderr_rid: ResourceId,
 }
 
 struct ChildResource {
@@ -178,7 +179,7 @@ fn op_run(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunStatusArgs {
-  rid: i32,
+  rid: ResourceId,
 }
 
 async fn op_run_status(
@@ -186,7 +187,7 @@ async fn op_run_status(
   args: RunStatusArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   {
     let s = state.borrow();
