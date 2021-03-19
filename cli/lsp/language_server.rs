@@ -41,7 +41,6 @@ use super::analysis::ResolvedDependency;
 use super::capabilities;
 use super::config::Config;
 use super::diagnostics;
-use super::diagnostics::DiagnosticCollection;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::performance::Performance;
@@ -66,6 +65,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
   pub assets: Assets,
+  pub config: Config,
   pub documents: DocumentCache,
   pub performance: Performance,
   pub sources: Sources,
@@ -80,8 +80,7 @@ pub(crate) struct Inner {
   client: Client,
   /// Configuration information.
   config: Config,
-  /// A collection of diagnostics from different sources.
-  diagnostics: DiagnosticCollection,
+  diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
   /// An optional URL which provides the location of a TypeScript configuration
@@ -100,7 +99,7 @@ pub(crate) struct Inner {
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
-  ts_server: TsServer,
+  ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
 }
@@ -118,21 +117,24 @@ impl Inner {
       .expect("could not access DENO_DIR");
     let location = dir.root.join("deps");
     let sources = Sources::new(&location);
+    let ts_server = Arc::new(TsServer::new());
+    let performance = Performance::default();
+    let diagnostics_server = diagnostics::DiagnosticsServer::new();
 
     Self {
       assets: Default::default(),
       client,
       config: Default::default(),
-      diagnostics: Default::default(),
+      diagnostics_server,
       documents: Default::default(),
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
       navigation_trees: Default::default(),
-      performance: Default::default(),
+      performance,
       sources,
       ts_fixable_diagnostics: Default::default(),
-      ts_server: TsServer::new(),
+      ts_server,
       url_map: Default::default(),
     }
   }
@@ -242,157 +244,10 @@ impl Inner {
     }
   }
 
-  async fn prepare_diagnostics(&mut self) -> Result<(), AnyError> {
-    let (enabled, lint_enabled) = {
-      let config = &self.config;
-      (config.settings.enable, config.settings.lint)
-    };
-
-    let lint = async {
-      let mut diagnostics = None;
-      if lint_enabled {
-        let mark = self.performance.mark("prepare_diagnostics_lint");
-        diagnostics = Some(
-          diagnostics::generate_lint_diagnostics(
-            self.snapshot(),
-            self.diagnostics.clone(),
-          )
-          .await,
-        );
-        self.performance.measure(mark);
-      };
-      Ok::<_, AnyError>(diagnostics)
-    };
-
-    let ts = async {
-      let mut diagnostics = None;
-      if enabled {
-        let mark = self.performance.mark("prepare_diagnostics_ts");
-        diagnostics = Some(
-          diagnostics::generate_ts_diagnostics(
-            self.snapshot(),
-            self.diagnostics.clone(),
-            &self.ts_server,
-          )
-          .await?,
-        );
-        self.performance.measure(mark);
-      };
-      Ok::<_, AnyError>(diagnostics)
-    };
-
-    let deps = async {
-      let mut diagnostics = None;
-      if enabled {
-        let mark = self.performance.mark("prepare_diagnostics_deps");
-        diagnostics = Some(
-          diagnostics::generate_dependency_diagnostics(
-            self.snapshot(),
-            self.diagnostics.clone(),
-          )
-          .await?,
-        );
-        self.performance.measure(mark);
-      };
-      Ok::<_, AnyError>(diagnostics)
-    };
-
-    let (lint_res, ts_res, deps_res) = tokio::join!(lint, ts, deps);
-    let mut disturbed = false;
-
-    if let Some(diagnostics) = lint_res? {
-      for (specifier, version, diagnostics) in diagnostics {
-        self.diagnostics.set(
-          specifier,
-          DiagnosticSource::Lint,
-          version,
-          diagnostics,
-        );
-        disturbed = true;
-      }
-    }
-
-    if let Some(diagnostics) = ts_res? {
-      for (specifier, version, diagnostics) in diagnostics {
-        self.diagnostics.set(
-          specifier,
-          DiagnosticSource::TypeScript,
-          version,
-          diagnostics,
-        );
-        disturbed = true;
-      }
-    }
-
-    if let Some(diagnostics) = deps_res? {
-      for (specifier, version, diagnostics) in diagnostics {
-        self.diagnostics.set(
-          specifier,
-          DiagnosticSource::Deno,
-          version,
-          diagnostics,
-        );
-        disturbed = true;
-      }
-    }
-
-    if disturbed {
-      self.publish_diagnostics().await?;
-    }
-
-    Ok(())
-  }
-
-  async fn publish_diagnostics(&mut self) -> Result<(), AnyError> {
-    let mark = self.performance.mark("publish_diagnostics");
-    let (maybe_changes, diagnostics_collection) = {
-      let diagnostics_collection = &mut self.diagnostics;
-      let maybe_changes = diagnostics_collection.take_changes();
-      (maybe_changes, diagnostics_collection.clone())
-    };
-    if let Some(diagnostic_changes) = maybe_changes {
-      for specifier in diagnostic_changes {
-        // TODO(@kitsonk) not totally happy with the way we collect and store
-        // different types of diagnostics and offer them up to the client, we
-        // do need to send "empty" vectors though when a particular feature is
-        // disabled, otherwise the client will not clear down previous
-        // diagnostics
-        let mut diagnostics: Vec<Diagnostic> = if self.config.settings.lint {
-          diagnostics_collection
-            .diagnostics_for(&specifier, &DiagnosticSource::Lint)
-            .cloned()
-            .collect()
-        } else {
-          vec![]
-        };
-        if self.enabled() {
-          diagnostics.extend(
-            diagnostics_collection
-              .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
-              .cloned(),
-          );
-          diagnostics.extend(
-            diagnostics_collection
-              .diagnostics_for(&specifier, &DiagnosticSource::Deno)
-              .cloned(),
-          );
-        }
-        let uri = specifier.clone();
-        let version = self.documents.version(&specifier);
-        self
-          .client
-          .publish_diagnostics(uri, diagnostics, version)
-          .await;
-      }
-    }
-
-    self.performance.measure(mark);
-    Ok(())
-  }
-
-  fn snapshot(&self) -> StateSnapshot {
+  pub(crate) fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
+      config: self.config.clone(),
       documents: self.documents.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
@@ -667,8 +522,7 @@ impl Inner {
     self.analyze_dependencies(&specifier, &params.text_document.text);
     self.performance.measure(mark);
 
-    // TODO(@kitsonk): how to better lazily do this?
-    if let Err(err) = self.prepare_diagnostics().await {
+    if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
   }
@@ -687,8 +541,7 @@ impl Inner {
     }
     self.performance.measure(mark);
 
-    // TODO(@kitsonk): how to better lazily do this?
-    if let Err(err) = self.prepare_diagnostics().await {
+    if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
   }
@@ -706,8 +559,7 @@ impl Inner {
     self.navigation_trees.remove(&specifier);
 
     self.performance.measure(mark);
-    // TODO(@kitsonk): how to better lazily do this?
-    if let Err(err) = self.prepare_diagnostics().await {
+    if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
   }
@@ -755,7 +607,7 @@ impl Inner {
           .show_message(MessageType::Warning, err.to_string())
           .await;
       }
-      if let Err(err) = self.prepare_diagnostics().await {
+      if let Err(err) = self.diagnostics_server.update() {
         error!("{}", err);
       }
     } else {
@@ -931,11 +783,14 @@ impl Inner {
     }
     let line_index = self.get_line_index_sync(&specifier).unwrap();
     let mut code_actions = CodeActionCollection::default();
-    let file_diagnostics: Vec<Diagnostic> = self
-      .diagnostics
-      .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
-      .cloned()
-      .collect();
+    let file_diagnostics = self
+      .diagnostics_server
+      .get(specifier.clone(), DiagnosticSource::TypeScript)
+      .await
+      .map_err(|err| {
+        error!("Unable to get diagnostics: {}", err);
+        LspError::internal_error()
+      })?;
     for diagnostic in &fixable_diagnostics {
       match diagnostic.source.as_deref() {
         Some("deno-ts") => {
@@ -1062,7 +917,7 @@ impl Inner {
       let mut code_lenses = cl.borrow_mut();
 
       // TSC Implementations Code Lens
-      if self.config.settings.enabled_code_lens_implementations() {
+      if self.config.settings.code_lens.implementations {
         let source = CodeLensSource::Implementations;
         match i.kind {
           tsc::ScriptElementKind::InterfaceElement => {
@@ -1086,7 +941,7 @@ impl Inner {
       }
 
       // TSC References Code Lens
-      if self.config.settings.enabled_code_lens_references() {
+      if self.config.settings.code_lens.references {
         let source = CodeLensSource::References;
         if let Some(parent) = &mp {
           if parent.kind == tsc::ScriptElementKind::EnumElement {
@@ -1095,11 +950,7 @@ impl Inner {
         }
         match i.kind {
           tsc::ScriptElementKind::FunctionElement => {
-            if self
-              .config
-              .settings
-              .enabled_code_lens_references_all_functions()
-            {
+            if self.config.settings.code_lens.references_all_functions {
               code_lenses.push(i.to_code_lens(
                 &line_index,
                 &specifier,
@@ -1503,7 +1354,6 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    // TODO(lucacasonato): handle error correctly
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1513,13 +1363,22 @@ impl Inner {
           specifier
         )));
       };
+    let trigger_character = if let Some(context) = &params.context {
+      context.trigger_character.clone()
+    } else {
+      None
+    };
+    let position =
+      line_index.offset_tsc(params.text_document_position.position)?;
     let req = tsc::RequestMethod::GetCompletions((
-      specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
-      tsc::UserPreferences {
-        // TODO(lucacasonato): enable this. see https://github.com/denoland/deno/pull/8651
-        include_completions_with_insert_text: Some(false),
-        ..Default::default()
+      specifier.clone(),
+      position,
+      tsc::GetCompletionsAtPositionOptions {
+        user_preferences: tsc::UserPreferences {
+          include_completions_with_insert_text: Some(true),
+          ..Default::default()
+        },
+        trigger_character,
       },
     ));
     let maybe_completion_info: Option<tsc::CompletionInfo> = self
@@ -1532,12 +1391,58 @@ impl Inner {
       })?;
 
     if let Some(completions) = maybe_completion_info {
-      let results = completions.into_completion_response(&line_index);
+      let results = completions.as_completion_response(
+        &line_index,
+        &self.config.settings.suggest,
+        &specifier,
+        position,
+      );
       self.performance.measure(mark);
       Ok(Some(results))
     } else {
       self.performance.measure(mark);
       Ok(None)
+    }
+  }
+
+  async fn completion_resolve(
+    &mut self,
+    params: CompletionItem,
+  ) -> LspResult<CompletionItem> {
+    let mark = self.performance.mark("completion_resolve");
+    if let Some(data) = &params.data {
+      let data: tsc::CompletionItemData = serde_json::from_value(data.clone())
+        .map_err(|err| {
+          error!("{}", err);
+          LspError::invalid_params(
+            "Could not decode data field of completion item.",
+          )
+        })?;
+      let req = tsc::RequestMethod::GetCompletionDetails(data.into());
+      let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Unable to get completion info from TypeScript: {}", err);
+          LspError::internal_error()
+        })?;
+      if let Some(completion_info) = maybe_completion_info {
+        let completion_item = completion_info.as_completion_item(&params);
+        self.performance.measure(mark);
+        Ok(completion_item)
+      } else {
+        error!(
+          "Received an undefined response from tsc for completion details."
+        );
+        self.performance.measure(mark);
+        Ok(params)
+      }
+    } else {
+      self.performance.measure(mark);
+      Err(LspError::invalid_params(
+        "The completion item is missing the data field.",
+      ))
     }
   }
 
@@ -1748,7 +1653,13 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    self.0.lock().await.initialize(params).await
+    let mut language_server = self.0.lock().await;
+    let client = language_server.client.clone();
+    let ts_server = language_server.ts_server.clone();
+    language_server
+      .diagnostics_server
+      .start(self.0.clone(), client, ts_server);
+    language_server.initialize(params).await
   }
 
   async fn initialized(&self, params: InitializedParams) {
@@ -1854,6 +1765,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.completion(params).await
   }
 
+  async fn completion_resolve(
+    &self,
+    params: CompletionItem,
+  ) -> LspResult<CompletionItem> {
+    self.0.lock().await.completion_resolve(params).await
+  }
+
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
@@ -1932,10 +1850,16 @@ impl Inner {
       if let Some(source) = self.documents.content(&referrer).unwrap() {
         self.analyze_dependencies(&referrer, &source);
       }
-      self.diagnostics.invalidate(&referrer);
+      self
+        .diagnostics_server
+        .invalidate(referrer)
+        .map_err(|err| {
+          error!("{}", err);
+          LspError::internal_error()
+        })?;
     }
 
-    self.prepare_diagnostics().await.map_err(|err| {
+    self.diagnostics_server.update().map_err(|err| {
       error!("{}", err);
       LspError::internal_error()
     })?;
@@ -2018,6 +1942,7 @@ mod tests {
     V: FnOnce(Value),
   {
     None,
+    Delay(u64),
     RequestAny,
     Request(u64, Value),
     RequestAssert(V),
@@ -2043,14 +1968,23 @@ mod tests {
         assert_eq!(self.service.poll_ready(), Poll::Ready(Ok(())));
         let fixtures_path = test_util::root_path().join("cli/tests/lsp");
         assert!(fixtures_path.is_dir());
-        let req_path = fixtures_path.join(req_path_str);
-        let req_str = fs::read_to_string(req_path).unwrap();
-        let req: jsonrpc::Incoming = serde_json::from_str(&req_str).unwrap();
         let response: Result<Option<jsonrpc::Outgoing>, ExitedError> =
-          self.service.call(req).await;
+          if req_path_str.is_empty() {
+            Ok(None)
+          } else {
+            let req_path = fixtures_path.join(req_path_str);
+            let req_str = fs::read_to_string(req_path).unwrap();
+            let req: jsonrpc::Incoming =
+              serde_json::from_str(&req_str).unwrap();
+            self.service.call(req).await
+          };
         match response {
           Ok(result) => match expected {
             LspResponse::None => assert_eq!(result, None),
+            LspResponse::Delay(millis) => {
+              tokio::time::sleep(tokio::time::Duration::from_millis(*millis))
+                .await
+            }
             LspResponse::RequestAny => match result {
               Some(jsonrpc::Outgoing::Response(_)) => (),
               _ => panic!("unexpected result: {:?}", result),
@@ -2296,18 +2230,18 @@ mod tests {
             "contents": [
               {
                 "language": "typescript",
-                "value": "const b: \"😃\"",
+                "value": "const b: \"🦕😃\"",
               },
               "",
             ],
             "range": {
               "start": {
                 "line": 2,
-                "character": 13,
+                "character": 15,
               },
               "end": {
                 "line": 2,
-                "character": 14,
+                "character": 16,
               },
             }
           }),
@@ -2418,7 +2352,7 @@ mod tests {
     let time = Instant::now();
     harness.run().await;
     assert!(
-      time.elapsed().as_millis() <= 15000,
+      time.elapsed().as_millis() <= 10000,
       "the execution time exceeded 10000ms"
     );
   }
@@ -2820,6 +2754,7 @@ mod tests {
       ("initialize_request.json", LspResponse::RequestAny),
       ("initialized_notification.json", LspResponse::None),
       ("did_open_notification_code_action.json", LspResponse::None),
+      ("", LspResponse::Delay(500)),
       (
         "code_action_request.json",
         LspResponse::RequestFixture(2, "code_action_response.json".to_string()),
@@ -2851,6 +2786,58 @@ mod tests {
         LspResponse::RequestFixture(
           2,
           "code_action_response_cache.json".to_string(),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[derive(Deserialize)]
+  struct CompletionResult {
+    pub result: Option<CompletionResponse>,
+  }
+
+  #[tokio::test]
+  async fn test_completions() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      ("did_open_notification_completions.json", LspResponse::None),
+      (
+        "completion_request.json",
+        LspResponse::RequestAssert(|value| {
+          let response: CompletionResult =
+            serde_json::from_value(value).unwrap();
+          let result = response.result.unwrap();
+          match result {
+            CompletionResponse::List(list) => {
+              // there should be at least 90 completions for `Deno.`
+              assert!(list.items.len() > 90);
+            }
+            _ => panic!("unexpected result"),
+          }
+        }),
+      ),
+      (
+        "completion_resolve_request.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "build",
+            "kind": 6,
+            "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\";\n    os: \"darwin\" | \"linux\" | \"windows\";\n    vendor: string;\n    env?: string | undefined;\n}",
+            "documentation": {
+              "kind": "markdown",
+              "value": "Build related information."
+            },
+            "sortText": "1",
+            "insertTextFormat": 1,
+          }),
         ),
       ),
       (
@@ -2907,7 +2894,10 @@ mod tests {
         LspResponse::RequestAssert(|value| {
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
-          assert_eq!(resp.result.averages.len(), 12);
+          // the len can be variable since some of the parts of the language
+          // server run in separate threads and may not add to performance by
+          // the time the results are checked.
+          assert!(resp.result.averages.len() >= 6);
         }),
       ),
       (

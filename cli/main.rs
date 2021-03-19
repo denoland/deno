@@ -285,8 +285,10 @@ fn print_cache_info(
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
     crate::tsc::DENO_NS_LIB,
+    crate::tsc::DENO_CONSOLE_LIB,
+    crate::tsc::DENO_URL_LIB,
     crate::tsc::DENO_WEB_LIB,
     crate::tsc::DENO_FETCH_LIB,
     crate::tsc::DENO_WEBGPU_LIB,
@@ -1321,13 +1323,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let msg = format!(
-        "{}: {}",
-        colors::red_bold("error"),
-        // TODO(lucacasonato): print anyhow error chain here
-        error.to_string().trim()
-      );
-      eprintln!("{}", msg);
+      eprintln!("{}: {:?}", colors::red_bold("error"), error);
       std::process::exit(1);
     }
   }

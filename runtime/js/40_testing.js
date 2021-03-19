@@ -4,8 +4,8 @@
 ((window) => {
   const core = window.Deno.core;
   const { setExitHandler, exit } = window.__bootstrap.os;
-  const { exposeForTest } = window.__bootstrap.internals;
   const { inspectArgs } = window.__bootstrap.console;
+  const { stdout } = window.__bootstrap.files;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
 
@@ -218,7 +218,10 @@ finishing test case.`;
     }
   }
 
-  exposeForTest("runTests", runTests);
+  window.__bootstrap.internals = {
+    ...window.__bootstrap.internals ?? {},
+    runTests,
+  };
 
   window.__bootstrap.testing = {
     test,

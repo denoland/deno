@@ -5,7 +5,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -53,12 +52,12 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SetRawOptions {
+pub struct SetRawOptions {
   cbreak: bool,
 }
 
 #[derive(Deserialize)]
-struct SetRawArgs {
+pub struct SetRawArgs {
   rid: u32,
   mode: bool,
   options: SetRawOptions,
@@ -66,12 +65,11 @@ struct SetRawArgs {
 
 fn op_set_raw(
   state: &mut OpState,
-  args: Value,
+  args: SetRawArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
-  let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let is_raw = args.mode;
   let cbreak = args.options.cbreak;
@@ -216,44 +214,42 @@ fn op_set_raw(
 }
 
 #[derive(Deserialize)]
-struct IsattyArgs {
+pub struct IsattyArgs {
   rid: u32,
 }
 
 fn op_isatty(
   state: &mut OpState,
-  args: Value,
+  args: IsattyArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let isatty: bool =
-    StdFileResource::with(state, rid as u32, move |r| match r {
-      Ok(std_file) => {
-        #[cfg(windows)]
-        {
-          use winapi::um::consoleapi;
+  let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
+    Ok(std_file) => {
+      #[cfg(windows)]
+      {
+        use winapi::um::consoleapi;
 
-          let handle = get_windows_handle(&std_file)?;
-          let mut test_mode: DWORD = 0;
-          // If I cannot get mode out of console, it is not a console.
-          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
-        }
-        #[cfg(unix)]
-        {
-          use std::os::unix::io::AsRawFd;
-          let raw_fd = std_file.as_raw_fd();
-          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
-        }
+        let handle = get_windows_handle(&std_file)?;
+        let mut test_mode: DWORD = 0;
+        // If I cannot get mode out of console, it is not a console.
+        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
       }
-      _ => Ok(false),
-    })?;
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        let raw_fd = std_file.as_raw_fd();
+        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      }
+    }
+    _ => Ok(false),
+  })?;
   Ok(json!(isatty))
 }
 
 #[derive(Deserialize)]
-struct ConsoleSizeArgs {
+pub struct ConsoleSizeArgs {
   rid: u32,
 }
 
@@ -265,15 +261,14 @@ struct ConsoleSize {
 
 fn op_console_size(
   state: &mut OpState,
-  args: Value,
+  args: ConsoleSizeArgs,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
 
-  let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let size = StdFileResource::with(state, rid as u32, move |r| match r {
+  let size = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
       {
@@ -321,5 +316,5 @@ fn op_console_size(
     Err(_) => Err(bad_resource_id()),
   })?;
 
-  Ok(json!(size))
+  Ok(size)
 }

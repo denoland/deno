@@ -18,7 +18,7 @@ use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::{serde_json, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 
 use http::{Method, Request, Uri};
 use serde::Deserialize;
@@ -83,7 +83,7 @@ impl WsStreamResource {}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CheckPermissionArgs {
+pub struct CheckPermissionArgs {
   url: String,
 }
 
@@ -92,14 +92,12 @@ struct CheckPermissionArgs {
 // but actual op that connects WS is async.
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
-  args: Value,
+  args: CheckPermissionArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
-  let args: CheckPermissionArgs = serde_json::from_value(args)?;
-
   state
     .borrow::<WP>()
     .check_net_url(&url::Url::parse(&args.url)?)?;
@@ -109,21 +107,19 @@ where
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateArgs {
+pub struct CreateArgs {
   url: String,
   protocols: String,
 }
 
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: CreateArgs,
   _bufs: BufVec,
 ) -> Result<Value, AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
-  let args: CreateArgs = serde_json::from_value(args)?;
-
   {
     let s = state.borrow();
     s.borrow::<WP>()
@@ -217,7 +213,7 @@ where
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SendArgs {
+pub struct SendArgs {
   rid: u32,
   kind: String,
   text: Option<String>,
@@ -225,11 +221,9 @@ struct SendArgs {
 
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: SendArgs,
   bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: SendArgs = serde_json::from_value(args)?;
-
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
     "binary" => Message::Binary(bufs[0].to_vec()),
@@ -250,7 +244,7 @@ pub async fn op_ws_send(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CloseArgs {
+pub struct CloseArgs {
   rid: u32,
   code: Option<u16>,
   reason: Option<String>,
@@ -258,10 +252,9 @@ struct CloseArgs {
 
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: CloseArgs,
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: CloseArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
     code: CloseCode::from(c),
@@ -283,17 +276,15 @@ pub async fn op_ws_close(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct NextEventArgs {
+pub struct NextEventArgs {
   rid: u32,
 }
 
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: NextEventArgs,
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: NextEventArgs = serde_json::from_value(args)?;
-
   let resource = state
     .borrow_mut()
     .resource_table

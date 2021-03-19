@@ -9,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
@@ -24,8 +23,10 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 
+use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
@@ -81,6 +82,11 @@ pub fn init(isolate: &mut JsRuntime) {
   }
 }
 
+pub struct HttpClientDefaults {
+  pub user_agent: String,
+  pub ca_data: Option<Vec<u8>>,
+}
+
 pub trait FetchPermissions {
   fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
   fn check_read(&self, _p: &Path) -> Result<(), AnyError>;
@@ -103,27 +109,25 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchArgs {
+  method: Option<String>,
+  url: String,
+  base_url: Option<String>,
+  headers: Vec<(String, String)>,
+  client_rid: Option<u32>,
+  has_body: bool,
+}
+
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  args: Value,
+  args: FetchArgs,
   data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct FetchArgs {
-    method: Option<String>,
-    url: String,
-    base_url: Option<String>,
-    headers: Vec<(String, String)>,
-    client_rid: Option<u32>,
-    has_body: bool,
-  }
-
-  let args: FetchArgs = serde_json::from_value(args)?;
-
   let client = if let Some(rid) = args.client_rid {
     let r = state
       .resource_table
@@ -203,19 +207,17 @@ where
   }))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchSendArgs {
+  rid: u32,
+}
+
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FetchSendArgs,
   _data: BufVec,
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct Args {
-    rid: u32,
-  }
-
-  let args: Args = serde_json::from_value(args)?;
-
   let request = state
     .borrow_mut()
     .resource_table
@@ -273,18 +275,17 @@ pub async fn op_fetch_send(
   }))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchRequestWriteArgs {
+  rid: u32,
+}
+
 pub async fn op_fetch_request_write(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FetchRequestWriteArgs,
   data: BufVec,
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct Args {
-    rid: u32,
-  }
-
-  let args: Args = serde_json::from_value(args)?;
   let rid = args.rid;
 
   let buf = match data.len() {
@@ -295,7 +296,7 @@ pub async fn op_fetch_request_write(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchRequestBodyResource>(rid as u32)
+    .get::<FetchRequestBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
@@ -304,18 +305,17 @@ pub async fn op_fetch_request_write(
   Ok(json!({}))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchResponseReadArgs {
+  rid: u32,
+}
+
 pub async fn op_fetch_response_read(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: FetchResponseReadArgs,
   data: BufVec,
 ) -> Result<Value, AnyError> {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  struct Args {
-    rid: u32,
-  }
-
-  let args: Args = serde_json::from_value(args)?;
   let rid = args.rid;
 
   if data.len() != 1 {
@@ -325,7 +325,7 @@ pub async fn op_fetch_response_read(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchResponseBodyResource>(rid as u32)
+    .get::<FetchResponseBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
@@ -385,54 +385,74 @@ impl HttpClientResource {
   }
 }
 
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CreateHttpClientOptions {
+  ca_file: Option<String>,
+  ca_data: Option<String>,
+}
+
 pub fn op_create_http_client<FP>(
   state: &mut OpState,
-  args: Value,
+  args: CreateHttpClientOptions,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  #[derive(Deserialize, Default, Debug)]
-  #[serde(rename_all = "camelCase")]
-  #[serde(default)]
-  struct CreateHttpClientOptions {
-    ca_file: Option<String>,
-    ca_data: Option<String>,
-  }
-
-  let args: CreateHttpClientOptions = serde_json::from_value(args)?;
-
   if let Some(ca_file) = args.ca_file.clone() {
     let permissions = state.borrow::<FP>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
-  let client =
-    create_http_client(args.ca_file.as_deref(), args.ca_data.as_deref())
-      .unwrap();
+  let defaults = state.borrow::<HttpClientDefaults>();
+
+  let cert_data =
+    get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+  let client = create_http_client(
+    defaults.user_agent.clone(),
+    cert_data.or_else(|| defaults.ca_data.clone()),
+  )
+  .unwrap();
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(json!(rid))
 }
 
-/// Create new instance of async reqwest::Client. This client supports
-/// proxies and doesn't follow redirects.
-fn create_http_client(
+fn get_cert_data(
   ca_file: Option<&str>,
   ca_data: Option<&str>,
-) -> Result<Client, AnyError> {
-  let mut builder = Client::builder().redirect(Policy::none()).use_rustls_tls();
+) -> Result<Option<Vec<u8>>, AnyError> {
   if let Some(ca_data) = ca_data {
-    let ca_data_vec = ca_data.as_bytes().to_vec();
-    let cert = reqwest::Certificate::from_pem(&ca_data_vec)?;
-    builder = builder.add_root_certificate(cert);
+    Ok(Some(ca_data.as_bytes().to_vec()))
   } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
+    Ok(Some(buf))
+  } else {
+    Ok(None)
+  }
+}
+
+/// Create new instance of async reqwest::Client. This client supports
+/// proxies and doesn't follow redirects.
+pub fn create_http_client(
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
+) -> Result<Client, AnyError> {
+  let mut headers = HeaderMap::new();
+  headers.insert(USER_AGENT, user_agent.parse().unwrap());
+  let mut builder = Client::builder()
+    .redirect(Policy::none())
+    .default_headers(headers)
+    .use_rustls_tls();
+
+  if let Some(ca_data) = ca_data {
+    let cert = reqwest::Certificate::from_pem(&ca_data)?;
     builder = builder.add_root_certificate(cert);
   }
+
   builder
     .build()
     .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
