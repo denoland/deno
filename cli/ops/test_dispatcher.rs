@@ -27,7 +27,9 @@ fn op_send_test_message(
   let args: SendTestMessageArgs = serde_json::from_value(args)?;
   let sender = state.borrow::<Sender<TestMessage>>().clone();
 
-  sender.send(args.message)?;
-
-  Ok(json!({}))
+  if sender.send(args.message).is_err() {
+    Ok(json!(false))
+  } else {
+    Ok(json!(true))
+  }
 }
