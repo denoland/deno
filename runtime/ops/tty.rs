@@ -225,27 +225,26 @@ fn op_isatty(
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
-  let isatty: bool =
-    StdFileResource::with(state, rid as u32, move |r| match r {
-      Ok(std_file) => {
-        #[cfg(windows)]
-        {
-          use winapi::um::consoleapi;
+  let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
+    Ok(std_file) => {
+      #[cfg(windows)]
+      {
+        use winapi::um::consoleapi;
 
-          let handle = get_windows_handle(&std_file)?;
-          let mut test_mode: DWORD = 0;
-          // If I cannot get mode out of console, it is not a console.
-          Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
-        }
-        #[cfg(unix)]
-        {
-          use std::os::unix::io::AsRawFd;
-          let raw_fd = std_file.as_raw_fd();
-          Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
-        }
+        let handle = get_windows_handle(&std_file)?;
+        let mut test_mode: DWORD = 0;
+        // If I cannot get mode out of console, it is not a console.
+        Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })
       }
-      _ => Ok(false),
-    })?;
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
+        let raw_fd = std_file.as_raw_fd();
+        Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      }
+    }
+    _ => Ok(false),
+  })?;
   Ok(json!(isatty))
 }
 
@@ -269,7 +268,7 @@ fn op_console_size(
 
   let rid = args.rid;
 
-  let size = StdFileResource::with(state, rid as u32, move |r| match r {
+  let size = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
       {

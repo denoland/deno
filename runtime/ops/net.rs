@@ -55,7 +55,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 pub(crate) struct AcceptArgs {
-  pub rid: i32,
+  pub rid: u32,
   pub transport: String,
 }
 
@@ -64,7 +64,7 @@ async fn accept_tcp(
   args: AcceptArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow()
@@ -125,7 +125,7 @@ async fn op_accept(
 
 #[derive(Deserialize)]
 pub(crate) struct ReceiveArgs {
-  pub rid: i32,
+  pub rid: u32,
   pub transport: String,
 }
 
@@ -137,7 +137,7 @@ async fn receive_udp(
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let mut zero_copy = zero_copy[0].clone();
 
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
@@ -181,7 +181,7 @@ async fn op_datagram_receive(
 
 #[derive(Deserialize)]
 struct SendArgs {
-  rid: i32,
+  rid: u32,
   transport: String,
   #[serde(flatten)]
   transport_args: ArgsEnum,
@@ -215,7 +215,7 @@ async fn op_datagram_send(
       let resource = state
         .borrow_mut()
         .resource_table
-        .get::<UdpSocketResource>(rid as u32)
+        .get::<UdpSocketResource>(rid)
         .ok_or_else(|| bad_resource("Socket has been closed"))?;
       let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
       let byte_length = socket.send_to(&zero_copy, &addr).await?;
@@ -235,7 +235,7 @@ async fn op_datagram_send(
       let resource = state
         .borrow()
         .resource_table
-        .get::<net_unix::UnixDatagramResource>(rid as u32)
+        .get::<net_unix::UnixDatagramResource>(rid)
         .ok_or_else(|| {
           custom_error("NotConnected", "Socket has been closed")
         })?;

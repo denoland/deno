@@ -98,7 +98,7 @@ async fn op_start_tls(
   args: StartTLSArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let mut domain = args.hostname.as_str();
   if domain.is_empty() {
@@ -350,7 +350,7 @@ fn op_listen_tls(
 
 #[derive(Deserialize)]
 pub struct AcceptTlsArgs {
-  rid: i32,
+  rid: u32,
 }
 
 async fn op_accept_tls(
@@ -358,7 +358,7 @@ async fn op_accept_tls(
   args: AcceptTlsArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow()

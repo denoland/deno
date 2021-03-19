@@ -296,7 +296,7 @@ pub async fn op_fetch_request_write(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchRequestBodyResource>(rid as u32)
+    .get::<FetchRequestBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
@@ -325,7 +325,7 @@ pub async fn op_fetch_response_read(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchResponseBodyResource>(rid as u32)
+    .get::<FetchResponseBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);

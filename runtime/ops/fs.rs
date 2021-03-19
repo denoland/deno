@@ -208,13 +208,13 @@ async fn op_open_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeekArgs {
-  rid: i32,
+  rid: u32,
   offset: i64,
   whence: i32,
 }
 
 fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
   let offset = args.offset;
   let whence = args.whence as u32;
   // Translate seek mode to Rust repr.
@@ -273,7 +273,7 @@ async fn op_seek_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FdatasyncArgs {
-  rid: i32,
+  rid: u32,
 }
 
 fn op_fdatasync_sync(
@@ -281,7 +281,7 @@ fn op_fdatasync_sync(
   args: FdatasyncArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
@@ -294,7 +294,7 @@ async fn op_fdatasync_async(
   args: FdatasyncArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
@@ -317,7 +317,7 @@ async fn op_fdatasync_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsyncArgs {
-  rid: i32,
+  rid: u32,
 }
 
 fn op_fsync_sync(
@@ -325,7 +325,7 @@ fn op_fsync_sync(
   args: FsyncArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
@@ -338,7 +338,7 @@ async fn op_fsync_async(
   args: FsyncArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
@@ -361,7 +361,7 @@ async fn op_fsync_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FstatArgs {
-  rid: i32,
+  rid: u32,
 }
 
 fn op_fstat_sync(
@@ -370,8 +370,7 @@ fn op_fstat_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.fstat");
-  let rid = args.rid as u32;
-  let metadata = StdFileResource::with(state, rid, |r| match r {
+  let metadata = StdFileResource::with(state, args.rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
   })?;
@@ -385,7 +384,7 @@ async fn op_fstat_async(
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.fstat");
 
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
@@ -1314,7 +1313,7 @@ async fn op_read_link_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FtruncateArgs {
-  rid: i32,
+  rid: u32,
   len: i32,
 }
 
@@ -1324,7 +1323,7 @@ fn op_ftruncate_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.ftruncate");
-  let rid = args.rid as u32;
+  let rid = args.rid;
   let len = args.len as u64;
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
@@ -1339,7 +1338,7 @@ async fn op_ftruncate_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.ftruncate");
-  let rid = args.rid as u32;
+  let rid = args.rid;
   let len = args.len as u64;
 
   let resource = state
@@ -1586,7 +1585,7 @@ async fn op_make_temp_file_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FutimeArgs {
-  rid: i32,
+  rid: u32,
   atime: (i64, u32),
   mtime: (i64, u32),
 }
@@ -1597,7 +1596,7 @@ fn op_futime_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.futimeSync");
-  let rid = args.rid as u32;
+  let rid = args.rid;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
@@ -1620,7 +1619,7 @@ async fn op_futime_async(
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.futime");
-  let rid = args.rid as u32;
+  let rid = args.rid;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
