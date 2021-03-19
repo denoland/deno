@@ -1003,7 +1003,7 @@ async fn test_command(
 
   let (sender, receiver) = channel::<TestMessage>();
 
-  let join_handles = test_modules.iter().map(|module_specifier| {
+  let join_handles = test_modules.iter().map(move |module_specifier| {
     let program_state = program_state.clone();
     let module_specifier = module_specifier.clone();
     let permissions = permissions.clone();
