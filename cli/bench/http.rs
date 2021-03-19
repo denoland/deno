@@ -23,7 +23,8 @@ pub(crate) fn benchmark(
   let hyper_hello_exe = target_path.join("test_server");
   let hyper_hello_exe = hyper_hello_exe.to_str().unwrap();
 
-  let core_http_buffer_ops_exe = target_path.join("examples/http_bench_buffer_ops");
+  let core_http_buffer_ops_exe =
+    target_path.join("examples/http_bench_buffer_ops");
   let core_http_buffer_ops_exe = core_http_buffer_ops_exe.to_str().unwrap();
 
   let core_http_json_ops_exe = target_path.join("examples/http_bench_json_ops");

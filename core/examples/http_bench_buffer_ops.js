@@ -56,7 +56,9 @@ async function main() {
   Deno.core.registerErrorClass("Error", Error);
 
   const listenerRid = listen();
-  Deno.core.print(`http_bench_buffer_ops listening on http://127.0.0.1:4544/\n`);
+  Deno.core.print(
+    `http_bench_buffer_ops listening on http://127.0.0.1:4544/\n`,
+  );
 
   for (;;) {
     const rid = await accept(listenerRid);
