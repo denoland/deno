@@ -205,10 +205,12 @@ finishing test case.`;
   async function runTests({
     filter = null,
   } = {}) {
-    const pending = tests.filter(createTestFilter(filter));
+    const only = tests.filter((test) => test.only);
+    const pending = (only.length > 0 ? only : tests).filter(createTestFilter(filter));
     sendTestMessage("plan", {
       filtered: tests.length - pending.length,
       pending: pending.length,
+      only: only.length > 0,
     });
 
     for (const test of pending) {

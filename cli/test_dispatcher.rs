@@ -14,6 +14,7 @@ pub enum TestMessage {
   Plan {
     pending: usize,
     filtered: usize,
+    only: bool,
   },
   Wait {
     name: String,

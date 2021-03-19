@@ -1035,13 +1035,22 @@ async fn test_command(
       let mut passed = 0;
       let measured = 0;
 
+      let mut used_only = false;
       let mut has_error = false;
       let mut failures: Vec<(String, String)> = Vec::new();
 
       for message in receiver.iter() {
         match message {
-          TestMessage::Plan { pending, filtered } => {
+          TestMessage::Plan {
+            pending,
+            filtered,
+            only,
+          } => {
             println!("running {} tests", pending);
+
+            if only {
+              used_only = true;
+            }
 
             filtered_out += filtered;
           }
@@ -1122,6 +1131,15 @@ async fn test_command(
         filtered_out,
         colors::gray("(0ms)"),
       );
+
+      if used_only {
+        println!(
+          "{} because the \"only\" option was used\n",
+          colors::red("FAILED")
+        );
+
+        has_error = true;
+      }
 
       has_error
     })
