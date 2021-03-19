@@ -113,7 +113,7 @@ fn merge_boolean_permission(
   worker: Option<PermissionState>,
 ) -> Result<BooleanPermission, AnyError> {
   if let Some(worker) = worker {
-    if worker > main.state {
+    if worker < main.state {
       return Err(custom_error(
         "PermissionDenied",
         "Can't escalate parent thread permissions",
@@ -130,8 +130,11 @@ fn merge_net_permission(
   worker: Option<UnaryPermission<NetPermission>>,
 ) -> Result<UnaryPermission<NetPermission>, AnyError> {
   if let Some(worker) = worker {
-    if (worker.global_state > main.global_state)
-      || !worker.granted_list.iter().all(|x| main.check(&(&x.0, x.1)).is_ok())
+    if (worker.global_state < main.global_state)
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(&(&x.0, x.1)).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
@@ -150,8 +153,11 @@ fn merge_read_permission(
   worker: Option<UnaryPermission<ReadPermission>>,
 ) -> Result<UnaryPermission<ReadPermission>, AnyError> {
   if let Some(worker) = worker {
-    if (worker.global_state > main.global_state)
-      || !worker.granted_list.iter().all(|x| main.check(x.0.as_path()).is_ok())
+    if (worker.global_state < main.global_state)
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(x.0.as_path()).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
@@ -170,8 +176,11 @@ fn merge_write_permission(
   worker: Option<UnaryPermission<WritePermission>>,
 ) -> Result<UnaryPermission<WritePermission>, AnyError> {
   if let Some(worker) = worker {
-    if (worker.global_state > main.global_state)
-      || !worker.granted_list.iter().all(|x| main.check(x.0.as_path()).is_ok())
+    if (worker.global_state < main.global_state)
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(x.0.as_path()).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
