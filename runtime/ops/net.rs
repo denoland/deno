@@ -19,6 +19,7 @@ use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -55,7 +56,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 pub(crate) struct AcceptArgs {
-  pub rid: u32,
+  pub rid: ResourceId,
   pub transport: String,
 }
 
@@ -125,7 +126,7 @@ async fn op_accept(
 
 #[derive(Deserialize)]
 pub(crate) struct ReceiveArgs {
-  pub rid: u32,
+  pub rid: ResourceId,
   pub transport: String,
 }
 
@@ -181,7 +182,7 @@ async fn op_datagram_receive(
 
 #[derive(Deserialize)]
 struct SendArgs {
-  rid: u32,
+  rid: ResourceId,
   transport: String,
   #[serde(flatten)]
   transport_args: ArgsEnum,

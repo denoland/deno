@@ -4,6 +4,7 @@ use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -133,7 +134,7 @@ pub struct GPUExtent3D {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTextureArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   size: GPUExtent3D,
   mip_level_count: Option<u32>,
@@ -194,7 +195,7 @@ pub fn op_webgpu_create_texture(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTextureViewArgs {
-  texture_rid: u32,
+  texture_rid: ResourceId,
   label: Option<String>,
   format: Option<String>,
   dimension: Option<String>,

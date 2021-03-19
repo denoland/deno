@@ -12,7 +12,9 @@ use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -126,7 +128,7 @@ fn op_fs_events_open(
 
 #[derive(Deserialize)]
 pub struct PollArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 async fn op_fs_events_poll(

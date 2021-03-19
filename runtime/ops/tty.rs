@@ -9,6 +9,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::RcRef;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -58,7 +59,7 @@ pub struct SetRawOptions {
 
 #[derive(Deserialize)]
 pub struct SetRawArgs {
-  rid: u32,
+  rid: ResourceId,
   mode: bool,
   options: SetRawOptions,
 }
@@ -215,7 +216,7 @@ fn op_set_raw(
 
 #[derive(Deserialize)]
 pub struct IsattyArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 fn op_isatty(
@@ -250,7 +251,7 @@ fn op_isatty(
 
 #[derive(Deserialize)]
 pub struct ConsoleSizeArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 #[derive(Serialize)]

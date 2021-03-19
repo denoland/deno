@@ -13,6 +13,7 @@ use deno_core::serde_json::Value;
 use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
@@ -208,7 +209,7 @@ async fn op_open_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeekArgs {
-  rid: u32,
+  rid: ResourceId,
   offset: i64,
   whence: i32,
 }
@@ -273,7 +274,7 @@ async fn op_seek_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FdatasyncArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 fn op_fdatasync_sync(
@@ -317,7 +318,7 @@ async fn op_fdatasync_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsyncArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 fn op_fsync_sync(
@@ -361,7 +362,7 @@ async fn op_fsync_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FstatArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 fn op_fstat_sync(
@@ -1313,7 +1314,7 @@ async fn op_read_link_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FtruncateArgs {
-  rid: u32,
+  rid: ResourceId,
   len: i32,
 }
 
@@ -1585,7 +1586,7 @@ async fn op_make_temp_file_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FutimeArgs {
-  rid: u32,
+  rid: ResourceId,
   atime: (i64, u32),
   mtime: (i64, u32),
 }

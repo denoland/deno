@@ -7,6 +7,7 @@ use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
@@ -280,7 +281,7 @@ struct GPULimits {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestDeviceArgs {
-  adapter_rid: u32,
+  adapter_rid: ResourceId,
   label: Option<String>,
   non_guaranteed_features: Option<Vec<String>>,
   non_guaranteed_limits: Option<GPULimits>,
@@ -451,7 +452,7 @@ pub async fn op_webgpu_request_device(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateQuerySetArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   _label: Option<String>, // not yet implemented
   #[serde(rename = "type")]
   kind: String,
