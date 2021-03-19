@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const { setExitHandler, exit } = window.__bootstrap.os;
   const { exposeForTest } = window.__bootstrap.internals;
+  const { inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
 
@@ -195,7 +196,7 @@ finishing test case.`;
         name,
         duration,
         result: {
-          "failed": String(error),
+          "failed": inspectArgs([error]),
         },
       });
     }

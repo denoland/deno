@@ -1,10 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util;
-use crate::test_dispatcher::TestMessage;
 use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
 use std::path::Path;
 use std::path::PathBuf;
@@ -63,34 +61,6 @@ pub fn collect_test_module_specifiers(
   }
 
   Ok(prepared)
-}
-
-pub fn render_test_file(
-  modules: Vec<Url>,
-  fail_fast: bool,
-  quiet: bool,
-  filter: Option<String>,
-) -> String {
-  let mut test_file = "".to_string();
-
-  for module in modules {
-    test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
-  }
-
-  let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
-  } else {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
-  };
-
-  test_file.push_str("// @ts-ignore\n");
-
-  test_file.push_str(&format!(
-    "await Deno[Deno.internal].runTests({});\n",
-    options
-  ));
-
-  test_file
 }
 
 #[cfg(test)]

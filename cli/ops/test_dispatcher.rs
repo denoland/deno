@@ -1,22 +1,15 @@
 use crate::test_dispatcher::TestMessage;
 use deno_core::error::AnyError;
-use deno_core::json_op_async;
-use deno_core::json_op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
-use std::sync::Mutex;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+pub fn init(rt: &mut JsRuntime) {
   super::reg_json_sync(rt, "op_send_test_message", op_send_test_message);
 }
 
@@ -34,7 +27,7 @@ fn op_send_test_message(
   let args: SendTestMessageArgs = serde_json::from_value(args)?;
   let sender = state.borrow::<Sender<TestMessage>>().clone();
 
-  sender.send(args.message);
+  sender.send(args.message)?;
 
   Ok(json!({}))
 }

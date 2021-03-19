@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// #![deny(warnings)]
+#![deny(warnings)]
 
 #[macro_use]
 extern crate lazy_static;
@@ -959,7 +959,7 @@ async fn test_command(
   include: Option<Vec<String>>,
   no_run: bool,
   fail_fast: bool,
-  quiet: bool,
+  _quiet: bool,
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
@@ -1027,16 +1027,25 @@ async fn test_command(
     })
   });
 
-  let join_results = future::join_all(join_handles);
-
   let handler = {
-    let test_modules = test_modules.clone();
-
     tokio::task::spawn_blocking(move || {
+      let mut failed = 0;
+      let mut filtered_out = 0;
+      let mut ignored = 0;
+      let mut passed = 0;
+      let measured = 0;
+
       let mut has_error = false;
+      let mut failures: Vec<(String, String)> = Vec::new();
 
       for message in receiver.iter() {
         match message {
+          TestMessage::Plan { pending, filtered } => {
+            println!("running {} tests", pending);
+
+            filtered_out += filtered;
+          }
+
           TestMessage::Result {
             name,
             duration,
@@ -1049,6 +1058,8 @@ async fn test_command(
                 colors::green("ok"),
                 colors::gray(format!("({}ms)", duration))
               );
+
+              passed += 1;
             }
             TestResult::Ignored => {
               println!(
@@ -1057,8 +1068,10 @@ async fn test_command(
                 colors::yellow("ignored"),
                 colors::gray(format!("({}ms)", duration))
               );
+
+              ignored += 1;
             }
-            TestResult::Failed(_) => {
+            TestResult::Failed(error) => {
               println!(
                 "test {} ... {} {}",
                 name,
@@ -1066,6 +1079,8 @@ async fn test_command(
                 colors::gray(format!("({}ms)", duration))
               );
 
+              failed += 1;
+              failures.push((name, error));
               has_error = true;
             }
           },
@@ -1077,11 +1092,43 @@ async fn test_command(
         }
       }
 
+      if !failures.is_empty() {
+        println!("\nfailures:\n");
+        for (name, error) in &failures {
+          println!("{}", name);
+          println!("{}", error);
+          println!("");
+        }
+
+        println!("failures:\n");
+        for (name, _) in &failures {
+          println!("\t{}", name);
+        }
+      }
+
+      let status = if failures.is_empty() {
+        colors::green("ok").to_string()
+      } else {
+        colors::red("FAILED").to_string()
+      };
+
+      println!(
+        "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+        status,
+        passed,
+        failed,
+        ignored,
+        measured,
+        filtered_out,
+        colors::gray("(0ms)"),
+      );
+
       has_error
     })
   };
 
-  let has_error = handler.await?;
+  let join_results = future::try_join_all(join_handles);
+  let (has_error, _) = future::try_join(handler, join_results).await?;
   if has_error {
     std::process::exit(1);
   }

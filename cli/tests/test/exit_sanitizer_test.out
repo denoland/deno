@@ -1,4 +1,4 @@
-Check [WILDCARD]/$deno$test.ts
+Check [WILDCARD]/exit_sanitizer_test.ts
 running 3 tests
 test exit(0) ... FAILED ([WILDCARD])
 test exit(1) ... FAILED ([WILDCARD])
