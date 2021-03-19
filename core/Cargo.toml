@@ -27,8 +27,8 @@ smallvec = "1.6.1"
 url = { version = "2.2.0", features = ["serde"] }
 
 [[example]]
-name = "http_bench_bin_ops"
-path = "examples/http_bench_bin_ops.rs"
+name = "http_bench_buffer_ops"
+path = "examples/http_bench_buffer_ops.rs"
 
 [[example]]
 name = "http_bench_json_ops"
