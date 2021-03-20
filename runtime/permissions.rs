@@ -220,6 +220,7 @@ impl UnaryPermission<ReadPermission> {
       Err((always, e)) => {
         if always {
           self.denied_list.insert(ReadPermission(path));
+          self.global_state = PermissionState::Denied;
         }
         Err(e)
       }
@@ -357,6 +358,7 @@ impl UnaryPermission<WritePermission> {
       Err((always, e)) => {
         if always {
           self.denied_list.insert(WritePermission(resolved_path));
+          self.global_state = PermissionState::Denied;
         }
         Err(e)
       }
@@ -514,6 +516,7 @@ impl UnaryPermission<NetPermission> {
       Err((always, e)) => {
         if always {
           self.denied_list.insert(new_host);
+          self.global_state = PermissionState::Denied;
         }
         Err(e)
       }
@@ -552,6 +555,7 @@ impl UnaryPermission<NetPermission> {
             hostname,
             url.port_or_known_default(),
           )));
+          self.global_state = PermissionState::Denied;
         }
         Err(e)
       }
@@ -592,14 +596,20 @@ impl BooleanPermission {
   }
 
   pub fn check(&mut self) -> Result<(), AnyError> {
-    if self
-      .state
-      .check(self.name, None, self.prompt)
-      .map_err(|(_, e)| e)?
-    {
-      self.state = PermissionState::Granted;
+    match self.state.check(self.name, None, self.prompt) {
+      Ok(always) => {
+        if always {
+          self.state = PermissionState::Granted;
+        }
+        Ok(())
+      }
+      Err((always, e)) => {
+        if always {
+          self.state = PermissionState::Denied;
+        }
+        Err(e)
+      }
     }
-    Ok(())
   }
 }
 
@@ -723,6 +733,18 @@ impl Permissions {
       run: Permissions::new_run(true, false),
       plugin: Permissions::new_plugin(true, false),
       hrtime: Permissions::new_hrtime(true, false),
+    }
+  }
+
+  pub fn prompt() -> Self {
+    Self {
+      read: Permissions::new_read(&None, true),
+      write: Permissions::new_write(&None, true),
+      net: Permissions::new_net(&None, true),
+      env: Permissions::new_env(false, true),
+      run: Permissions::new_run(false, true),
+      plugin: Permissions::new_plugin(false, true),
+      hrtime: Permissions::new_hrtime(false, true),
     }
   }
 
@@ -1255,15 +1277,7 @@ mod tests {
 
   #[test]
   fn test_prompt_fallback() {
-    let mut perms = Permissions {
-      read: Permissions::new_read(&None, true),
-      write: Permissions::new_write(&None, true),
-      net: Permissions::new_net(&None, true),
-      env: Permissions::new_env(false, true),
-      run: Permissions::new_run(false, true),
-      plugin: Permissions::new_plugin(false, true),
-      hrtime: Permissions::new_hrtime(false, true),
-    };
+    let mut perms = Permissions::prompt();
 
     {
       set_prompt_result(PromptResult::AllowAlways);
@@ -1289,6 +1303,92 @@ mod tests {
       set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
       assert!(perms.read.check(&Path::new("/bar1")).is_err());
     }
+
+    {
+      set_prompt_result(PromptResult::AllowAlways);
+      assert!(perms.write.check(&Path::new("/foo")).is_ok());
+      set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
+      assert!(perms.write.check(&Path::new("/foo")).is_ok());
+    }
+    {
+      set_prompt_result(PromptResult::AllowOnce);
+      assert!(perms.write.check(&Path::new("/bar")).is_ok());
+      set_prompt_result(PromptResult::DenyOnce);
+      assert!(perms.write.check(&Path::new("/bar")).is_err());
+    }
+    {
+      set_prompt_result(PromptResult::DenyOnce);
+      assert!(perms.write.check(&Path::new("/foo1")).is_err());
+      set_prompt_result(PromptResult::AllowOnce);
+      assert!(perms.write.check(&Path::new("/foo1")).is_ok());
+    }
+    {
+      set_prompt_result(PromptResult::DenyAlways);
+      assert!(perms.write.check(&Path::new("/bar1")).is_err());
+      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
+      assert!(perms.write.check(&Path::new("/bar1")).is_err());
+    }
+
+    {
+      set_prompt_result(PromptResult::AllowAlways);
+      assert!(perms.net.check(&("localhost", Some(1234))).is_ok());
+      set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
+      assert!(perms.net.check(&("localhost", Some(1234))).is_ok());
+    }
+    {
+      set_prompt_result(PromptResult::AllowOnce);
+      assert!(perms.net.check(&("deno.land", Some(1234))).is_ok());
+      set_prompt_result(PromptResult::DenyOnce);
+      assert!(perms.net.check(&("deno.land", Some(1234))).is_err());
+    }
+    {
+      set_prompt_result(PromptResult::DenyOnce);
+      assert!(perms.net.check(&("foo", Some(1234))).is_err());
+      set_prompt_result(PromptResult::AllowOnce);
+      assert!(perms.net.check(&("foo", Some(1234))).is_ok());
+    }
+    {
+      set_prompt_result(PromptResult::DenyAlways);
+      assert!(perms.net.check(&("bar", Some(1234))).is_err());
+      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
+      assert!(perms.net.check(&("bar", Some(1234))).is_err());
+    }
+  }
+
+  #[test]
+  fn test_prompt_fallback_unit_allow_always() {
+    let mut perms = Permissions::prompt();
+    set_prompt_result(PromptResult::AllowAlways);
+    assert!(perms.env.check().is_ok());
+    set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
+    assert!(perms.env.check().is_ok());
+  }
+
+  #[test]
+  fn test_prompt_fallback_unit_allow_once() {
+    let mut perms = Permissions::prompt();
+    set_prompt_result(PromptResult::AllowOnce);
+    assert!(perms.env.check().is_ok());
+    set_prompt_result(PromptResult::DenyOnce);
+    assert!(perms.env.check().is_err());
+  }
+
+  #[test]
+  fn test_prompt_fallback_unit_deny_once() {
+    let mut perms = Permissions::prompt();
+    set_prompt_result(PromptResult::DenyOnce);
+    assert!(perms.env.check().is_err());
+    set_prompt_result(PromptResult::AllowOnce);
+    assert!(perms.env.check().is_ok());
+  }
+
+  #[test]
+  fn test_prompt_fallback_unit_deny_always() {
+    let mut perms = Permissions::prompt();
+    set_prompt_result(PromptResult::DenyAlways);
+    assert!(perms.env.check().is_err());
+    set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
+    assert!(perms.env.check().is_err());
   }
 
   #[test]
