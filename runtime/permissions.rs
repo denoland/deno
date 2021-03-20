@@ -16,10 +16,6 @@ use std::hash::Hash;
 use std::io;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
-use std::sync::atomic::AtomicBool;
-#[cfg(test)]
-use std::sync::atomic::Ordering;
-#[cfg(test)]
 use std::sync::Mutex;
 
 const PERMISSION_EMOJI: &str = "⚠️";
@@ -828,25 +824,17 @@ fn permission_prompt(message: &str) -> PromptResult {
 // which we set from the test functions.
 #[cfg(test)]
 fn permission_prompt(_message: &str) -> PromptResult {
-  if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
-    PromptResult::AllowAlways
-  } else {
-    PromptResult::DenyAlways
-  }
+  (*STUB_PROMPT_VALUE).lock().unwrap().clone()
 }
 
 #[cfg(test)]
 lazy_static! {
-  /// Lock this when you use `set_prompt_result` in a test case.
-  static ref PERMISSION_PROMPT_GUARD: Mutex<()> = Mutex::new(());
+  static ref STUB_PROMPT_VALUE: Mutex<PromptResult> = Mutex::new(PromptResult::AllowAlways);
 }
 
 #[cfg(test)]
-static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
-
-#[cfg(test)]
-fn set_prompt_result(value: bool) {
-  STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
+fn set_prompt_result(value: PromptResult) {
+  *(*STUB_PROMPT_VALUE).lock().unwrap() = value;
 }
 
 #[cfg(test)]
@@ -1218,40 +1206,77 @@ mod tests {
   }
 
   #[test]
+  fn test_prompt_fallback() {
+    let mut perms = Permissions {
+      read: Permissions::new_read(&None, true),
+      write: Permissions::new_write(&None, true),
+      net: Permissions::new_net(&None, true),
+      env: Permissions::new_env(false, true),
+      run: Permissions::new_run(false, true),
+      plugin: Permissions::new_plugin(false, true),
+      hrtime: Permissions::new_hrtime(false, true),
+    };
+
+    {
+      set_prompt_result(PromptResult::AllowAlways);
+      assert!(perms.read.check(&Path::new("/foo")).is_ok());
+      set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
+      assert_eq!(perms.read.check(&Path::new("/foo")).is_ok());
+    }
+    {
+      set_prompt_result(PromptResult::AllowOnce);
+      assert!(perms.read.check(&Path::new("/bar")).is_ok());
+      set_prompt_result(PromptResult::DenyOnce);
+      assert!(perms.read.check(&Path::new("/bar")).is_err());
+    }
+    {
+      set_prompt_result(PromptResult::DenyOnce);
+      assert!(perms.read.check(&Path::new("/foo1")).is_err());
+      set_prompt_result(PromptResult::AllowOnce);
+      assert!(perms.read.check(&Path::new("/foo1")).is_ok());
+    }
+    /*{
+      set_prompt_result(PromptResult::DenyAlways);
+      assert!(perms.read.check(&Path::new("/bar1")).is_err());
+      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
+      assert!(perms.read.check(&Path::new("/bar1")).is_err());
+    }*/
+  }
+
+  #[test]
   fn test_request() {
     let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
-      let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-      set_prompt_result(true);
+      set_prompt_result(PromptResult::AllowAlways);
       assert_eq!(perms.read.request(Some(&Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      set_prompt_result(PromptResult::DenyAlways);
       assert_eq!(perms.read.request(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      set_prompt_result(false);
+      set_prompt_result(PromptResult::DenyAlways);
       assert_eq!(perms.write.request(Some(&Path::new("/foo"))), PermissionState::Denied);
       assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      set_prompt_result(true);
+      set_prompt_result(PromptResult::AllowAlways);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
-      set_prompt_result(true);
+      set_prompt_result(PromptResult::AllowAlways);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
-      set_prompt_result(false);
+      set_prompt_result(PromptResult::DenyAlways);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      set_prompt_result(true);
+      set_prompt_result(PromptResult::AllowAlways);
       assert_eq!(perms.env.request(), PermissionState::Granted);
-      set_prompt_result(false);
+      set_prompt_result(PromptResult::DenyAlways);
       assert_eq!(perms.env.request(), PermissionState::Granted);
-      set_prompt_result(false);
+      set_prompt_result(PromptResult::DenyAlways);
       assert_eq!(perms.run.request(), PermissionState::Denied);
-      set_prompt_result(true);
+      set_prompt_result(PromptResult::AllowAlways);
       assert_eq!(perms.run.request(), PermissionState::Denied);
-      set_prompt_result(true);
+      set_prompt_result(PromptResult::AllowAlways);
       assert_eq!(perms.plugin.request(), PermissionState::Granted);
-      set_prompt_result(false);
+      set_prompt_result(PromptResult::DenyAlways);
       assert_eq!(perms.plugin.request(), PermissionState::Granted);
-      set_prompt_result(false);
+      set_prompt_result(PromptResult::DenyAlways);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
-      set_prompt_result(true);
+      set_prompt_result(PromptResult::AllowAlways);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
     };
   }
