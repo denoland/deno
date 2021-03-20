@@ -124,6 +124,19 @@ pub struct WriteDescriptor(pub PathBuf);
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
+impl NetDescriptor {
+  fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
+    NetDescriptor(host.0.as_ref().to_string(), host.1)
+  }
+
+  pub fn from_string(host: String) -> Self {
+    let url = url::Url::parse(&format!("http://{}", host)).unwrap();
+    let hostname = url.host_str().unwrap().to_string();
+
+    NetDescriptor(hostname, url.port())
+  }
+}
+
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
@@ -320,19 +333,6 @@ impl UnaryPermission<WriteDescriptor> {
     self
       .query(Some(&resolved_path))
       .check(self.name, Some(&format!("\"{}\"", display_path.display())))
-  }
-}
-
-impl NetDescriptor {
-  fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
-    NetDescriptor(host.0.as_ref().to_string(), host.1)
-  }
-
-  pub fn from_string(host: String) -> Self {
-    let url = url::Url::parse(&format!("http://{}", host)).unwrap();
-    let hostname = url.host_str().unwrap().to_string();
-
-    NetDescriptor(hostname, url.port())
   }
 }
 
