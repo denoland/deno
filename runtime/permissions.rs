@@ -29,18 +29,21 @@ pub enum PermissionState {
 }
 
 impl PermissionState {
-  /// Check the permission state. Errors if denied. Ok value is whether PromptResult is AllowAlways
+  /// Check the permission state. Errors if denied.
+  /// Ok value is whether PromptResult is AllowAlways.
+  /// first Err value is whether PromptResult is DenyAlways.
   fn check(
     self,
     name: &str,
     info: Option<&str>,
     prompt: bool,
-  ) -> Result<bool, AnyError> {
+  ) -> Result<bool, (bool, AnyError)> {
     let access = format!(
       "{} access{}",
       name,
       info.map_or(Default::default(), |info| { format!(" to {}", info) }),
     );
+    let mut e_result = false;
     if self == PermissionState::Granted {
       log_perm_access(&access);
       Ok(true)
@@ -55,7 +58,8 @@ impl PermissionState {
             log_perm_access(&access);
             return Ok(false);
           }
-          _ => {}
+          PromptResult::DenyOnce => e_result = false,
+          PromptResult::DenyAlways => e_result = true,
         }
       }
 
@@ -63,7 +67,7 @@ impl PermissionState {
         "Requires {}, run again with the --allow-{} flag",
         access, name
       );
-      Err(custom_error("PermissionDenied", message))
+      Err((e_result, custom_error("PermissionDenied", message)))
     }
   }
 }
@@ -202,16 +206,29 @@ impl UnaryPermission<ReadPermission> {
     self.query(path)
   }
 
+  fn base_check(&mut self, path: PathBuf, info: &str) -> Result<(), AnyError> {
+    match self
+      .query(Some(&path))
+      .check(self.name, Some(info), self.prompt)
+    {
+      Ok(always) => {
+        if always {
+          self.granted_list.insert(ReadPermission(path));
+        }
+        Ok(())
+      }
+      Err((always, e)) => {
+        if always {
+          self.denied_list.insert(ReadPermission(path));
+        }
+        Err(e)
+      }
+    }
+  }
+
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    if self.query(Some(&resolved_path)).check(
-      self.name,
-      Some(&format!("\"{}\"", display_path.display())),
-      self.prompt,
-    )? {
-      self.granted_list.insert(ReadPermission(resolved_path));
-    }
-    Ok(())
+    self.base_check(resolved_path, &format!("\"{}\"", display_path.display()))
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -222,14 +239,7 @@ impl UnaryPermission<ReadPermission> {
     display: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
-    if self.query(Some(&resolved_path)).check(
-      self.name,
-      Some(&format!("<{}>", display)),
-      self.prompt,
-    )? {
-      self.granted_list.insert(ReadPermission(resolved_path));
-    }
-    Ok(())
+    self.base_check(resolved_path, &format!("<{}>", display))
   }
 }
 
@@ -333,14 +343,24 @@ impl UnaryPermission<WritePermission> {
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    if self.query(Some(&resolved_path)).check(
+    match self.query(Some(&resolved_path)).check(
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
       self.prompt,
-    )? {
-      self.granted_list.insert(WritePermission(resolved_path));
+    ) {
+      Ok(always) => {
+        if always {
+          self.granted_list.insert(WritePermission(resolved_path));
+        }
+        Ok(())
+      }
+      Err((always, e)) => {
+        if always {
+          self.denied_list.insert(WritePermission(resolved_path));
+        }
+        Err(e)
+      }
     }
-    Ok(())
   }
 }
 
@@ -479,14 +499,25 @@ impl UnaryPermission<NetPermission> {
     &mut self,
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
-    if self.query(Some(host)).check(
+    let new_host = NetPermission::new(&host);
+    match self.query(Some(host)).check(
       self.name,
-      Some(&format!("\"{}\"", NetPermission::new(&host))),
+      Some(&format!("\"{}\"", new_host)),
       self.prompt,
-    )? {
-      self.granted_list.insert(NetPermission::new(&host));
+    ) {
+      Ok(always) => {
+        if always {
+          self.granted_list.insert(new_host);
+        }
+        Ok(())
+      }
+      Err((always, e)) => {
+        if always {
+          self.denied_list.insert(new_host);
+        }
+        Err(e)
+      }
     }
-    Ok(())
   }
 
   pub fn check_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
@@ -499,20 +530,32 @@ impl UnaryPermission<NetPermission> {
       Some(port) => format!("{}:{}", hostname, port),
     };
 
-    if self
+    match self
       .query(Some(&(&hostname, url.port_or_known_default())))
       .check(
         self.name,
         Some(&format!("\"{}\"", display_host)),
         self.prompt,
-      )?
-    {
-      self.granted_list.insert(NetPermission::new(&&(
-        hostname,
-        url.port_or_known_default(),
-      )));
+      ) {
+      Ok(always) => {
+        if always {
+          self.granted_list.insert(NetPermission::new(&&(
+            hostname,
+            url.port_or_known_default(),
+          )));
+        }
+        Ok(())
+      }
+      Err((always, e)) => {
+        if always {
+          self.denied_list.insert(NetPermission::new(&&(
+            hostname,
+            url.port_or_known_default(),
+          )));
+        }
+        Err(e)
+      }
     }
-    Ok(())
   }
 }
 
@@ -549,7 +592,11 @@ impl BooleanPermission {
   }
 
   pub fn check(&mut self) -> Result<(), AnyError> {
-    if self.state.check(self.name, None, self.prompt)? {
+    if self
+      .state
+      .check(self.name, None, self.prompt)
+      .map_err(|(_, e)| e)?
+    {
       self.state = PermissionState::Granted;
     }
     Ok(())
@@ -829,7 +876,8 @@ fn permission_prompt(_message: &str) -> PromptResult {
 
 #[cfg(test)]
 lazy_static! {
-  static ref STUB_PROMPT_VALUE: Mutex<PromptResult> = Mutex::new(PromptResult::AllowAlways);
+  static ref STUB_PROMPT_VALUE: Mutex<PromptResult> =
+    Mutex::new(PromptResult::AllowAlways);
 }
 
 #[cfg(test)]
@@ -1221,7 +1269,7 @@ mod tests {
       set_prompt_result(PromptResult::AllowAlways);
       assert!(perms.read.check(&Path::new("/foo")).is_ok());
       set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
-      assert_eq!(perms.read.check(&Path::new("/foo")).is_ok());
+      assert!(perms.read.check(&Path::new("/foo")).is_ok());
     }
     {
       set_prompt_result(PromptResult::AllowOnce);
@@ -1235,12 +1283,12 @@ mod tests {
       set_prompt_result(PromptResult::AllowOnce);
       assert!(perms.read.check(&Path::new("/foo1")).is_ok());
     }
-    /*{
+    {
       set_prompt_result(PromptResult::DenyAlways);
       assert!(perms.read.check(&Path::new("/bar1")).is_err());
       set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
       assert!(perms.read.check(&Path::new("/bar1")).is_err());
-    }*/
+    }
   }
 
   #[test]
