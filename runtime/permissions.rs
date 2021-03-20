@@ -498,14 +498,11 @@ impl UnaryPermission<NetPermission> {
     self.query(host)
   }
 
-  pub fn check<T: AsRef<str>>(
-    &mut self,
-    host: &(T, Option<u16>),
-  ) -> Result<(), AnyError> {
+  fn base_check(&mut self, host: &(T, Option<u16>), info: &str) -> Result<(), AnyError> {
     let new_host = NetPermission::new(&host);
     match self.query(Some(host)).check(
       self.name,
-      Some(&format!("\"{}\"", new_host)),
+      Some(info),
       self.prompt,
     ) {
       Ok(always) => {
@@ -524,6 +521,13 @@ impl UnaryPermission<NetPermission> {
     }
   }
 
+  pub fn check<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+  ) -> Result<(), AnyError> {
+    self.base_check(host, &format!("\"{}\"", new_host))
+  }
+
   pub fn check_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     let hostname = url
       .host_str()
@@ -534,33 +538,7 @@ impl UnaryPermission<NetPermission> {
       Some(port) => format!("{}:{}", hostname, port),
     };
 
-    match self
-      .query(Some(&(&hostname, url.port_or_known_default())))
-      .check(
-        self.name,
-        Some(&format!("\"{}\"", display_host)),
-        self.prompt,
-      ) {
-      Ok(always) => {
-        if always {
-          self.granted_list.insert(NetPermission::new(&&(
-            hostname,
-            url.port_or_known_default(),
-          )));
-        }
-        Ok(())
-      }
-      Err((always, e)) => {
-        if always {
-          self.denied_list.insert(NetPermission::new(&&(
-            hostname,
-            url.port_or_known_default(),
-          )));
-          self.global_state = PermissionState::Denied;
-        }
-        Err(e)
-      }
-    }
+    self.base_check(&(&hostname, url.port_or_known_default()), &format!("\"{}\"", display_host))
   }
 }
 
@@ -1281,6 +1259,12 @@ mod tests {
     let mut perms = Permissions::prompt();
 
     {
+      set_prompt_result(PromptResult::DenyAlways);
+      assert!(perms.read.check(&Path::new("/bar1")).is_err());
+      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
+      assert!(perms.read.check(&Path::new("/bar1")).is_err());
+    }
+    {
       set_prompt_result(PromptResult::AllowAlways);
       assert!(perms.read.check(&Path::new("/foo")).is_ok());
       set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
@@ -1298,13 +1282,13 @@ mod tests {
       set_prompt_result(PromptResult::AllowOnce);
       assert!(perms.read.check(&Path::new("/foo1")).is_ok());
     }
+
     {
       set_prompt_result(PromptResult::DenyAlways);
-      assert!(perms.read.check(&Path::new("/bar1")).is_err());
+      assert!(perms.write.check(&Path::new("/bar1")).is_err());
       set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
-      assert!(perms.read.check(&Path::new("/bar1")).is_err());
+      assert!(perms.write.check(&Path::new("/bar1")).is_err());
     }
-
     {
       set_prompt_result(PromptResult::AllowAlways);
       assert!(perms.write.check(&Path::new("/foo")).is_ok());
@@ -1323,13 +1307,13 @@ mod tests {
       set_prompt_result(PromptResult::AllowOnce);
       assert!(perms.write.check(&Path::new("/foo1")).is_ok());
     }
+
     {
       set_prompt_result(PromptResult::DenyAlways);
-      assert!(perms.write.check(&Path::new("/bar1")).is_err());
+      assert!(perms.net.check(&("bar", Some(1234))).is_err());
       set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
-      assert!(perms.write.check(&Path::new("/bar1")).is_err());
+      assert!(perms.net.check(&("bar", Some(1234))).is_err());
     }
-
     {
       set_prompt_result(PromptResult::AllowAlways);
       assert!(perms.net.check(&("localhost", Some(1234))).is_ok());
@@ -1347,12 +1331,6 @@ mod tests {
       assert!(perms.net.check(&("foo", Some(1234))).is_err());
       set_prompt_result(PromptResult::AllowOnce);
       assert!(perms.net.check(&("foo", Some(1234))).is_ok());
-    }
-    {
-      set_prompt_result(PromptResult::DenyAlways);
-      assert!(perms.net.check(&("bar", Some(1234))).is_err());
-      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
-      assert!(perms.net.check(&("bar", Some(1234))).is_err());
     }
   }
 
