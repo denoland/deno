@@ -105,6 +105,7 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub global_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
+  #[serde(skip)]
   pub prompt: bool,
 }
 
