@@ -87,7 +87,6 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
-    concurrent: bool,
   },
   Types,
   Upgrade {
@@ -733,8 +732,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
-  let concurrent = matches.is_present("concurrent");
-
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
     no_run,
@@ -743,7 +740,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     filter,
     allow_none,
-    concurrent,
   };
 }
 
@@ -1501,12 +1497,6 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("List of file names to run")
         .takes_value(true)
         .multiple(true),
-    )
-    .arg(
-      Arg::with_name("concurrent")
-        .long("concurrent")
-        .requires("unstable")
-        .help("Run test modules concurrently"),
     )
     .arg(script_arg().last(true))
     .about("Run tests")

@@ -964,7 +964,6 @@ async fn test_command(
   _quiet: bool,
   allow_none: bool,
   filter: Option<String>,
-  concurrent: bool,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -1005,6 +1004,31 @@ async fn test_command(
   }
 
   let (sender, receiver) = channel::<TestMessage>();
+
+  let join_handles = test_modules.iter().map(move |module_specifier| {
+    let program_state = program_state.clone();
+    let module_specifier = module_specifier.clone();
+    let permissions = permissions.clone();
+    let sender = sender.clone();
+    let filter = filter.clone();
+
+    tokio::task::spawn_blocking(move || {
+      let join_handle = std::thread::spawn(move || {
+        let future = run_test(
+          program_state.clone(),
+          module_specifier.clone(),
+          permissions.clone(),
+          sender.clone(),
+          filter,
+        );
+
+        tokio_util::run_basic(future)
+      });
+
+      join_handle.join()
+    })
+  });
+
   let handler = {
     tokio::task::spawn_blocking(move || {
       let mut failed = 0;
@@ -1123,51 +1147,8 @@ async fn test_command(
     })
   };
 
-  let has_error = if concurrent {
-    let join_handles = test_modules.iter().map(move |module_specifier| {
-      let program_state = program_state.clone();
-      let module_specifier = module_specifier.clone();
-      let permissions = permissions.clone();
-      let sender = sender.clone();
-      let filter = filter.clone();
-
-      tokio::task::spawn_blocking(move || {
-        let join_handle = std::thread::spawn(move || {
-          let future = run_test(
-            program_state.clone(),
-            module_specifier.clone(),
-            permissions.clone(),
-            sender.clone(),
-            filter,
-          );
-
-          tokio_util::run_basic(future)
-        });
-
-        join_handle.join()
-      })
-    });
-
-    let join_results = future::try_join_all(join_handles);
-    let (has_error, _) = future::try_join(handler, join_results).await?;
-
-    has_error
-  } else {
-    for module_specifier in test_modules {
-      run_test(
-        program_state.clone(),
-        module_specifier.clone(),
-        permissions.clone(),
-        sender.clone(),
-        filter.clone(),
-      )
-      .await?;
-    }
-
-    let has_error = handler.await?;
-    has_error
-  };
-
+  let join_results = future::try_join_all(join_handles);
+  let (has_error, _) = future::try_join(handler, join_results).await?;
   if has_error {
     std::process::exit(1);
   }
@@ -1305,11 +1286,10 @@ fn get_subcommand(
       include,
       allow_none,
       filter,
-      concurrent,
-    } => test_command(
-      flags, include, no_run, fail_fast, quiet, allow_none, filter, concurrent,
-    )
-    .boxed_local(),
+    } => {
+      test_command(flags, include, no_run, fail_fast, quiet, allow_none, filter)
+        .boxed_local()
+    }
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
