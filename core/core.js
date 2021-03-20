@@ -62,11 +62,8 @@ SharedQueue Binary Layout
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBuffer = send(0);
-    const opsMapJson = String.fromCharCode.apply(
-      null,
-      new Uint8Array(opsMapBuffer),
-    );
+    const opsMapBytes = send(0);
+    const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     opsCache = JSON.parse(opsMapJson);
     return { ...opsCache };
   }
