@@ -1312,6 +1312,31 @@ impl SignatureHelpParameter {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionRange {
+  text_span: TextSpan,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  parent: Option<Box<SelectionRange>>,
+}
+
+impl SelectionRange {
+  pub fn to_selection_range(
+    self,
+    line_index: &LineIndex,
+  ) -> lsp::SelectionRange {
+    lsp::SelectionRange {
+      range: self.text_span.to_range(line_index),
+      parent: match self.parent {
+        Some(parent_selection) => Some(Box::new(
+          parent_selection.to_selection_range(line_index),
+        )),
+        None => None,
+      },
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct Response {
   id: usize,
   data: Value,
@@ -1856,6 +1881,8 @@ pub enum RequestMethod {
   GetReferences((ModuleSpecifier, u32)),
   /// Get signature help items for a specific position.
   GetSignatureHelpItems((ModuleSpecifier, u32, SignatureHelpItemsOptions)),
+  /// Get a selection range for a specific position.
+  GetSmartSelectionRange((ModuleSpecifier, u32)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
 }
@@ -1975,6 +2002,14 @@ impl RequestMethod {
           "specifier": specifier,
           "position": position,
           "options": options,
+        })
+      }
+      RequestMethod::GetSmartSelectionRange((specifier, position)) => {
+        json!({
+          "id": id,
+          "method": "getSmartSelectionRange",
+          "specifier": specifier,
+          "position": position
         })
       }
       RequestMethod::GetSupportedCodeFixes => json!({

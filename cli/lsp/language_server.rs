@@ -1590,6 +1590,49 @@ impl Inner {
     }
   }
 
+  async fn selection_range(
+    &self,
+    params: SelectionRangeParams,
+  ) -> LspResult<Option<Vec<SelectionRange>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("selection_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let mut selection_ranges = Vec::<SelectionRange>::new();
+    for position in params.positions {
+      let req = tsc::RequestMethod::GetSmartSelectionRange((
+        specifier.clone(),
+        line_index.offset_tsc(position)?,
+      ));
+
+      let selection_range: tsc::SelectionRange = self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {}", err);
+          LspError::invalid_request()
+        })?;
+
+      selection_ranges.push(selection_range.to_selection_range(&line_index));
+    }
+    self.performance.measure(mark);
+    // let join_results = futures::future::join_all(handles).await;
+    Ok(Some(selection_ranges))
+  }
+
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
@@ -1792,6 +1835,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
     self.0.lock().await.request_else(method, params).await
+  }
+
+  async fn selection_range(
+    &self,
+    params: SelectionRangeParams,
+  ) -> LspResult<Option<Vec<SelectionRange>>> {
+    self.0.lock().await.selection_range(params).await
   }
 
   async fn signature_help(
