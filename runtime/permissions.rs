@@ -137,6 +137,15 @@ impl NetDescriptor {
   }
 }
 
+impl fmt::Display for NetDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(&match self.1 {
+      None => self.0.clone(),
+      Some(port) => format!("{}:{}", self.0, port),
+    })
+  }
+}
+
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
@@ -333,15 +342,6 @@ impl UnaryPermission<WriteDescriptor> {
     self
       .query(Some(&resolved_path))
       .check(self.name, Some(&format!("\"{}\"", display_path.display())))
-  }
-}
-
-impl fmt::Display for NetDescriptor {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(&match self.1 {
-      None => self.0.clone(),
-      Some(port) => format!("{}:{}", self.0, port),
-    })
   }
 }
 
