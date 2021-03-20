@@ -11,12 +11,12 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.bufferOpSync("listen");
+  return Deno.core.binOpSync("listen");
 }
 
 /** Accepts a connection, returns rid. */
 function accept(rid) {
-  return Deno.core.bufferOpAsync("accept", rid);
+  return Deno.core.binOpAsync("accept", rid);
 }
 
 /**
@@ -24,16 +24,16 @@ function accept(rid) {
  * Returns bytes read.
  */
 function read(rid, data) {
-  return Deno.core.bufferOpAsync("read", rid, data);
+  return Deno.core.binOpAsync("read", rid, data);
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 function write(rid, data) {
-  return Deno.core.bufferOpAsync("write", rid, data);
+  return Deno.core.binOpAsync("write", rid, data);
 }
 
 function close(rid) {
-  Deno.core.bufferOpSync("close", rid);
+  Deno.core.binOpSync("close", rid);
 }
 
 async function serve(rid) {
@@ -57,7 +57,7 @@ async function main() {
 
   const listenerRid = listen();
   Deno.core.print(
-    `http_bench_buffer_ops listening on http://127.0.0.1:4544/\n`,
+    `http_bench_bin_ops listening on http://127.0.0.1:4544/\n`,
   );
 
   for (;;) {

@@ -265,21 +265,21 @@ SharedQueue Binary Layout
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////////
-  //////////////////////////////////// Buffer ops handling ///////////////////////////////////
+  ///////////////////////////////////// Bin ops handling /////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////////
 
-  const bufferRequestHeaderByteLength = 8 + 4;
-  const scratchBuffer = new ArrayBuffer(bufferRequestHeaderByteLength);
+  const binRequestHeaderByteLength = 8 + 4;
+  const scratchBuffer = new ArrayBuffer(binRequestHeaderByteLength);
   const scratchView = new DataView(scratchBuffer);
 
-  function bufferOpBuildRequest(requestId, argument, zeroCopy) {
+  function binOpBuildRequest(requestId, argument, zeroCopy) {
     scratchView.setBigUint64(0, BigInt(requestId), true);
     scratchView.setUint32(8, argument, true);
     return [scratchView, ...zeroCopy];
   }
 
-  function bufferOpParseResult(u8Array, isCopyNeeded) {
-    // Decode header value from ui8 buffer
+  function binOpParseResult(u8Array, isCopyNeeded) {
+    // Decode header value from u8Array
     const headerByteLength = 8 + 2 * 4;
     assert(u8Array.byteLength >= headerByteLength);
     assert(u8Array.byteLength % 4 == 0);
@@ -319,19 +319,19 @@ SharedQueue Binary Layout
     return [requestId, respBuffer, null];
   }
 
-  function bufferOpAsync(opName, argument = 0, ...zeroCopy) {
+  function binOpAsync(opName, argument = 0, ...zeroCopy) {
     return opAsync(
       opName,
-      (requestId) => bufferOpBuildRequest(requestId, argument, zeroCopy),
-      bufferOpParseResult,
+      (requestId) => binOpBuildRequest(requestId, argument, zeroCopy),
+      binOpParseResult,
     );
   }
 
-  function bufferOpSync(opName, argument = 0, ...zeroCopy) {
+  function binOpSync(opName, argument = 0, ...zeroCopy) {
     return opSync(
       opName,
-      () => bufferOpBuildRequest(0, argument, zeroCopy),
-      bufferOpParseResult,
+      () => binOpBuildRequest(0, argument, zeroCopy),
+      binOpParseResult,
     );
   }
 
@@ -389,8 +389,8 @@ SharedQueue Binary Layout
   Object.assign(window.Deno.core, {
     jsonOpAsync,
     jsonOpSync,
-    bufferOpAsync,
-    bufferOpSync,
+    binOpAsync,
+    binOpSync,
     dispatch,
     dispatchByName,
     ops,

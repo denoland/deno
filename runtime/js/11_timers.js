@@ -19,7 +19,7 @@
 
   const nowBytes = new Uint8Array(8);
   function opNow() {
-    core.bufferOpSync("op_now", 0, nowBytes);
+    core.binOpSync("op_now", 0, nowBytes);
     return new DataView(nowBytes.buffer).getFloat64();
   }
 

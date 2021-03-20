@@ -9,7 +9,7 @@ import {
 const readErrorStackPattern = new RegExp(
   `^.*
     at handleError \\(.*core\\.js:.*\\)
-    at bufferOpParseResult \\(.*core\\.js:.*\\)
+    at binOpParseResult \\(.*core\\.js:.*\\)
     at asyncHandle \\(.*core\\.js:.*\\).*$`,
   "ms",
 );
@@ -33,7 +33,7 @@ declare global {
   }
 }
 
-unitTest(function bufferOpsHeaderTooShort(): void {
+unitTest(function binOpsHeaderTooShort(): void {
   for (const op of ["op_read_sync", "op_read_async"]) {
     const readOpId = Deno.core.ops()[op];
     const res = Deno.core.send(

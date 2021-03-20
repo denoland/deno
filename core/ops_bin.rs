@@ -88,18 +88,18 @@ fn gen_padding_32bit(len: usize) -> &'static [u8] {
 /// When registering an op like this...
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
-/// runtime.register_op("hello", deno_core::buffer_op_sync(Self::hello_op));
+/// runtime.register_op("hello", deno_core::bin_op_sync(Self::hello_op));
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
 /// Deno.core.ops();
-/// let result = Deno.core.bufferOpSync("function_name", args);
+/// let result = Deno.core.binOpSync("function_name", args);
 /// ```
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn buffer_op_sync<F, R>(op_fn: F) -> Box<OpFn>
+pub fn bin_op_sync<F, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut OpState, u32, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
   R: ValueOrVector,
@@ -202,7 +202,7 @@ where
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn buffer_op_async<F, R, RV>(op_fn: F) -> Box<OpFn>
+pub fn bin_op_async<F, R, RV>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, u32, BufVec) -> R + 'static,
   R: Future<Output = Result<RV, AnyError>> + 'static,

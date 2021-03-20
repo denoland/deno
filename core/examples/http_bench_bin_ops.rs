@@ -115,11 +115,11 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("listen", deno_core::buffer_op_sync(op_listen));
-  runtime.register_op("close", deno_core::buffer_op_sync(op_close));
-  runtime.register_op("accept", deno_core::buffer_op_async(op_accept));
-  runtime.register_op("read", deno_core::buffer_op_async(op_read));
-  runtime.register_op("write", deno_core::buffer_op_async(op_write));
+  runtime.register_op("listen", deno_core::bin_op_sync(op_listen));
+  runtime.register_op("close", deno_core::bin_op_sync(op_close));
+  runtime.register_op("accept", deno_core::bin_op_async(op_accept));
+  runtime.register_op("read", deno_core::bin_op_async(op_read));
+  runtime.register_op("write", deno_core::bin_op_async(op_write));
   runtime
 }
 
@@ -222,8 +222,8 @@ fn main() {
   let future = async move {
     js_runtime
       .execute(
-        "http_bench_buffer_ops.js",
-        include_str!("http_bench_buffer_ops.js"),
+        "http_bench_bin_ops.js",
+        include_str!("http_bench_bin_ops.js"),
       )
       .unwrap();
     js_runtime.run_event_loop().await
