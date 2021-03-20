@@ -75,8 +75,13 @@ Deno.test({
 
 Deno.test("chmodSyncFailure", function (): void {
   assertThrows(() => {
-    const filename = "/badfile.txt";
-    Deno.chmodSync(filename, 0o777);
+    try {
+      const filename = "/badfile.txt";
+      Deno.chmodSync(filename, 0o777);
+    } catch (err) {
+      console.log("LOUD DEBUGGING ERROR", err);
+      throw err;
+    }
   }, Deno.errors.NotFound);
 });
 
