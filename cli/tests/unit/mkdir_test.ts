@@ -27,12 +27,6 @@ Deno.test("mkdirSyncMode", function (): void {
   assertDirectory(path, 0o737);
 });
 
-Deno.test("mkdirSyncPerm", function (): void {
-  assertThrows(() => {
-    Deno.mkdirSync("/baddir");
-  }, Deno.errors.PermissionDenied);
-});
-
 Deno.test("mkdirSuccess", async function (): Promise<void> {
   const path = Deno.makeTempDirSync() + "/dir";
   await Deno.mkdir(path);
@@ -187,4 +181,12 @@ Deno.test("mkdirRelativeUrlPath", async function (): Promise<void> {
   await Deno.mkdir(path);
 
   assertDirectory(testDir + "/dir");
+});
+
+Deno.test("mkdirSyncPerm", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "write" });
+
+  assertThrows(() => {
+    Deno.mkdirSync("/baddir");
+  }, Deno.errors.PermissionDenied);
 });
