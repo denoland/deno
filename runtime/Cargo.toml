@@ -60,7 +60,7 @@ ring = "0.16.20"
 serde = { version = "1.0.123", features = ["derive"] }
 sys-info = "0.8.0"
 termcolor = "1.1.2"
-tokio = { version = "1.3.0", features = ["full"] }
+tokio = { version = "1.4.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"
