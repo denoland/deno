@@ -28,7 +28,7 @@ fn js_unit_tests_lint() {
 fn js_unit_tests() {
   let _g = util::http_server();
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path().canonicalize().unwrap())
+    .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
