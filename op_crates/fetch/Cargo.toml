@@ -18,6 +18,6 @@ bytes = "1.0.1"
 deno_core = { version = "0.81.0", path = "../../core" }
 reqwest = { version = "0.11.0", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.123", features = ["derive"] }
-tokio = { version = "1.3.0", features = ["full"] }
-tokio-stream = "0.1.3"
-tokio-util = "0.6.2"
+tokio = { version = "1.4.0", features = ["full"] }
+tokio-stream = "0.1.5"
+tokio-util = "0.6.5"
