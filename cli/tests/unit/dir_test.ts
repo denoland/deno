@@ -5,22 +5,27 @@ Deno.test("dirCwdNotNull", function (): void {
   assert(Deno.cwd() != null);
 });
 
-Deno.test("dirCwdChdirSuccess", function (): void {
-  const initialdir = Deno.cwd();
-  const path = Deno.makeTempDirSync();
-  Deno.chdir(path);
-  const current = Deno.cwd();
-  if (Deno.build.os === "darwin") {
-    assertEquals(current, "/private" + path);
-  } else {
-    assertEquals(current, path);
-  }
-  Deno.chdir(initialdir);
+Deno.test({
+  name: "dirCwdChdirSuccess",
+  ignore: true,
+  fn(): void {
+    const initialdir = Deno.cwd();
+    const path = Deno.makeTempDirSync();
+    Deno.chdir(path);
+    const current = Deno.cwd();
+    if (Deno.build.os === "darwin") {
+      assertEquals(current, "/private" + path);
+    } else {
+      assertEquals(current, path);
+    }
+    Deno.chdir(initialdir);
+  },
 });
 
-Deno.test("dirCwdError", function (): void {
-  // excluding windows since it throws resource busy, while removeSync
-  if (["linux", "darwin"].includes(Deno.build.os)) {
+Deno.test({
+  name: "dirCwdError",
+  ignore: true,
+  fn(): void {
     const initialdir = Deno.cwd();
     const path = Deno.makeTempDirSync();
     Deno.chdir(path);
@@ -32,14 +37,18 @@ Deno.test("dirCwdError", function (): void {
     } finally {
       Deno.chdir(initialdir);
     }
-  }
+  },
 });
 
-Deno.test("dirChdirError", function (): void {
-  const path = Deno.makeTempDirSync() + "test";
-  assertThrows(() => {
-    Deno.chdir(path);
-  }, Deno.errors.NotFound);
+Deno.test({
+  name: "dirChdirError",
+  ignore: true,
+  fn(): void {
+    const path = Deno.makeTempDirSync() + "test";
+    assertThrows(() => {
+      Deno.chdir(path);
+    }, Deno.errors.NotFound);
+  },
 });
 
 Deno.test("dirCwdPermError", async function (): Promise<void> {
