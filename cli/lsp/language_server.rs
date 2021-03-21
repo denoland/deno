@@ -1629,7 +1629,6 @@ impl Inner {
       selection_ranges.push(selection_range.to_selection_range(&line_index));
     }
     self.performance.measure(mark);
-    // let join_results = futures::future::join_all(handles).await;
     Ok(Some(selection_ranges))
   }
 
