@@ -5,7 +5,6 @@
   const core = window.Deno.core;
   const { setExitHandler, exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
-  const { stdout } = window.__bootstrap.files;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
 
