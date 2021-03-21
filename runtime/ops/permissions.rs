@@ -4,7 +4,6 @@ use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
@@ -20,7 +19,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 }
 
 #[derive(Deserialize)]
-struct PermissionArgs {
+pub struct PermissionArgs {
   name: String,
   path: Option<String>,
   host: Option<String>,
@@ -28,26 +27,25 @@ struct PermissionArgs {
 
 pub fn op_query_permission(
   state: &mut OpState,
-  args: Value,
+  args: PermissionArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.query_read(&path.as_deref().map(Path::new)),
-    "write" => permissions.query_write(&path.as_deref().map(Path::new)),
-    "net" => permissions.query_net(
-      &match args.host.as_deref() {
+    "read" => permissions.read.query(path.as_deref().map(Path::new)),
+    "write" => permissions.write.query(path.as_deref().map(Path::new)),
+    "net" => permissions.net.query(
+      match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
       .as_ref(),
     ),
-    "env" => permissions.query_env(),
-    "run" => permissions.query_run(),
-    "plugin" => permissions.query_plugin(),
-    "hrtime" => permissions.query_hrtime(),
+    "env" => permissions.env.query(),
+    "run" => permissions.run.query(),
+    "plugin" => permissions.plugin.query(),
+    "hrtime" => permissions.hrtime.query(),
     n => {
       return Err(custom_error(
         "ReferenceError",
@@ -60,26 +58,25 @@ pub fn op_query_permission(
 
 pub fn op_revoke_permission(
   state: &mut OpState,
-  args: Value,
+  args: PermissionArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.revoke_read(&path.as_deref().map(Path::new)),
-    "write" => permissions.revoke_write(&path.as_deref().map(Path::new)),
-    "net" => permissions.revoke_net(
-      &match args.host.as_deref() {
+    "read" => permissions.read.revoke(path.as_deref().map(Path::new)),
+    "write" => permissions.write.revoke(path.as_deref().map(Path::new)),
+    "net" => permissions.net.revoke(
+      match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
       .as_ref(),
     ),
-    "env" => permissions.revoke_env(),
-    "run" => permissions.revoke_run(),
-    "plugin" => permissions.revoke_plugin(),
-    "hrtime" => permissions.revoke_hrtime(),
+    "env" => permissions.env.revoke(),
+    "run" => permissions.run.revoke(),
+    "plugin" => permissions.plugin.revoke(),
+    "hrtime" => permissions.hrtime.revoke(),
     n => {
       return Err(custom_error(
         "ReferenceError",
@@ -92,26 +89,25 @@ pub fn op_revoke_permission(
 
 pub fn op_request_permission(
   state: &mut OpState,
-  args: Value,
+  args: PermissionArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
-    "read" => permissions.request_read(&path.as_deref().map(Path::new)),
-    "write" => permissions.request_write(&path.as_deref().map(Path::new)),
-    "net" => permissions.request_net(
-      &match args.host.as_deref() {
+    "read" => permissions.read.request(path.as_deref().map(Path::new)),
+    "write" => permissions.write.request(path.as_deref().map(Path::new)),
+    "net" => permissions.net.request(
+      match args.host.as_deref() {
         None => None,
         Some(h) => Some(parse_host(h)?),
       }
       .as_ref(),
     ),
-    "env" => permissions.request_env(),
-    "run" => permissions.request_run(),
-    "plugin" => permissions.request_plugin(),
-    "hrtime" => permissions.request_hrtime(),
+    "env" => permissions.env.request(),
+    "run" => permissions.run.request(),
+    "plugin" => permissions.plugin.request(),
+    "hrtime" => permissions.hrtime.request(),
     n => {
       return Err(custom_error(
         "ReferenceError",

@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
@@ -10,8 +9,6 @@ use std::rc::Rc;
 
 #[cfg(unix)]
 use deno_core::error::bad_resource_id;
-#[cfg(unix)]
-use deno_core::serde_json;
 #[cfg(unix)]
 use deno_core::serde_json::json;
 #[cfg(unix)]
@@ -58,24 +55,24 @@ impl Resource for SignalStreamResource {
 
 #[cfg(unix)]
 #[derive(Deserialize)]
-struct BindSignalArgs {
+pub struct BindSignalArgs {
   signo: i32,
 }
 
 #[cfg(unix)]
 #[derive(Deserialize)]
-struct SignalArgs {
-  rid: i32,
+pub struct SignalArgs {
+  rid: u32,
 }
 
 #[cfg(unix)]
+#[allow(clippy::unnecessary_wraps)]
 fn op_signal_bind(
   state: &mut OpState,
-  args: Value,
+  args: BindSignalArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.signal");
-  let args: BindSignalArgs = serde_json::from_value(args)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(
       signal(SignalKind::from_raw(args.signo)).expect(""),
@@ -91,12 +88,11 @@ fn op_signal_bind(
 #[cfg(unix)]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: SignalArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.signal");
-  let args: SignalArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
@@ -115,12 +111,11 @@ async fn op_signal_poll(
 #[cfg(unix)]
 pub fn op_signal_unbind(
   state: &mut OpState,
-  args: Value,
+  args: SignalArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.signal");
-  let args: SignalArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  let rid = args.rid;
   state
     .resource_table
     .close(rid)
