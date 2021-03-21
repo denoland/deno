@@ -48,7 +48,7 @@ choco install deno
 Build and install from source using [Cargo](https://crates.io/crates/deno):
 
 ```sh
-cargo install deno
+cargo install deno --locked
 ```
 
 See
