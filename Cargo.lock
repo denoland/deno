@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "atty",
  "deno_console",

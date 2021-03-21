@@ -25,7 +25,7 @@ path = "./bench/main.rs"
 
 [build-dependencies]
 deno_core = { path = "../core", version = "0.82.0" }
-deno_runtime = { path = "../runtime", version = "0.9.4" }
+deno_runtime = { path = "../runtime", version = "0.10.0" }
 regex = "1.4.3"
 serde = { version = "1.0.123", features = ["derive"] }
 
@@ -37,7 +37,7 @@ winres = "0.1.11"
 deno_core = { path = "../core", version = "0.82.0" }
 deno_doc = "0.1.23"
 deno_lint = "0.2.19"
-deno_runtime = { path = "../runtime", version = "0.9.4" }
+deno_runtime = { path = "../runtime", version = "0.10.0" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
