@@ -13,68 +13,71 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-
 /// <reference no-default-lib="true"/>
 
-
 declare namespace Intl {
-
-    /**
+  /**
      * [BCP 47 language tag](http://tools.ietf.org/html/rfc5646) definition.
      *
      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl#locales_argument).
      *
      * [Wikipedia](https://en.wikipedia.org/wiki/IETF_language_tag).
      */
-    type BCP47LanguageTag = string;
+  type BCP47LanguageTag = string;
 
-    /**
+  /**
      * Unit to use in the relative time internationalized message.
      *
      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/RelativeTimeFormat/format#Parameters).
      *
      * [Specification](https://tc39.es/ecma402/#sec-singularrelativetimeunit).
      */
-    type RelativeTimeFormatUnit =
-        | "year" | "years"
-        | "quarter" | "quarters"
-        | "month" | "months"
-        | "week" | "weeks"
-        | "day" | "days"
-        | "hour" | "hours"
-        | "minute" | "minutes"
-        | "second" | "seconds"
-        ;
+  type RelativeTimeFormatUnit =
+    | "year"
+    | "years"
+    | "quarter"
+    | "quarters"
+    | "month"
+    | "months"
+    | "week"
+    | "weeks"
+    | "day"
+    | "days"
+    | "hour"
+    | "hours"
+    | "minute"
+    | "minutes"
+    | "second"
+    | "seconds";
 
-    /**
+  /**
      * The locale matching algorithm to use.
      *
      * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl#Locale_negotiation).
      *
      * [Specification](https://tc39.es/ecma402/#sec-InitializeRelativeTimeFormat).
      */
-    type RelativeTimeFormatLocaleMatcher = "lookup" | "best fit";
+  type RelativeTimeFormatLocaleMatcher = "lookup" | "best fit";
 
-    /**
+  /**
      * The format of output message.
      *
      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/RelativeTimeFormat/RelativeTimeFormat#Parameters).
      *
      * [Specification](https://tc39.es/ecma402/#sec-InitializeRelativeTimeFormat).
      */
-    type RelativeTimeFormatNumeric = "always" | "auto";
+  type RelativeTimeFormatNumeric = "always" | "auto";
 
-    /**
+  /**
      * The length of the internationalized message.
      *
      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/RelativeTimeFormat/RelativeTimeFormat#Parameters).
      *
      * [Specification](https://tc39.es/ecma402/#sec-InitializeRelativeTimeFormat).
      */
-    type RelativeTimeFormatStyle = "long" | "short" | "narrow";
+  type RelativeTimeFormatStyle = "long" | "short" | "narrow";
 
-    /**
+  /**
      * An object with some or all of properties of `options` parameter
      * of `Intl.RelativeTimeFormat` constructor.
      *
@@ -82,13 +85,13 @@ declare namespace Intl {
      *
      * [Specification](https://tc39.es/ecma402/#sec-InitializeRelativeTimeFormat).
      */
-    interface RelativeTimeFormatOptions {
-        localeMatcher?: RelativeTimeFormatLocaleMatcher;
-        numeric?: RelativeTimeFormatNumeric;
-        style?: RelativeTimeFormatStyle;
-    }
+  interface RelativeTimeFormatOptions {
+    localeMatcher?: RelativeTimeFormatLocaleMatcher;
+    numeric?: RelativeTimeFormatNumeric;
+    style?: RelativeTimeFormatStyle;
+  }
 
-    /**
+  /**
      * An object with properties reflecting the locale
      * and formatting options computed during initialization
      * of the `Intel.RelativeTimeFormat` object
@@ -97,14 +100,14 @@ declare namespace Intl {
      *
      * [Specification](https://tc39.es/ecma402/#table-relativetimeformat-resolvedoptions-properties)
      */
-    interface ResolvedRelativeTimeFormatOptions {
-        locale: BCP47LanguageTag;
-        style: RelativeTimeFormatStyle;
-        numeric: RelativeTimeFormatNumeric;
-        numberingSystem: string;
-    }
+  interface ResolvedRelativeTimeFormatOptions {
+    locale: BCP47LanguageTag;
+    style: RelativeTimeFormatStyle;
+    numeric: RelativeTimeFormatNumeric;
+    numberingSystem: string;
+  }
 
-    /**
+  /**
      * An object representing the relative time format in parts
      * that can be used for custom locale-aware formatting.
      *
@@ -112,14 +115,14 @@ declare namespace Intl {
      *
      * [Specification](https://tc39.es/ecma402/#sec-FormatRelativeTimeToParts).
      */
-    interface RelativeTimeFormatPart {
-        type: string;
-        value: string;
-        unit?: RelativeTimeFormatUnit;
-    }
+  interface RelativeTimeFormatPart {
+    type: string;
+    value: string;
+    unit?: RelativeTimeFormatUnit;
+  }
 
-    interface RelativeTimeFormat {
-        /**
+  interface RelativeTimeFormat {
+    /**
          * Formats a value and a unit according to the locale
          * and formatting options of the given
          * [`Intl.RelativeTimeFormat`](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/RelativeTimeFormat)
@@ -148,12 +151,12 @@ declare namespace Intl {
          *
          * [Specification](https://tc39.es/ecma402/#sec-Intl.RelativeTimeFormat.prototype.format).
          */
-        format(
-            value: number,
-            unit: RelativeTimeFormatUnit,
-        ): string;
+    format(
+      value: number,
+      unit: RelativeTimeFormatUnit,
+    ): string;
 
-        /**
+    /**
          *  A version of the format method which it returns an array of objects
          *  which represent "parts" of the object,
          *  separating the formatted number into its constituent parts
@@ -181,12 +184,12 @@ declare namespace Intl {
          *
          *  [Specification](https://tc39.es/ecma402/#sec-Intl.RelativeTimeFormat.prototype.formatToParts).
          */
-        formatToParts(
-            value: number,
-            unit: RelativeTimeFormatUnit,
-        ): RelativeTimeFormatPart[];
+    formatToParts(
+      value: number,
+      unit: RelativeTimeFormatUnit,
+    ): RelativeTimeFormatPart[];
 
-        /**
+    /**
          * Provides access to the locale and options computed during initialization of this `Intl.RelativeTimeFormat` object.
          *
          * @returns A new object with properties reflecting the locale
@@ -197,10 +200,10 @@ declare namespace Intl {
          *
          * [Specification](https://tc39.es/ecma402/#sec-intl.relativetimeformat.prototype.resolvedoptions)
          */
-        resolvedOptions(): ResolvedRelativeTimeFormatOptions;
-    }
+    resolvedOptions(): ResolvedRelativeTimeFormatOptions;
+  }
 
-    /**
+  /**
      * The [`Intl.RelativeTimeFormat`](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/RelativeTimeFormat)
      * object is a constructor for objects that enable language-sensitive relative time formatting.
      *
@@ -211,8 +214,8 @@ declare namespace Intl {
      *
      * [Polyfills](https://github.com/tc39/proposal-intl-relative-time#polyfills).
      */
-    const RelativeTimeFormat: {
-        /**
+  const RelativeTimeFormat: {
+    /**
          * Constructor creates [Intl.RelativeTimeFormat](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RelativeTimeFormat)
          * objects
          *
@@ -240,12 +243,12 @@ declare namespace Intl {
          *
          * [Specification](https://tc39.es/ecma402/#sec-intl-relativetimeformat-constructor).
          */
-        new(
-            locales?: BCP47LanguageTag | BCP47LanguageTag[],
-            options?: RelativeTimeFormatOptions,
-        ): RelativeTimeFormat;
+    new (
+      locales?: BCP47LanguageTag | BCP47LanguageTag[],
+      options?: RelativeTimeFormatOptions,
+    ): RelativeTimeFormat;
 
-        /**
+    /**
          * Returns an array containing those of the provided locales
          * that are supported in date and time formatting
          * without having to fall back to the runtime's default locale.
@@ -276,35 +279,35 @@ declare namespace Intl {
          *
          * [Specification](https://tc39.es/ecma402/#sec-Intl.RelativeTimeFormat.supportedLocalesOf).
          */
-        supportedLocalesOf(
-            locales: BCP47LanguageTag | BCP47LanguageTag[],
-            options?: RelativeTimeFormatOptions,
-        ): BCP47LanguageTag[];
-    };
+    supportedLocalesOf(
+      locales: BCP47LanguageTag | BCP47LanguageTag[],
+      options?: RelativeTimeFormatOptions,
+    ): BCP47LanguageTag[];
+  };
 
-    interface NumberFormatOptions {
-        compactDisplay?: string;
-        notation?: string;
-        signDisplay?: string;
-        unit?: string;
-        unitDisplay?: string;
-    }
+  interface NumberFormatOptions {
+    compactDisplay?: string;
+    notation?: string;
+    signDisplay?: string;
+    unit?: string;
+    unitDisplay?: string;
+  }
 
-    interface ResolvedNumberFormatOptions {
-        compactDisplay?: string;
-        notation?: string;
-        signDisplay?: string;
-        unit?: string;
-        unitDisplay?: string;
-    }
+  interface ResolvedNumberFormatOptions {
+    compactDisplay?: string;
+    notation?: string;
+    signDisplay?: string;
+    unit?: string;
+    unitDisplay?: string;
+  }
 
-    interface DateTimeFormatOptions {
-        dateStyle?: "full" | "long" | "medium" | "short";
-        timeStyle?: "full" | "long" | "medium" | "short";
-        calendar?: string;
-        dayPeriod?: "narrow" | "short" | "long";
-        numberingSystem?: string;
-        hourCycle?: "h11" | "h12" | "h23" | "h24";
-        fractionalSecondDigits?: 0 | 1 | 2 | 3;
-    }
+  interface DateTimeFormatOptions {
+    dateStyle?: "full" | "long" | "medium" | "short";
+    timeStyle?: "full" | "long" | "medium" | "short";
+    calendar?: string;
+    dayPeriod?: "narrow" | "short" | "long";
+    numberingSystem?: string;
+    hourCycle?: "h11" | "h12" | "h23" | "h24";
+    fractionalSecondDigits?: 0 | 1 | 2 | 3;
+  }
 }

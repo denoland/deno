@@ -13,21 +13,18 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-
 /// <reference no-default-lib="true"/>
 
-
 interface String {
-    /** Removes the trailing white space and line terminator characters from a string. */
-    trimEnd(): string;
+  /** Removes the trailing white space and line terminator characters from a string. */
+  trimEnd(): string;
 
-    /** Removes the leading white space and line terminator characters from a string. */
-    trimStart(): string;
+  /** Removes the leading white space and line terminator characters from a string. */
+  trimStart(): string;
 
-    /** Removes the leading white space and line terminator characters from a string. */
-    trimLeft(): string;
+  /** Removes the leading white space and line terminator characters from a string. */
+  trimLeft(): string;
 
-    /** Removes the trailing white space and line terminator characters from a string. */
-    trimRight(): string;
+  /** Removes the trailing white space and line terminator characters from a string. */
+  trimRight(): string;
 }

@@ -13,49 +13,48 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-
 /// <reference no-default-lib="true"/>
 
-
 declare namespace Intl {
+  // http://cldr.unicode.org/index/cldr-spec/plural-rules#TOC-Determining-Plural-Categories
+  type LDMLPluralRule = "zero" | "one" | "two" | "few" | "many" | "other";
+  type PluralRuleType = "cardinal" | "ordinal";
 
-    // http://cldr.unicode.org/index/cldr-spec/plural-rules#TOC-Determining-Plural-Categories
-    type LDMLPluralRule = "zero" | "one" | "two" | "few" | "many" | "other";
-    type PluralRuleType = "cardinal" | "ordinal";
+  interface PluralRulesOptions {
+    localeMatcher?: "lookup" | "best fit";
+    type?: PluralRuleType;
+    minimumIntegerDigits?: number;
+    minimumFractionDigits?: number;
+    maximumFractionDigits?: number;
+    minimumSignificantDigits?: number;
+    maximumSignificantDigits?: number;
+  }
 
-    interface PluralRulesOptions {
-        localeMatcher?: "lookup" | "best fit";
-        type?: PluralRuleType;
-        minimumIntegerDigits?: number;
-        minimumFractionDigits?: number;
-        maximumFractionDigits?: number;
-        minimumSignificantDigits?: number;
-        maximumSignificantDigits?: number;
-    }
+  interface ResolvedPluralRulesOptions {
+    locale: string;
+    pluralCategories: LDMLPluralRule[];
+    type: PluralRuleType;
+    minimumIntegerDigits: number;
+    minimumFractionDigits: number;
+    maximumFractionDigits: number;
+    minimumSignificantDigits?: number;
+    maximumSignificantDigits?: number;
+  }
 
-    interface ResolvedPluralRulesOptions {
-        locale: string;
-        pluralCategories: LDMLPluralRule[];
-        type: PluralRuleType;
-        minimumIntegerDigits: number;
-        minimumFractionDigits: number;
-        maximumFractionDigits: number;
-        minimumSignificantDigits?: number;
-        maximumSignificantDigits?: number;
-    }
+  interface PluralRules {
+    resolvedOptions(): ResolvedPluralRulesOptions;
+    select(n: number): LDMLPluralRule;
+  }
 
-    interface PluralRules {
-        resolvedOptions(): ResolvedPluralRulesOptions;
-        select(n: number): LDMLPluralRule;
-    }
-
-    const PluralRules: {
-        new (locales?: string | string[], options?: PluralRulesOptions): PluralRules;
-        (locales?: string | string[], options?: PluralRulesOptions): PluralRules;
-        supportedLocalesOf(
-            locales: string | string[],
-            options?: PluralRulesOptions,
-        ): string[];
-    };
+  const PluralRules: {
+    new (
+      locales?: string | string[],
+      options?: PluralRulesOptions,
+    ): PluralRules;
+    (locales?: string | string[], options?: PluralRulesOptions): PluralRules;
+    supportedLocalesOf(
+      locales: string | string[],
+      options?: PluralRulesOptions,
+    ): string[];
+  };
 }

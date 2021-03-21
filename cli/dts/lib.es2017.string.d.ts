@@ -13,13 +13,10 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-
 /// <reference no-default-lib="true"/>
 
-
 interface String {
-    /**
+  /**
      * Pads the current string with a given string (possibly repeated) so that the resulting string reaches a given length.
      * The padding is applied from the start (left) of the current string.
      *
@@ -30,9 +27,9 @@ interface String {
      *        If this string is too long, it will be truncated and the left-most part will be applied.
      *        The default value for this parameter is " " (U+0020).
      */
-    padStart(maxLength: number, fillString?: string): string;
+  padStart(maxLength: number, fillString?: string): string;
 
-    /**
+  /**
      * Pads the current string with a given string (possibly repeated) so that the resulting string reaches a given length.
      * The padding is applied from the end (right) of the current string.
      *
@@ -43,5 +40,5 @@ interface String {
      *        If this string is too long, it will be truncated and the left-most part will be applied.
      *        The default value for this parameter is " " (U+0020).
      */
-    padEnd(maxLength: number, fillString?: string): string;
+  padEnd(maxLength: number, fillString?: string): string;
 }

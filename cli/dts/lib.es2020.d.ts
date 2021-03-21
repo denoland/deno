@@ -13,10 +13,7 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-
 /// <reference no-default-lib="true"/>
-
 
 /// <reference lib="es2019" />
 /// <reference lib="es2020.bigint" />
