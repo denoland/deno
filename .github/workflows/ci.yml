@@ -290,11 +290,11 @@ jobs:
           cargo --version
           deno --version
 
-      - name: lint.js
-        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
-
       - name: test_format.js
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
+
+      - name: lint.js
+        run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
   bench:
     runs-on: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
