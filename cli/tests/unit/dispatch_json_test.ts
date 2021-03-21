@@ -19,7 +19,7 @@ unitTest(function malformedJsonControlBuffer(): void {
   assertMatch(resObj.err.message, /\bexpected value\b/);
 });
 
-unitTest(function invalidPromiseId(): void {
+unitTest(function invalidRequestId(): void {
   const opId = Deno.core.ops()["op_open_async"];
   const reqBuf = new Uint8Array([0, 0, 0, 0, 0, 0, 0]);
   const resBuf = Deno.core.send(opId, reqBuf);
@@ -28,5 +28,5 @@ unitTest(function invalidPromiseId(): void {
   console.error(resText);
   assertStrictEquals(resObj.ok, undefined);
   assertStrictEquals(resObj.err.className, "TypeError");
-  assertMatch(resObj.err.message, /\bpromiseId\b/);
+  assertMatch(resObj.err.message, /\brequestId\b/);
 });

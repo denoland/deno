@@ -1,9 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::resolve_fs_allowlist;
+use crate::permissions::resolve_read_allowlist;
+use crate::permissions::resolve_write_allowlist;
+use crate::permissions::BooleanPermission;
+use crate::permissions::NetPermission;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
+use crate::permissions::ReadPermission;
 use crate::permissions::UnaryPermission;
+use crate::permissions::WritePermission;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
@@ -17,7 +22,6 @@ use deno_core::serde::de;
 use deno_core::serde::de::SeqAccess;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::BufVec;
@@ -91,9 +95,8 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_host_unhandled_error",
-    move |_state, args, _zero_copy| {
+    move |_state, args: HostUnhandledErrorArgs, _zero_copy| {
       if let Some(mut sender) = sender.clone() {
-        let args: HostUnhandledErrorArgs = serde_json::from_value(args)?;
         sender
           .try_send(WorkerEvent::Error(generic_error(args.message)))
           .expect("Failed to propagate error event to parent worker");
@@ -105,223 +108,104 @@ pub fn init(
   );
 }
 
-fn merge_permission_state(
-  target: &PermissionState,
-  incoming: Option<PermissionState>,
-) -> Result<PermissionState, AnyError> {
-  match target {
-    PermissionState::Granted => match incoming {
-      Some(x) => Ok(x),
-      None => Ok(*target),
-    },
-    _ => match incoming {
-      Some(x) => match x {
-        PermissionState::Denied => Ok(x),
-        _ => Err(custom_error(
-          "PermissionDenied",
-          "Can't escalate parent thread permissions",
-        )),
-      },
-      None => Ok(*target),
-    },
+fn merge_boolean_permission(
+  mut main: BooleanPermission,
+  worker: Option<PermissionState>,
+) -> Result<BooleanPermission, AnyError> {
+  if let Some(worker) = worker {
+    if worker < main.state {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.state = worker;
+    }
   }
+  Ok(main)
 }
 
-fn check_net_permission_contains(
-  a: &HashSet<String>,
-  b: &HashSet<String>,
-) -> bool {
-  b.iter().all(|x| a.contains(x))
-}
-
-fn merge_net_permissions(
-  target: &UnaryPermission<String>,
-  incoming: Option<UnaryPermission<String>>,
-) -> Result<UnaryPermission<String>, AnyError> {
-  if incoming.is_none() {
-    return Ok(target.clone());
-  };
-
-  let new_permissions = incoming.unwrap();
-  match &target.global_state {
-    PermissionState::Granted => Ok(UnaryPermission::<String> {
-      global_state: new_permissions.global_state,
-      granted_list: new_permissions.granted_list,
-      denied_list: new_permissions.denied_list,
-    }),
-    PermissionState::Prompt => match new_permissions.global_state {
-      //Throw
-      PermissionState::Granted => Err(custom_error(
+fn merge_net_permission(
+  mut main: UnaryPermission<NetPermission>,
+  worker: Option<UnaryPermission<NetPermission>>,
+) -> Result<UnaryPermission<NetPermission>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(&(&x.0, x.1)).is_ok())
+    {
+      return Err(custom_error(
         "PermissionDenied",
         "Can't escalate parent thread permissions",
-      )),
-      //Merge
-      PermissionState::Prompt => {
-        if check_net_permission_contains(
-          &target.granted_list,
-          &new_permissions.granted_list,
-        ) {
-          Ok(UnaryPermission::<String> {
-            global_state: new_permissions.global_state,
-            granted_list: new_permissions.granted_list,
-            denied_list: target.denied_list.clone(),
-          })
-        } else {
-          Err(custom_error(
-            "PermissionDenied",
-            "Can't escalate parent thread permissions",
-          ))
-        }
-      }
-      //Copy
-      PermissionState::Denied => Ok(UnaryPermission::<String> {
-        global_state: new_permissions.global_state,
-        granted_list: new_permissions.granted_list,
-        denied_list: new_permissions.denied_list,
-      }),
-    },
-    PermissionState::Denied => match new_permissions.global_state {
-      PermissionState::Denied => Ok(UnaryPermission::<String> {
-        global_state: new_permissions.global_state,
-        granted_list: new_permissions.granted_list,
-        denied_list: new_permissions.denied_list,
-      }),
-      _ => Err(custom_error(
-        "PermissionDenied",
-        "Can't escalate parent thread permissions",
-      )),
-    },
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
   }
+  Ok(main)
 }
 
-enum WorkerPermissionType {
-  READ,
-  WRITE,
-}
-
-fn check_read_permissions(
-  allow_list: &HashSet<PathBuf>,
-  current_permissions: &Permissions,
-) -> bool {
-  allow_list
-    .iter()
-    .all(|x| current_permissions.check_read(&x).is_ok())
-}
-
-fn check_write_permissions(
-  allow_list: &HashSet<PathBuf>,
-  current_permissions: &Permissions,
-) -> bool {
-  allow_list
-    .iter()
-    .all(|x| current_permissions.check_write(&x).is_ok())
-}
-
-fn merge_read_write_permissions(
-  permission_type: WorkerPermissionType,
-  target: &UnaryPermission<PathBuf>,
-  incoming: Option<UnaryPermission<PathBuf>>,
-  current_permissions: &Permissions,
-) -> Result<UnaryPermission<PathBuf>, AnyError> {
-  if incoming.is_none() {
-    return Ok(target.clone());
-  };
-
-  let new_permissions = incoming.unwrap();
-  match &target.global_state {
-    PermissionState::Granted => Ok(UnaryPermission::<PathBuf> {
-      global_state: new_permissions.global_state,
-      granted_list: new_permissions.granted_list,
-      denied_list: new_permissions.denied_list,
-    }),
-    PermissionState::Prompt => match new_permissions.global_state {
-      //Throw
-      PermissionState::Granted => Err(custom_error(
+fn merge_read_permission(
+  mut main: UnaryPermission<ReadPermission>,
+  worker: Option<UnaryPermission<ReadPermission>>,
+) -> Result<UnaryPermission<ReadPermission>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(x.0.as_path()).is_ok())
+    {
+      return Err(custom_error(
         "PermissionDenied",
         "Can't escalate parent thread permissions",
-      )),
-      //Merge
-      PermissionState::Prompt => {
-        if match permission_type {
-          WorkerPermissionType::READ => check_read_permissions(
-            &new_permissions.granted_list,
-            current_permissions,
-          ),
-          WorkerPermissionType::WRITE => check_write_permissions(
-            &new_permissions.granted_list,
-            current_permissions,
-          ),
-        } {
-          Ok(UnaryPermission::<PathBuf> {
-            global_state: new_permissions.global_state,
-            granted_list: new_permissions.granted_list,
-            denied_list: target.denied_list.clone(),
-          })
-        } else {
-          Err(custom_error(
-            "PermissionDenied",
-            "Can't escalate parent thread permissions",
-          ))
-        }
-      }
-      //Copy
-      PermissionState::Denied => Ok(UnaryPermission::<PathBuf> {
-        global_state: new_permissions.global_state,
-        granted_list: new_permissions.granted_list,
-        denied_list: new_permissions.denied_list,
-      }),
-    },
-    PermissionState::Denied => match new_permissions.global_state {
-      PermissionState::Denied => Ok(UnaryPermission::<PathBuf> {
-        global_state: new_permissions.global_state,
-        granted_list: new_permissions.granted_list,
-        denied_list: new_permissions.denied_list,
-      }),
-      _ => Err(custom_error(
-        "PermissionDenied",
-        "Can't escalate parent thread permissions",
-      )),
-    },
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
   }
+  Ok(main)
+}
+
+fn merge_write_permission(
+  mut main: UnaryPermission<WritePermission>,
+  worker: Option<UnaryPermission<WritePermission>>,
+) -> Result<UnaryPermission<WritePermission>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(x.0.as_path()).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
 }
 
 fn create_worker_permissions(
-  main_thread_permissions: &Permissions,
-  permission_args: PermissionsArg,
+  main_perms: Permissions,
+  worker_perms: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
   Ok(Permissions {
-    env: merge_permission_state(
-      &main_thread_permissions.env,
-      permission_args.env,
-    )?,
-    hrtime: merge_permission_state(
-      &main_thread_permissions.hrtime,
-      permission_args.hrtime,
-    )?,
-    net: merge_net_permissions(
-      &main_thread_permissions.net,
-      permission_args.net,
-    )?,
-    plugin: merge_permission_state(
-      &main_thread_permissions.plugin,
-      permission_args.plugin,
-    )?,
-    read: merge_read_write_permissions(
-      WorkerPermissionType::READ,
-      &main_thread_permissions.read,
-      permission_args.read,
-      &main_thread_permissions,
-    )?,
-    run: merge_permission_state(
-      &main_thread_permissions.run,
-      permission_args.run,
-    )?,
-    write: merge_read_write_permissions(
-      WorkerPermissionType::WRITE,
-      &main_thread_permissions.write,
-      permission_args.write,
-      &main_thread_permissions,
-    )?,
+    env: merge_boolean_permission(main_perms.env, worker_perms.env)?,
+    hrtime: merge_boolean_permission(main_perms.hrtime, worker_perms.hrtime)?,
+    net: merge_net_permission(main_perms.net, worker_perms.net)?,
+    plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
+    read: merge_read_permission(main_perms.read, worker_perms.read)?,
+    run: merge_boolean_permission(main_perms.run, worker_perms.run)?,
+    write: merge_write_permission(main_perms.write, worker_perms.write)?,
   })
 }
 
@@ -331,16 +215,16 @@ struct PermissionsArg {
   env: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_permission_state")]
   hrtime: Option<PermissionState>,
-  #[serde(default, deserialize_with = "as_unary_string_permission")]
-  net: Option<UnaryPermission<String>>,
+  #[serde(default, deserialize_with = "as_unary_net_permission")]
+  net: Option<UnaryPermission<NetPermission>>,
   #[serde(default, deserialize_with = "as_permission_state")]
   plugin: Option<PermissionState>,
-  #[serde(default, deserialize_with = "as_unary_path_permission")]
-  read: Option<UnaryPermission<PathBuf>>,
+  #[serde(default, deserialize_with = "as_unary_read_permission")]
+  read: Option<UnaryPermission<ReadPermission>>,
   #[serde(default, deserialize_with = "as_permission_state")]
   run: Option<PermissionState>,
-  #[serde(default, deserialize_with = "as_unary_path_permission")]
-  write: Option<UnaryPermission<PathBuf>>,
+  #[serde(default, deserialize_with = "as_unary_write_permission")]
+  write: Option<UnaryPermission<WritePermission>>,
 }
 
 fn as_permission_state<'de, D>(
@@ -402,27 +286,31 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
   }
 }
 
-fn as_unary_string_permission<'de, D>(
+fn as_unary_net_permission<'de, D>(
   deserializer: D,
-) -> Result<Option<UnaryPermission<String>>, D::Error>
+) -> Result<Option<UnaryPermission<NetPermission>>, D::Error>
 where
   D: Deserializer<'de>,
 {
   let value: UnaryPermissionBase =
     deserializer.deserialize_any(ParseBooleanOrStringVec)?;
 
-  let allowed: HashSet<String> = value.paths.into_iter().collect();
+  let allowed: HashSet<NetPermission> = value
+    .paths
+    .into_iter()
+    .map(NetPermission::from_string)
+    .collect();
 
-  Ok(Some(UnaryPermission::<String> {
+  Ok(Some(UnaryPermission::<NetPermission> {
     global_state: value.global_state,
     granted_list: allowed,
     ..Default::default()
   }))
 }
 
-fn as_unary_path_permission<'de, D>(
+fn as_unary_read_permission<'de, D>(
   deserializer: D,
-) -> Result<Option<UnaryPermission<PathBuf>>, D::Error>
+) -> Result<Option<UnaryPermission<ReadPermission>>, D::Error>
 where
   D: Deserializer<'de>,
 {
@@ -432,16 +320,35 @@ where
   let paths: Vec<PathBuf> =
     value.paths.into_iter().map(PathBuf::from).collect();
 
-  Ok(Some(UnaryPermission::<PathBuf> {
+  Ok(Some(UnaryPermission::<ReadPermission> {
     global_state: value.global_state,
-    granted_list: resolve_fs_allowlist(&Some(paths)),
+    granted_list: resolve_read_allowlist(&Some(paths)),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_write_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<WritePermission>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  let paths: Vec<PathBuf> =
+    value.paths.into_iter().map(PathBuf::from).collect();
+
+  Ok(Some(UnaryPermission::<WritePermission> {
+    global_state: value.global_state,
+    granted_list: resolve_write_allowlist(&Some(paths)),
     ..Default::default()
   }))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateWorkerArgs {
+pub struct CreateWorkerArgs {
   has_source_code: bool,
   name: Option<String>,
   permissions: Option<PermissionsArg>,
@@ -453,11 +360,9 @@ struct CreateWorkerArgs {
 /// Create worker as the host
 fn op_create_worker(
   state: &mut OpState,
-  args: Value,
+  args: CreateWorkerArgs,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: CreateWorkerArgs = serde_json::from_value(args)?;
-
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
     Some(args.source_code.clone())
@@ -472,7 +377,7 @@ fn op_create_worker(
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {
     super::check_unstable(state, "Worker.deno.permissions");
-    create_worker_permissions(&parent_permissions, permissions)?
+    create_worker_permissions(parent_permissions.clone(), permissions)?
   } else {
     parent_permissions.clone()
   };
@@ -536,16 +441,16 @@ fn op_create_worker(
 }
 
 #[derive(Deserialize)]
-struct WorkerArgs {
+pub struct WorkerArgs {
   id: i32,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_host_terminate_worker(
   state: &mut OpState,
-  args: Value,
+  args: WorkerArgs,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let worker_thread = state
     .borrow_mut::<WorkersTable>()
@@ -619,10 +524,9 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: WorkerArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
 
   let worker_handle = {
@@ -654,11 +558,10 @@ async fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &mut OpState,
-  args: Value,
+  args: WorkerArgs,
   data: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
-  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 

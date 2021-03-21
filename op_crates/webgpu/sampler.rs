@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -64,7 +65,7 @@ pub fn serialize_compare_function(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSamplerArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   address_mode_u: Option<String>,
   address_mode_v: Option<String>,

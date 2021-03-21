@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -152,7 +153,7 @@ struct GPUProgrammableStage {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateComputePipelineArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   layout: Option<u32>,
   compute: GPUProgrammableStage,
@@ -221,7 +222,7 @@ pub fn op_webgpu_create_compute_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePipelineGetBindGroupLayoutArgs {
-  compute_pipeline_rid: u32,
+  compute_pipeline_rid: ResourceId,
   index: u32,
 }
 
@@ -352,7 +353,7 @@ struct GPUFragmentState {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRenderPipelineArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   layout: Option<u32>,
   vertex: GPUVertexState,
@@ -611,7 +612,7 @@ pub fn op_webgpu_create_render_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPipelineGetBindGroupLayoutArgs {
-  render_pipeline_rid: u32,
+  render_pipeline_rid: ResourceId,
   index: u32,
 }
 

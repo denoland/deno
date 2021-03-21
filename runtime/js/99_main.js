@@ -11,7 +11,6 @@ delete Object.prototype.__proto__;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
-  const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;
@@ -142,12 +141,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    const opsMap = core.ops();
-    for (const [name, opId] of Object.entries(opsMap)) {
-      if (name === "op_write" || name === "op_read") {
-        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
-      }
-    }
+    core.ops();
 
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
@@ -296,7 +290,9 @@ delete Object.prototype.__proto__;
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(new Console(core.print)),
+    console: util.writable(
+      new Console((msg, level) => core.print(msg, level > 1)),
+    ),
     crypto: util.readOnly(crypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),

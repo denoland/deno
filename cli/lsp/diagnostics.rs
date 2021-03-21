@@ -24,12 +24,9 @@ use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::time;
-
-// 150ms between keystrokes is about 45 WPM, so we want something that is longer
-// than that, but not too long to introduce detectable UI delay.  200ms is a
-// decent compromise.
-const DIAGNOSTIC_DEBOUNCE_MS: u64 = 200;
+use tokio::time::sleep;
+use tokio::time::Duration;
+use tokio::time::Instant;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum DiagnosticSource {
@@ -202,34 +199,6 @@ async fn update_diagnostics(
   }
 }
 
-fn handle_request(
-  maybe_request: Option<DiagnosticRequest>,
-  collection: &mut DiagnosticCollection,
-  dirty: &mut bool,
-) -> bool {
-  match maybe_request {
-    Some(request) => {
-      match request {
-        DiagnosticRequest::Get(specifier, source, tx) => {
-          let diagnostics = collection
-            .diagnostics_for(&specifier, &source)
-            .cloned()
-            .collect();
-          if tx.send(diagnostics).is_err() {
-            error!("DiagnosticServer unable to send response on channel.");
-          }
-        }
-        DiagnosticRequest::Invalidate(specifier) => {
-          collection.invalidate(&specifier)
-        }
-        DiagnosticRequest::Update => *dirty = true,
-      }
-      true
-    }
-    _ => false,
-  }
-}
-
 /// A server which calculates diagnostics in its own thread and publishes them
 /// to an LSP client.
 #[derive(Debug)]
@@ -256,52 +225,59 @@ impl DiagnosticsServer {
       let mut collection = DiagnosticCollection::default();
 
       runtime.block_on(async {
-        // Some(snapshot) is the flag we use to determine if something has
-        // changed where we will wait for the timeout of changes or a request
-        // that forces us to update diagnostics
+        // Debounce timer delay. 150ms between keystrokes is about 45 WPM, so we
+        // want something that is longer than that, but not too long to
+        // introduce detectable UI delay; 200ms is a decent compromise.
+        const DELAY: Duration = Duration::from_millis(200);
+        // If the debounce timer isn't active, it will be set to expire "never",
+        // which is actually just 1 year in the future.
+        const NEVER: Duration = Duration::from_secs(365 * 24 * 60 * 60);
+
+        // A flag that is set whenever something has changed that requires the
+        // diagnostics collection to be updated.
         let mut dirty = false;
 
+        let debounce_timer = sleep(NEVER);
+        tokio::pin!(debounce_timer);
+
         loop {
-          let next = rx.recv();
-          tokio::pin!(next);
-
-          let duration = if dirty {
-            time::Duration::from_millis(DIAGNOSTIC_DEBOUNCE_MS)
-          } else {
-            // we need to await an arbitrary silly amount of time, so this is
-            // 1 year in seconds
-            time::Duration::new(31_622_400, 0)
-          };
-
           // "race" the next message off the rx queue or the debounce timer.
-          // if the next message comes off the queue, the next iteration of the
-          // loop will reset the debounce future.  When the debounce future
-          // occurs, the diagnostics will be updated based on the snapshot that
-          // is retrieved, thereby "skipping" all the interim state changes.
+          // The debounce timer gets reset every time a message comes off the
+          // queue. When the debounce timer expires, a snapshot of the most
+          // up-to-date state is used to produce diagnostics.
           tokio::select! {
-            _ = time::sleep(duration) => {
-              if dirty {
-                dirty = false;
-                let snapshot = {
-                  // make sure the lock drops
-                  language_server.lock().await.snapshot()
-                };
-                update_diagnostics(
-                  &client,
-                  &mut collection,
-                  &snapshot,
-                  &ts_server
-                ).await;
-              }
-              let maybe_request = next.await;
-              if !handle_request(maybe_request, &mut collection, &mut dirty) {
-                break;
+            maybe_request = rx.recv() => {
+              use DiagnosticRequest::*;
+              match maybe_request {
+                None => break, // Request channel closed.
+                Some(Get(specifier, source, tx)) => {
+                  let diagnostics = collection
+                    .diagnostics_for(&specifier, &source)
+                    .cloned()
+                    .collect();
+                  // If this fails, the requestor disappeared; not a problem.
+                  let _ = tx.send(diagnostics);
+                }
+                Some(Invalidate(specifier)) => {
+                  collection.invalidate(&specifier);
+                }
+                Some(Update) => {
+                  dirty = true;
+                  debounce_timer.as_mut().reset(Instant::now() + DELAY);
+                }
               }
             }
-            maybe_request = &mut next => {
-              if !handle_request(maybe_request, &mut collection, &mut dirty) {
-                break;
-              }
+            _ = debounce_timer.as_mut(), if dirty => {
+              dirty = false;
+              debounce_timer.as_mut().reset(Instant::now() + NEVER);
+
+              let snapshot = language_server.lock().await.snapshot();
+              update_diagnostics(
+                &client,
+                &mut collection,
+                &snapshot,
+                &ts_server
+              ).await;
             }
           }
         }
