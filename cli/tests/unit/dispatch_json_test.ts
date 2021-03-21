@@ -28,5 +28,5 @@ Deno.test("invalidPromiseId", function (): void {
   console.error(resText);
   assertStrictEquals(resObj.ok, undefined);
   assertStrictEquals(resObj.err.className, "TypeError");
-  assertMatch(resObj.err.message, /\bpromiseId\b/);
+  assertMatch(resObj.err.message, /\brequestId\b/);
 });

@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 
@@ -15,7 +16,7 @@ type WebGPUQueue = super::WebGPUDevice;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueSubmitArgs {
-  queue_rid: u32,
+  queue_rid: ResourceId,
   command_buffers: Vec<u32>,
 }
 
@@ -58,7 +59,7 @@ struct GPUImageDataLayout {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueWriteBufferArgs {
-  queue_rid: u32,
+  queue_rid: ResourceId,
   buffer: u32,
   buffer_offset: u64,
   data_offset: usize,
@@ -100,7 +101,7 @@ pub fn op_webgpu_write_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueWriteTextureArgs {
-  queue_rid: u32,
+  queue_rid: ResourceId,
   destination: super::command_encoder::GPUImageCopyTexture,
   data_layout: GPUImageDataLayout,
   size: super::texture::GPUExtent3D,

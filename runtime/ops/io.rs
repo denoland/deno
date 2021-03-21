@@ -14,6 +14,7 @@ use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -98,11 +99,11 @@ lazy_static! {
 }
 
 pub fn init(rt: &mut JsRuntime) {
-  super::reg_buffer_async(rt, "op_read_async", op_read_async);
-  super::reg_buffer_async(rt, "op_write_async", op_write_async);
+  super::reg_bin_async(rt, "op_read_async", op_read_async);
+  super::reg_bin_async(rt, "op_write_async", op_write_async);
 
-  super::reg_buffer_sync(rt, "op_read_sync", op_read_sync);
-  super::reg_buffer_sync(rt, "op_write_sync", op_write_sync);
+  super::reg_bin_sync(rt, "op_read_sync", op_read_sync);
+  super::reg_bin_sync(rt, "op_write_sync", op_write_sync);
 
   super::reg_json_async(rt, "op_shutdown", op_shutdown);
 }
@@ -459,7 +460,7 @@ impl StdFileResource {
 
   pub fn with<F, R>(
     state: &mut OpState,
-    rid: u32,
+    rid: ResourceId,
     mut f: F,
   ) -> Result<R, AnyError>
   where
@@ -521,7 +522,7 @@ impl Resource for StdFileResource {
 
 fn op_read_sync(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
   bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, AnyError> {
   StdFileResource::with(state, rid, move |r| match r {
@@ -535,7 +536,7 @@ fn op_read_sync(
 
 async fn op_read_async(
   state: Rc<RefCell<OpState>>,
-  rid: u32,
+  rid: ResourceId,
   mut bufs: BufVec,
 ) -> Result<u32, AnyError> {
   let buf = &mut bufs[0];
@@ -566,7 +567,7 @@ async fn op_read_async(
 
 fn op_write_sync(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
   bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, AnyError> {
   StdFileResource::with(state, rid, move |r| match r {
@@ -580,7 +581,7 @@ fn op_write_sync(
 
 async fn op_write_async(
   state: Rc<RefCell<OpState>>,
-  rid: u32,
+  rid: ResourceId,
   bufs: BufVec,
 ) -> Result<u32, AnyError> {
   let buf = &bufs[0];
@@ -609,7 +610,7 @@ async fn op_write_async(
 
 #[derive(Deserialize)]
 struct ShutdownArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 async fn op_shutdown(
