@@ -198,7 +198,16 @@ pub async fn op_webgpu_request_adapter(
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
-  let instance = state.borrow::<Instance>();
+  let instance = if let Some(instance) = state.try_borrow::<Instance>() {
+    instance
+  } else {
+    state.put(wgpu_core::hub::Global::new(
+      "webgpu",
+      wgpu_core::hub::IdentityManagerFactory,
+      wgpu_types::BackendBit::PRIMARY,
+    ));
+    state.borrow::<Instance>()
+  };
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
