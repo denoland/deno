@@ -6,6 +6,34 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.8.2 / 2021.03.21
+
+- fix: fallback to default UA and CA data for Deno.createHttpClient() (#9830)
+- fix: getBindGroupLayout always illegal invocation (#9684)
+- fix(cli/bundle): display anyhow error chain (#9822)
+- fix(core): don't panic on invalid arguments for Deno.core.print (#9834)
+- fix(doc): update example for sub processes (#9798)
+- fix(fmt): Correctly format hard breaks in markdown (#9742)
+- fix(lsp): allow on disk files to change (#9746)
+- fix(lsp): diagnostics use own thread and debounce (#9572)
+- fix(op_crates/webgpu): create instance only when required (#9771)
+- fix(runtime): do not require deno namespace in workers for crypto (#9784)
+- refactor: enforce type ResourceId across codebase (#9837, #9832)
+- refactor: Clean up permission handling (#9367)
+- refactor: Move bin ops to deno_core and unify logic with json ops (#9457)
+- refactor: Move Console to op_crates/console (#9770)
+- refactor: Split web op crate (#9635)
+- refactor: Simplify icu data alignment (#9766)
+- refactor: Update minimal ops & rename to buffer ops (#9719)
+- refactor: Use serde ops more (#9817, #9828)
+- refactor(lsp): refactor completions and add tests (#9789)
+- refactor(lsp): slightly reorganize diagnostics debounce logic (#9796)
+- upgrade: rusty_v8 0.21.0 (#9725)
+- upgrade: tokio 1.4.0 (#9842)
+
+Release notes for std version 0.91.0:
+https://github.com/denoland/deno_std/releases/tag/0.91.0
+
 ### 1.8.1 / 2021.03.09
 
 - fix(cli/ast): Pass importsNotUsedAsValues to swc (#9714)

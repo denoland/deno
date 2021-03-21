@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.8.1"
+version = "1.8.2"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
