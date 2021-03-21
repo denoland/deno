@@ -39,95 +39,107 @@ pub fn enable_ansi() {
   BufferWriter::stdout(ColorChoice::AlwaysAnsi);
 }
 
-fn style(s: &str, colorspec: ColorSpec) -> impl fmt::Display {
+fn style<S: AsRef<str>>(s: S, colorspec: ColorSpec) -> impl fmt::Display {
   if !use_color() {
-    return String::from(s);
+    return String::from(s.as_ref());
   }
   let mut v = Vec::new();
   let mut ansi_writer = Ansi::new(&mut v);
   ansi_writer.set_color(&colorspec).unwrap();
-  ansi_writer.write_all(s.as_bytes()).unwrap();
+  ansi_writer.write_all(s.as_ref().as_bytes()).unwrap();
   ansi_writer.reset().unwrap();
   String::from_utf8_lossy(&v).into_owned()
 }
 
-pub fn red_bold(s: &str) -> impl fmt::Display {
+pub fn red_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red)).set_bold(true);
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn green_bold(s: &str) -> impl fmt::Display {
+pub fn green_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Green)).set_bold(true);
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn italic_bold(s: &str) -> impl fmt::Display {
+pub fn italic<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_italic(true);
+  style(s, style_spec)
+}
+
+pub fn italic_gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Ansi256(8))).set_italic(true);
+  style(s, style_spec)
+}
+
+pub fn italic_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true).set_italic(true);
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn white_on_red(s: &str) -> impl fmt::Display {
+pub fn white_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Red)).set_fg(Some(White));
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn black_on_green(s: &str) -> impl fmt::Display {
+pub fn black_on_green<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Green)).set_fg(Some(Black));
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn yellow(s: &str) -> impl fmt::Display {
+pub fn yellow<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Yellow));
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn cyan(s: &str) -> impl fmt::Display {
+pub fn cyan<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Cyan));
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn red(s: &str) -> impl fmt::Display {
+pub fn red<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red));
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn green(s: &str) -> impl fmt::Display {
+pub fn green<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Green));
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn bold(s: &str) -> impl fmt::Display {
+pub fn bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true);
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn gray(s: &str) -> impl fmt::Display {
+pub fn gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(8)));
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn italic_bold_gray(s: &str) -> impl fmt::Display {
+pub fn italic_bold_gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec
     .set_fg(Some(Ansi256(8)))
     .set_bold(true)
     .set_italic(true);
-  style(&s, style_spec)
+  style(s, style_spec)
 }
 
-pub fn intense_blue(s: &str) -> impl fmt::Display {
+pub fn intense_blue<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Blue)).set_intense(true);
-  style(&s, style_spec)
+  style(s, style_spec)
 }

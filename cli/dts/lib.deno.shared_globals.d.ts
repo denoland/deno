@@ -5,9 +5,12 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.console" />
+/// <reference lib="deno.url" />
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
+/// <reference lib="deno.crypto" />
 
 declare namespace WebAssembly {
   /**
@@ -343,8 +346,6 @@ interface VoidFunction {
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
-declare var crypto: Crypto;
-
 /** Registers an event listener in the global scope, which will be called
  * synchronously whenever the event `type` is dispatched.
  *
@@ -391,50 +392,7 @@ interface DOMStringList {
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
-declare interface Console {
-  assert(condition?: boolean, ...data: any[]): void;
-  clear(): void;
-  count(label?: string): void;
-  countReset(label?: string): void;
-  debug(...data: any[]): void;
-  dir(item?: any, options?: any): void;
-  dirxml(...data: any[]): void;
-  error(...data: any[]): void;
-  group(...data: any[]): void;
-  groupCollapsed(...data: any[]): void;
-  groupEnd(): void;
-  info(...data: any[]): void;
-  log(...data: any[]): void;
-  table(tabularData?: any, properties?: string[]): void;
-  time(label?: string): void;
-  timeEnd(label?: string): void;
-  timeLog(label?: string, ...data: any[]): void;
-  timeStamp(label?: string): void;
-  trace(...data: any[]): void;
-  warn(...data: any[]): void;
-}
-
 declare var console: Console;
-
-declare interface Crypto {
-  readonly subtle: null;
-  getRandomValues<
-    T extends
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | null,
-  >(
-    array: T,
-  ): T;
-}
 
 interface MessageEventInit<T = any> extends EventInit {
   data?: T;

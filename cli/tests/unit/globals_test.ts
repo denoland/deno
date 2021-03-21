@@ -48,6 +48,12 @@ unitTest(function globalThisInstanceofEventTarget(): void {
   assert(globalThis instanceof EventTarget);
 });
 
+unitTest(function navigatorInstanceofNavigator(): void {
+  // TODO(nayeemrmn): Add `Navigator` to deno_lint globals.
+  // deno-lint-ignore no-undef
+  assert(navigator instanceof Navigator);
+});
+
 unitTest(function DenoNamespaceExists(): void {
   assert(Deno != null);
 });

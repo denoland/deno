@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::json_op_sync;
 use deno_core::resolve_url_or_path;
+use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -20,7 +21,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,8 +29,11 @@ use std::sync::Mutex;
 // Declaration files
 
 pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
+pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
+pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
 pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
 pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
+pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =

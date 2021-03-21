@@ -6,7 +6,7 @@ jobs:
   build:
     name: build / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       matrix:
@@ -33,6 +33,7 @@ jobs:
           fetch-depth: 5
           submodules: true
 
+
       - name: Get Commit Hash
         id: release
         run: echo "::set-output name=ref::$(git rev-parse HEAD)"
@@ -42,6 +43,7 @@ jobs:
       # https://github.com/actions-rs/cargo/issues/111.
       - name: Install GNU tar (MacOS)
         if: runner.os == 'macOS'
+
         run: |
           brew install gnu-tar
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
@@ -55,11 +57,13 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
+
           key: cargo-cache-build-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-cache-build-${{ runner.os }}-
 
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
+
         with:
           default: true
           override: true
@@ -227,6 +231,7 @@ jobs:
           rustc --version
           cargo --version
           deno --version
+
 
       - name: Build (${{ matrix.kind }})
         uses: actions-rs/cargo@v1

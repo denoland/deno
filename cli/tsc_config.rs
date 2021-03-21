@@ -2,13 +2,13 @@
 
 use crate::fs_util::canonicalize_path;
 use deno_core::error::AnyError;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use jsonc_parser::JsonValue;
-use serde::Deserialize;
-use serde::Serialize;
-use serde::Serializer;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -23,6 +23,7 @@ use std::str::FromStr;
 pub struct EmitConfigOptions {
   pub check_js: bool,
   pub emit_decorator_metadata: bool,
+  pub imports_not_used_as_values: String,
   pub inline_source_map: bool,
   pub jsx: String,
   pub jsx_factory: String,
