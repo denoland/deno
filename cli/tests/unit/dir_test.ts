@@ -5,10 +5,9 @@ Deno.test("dirCwdNotNull", function (): void {
   assert(Deno.cwd() != null);
 });
 
-Deno.test({
-  name: "dirCwdChdirSuccess",
-  ignore: true,
-  fn(): void {
+Deno.test(
+  "dirCwdChdirSuccess",
+  function (): void {
     const initialdir = Deno.cwd();
     const path = Deno.makeTempDirSync();
     Deno.chdir(path);
@@ -20,11 +19,12 @@ Deno.test({
     }
     Deno.chdir(initialdir);
   },
-});
+);
 
 Deno.test({
   name: "dirCwdError",
-  ignore: true,
+  // excluding windows since it throws resource busy, while removeSync
+  ignore: Deno.build.os == "windows",
   fn(): void {
     const initialdir = Deno.cwd();
     const path = Deno.makeTempDirSync();
@@ -40,16 +40,15 @@ Deno.test({
   },
 });
 
-Deno.test({
-  name: "dirChdirError",
-  ignore: true,
-  fn(): void {
+Deno.test(
+  "dirChdirError",
+  function (): void {
     const path = Deno.makeTempDirSync() + "test";
     assertThrows(() => {
       Deno.chdir(path);
     }, Deno.errors.NotFound);
   },
-});
+);
 
 Deno.test("dirCwdPermError", async function (): Promise<void> {
   await Deno.permissions.revoke({ name: "read" });
