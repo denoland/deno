@@ -959,6 +959,7 @@ async fn run_test(
   Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
