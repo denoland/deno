@@ -1040,6 +1040,7 @@ async fn test_command(
 
   let handler = {
     tokio::task::spawn_blocking(move || {
+      let time = std::time::Instant::now();
       let mut failed = 0;
       let mut filtered_out = 0;
       let mut ignored = 0;
@@ -1140,7 +1141,7 @@ async fn test_command(
         ignored,
         measured,
         filtered_out,
-        colors::gray("(0ms)"),
+        colors::gray(format!("({}ms)", time.elapsed().as_millis())),
       );
 
       if used_only {
