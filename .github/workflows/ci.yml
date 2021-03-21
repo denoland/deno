@@ -37,6 +37,27 @@ jobs:
         id: release
         run: echo "::set-output name=ref::$(git rev-parse HEAD)"
 
+      # Install gnu-tar because BSD tar is buggy on Github's macos machines.
+      # https://github.com/actions/cache/issues/403
+      # https://github.com/actions-rs/cargo/issues/111.
+      - name: Install GNU tar (MacOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Cargo Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/*/.*
+            target/*/build
+            target/*/deps
+          key: cargo-cache-build-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-cache-build-${{ runner.os }}-
+
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -137,11 +158,35 @@ jobs:
         id: release
         run: echo "::set-output name=ref::$(echo ${GITHUB_REF#refs/*/})"
 
+      # Install gnu-tar because BSD tar is buggy on Github's macos machines.
+      # https://github.com/actions/cache/issues/403
+      # https://github.com/actions-rs/cargo/issues/111.
+      - name: Install GNU tar (MacOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Write git_submodule_status.txt
+        run: git submodule status --recursive > git_submodule_status.txt
+
       - name: Create Source Tarball
         if: runner.os == 'Linux'
         run: |
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czf target/release/deno_src.tar.gz -C .. deno
+
+      - name: Cargo Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/*/.*
+            target/*/build
+            target/*/deps
+          key: cargo-cache-test-${{ matrix.kind }}-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-cache-test-${{ matrix.kind }}-${{ runner.os }}-
 
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
