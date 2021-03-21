@@ -60,9 +60,10 @@ use crate::test_dispatcher::TestResult;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::stream;
 use deno_core::futures::Future;
+use deno_core::futures::StreamExt;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -964,6 +965,7 @@ async fn test_command(
   _quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -1025,9 +1027,13 @@ async fn test_command(
         tokio_util::run_basic(future)
       });
 
-      join_handle.join()
+      join_handle.join().unwrap().unwrap()
     })
   });
+
+  let join_futures = stream::iter(join_handles)
+    .buffer_unordered(concurrent_jobs)
+    .collect::<Vec<Result<(), tokio::task::JoinError>>>();
 
   let handler = {
     tokio::task::spawn_blocking(move || {
@@ -1147,8 +1153,9 @@ async fn test_command(
     })
   };
 
-  let join_results = future::try_join_all(join_handles);
-  let (has_error, _) = future::try_join(handler, join_results).await?;
+  let _join_results = join_futures.await;
+
+  let has_error = handler.await?;
   if has_error {
     std::process::exit(1);
   }
@@ -1286,10 +1293,18 @@ fn get_subcommand(
       include,
       allow_none,
       filter,
-    } => {
-      test_command(flags, include, no_run, fail_fast, quiet, allow_none, filter)
-        .boxed_local()
-    }
+      concurrent_jobs,
+    } => test_command(
+      flags,
+      include,
+      no_run,
+      fail_fast,
+      quiet,
+      allow_none,
+      filter,
+      concurrent_jobs,
+    )
+    .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);

@@ -87,6 +87,7 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
+    concurrent_jobs: usize,
   },
   Types,
   Upgrade {
@@ -709,6 +710,18 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
 
+  let concurrent_jobs = if matches.is_present("jobs") {
+    if let Some(value) = matches.value_of("jobs") {
+      value.parse().unwrap()
+    } else {
+      // TODO(caspervonb) when no value is given use
+      // https://doc.rust-lang.org/std/thread/fn.available_concurrency.html
+      2
+    }
+  } else {
+    1
+  };
+
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
       .values_of("script_arg")
@@ -740,6 +753,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     filter,
     allow_none,
+    concurrent_jobs,
   };
 }
 
@@ -1491,6 +1505,14 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
         .help("Collect coverage profile data"),
+    )
+    .arg(
+      Arg::with_name("jobs")
+        .short("j")
+        .long("jobs")
+        .min_values(0)
+        .max_values(1)
+        .takes_value(true),
     )
     .arg(
       Arg::with_name("files")
@@ -3239,6 +3261,7 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          concurrent_jobs: 1,
         },
         unstable: true,
         coverage_dir: Some("cov".to_string()),
