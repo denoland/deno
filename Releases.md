@@ -11,7 +11,6 @@ https://github.com/denoland/deno_install
 - fix: fallback to default UA and CA data for Deno.createHttpClient() (#9830)
 - fix: getBindGroupLayout always illegal invocation (#9684)
 - fix(cli/bundle): display anyhow error chain (#9822)
-- fix(cli/module_graph): Set useDefineForClassFields to true (#9774)
 - fix(core): don't panic on invalid arguments for Deno.core.print (#9834)
 - fix(doc): update example for sub processes (#9798)
 - fix(fmt): Correctly format hard breaks in markdown (#9742)
