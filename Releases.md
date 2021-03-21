@@ -28,8 +28,6 @@ https://github.com/denoland/deno_install
 - refactor: Use serde ops more (#9817, #9828)
 - refactor(lsp): refactor completions and add tests (#9789)
 - refactor(lsp): slightly reorganize diagnostics debounce logic (#9796)
-- refactor(runtime/ops/worker_host): simplify worker perms handling (#9835)
-- refactor(runtime/permissions): Rename permission structs (#9841)
 - upgrade: rusty_v8 0.21.0 (#9725)
 - upgrade: tokio 1.4.0 (#9842)
 
