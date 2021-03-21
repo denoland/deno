@@ -1,3 +1,3 @@
-Deno.test("log", function() {
+Deno.test("log", function () {
   console.log("log");
 });
