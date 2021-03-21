@@ -1327,9 +1327,9 @@ impl SelectionRange {
     lsp::SelectionRange {
       range: self.text_span.to_range(line_index),
       parent: match self.parent {
-        Some(parent_selection) => Some(Box::new(
-          parent_selection.to_selection_range(line_index),
-        )),
+        Some(parent_selection) => {
+          Some(Box::new(parent_selection.to_selection_range(line_index)))
+        }
         None => None,
       },
     }

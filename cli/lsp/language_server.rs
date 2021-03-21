@@ -2462,6 +2462,114 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_selection_range() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "selection_range_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "selection_range_request.json",
+        LspResponse::Request(
+          2,
+          json!([{
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 8
+              },
+              "end": {
+                "line": 2,
+                "character": 9
+              }
+            },
+            "parent": {
+              "range": {
+                "start": {
+                  "line": 2,
+                  "character": 8
+                },
+                "end": {
+                  "line": 2,
+                  "character": 15
+                }
+              },
+              "parent": {
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 5
+                  }
+                },
+                "parent": {
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 2
+                    }
+                  },
+                  "parent": {
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 2
+                      },
+                      "end": {
+                        "line": 6,
+                        "character": 3
+                      }
+                    },
+                    "parent": {
+                      "range": {
+                        "start": {
+                          "line": 0,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 7,
+                          "character": 0
+                        }
+                      },
+                      "parent": {
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 7,
+                            "character": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }]),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
   async fn test_code_lens_request() {
     let mut harness = LspTestHarness::new(vec![
       ("initialize_request.json", LspResponse::RequestAny),
