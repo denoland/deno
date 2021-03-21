@@ -221,6 +221,7 @@ finishing test case.`;
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     createTestFilter,
+    tests,
     runTests,
   };
 
