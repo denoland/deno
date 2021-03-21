@@ -2431,6 +2431,12 @@ mod integration {
       output: "test/exit_sanitizer_test.out",
       exit_code: 1,
     });
+
+    itest!(quiet {
+      args: "test --quiet test/quiet_test.ts",
+      exit_code: 0,
+      output: "test/quiet_test.out",
+    });
   }
 
   #[test]

@@ -4,7 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { setExitHandler, exit } = window.__bootstrap.os;
-  const { inspectArgs } = window.__bootstrap.console;
+  const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
@@ -201,8 +201,14 @@ finishing test case.`;
   }
 
   async function runTests({
+    quiet = false,
     filter = null,
   } = {}) {
+    const originalConsole = globalThis.console;
+    if (quiet) {
+      globalThis.console = new Console(() => {});
+    }
+
     const only = tests.filter((test) => test.only);
     const pending = (only.length > 0 ? only : tests).filter(
       createTestFilter(filter),
@@ -215,6 +221,10 @@ finishing test case.`;
 
     for (const test of pending) {
       await runTest(test);
+    }
+
+    if (quiet) {
+      globalThis.console = originalConsole;
     }
   }
 

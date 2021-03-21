@@ -911,6 +911,7 @@ async fn run_test(
   main_module: ModuleSpecifier,
   permissions: Permissions,
   channel: Sender<TestMessage>,
+  quiet: bool,
   filter: Option<String>,
 ) -> Result<(), AnyError> {
   let mut worker =
@@ -939,6 +940,7 @@ async fn run_test(
 
   let options = json!({
     "filter": filter,
+    "quiet": quiet,
   });
 
   let execute_result = worker.execute_module(&main_module).await;
@@ -962,7 +964,7 @@ async fn test_command(
   include: Option<Vec<String>>,
   no_run: bool,
   fail_fast: bool,
-  _quiet: bool,
+  quiet: bool,
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
@@ -1021,6 +1023,7 @@ async fn test_command(
           module_specifier.clone(),
           permissions.clone(),
           sender.clone(),
+          quiet,
           filter,
         );
 
