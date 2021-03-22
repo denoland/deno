@@ -295,22 +295,19 @@ impl CoverageReporter for LcovCoverageReporter {
           }
         }
 
-        // Reset the count if any block intersects with the current line has a count of
-        // zero.
-        //
-        // We check for intersection instead of inclusion here because a block may be anywhere
-        // inside a line.
+        // We reset the count if any block with a zero count overlaps with the line range.
         for function in &script_coverage.functions {
           for range in &function.ranges {
             if range.count > 0 {
               continue;
             }
 
-            if (range.start_offset < *line_start_offset
-              && range.end_offset > *line_start_offset)
-              || (range.start_offset < *line_end_offset
-                && range.end_offset > *line_end_offset)
-            {
+            let overlaps = std::cmp::max(line_end_offset, &range.end_offset)
+              - std::cmp::min(line_start_offset, &range.start_offset)
+              < (line_end_offset - line_start_offset)
+                + (range.end_offset - range.start_offset);
+
+            if overlaps {
               count = 0;
             }
           }
@@ -435,22 +432,19 @@ impl CoverageReporter for PrettyCoverageReporter {
           }
         }
 
-        // Reset the count if any block intersects with the current line has a count of
-        // zero.
-        //
-        // We check for intersection instead of inclusion here because a block may be anywhere
-        // inside a line.
+        // We reset the count if any block with a zero count overlaps with the line range.
         for function in &script_coverage.functions {
           for range in &function.ranges {
             if range.count > 0 {
               continue;
             }
 
-            if (range.start_offset < *line_start_offset
-              && range.end_offset > *line_start_offset)
-              || (range.start_offset < *line_end_offset
-                && range.end_offset > *line_end_offset)
-            {
+            let overlaps = std::cmp::max(line_end_offset, &range.end_offset)
+              - std::cmp::min(line_start_offset, &range.start_offset)
+              < (line_end_offset - line_start_offset)
+                + (range.end_offset - range.start_offset);
+
+            if overlaps {
               count = 0;
             }
           }

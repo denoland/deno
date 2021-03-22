@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -33,7 +34,7 @@ impl Resource for WebGPURenderBundle {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRenderBundleEncoderArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   color_formats: Vec<String>,
   depth_stencil_format: Option<String>,
@@ -92,7 +93,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderFinishArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   label: Option<String>,
 }
 
@@ -131,7 +132,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetBindGroupArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   index: u32,
   bind_group: u32,
   dynamic_offsets_data: Option<Vec<u32>>,
@@ -190,7 +191,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderPushDebugGroupArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   group_label: String,
 }
 
@@ -218,7 +219,7 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderPopDebugGroupArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
 }
 
 pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
@@ -243,7 +244,7 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderInsertDebugMarkerArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   marker_label: String,
 }
 
@@ -271,7 +272,7 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetPipelineArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   pipeline: u32,
 }
 
@@ -300,7 +301,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetIndexBufferArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   buffer: u32,
   index_format: String,
   offset: u64,
@@ -337,7 +338,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetVertexBufferArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   slot: u32,
   buffer: u32,
   offset: u64,
@@ -372,7 +373,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderDrawArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   vertex_count: u32,
   instance_count: u32,
   first_vertex: u32,
@@ -403,7 +404,7 @@ pub fn op_webgpu_render_bundle_encoder_draw(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderDrawIndexedArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   index_count: u32,
   instance_count: u32,
   first_index: u32,
@@ -436,7 +437,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderDrawIndirectArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   indirect_buffer: u32,
   indirect_offset: u64,
 }

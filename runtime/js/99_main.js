@@ -11,7 +11,6 @@ delete Object.prototype.__proto__;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
-  const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;
@@ -20,7 +19,7 @@ delete Object.prototype.__proto__;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
-  const { internalSymbol, internalObject } = window.__bootstrap.internals;
+  const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
@@ -35,6 +34,7 @@ delete Object.prototype.__proto__;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
+  const webidl = window.__bootstrap.webidl;
   const { defineEventHandler } = window.__bootstrap.webUtil;
 
   let windowIsClosing = false;
@@ -141,12 +141,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    const opsMap = core.ops();
-    for (const [name, opId] of Object.entries(opsMap)) {
-      if (name === "op_write" || name === "op_read") {
-        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
-      }
-    }
+    core.ops();
 
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
@@ -203,6 +198,52 @@ delete Object.prototype.__proto__;
     );
   }
 
+  class Navigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const navigator = webidl.createBranded(Navigator);
+
+  Object.defineProperties(Navigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webgpu.gpu;
+      },
+    },
+  });
+
+  class WorkerNavigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const workerNavigator = webidl.createBranded(WorkerNavigator);
+
+  Object.defineProperties(WorkerNavigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, WorkerNavigator);
+        return webgpu.gpu;
+      },
+    },
+  });
+
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
     Blob: util.nonEnumerable(file.Blob),
@@ -249,7 +290,9 @@ delete Object.prototype.__proto__;
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(new Console(core.print)),
+    console: util.writable(
+      new Console((msg, level) => core.print(msg, level > 1)),
+    ),
     crypto: util.readOnly(crypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
@@ -293,17 +336,18 @@ delete Object.prototype.__proto__;
   // structure, it might be worth it to define a helper in `util`
   windowOrWorkerGlobalScope.console.enumerable = false;
 
-  const windowNavigatorProperties = {
-    gpu: webgpu.gpu,
-  };
-
   const mainRuntimeGlobalProperties = {
     Location: location.locationConstructorDescriptor,
     location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
-    navigator: util.readOnly(windowNavigatorProperties),
+    Navigator: util.nonEnumerable(Navigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => navigator,
+    },
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
     // it seems those two properties should be available to workers as well
     onload: util.writable(null),
@@ -315,17 +359,18 @@ delete Object.prototype.__proto__;
     prompt: util.writable(prompt.prompt),
   };
 
-  const workerNavigatorProperties = {
-    gpu: webgpu.gpu,
-  };
-
   const workerRuntimeGlobalProperties = {
     WorkerLocation: location.workerLocationConstructorDescriptor,
     location: location.workerLocationDescriptor,
     WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
     DedicatedWorkerGlobalScope:
       globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
-    navigator: util.readOnly(workerNavigatorProperties),
+    WorkerNavigator: util.nonEnumerable(WorkerNavigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => workerNavigator,
+    },
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),
@@ -380,10 +425,12 @@ delete Object.prototype.__proto__;
 
     registerErrors();
 
+    const internalSymbol = Symbol("Deno.internal");
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
       ...denoNs,
@@ -442,10 +489,12 @@ delete Object.prototype.__proto__;
     fetch.setBaseUrl(locationHref);
     registerErrors();
 
+    const internalSymbol = Symbol("Deno.internal");
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
       ...denoNs,

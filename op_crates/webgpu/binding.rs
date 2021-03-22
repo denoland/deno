@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -73,7 +74,7 @@ struct GPUBindGroupLayoutEntry {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBindGroupLayoutArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   entries: Vec<GPUBindGroupLayoutEntry>,
 }
@@ -215,7 +216,7 @@ pub fn op_webgpu_create_bind_group_layout(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePipelineLayoutArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   bind_group_layouts: Vec<u32>,
 }
@@ -277,7 +278,7 @@ struct GPUBindGroupEntry {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBindGroupArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   layout: u32,
   entries: Vec<GPUBindGroupEntry>,

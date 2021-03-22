@@ -55,6 +55,12 @@ pub fn server_capabilities(
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: Some(CompletionOptions {
+      all_commit_characters: Some(vec![
+        ".".to_string(),
+        ",".to_string(),
+        ";".to_string(),
+        "(".to_string(),
+      ]),
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
@@ -65,7 +71,7 @@ pub fn server_capabilities(
         "<".to_string(),
         "#".to_string(),
       ]),
-      resolve_provider: None,
+      resolve_provider: Some(true),
       work_done_progress_options: WorkDoneProgressOptions {
         work_done_progress: None,
       },
@@ -76,7 +82,7 @@ pub fn server_capabilities(
         "(".to_string(),
         "<".to_string(),
       ]),
-      retrigger_characters: None,
+      retrigger_characters: Some(vec![")".to_string()]),
       work_done_progress_options: WorkDoneProgressOptions {
         work_done_progress: None,
       },

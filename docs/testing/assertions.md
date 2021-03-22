@@ -231,3 +231,33 @@ Deno.test("Test Assert Equal Fail Custom Message", () => {
   assertEquals(1, 2, "Values Don't Match!");
 });
 ```
+
+### Custom Tests
+
+While Deno comes with powerful
+[assertions modules](https://deno.land/std@$STD_VERSION/testing/asserts.ts) but
+there is always something specific to the project you can add. Creating
+`custom assertion function` can improve readability and reduce the amount of
+code.
+
+```js
+function assertPowerOf(actual: number, expected: number, msg?: string): void {
+  let received = actual;
+  while (received % expected === 0) received = received / expected;
+  if (received !== 1) {
+    if (!msg) {
+      msg = `actual: "${actual}" expected to be a power of : "${expected}"`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+```
+
+Use this matcher in your code like this:
+
+```js
+Deno.test("Test Assert PowerOf", () => {
+  assertPowerOf(8, 2);
+  assertPowerOf(11, 4);
+});
+```

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.8.0"
+version = "1.8.2"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -24,8 +24,8 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.80.1" }
-deno_runtime = { path = "../runtime", version = "0.9.1" }
+deno_core = { path = "../core", version = "0.82.0" }
+deno_runtime = { path = "../runtime", version = "0.10.0" }
 regex = "1.4.3"
 serde = { version = "1.0.123", features = ["derive"] }
 
@@ -34,19 +34,19 @@ winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.80.1" }
+deno_core = { path = "../core", version = "0.82.0" }
 deno_doc = "0.1.23"
 deno_lint = "0.2.19"
-deno_runtime = { path = "../runtime", version = "0.9.1" }
+deno_runtime = { path = "../runtime", version = "0.10.0" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
 byteorder = "1.4.2"
 clap = "2.33.3"
 dissimilar = "1.0.2"
+dprint-plugin-json = "0.9.0"
+dprint-plugin-markdown = "0.6.0"
 dprint-plugin-typescript = "0.41.0"
-dprint-plugin-markdown = "0.5.1"
-dprint-plugin-json = "0.8.0"
 encoding_rs = "0.8.28"
 env_logger = "0.8.2"
 filetime = "0.2.14"
@@ -56,13 +56,13 @@ jsonc-parser = "0.15.1"
 lazy_static = "1.4.0"
 libc = "0.2.86"
 log = { version = "0.4.14", features = ["serde"] }
-lspower = "0.6.1"
+lspower = "0.8.4"
 notify = "5.0.0-pre.4"
 percent-encoding = "2.1.0"
 pin-project = "1.0.5"
 regex = "1.4.3"
 ring = "0.16.20"
-rustyline = { version = "7.1.0", default-features = false }
+rustyline = { version = "8.0.0", default-features = false }
 rustyline-derive = "0.4.0"
 semver-parser = "0.10.2"
 serde = { version = "1.0.123", features = ["derive"] }
@@ -74,7 +74,7 @@ swc_ecmascript = { version = "0.24.1", features = ["codegen", "dep_graph", "pars
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"
-tokio = { version = "1.2.0", features = ["full"] }
+tokio = { version = "1.4.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 walkdir = "2.3.1"
@@ -82,9 +82,6 @@ walkdir = "2.3.1"
 [target.'cfg(windows)'.dependencies]
 fwdansi = "1.1.0"
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
-
-[target.'cfg(unix)'.dependencies]
-nix = "0.19.1"
 
 [dev-dependencies]
 # Used in benchmark
@@ -97,6 +94,7 @@ trust-dns-client = "0.20.0"
 
 [target.'cfg(unix)'.dev-dependencies]
 exec = "0.3.1" # Used in test_raw_tty
+nix = "0.20.0"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

@@ -14,8 +14,8 @@
   const eventTarget = window.__bootstrap.eventTarget;
 
   /**
-   * @param {any} self 
-   * @param {{prefix: string, context: string}} opts 
+   * @param {any} self
+   * @param {{prefix: string, context: string}} opts
    * @returns {InnerGPUDevice & {rid: number}}
    */
   function assertDevice(self, { prefix, context }) {
@@ -31,9 +31,9 @@
   }
 
   /**
-   * @param {InnerGPUDevice} self 
-   * @param {any} resource 
-   * @param {{prefix: string, resourceContext: string, selfContext: string}} opts 
+   * @param {InnerGPUDevice} self
+   * @param {any} resource
+   * @param {{prefix: string, resourceContext: string, selfContext: string}} opts
    * @returns {InnerGPUDevice & {rid: number}}
    */
   function assertDeviceMatch(
@@ -55,8 +55,8 @@
   }
 
   /**
-   * @param {any} self 
-   * @param {{prefix: string, context: string}} opts 
+   * @param {any} self
+   * @param {{prefix: string, context: string}} opts
    * @returns {number}
    */
   function assertResource(self, { prefix, context }) {
@@ -452,7 +452,7 @@
   const _message = Symbol("[[message]]");
 
   /**
-   * 
+   *
    * @param {string | undefined} reason
    * @param {string} message
    * @returns {GPUDeviceLostInfo}
@@ -524,10 +524,10 @@
   const _device = Symbol("[[device]]");
   const _queue = Symbol("[[queue]]");
 
-  /** 
+  /**
    * @typedef ErrorScope
    * @property {string} filter
-   * @property {GPUError | undefined} error  
+   * @property {GPUError | undefined} error
    */
 
   /**
@@ -2315,7 +2315,7 @@
      * @returns {GPUBindGroupLayout}
      */
     getBindGroupLayout(index) {
-      webidl.assertBranded(this, GPURenderPipeline);
+      webidl.assertBranded(this, GPUComputePipeline);
       const prefix =
         "Failed to execute 'getBindGroupLayout' on 'GPUComputePipeline'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
