@@ -153,12 +153,6 @@ impl DocumentCache {
     doc.dependencies.clone()
   }
 
-  pub fn iter(
-    &self,
-  ) -> impl Iterator<Item = (&ModuleSpecifier, &DocumentData)> {
-    self.docs.iter()
-  }
-
   pub fn len(&self) -> usize {
     self.docs.iter().count()
   }

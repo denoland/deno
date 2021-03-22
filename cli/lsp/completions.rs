@@ -3,12 +3,12 @@
 use super::analysis;
 use super::language_server;
 
+use crate::fs_util::is_supported_ext;
 use crate::media_type::MediaType;
 
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
-use std::collections::HashSet;
 use std::rc::Rc;
 use swc_common::Loc;
 use swc_common::SourceMap;
@@ -34,16 +34,30 @@ pub fn get_import_completions(
     if let Some(current_specifier) =
       is_module_specifier_position(specifier, &source, &media_type, position)
     {
-      let workspace_specifiers = get_workspace_specifiers(state_snapshot);
-      let specifier_strings =
-        get_relative_specifiers(specifier, workspace_specifiers);
-      let items = specifier_strings
-        .into_iter()
-        .filter_map(|label| {
-          if label.starts_with(&current_specifier) {
-            Some(lsp::CompletionItem {
-              kind: Some(lsp::CompletionItemKind::File),
-              detail: Some(
+      // completions for local relative modules
+      if current_specifier.starts_with("./")
+        || current_specifier.starts_with("../")
+      {
+        return Some(lsp::CompletionResponse::List(lsp::CompletionList {
+          is_incomplete: false,
+          items: get_local_completions(specifier, &current_specifier)?,
+        }));
+      }
+      // completion of modules within the workspace
+      if !current_specifier.is_empty() {
+        let workspace_specifiers = state_snapshot.sources.specifiers();
+        let specifier_strings =
+          get_relative_specifiers(specifier, workspace_specifiers);
+        let items = specifier_strings
+          .into_iter()
+          .filter_map(|label| {
+            if label.starts_with(&current_specifier) {
+              let insert_text = Some(if current_specifier.contains('/') {
+                label.replace(&current_specifier, "")
+              } else {
+                label.clone()
+              });
+              let detail = Some(
                 if label.starts_with("http:") || label.starts_with("https:") {
                   "(remote)".to_string()
                 } else if label.starts_with("data:") {
@@ -51,25 +65,87 @@ pub fn get_import_completions(
                 } else {
                   "(local)".to_string()
                 },
-              ),
-              sort_text: Some("1".to_string()),
-              insert_text: Some(label.replace(&current_specifier, "")),
-              label,
-              insert_text_mode: Some(lsp::InsertTextMode::AsIs),
-              ..Default::default()
-            })
-          } else {
-            None
-          }
-        })
-        .collect();
-      return Some(lsp::CompletionResponse::List(lsp::CompletionList {
-        is_incomplete: false,
-        items,
-      }));
+              );
+              Some(lsp::CompletionItem {
+                label,
+                kind: Some(lsp::CompletionItemKind::File),
+                detail,
+                sort_text: Some("1".to_string()),
+                insert_text,
+                insert_text_mode: Some(lsp::InsertTextMode::AsIs),
+                ..Default::default()
+              })
+            } else {
+              None
+            }
+          })
+          .collect();
+        return Some(lsp::CompletionResponse::List(lsp::CompletionList {
+          is_incomplete: false,
+          items,
+        }));
+      }
     }
   }
   None
+}
+
+fn get_local_completions(
+  base: &ModuleSpecifier,
+  current: &str,
+) -> Option<Vec<lsp::CompletionItem>> {
+  if base.scheme() != "file" {
+    return None;
+  }
+
+  let mut base_path = base.to_file_path().ok()?;
+  base_path.pop();
+  let current_path = std::fs::canonicalize(base_path.join(current)).ok()?;
+  if current_path.is_dir() {
+    let items = std::fs::read_dir(current_path).ok()?;
+    Some(
+      items
+        .filter_map(|de| {
+          let de = de.ok()?;
+          let label = de.path().file_name()?.to_string_lossy().to_string();
+          let entry_specifier =
+            ModuleSpecifier::from_file_path(de.path()).ok()?;
+          if &entry_specifier == base {
+            return None;
+          }
+          let insert_text = Some(
+            relative_specifier(&entry_specifier, base).replace(current, ""),
+          );
+          match de.file_type() {
+            Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
+              label,
+              kind: Some(lsp::CompletionItemKind::Folder),
+              sort_text: Some("1".to_string()),
+              insert_text,
+              ..Default::default()
+            }),
+            Ok(file_type) if file_type.is_file() => {
+              if is_supported_ext(&de.path()) {
+                Some(lsp::CompletionItem {
+                  label,
+                  kind: Some(lsp::CompletionItemKind::File),
+                  detail: Some("(local)".to_string()),
+                  sort_text: Some("1".to_string()),
+                  insert_text,
+                  ..Default::default()
+                })
+              } else {
+                None
+              }
+            }
+            _ => None,
+          }
+        })
+        .collect(),
+    )
+  } else {
+    None
+  }
 }
 
 fn get_relative_specifiers(
@@ -86,18 +162,6 @@ fn get_relative_specifiers(
       }
     })
     .collect()
-}
-
-fn get_workspace_specifiers(
-  state_snapshot: &language_server::StateSnapshot,
-) -> Vec<ModuleSpecifier> {
-  let mut specifiers: HashSet<ModuleSpecifier> = state_snapshot
-    .documents
-    .iter()
-    .map(|(specifier, _)| specifier.clone())
-    .collect();
-  specifiers.extend(state_snapshot.sources.specifiers().into_iter());
-  specifiers.into_iter().collect()
 }
 
 /// A structure that implements the visit trait to determine if the supplied
@@ -305,16 +369,19 @@ fn span_includes_pos(position: &lsp::Position, start: &Loc, end: &Loc) -> bool {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::http_cache::HttpCache;
   use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
   use crate::lsp::sources::Sources;
   use crate::media_type::MediaType;
   use deno_core::resolve_url;
+  use std::collections::HashMap;
   use std::path::Path;
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32)],
+    source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
     let mut documents = DocumentCache::default();
@@ -334,6 +401,18 @@ mod tests {
       documents.set_dependencies(&specifier, Some(deps)).unwrap();
     }
     let sources = Sources::new(location);
+    let http_cache = HttpCache::new(location);
+    for (specifier, source) in source_fixtures {
+      let specifier =
+        resolve_url(specifier).expect("failed to create specifier");
+      http_cache
+        .set(&specifier, HashMap::default(), source.as_bytes())
+        .expect("could not cache file");
+      assert!(
+        sources.get_source(&specifier).is_some(),
+        "source could not be setup"
+      );
+    }
     language_server::StateSnapshot {
       documents,
       sources,
@@ -341,18 +420,13 @@ mod tests {
     }
   }
 
-  fn setup(documents: &[(&str, &str, i32)]) -> language_server::StateSnapshot {
+  fn setup(
+    documents: &[(&str, &str, i32)],
+    sources: &[(&str, &str)],
+  ) -> language_server::StateSnapshot {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    mock_state_snapshot(documents, &location)
-  }
-
-  #[test]
-  fn test_get_workspace_specifiers() {
-    let state_snapshot =
-      setup(&[("file:///a.ts", r#"console.log("hello deno");"#, 1)]);
-    let result = get_workspace_specifiers(&state_snapshot);
-    assert_eq!(result, vec![resolve_url("file:///a.ts").unwrap()]);
+    mock_state_snapshot(documents, sources, &location)
   }
 
   #[test]
@@ -513,27 +587,53 @@ mod tests {
   }
 
   #[test]
+  fn test_get_local_completions() {
+    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let fixtures = temp_dir.path().join("fixtures");
+    std::fs::create_dir(&fixtures).expect("could not create");
+    let dir_a = fixtures.join("a");
+    std::fs::create_dir(&dir_a).expect("could not create");
+    let dir_b = dir_a.join("b");
+    std::fs::create_dir(&dir_b).expect("could not create");
+    let file_c = dir_a.join("c.ts");
+    std::fs::write(&file_c, b"").expect("could not create");
+    let file_d = dir_b.join("d.ts");
+    std::fs::write(&file_d, b"").expect("could not create");
+    let file_e = dir_a.join("e.txt");
+    std::fs::write(&file_e, b"").expect("could not create");
+    let specifier =
+      ModuleSpecifier::from_file_path(file_c).expect("could not create");
+    let actual = get_local_completions(&specifier, "./");
+    assert!(actual.is_some());
+    let actual = actual.unwrap();
+    assert_eq!(actual.len(), 2);
+  }
+
+  #[test]
   fn test_get_import_completions() {
     let specifier = resolve_url("file:///a/b/c.ts").unwrap();
     let position = lsp::Position {
       line: 0,
-      character: 20,
+      character: 21,
     };
-    let state_snapshot = setup(&[
-      ("file:///a/b/c.ts", r#"import * as d from """#, 1),
-      ("file:///a/c.ts", r#""#, 1),
-    ]);
+    let state_snapshot = setup(
+      &[
+        ("file:///a/b/c.ts", "import * as d from \"h\"", 1),
+        ("file:///a/c.ts", r#""#, 1),
+      ],
+      &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
+    );
     let actual = get_import_completions(&specifier, &position, &state_snapshot);
     assert_eq!(
       actual,
       Some(lsp::CompletionResponse::List(lsp::CompletionList {
         is_incomplete: false,
         items: vec![lsp::CompletionItem {
-          label: "../c.ts".to_string(),
+          label: "https://deno.land/x/a/b/c.ts".to_string(),
           kind: Some(lsp::CompletionItemKind::File),
-          detail: Some("(local)".to_string()),
+          detail: Some("(remote)".to_string()),
           sort_text: Some("1".to_string()),
-          insert_text: Some("../c.ts".to_string()),
+          insert_text: Some("https://deno.land/x/a/b/c.ts".to_string()),
           insert_text_mode: Some(lsp::InsertTextMode::AsIs),
           ..Default::default()
         }]
