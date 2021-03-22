@@ -2430,6 +2430,12 @@ mod integration {
     //  output: "test/deno_test_unresolved_promise.out",
     // });
 
+    itest!(unhandled_rejection {
+      args: "test test/unhandled_rejection.js",
+      exit_code: 1,
+      output: "test/unhandled_rejection.out",
+    });
+
     itest!(exit_sanitizer {
       args: "test test/exit_sanitizer_test.ts",
       output: "test/exit_sanitizer_test.out",
