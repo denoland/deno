@@ -337,6 +337,7 @@ fn main() {
       winapi::um::winnt::LANG_ENGLISH,
       winapi::um::winnt::SUBLANG_ENGLISH_US,
     ));
+    res.set_manifest(include_str!("manifest.xml"));
     res.compile().unwrap();
   }
 }
