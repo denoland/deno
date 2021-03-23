@@ -97,7 +97,7 @@ fn get_local_completions(
           }
           let full_text = relative_specifier(&entry_specifier, base);
           let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: range.clone(),
+            range: *range,
             new_text: full_text.clone(),
           }));
           let filter_text = if full_text.starts_with(current) {
@@ -180,7 +180,7 @@ fn get_workspace_completions(
           },
         );
         let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-          range: range.clone(),
+          range: *range,
           new_text: label.clone(),
         }));
         Some(lsp::CompletionItem {
