@@ -12,15 +12,15 @@ use deno_core::serde_json::Value;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::BasicModule;
+use deno_core::BasicExtension;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 
-pub fn init() -> BasicModule {
-  BasicModule::with_ops(
+pub fn init() -> BasicExtension {
+  BasicExtension::with_ops(
     include_js_files!(
       prefix "deno:op_crates/url",
       "00_url.js",

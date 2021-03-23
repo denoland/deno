@@ -1,12 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::include_js_files;
-use deno_core::BasicModule;
+use deno_core::BasicExtension;
 use std::path::PathBuf;
 
 /// Load and execute the javascript code.
-pub fn init() -> BasicModule {
-  BasicModule::pure_js(include_js_files!(
+pub fn init() -> BasicExtension {
+  BasicExtension::pure_js(include_js_files!(
     prefix "deno:op_crates/web",
     "01_dom_exception.js",
     "02_event.js",

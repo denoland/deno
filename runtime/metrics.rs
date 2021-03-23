@@ -6,21 +6,22 @@ use deno_core::json_op_sync;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BasicModule;
+use deno_core::BasicExtension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 
-pub fn init() -> BasicModule {
-  BasicModule::builder()
-    .ops(declare_ops!(json_op_sync[
+pub fn init() -> BasicExtension {
+  BasicExtension::new(
+    None,
+    Some(declare_ops!(json_op_sync[
       op_metrics,
-    ]))
-    .state(|state| {
+    ])),
+    Some(Box::new(|state| {
       state.put(RuntimeMetrics::default());
       Ok(())
-    })
-    .middleware(metrics_op)
-    .build()
+    })),
+    Some(Box::new(metrics_op)),
+  )
 }
 
 #[allow(clippy::unnecessary_wraps)]

@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::Extension;
 use deno_core::JsRuntime;
-use deno_core::JsRuntimeModule;
 use deno_core::RuntimeOptions;
 use std::env;
 use std::path::Path;
@@ -40,7 +40,7 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
+  let extensions: Vec<Box<dyn Extension>> = vec![
     Box::new(deno_webidl::init()),
     Box::new(deno_console::init()),
     Box::new(deno_url::init()),
@@ -61,7 +61,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
 
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
-    modules: deno_modules,
+    extensions,
     ..Default::default()
   });
   create_snapshot(js_runtime, snapshot_path, files);

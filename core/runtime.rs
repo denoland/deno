@@ -23,7 +23,7 @@ use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::BufVec;
-use crate::JsRuntimeModule;
+use crate::Extension;
 use crate::OpRegistrar;
 use crate::OpState;
 use crate::RcOpRegistrar;
@@ -84,7 +84,7 @@ pub struct JsRuntime {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   allocations: IsolateAllocations,
-  modules: Vec<Box<dyn JsRuntimeModule>>,
+  extensions: Vec<Box<dyn Extension>>,
 }
 
 struct DynImportModEvaluate {
@@ -184,9 +184,9 @@ pub struct RuntimeOptions {
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-  /// JsRuntime modules, not to be confused with ES modules
-  /// these are deno modules containing JS + ops
-  pub modules: Vec<Box<dyn JsRuntimeModule>>,
+  /// JsRuntime extensions, not to be confused with ES modules
+  /// these are sets of ops and other JS code to be initialized.
+  pub extensions: Vec<Box<dyn Extension>>,
 
   /// V8 snapshot that should be loaded on startup.
   ///
@@ -305,7 +305,7 @@ impl JsRuntime {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       allocations: IsolateAllocations::default(),
-      modules: options.modules,
+      extensions: options.extensions,
     };
 
     if !has_startup_snapshot {
@@ -358,23 +358,23 @@ impl JsRuntime {
       .unwrap();
   }
 
-  // Inits JS of provided JsRuntimeModules
+  // Inits JS of provided Extensions
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_mod_js(&mut self) -> Result<(), AnyError> {
-    // Take modules to avoid double-borrow
-    let mut modules: Vec<Box<dyn JsRuntimeModule>> =
-      self.modules.drain(..).collect();
-    for m in modules.iter_mut() {
+    // Take extensions to avoid double-borrow
+    let mut extensions: Vec<Box<dyn Extension>> =
+      self.extensions.drain(..).collect();
+    for m in extensions.iter_mut() {
       let js_files = m.init_js()?;
       for (filename, source) in js_files {
         self.execute_static(filename, source)?;
       }
     }
-    self.modules = modules;
+    self.extensions = extensions;
     Ok(())
   }
 
-  // Inits JS of provided JsRuntimeModules
+  // Inits JS of provided Extensions
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_mod_ops(&mut self) -> Result<(), AnyError> {
     let op_state = self.op_state();
@@ -383,13 +383,13 @@ impl JsRuntime {
       Rc::new(RefCell::new(JsRuntimeOpRegistrar(op_state.clone())));
 
     // Wrap registrar
-    for m in self.modules.iter_mut() {
-      registrar = m.init_registrar(registrar.clone());
+    for e in self.extensions.iter_mut() {
+      registrar = e.init_registrar(registrar.clone());
     }
 
-    for m in self.modules.iter_mut() {
-      m.init_state(&mut op_state.borrow_mut())?;
-      m.init_ops(registrar.clone())?;
+    for e in self.extensions.iter_mut() {
+      e.init_state(&mut op_state.borrow_mut())?;
+      e.init_ops(registrar.clone())?;
     }
     Ok(())
   }

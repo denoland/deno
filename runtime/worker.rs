@@ -14,10 +14,10 @@ use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
-use deno_core::JsRuntimeModule;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -75,7 +75,7 @@ impl MainWorker {
     options: &WorkerOptions,
   ) -> Self {
     // Internal modules
-    let deno_modules: Vec<Box<dyn JsRuntimeModule>> = vec![
+    let extensions: Vec<Box<dyn Extension>> = vec![
       // Web APIs
       Box::new(deno_webidl::init()),
       Box::new(deno_console::init()),
@@ -100,7 +100,7 @@ impl MainWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
-      modules: deno_modules,
+      extensions,
       ..Default::default()
     });
 

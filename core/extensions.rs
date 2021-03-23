@@ -10,17 +10,17 @@ pub type RcOpRegistrar = Rc<RefCell<dyn OpRegistrar>>;
 pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), AnyError>;
 
-// JsRuntimeModule defines a common interface followed by all op_crates
-// so the JsRuntime can handle initialization consistently (e.g: snapshots or not)
-// this makes op_crates plug-n-play, since modules can be simply passed to a JsRuntime:
-// ```
-// JsRuntime:new(RuntimeOptions{
-//  modules: vec![deno_url::init(), deno_webgpu::init(), ... ],
-//  ..Default::default()
-// })
-pub trait JsRuntimeModule {
-  /// This function returns JS source code to be loaded into the isolate (either at snapshotting, or at startup).
-  /// as a vector of a tuple of the file name, and the source code.
+/// Extension defines a common interface to add ops and other runtime code to a JsRuntime.
+/// JsRuntime uses Extensions to handle initialization consistently (e.g: snapshots or not).
+/// ```
+/// Extension:new(RuntimeOptions{
+///  extensions: vec![deno_url::init(), deno_webgpu::init(), ... ],
+///  ..Default::default()
+/// })
+/// ```
+pub trait Extension {
+  /// This function returns JS source code to be loaded into the isolate (either at snapshotting,
+  /// or at startup).  as a vector of a tuple of the file name, and the source code.
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
     // default implementation of `init_js` is to load no runtime code
     Ok(vec![])
@@ -32,7 +32,8 @@ pub trait JsRuntimeModule {
     Ok(())
   }
 
-  /// This function lets you middleware the op registrations. This function gets called before this module's init_ops.
+  /// This function lets you middleware the op registrations. This function gets called before this
+  /// extension's init_ops.
   fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
     // default implementation is to not change the registrar
     registrar
@@ -45,31 +46,31 @@ pub trait JsRuntimeModule {
   }
 }
 
-// A simple JsRuntimeModule
 #[derive(Default)]
-pub struct BasicModule {
+pub struct BasicExtension {
   js_files: Option<Vec<SourcePair>>,
   ops: Option<Vec<OpPair>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
 }
 
-impl BasicModule {
+impl BasicExtension {
   pub fn new(
     js_files: Option<Vec<SourcePair>>,
     ops: Option<Vec<OpPair>>,
     opstate_fn: Option<Box<OpStateFn>>,
+    middleware_fn: Option<Box<OpMiddlewareFn>>,
   ) -> Self {
     Self {
       js_files,
       ops,
       opstate_fn,
-      middleware_fn: None,
+      middleware_fn,
     }
   }
 
   pub fn pure_js(js_files: Vec<SourcePair>) -> Self {
-    Self::new(Some(js_files), None, None)
+    Self::new(Some(js_files), None, None, None)
   }
 
   pub fn with_ops(
@@ -77,17 +78,11 @@ impl BasicModule {
     ops: Vec<OpPair>,
     opstate_fn: Option<Box<OpStateFn>>,
   ) -> Self {
-    Self::new(Some(js_files), Some(ops), opstate_fn)
-  }
-
-  pub fn builder() -> BasicModuleBuilder {
-    BasicModuleBuilder {
-      ..Default::default()
-    }
+    Self::new(Some(js_files), Some(ops), opstate_fn, None)
   }
 }
 
-impl JsRuntimeModule for BasicModule {
+impl Extension for BasicExtension {
   fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
     Ok(match &self.js_files {
       Some(files) => files.clone(),
@@ -120,54 +115,6 @@ impl JsRuntimeModule for BasicModule {
         middleware_fn,
       })),
       None => registrar,
-    }
-  }
-}
-
-// Provides a convenient builder pattern to declare BasicModules
-#[derive(Default)]
-pub struct BasicModuleBuilder {
-  js_files: Vec<SourcePair>,
-  ops: Vec<OpPair>,
-  opstate_fn: Option<Box<OpStateFn>>,
-  middleware_fn: Option<Box<OpMiddlewareFn>>,
-}
-
-impl BasicModuleBuilder {
-  pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
-    self.js_files.extend(js_files);
-    self
-  }
-
-  pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
-    self.ops.extend(ops);
-    self
-  }
-
-  pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
-  where
-    F: Fn(&mut OpState) -> Result<(), AnyError> + 'static,
-  {
-    self.opstate_fn = Some(Box::new(opstate_fn));
-    self
-  }
-
-  pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
-  where
-    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
-  {
-    self.middleware_fn = Some(Box::new(middleware_fn));
-    self
-  }
-
-  pub fn build(&mut self) -> BasicModule {
-    let js_files = Some(self.js_files.drain(..).collect());
-    let ops = Some(self.ops.drain(..).collect());
-    BasicModule {
-      js_files,
-      ops,
-      opstate_fn: self.opstate_fn.take(),
-      middleware_fn: self.middleware_fn.take(),
     }
   }
 }
