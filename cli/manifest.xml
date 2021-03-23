@@ -3,7 +3,7 @@
     <assemblyIdentity
         type="win32"
         name="Deno"
-        version="1.8.1"
+        version="1.8.2"
         processorArchitecture="x86"
     />
     <description>Deno</description>
