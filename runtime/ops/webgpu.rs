@@ -4,11 +4,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   {
     let op_state = rt.op_state();
     let mut state = op_state.borrow_mut();
-    state.put(wgpu_core::hub::Global::new(
-      "webgpu",
-      wgpu_core::hub::IdentityManagerFactory,
-      wgpu_types::BackendBit::PRIMARY,
-    ));
     let unstable_checker = state.borrow::<super::UnstableChecker>();
     let unstable = unstable_checker.unstable;
     state.put(Unstable(unstable));

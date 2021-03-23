@@ -63,7 +63,7 @@
    * @param {string} permission
    * @return {boolean}
    */
-  function parseBooleanPermission(
+  function parseUnitPermission(
     value,
     permission,
   ) {
@@ -119,12 +119,12 @@
     write = "inherit",
   }) {
     return {
-      env: parseBooleanPermission(env, "env"),
-      hrtime: parseBooleanPermission(hrtime, "hrtime"),
+      env: parseUnitPermission(env, "env"),
+      hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
-      plugin: parseBooleanPermission(plugin, "plugin"),
+      plugin: parseUnitPermission(plugin, "plugin"),
       read: parseArrayPermission(read, "read"),
-      run: parseBooleanPermission(run, "run"),
+      run: parseUnitPermission(run, "run"),
       write: parseArrayPermission(write, "write"),
     };
   }
