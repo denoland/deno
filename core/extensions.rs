@@ -12,12 +12,6 @@ pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), AnyError>;
 
 /// Extension defines a common interface to add ops and other runtime code to a JsRuntime.
 /// JsRuntime uses Extensions to handle initialization consistently (e.g: snapshots or not).
-/// ```
-/// Extension:new(RuntimeOptions{
-///  extensions: vec![deno_url::init(), deno_webgpu::init(), ... ],
-///  ..Default::default()
-/// })
-/// ```
 pub trait Extension {
   /// This function returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
