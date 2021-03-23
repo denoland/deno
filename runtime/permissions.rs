@@ -137,6 +137,9 @@ impl NetDescriptor {
   }
 }
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct EnvDescriptor(pub String);
+
 impl fmt::Display for NetDescriptor {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.write_str(&match self.1 {
@@ -466,23 +469,20 @@ impl UnaryPermission<NetDescriptor> {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct EnvPermission(pub String);
-
-impl UnaryPermission<EnvPermission> {
+impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
       && match env {
-      None => true,
-      Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
-    }
+        None => true,
+        Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
+      }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match env {
-      None => false,
-      Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
-    }
+        None => false,
+        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
+      }
     {
       PermissionState::Granted
     } else {
@@ -496,11 +496,11 @@ impl UnaryPermission<EnvPermission> {
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
           self.granted_list.retain(|env_| env_.0 != env);
-          self.granted_list.insert(EnvPermission(env.to_string()));
+          self.granted_list.insert(EnvDescriptor(env.to_string()));
           PermissionState::Granted
         } else {
           self.denied_list.retain(|env_| env_.0 != env);
-          self.denied_list.insert(EnvPermission(env.to_string()));
+          self.denied_list.insert(EnvDescriptor(env.to_string()));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
