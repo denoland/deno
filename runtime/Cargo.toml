@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.9.3"
+version = "0.10.0"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -18,14 +18,15 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.80.2" }
-deno_crypto = { path = "../op_crates/crypto", version = "0.14.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.22.3" }
-deno_web = { path = "../op_crates/web", version = "0.30.3" }
-deno_url = { path = "../op_crates/url", version = "0.1.0" }
-deno_webidl = { path = "../op_crates/webidl", version = "0.1.0" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.5.3" }
-deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.1" }
+deno_core = { path = "../core", version = "0.82.0" }
+deno_console = { path = "../op_crates/console", version = "0.2.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.16.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.24.0" }
+deno_web = { path = "../op_crates/web", version = "0.32.0" }
+deno_url = { path = "../op_crates/url", version = "0.2.0" }
+deno_webidl = { path = "../op_crates/webidl", version = "0.2.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.7.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.3.0" }
 deno_webstorage = { path = "../op_crates/webstorage", version = "0.1.0" }
 
 [target.'cfg(windows)'.build-dependencies]
@@ -33,14 +34,15 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.80.2" }
-deno_crypto = { path = "../op_crates/crypto", version = "0.14.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.22.3" }
-deno_web = { path = "../op_crates/web", version = "0.30.3" }
-deno_url = { path = "../op_crates/url", version = "0.1.0" }
-deno_webidl = { path = "../op_crates/webidl", version = "0.1.0" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.5.3" }
-deno_webgpu = { path = "../op_crates/webgpu", version = "0.1.1" }
+deno_core = { path = "../core", version = "0.82.0" }
+deno_console = { path = "../op_crates/console", version = "0.2.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.16.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.24.0" }
+deno_web = { path = "../op_crates/web", version = "0.32.0" }
+deno_url = { path = "../op_crates/url", version = "0.2.0" }
+deno_webidl = { path = "../op_crates/webidl", version = "0.2.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.7.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.3.0" }
 deno_webstorage = { path = "../op_crates/webstorage", version = "0.1.0" }
 
 atty = "0.2.14"
@@ -60,7 +62,7 @@ ring = "0.16.20"
 serde = { version = "1.0.123", features = ["derive"] }
 sys-info = "0.8.0"
 termcolor = "1.1.2"
-tokio = { version = "1.2.0", features = ["full"] }
+tokio = { version = "1.4.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"
@@ -73,7 +75,7 @@ fwdansi = "1.1.0"
 winapi = { version = "0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.19.1"
+nix = "0.20.0"
 
 [dev-dependencies]
 # Used in benchmark

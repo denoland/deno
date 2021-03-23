@@ -7,6 +7,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_url;
@@ -19,7 +20,6 @@ pub use deno_webstorage;
 pub mod colors;
 pub mod errors;
 pub mod fs_util;
-pub mod http_util;
 pub mod inspector;
 pub mod js;
 pub mod metrics;

@@ -8,7 +8,6 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
@@ -17,6 +16,7 @@ use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -35,7 +35,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 fn clone_file(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
 ) -> Result<std::fs::File, AnyError> {
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
@@ -54,16 +54,16 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RunArgs {
+pub struct RunArgs {
   cmd: Vec<String>,
   cwd: Option<String>,
   env: Vec<(String, String)>,
   stdin: String,
   stdout: String,
   stderr: String,
-  stdin_rid: u32,
-  stdout_rid: u32,
-  stderr_rid: u32,
+  stdin_rid: ResourceId,
+  stdout_rid: ResourceId,
+  stderr_rid: ResourceId,
 }
 
 struct ChildResource {
@@ -84,11 +84,10 @@ impl ChildResource {
 
 fn op_run(
   state: &mut OpState,
-  args: Value,
+  run_args: RunArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let run_args: RunArgs = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().check_run()?;
+  state.borrow::<Permissions>().run.check()?;
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -179,21 +178,20 @@ fn op_run(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RunStatusArgs {
-  rid: i32,
+pub struct RunStatusArgs {
+  rid: ResourceId,
 }
 
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: RunStatusArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: RunStatusArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   {
     let s = state.borrow();
-    s.borrow::<Permissions>().check_run()?;
+    s.borrow::<Permissions>().run.check()?;
   }
 
   let resource = state
@@ -281,13 +279,12 @@ struct KillArgs {
 
 fn op_kill(
   state: &mut OpState,
-  args: Value,
+  args: KillArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.kill");
-  state.borrow::<Permissions>().check_run()?;
+  state.borrow::<Permissions>().run.check()?;
 
-  let args: KillArgs = serde_json::from_value(args)?;
   kill(args.pid, args.signo)?;
   Ok(json!({}))
 }

@@ -3148,6 +3148,12 @@ console.log("finish");
     http_server: true,
   });
 
+  itest!(error_027_bare_import_error {
+    args: "bundle error_027_bare_import_error.ts",
+    output: "error_027_bare_import_error.ts.out",
+    exit_code: 1,
+  });
+
   itest!(error_missing_module_named_import {
     args: "run --reload error_missing_module_named_import.ts",
     output: "error_missing_module_named_import.ts.out",
@@ -3209,6 +3215,11 @@ console.log("finish");
     exit_code: 42,
     args: "run --quiet --reload exit_error42.ts",
     output: "exit_error42.ts.out",
+  });
+
+  itest!(heapstats {
+    args: "run --quiet --v8-flags=--expose-gc heapstats.js",
+    output: "heapstats.js.out",
   });
 
   itest!(https_import {
@@ -5520,7 +5531,7 @@ console.log("finish");
     assert_eq!(util::strip_ansi_codes(&stdout_str), "0.147205063401058\n");
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(util::strip_ansi_codes(&stderr_str)
-      .contains("PermissionDenied: write access"));
+      .contains("PermissionDenied: Requires write access"));
   }
 
   #[test]
@@ -5784,7 +5795,7 @@ console.log("finish");
       let out = String::from_utf8_lossy(&output.stdout);
       assert!(!output.status.success());
       assert!(err.starts_with("Check file"));
-      assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+      assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
       assert!(out.is_empty());
     }
 
@@ -5806,7 +5817,7 @@ console.log("finish");
       let out = String::from_utf8_lossy(&output.stdout);
       assert!(!output.status.success());
       assert!(err.starts_with("Check file"));
-      assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: network access to "127.0.0.1:4553""#));
+      assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
       assert!(out.is_empty());
     }
 
