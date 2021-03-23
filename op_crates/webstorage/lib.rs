@@ -52,7 +52,7 @@ pub fn op_webstorage_open(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
   if args.persistent {
-    let path = &state.borrow::<LocationDataDir>().0.clone().unwrap();
+    let path = state.borrow::<LocationDataDir>().0.as_ref().unwrap();
     std::fs::create_dir_all(&path).unwrap();
 
     let connection = Connection::open(path.join("local_storage")).unwrap();
