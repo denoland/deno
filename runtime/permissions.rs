@@ -147,7 +147,7 @@ impl fmt::Display for NetDescriptor {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct RunPermission(pub String);
+pub struct RunDescriptor(pub String);
 
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
@@ -469,20 +469,20 @@ impl UnaryPermission<NetDescriptor> {
   }
 }
 
-impl UnaryPermission<RunPermission> {
+impl UnaryPermission<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
       && match cmd {
-      None => true,
-      Some(cmd) => self.denied_list.iter().any(|cmd_| cmd_.0 == cmd),
-    }
+        None => true,
+        Some(cmd) => self.denied_list.iter().any(|cmd_| cmd_.0 == cmd),
+      }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match cmd {
-      None => false,
-      Some(cmd) => self.granted_list.iter().any(|cmd_| cmd_.0 == cmd),
-    }
+        None => false,
+        Some(cmd) => self.granted_list.iter().any(|cmd_| cmd_.0 == cmd),
+      }
     {
       PermissionState::Granted
     } else {
@@ -496,11 +496,11 @@ impl UnaryPermission<RunPermission> {
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("run access to \"{}\"", cmd)) {
           self.granted_list.retain(|cmd_| cmd_.0 != cmd);
-          self.granted_list.insert(RunPermission(cmd.to_string()));
+          self.granted_list.insert(RunDescriptor(cmd.to_string()));
           PermissionState::Granted
         } else {
           self.denied_list.retain(|cmd_| cmd_.0 != cmd);
-          self.denied_list.insert(RunPermission(cmd.to_string()));
+          self.denied_list.insert(RunDescriptor(cmd.to_string()));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
@@ -588,7 +588,7 @@ pub struct Permissions {
   pub write: UnaryPermission<WriteDescriptor>,
   pub net: UnaryPermission<NetDescriptor>,
   pub env: UnitPermission,
-  pub run: UnaryPermission<RunPermission>,
+  pub run: UnaryPermission<RunDescriptor>,
   pub plugin: UnitPermission,
   pub hrtime: UnitPermission,
 }
@@ -654,14 +654,14 @@ impl Permissions {
 
   pub fn new_run(
     state: &Option<Vec<String>>,
-  ) -> UnaryPermission<RunPermission> {
-    UnaryPermission::<RunPermission> {
+  ) -> UnaryPermission<RunDescriptor> {
+    UnaryPermission::<RunDescriptor> {
       name: "run",
       description: "run a subprocess",
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| v.iter().map(|x| RunPermission(x.clone())).collect())
+        .map(|v| v.iter().map(|x| RunDescriptor(x.clone())).collect())
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
     }

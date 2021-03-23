@@ -6,7 +6,7 @@ use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
 use crate::permissions::ReadDescriptor;
-use crate::permissions::RunPermission;
+use crate::permissions::RunDescriptor;
 use crate::permissions::UnaryPermission;
 use crate::permissions::UnitPermission;
 use crate::permissions::WriteDescriptor;
@@ -196,9 +196,9 @@ fn merge_write_permission(
 }
 
 fn merge_run_permission(
-  mut main: UnaryPermission<RunPermission>,
-  worker: Option<UnaryPermission<RunPermission>>,
-) -> Result<UnaryPermission<RunPermission>, AnyError> {
+  mut main: UnaryPermission<RunDescriptor>,
+  worker: Option<UnaryPermission<RunDescriptor>>,
+) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
       || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
@@ -243,7 +243,7 @@ struct PermissionsArg {
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_run_permission")]
-  run: Option<UnaryPermission<RunPermission>>,
+  run: Option<UnaryPermission<RunDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_write_permission")]
   write: Option<UnaryPermission<WriteDescriptor>>,
 }
@@ -369,16 +369,16 @@ where
 
 fn as_unary_run_permission<'de, D>(
   deserializer: D,
-) -> Result<Option<UnaryPermission<RunPermission>>, D::Error>
+) -> Result<Option<UnaryPermission<RunDescriptor>>, D::Error>
 where
   D: Deserializer<'de>,
 {
   let value: UnaryPermissionBase =
     deserializer.deserialize_any(ParseBooleanOrStringVec)?;
 
-  Ok(Some(UnaryPermission::<RunPermission> {
+  Ok(Some(UnaryPermission::<RunDescriptor> {
     global_state: value.global_state,
-    granted_list: value.paths.into_iter().map(RunPermission).collect(),
+    granted_list: value.paths.into_iter().map(RunDescriptor).collect(),
     ..Default::default()
   }))
 }
