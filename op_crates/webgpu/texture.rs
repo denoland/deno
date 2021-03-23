@@ -109,6 +109,82 @@ pub fn serialize_texture_format(
   })
 }
 
+pub fn deserialize_texture_format(
+  format: &wgpu_types::TextureFormat,
+) -> Result<&str, AnyError> {
+  Ok(match format {
+    // 8-bit formats
+    wgpu_types::TextureFormat::R8Unorm => "r8unorm",
+    wgpu_types::TextureFormat::R8Snorm => "r8snorm",
+    wgpu_types::TextureFormat::R8Uint => "r8uint",
+    wgpu_types::TextureFormat::R8Sint => "r8sint",
+
+    // 16-bit formats
+    wgpu_types::TextureFormat::R16Uint => "r16uint",
+    wgpu_types::TextureFormat::R16Sint => "r16sint",
+    wgpu_types::TextureFormat::R16Float => "r16float",
+    wgpu_types::TextureFormat::Rg8Unorm => "rg8unorm",
+    wgpu_types::TextureFormat::Rg8Snorm => "rg8snorm",
+    wgpu_types::TextureFormat::Rg8Uint => "rg8uint",
+    wgpu_types::TextureFormat::Rg8Sint => "rg8sint",
+
+    // 32-bit formats
+    wgpu_types::TextureFormat::R32Uint => "r32uint",
+    wgpu_types::TextureFormat::R32Sint => "r32sint",
+    wgpu_types::TextureFormat::R32Float => "r32float",
+    wgpu_types::TextureFormat::Rg16Uint => "rg16uint",
+    wgpu_types::TextureFormat::Rg16Sint => "rg16sint",
+    wgpu_types::TextureFormat::Rg16Float => "rg16float",
+    wgpu_types::TextureFormat::Rgba8Unorm => "rgba8unorm",
+    wgpu_types::TextureFormat::Rgba8UnormSrgb => "rgba8unorm-srgb",
+    wgpu_types::TextureFormat::Rgba8Snorm => "rgba8snorm",
+    wgpu_types::TextureFormat::Rgba8Uint => "rgba8uint",
+    wgpu_types::TextureFormat::Rgba8Sint => "rgba8sint",
+    wgpu_types::TextureFormat::Bgra8Unorm => "bgra8unorm",
+    wgpu_types::TextureFormat::Bgra8UnormSrgb => "bgra8unorm-srgb",
+    // Packed 32-bit formats
+    wgpu_types::TextureFormat::Rgb10a2Unorm => "rgb10a2unorm",
+    wgpu_types::TextureFormat::Rg11b10Float => "rg11b10ufloat",
+
+    // 64-bit formats
+    wgpu_types::TextureFormat::Rg32Uint => "rg32uint",
+    wgpu_types::TextureFormat::Rg32Sint => "rg32sint",
+    wgpu_types::TextureFormat::Rg32Float => "rg32float",
+    wgpu_types::TextureFormat::Rgba16Uint => "rgba16uint",
+    wgpu_types::TextureFormat::Rgba16Sint => "rgba16sint",
+    wgpu_types::TextureFormat::Rgba16Float => "rgba16float",
+
+    // 128-bit formats
+    wgpu_types::TextureFormat::Rgba32Uint => "rgba32uint",
+    wgpu_types::TextureFormat::Rgba32Sint => "rgba32sint",
+    wgpu_types::TextureFormat::Rgba32Float => "rgba32float",
+
+    // Depth and stencil formats
+    wgpu_types::TextureFormat::Depth24Plus => "depth24plus",
+    wgpu_types::TextureFormat::Depth24PlusStencil8 => "depth24plus-stencil8",
+    wgpu_types::TextureFormat::Depth32Float => "depth32float",
+
+    // BC compressed formats usable if "texture-compression-bc" is both
+    // supported by the device/user agent and enabled in requestDevice.
+    wgpu_types::TextureFormat::Bc1RgbaUnorm => "bc1-rgba-unorm",
+    wgpu_types::TextureFormat::Bc1RgbaUnormSrgb => "bc1-rgba-unorm-srgb",
+    wgpu_types::TextureFormat::Bc2RgbaUnorm => "bc2-rgba-unorm",
+    wgpu_types::TextureFormat::Bc2RgbaUnormSrgb => "bc2-rgba-unorm-srgb",
+    wgpu_types::TextureFormat::Bc3RgbaUnorm => "bc3-rgba-unorm",
+    wgpu_types::TextureFormat::Bc3RgbaUnormSrgb => "bc3-rgba-unorm-srgb",
+    wgpu_types::TextureFormat::Bc4RUnorm => "bc4-r-unorm",
+    wgpu_types::TextureFormat::Bc4RSnorm => "bc4-r-snorm",
+    wgpu_types::TextureFormat::Bc5RgUnorm => "bc5-rg-unorm",
+    wgpu_types::TextureFormat::Bc5RgSnorm => "bc5-rg-snorm",
+    wgpu_types::TextureFormat::Bc6hRgbUfloat => "bc6h-rgb-ufloat",
+    wgpu_types::TextureFormat::Bc6hRgbSfloat => "bc6h-rgb-float",
+    wgpu_types::TextureFormat::Bc7RgbaUnorm => "bc7-rgba-unorm",
+    wgpu_types::TextureFormat::Bc7RgbaUnormSrgb => "bc7-rgba-unorm-srgb",
+
+    _ => return Err(not_supported()),
+  })
+}
+
 pub fn serialize_dimension(
   dimension: &str,
 ) -> wgpu_types::TextureViewDimension {

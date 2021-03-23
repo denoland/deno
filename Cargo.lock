@@ -693,6 +693,7 @@ name = "deno_webgpu"
 version = "0.3.0"
 dependencies = [
  "deno_core",
+ "raw-window-handle",
  "serde",
  "tokio",
  "wgpu-core",
@@ -3979,6 +3980,7 @@ dependencies = [
  "gpu-descriptor",
  "naga",
  "parking_lot",
+ "raw-window-handle",
  "ron",
  "serde",
  "smallvec",

@@ -54,6 +54,7 @@ pub mod render_pass;
 pub mod sampler;
 pub mod shader;
 pub mod texture;
+pub mod swapchain;
 
 pub struct Unstable(pub bool);
 
@@ -82,6 +83,13 @@ struct WebGPUDevice(wgpu_core::id::DeviceId);
 impl Resource for WebGPUDevice {
   fn name(&self) -> Cow<str> {
     "webGPUDevice".into()
+  }
+}
+
+struct WebGPUSurface(wgpu_core::id::SurfaceId);
+impl Resource for WebGPUSurface {
+  fn name(&self) -> Cow<str> {
+    "webGPUSurface".into()
   }
 }
 
@@ -189,6 +197,7 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
 #[serde(rename_all = "camelCase")]
 pub struct RequestAdapterArgs {
   power_preference: Option<String>,
+  surface: Option<u32>,
 }
 
 pub async fn op_webgpu_request_adapter(
@@ -209,6 +218,16 @@ pub async fn op_webgpu_request_adapter(
     state.borrow::<Instance>()
   };
 
+  let surface = if let Some(surface_id) = args.surface {
+    let surface = state
+      .resource_table
+      .get::<impl raw_window_handle::HasRawWindowHandle>(surface_id)
+      .ok_or_else(bad_resource_id)?;
+    Some(instance.instance_create_surface(&surface, |_| std::marker::PhantomData))
+  } else {
+    None
+  };
+
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
       Some(power_preference) => match power_preference.as_str() {
@@ -218,7 +237,7 @@ pub async fn op_webgpu_request_adapter(
       },
       None => Default::default(),
     },
-    compatible_surface: None, // windowless
+    compatible_surface: surface,
   };
   let res = instance.request_adapter(
     &descriptor,

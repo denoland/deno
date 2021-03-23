@@ -17,5 +17,6 @@ path = "lib.rs"
 deno_core = { version = "0.82.0", path = "../../core" }
 tokio = { version = "1.4.0", features = ["full"] }
 serde = { version = "1.0.123", features = ["derive"] }
-wgpu-core = { version = "0.7.0", features = ["trace"] }
+wgpu-core = { version = "0.7.0", features = ["trace", "raw-window-handle"] }
+raw-window-handle = "0.3.3"
 wgpu-types = "0.7.0"

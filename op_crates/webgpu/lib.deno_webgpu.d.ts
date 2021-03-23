@@ -63,6 +63,7 @@ declare class GPU {
 
 declare interface GPURequestAdapterOptions {
   powerPreference?: GPUPowerPreference;
+  surface?: number;
 }
 
 declare type GPUPowerPreference = "low-power" | "high-performance";
@@ -1067,6 +1068,23 @@ declare type GPUPipelineStatisticName =
   | "clipper-primitives-out"
   | "fragment-shader-invocations"
   | "compute-shader-invocations";
+
+declare class GPUCanvasContext {
+  configureSwapChain(descriptor: GPUSwapChainDescriptor): GPUSwapChain;
+  getSwapChainPreferredFormat(adapter: GPUAdapter): GPUTextureFormat;
+}
+
+declare interface GPUSwapChainDescriptor extends GPUObjectDescriptorBase {
+  device: GPUDevice;
+  format: GPUTextureFormat;
+  usage?: GPUTextureUsageFlags;
+}
+
+declare class GPUSwapChain implements GPUObjectBase {
+  label: string | null;
+
+  getCurrentTexture(): GPUTexture;
+}
 
 declare type GPUDeviceLostReason = "destroyed";
 
