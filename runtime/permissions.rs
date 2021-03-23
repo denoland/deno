@@ -69,6 +69,41 @@ impl Default for PermissionState {
   }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UnitPermission {
+  pub name: &'static str,
+  pub description: &'static str,
+  pub state: PermissionState,
+}
+
+impl UnitPermission {
+  pub fn query(&self) -> PermissionState {
+    self.state
+  }
+
+  pub fn request(&mut self) -> PermissionState {
+    if self.state == PermissionState::Prompt {
+      if permission_prompt(&format!("access to {}", self.description)) {
+        self.state = PermissionState::Granted;
+      } else {
+        self.state = PermissionState::Denied;
+      }
+    }
+    self.state
+  }
+
+  pub fn revoke(&mut self) -> PermissionState {
+    if self.state == PermissionState::Granted {
+      self.state = PermissionState::Prompt;
+    }
+    self.state
+  }
+
+  pub fn check(&self) -> Result<(), AnyError> {
+    self.state.check(self.name, None)
+  }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
   #[serde(skip)]
@@ -81,9 +116,37 @@ pub struct UnaryPermission<T: Eq + Hash> {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct ReadPermission(pub PathBuf);
+pub struct ReadDescriptor(pub PathBuf);
 
-impl UnaryPermission<ReadPermission> {
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct WriteDescriptor(pub PathBuf);
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct NetDescriptor(pub String, pub Option<u16>);
+
+impl NetDescriptor {
+  fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
+    NetDescriptor(host.0.as_ref().to_string(), host.1)
+  }
+
+  pub fn from_string(host: String) -> Self {
+    let url = url::Url::parse(&format!("http://{}", host)).unwrap();
+    let hostname = url.host_str().unwrap().to_string();
+
+    NetDescriptor(hostname, url.port())
+  }
+}
+
+impl fmt::Display for NetDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(&match self.1 {
+      None => self.0.clone(),
+      Some(port) => format!("{}:{}", self.0, port),
+    })
+  }
+}
+
+impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
@@ -123,13 +186,13 @@ impl UnaryPermission<ReadPermission> {
           self
             .granted_list
             .retain(|path| !path.0.starts_with(&resolved_path));
-          self.granted_list.insert(ReadPermission(resolved_path));
+          self.granted_list.insert(ReadDescriptor(resolved_path));
           PermissionState::Granted
         } else {
           self
             .denied_list
             .retain(|path| !resolved_path.starts_with(&path.0));
-          self.denied_list.insert(ReadPermission(resolved_path));
+          self.denied_list.insert(ReadDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
@@ -189,10 +252,7 @@ impl UnaryPermission<ReadPermission> {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct WritePermission(pub PathBuf);
-
-impl UnaryPermission<WritePermission> {
+impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
@@ -232,13 +292,13 @@ impl UnaryPermission<WritePermission> {
           self
             .granted_list
             .retain(|path| !path.0.starts_with(&resolved_path));
-          self.granted_list.insert(WritePermission(resolved_path));
+          self.granted_list.insert(WriteDescriptor(resolved_path));
           PermissionState::Granted
         } else {
           self
             .denied_list
             .retain(|path| !resolved_path.starts_with(&path.0));
-          self.denied_list.insert(WritePermission(resolved_path));
+          self.denied_list.insert(WriteDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
@@ -285,32 +345,7 @@ impl UnaryPermission<WritePermission> {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct NetPermission(pub String, pub Option<u16>);
-
-impl NetPermission {
-  fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
-    NetPermission(host.0.as_ref().to_string(), host.1)
-  }
-
-  pub fn from_string(host: String) -> Self {
-    let url = url::Url::parse(&format!("http://{}", host)).unwrap();
-    let hostname = url.host_str().unwrap().to_string();
-
-    NetPermission(hostname, url.port())
-  }
-}
-
-impl fmt::Display for NetPermission {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(&match self.1 {
-      None => self.0.clone(),
-      Some(port) => format!("{}:{}", self.0, port),
-    })
-  }
-}
-
-impl UnaryPermission<NetPermission> {
+impl UnaryPermission<NetDescriptor> {
   pub fn query<T: AsRef<str>>(
     &self,
     host: Option<&(T, Option<u16>)>,
@@ -323,7 +358,7 @@ impl UnaryPermission<NetPermission> {
             .denied_list
             .iter()
             .any(|host_| host.0.as_ref() == host_.0),
-          Some(_) => self.denied_list.contains(&NetPermission::new(host)),
+          Some(_) => self.denied_list.contains(&NetDescriptor::new(host)),
         },
       }
     {
@@ -332,11 +367,11 @@ impl UnaryPermission<NetPermission> {
       || match host.as_ref() {
         None => false,
         Some(host) => {
-          self.granted_list.contains(&NetPermission::new(&&(
+          self.granted_list.contains(&NetDescriptor::new(&&(
             host.0.as_ref().to_string(),
             None,
           )))
-            || self.granted_list.contains(&NetPermission::new(host))
+            || self.granted_list.contains(&NetDescriptor::new(host))
         }
       }
     {
@@ -353,7 +388,7 @@ impl UnaryPermission<NetPermission> {
     if let Some(host) = host {
       let state = self.query(Some(host));
       if state == PermissionState::Prompt {
-        let host = NetPermission::new(&host);
+        let host = NetDescriptor::new(&host);
         if permission_prompt(&format!("network access to \"{}\"", host)) {
           if host.1.is_none() {
             self.granted_list.retain(|h| h.0 != host.0);
@@ -393,7 +428,7 @@ impl UnaryPermission<NetPermission> {
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if let Some(host) = host {
-      self.granted_list.remove(&NetPermission::new(&host));
+      self.granted_list.remove(&NetDescriptor::new(&host));
       if host.1.is_none() {
         self.granted_list.retain(|h| h.0 != host.0.as_ref());
       }
@@ -412,7 +447,7 @@ impl UnaryPermission<NetPermission> {
   ) -> Result<(), AnyError> {
     self.query(Some(host)).check(
       self.name,
-      Some(&format!("\"{}\"", NetPermission::new(&host))),
+      Some(&format!("\"{}\"", NetDescriptor::new(&host))),
     )
   }
 
@@ -438,16 +473,16 @@ impl UnaryPermission<EnvPermission> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
       && match env {
-        None => true,
-        Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
-      }
+      None => true,
+      Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
+    }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match env {
-        None => false,
-        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
-      }
+      None => false,
+      Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
+    }
     {
       PermissionState::Granted
     } else {
@@ -513,49 +548,14 @@ impl UnaryPermission<EnvPermission> {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct BooleanPermission {
-  pub name: &'static str,
-  pub description: &'static str,
-  pub state: PermissionState,
-}
-
-impl BooleanPermission {
-  pub fn query(&self) -> PermissionState {
-    self.state
-  }
-
-  pub fn request(&mut self) -> PermissionState {
-    if self.state == PermissionState::Prompt {
-      if permission_prompt(&format!("access to {}", self.description)) {
-        self.state = PermissionState::Granted;
-      } else {
-        self.state = PermissionState::Denied;
-      }
-    }
-    self.state
-  }
-
-  pub fn revoke(&mut self) -> PermissionState {
-    if self.state == PermissionState::Granted {
-      self.state = PermissionState::Prompt;
-    }
-    self.state
-  }
-
-  pub fn check(&self) -> Result<(), AnyError> {
-    self.state.check(self.name, None)
-  }
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
-  pub read: UnaryPermission<ReadPermission>,
-  pub write: UnaryPermission<WritePermission>,
-  pub net: UnaryPermission<NetPermission>,
-  pub env: UnaryPermission<EnvPermission>,
-  pub run: BooleanPermission,
-  pub plugin: BooleanPermission,
-  pub hrtime: BooleanPermission,
+  pub read: UnaryPermission<ReadDescriptor>,
+  pub write: UnaryPermission<WriteDescriptor>,
+  pub net: UnaryPermission<NetDescriptor>,
+  pub env: UnaryPermission<EnvDescriptor>,
+  pub run: UnitPermission,
+  pub plugin: UnitPermission,
+  pub hrtime: UnitPermission,
 }
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
@@ -572,8 +572,8 @@ pub struct PermissionsOptions {
 impl Permissions {
   pub fn new_read(
     state: &Option<Vec<PathBuf>>,
-  ) -> UnaryPermission<ReadPermission> {
-    UnaryPermission::<ReadPermission> {
+  ) -> UnaryPermission<ReadDescriptor> {
+    UnaryPermission::<ReadDescriptor> {
       name: "read",
       description: "read the file system",
       global_state: global_state_from_option(state),
@@ -584,8 +584,8 @@ impl Permissions {
 
   pub fn new_write(
     state: &Option<Vec<PathBuf>>,
-  ) -> UnaryPermission<WritePermission> {
-    UnaryPermission::<WritePermission> {
+  ) -> UnaryPermission<WriteDescriptor> {
+    UnaryPermission::<WriteDescriptor> {
       name: "write",
       description: "write to the file system",
       global_state: global_state_from_option(state),
@@ -596,8 +596,8 @@ impl Permissions {
 
   pub fn new_net(
     state: &Option<Vec<String>>,
-  ) -> UnaryPermission<NetPermission> {
-    UnaryPermission::<NetPermission> {
+  ) -> UnaryPermission<NetDescriptor> {
+    UnaryPermission::<NetDescriptor> {
       name: "net",
       description: "network",
       global_state: global_state_from_option(state),
@@ -605,7 +605,7 @@ impl Permissions {
         .as_ref()
         .map(|v| {
           v.iter()
-            .map(|x| NetPermission::from_string(x.clone()))
+            .map(|x| NetDescriptor::from_string(x.clone()))
             .collect()
         })
         .unwrap_or_else(HashSet::new),
@@ -615,28 +615,28 @@ impl Permissions {
 
   pub fn new_env(
     state: &Option<Vec<String>>,
-  ) -> UnaryPermission<EnvPermission> {
-    UnaryPermission::<EnvPermission> {
+  ) -> UnaryPermission<EnvDescriptor> {
+    UnaryPermission::<EnvDescriptor> {
       name: "env",
       description: "environment variables",
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| v.iter().map(|x| EnvPermission(x.clone())).collect())
+        .map(|v| v.iter().map(|x| EnvDescriptor(x.clone())).collect())
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
     }
   }
 
-  pub fn new_run(state: bool) -> BooleanPermission {
+  pub fn new_run(state: bool) -> UnitPermission {
     boolean_permission_from_flag_bool(state, "run", "run a subprocess")
   }
 
-  pub fn new_plugin(state: bool) -> BooleanPermission {
+  pub fn new_plugin(state: bool) -> UnitPermission {
     boolean_permission_from_flag_bool(state, "plugin", "open a plugin")
   }
 
-  pub fn new_hrtime(state: bool) -> BooleanPermission {
+  pub fn new_hrtime(state: bool) -> UnitPermission {
     boolean_permission_from_flag_bool(state, "hrtime", "high precision time")
   }
 
@@ -711,8 +711,8 @@ fn boolean_permission_from_flag_bool(
   flag: bool,
   name: &'static str,
   description: &'static str,
-) -> BooleanPermission {
-  BooleanPermission {
+) -> UnitPermission {
+  UnitPermission {
     name,
     description,
     state: if flag {
@@ -733,11 +733,11 @@ fn global_state_from_option<T>(flag: &Option<Vec<T>>) -> PermissionState {
 
 pub fn resolve_read_allowlist(
   allow: &Option<Vec<PathBuf>>,
-) -> HashSet<ReadPermission> {
+) -> HashSet<ReadDescriptor> {
   if let Some(v) = allow {
     v.iter()
       .map(|raw_path| {
-        ReadPermission(resolve_from_cwd(Path::new(&raw_path)).unwrap())
+        ReadDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
       })
       .collect()
   } else {
@@ -747,11 +747,11 @@ pub fn resolve_read_allowlist(
 
 pub fn resolve_write_allowlist(
   allow: &Option<Vec<PathBuf>>,
-) -> HashSet<WritePermission> {
+) -> HashSet<WriteDescriptor> {
   if let Some(v) = allow {
     v.iter()
       .map(|raw_path| {
-        WritePermission(resolve_from_cwd(Path::new(&raw_path)).unwrap())
+        WriteDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
       })
       .collect()
   } else {
@@ -1150,15 +1150,15 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_env(&Some(svec!["HOME"]))
       },
-      run: BooleanPermission {
+      run: UnitPermission {
         state: PermissionState::Prompt,
         ..Default::default()
       },
-      plugin: BooleanPermission {
+      plugin: UnitPermission {
         state: PermissionState::Prompt,
         ..Default::default()
       },
-      hrtime: BooleanPermission {
+      hrtime: UnitPermission {
         state: PermissionState::Prompt,
         ..Default::default()
       },
@@ -1251,15 +1251,15 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_env(&Some(svec!["HOME"]))
       },
-      run: BooleanPermission {
+      run: UnitPermission {
         state: PermissionState::Granted,
         ..Default::default()
       },
-      plugin: BooleanPermission {
+      plugin: UnitPermission {
         state: PermissionState::Prompt,
         ..Default::default()
       },
-      hrtime: BooleanPermission {
+      hrtime: UnitPermission {
         state: PermissionState::Denied,
         ..Default::default()
       },
