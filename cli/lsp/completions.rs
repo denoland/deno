@@ -2,10 +2,13 @@
 
 use super::analysis;
 use super::language_server;
+use super::tsc;
 
 use crate::fs_util::is_supported_ext;
 use crate::media_type::MediaType;
 
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
@@ -21,6 +24,13 @@ use swc_ecmascript::visit::VisitWith;
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionItemData {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub tsc: Option<tsc::CompletionItemData>,
+}
+
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
@@ -31,7 +41,7 @@ pub fn get_import_completions(
 ) -> Option<lsp::CompletionResponse> {
   if let Ok(Some(source)) = state_snapshot.documents.content(specifier) {
     let media_type = MediaType::from(specifier);
-    if let Some(current_specifier) =
+    if let Some((current_specifier, range)) =
       is_module_specifier_position(specifier, &source, &media_type, position)
     {
       // completions for local relative modules
@@ -40,49 +50,19 @@ pub fn get_import_completions(
       {
         return Some(lsp::CompletionResponse::List(lsp::CompletionList {
           is_incomplete: false,
-          items: get_local_completions(specifier, &current_specifier)?,
+          items: get_local_completions(specifier, &current_specifier, &range)?,
         }));
       }
       // completion of modules within the workspace
       if !current_specifier.is_empty() {
-        let workspace_specifiers = state_snapshot.sources.specifiers();
-        let specifier_strings =
-          get_relative_specifiers(specifier, workspace_specifiers);
-        let items = specifier_strings
-          .into_iter()
-          .filter_map(|label| {
-            if label.starts_with(&current_specifier) {
-              let insert_text = Some(if current_specifier.contains('/') {
-                label.replace(&current_specifier, "")
-              } else {
-                label.clone()
-              });
-              let detail = Some(
-                if label.starts_with("http:") || label.starts_with("https:") {
-                  "(remote)".to_string()
-                } else if label.starts_with("data:") {
-                  "(data)".to_string()
-                } else {
-                  "(local)".to_string()
-                },
-              );
-              Some(lsp::CompletionItem {
-                label,
-                kind: Some(lsp::CompletionItemKind::File),
-                detail,
-                sort_text: Some("1".to_string()),
-                insert_text,
-                insert_text_mode: Some(lsp::InsertTextMode::AsIs),
-                ..Default::default()
-              })
-            } else {
-              None
-            }
-          })
-          .collect();
         return Some(lsp::CompletionResponse::List(lsp::CompletionList {
           is_incomplete: false,
-          items,
+          items: get_workspace_completions(
+            specifier,
+            &current_specifier,
+            &range,
+            state_snapshot,
+          ),
         }));
       }
     }
@@ -90,9 +70,11 @@ pub fn get_import_completions(
   None
 }
 
+/// Return local completions that are relative to the base specifier.
 fn get_local_completions(
   base: &ModuleSpecifier,
   current: &str,
+  range: &lsp::Range,
 ) -> Option<Vec<lsp::CompletionItem>> {
   if base.scheme() != "file" {
     return None;
@@ -113,15 +95,23 @@ fn get_local_completions(
           if &entry_specifier == base {
             return None;
           }
-          let insert_text = Some(
-            relative_specifier(&entry_specifier, base).replace(current, ""),
-          );
+          let full_text = relative_specifier(&entry_specifier, base);
+          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: range.clone(),
+            new_text: full_text.clone(),
+          }));
+          let filter_text = if full_text.starts_with(current) {
+            Some(full_text)
+          } else {
+            Some(format!("{}{}", current, label))
+          };
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
               label,
               kind: Some(lsp::CompletionItemKind::Folder),
+              filter_text,
               sort_text: Some("1".to_string()),
-              insert_text,
+              text_edit,
               ..Default::default()
             }),
             Ok(file_type) if file_type.is_file() => {
@@ -130,8 +120,9 @@ fn get_local_completions(
                   label,
                   kind: Some(lsp::CompletionItemKind::File),
                   detail: Some("(local)".to_string()),
+                  filter_text,
                   sort_text: Some("1".to_string()),
-                  insert_text,
+                  text_edit,
                   ..Default::default()
                 })
               } else {
@@ -164,10 +155,54 @@ fn get_relative_specifiers(
     .collect()
 }
 
+/// Get workspace completions that include modules in the Deno cache which match
+/// the current specifier string.
+fn get_workspace_completions(
+  specifier: &ModuleSpecifier,
+  current: &str,
+  range: &lsp::Range,
+  state_snapshot: &language_server::StateSnapshot,
+) -> Vec<lsp::CompletionItem> {
+  let workspace_specifiers = state_snapshot.sources.specifiers();
+  let specifier_strings =
+    get_relative_specifiers(specifier, workspace_specifiers);
+  specifier_strings
+    .into_iter()
+    .filter_map(|label| {
+      if label.starts_with(&current) {
+        let detail = Some(
+          if label.starts_with("http:") || label.starts_with("https:") {
+            "(remote)".to_string()
+          } else if label.starts_with("data:") {
+            "(data)".to_string()
+          } else {
+            "(local)".to_string()
+          },
+        );
+        let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: range.clone(),
+          new_text: label.clone(),
+        }));
+        Some(lsp::CompletionItem {
+          label,
+          kind: Some(lsp::CompletionItemKind::File),
+          detail,
+          sort_text: Some("1".to_string()),
+          text_edit,
+          ..Default::default()
+        })
+      } else {
+        None
+      }
+    })
+    .collect()
+}
+
 /// A structure that implements the visit trait to determine if the supplied
 /// position falls within the module specifier of an import/export statement.
 /// Once the module has been visited,
 struct ImportLocator {
+  pub maybe_range: Option<lsp::Range>,
   pub maybe_specifier: Option<String>,
   position: lsp::Position,
   source_map: Rc<SourceMap>,
@@ -176,6 +211,7 @@ struct ImportLocator {
 impl ImportLocator {
   pub fn new(position: lsp::Position, source_map: Rc<SourceMap>) -> Self {
     Self {
+      maybe_range: None,
       maybe_specifier: None,
       position,
       source_map,
@@ -193,6 +229,16 @@ impl Visit for ImportLocator {
       let start = self.source_map.lookup_char_pos(node.src.span.lo);
       let end = self.source_map.lookup_char_pos(node.src.span.hi);
       if span_includes_pos(&self.position, &start, &end) {
+        self.maybe_range = Some(lsp::Range {
+          start: lsp::Position {
+            line: (start.line - 1) as u32,
+            character: (start.col_display + 1) as u32,
+          },
+          end: lsp::Position {
+            line: (end.line - 1) as u32,
+            character: (end.col_display - 1) as u32,
+          },
+        });
         self.maybe_specifier = Some(node.src.value.to_string());
       }
     }
@@ -251,7 +297,7 @@ fn is_module_specifier_position(
   source: &str,
   media_type: &MediaType,
   position: &lsp::Position,
-) -> Option<String> {
+) -> Option<(String, lsp::Range)> {
   if let Ok(parsed_module) =
     analysis::parse_module(specifier, source, media_type)
   {
@@ -260,7 +306,13 @@ fn is_module_specifier_position(
     parsed_module
       .module
       .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut import_locator);
-    import_locator.maybe_specifier
+    if let (Some(specifier), Some(range)) =
+      (import_locator.maybe_specifier, import_locator.maybe_range)
+    {
+      Some((specifier, range))
+    } else {
+      None
+    }
   } else {
     None
   }
@@ -551,7 +603,19 @@ mod tests {
           character: 20
         }
       ),
-      Some("".to_string())
+      Some((
+        "".to_string(),
+        lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 20
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 20
+          }
+        }
+      ))
     );
   }
 
@@ -582,7 +646,19 @@ mod tests {
           character: 28
         }
       ),
-      Some("https://".to_string())
+      Some((
+        "https://".to_string(),
+        lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 20
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 28
+          }
+        }
+      ))
     );
   }
 
@@ -603,7 +679,20 @@ mod tests {
     std::fs::write(&file_e, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
-    let actual = get_local_completions(&specifier, "./");
+    let actual = get_local_completions(
+      &specifier,
+      "./",
+      &lsp::Range {
+        start: lsp::Position {
+          line: 0,
+          character: 20,
+        },
+        end: lsp::Position {
+          line: 0,
+          character: 22,
+        },
+      },
+    );
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual.len(), 2);
@@ -633,8 +722,19 @@ mod tests {
           kind: Some(lsp::CompletionItemKind::File),
           detail: Some("(remote)".to_string()),
           sort_text: Some("1".to_string()),
-          insert_text: Some("https://deno.land/x/a/b/c.ts".to_string()),
-          insert_text_mode: Some(lsp::InsertTextMode::AsIs),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: lsp::Range {
+              start: lsp::Position {
+                line: 0,
+                character: 20
+              },
+              end: lsp::Position {
+                line: 0,
+                character: 21,
+              }
+            },
+            new_text: "https://deno.land/x/a/b/c.ts".to_string(),
+          })),
           ..Default::default()
         }]
       }))

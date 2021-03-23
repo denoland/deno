@@ -1428,28 +1428,31 @@ impl Inner {
   ) -> LspResult<CompletionItem> {
     let mark = self.performance.mark("completion_resolve");
     let completion_item = if let Some(data) = &params.data {
-      let data: tsc::CompletionItemData = serde_json::from_value(data.clone())
-        .map_err(|err| {
+      let data: completions::CompletionItemData =
+        serde_json::from_value(data.clone()).map_err(|err| {
           error!("{}", err);
           LspError::invalid_params(
             "Could not decode data field of completion item.",
           )
         })?;
-      let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-      let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
-        .ts_server
-        .request(self.snapshot(), req)
-        .await
-        .map_err(|err| {
-          error!("Unable to get completion info from TypeScript: {}", err);
-          LspError::internal_error()
-        })?;
-      if let Some(completion_info) = maybe_completion_info {
-        completion_info.as_completion_item(&params)
+      if let Some(data) = data.tsc {
+        let req = tsc::RequestMethod::GetCompletionDetails(data.into());
+        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
+          self.ts_server.request(self.snapshot(), req).await.map_err(
+            |err| {
+              error!("Unable to get completion info from TypeScript: {}", err);
+              LspError::internal_error()
+            },
+          )?;
+        if let Some(completion_info) = maybe_completion_info {
+          completion_info.as_completion_item(&params)
+        } else {
+          error!(
+            "Received an undefined response from tsc for completion details."
+          );
+          params
+        }
       } else {
-        error!(
-          "Received an undefined response from tsc for completion details."
-        );
         params
       }
     } else {

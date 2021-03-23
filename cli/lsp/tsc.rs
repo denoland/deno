@@ -1202,7 +1202,7 @@ impl CompletionEntry {
         None
       };
 
-    let data = CompletionItemData {
+    let tsc = CompletionItemData {
       specifier: specifier.clone(),
       position,
       name: self.name.clone(),
@@ -1220,7 +1220,9 @@ impl CompletionEntry {
       filter_text,
       detail,
       tags,
-      data: Some(serde_json::to_value(data).unwrap()),
+      data: Some(json!({
+        "tsc": tsc,
+      })),
       ..Default::default()
     }
   }
