@@ -69,7 +69,7 @@ command will be `antigen bundle deno` and so on.
 Example (Powershell):
 
 ```shell
-deno completions powershell > $profile
+deno completions powershell >> $profile
 .$profile
 ```
 
