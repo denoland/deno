@@ -172,62 +172,6 @@ impl BasicModuleBuilder {
   }
 }
 
-// MultiModule allows grouping multiple sub-JsRuntimeModules into one,
-// allowing things such as:
-// ```
-// fn web_modules(args: WebModuleArgs) -> MultiModule {
-//  MultiModule::new(vec![deno_url::init(), deno_fetch::init(...), ...])
-// }
-// ```
-pub struct MultiModule<'s> {
-  pub modules: Vec<Box<dyn JsRuntimeModule + 's>>,
-}
-
-impl MultiModule<'_> {
-  fn new<'s>(modules: &mut Vec<impl JsRuntimeModule + 's>) -> MultiModule<'s> {
-    let modules = modules
-      .drain(..)
-      .map(|m| Box::<dyn JsRuntimeModule + 's>::from(Box::new(m)))
-      .collect();
-    MultiModule { modules }
-  }
-}
-
-impl JsRuntimeModule for MultiModule<'_> {
-  fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
-    Ok(
-      self
-        .modules
-        .iter()
-        .map(|m| m.init_js().unwrap())
-        .flatten()
-        .collect(),
-    )
-  }
-
-  fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
-    for m in self.modules.iter_mut() {
-      m.init_ops(registrar.clone())?;
-    }
-    Ok(())
-  }
-
-  fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
-    for m in self.modules.iter() {
-      m.init_state(state)?;
-    }
-    Ok(())
-  }
-
-  fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
-    let mut registrar = registrar;
-    for m in self.modules.iter_mut() {
-      registrar = m.init_registrar(registrar.clone());
-    }
-    registrar
-  }
-}
-
 // The OpRegistrar trait allows building op "middleware" such as:
 // OpMetrics, OpTracing or OpDisabler that wrap OpFns for profiling, debugging, etc...
 // JsRuntime is itself an OpRegistrar

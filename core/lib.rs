@@ -87,7 +87,6 @@ pub use crate::runtime_modules::declare_ops_group;
 // pub use crate::runtime_modules::include_js_files!;
 pub use crate::runtime_modules::BasicModule;
 pub use crate::runtime_modules::JsRuntimeModule;
-pub use crate::runtime_modules::MultiModule;
 pub use crate::runtime_modules::OpRegistrar;
 pub use crate::runtime_modules::RcOpRegistrar;
 pub use crate::zero_copy_buf::BufVec;
