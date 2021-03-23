@@ -14,6 +14,7 @@ use deno_core::serde_json::Value;
 use deno_core::BasicModule;
 use deno_core::OpFn;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{BufVec, Resource};
 use serde::Deserialize;
@@ -107,11 +108,6 @@ pub fn init(unstable: bool) -> BasicModule {
     ),
     declare_webgpu_ops(),
     Some(Box::new(move |state| {
-      state.put(wgpu_core::hub::Global::new(
-        "webgpu",
-        wgpu_core::hub::IdentityManagerFactory,
-        wgpu_types::BackendBit::PRIMARY,
-      ));
       // TODO: check & possibly streamline this
       // Unstable might be able to be OpMiddleware
       // let unstable_checker = state.borrow::<super::UnstableChecker>();
@@ -211,7 +207,16 @@ pub async fn op_webgpu_request_adapter(
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
-  let instance = state.borrow::<Instance>();
+  let instance = if let Some(instance) = state.try_borrow::<Instance>() {
+    instance
+  } else {
+    state.put(wgpu_core::hub::Global::new(
+      "webgpu",
+      wgpu_core::hub::IdentityManagerFactory,
+      wgpu_types::BackendBit::PRIMARY,
+    ));
+    state.borrow::<Instance>()
+  };
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
@@ -294,7 +299,7 @@ struct GPULimits {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestDeviceArgs {
-  adapter_rid: u32,
+  adapter_rid: ResourceId,
   label: Option<String>,
   non_guaranteed_features: Option<Vec<String>>,
   non_guaranteed_limits: Option<GPULimits>,
@@ -465,7 +470,7 @@ pub async fn op_webgpu_request_device(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateQuerySetArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   _label: Option<String>, // not yet implemented
   #[serde(rename = "type")]
   kind: String,

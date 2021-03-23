@@ -65,7 +65,7 @@ pub(crate) async fn accept_unix(
   args: AcceptArgs,
   _bufs: BufVec,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid as u32;
+  let rid = args.rid;
 
   let resource = state
     .borrow()
@@ -104,7 +104,7 @@ pub(crate) async fn receive_unix_packet(
 ) -> Result<Value, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
 
-  let rid = args.rid as u32;
+  let rid = args.rid;
   let mut buf = bufs.into_iter().next().unwrap();
 
   let resource = state

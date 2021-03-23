@@ -3148,6 +3148,12 @@ console.log("finish");
     http_server: true,
   });
 
+  itest!(error_027_bare_import_error {
+    args: "bundle error_027_bare_import_error.ts",
+    output: "error_027_bare_import_error.ts.out",
+    exit_code: 1,
+  });
+
   itest!(error_missing_module_named_import {
     args: "run --reload error_missing_module_named_import.ts",
     output: "error_missing_module_named_import.ts.out",
@@ -3209,6 +3215,11 @@ console.log("finish");
     exit_code: 42,
     args: "run --quiet --reload exit_error42.ts",
     output: "exit_error42.ts.out",
+  });
+
+  itest!(heapstats {
+    args: "run --quiet --v8-flags=--expose-gc heapstats.js",
+    output: "heapstats.js.out",
   });
 
   itest!(https_import {

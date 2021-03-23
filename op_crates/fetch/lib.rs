@@ -24,6 +24,7 @@ use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
 use reqwest::header::HeaderMap;
@@ -223,7 +224,7 @@ where
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchSendArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_send(
@@ -291,7 +292,7 @@ pub async fn op_fetch_send(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchRequestWriteArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_request_write(
@@ -309,7 +310,7 @@ pub async fn op_fetch_request_write(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchRequestBodyResource>(rid as u32)
+    .get::<FetchRequestBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
@@ -321,7 +322,7 @@ pub async fn op_fetch_request_write(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchResponseReadArgs {
-  rid: u32,
+  rid: ResourceId,
 }
 
 pub async fn op_fetch_response_read(
@@ -338,7 +339,7 @@ pub async fn op_fetch_response_read(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchResponseBodyResource>(rid as u32)
+    .get::<FetchResponseBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
