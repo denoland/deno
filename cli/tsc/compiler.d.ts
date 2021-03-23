@@ -61,6 +61,7 @@ declare global {
     | GetQuickInfoRequest
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
+    | GetSmartSelectionRange
     | GetSupportedCodeFixes;
 
   interface BaseLanguageServerRequest {
@@ -167,6 +168,12 @@ declare global {
     specifier: string;
     position: number;
     options: ts.SignatureHelpItemsOptions;
+  }
+
+  interface GetSmartSelectionRange extends BaseLanguageServerRequest {
+    method: "getSmartSelectionRange";
+    specifier: string;
+    position: number;
   }
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
