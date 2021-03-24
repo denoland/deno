@@ -139,6 +139,7 @@
         if (typeof key == "symbol") {
           Object.defineProperty(target, key, {
             value,
+            configurable: true,
           });
         } else {
           target.setItem(key, value);

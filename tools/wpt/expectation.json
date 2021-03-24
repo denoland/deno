@@ -847,9 +847,7 @@
     "storage_supported_property_names.window.js": true,
     "symbol-props.window.js": [
       "localStorage: defineProperty not configurable",
-      "localStorage: delete existing property",
-      "sessionStorage: defineProperty not configurable",
-      "sessionStorage: delete existing property"
+      "sessionStorage: defineProperty not configurable"
     ]
   }
 }
