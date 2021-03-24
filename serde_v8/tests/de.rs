@@ -92,3 +92,78 @@ fn de_map() {
     assert_eq!(map.get("nada"), None);
   })
 }
+
+////
+// JSON tests: serde_json::Value compatibility
+////
+
+detest!(
+  de_json_null,
+  serde_json::Value,
+  "null",
+  serde_json::Value::Null
+);
+detest!(
+  de_json_bool,
+  serde_json::Value,
+  "true",
+  serde_json::Value::Bool(true)
+);
+detest!(
+  de_json_int,
+  serde_json::Value,
+  "123",
+  serde_json::Value::Number(serde_json::Number::from_f64(123.0).unwrap())
+);
+detest!(
+  de_json_float,
+  serde_json::Value,
+  "3.14159",
+  serde_json::Value::Number(serde_json::Number::from_f64(3.14159).unwrap())
+);
+detest!(
+  de_json_string,
+  serde_json::Value,
+  "'Hello'",
+  serde_json::Value::String("Hello".to_string())
+);
+detest!(
+  de_json_vec_string,
+  serde_json::Value,
+  "['Hello', 'World']",
+  serde_json::Value::Array(vec![
+    serde_json::Value::String("Hello".to_string()),
+    serde_json::Value::String("World".to_string())
+  ])
+);
+detest!(
+  de_json_tuple,
+  serde_json::Value,
+  "[true, 'World', 3.14159, null]",
+  serde_json::Value::Array(vec![
+    serde_json::Value::Bool(true),
+    serde_json::Value::String("World".to_string()),
+    serde_json::Value::Number(serde_json::Number::from_f64(3.14159).unwrap()),
+    serde_json::Value::Null,
+  ])
+);
+detest!(
+  de_json_object,
+  serde_json::Value,
+  "({a: 1, b: 'hello', c: true})",
+  serde_json::Value::Object(
+    vec![
+      (
+        "a".to_string(),
+        serde_json::Value::Number(serde_json::Number::from_f64(1.0).unwrap()),
+      ),
+      (
+        "b".to_string(),
+        serde_json::Value::String("hello".to_string()),
+      ),
+      ("c".to_string(), serde_json::Value::Bool(true),),
+    ]
+    .drain(..)
+    .collect()
+  )
+);
