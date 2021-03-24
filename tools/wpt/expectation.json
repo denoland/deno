@@ -846,18 +846,10 @@
     "storage_string_conversion.window.js": true,
     "storage_supported_property_names.window.js": true,
     "symbol-props.window.js": [
-      "localStorage: plain set + get (loose)",
-      "localStorage: plain set + get (strict)",
-      "localStorage: defineProperty + get",
       "localStorage: defineProperty not configurable",
       "localStorage: delete existing property",
-      "localStorage: delete non-existent property",
-      "sessionStorage: plain set + get (loose)",
-      "sessionStorage: plain set + get (strict)",
-      "sessionStorage: defineProperty + get",
       "sessionStorage: defineProperty not configurable",
-      "sessionStorage: delete existing property",
-      "sessionStorage: delete non-existent property"
+      "sessionStorage: delete existing property"
     ]
   }
 }

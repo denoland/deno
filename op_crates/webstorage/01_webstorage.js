@@ -111,23 +111,38 @@
     storage[_rid] = data.rid;
 
     return new Proxy(storage, {
-      deleteProperty(target, prop) {
-        target.removeItem(prop);
+      deleteProperty(target, key) {
+        if (typeof key == "symbol") {
+          delete target[key];
+        } else {
+          target.removeItem(key);
+        }
         return true;
       },
       defineProperty(target, key, descriptor) {
-        target.setItem(key, descriptor.value);
+        if (typeof key == "symbol") {
+          Object.defineProperty(target, key, descriptor);
+        } else {
+          target.setItem(key, descriptor.value);
+        }
         return true;
       },
-      get(target, p) {
-        if (p in target) {
+      get(target, key) {
+        if (typeof key == "symbol") return target[key];
+        if (key in target) {
           return Reflect.get(...arguments);
         } else {
-          return target.getItem(p) ?? undefined;
+          return target.getItem(key) ?? undefined;
         }
       },
-      set(target, p, value) {
-        target.setItem(p, value);
+      set(target, key, value) {
+        if (typeof key == "symbol") {
+          Object.defineProperty(target, key, {
+            value,
+          });
+        } else {
+          target.setItem(key, value);
+        }
         return true;
       },
       has(target, p) {
