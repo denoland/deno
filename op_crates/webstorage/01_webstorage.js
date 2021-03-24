@@ -43,11 +43,18 @@
         context: "Argument 2",
       });
 
-      core.jsonOpSync("op_webstorage_set", {
+      const { err } = core.jsonOpSync("op_webstorage_set", {
         rid: this[_rid],
         keyName: key,
         keyValue: value,
       });
+
+      if (err) {
+        throw new DOMException(
+          "Exceeded maximum storage size",
+          "QuotaExceededError",
+        );
+      }
     }
 
     getItem(key) {
@@ -106,24 +113,49 @@
     return new Proxy(storage, {
       deleteProperty(target, prop) {
         target.removeItem(prop);
+        return true;
       },
-
+      defineProperty(target, key, descriptor) {
+        target.setItem(key, descriptor.value);
+        return true;
+      },
       get(target, p) {
         if (p in target) {
           return Reflect.get(...arguments);
         } else {
-          return target.getItem(p);
+          return target.getItem(p) ?? undefined;
         }
       },
-
       set(target, p, value) {
-        if (p in target) {
-          return false;
-        } else {
-          target.setItem(p, value);
-
-          return true;
+        target.setItem(p, value);
+        return true;
+      },
+      has(target, p) {
+        return (typeof target.getItem(p)) === "string";
+      },
+      ownKeys() {
+        const { keys } = core.jsonOpSync("op_webstorage_iterate_keys", {
+          rid: data.rid,
+        });
+        return keys;
+      },
+      getOwnPropertyDescriptor(target, key) {
+        if (arguments.length === 1) {
+          return undefined;
         }
+        if (key in target) {
+          return undefined;
+        }
+        const value = target.getItem(key);
+        if (value === null) {
+          return undefined;
+        }
+        return {
+          value,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        };
       },
     });
   }

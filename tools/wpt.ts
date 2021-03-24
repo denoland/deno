@@ -513,7 +513,12 @@ function discoverTestsToRun(
         ) {
           if (!path) continue;
           const url = new URL(path, "http://web-platform.test:8000");
-          if (!url.pathname.endsWith(".any.html")) continue;
+          if (
+            !url.pathname.endsWith(".any.html") &&
+            !url.pathname.endsWith(".window.html")
+          ) {
+            continue;
+          }
           testsToRun.push({
             sourcePath,
             path: url.pathname + url.search,

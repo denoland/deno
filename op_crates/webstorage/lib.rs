@@ -159,6 +159,16 @@ pub fn op_webstorage_set(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
+  let mut stmt = resource
+    .0
+    .prepare(r#"SELECT SUM(pgsize) FROM dbstat WHERE name = ?"#)
+    .unwrap();
+  let size: u32 = stmt.query_row(params!["data"], |row| row.get(0)).unwrap();
+
+  if size >= 5000000 {
+    return Ok(json!({ "err": true }));
+  }
+
   resource
     .0
     .execute(
@@ -251,4 +261,31 @@ pub fn op_webstorage_clear(
     .unwrap();
 
   Ok(json!({}))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IterateKeysArgs {
+  rid: u32,
+}
+
+pub fn op_webstorage_iterate_keys(
+  state: &mut OpState,
+  args: IterateKeysArgs,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<WebStorageConnectionResource>(args.rid)
+    .ok_or_else(bad_resource_id)?;
+
+  let mut stmt = resource.0.prepare("SELECT key FROM data").unwrap();
+
+  let keys = stmt
+    .query_map(params![], |row| row.get::<_, String>(0))
+    .unwrap()
+    .map(|r| r.unwrap())
+    .collect::<Vec<_>>();
+
+  Ok(json!({ "keys": keys }))
 }

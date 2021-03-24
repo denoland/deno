@@ -2,6 +2,7 @@
 
 use deno_webstorage::op_webstorage_clear;
 use deno_webstorage::op_webstorage_get;
+use deno_webstorage::op_webstorage_iterate_keys;
 use deno_webstorage::op_webstorage_key;
 use deno_webstorage::op_webstorage_length;
 use deno_webstorage::op_webstorage_open;
@@ -23,4 +24,9 @@ pub fn init(rt: &mut deno_core::JsRuntime, deno_dir: Option<PathBuf>) {
   super::reg_json_sync(rt, "op_webstorage_get", op_webstorage_get);
   super::reg_json_sync(rt, "op_webstorage_remove", op_webstorage_remove);
   super::reg_json_sync(rt, "op_webstorage_clear", op_webstorage_clear);
+  super::reg_json_sync(
+    rt,
+    "op_webstorage_iterate_keys",
+    op_webstorage_iterate_keys,
+  );
 }
