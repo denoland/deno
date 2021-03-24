@@ -334,6 +334,18 @@ fn is_module_specifier_position(
   }
 }
 
+/// Converts a specifier into a relative specifier to the provided base
+/// specifier as a string.  If a relative path cannot be found, then the
+/// specifier is simply returned as a string.
+///
+/// ```
+/// use deno_core::resolve_url;
+///
+/// let specifier = resolve_url("file:///a/b.ts").unwrap();
+/// let base = resolve_url("file:///a/c/d.ts").unwrap();
+/// assert_eq!(relative_specifier(&specifier, &base), "../b.ts");
+/// ```
+///
 fn relative_specifier(
   specifier: &ModuleSpecifier,
   base: &ModuleSpecifier,
