@@ -79,3 +79,16 @@ fn de_f64() {
     assert!((x - 12345.0).abs() < f64::EPSILON);
   });
 }
+
+#[test]
+fn de_map() {
+  use std::collections::HashMap;
+
+  dedo("({a: 1, b: 2, c: 3})", |scope, v| {
+    let map: HashMap<String, u64> = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(map.get("a").cloned(), Some(1));
+    assert_eq!(map.get("b").cloned(), Some(2));
+    assert_eq!(map.get("c").cloned(), Some(3));
+    assert_eq!(map.get("nada"), None);
+  })
+}
