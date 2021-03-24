@@ -2,8 +2,7 @@ use rusty_v8 as v8;
 
 use serde::Deserialize;
 
-use serde_v8::utils::{js_exec, v8_init, v8_shutdown};
-//::{v8_init, v8_shutdown};
+use serde_v8::utils::{js_exec, v8_do};
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {
@@ -12,47 +11,71 @@ struct MathOp {
   pub operator: Option<String>,
 }
 
-#[test]
-fn de_basic() {
-  v8_init();
-
-  {
+fn dedo(
+  code: &str,
+  f: impl FnOnce(&mut v8::HandleScope, v8::Local<v8::Value>),
+) {
+  v8_do(|| {
     let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
     let handle_scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(handle_scope);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
+    let v = js_exec(scope, code);
 
-    let v = js_exec(scope, "true");
-    let b: bool = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(b, true);
+    f(scope, v);
+  })
+}
 
-    let v = js_exec(scope, "32");
-    let x32: u64 = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(x32, 32);
+macro_rules! detest {
+  ($fn_name:ident, $t:ty, $src:expr, $rust:expr) => {
+    #[test]
+    fn $fn_name() {
+      dedo($src, |scope, v| {
+        let rt = serde_v8::from_v8(scope, v);
+        assert!(rt.is_ok(), format!("from_v8(\"{}\"): {:?}", $src, rt.err()));
+        let t: $t = rt.unwrap();
+        assert_eq!(t, $rust);
+      });
+    }
+  };
+}
 
-    let v = js_exec(scope, "({a: 1, b: 3, c: 'ignored'})");
-    let mop: MathOp = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(
-      mop,
-      MathOp {
-        a: 1,
-        b: 3,
-        operator: None
-      }
-    );
+detest!(de_option_some, Option<bool>, "true", Some(true));
+detest!(de_option_null, Option<bool>, "null", None);
+detest!(de_option_undefined, Option<bool>, "undefined", None);
+detest!(de_unit_null, (), "null", ());
+detest!(de_unit_undefined, (), "undefined", ());
+detest!(de_bool, bool, "true", true);
+detest!(de_u64, u64, "32", 32);
+detest!(de_string, String, "'Hello'", "Hello".to_owned());
+detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
+detest!(
+  de_vec_str,
+  Vec<String>,
+  "['hello', 'world']",
+  vec!["hello".to_owned(), "world".to_owned()]
+);
+detest!(
+  de_tuple,
+  (u64, bool, ()),
+  "[123, true, null]",
+  (123, true, ())
+);
+detest!(
+  de_mathop,
+  MathOp,
+  "({a: 1, b: 3, c: 'ignored'})",
+  MathOp {
+    a: 1,
+    b: 3,
+    operator: None
+  }
+);
 
-    let v = js_exec(scope, "[1,2,3,4,5]");
-    let arr: Vec<u64> = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(arr, vec![1, 2, 3, 4, 5]);
-
-    let v = js_exec(scope, "['hello', 'world']");
-    let hi: Vec<String> = serde_v8::from_v8(scope, v).unwrap();
-    assert_eq!(hi, vec!["hello", "world"]);
-
-    let v: v8::Local<v8::Value> = v8::Number::new(scope, 12345.0).into();
+#[test]
+fn de_f64() {
+  dedo("12345.0", |scope, v| {
     let x: f64 = serde_v8::from_v8(scope, v).unwrap();
     assert!((x - 12345.0).abs() < f64::EPSILON);
-  }
-
-  v8_shutdown();
+  });
 }
