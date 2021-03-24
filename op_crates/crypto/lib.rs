@@ -2,7 +2,6 @@
 
 #![deny(warnings)]
 
-use deno_core::declare_ops;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::json_op_sync;
@@ -25,9 +24,10 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       prefix "deno:op_crates/crypto",
       "01_crypto.js",
     ),
-    declare_ops!(json_op_sync[
-      op_crypto_get_random_values,
-    ]),
+    vec![(
+      "op_crypto_get_random_values",
+      json_op_sync(op_crypto_get_random_values),
+    )],
     Some(Box::new(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));

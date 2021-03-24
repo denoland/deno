@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::ops::UnstableChecker;
-use deno_core::declare_ops;
 use deno_core::error::AnyError;
 use deno_core::json_op_sync;
 use deno_core::serde::Serialize;
@@ -13,9 +12,7 @@ use deno_core::ZeroCopyBuf;
 pub fn init() -> Extension {
   Extension::new(
     None,
-    Some(declare_ops!(json_op_sync[
-      op_metrics,
-    ])),
+    Some(vec![("op_metrics", json_op_sync(op_metrics))]),
     Some(Box::new(|state| {
       state.put(RuntimeMetrics::default());
       Ok(())
