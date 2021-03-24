@@ -47,6 +47,8 @@ jobs:
       CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
+      # https://github.com/rust-unofficial/patterns/blob/master/anti_patterns/deny-warnings.md
+      RUSTFLAGS: -D warnings
 
     steps:
       - name: Configure git
