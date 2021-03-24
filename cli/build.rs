@@ -343,7 +343,7 @@ fn main() {
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
     <assemblyIdentity
         type="win32"
-        name="Deno"
+        name="deno"
         version="{version}"
         processorArchitecture="x86"
     />
