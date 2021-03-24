@@ -75,24 +75,24 @@ impl MainWorker {
     options: &WorkerOptions,
   ) -> Self {
     // Internal modules
-    let extensions: Vec<Box<dyn Extension>> = vec![
+    let extensions: Vec<Extension> = vec![
       // Web APIs
-      Box::new(deno_webidl::init()),
-      Box::new(deno_console::init()),
-      Box::new(deno_url::init()),
-      Box::new(deno_web::init()),
-      Box::new(deno_fetch::init::<Permissions>(
+      deno_webidl::init(),
+      deno_console::init(),
+      deno_url::init(),
+      deno_web::init(),
+      deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
-      )),
-      Box::new(deno_websocket::init::<Permissions>(
+      ),
+      deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
-      )),
-      Box::new(deno_crypto::init(options.seed)),
-      Box::new(deno_webgpu::init(options.unstable)),
+      ),
+      deno_crypto::init(options.seed),
+      deno_webgpu::init(options.unstable),
       // Metrics
-      Box::new(metrics::init()),
+      metrics::init(),
     ];
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {

@@ -10,45 +10,15 @@ pub type RcOpRegistrar = Rc<RefCell<dyn OpRegistrar>>;
 pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), AnyError>;
 
-/// Extension defines a common interface to add ops and other runtime code to a JsRuntime.
-/// JsRuntime uses Extensions to handle initialization consistently (e.g: snapshots or not).
-pub trait Extension {
-  /// This function returns JS source code to be loaded into the isolate (either at snapshotting,
-  /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
-    // default implementation of `init_js` is to load no runtime code
-    Ok(vec![])
-  }
-
-  /// This function can set up the initial op-state of an isolate at startup.
-  fn init_state(&self, _state: &mut OpState) -> Result<(), AnyError> {
-    // default implementation of `init_state is to not mutate the state
-    Ok(())
-  }
-
-  /// This function lets you middleware the op registrations. This function gets called before this
-  /// extension's init_ops.
-  fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
-    // default implementation is to not change the registrar
-    registrar
-  }
-
-  /// This function gets called at startup to initialize the ops in the isolate.
-  fn init_ops(&mut self, _registrar: RcOpRegistrar) -> Result<(), AnyError> {
-    // default implementation of `init_ops` is to load no runtime code
-    Ok(())
-  }
-}
-
 #[derive(Default)]
-pub struct BasicExtension {
+pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
   ops: Option<Vec<OpPair>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
 }
 
-impl BasicExtension {
+impl Extension {
   pub fn new(
     js_files: Option<Vec<SourcePair>>,
     ops: Option<Vec<OpPair>>,
@@ -76,15 +46,20 @@ impl BasicExtension {
   }
 }
 
-impl Extension for BasicExtension {
-  fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
+// Note: this used to be a trait, but we "downgraded" it to a single concrete type
+// for the initial iteration, it will like become a trait in the future
+impl Extension {
+  /// returns JS source code to be loaded into the isolate (either at snapshotting,
+  /// or at startup).  as a vector of a tuple of the file name, and the source code.
+  pub fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
     Ok(match &self.js_files {
       Some(files) => files.clone(),
       None => vec![],
     })
   }
 
-  fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
+  /// Called at JsRuntime startup to initialize ops in the isolate.
+  pub fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
     // NOTE: not idempotent
     // TODO: fail if called twice ?
     if let Some(ops) = self.ops.take() {
@@ -95,14 +70,16 @@ impl Extension for BasicExtension {
     Ok(())
   }
 
-  fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
+  // Allows setting up the initial op-state of an isolate at startup.
+  pub fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
     match &self.opstate_fn {
       Some(ofn) => ofn(state),
       None => Ok(()),
     }
   }
 
-  fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
+  /// init_registrar lets us middleware op registrations, it's called before init_ops
+  pub fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
     match self.middleware_fn.take() {
       Some(middleware_fn) => Rc::new(RefCell::new(OpMiddleware {
         registrar,

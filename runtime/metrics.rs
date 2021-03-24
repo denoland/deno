@@ -6,12 +6,12 @@ use deno_core::json_op_sync;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BasicExtension;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 
-pub fn init() -> BasicExtension {
-  BasicExtension::new(
+pub fn init() -> Extension {
+  Extension::new(
     None,
     Some(declare_ops!(json_op_sync[
       op_metrics,

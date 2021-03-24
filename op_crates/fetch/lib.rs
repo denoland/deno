@@ -16,11 +16,11 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
-use deno_core::BasicExtension;
 use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -56,8 +56,8 @@ pub use reqwest; // Re-export reqwest
 pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
-) -> BasicExtension {
-  BasicExtension::with_ops(
+) -> Extension {
+  Extension::with_ops(
     include_js_files!(
       prefix "deno:op_crates/fetch",
       "01_fetch_util.js",

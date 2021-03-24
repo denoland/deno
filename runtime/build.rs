@@ -40,23 +40,18 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
-  let extensions: Vec<Box<dyn Extension>> = vec![
-    Box::new(deno_webidl::init()),
-    Box::new(deno_console::init()),
-    Box::new(deno_url::init()),
-    Box::new(deno_web::init()),
-    Box::new(deno_fetch::init::<deno_fetch::NoFetchPermissions>(
+  let extensions: Vec<Extension> = vec![
+    deno_webidl::init(),
+    deno_console::init(),
+    deno_url::init(),
+    deno_web::init(),
+    deno_fetch::init::<deno_fetch::NoFetchPermissions>("".to_owned(), None),
+    deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
       "".to_owned(),
       None,
-    )),
-    Box::new(
-      deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
-        "".to_owned(),
-        None,
-      ),
     ),
-    Box::new(deno_crypto::init(None)),
-    Box::new(deno_webgpu::init(false)),
+    deno_crypto::init(None),
+    deno_webgpu::init(false),
   ];
 
   let js_runtime = JsRuntime::new(RuntimeOptions {

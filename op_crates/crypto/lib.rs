@@ -8,7 +8,7 @@ use deno_core::include_js_files;
 use deno_core::json_op_sync;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BasicExtension;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::StdRng;
@@ -19,8 +19,8 @@ use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
-pub fn init(maybe_seed: Option<u64>) -> BasicExtension {
-  BasicExtension::with_ops(
+pub fn init(maybe_seed: Option<u64>) -> Extension {
+  Extension::with_ops(
     include_js_files!(
       prefix "deno:op_crates/crypto",
       "01_crypto.js",

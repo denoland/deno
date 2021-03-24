@@ -14,10 +14,10 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::AsyncRefCell;
-use deno_core::BasicExtension;
 use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -338,8 +338,8 @@ pub async fn op_ws_next_event(
 pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
-) -> BasicExtension {
-  BasicExtension::with_ops(
+) -> Extension {
+  Extension::with_ops(
     include_js_files!(
       prefix "deno:op_crates/websocket",
       "01_websocket.js",

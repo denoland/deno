@@ -11,7 +11,7 @@ use deno_core::json_op_async;
 use deno_core::json_op_sync;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BasicExtension;
+use deno_core::Extension;
 use deno_core::OpFn;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -99,8 +99,8 @@ impl Resource for WebGPUQuerySet {
   }
 }
 
-pub fn init(unstable: bool) -> BasicExtension {
-  BasicExtension::with_ops(
+pub fn init(unstable: bool) -> Extension {
+  Extension::with_ops(
     include_js_files!(
       prefix "deno:op_crates/webgpu",
       "01_webgpu.js",

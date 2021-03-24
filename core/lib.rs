@@ -85,7 +85,6 @@ pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::declare_ops!;
 // pub use crate::runtime_modules::include_js_files!;
-pub use crate::extensions::BasicExtension;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpRegistrar;
 pub use crate::extensions::RcOpRegistrar;

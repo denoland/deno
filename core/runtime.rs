@@ -84,7 +84,7 @@ pub struct JsRuntime {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   allocations: IsolateAllocations,
-  extensions: Vec<Box<dyn Extension>>,
+  extensions: Vec<Extension>,
 }
 
 struct DynImportModEvaluate {
@@ -186,7 +186,7 @@ pub struct RuntimeOptions {
 
   /// JsRuntime extensions, not to be confused with ES modules
   /// these are sets of ops and other JS code to be initialized.
-  pub extensions: Vec<Box<dyn Extension>>,
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   ///
@@ -362,8 +362,7 @@ impl JsRuntime {
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_mod_js(&mut self) -> Result<(), AnyError> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Box<dyn Extension>> =
-      self.extensions.drain(..).collect();
+    let mut extensions: Vec<Extension> = self.extensions.drain(..).collect();
     for m in extensions.iter_mut() {
       let js_files = m.init_js()?;
       for (filename, source) in js_files {
