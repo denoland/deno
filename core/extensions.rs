@@ -112,9 +112,11 @@ impl OpRegistrar for OpMiddleware {
   }
 }
 
-/// include_js_files! helps embed JS files in an extension
+/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
+/// representing the filename and source code.
+///
 /// Example:
-/// ```no_run
+/// ```ignore
 /// include_js_files!(
 ///   prefix "deno:op_crates/hello",
 ///   "01_hello.js",
