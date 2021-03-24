@@ -64,16 +64,13 @@ fn op_set_env(
   Ok(json!({}))
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn op_env(
   state: &mut OpState,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let perm = &state.borrow::<Permissions>().env;
-  let v = env::vars()
-    .filter(|(var, _)| perm.check(var).is_ok())
-    .collect::<HashMap<String, String>>();
+  state.borrow::<Permissions>().env.check_all()?;
+  let v = env::vars().collect::<HashMap<String, String>>();
   Ok(json!(v))
 }
 
