@@ -253,6 +253,50 @@ impl<'a, 'b> ser::SerializeStruct for StructSerializers<'a, 'b> {
   }
 }
 
+// Serializes to JS Objects, NOT JS Maps ...
+pub struct MapSerializer<'a, 'b> {
+  scope: ScopePtr<'a, 'b>,
+  obj: v8::Local<'a, v8::Object>,
+  next_key: Option<JsValue<'a>>,
+}
+
+impl<'a, 'b> MapSerializer<'a, 'b> {
+  pub fn new(scope: ScopePtr<'a, 'b>) -> Self {
+    let obj = v8::Object::new(&mut *scope.borrow_mut());
+    Self {
+      scope,
+      obj,
+      next_key: None,
+    }
+  }
+}
+
+impl<'a, 'b> ser::SerializeMap for MapSerializer<'a, 'b> {
+  type Ok = JsValue<'a>;
+  type Error = Error;
+
+  fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<()> {
+    debug_assert!(self.next_key.is_none());
+    self.next_key = Some(key.serialize(Serializer::new(self.scope.clone()))?);
+    Ok(())
+  }
+
+  fn serialize_value<T: ?Sized + Serialize>(
+    &mut self,
+    value: &T,
+  ) -> Result<()> {
+    let v8_value = value.serialize(Serializer::new(self.scope.clone()))?;
+    let scope = &mut *self.scope.borrow_mut();
+    self.obj.set(scope, self.next_key.take().unwrap(), v8_value);
+    Ok(())
+  }
+
+  fn end(self) -> JsResult<'a> {
+    debug_assert!(self.next_key.is_none());
+    Ok(self.obj.into())
+  }
+}
+
 #[derive(Clone)]
 pub struct Serializer<'a, 'b> {
   scope: ScopePtr<'a, 'b>,
@@ -281,7 +325,7 @@ impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
   type SerializeTupleStruct = ArraySerializer<'a, 'b>;
   type SerializeTupleVariant =
     VariantSerializer<'a, 'b, ArraySerializer<'a, 'b>>;
-  type SerializeMap = Impossible<v8::Local<'a, v8::Value>, Error>;
+  type SerializeMap = MapSerializer<'a, 'b>;
   type SerializeStruct = StructSerializers<'a, 'b>;
   type SerializeStructVariant =
     VariantSerializer<'a, 'b, StructSerializers<'a, 'b>>;
@@ -407,10 +451,11 @@ impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
   }
 
   fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-    // TODO: serialize Maps (HashMap or BTreeMap) to v8 objects,
-    // ideally JS Maps since they're lighter and better suited for K/V data
-    // only allow certain keys (e.g: strings and numbers)
-    unimplemented!()
+    // Serializes a rust Map (e.g: BTreeMap, HashMap) to a v8 Object
+    // TODO: consider allowing serializing to v8 Maps (e.g: via a magic type)
+    // since they're lighter and better suited for K/V data
+    // and maybe restrict keys (e.g: strings and numbers)
+    Ok(MapSerializer::new(self.scope))
   }
 
   /// Serialises Rust typed structs into plain JS objects.
