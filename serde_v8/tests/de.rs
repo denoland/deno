@@ -118,8 +118,8 @@ detest!(
 detest!(
   de_json_float,
   serde_json::Value,
-  "3.14159",
-  serde_json::Value::Number(serde_json::Number::from_f64(3.14159).unwrap())
+  "123.45",
+  serde_json::Value::Number(serde_json::Number::from_f64(123.45).unwrap())
 );
 detest!(
   de_json_string,
@@ -139,11 +139,11 @@ detest!(
 detest!(
   de_json_tuple,
   serde_json::Value,
-  "[true, 'World', 3.14159, null]",
+  "[true, 'World', 123.45, null]",
   serde_json::Value::Array(vec![
     serde_json::Value::Bool(true),
     serde_json::Value::String("World".to_string()),
-    serde_json::Value::Number(serde_json::Number::from_f64(3.14159).unwrap()),
+    serde_json::Value::Number(serde_json::Number::from_f64(123.45).unwrap()),
     serde_json::Value::Null,
   ])
 );
