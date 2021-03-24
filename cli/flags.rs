@@ -2687,8 +2687,12 @@ mod tests {
 
   #[test]
   fn allow_env_allowlist_multiple() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--allow-env=HOME,PATH", "script.ts"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-env=HOME,PATH",
+      "script.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
