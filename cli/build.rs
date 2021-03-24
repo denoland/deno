@@ -344,7 +344,7 @@ fn main() {
     <assemblyIdentity
         type="win32"
         name="deno"
-        version="{version}"
+        version="{}"
         processorArchitecture="x86"
     />
     <description>Deno</description>
@@ -369,7 +369,7 @@ fn main() {
         </security>
     </trustInfo>
 </assembly>    
-    "#), version = version);
+    "#), version);
     res.compile().unwrap();
   }
 }
