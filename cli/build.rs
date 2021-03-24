@@ -338,7 +338,7 @@ fn main() {
       winapi::um::winnt::SUBLANG_ENGLISH_US,
     ));
     let version = env!("CARGO_PKG_VERSION");
-    res.set_manifest(format!(r#"
+    res.set_manifest(&format!(r#"
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
     <assemblyIdentity
