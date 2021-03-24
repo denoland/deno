@@ -2686,6 +2686,35 @@ mod tests {
   }
 
   #[test]
+  fn allow_env_allowlist_multiple() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=HOME,PATH", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        allow_env: Some(svec!["HOME", "PATH"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_env_allowlist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=HOME", "script.ts"]);
+    assert!(r.is_ok());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=H=ME", "script.ts"]);
+    assert!(r.is_err());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
   fn bundle() {
     let r = flags_from_vec(svec!["deno", "bundle", "source.ts"]);
     assert_eq!(
