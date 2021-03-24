@@ -244,7 +244,28 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     self.deserialize_tuple(len, visitor)
   }
 
-  wip!(deserialize_map);
+  fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
+  where
+    V: de::Visitor<'de>,
+  {
+    // Assume object, then get_own_property_names
+    let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
+    let prop_names = obj.get_own_property_names(self.scope);
+    let mut keys: Vec<magic::Value> = match prop_names {
+      Some(names) => from_v8(self.scope, names.into()).unwrap(),
+      None => vec![],
+    };
+    let keys: Vec<v8::Local<v8::Value>> =
+      keys.drain(..).map(|x| x.into()).collect();
+
+    let map = MapAccess {
+      obj,
+      keys,
+      pos: 0,
+      scope: self.scope,
+    };
+    visitor.visit_map(map)
+  }
 
   fn deserialize_struct<V>(
     self,
@@ -306,6 +327,65 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     visitor.visit_none()
+  }
+}
+
+struct MapAccess<'a, 'b, 's> {
+  obj: v8::Local<'a, v8::Object>,
+  scope: &'b mut v8::HandleScope<'s>,
+  keys: Vec<v8::Local<'a, v8::Value>>,
+  pos: usize,
+}
+
+impl<'de> de::MapAccess<'de> for MapAccess<'_, '_, '_> {
+  type Error = Error;
+
+  fn next_key_seed<K: de::DeserializeSeed<'de>>(
+    &mut self,
+    seed: K,
+  ) -> Result<Option<K::Value>> {
+    Ok(match self.keys.get(self.pos) {
+      Some(key) => {
+        let mut deserializer = Deserializer::new(self.scope, *key, None);
+        Some(seed.deserialize(&mut deserializer)?)
+      }
+      None => None,
+    })
+  }
+
+  fn next_value_seed<V: de::DeserializeSeed<'de>>(
+    &mut self,
+    seed: V,
+  ) -> Result<V::Value> {
+    if self.pos >= self.keys.len() {
+      return Err(Error::LengthMismatch);
+    }
+    let key = self.keys[self.pos];
+    self.pos += 1;
+    let v8_val = self.obj.get(self.scope, key).unwrap();
+    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    seed.deserialize(&mut deserializer)
+  }
+
+  fn next_entry_seed<
+    K: de::DeserializeSeed<'de>,
+    V: de::DeserializeSeed<'de>,
+  >(
+    &mut self,
+    kseed: K,
+    vseed: V,
+  ) -> Result<Option<(K::Value, V::Value)>> {
+    if self.pos >= self.keys.len() {
+      return Ok(None);
+    }
+    let v8_key = self.keys[self.pos];
+    self.pos += 1;
+    let mut kdeserializer = Deserializer::new(self.scope, v8_key, None);
+    Ok(Some((kseed.deserialize(&mut kdeserializer)?, {
+      let v8_val = self.obj.get(self.scope, v8_key).unwrap();
+      let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+      vseed.deserialize(&mut deserializer)?
+    })))
   }
 }
 
