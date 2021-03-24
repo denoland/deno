@@ -135,7 +135,13 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   }
 
   wip!(deserialize_char);
-  wip!(deserialize_str);
+
+  fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
+  where
+    V: Visitor<'de>,
+  {
+    self.deserialize_string(visitor)
+  }
 
   fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
   where
