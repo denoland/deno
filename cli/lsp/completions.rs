@@ -7,6 +7,8 @@ use super::tsc;
 use crate::fs_util::is_supported_ext;
 use crate::media_type::MediaType;
 
+use deno_core::normalize_path;
+use deno_core::resolve_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Position;
@@ -82,7 +84,15 @@ fn get_local_completions(
 
   let mut base_path = base.to_file_path().ok()?;
   base_path.pop();
-  let current_path = std::fs::canonicalize(base_path.join(current)).ok()?;
+  let mut current_path = normalize_path(base_path.join(current));
+  // if the current text does not end in a `/` then we are still selecting on
+  // the parent and should show all completions from there.
+  let is_parent = if !current.ends_with('/') {
+    current_path.pop();
+    true
+  } else {
+    false
+  };
   if current_path.is_dir() {
     let items = std::fs::read_dir(current_path).ok()?;
     Some(
@@ -90,12 +100,18 @@ fn get_local_completions(
         .filter_map(|de| {
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier =
-            ModuleSpecifier::from_file_path(de.path()).ok()?;
+          let entry_specifier = resolve_path(de.path().to_str()?).ok()?;
           if &entry_specifier == base {
             return None;
           }
           let full_text = relative_specifier(&entry_specifier, base);
+          // this weeds out situations where we are browsing in the parent, but
+          // we want to filter out non-matches when the completion is manually
+          // invoked by the user, but still allows for things like `../src/../`
+          // which is silly, but no reason to not allow it.
+          if is_parent && !full_text.starts_with(current) {
+            return None;
+          }
           let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
             range: *range,
             new_text: full_text.clone(),
@@ -677,6 +693,8 @@ mod tests {
     std::fs::write(&file_d, b"").expect("could not create");
     let file_e = dir_a.join("e.txt");
     std::fs::write(&file_e, b"").expect("could not create");
+    let file_f = dir_a.join("f.mjs");
+    std::fs::write(&file_f, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(
@@ -696,6 +714,16 @@ mod tests {
     assert!(actual.is_some());
     let actual = actual.unwrap();
     assert_eq!(actual.len(), 2);
+    for item in actual {
+      match item.text_edit {
+        Some(lsp::CompletionTextEdit::Edit(text_edit)) => {
+          assert!(
+            text_edit.new_text == "./f.mjs" || text_edit.new_text == "./b"
+          );
+        }
+        _ => unreachable!(),
+      }
+    }
   }
 
   #[test]
