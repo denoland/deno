@@ -369,7 +369,7 @@ fn main() {
         </security>
     </trustInfo>
 </assembly>    
-    "#), version);
+    "#, version));
     res.compile().unwrap();
   }
 }
