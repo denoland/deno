@@ -102,12 +102,10 @@ sertest!(
   "objEqual(x, {a: 1, b: 3, operator: null})"
 );
 
-use std::collections::BTreeMap;
-
 sertest!(
   ser_map,
   {
-    let map: BTreeMap<&str, u32> =
+    let map: std::collections::BTreeMap<&str, u32> =
       vec![("a", 1), ("b", 2), ("c", 3)].drain(..).collect();
     map
   },
