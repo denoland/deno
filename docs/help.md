@@ -8,7 +8,7 @@ Stack Overflow is a popular forum to ask code-level questions or if you’re stu
 with a specific error.
 [ask your own!](https://stackoverflow.com/questions/ask?tags=deno)
 
-### [Community Discord](https://discord.gg/jARp2kvGek)
+### [Community Discord](https://discord.gg/deno)
 
 Ask questions and chat with community members in real-time.
 
