@@ -358,13 +358,13 @@ impl JsRuntime {
       .unwrap();
   }
 
-  // Inits JS of provided Extensions
+  /// Initializes JS of provided Extensions
   // NOTE: this will probably change when streamlining snapshot flow
-  pub fn init_mod_js(&mut self) -> Result<(), AnyError> {
+  pub fn init_extension_js(&mut self) -> Result<(), AnyError> {
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = self.extensions.drain(..).collect();
     for m in extensions.iter_mut() {
-      let js_files = m.init_js()?;
+      let js_files = m.init_js();
       for (filename, source) in js_files {
         self.execute_static(filename, source)?;
       }
@@ -373,9 +373,9 @@ impl JsRuntime {
     Ok(())
   }
 
-  // Inits JS of provided Extensions
+  /// Initializes ops of provided Extensions
   // NOTE: this will probably change when streamlining snapshot flow
-  pub fn init_mod_ops(&mut self) -> Result<(), AnyError> {
+  pub fn init_extension_ops(&mut self) -> Result<(), AnyError> {
     let op_state = self.op_state();
     // Original OpRegistrar
     let mut registrar: RcOpRegistrar =
@@ -388,7 +388,7 @@ impl JsRuntime {
 
     for e in self.extensions.iter_mut() {
       e.init_state(&mut op_state.borrow_mut())?;
-      e.init_ops(registrar.clone())?;
+      e.init_ops(registrar.clone());
     }
     Ok(())
   }

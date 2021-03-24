@@ -51,15 +51,15 @@ impl Extension {
 impl Extension {
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn init_js(&self) -> Result<Vec<SourcePair>, AnyError> {
-    Ok(match &self.js_files {
+  pub(crate) fn init_js(&self) -> Vec<SourcePair> {
+    match &self.js_files {
       Some(files) => files.clone(),
       None => vec![],
-    })
+    }
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub fn init_ops(&mut self, registrar: RcOpRegistrar) -> Result<(), AnyError> {
+  pub(crate) fn init_ops(&mut self, registrar: RcOpRegistrar) {
     // NOTE: not idempotent
     // TODO: fail if called twice ?
     if let Some(ops) = self.ops.take() {
@@ -67,11 +67,10 @@ impl Extension {
         registrar.borrow_mut().register_op(name, opfn);
       }
     }
-    Ok(())
   }
 
-  // Allows setting up the initial op-state of an isolate at startup.
-  pub fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
+  /// Allows setting up the initial op-state of an isolate at startup.
+  pub(crate) fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
     match &self.opstate_fn {
       Some(ofn) => ofn(state),
       None => Ok(()),
@@ -79,7 +78,10 @@ impl Extension {
   }
 
   /// init_registrar lets us middleware op registrations, it's called before init_ops
-  pub fn init_registrar(&mut self, registrar: RcOpRegistrar) -> RcOpRegistrar {
+  pub(crate) fn init_registrar(
+    &mut self,
+    registrar: RcOpRegistrar,
+  ) -> RcOpRegistrar {
     match self.middleware_fn.take() {
       Some(middleware_fn) => Rc::new(RefCell::new(OpMiddleware {
         registrar,
@@ -90,18 +92,14 @@ impl Extension {
   }
 }
 
-// The OpRegistrar trait allows building op "middleware" such as:
-// OpMetrics, OpTracing or OpDisabler that wrap OpFns for profiling, debugging, etc...
-// JsRuntime is itself an OpRegistrar
+/// The OpRegistrar trait allows building op "middleware" such as:
+/// OpMetrics, OpTracing or OpDisabler that wrap OpFns for profiling, debugging, etc...
+/// JsRuntime is itself an OpRegistrar
 pub trait OpRegistrar {
   fn register_op(&mut self, name: &'static str, op_fn: Box<OpFn>) -> OpId;
-  // register_minimal_op_sync(...)
-  // register_minimal_op_async(...)
-  // register_json_op_sync(...)
-  // register_json_op_async(...)
 }
 
-// OpMiddleware wraps an original OpRegistrar with an OpMiddlewareFn
+/// OpMiddleware wraps an original OpRegistrar with an OpMiddlewareFn
 pub struct OpMiddleware {
   registrar: RcOpRegistrar,
   middleware_fn: Box<OpMiddlewareFn>,
@@ -114,19 +112,15 @@ impl OpRegistrar for OpMiddleware {
   }
 }
 
-////
-// Helper macros to reduce verbosity / redundant decls
-////
-
-// include_js_files! helps embed JS files in an extension
-// Example:
-// ```
-// include_js_files!(
-//   prefix "deno:op_crates/hello",
-//   "01_hello.js",
-//   "02_goodbye.js",
-// )
-// ```
+/// include_js_files! helps embed JS files in an extension
+/// Example:
+/// ```no_run
+/// include_js_files!(
+///   prefix "deno:op_crates/hello",
+///   "01_hello.js",
+///   "02_goodbye.js",
+/// )
+/// ```
 #[macro_export]
 macro_rules! include_js_files {
   (prefix $prefix:literal, $($file:literal,)+) => {

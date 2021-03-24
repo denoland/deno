@@ -134,8 +134,7 @@ impl MainWorker {
         });
       }
 
-      // Init module ops
-      js_runtime.init_mod_ops().unwrap();
+      js_runtime.init_extension_ops().unwrap();
 
       ops::runtime::init(js_runtime, main_module);
       ops::timers::init(js_runtime);

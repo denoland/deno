@@ -14,8 +14,7 @@ fn create_snapshot(
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
-  // Init internal modules JS
-  js_runtime.init_mod_js().unwrap();
+  js_runtime.init_extension_js().unwrap();
 
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.

@@ -237,8 +237,7 @@ impl WebWorker {
         });
       }
 
-      // Init module ops
-      js_runtime.init_mod_ops().unwrap();
+      js_runtime.init_extension_ops().unwrap();
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module);
