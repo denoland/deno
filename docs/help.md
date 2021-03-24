@@ -16,6 +16,3 @@ Ask questions and chat with community members in real-time.
 
 A great place to find interesting articles about best practices, application
 architecture and new learnings. Post your articles with the tag `deno`.
-
-> Please note that these resources are not necessary managed or moderated by the
-> Deno Core Team. They are public forums.
