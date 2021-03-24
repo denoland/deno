@@ -1,23 +1,24 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::flags::Flags;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use log::Level;
-use regex::{Regex, RegexBuilder};
+use regex::Regex;
+use regex::RegexBuilder;
 use std::env;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::Write;
-#[cfg(not(windows))]
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 
-lazy_static! {
+#[cfg(not(windows))]
+use std::os::unix::fs::PermissionsExt;
+
+lazy_static::lazy_static! {
     static ref EXEC_NAME_RE: Regex = RegexBuilder::new(
         r"^[a-z][\w-]*$"
     ).case_insensitive(true).build().unwrap();
@@ -337,7 +338,7 @@ mod tests {
   use std::sync::Mutex;
   use tempfile::TempDir;
 
-  lazy_static! {
+  lazy_static::lazy_static! {
     pub static ref ENV_LOCK: Mutex<()> = Mutex::new(());
   }
 

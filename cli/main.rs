@@ -2,11 +2,6 @@
 
 #![deny(warnings)]
 
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
-
 mod ast;
 mod auth_tokens;
 mod checksum;
@@ -70,6 +65,8 @@ use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use log::debug;
+use log::info;
 use log::Level;
 use log::LevelFilter;
 use std::env;

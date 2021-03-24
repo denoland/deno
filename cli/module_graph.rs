@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::ast;
 use crate::ast::parse;
 use crate::ast::transpile_module;
@@ -23,11 +22,10 @@ use crate::tsc;
 use crate::tsc_config::IgnoredCompilerOptions;
 use crate::tsc_config::TsConfig;
 use crate::version;
-use deno_core::error::AnyError;
-
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::get_custom_error_class;
+use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
@@ -41,6 +39,7 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use log::debug;
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -53,7 +52,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Matched the `@deno-types` pragma.
   static ref DENO_TYPES_RE: Regex =
     Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
@@ -846,7 +845,7 @@ impl Graph {
     // moved it out of here, we wouldn't know until after the check has already
     // happened, which isn't informative to the users.
     for specifier in &self.roots {
-      info!("{} {}", colors::green("Check"), specifier);
+      log::info!("{} {}", colors::green("Check"), specifier);
     }
 
     let root_names = self.get_root_names(!config.get_check_js())?;

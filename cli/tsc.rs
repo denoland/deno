@@ -54,7 +54,7 @@ macro_rules! inc {
   };
 }
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Contains static assets that are not preloaded in the compiler snapshot.
   pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
     ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),

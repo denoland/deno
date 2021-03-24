@@ -6,6 +6,8 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use indexmap::IndexMap;
+use log::debug;
+use log::info;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::error::Error;

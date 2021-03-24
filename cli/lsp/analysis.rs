@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Diagnostic error codes which actually are the same, and so when grouping
   /// fixes we treat them the same.
   static ref FIX_ALL_ERROR_CODES: HashMap<&'static str, &'static str> =

@@ -15,6 +15,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use log::error;
 use lspower::lsp;
 use lspower::Client;
 use std::collections::HashMap;

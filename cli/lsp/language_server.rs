@@ -10,6 +10,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
+use log::error;
+use log::info;
+use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp::request::*;
@@ -55,7 +58,7 @@ use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
 
-lazy_static! {
+lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
   static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
 }

@@ -31,6 +31,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
+use log::warn;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;

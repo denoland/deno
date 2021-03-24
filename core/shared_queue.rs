@@ -18,6 +18,7 @@ SharedQueue Binary Layout
 
 use crate::bindings;
 use crate::ops::OpId;
+use log::debug;
 use rusty_v8 as v8;
 use std::convert::TryInto;
 

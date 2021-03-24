@@ -9,6 +9,8 @@ use crate::OpTable;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rusty_v8 as v8;
+use serde::Serialize;
+use serde_v8::to_v8;
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
@@ -17,10 +19,7 @@ use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
 
-use serde::Serialize;
-use serde_v8::to_v8;
-
-lazy_static! {
+lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
       v8::ExternalReference {
