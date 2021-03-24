@@ -1,7 +1,7 @@
 use rusty_v8 as v8;
 
 use serde::Serialize;
-
+use serde_json::json;
 use serde_v8::utils::{js_exec, v8_do};
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -110,4 +110,34 @@ sertest!(
     map
   },
   "objEqual(x, {a: 1, b: 2, c: 3})"
+);
+
+////
+// JSON tests: json!() compatibility
+////
+sertest!(ser_json_bool, json!(true), "x === true");
+sertest!(ser_json_null, json!(null), "x === null");
+sertest!(ser_json_int, json!(123), "x === 123");
+sertest!(ser_json_f64, json!(123.45), "x === 123.45");
+sertest!(ser_json_string, json!("Hello World"), "x === 'Hello World'");
+sertest!(ser_json_obj_empty, json!({}), "objEqual(x, {})");
+sertest!(
+  ser_json_obj,
+  json!({"a": 1, "b": 2, "c": true}),
+  "objEqual(x, {a: 1, b: 2, c: true})"
+);
+sertest!(
+  ser_json_vec_int,
+  json!([1, 2, 3, 4, 5]),
+  "arrEqual(x, [1,2,3,4,5])"
+);
+sertest!(
+  ser_json_vec_string,
+  json!(["Goodbye", "Dinosaurs 👋☄️"]),
+  "arrEqual(x, ['Goodbye', 'Dinosaurs 👋☄️'])"
+);
+sertest!(
+  ser_json_tuple,
+  json!([true, 42, "nabla"]),
+  "arrEqual(x, [true, 42, 'nabla'])"
 );
