@@ -53,29 +53,25 @@ pub fn op_webstorage_open(
 ) -> Result<Value, AnyError> {
   if args.persistent {
     let path = state.borrow::<LocationDataDir>().0.as_ref().unwrap();
-    std::fs::create_dir_all(&path).unwrap();
+    std::fs::create_dir_all(&path)?;
 
-    let connection = Connection::open(path.join("local_storage")).unwrap();
+    let connection = Connection::open(path.join("local_storage"))?;
 
-    connection
-      .execute(
-        "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
-        params![],
-      )
-      .unwrap();
+    connection.execute(
+      "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
+      params![],
+    )?;
 
     let rid = state
       .resource_table
       .add(WebStorageConnectionResource(connection));
     Ok(json!({ "rid": rid }))
   } else {
-    let connection = Connection::open_in_memory().unwrap();
-    connection
-      .execute(
-        "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
-        params![],
-      )
-      .unwrap();
+    let connection = Connection::open_in_memory()?;
+    connection.execute(
+      "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
+      params![],
+    )?;
     let rid = state
       .resource_table
       .add(WebStorageConnectionResource(connection));
@@ -99,9 +95,9 @@ pub fn op_webstorage_length(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.0.prepare("SELECT COUNT(*) FROM data").unwrap();
+  let mut stmt = resource.0.prepare("SELECT COUNT(*) FROM data")?;
 
-  let length: u32 = stmt.query_row(params![], |row| row.get(0)).unwrap();
+  let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   Ok(json!(length))
 }
@@ -125,13 +121,11 @@ pub fn op_webstorage_key(
 
   let mut stmt = resource
     .0
-    .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")
-    .unwrap();
+    .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")?;
 
   let key: Option<String> = stmt
     .query_row(params![args.index], |row| row.get(0))
-    .optional()
-    .unwrap();
+    .optional()?;
 
   let json_val = match key {
     Some(string) => json!(string),
@@ -161,21 +155,17 @@ pub fn op_webstorage_set(
 
   let mut stmt = resource
     .0
-    .prepare(r#"SELECT SUM(pgsize) FROM dbstat WHERE name = ?"#)
-    .unwrap();
-  let size: u32 = stmt.query_row(params!["data"], |row| row.get(0)).unwrap();
+    .prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
+  let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   if size >= 5000000 {
     return Ok(json!({ "err": true }));
   }
 
-  resource
-    .0
-    .execute(
-      "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
-      params![args.key_name, args.key_value],
-    )
-    .unwrap();
+  resource.0.execute(
+    "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
+    params![args.key_name, args.key_value],
+  )?;
 
   Ok(json!({}))
 }
@@ -197,15 +187,11 @@ pub fn op_webstorage_get(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource
-    .0
-    .prepare("SELECT value FROM data WHERE key = ?")
-    .unwrap();
+  let mut stmt = resource.0.prepare("SELECT value FROM data WHERE key = ?")?;
 
   let val: Option<String> = stmt
     .query_row(params![args.key_name], |row| row.get(0))
-    .optional()
-    .unwrap();
+    .optional()?;
 
   Ok(json!(val))
 }
@@ -229,8 +215,7 @@ pub fn op_webstorage_remove(
 
   resource
     .0
-    .execute("DELETE FROM data WHERE key = ?", params![args.key_name])
-    .unwrap();
+    .execute("DELETE FROM data WHERE key = ?", params![args.key_name])?;
 
   Ok(json!({}))
 }
@@ -251,14 +236,11 @@ pub fn op_webstorage_clear(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  resource.0.execute("DROP TABLE data", params![]).unwrap();
-  resource
-    .0
-    .execute(
-      "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
-      params![],
-    )
-    .unwrap();
+  resource.0.execute("DROP TABLE data", params![])?;
+  resource.0.execute(
+    "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
+    params![],
+  )?;
 
   Ok(json!({}))
 }
@@ -279,11 +261,10 @@ pub fn op_webstorage_iterate_keys(
     .get::<WebStorageConnectionResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut stmt = resource.0.prepare("SELECT key FROM data").unwrap();
+  let mut stmt = resource.0.prepare("SELECT key FROM data")?;
 
   let keys = stmt
-    .query_map(params![], |row| row.get::<_, String>(0))
-    .unwrap()
+    .query_map(params![], |row| row.get::<_, String>(0))?
     .map(|r| r.unwrap())
     .collect::<Vec<_>>();
 
