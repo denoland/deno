@@ -154,7 +154,7 @@ impl DocumentCache {
   }
 
   pub fn len(&self) -> usize {
-    self.docs.iter().count()
+    self.docs.len()
   }
 
   pub fn line_index(&self, specifier: &ModuleSpecifier) -> Option<LineIndex> {

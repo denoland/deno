@@ -14,6 +14,7 @@ use std::io;
 use std::io::Write;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::path::PathBuf;
 
 lazy_static! {
@@ -318,7 +319,7 @@ pub fn install(
   Ok(())
 }
 
-fn is_in_path(dir: &PathBuf) -> bool {
+fn is_in_path(dir: &Path) -> bool {
   if let Some(paths) = env::var_os("PATH") {
     for p in env::split_paths(&paths) {
       if *dir == p {

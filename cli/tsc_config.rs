@@ -175,7 +175,7 @@ fn jsonc_to_serde(j: JsonValue) -> Value {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TSConfigJson {
+struct TsConfigJson {
   compiler_options: Option<HashMap<String, Value>>,
   exclude: Option<Vec<String>>,
   extends: Option<String>,
@@ -221,7 +221,7 @@ pub fn parse_config(
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   assert!(!config_text.is_empty());
   let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
-  let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
+  let config: TsConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
 
   if let Some(compiler_options) = config.compiler_options {
     parse_compiler_options(&compiler_options, Some(path.to_owned()), false)

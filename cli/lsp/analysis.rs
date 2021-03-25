@@ -274,7 +274,7 @@ pub fn analyze_dependencies(
           let resolved_import =
             resolve_import(&import, specifier, maybe_import_map);
           if media_type == &MediaType::JavaScript
-            || media_type == &MediaType::JSX
+            || media_type == &MediaType::Jsx
           {
             maybe_type = Some(resolved_import)
           } else {
@@ -297,11 +297,7 @@ pub fn analyze_dependencies(
     let maybe_resolved_type_dependency =
       // Check for `@deno-types` pragmas that affect the import
       if let Some(comment) = desc.leading_comments.last() {
-        if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
-          Some(resolve_import(deno_types, specifier, maybe_import_map))
-        } else {
-          None
-        }
+        parse_deno_types(&comment.text).as_ref().map(|deno_types| resolve_import(deno_types, specifier, maybe_import_map))
       } else {
         None
       };
