@@ -2431,7 +2431,7 @@ mod integration {
     // });
 
     itest!(unhandled_rejection {
-      args: "test test/unhandled_rejection.js",
+      args: "test test/unhandled_rejection.ts",
       exit_code: 1,
       output: "test/unhandled_rejection.out",
     });

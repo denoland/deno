@@ -60,6 +60,7 @@ use crate::test_dispatcher::TestResult;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream;
 use deno_core::futures::Future;
@@ -1031,13 +1032,13 @@ async fn test_command(
         tokio_util::run_basic(future)
       });
 
-      join_handle.join().unwrap().unwrap()
+      join_handle.join().unwrap()
     })
   });
 
   let join_futures = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs)
-    .collect::<Vec<Result<(), tokio::task::JoinError>>>();
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = {
     tokio::task::spawn_blocking(move || {
@@ -1158,14 +1159,24 @@ async fn test_command(
     })
   };
 
-  let _join_results = join_futures.await;
+  let (result, join_results) = future::join(handler, join_futures).await;
 
-  let has_error = handler.await?;
-  if has_error {
+  let mut join_errors = join_results.into_iter().filter_map(|join_result| {
+    join_result
+      .ok()
+      .map(|handle_result| handle_result.err())
+      .flatten()
+  });
+
+  if result.unwrap_or(false) {
     std::process::exit(1);
   }
 
-  Ok(())
+  if let Some(e) = join_errors.next() {
+    Err(e)
+  } else {
+    Ok(())
+  }
 }
 
 fn init_v8_flags(v8_flags: &[String]) {
