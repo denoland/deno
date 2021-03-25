@@ -14,21 +14,11 @@ struct MathOp {
 // Utility JS code (obj equality, etc...)
 const JS_UTILS: &str = r#"
 // Shallow obj equality (don't use deep objs for now)
-function objEqual(object1, object2) {
-  const keys1 = Object.keys(object1);
-  const keys2 = Object.keys(object2);
+function objEqual(a, b) {
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
 
-  if (keys1.length !== keys2.length) {
-    return false;
-  }
-
-  for (let key of keys1) {
-    if (object1[key] !== object2[key]) {
-      return false;
-    }
-  }
-
-  return true;
+  return ka.length === kb.length && ka.every(k => a[k] === b[k]);
 }
 
 function arrEqual(a, b) {
