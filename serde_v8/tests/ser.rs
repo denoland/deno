@@ -17,15 +17,11 @@ const JS_UTILS: &str = r#"
 function objEqual(a, b) {
   const ka = Object.keys(a);
   const kb = Object.keys(b);
-
   return ka.length === kb.length && ka.every(k => a[k] === b[k]);
 }
 
 function arrEqual(a, b) {
-  return Array.isArray(a) &&
-    Array.isArray(b) &&
-    a.length === b.length &&
-    a.every((val, index) => val === b[index]);
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 "#;
 
