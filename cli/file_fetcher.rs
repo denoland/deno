@@ -223,8 +223,8 @@ pub fn map_content_type(
       | "application/node" => {
         map_js_like_extension(specifier, MediaType::JavaScript)
       }
-      "text/jsx" => MediaType::JSX,
-      "text/tsx" => MediaType::TSX,
+      "text/jsx" => MediaType::Jsx,
+      "text/tsx" => MediaType::Tsx,
       "application/json" | "text/json" => MediaType::Json,
       "application/wasm" => MediaType::Wasm,
       // Handle plain and possibly webassembly
@@ -264,8 +264,8 @@ fn map_js_like_extension(
     None => default,
     Some(os_str) => match os_str.to_str() {
       None => default,
-      Some("jsx") => MediaType::JSX,
-      Some("tsx") => MediaType::TSX,
+      Some("jsx") => MediaType::Jsx,
+      Some("tsx") => MediaType::Tsx,
       // Because DTS files do not have a separate media type, or a unique
       // extension, we have to "guess" at those things that we consider that
       // look like TypeScript, and end with `.d.ts` are DTS files.
@@ -685,8 +685,8 @@ mod tests {
       ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
       ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
       ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
-      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::JSX, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::TSX, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
+      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Jsx, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
+      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Tsx, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
     ];
 
     for (
@@ -744,10 +744,10 @@ mod tests {
     let fixtures = vec![
       // Extension only
       (file_url!("/foo/bar.ts"), None, MediaType::TypeScript, None),
-      (file_url!("/foo/bar.tsx"), None, MediaType::TSX, None),
+      (file_url!("/foo/bar.tsx"), None, MediaType::Tsx, None),
       (file_url!("/foo/bar.d.ts"), None, MediaType::Dts, None),
       (file_url!("/foo/bar.js"), None, MediaType::JavaScript, None),
-      (file_url!("/foo/bar.jsx"), None, MediaType::JSX, None),
+      (file_url!("/foo/bar.jsx"), None, MediaType::Jsx, None),
       (file_url!("/foo/bar.json"), None, MediaType::Json, None),
       (file_url!("/foo/bar.wasm"), None, MediaType::Wasm, None),
       (file_url!("/foo/bar.cjs"), None, MediaType::JavaScript, None),
@@ -823,13 +823,13 @@ mod tests {
       (
         "https://deno.land/x/mod",
         Some("text/jsx".to_string()),
-        MediaType::JSX,
+        MediaType::Jsx,
         None,
       ),
       (
         "https://deno.land/x/mod",
         Some("text/tsx".to_string()),
-        MediaType::TSX,
+        MediaType::Tsx,
         None,
       ),
       (
@@ -860,25 +860,25 @@ mod tests {
       (
         "https://deno.land/x/mod.tsx",
         Some("application/typescript".to_string()),
-        MediaType::TSX,
+        MediaType::Tsx,
         None,
       ),
       (
         "https://deno.land/x/mod.tsx",
         Some("application/javascript".to_string()),
-        MediaType::TSX,
+        MediaType::Tsx,
         None,
       ),
       (
         "https://deno.land/x/mod.jsx",
         Some("application/javascript".to_string()),
-        MediaType::JSX,
+        MediaType::Jsx,
         None,
       ),
       (
         "https://deno.land/x/mod.jsx",
         Some("application/x-typescript".to_string()),
-        MediaType::JSX,
+        MediaType::Jsx,
         None,
       ),
       (

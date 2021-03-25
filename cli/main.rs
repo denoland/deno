@@ -497,11 +497,11 @@ async fn eval_command(
     media_type: if ext.as_str() == "ts" {
       MediaType::TypeScript
     } else if ext.as_str() == "tsx" {
-      MediaType::TSX
+      MediaType::Tsx
     } else if ext.as_str() == "js" {
       MediaType::JavaScript
     } else {
-      MediaType::JSX
+      MediaType::Jsx
     },
     source: String::from_utf8(source_code)?,
     specifier: main_module.clone(),

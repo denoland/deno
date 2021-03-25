@@ -39,12 +39,12 @@ pub struct ResponseHeader {
   pub result: u32,
 }
 
-impl Into<[u8; 16]> for ResponseHeader {
-  fn into(self) -> [u8; 16] {
+impl From<ResponseHeader> for [u8; 16] {
+  fn from(r: ResponseHeader) -> Self {
     let mut resp_header = [0u8; 16];
-    resp_header[0..8].copy_from_slice(&self.request_id.to_le_bytes());
-    resp_header[8..12].copy_from_slice(&self.status.to_le_bytes());
-    resp_header[12..16].copy_from_slice(&self.result.to_le_bytes());
+    resp_header[0..8].copy_from_slice(&r.request_id.to_le_bytes());
+    resp_header[8..12].copy_from_slice(&r.status.to_le_bytes());
+    resp_header[12..16].copy_from_slice(&r.result.to_le_bytes());
     resp_header
   }
 }

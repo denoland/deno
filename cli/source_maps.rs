@@ -48,11 +48,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
   // source file map.
   let end_column = match js_error.end_column {
     Some(ec) => {
-      if let Some(sc) = start_column {
-        Some(ec - (js_error.start_column.unwrap() - sc))
-      } else {
-        None
-      }
+      start_column.map(|sc| ec - (js_error.start_column.unwrap() - sc))
     }
     _ => None,
   };

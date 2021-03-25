@@ -10,10 +10,10 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::WebGPUError;
+use super::error::WebGpuError;
 
-pub(crate) struct WebGPUSampler(pub(crate) wgpu_core::id::SamplerId);
-impl Resource for WebGPUSampler {
+pub(crate) struct WebGpuSampler(pub(crate) wgpu_core::id::SamplerId);
+impl Resource for WebGpuSampler {
   fn name(&self) -> Cow<str> {
     "webGPUSampler".into()
   }
@@ -87,7 +87,7 @@ pub fn op_webgpu_create_sampler(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
 
@@ -121,10 +121,10 @@ pub fn op_webgpu_create_sampler(
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGPUSampler(sampler));
+  let rid = state.resource_table.add(WebGpuSampler(sampler));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from)
+    "err": maybe_err.map(WebGpuError::from)
   }))
 }

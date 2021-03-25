@@ -59,11 +59,11 @@ pub struct Location {
   pub col: usize,
 }
 
-impl Into<Location> for swc_common::Loc {
-  fn into(self) -> Location {
+impl From<swc_common::Loc> for Location {
+  fn from(swc_loc: swc_common::Loc) -> Self {
     use swc_common::FileName::*;
 
-    let filename = match &self.file.name {
+    let filename = match &swc_loc.file.name {
       Real(path_buf) => path_buf.to_string_lossy().to_string(),
       Custom(str_) => str_.to_string(),
       _ => panic!("invalid filename"),
@@ -71,15 +71,15 @@ impl Into<Location> for swc_common::Loc {
 
     Location {
       filename,
-      line: self.line,
-      col: self.col_display,
+      line: swc_loc.line,
+      col: swc_loc.col_display,
     }
   }
 }
 
-impl Into<ModuleSpecifier> for Location {
-  fn into(self) -> ModuleSpecifier {
-    resolve_url_or_path(&self.filename).unwrap()
+impl From<Location> for ModuleSpecifier {
+  fn from(loc: Location) -> Self {
+    resolve_url_or_path(&loc.filename).unwrap()
   }
 }
 
@@ -174,10 +174,10 @@ fn get_ts_config(tsx: bool, dts: bool) -> TsConfig {
 pub fn get_syntax(media_type: &MediaType) -> Syntax {
   match media_type {
     MediaType::JavaScript => Syntax::Es(get_es_config(false)),
-    MediaType::JSX => Syntax::Es(get_es_config(true)),
+    MediaType::Jsx => Syntax::Es(get_es_config(true)),
     MediaType::TypeScript => Syntax::Typescript(get_ts_config(false, false)),
     MediaType::Dts => Syntax::Typescript(get_ts_config(false, true)),
-    MediaType::TSX => Syntax::Typescript(get_ts_config(true, false)),
+    MediaType::Tsx => Syntax::Typescript(get_ts_config(true, false)),
     _ => Syntax::Es(get_es_config(false)),
   }
 }
@@ -429,10 +429,10 @@ pub fn parse_with_source_map(
     comments.with_leading(module.span.lo, |comments| comments.to_vec());
 
   Ok(ParsedModule {
+    comments,
     leading_comments,
     module,
     source_map,
-    comments,
     source_file,
   })
 }
@@ -711,7 +711,7 @@ mod tests {
       }
     }
     "#;
-    let module = parse(specifier.as_str(), source, &MediaType::TSX)
+    let module = parse(specifier.as_str(), source, &MediaType::Tsx)
       .expect("could not parse module");
     let (code, _) = module
       .transpile(&EmitOptions::default())

@@ -110,13 +110,9 @@ impl ProgramState {
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
-    let maybe_inspector_server = match maybe_inspect_host {
-      Some(host) => Some(Arc::new(InspectorServer::new(
-        host,
-        version::get_user_agent(),
-      ))),
-      None => None,
-    };
+    let maybe_inspector_server = maybe_inspect_host.map(|host| {
+      Arc::new(InspectorServer::new(host, version::get_user_agent()))
+    });
 
     let coverage_dir = flags
       .coverage_dir

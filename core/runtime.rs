@@ -201,8 +201,8 @@ impl JsRuntime {
     DENO_INIT.call_once(|| {
       // Include 10MB ICU data file.
       #[repr(C, align(16))]
-      struct ICUData([u8; 10413584]);
-      static ICU_DATA: ICUData = ICUData(*include_bytes!("icudtl.dat"));
+      struct IcuData([u8; 10413584]);
+      static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
       v8::icu::set_common_data(&ICU_DATA.0).unwrap();
       unsafe { v8_init() };
     });
