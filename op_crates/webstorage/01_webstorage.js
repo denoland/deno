@@ -90,14 +90,6 @@
         rid: this[_rid],
       });
     }
-
-    [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({
-          length: this.length,
-        })
-      }`;
-    }
   }
 
   function createStorage(persistent) {
@@ -110,7 +102,7 @@
     const storage = webidl.createBranded(Storage);
     storage[_rid] = data.rid;
 
-    return new Proxy(storage, {
+    const proxy = new Proxy(storage, {
       deleteProperty(target, key) {
         if (typeof key == "symbol") {
           delete target[key];
@@ -174,6 +166,17 @@
         };
       },
     });
+
+    proxy[Symbol.for("Deno.customInspect")] = function (inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          length: this.length,
+          ...Object.fromEntries(Object.entries(proxy)),
+        })
+      }`;
+    };
+
+    return proxy;
   }
 
   let localStorage;
