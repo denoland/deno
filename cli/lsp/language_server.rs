@@ -220,6 +220,26 @@ impl Inner {
     maybe_line_index
   }
 
+  /// Searches already cached assets and documents and returns its text
+  /// content. If not found, `None` is returned.
+  fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    let maybe_text = if specifier.scheme() == "asset" {
+      if let Some(Some(asset)) = self.assets.get(specifier) {
+        Some(asset.text.clone())
+      } else {
+        None
+      }
+    } else {
+      let documents = &self.documents;
+      if documents.contains_key(specifier) {
+        documents.content(specifier).unwrap()
+      } else {
+        self.sources.get_source(specifier)
+      }
+    };
+    maybe_text
+  }
+
   async fn get_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -1496,6 +1516,60 @@ impl Inner {
     Ok(result)
   }
 
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("folding_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let text_content =
+      if let Some(text_content) = self.get_text_content(&specifier) {
+        text_content
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+
+    let outlining_spans: Vec<tsc::OutliningSpan> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+    let folding_ranges: Vec<FoldingRange> = outlining_spans
+      .iter()
+      .map(|span| {
+        span.to_folding_range(
+          &line_index,
+          &text_content,
+          self.config.client_capabilities.line_folding_only,
+        )
+      })
+      .collect();
+    self.performance.measure(mark);
+    Ok(Some(folding_ranges))
+  }
+
   async fn rename(
     &mut self,
     params: RenameParams,
@@ -1819,6 +1893,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
     self.0.lock().await.goto_implementation(params).await
+  }
+
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    self.0.lock().await.folding_range(params).await
   }
 
   async fn rename(
