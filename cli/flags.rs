@@ -1822,7 +1822,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(run_wl) = matches.values_of("allow-run") {
     let run_allowlist: Vec<String> = run_wl.map(ToString::to_string).collect();
     flags.allow_run = Some(run_allowlist);
-    debug!("env allowlist: {:#?}", &flags.allow_run);
+    debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
   if matches.is_present("allow-env") {
