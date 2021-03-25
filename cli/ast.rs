@@ -276,8 +276,8 @@ fn strip_config_from_emit_options(
 pub struct ParsedModule {
   comments: SingleThreadedComments,
   leading_comments: Vec<Comment>,
-  module: Module,
-  source_map: Rc<SourceMap>,
+  pub module: Module,
+  pub source_map: Rc<SourceMap>,
   source_file: Rc<SourceFile>,
 }
 

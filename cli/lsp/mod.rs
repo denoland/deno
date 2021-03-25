@@ -5,6 +5,7 @@ use lspower::Server;
 
 mod analysis;
 mod capabilities;
+mod completions;
 mod config;
 mod diagnostics;
 mod documents;

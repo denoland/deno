@@ -1202,7 +1202,7 @@ impl CompletionEntry {
         None
       };
 
-    let data = CompletionItemData {
+    let tsc = CompletionItemData {
       specifier: specifier.clone(),
       position,
       name: self.name.clone(),
@@ -1220,7 +1220,9 @@ impl CompletionEntry {
       filter_text,
       detail,
       tags,
-      data: Some(serde_json::to_value(data).unwrap()),
+      data: Some(json!({
+        "tsc": tsc,
+      })),
       ..Default::default()
     }
   }
@@ -2075,12 +2077,16 @@ mod tests {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier.clone(), *version, source);
-      if let Some((deps, _)) = analysis::analyze_dependencies(
-        &specifier,
-        source,
-        &MediaType::from(&specifier),
-        &None,
-      ) {
+      let media_type = MediaType::from(&specifier);
+      if let Ok(parsed_module) =
+        analysis::parse_module(&specifier, source, &media_type)
+      {
+        let (deps, _) = analysis::analyze_dependencies(
+          &specifier,
+          &media_type,
+          &parsed_module,
+          &None,
+        );
         documents.set_dependencies(&specifier, Some(deps)).unwrap();
       }
     }
