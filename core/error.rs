@@ -158,7 +158,8 @@ fn get_property<'a>(
 struct NativeJsError {
   name: Option<String>,
   message: Option<String>,
-  stack: Option<String>,
+  // Warning! .stack is special so handled by itself
+  // stack: Option<String>,
 }
 
 impl JsError {
@@ -181,12 +182,8 @@ impl JsError {
       let exception: v8::Local<v8::Object> =
         exception.clone().try_into().unwrap();
 
-      // Decode native JS error, internally this should access error.stack
-      // ensuring that prepareStackTrace() has been called.
-      // Which in turn should populate error.__callSiteEvals.
       let e: NativeJsError =
         serde_v8::from_v8(scope, exception.into()).unwrap();
-
       // Get the message by formatting error.name and error.message.
       let name = e.name.unwrap_or_else(|| "Error".to_string());
       let message_prop = e.message.unwrap_or_else(|| "".to_string());
@@ -200,18 +197,25 @@ impl JsError {
         "Uncaught".to_string()
       };
 
+      // Access error.stack to ensure that prepareStackTrace() has been called.
+      // This should populate error.__callSiteEvals.
+      let stack = get_property(scope, exception, "stack");
+      let stack: Option<v8::Local<v8::String>> =
+        stack.and_then(|s| s.try_into().ok());
+      let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
       // Ignore non-array values
       let frames_v8: Option<v8::Local<v8::Array>> =
-      frames_v8.and_then(|a| a.try_into().ok());
+        frames_v8.and_then(|a| a.try_into().ok());
 
-      // Convert them into Vec<JSStack>
+      // Convert them into Vec<JsStackFrame>
       let frames: Vec<JsStackFrame> = match frames_v8 {
         Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
         None => vec![],
       };
-      (message, frames, e.stack)
+      (message, frames, stack)
     } else {
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
