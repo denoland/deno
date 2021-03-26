@@ -1339,8 +1339,6 @@ struct Response {
 }
 
 struct State<'a> {
-  #[allow(unused)]
-  asset: Option<String>,
   last_id: usize,
   response: Option<Response>,
   state_snapshot: StateSnapshot,
@@ -1350,7 +1348,6 @@ struct State<'a> {
 impl<'a> State<'a> {
   fn new(state_snapshot: StateSnapshot) -> Self {
     Self {
-      asset: None,
       last_id: 1,
       response: None,
       state_snapshot,
@@ -1668,18 +1665,6 @@ fn script_version(
   Ok(None)
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SetAssetArgs {
-  text: Option<String>,
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn set_asset(state: &mut State, args: SetAssetArgs) -> Result<bool, AnyError> {
-  state.asset = args.text;
-  Ok(true)
-}
-
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
@@ -1703,7 +1688,6 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   runtime.register_op("op_respond", op(respond));
   runtime.register_op("op_script_names", op(script_names));
   runtime.register_op("op_script_version", op(script_version));
-  runtime.register_op("op_set_asset", op(set_asset));
 
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);
