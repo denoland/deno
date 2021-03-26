@@ -2488,6 +2488,54 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_folding_range() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "folding_range_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "folding_range_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "startLine": 0,
+              "endLine": 12,
+              "kind": "region"
+            },
+            {
+              "startLine": 1,
+              "endLine": 3,
+              "kind": "comment"
+            },
+            {
+              "startLine": 4,
+              "endLine": 10
+            },
+            {
+              "startLine": 5,
+              "endLine": 9
+            },
+            {
+              "startLine": 6,
+              "endLine": 7
+            }
+          ]),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
   async fn test_rename() {
     let mut harness = LspTestHarness::new(vec![
       ("initialize_request.json", LspResponse::RequestAny),
