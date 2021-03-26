@@ -202,10 +202,13 @@ impl JsError {
 
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
+      // Ignore non-array values
+      let frames_v8: Option<v8::Local<v8::Array>> =
+      frames_v8.and_then(|a| a.try_into().ok());
 
       // Convert them into Vec<JSStack>
       let frames: Vec<JsStackFrame> = match frames_v8 {
-        Some(frames_v8) => serde_v8::from_v8(scope, frames_v8).unwrap(),
+        Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
         None => vec![],
       };
       (message, frames, e.stack)
