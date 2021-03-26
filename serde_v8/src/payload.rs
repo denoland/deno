@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use rusty_v8 as v8;
 
 // TODO: maybe add a Payload type that holds scope & v8::Value
