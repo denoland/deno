@@ -1546,7 +1546,7 @@ impl Inner {
         )));
       };
 
-    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier);
 
     let outlining_spans: Vec<tsc::OutliningSpan> = self
       .ts_server
