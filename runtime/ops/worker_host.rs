@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::NetDescriptor;
@@ -28,6 +27,7 @@ use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;

@@ -2,9 +2,6 @@
 
 #![deny(warnings)]
 
-#[macro_use]
-extern crate lazy_static;
-
 mod colors;
 mod standalone;
 mod tokio_util;

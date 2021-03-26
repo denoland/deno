@@ -1,8 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-#[macro_use]
-extern crate log;
-
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
@@ -128,7 +124,7 @@ fn op_listen(
   _rid: ResourceId,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, AnyError> {
-  debug!("listen");
+  log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   std_listener.set_nonblocking(true)?;
@@ -142,7 +138,7 @@ fn op_close(
   rid: ResourceId,
   _bufs: &mut [ZeroCopyBuf],
 ) -> Result<u32, AnyError> {
-  debug!("close rid={}", rid);
+  log::debug!("close rid={}", rid);
   state
     .resource_table
     .close(rid)
@@ -155,7 +151,7 @@ async fn op_accept(
   rid: ResourceId,
   _bufs: BufVec,
 ) -> Result<u32, AnyError> {
-  debug!("accept rid={}", rid);
+  log::debug!("accept rid={}", rid);
 
   let listener = state
     .borrow()
@@ -173,7 +169,7 @@ async fn op_read(
   mut bufs: BufVec,
 ) -> Result<u32, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  debug!("read rid={}", rid);
+  log::debug!("read rid={}", rid);
 
   let stream = state
     .borrow()
@@ -190,7 +186,7 @@ async fn op_write(
   bufs: BufVec,
 ) -> Result<u32, AnyError> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  debug!("write rid={}", rid);
+  log::debug!("write rid={}", rid);
 
   let stream = state
     .borrow()
