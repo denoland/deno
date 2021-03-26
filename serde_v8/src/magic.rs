@@ -6,6 +6,13 @@ use std::marker::PhantomData;
 pub const FIELD: &str = "$__v8_magic_value";
 pub const NAME: &str = "$__v8_magic_Value";
 
+/// serde_v8::Value allows passing through `v8::Value`s untouched
+/// when encoding/decoding and allows mixing rust & v8 values in
+/// structs, tuples...
+/// The implementation mainly breaks down to:
+/// 1. Transmuting between u64 <> serde_v8::Value
+/// 2. Using special struct/field names to detect these values
+/// 3. Then serde "boilerplate"
 pub struct Value<'s> {
   pub v8_value: v8::Local<'s, v8::Value>,
 }
