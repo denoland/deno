@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::{Error, Result};
+use crate::keys::v8_struct_key;
 use crate::magic;
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
@@ -628,22 +629,4 @@ impl<'a, 'b> ser::Serializer for MagicTransmuter<'a, 'b> {
   ) -> Result<Self::SerializeStructVariant> {
     unreachable!();
   }
-}
-
-// creates an optimized v8::String for a struct field
-// TODO: experiment with external strings
-// TODO: evaluate if own KeyCache is better than v8's dedupe
-fn v8_struct_key<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  field: &'static str,
-) -> v8::Local<'s, v8::String> {
-  // Internalized v8 strings are significantly faster than "normal" v8 strings
-  // since v8 deduplicates re-used strings minimizing new allocations
-  // see: https://github.com/v8/v8/blob/14ac92e02cc3db38131a57e75e2392529f405f2f/include/v8.h#L3165-L3171
-  v8::String::new_from_utf8(
-    scope,
-    field.as_ref(),
-    v8::NewStringType::Internalized,
-  )
-  .unwrap()
 }

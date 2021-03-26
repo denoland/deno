@@ -2,10 +2,10 @@ use rusty_v8 as v8;
 use serde::de::{self, Visitor};
 use serde::Deserialize;
 
-use std::collections::HashMap;
 use std::convert::TryFrom;
 
 use crate::error::{Error, Result};
+use crate::keys::{v8_struct_key, KeyCache};
 use crate::payload::ValueType;
 
 use crate::magic;
@@ -15,7 +15,6 @@ pub struct Deserializer<'a, 'b, 's> {
   scope: &'b mut v8::HandleScope<'s>,
   _key_cache: Option<&'b mut KeyCache>,
 }
-pub type KeyCache = HashMap<&'static str, v8::Global<v8::String>>;
 
 impl<'a, 'b, 's> Deserializer<'a, 'b, 's> {
   pub fn new(
@@ -455,30 +454,6 @@ impl<'de, 'a, 'b, 's> de::MapAccess<'de> for ObjectAccess<'a, 'b, 's> {
       vseed.deserialize(&mut deserializer)?
     })))
   }
-}
-
-// creates an optimized v8::String for a struct field
-// TODO: experiment with external strings
-// TODO: evaluate if own KeyCache is better than v8's dedupe
-fn v8_struct_key<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  field: &'static str,
-) -> v8::Local<'s, v8::String> {
-  // Internalized v8 strings are significantly faster than "normal" v8 strings
-  // since v8 deduplicates re-used strings minimizing new allocations
-  // see: https://github.com/v8/v8/blob/14ac92e02cc3db38131a57e75e2392529f405f2f/include/v8.h#L3165-L3171
-  v8::String::new_from_utf8(
-    scope,
-    field.as_ref(),
-    v8::NewStringType::Internalized,
-  )
-  .unwrap()
-
-  // TODO: consider external strings later
-  // right now non-deduped external strings (without KeyCache)
-  // are slower than the deduped internalized strings by ~2.5x
-  // since they're a new string in v8's eyes and needs to be hashed, etc...
-  // v8::String::new_external_onebyte_static(scope, field).unwrap()
 }
 
 struct SeqAccess<'a, 'b, 's> {
