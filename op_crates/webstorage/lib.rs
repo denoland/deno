@@ -2,8 +2,6 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -13,6 +11,7 @@ use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Clone)]
@@ -40,66 +39,45 @@ impl Resource for WebStorageConnectionResource {
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenArgs {
-  persistent: bool,
-}
-
 pub fn op_webstorage_open(
   state: &mut OpState,
-  args: OpenArgs,
+  persistent: bool,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  if args.persistent {
+) -> Result<u32, AnyError> {
+  let connection = if persistent {
     let path = state.borrow::<LocationDataDir>().0.as_ref().unwrap();
     std::fs::create_dir_all(&path)?;
-
-    let connection = Connection::open(path.join("local_storage"))?;
-
-    connection.execute(
-      "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
-      params![],
-    )?;
-
-    let rid = state
-      .resource_table
-      .add(WebStorageConnectionResource(connection));
-    Ok(json!({ "rid": rid }))
+    Connection::open(path.join("local_storage"))?
   } else {
-    let connection = Connection::open_in_memory()?;
-    connection.execute(
-      "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
-      params![],
-    )?;
-    let rid = state
-      .resource_table
-      .add(WebStorageConnectionResource(connection));
-    Ok(json!({ "rid": rid }))
-  }
-}
+    Connection::open_in_memory()?
+  };
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LengthArgs {
-  rid: u32,
+  connection.execute(
+    "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
+    params![],
+  )?;
+
+  let rid = state
+    .resource_table
+    .add(WebStorageConnectionResource(connection));
+  Ok(rid)
 }
 
 pub fn op_webstorage_length(
   state: &mut OpState,
-  args: LengthArgs,
+  rid: u32,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<u32, AnyError> {
   let resource = state
     .resource_table
-    .get::<WebStorageConnectionResource>(args.rid)
+    .get::<WebStorageConnectionResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut stmt = resource.0.prepare("SELECT COUNT(*) FROM data")?;
 
   let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  Ok(json!(length))
+  Ok(length)
 }
 
 #[derive(Deserialize)]
@@ -113,7 +91,7 @@ pub fn op_webstorage_key(
   state: &mut OpState,
   args: KeyArgs,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<Option<String>, AnyError> {
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
@@ -127,12 +105,7 @@ pub fn op_webstorage_key(
     .query_row(params![args.index], |row| row.get(0))
     .optional()?;
 
-  let json_val = match key {
-    Some(string) => json!(string),
-    None => Value::Null,
-  };
-
-  Ok(json_val)
+  Ok(key)
 }
 
 #[derive(Deserialize)]
@@ -147,7 +120,7 @@ pub fn op_webstorage_set(
   state: &mut OpState,
   args: SetArgs,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
@@ -159,7 +132,10 @@ pub fn op_webstorage_set(
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   if size >= 5000000 {
-    return Ok(json!({ "err": true }));
+    return Err(
+      DOMExceptionQuotaExceededError::new("Exceeded maximum storage size")
+        .into(),
+    );
   }
 
   resource.0.execute(
@@ -167,7 +143,7 @@ pub fn op_webstorage_set(
     params![args.key_name, args.key_value],
   )?;
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -181,7 +157,7 @@ pub fn op_webstorage_get(
   state: &mut OpState,
   args: GetArgs,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<Option<String>, AnyError> {
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
@@ -189,11 +165,11 @@ pub fn op_webstorage_get(
 
   let mut stmt = resource.0.prepare("SELECT value FROM data WHERE key = ?")?;
 
-  let val: Option<String> = stmt
+  let val = stmt
     .query_row(params![args.key_name], |row| row.get(0))
     .optional()?;
 
-  Ok(json!(val))
+  Ok(val)
 }
 
 #[derive(Deserialize)]
@@ -207,7 +183,7 @@ pub fn op_webstorage_remove(
   state: &mut OpState,
   args: RemoveArgs,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let resource = state
     .resource_table
     .get::<WebStorageConnectionResource>(args.rid)
@@ -217,23 +193,17 @@ pub fn op_webstorage_remove(
     .0
     .execute("DELETE FROM data WHERE key = ?", params![args.key_name])?;
 
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClearArgs {
-  rid: u32,
+  Ok(())
 }
 
 pub fn op_webstorage_clear(
   state: &mut OpState,
-  args: ClearArgs,
+  rid: u32,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let resource = state
     .resource_table
-    .get::<WebStorageConnectionResource>(args.rid)
+    .get::<WebStorageConnectionResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   resource.0.execute("DROP TABLE data", params![])?;
@@ -242,23 +212,17 @@ pub fn op_webstorage_clear(
     params![],
   )?;
 
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IterateKeysArgs {
-  rid: u32,
+  Ok(())
 }
 
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
-  args: IterateKeysArgs,
+  rid: u32,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+) -> Result<Vec<String>, AnyError> {
   let resource = state
     .resource_table
-    .get::<WebStorageConnectionResource>(args.rid)
+    .get::<WebStorageConnectionResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut stmt = resource.0.prepare("SELECT key FROM data")?;
@@ -266,7 +230,33 @@ pub fn op_webstorage_iterate_keys(
   let keys = stmt
     .query_map(params![], |row| row.get::<_, String>(0))?
     .map(|r| r.unwrap())
-    .collect::<Vec<_>>();
+    .collect();
 
-  Ok(json!({ "keys": keys }))
+  Ok(keys)
+}
+
+#[derive(Debug)]
+pub struct DOMExceptionQuotaExceededError {
+  pub msg: String,
+}
+
+impl DOMExceptionQuotaExceededError {
+  pub fn new(msg: &str) -> Self {
+    DOMExceptionQuotaExceededError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
+impl fmt::Display for DOMExceptionQuotaExceededError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl std::error::Error for DOMExceptionQuotaExceededError {}
+
+pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
+  e.downcast_ref::<DOMExceptionQuotaExceededError>()
+    .map(|_| "DOMExceptionQuotaExceededError")
 }

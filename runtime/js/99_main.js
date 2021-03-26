@@ -197,6 +197,11 @@ delete Object.prototype.__proto__;
       DOMException,
       "OperationError",
     );
+    core.registerErrorClass(
+      "DOMExceptionQuotaExceededError",
+      DOMException,
+      "QuotaExceededError",
+    );
   }
 
   class Navigator {

@@ -12,9 +12,7 @@
     }
 
     get length() {
-      return core.jsonOpSync("op_webstorage_length", {
-        rid: this[_rid],
-      });
+      return core.jsonOpSync("op_webstorage_length", this[_rid]);
     }
 
     key(index) {
@@ -43,18 +41,11 @@
         context: "Argument 2",
       });
 
-      const { err } = core.jsonOpSync("op_webstorage_set", {
+      core.jsonOpSync("op_webstorage_set", {
         rid: this[_rid],
         keyName: key,
         keyValue: value,
       });
-
-      if (err) {
-        throw new DOMException(
-          "Exceeded maximum storage size",
-          "QuotaExceededError",
-        );
-      }
     }
 
     getItem(key) {
@@ -86,21 +77,17 @@
     }
 
     clear() {
-      core.jsonOpSync("op_webstorage_clear", {
-        rid: this[_rid],
-      });
+      core.jsonOpSync("op_webstorage_clear", this[_rid]);
     }
   }
 
   function createStorage(persistent) {
     if (persistent) window.location;
 
-    const data = core.jsonOpSync("op_webstorage_open", {
-      persistent,
-    });
+    const rid = core.jsonOpSync("op_webstorage_open", persistent);
 
     const storage = webidl.createBranded(Storage);
-    storage[_rid] = data.rid;
+    storage[_rid] = rid;
 
     const proxy = new Proxy(storage, {
       deleteProperty(target, key) {
@@ -142,10 +129,7 @@
         return (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
-        const { keys } = core.jsonOpSync("op_webstorage_iterate_keys", {
-          rid: data.rid,
-        });
-        return keys;
+        return core.jsonOpSync("op_webstorage_iterate_keys", rid);
       },
       getOwnPropertyDescriptor(target, key) {
         if (arguments.length === 1) {
