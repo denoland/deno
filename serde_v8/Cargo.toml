@@ -1,0 +1,16 @@
+[package]
+name = "serde_v8"
+version = "0.0.0"
+authors = ["Aaron O'Mullan <aaron.omullan@gmail.com>"]
+edition = "2018"
+
+
+[dependencies]
+serde = { version = "1.0.123", features = ["derive"] }
+rusty_v8 = "0.21.0"
+
+[dev-dependencies]
+serde_json = "1.0.62"
+
+[[example]]
+name = "basic"
