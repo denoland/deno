@@ -99,6 +99,7 @@ pub struct JsError {
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
   pub function_name: Option<String>,
