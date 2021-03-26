@@ -133,7 +133,7 @@ pub fn op_webstorage_set(
 
   if size >= 5000000 {
     return Err(
-      DOMExceptionQuotaExceededError::new("Exceeded maximum storage size")
+      DomExceptionQuotaExceededError::new("Exceeded maximum storage size")
         .into(),
     );
   }
@@ -236,27 +236,27 @@ pub fn op_webstorage_iterate_keys(
 }
 
 #[derive(Debug)]
-pub struct DOMExceptionQuotaExceededError {
+pub struct DomExceptionQuotaExceededError {
   pub msg: String,
 }
 
-impl DOMExceptionQuotaExceededError {
+impl DomExceptionQuotaExceededError {
   pub fn new(msg: &str) -> Self {
-    DOMExceptionQuotaExceededError {
+    DomExceptionQuotaExceededError {
       msg: msg.to_string(),
     }
   }
 }
 
-impl fmt::Display for DOMExceptionQuotaExceededError {
+impl fmt::Display for DomExceptionQuotaExceededError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.pad(&self.msg)
   }
 }
 
-impl std::error::Error for DOMExceptionQuotaExceededError {}
+impl std::error::Error for DomExceptionQuotaExceededError {}
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DOMExceptionQuotaExceededError>()
+  e.downcast_ref::<DomExceptionQuotaExceededError>()
     .map(|_| "DOMExceptionQuotaExceededError")
 }

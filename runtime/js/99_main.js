@@ -195,12 +195,12 @@ delete Object.prototype.__proto__;
     core.registerErrorClass(
       "DOMExceptionOperationError",
       DOMException,
-      "OperationError",
+      ["OperationError"],
     );
     core.registerErrorClass(
       "DOMExceptionQuotaExceededError",
       DOMException,
-      "QuotaExceededError",
+      ["QuotaExceededError"],
     );
   }
 
