@@ -17,6 +17,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
+use log::debug;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;

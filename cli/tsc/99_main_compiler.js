@@ -703,6 +703,15 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getSmartSelectionRange": {
+        return respond(
+          id,
+          languageService.getSmartSelectionRange(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
       case "getSupportedCodeFixes": {
         return respond(
           id,

@@ -42,7 +42,7 @@ use tokio::net::unix;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Due to portability issues on Windows handle to stdout is created from raw
   /// file descriptor.  The caveat of that approach is fact that when this
   /// handle is dropped underlying file descriptor is closed - that is highly
@@ -140,14 +140,14 @@ fn get_stdio_stream(
 use nix::sys::termios;
 
 #[derive(Default)]
-pub struct TTYMetadata {
+pub struct TtyMetadata {
   #[cfg(unix)]
   pub mode: Option<termios::Termios>,
 }
 
 #[derive(Default)]
 pub struct FileMetadata {
-  pub tty: TTYMetadata,
+  pub tty: TtyMetadata,
 }
 
 #[derive(Debug)]

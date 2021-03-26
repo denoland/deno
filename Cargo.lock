@@ -573,6 +573,7 @@ dependencies = [
  "rusty_v8",
  "serde",
  "serde_json",
+ "serde_v8",
  "smallvec",
  "tokio",
  "url",
@@ -2776,6 +2777,15 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_v8"
+version = "0.1.0"
+dependencies = [
+ "rusty_v8",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

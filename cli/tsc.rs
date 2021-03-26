@@ -38,6 +38,7 @@ pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
 pub static DENO_WEBSTORAGE_LIB: &str =
   include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
+pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
@@ -56,7 +57,7 @@ macro_rules! inc {
   };
 }
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Contains static assets that are not preloaded in the compiler snapshot.
   pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
     ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),
@@ -136,9 +137,9 @@ fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
         }
         MediaType::TypeScript
       }
-      Some("tsx") => MediaType::TSX,
+      Some("tsx") => MediaType::Tsx,
       Some("js") => MediaType::JavaScript,
-      Some("jsx") => MediaType::JSX,
+      Some("jsx") => MediaType::Jsx,
       _ => MediaType::Unknown,
     },
   }
@@ -636,10 +637,10 @@ mod tests {
   fn test_get_tsc_media_type() {
     let fixtures = vec![
       ("file:///a.ts", MediaType::TypeScript),
-      ("file:///a.tsx", MediaType::TSX),
+      ("file:///a.tsx", MediaType::Tsx),
       ("file:///a.d.ts", MediaType::Dts),
       ("file:///a.js", MediaType::JavaScript),
-      ("file:///a.jsx", MediaType::JSX),
+      ("file:///a.jsx", MediaType::Jsx),
       ("file:///a.cjs", MediaType::Unknown),
       ("file:///a.mjs", MediaType::Unknown),
       ("file:///a.json", MediaType::Unknown),
