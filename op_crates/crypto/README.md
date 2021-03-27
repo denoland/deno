@@ -20,4 +20,3 @@ and functions.
 
 All WebCrypto algorithms can be found
 [here](https://www.w3.org/TR/WebCryptoAPI/#algorithm-overview).
-
