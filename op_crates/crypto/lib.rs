@@ -44,7 +44,7 @@ pub use rand; // Re-export rand
 mod error;
 mod key;
 
-use crate::error::DOMError;
+use crate::error::DomError;
 use crate::error::WebCryptoError;
 use crate::key::Algorithm;
 use crate::key::KeyUsage;
@@ -128,7 +128,7 @@ struct WebCryptoGenerateKeyArg {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-enum JSCryptoKey {
+enum JsCryptoKey {
   Single {
     key: WebCryptoKey,
     rid: u32,
@@ -144,7 +144,7 @@ macro_rules! validate_usage {
   ($e: expr, $u: expr) => {
     for usage in $e {
       if !$u.contains(&usage) {
-        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }))
+        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }))
       }
     }
   }
@@ -210,7 +210,7 @@ pub async fn op_webcrypto_generate_key(
         webcrypto_key_private.clone(),
       );
 
-      JSCryptoKey::Pair {
+      JsCryptoKey::Pair {
         key: crypto_key,
         private_rid: state.resource_table.add(CryptoKeyResource {
           crypto_key: webcrypto_key_private,
@@ -265,7 +265,7 @@ pub async fn op_webcrypto_generate_key(
         webcrypto_key_private.clone(),
       );
 
-      JSCryptoKey::Pair {
+      JsCryptoKey::Pair {
         key: crypto_key,
         private_rid: state.resource_table.add(CryptoKeyResource {
           crypto_key: webcrypto_key_private,
@@ -319,7 +319,7 @@ pub async fn op_webcrypto_generate_key(
         hash: args.algorithm.hash,
       });
 
-      JSCryptoKey::Pair {
+      JsCryptoKey::Pair {
         key: crypto_key,
         private_rid: rid,
         // NOTE: We're using the same Resource for public and private key since they are part
@@ -358,7 +358,7 @@ pub async fn op_webcrypto_generate_key(
         key,
         hash: args.algorithm.hash,
       };
-      JSCryptoKey::Single {
+      JsCryptoKey::Single {
         key: crypto_key,
         rid: state.resource_table.add(resource),
       }
@@ -400,7 +400,7 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
       }
 
       let padding = match resource
@@ -433,7 +433,7 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
       }
 
       let rng = OsRng;
@@ -490,7 +490,7 @@ pub async fn op_webcrypto_sign_key(
       let key_pair = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
       }
 
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
@@ -517,7 +517,7 @@ pub async fn op_webcrypto_sign_key(
       let key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DOMError("Invalid key usage".to_string()) }));
+        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
       }
 
       let signature = ring::hmac::sign(&key, &data);

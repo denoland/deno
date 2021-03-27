@@ -25,12 +25,12 @@ impl fmt::Display for WebCryptoError {
 impl std::error::Error for WebCryptoError {}
 
 #[derive(Debug, Serialize)]
-pub struct DOMError(pub String);
+pub struct DomError(pub String);
 
-impl fmt::Display for DOMError {
+impl fmt::Display for DomError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "{}", &self.0)
   }
 }
 
-impl std::error::Error for DOMError {}
+impl std::error::Error for DomError {}
