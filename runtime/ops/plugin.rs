@@ -10,6 +10,7 @@ use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
+use deno_core::OpFn;
 use deno_core::OpId;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -18,7 +19,6 @@ use dlopen::symbor::Library;
 use log::debug;
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -110,26 +110,32 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    let plugin_op_fn = move |state_rc: Rc<RefCell<OpState>>,
-                             mut zero_copy: BufVec| {
-      let mut state = state_rc.borrow_mut();
-      let mut interface = PluginInterface::new(&mut state, &plugin_lib);
-      let op = dispatch_op_fn(&mut interface, &mut zero_copy);
-      match op {
-        sync_op @ Op::Sync(..) => sync_op,
-        Op::Async(fut) => Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut)),
-        Op::AsyncUnref(fut) => {
-          Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
+    let plugin_op_fn: Box<OpFn> =
+      Box::new(move |state_rc, _pid, _payload, buf| {
+        // For sig compat map OpBuf to BufVec
+        let mut bufs: BufVec = match buf {
+          Some(b) => vec![b],
+          None => vec![],
         }
-        _ => unreachable!(),
-      }
-    };
+        .into();
+
+        let mut state = state_rc.borrow_mut();
+        let mut interface = PluginInterface::new(&mut state, &plugin_lib);
+        let op = dispatch_op_fn(&mut interface, &mut bufs);
+        match op {
+          sync_op @ Op::Sync(..) => sync_op,
+          Op::Async(fut) => {
+            Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut))
+          }
+          Op::AsyncUnref(fut) => {
+            Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
+          }
+          _ => unreachable!(),
+        }
+      });
     self.state.op_table.register_op(
       name,
-      metrics_op(
-        Box::leak(Box::new(name.to_string())),
-        Box::new(plugin_op_fn),
-      ),
+      metrics_op(Box::leak(Box::new(name.to_string())), plugin_op_fn),
     )
   }
 }

@@ -22,8 +22,10 @@ use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
-use crate::BufVec;
+use crate::OpPayload;
+use crate::OpResponse;
 use crate::OpState;
+use crate::PromiseId;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;
@@ -45,7 +47,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Box<[u8]>)>>>;
+type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, OpResponse)>>>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -448,7 +450,7 @@ impl JsRuntime {
   /// * [json_op_async()](fn.json_op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<OpState>>, BufVec) -> Op + 'static,
+    F: Fn(RcOpState, PromiseId, OpPayload, OpBuf) -> Op + 'static,
   {
     Self::state(self.v8_isolate())
       .borrow_mut()
@@ -1325,9 +1327,9 @@ impl JsRuntime {
     self.mod_instantiate(root_id).map(|_| root_id)
   }
 
-  fn poll_pending_ops(&mut self, cx: &mut Context) -> Vec<(OpId, Box<[u8]>)> {
+  fn poll_pending_ops(&mut self, cx: &mut Context) -> Vec<(OpId, OpResponse)> {
     let state_rc = Self::state(self.v8_isolate());
-    let mut overflow_response: Vec<(OpId, Box<[u8]>)> = Vec::new();
+    let mut overflow_response: Vec<(OpId, OpResponse)> = Vec::new();
 
     let mut state = state_rc.borrow_mut();
 
@@ -1339,11 +1341,21 @@ impl JsRuntime {
       match pending_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((op_id, buf))) => {
-          let successful_push = state.shared.push(op_id, &buf);
-          if !successful_push {
-            overflow_response.push((op_id, buf));
-          }
+        Poll::Ready(Some((op_id, resp))) => {
+          // let overflow_resp = match resp {
+          //   OpResponse::Value(v) => Some(OpResponse::Value(v)),
+          //   OpResponse::Buffer(buf) => {
+          //     if state.shared.push(op_id, &buf) {
+          //       None
+          //     } else {
+          //       Some(OpResponse::Buffer(buf))
+          //     }
+          //   }
+          // };
+          // if let Some(resp) = overflow_resp {
+          //   overflow_response.push((op_id, resp));
+          // }
+          overflow_response.push((op_id, resp));
         }
       };
     }
@@ -1353,11 +1365,21 @@ impl JsRuntime {
       match unref_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((op_id, buf))) => {
-          let successful_push = state.shared.push(op_id, &buf);
-          if !successful_push {
-            overflow_response.push((op_id, buf));
-          }
+        Poll::Ready(Some((op_id, resp))) => {
+          // let overflow_resp = match resp {
+          //   OpResponse::Value(v) => Some(OpResponse::Value(v)),
+          //   OpResponse::Buffer(buf) => {
+          //     if state.shared.push(op_id, &buf) {
+          //       None
+          //     } else {
+          //       Some(OpResponse::Buffer(buf))
+          //     }
+          //   }
+          // };
+          // if let Some(resp) = overflow_resp {
+          //   overflow_response.push((op_id, resp));
+          // }
+          overflow_response.push((op_id, resp));
         }
       };
     }
@@ -1394,7 +1416,7 @@ impl JsRuntime {
   // Respond using shared queue and optionally overflown response
   fn async_op_response(
     &mut self,
-    overflown_responses: Vec<(OpId, Box<[u8]>)>,
+    overflown_responses: Vec<(OpId, OpResponse)>,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
@@ -1425,9 +1447,14 @@ impl JsRuntime {
     let mut args: Vec<v8::Local<v8::Value>> =
       Vec::with_capacity(2 * overflown_responses_size);
     for overflown_response in overflown_responses {
-      let (op_id, buf) = overflown_response;
+      let (op_id, resp) = overflown_response;
       args.push(v8::Integer::new(tc_scope, op_id as i32).into());
-      args.push(bindings::boxed_slice_to_uint8array(tc_scope, buf).into());
+      args.push(match resp {
+        OpResponse::Value(value) => serde_v8::to_v8(tc_scope, value).unwrap(),
+        OpResponse::Buffer(buf) => {
+          bindings::boxed_slice_to_uint8array(tc_scope, buf).into()
+        }
+      });
     }
 
     if shared_queue_size > 0 || overflown_responses_size > 0 {

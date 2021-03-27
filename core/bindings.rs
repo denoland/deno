@@ -4,8 +4,12 @@ use crate::error::AnyError;
 use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
 use crate::Op;
+use crate::OpBuf;
 use crate::OpId;
+use crate::OpPayload;
+use crate::OpResponse;
 use crate::OpTable;
+use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rusty_v8 as v8;
@@ -380,59 +384,80 @@ fn send<'s>(
   let mut state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as OpId)
     .map_err(AnyError::from)
-    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
   {
     Ok(op_id) => op_id,
     Err(err) => {
-      let msg = format!("invalid op id: {}", err);
-      let msg = v8::String::new(scope, &msg).unwrap();
-      let exc = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exc);
+      throw_type_error(scope, format!("invalid op id: {}", err));
       return;
     }
   };
 
-  let buf_iter = (1..args.length()).map(|idx| {
-    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
+  // send(0) returns obj of all ops, handle as special case
+  if op_id == 0 {
+    // TODO: Serialize as HashMap when serde_v8 supports maps ...
+    let ops = OpTable::op_entries(state.op_state.clone());
+    rv.set(to_v8(scope, ops).unwrap());
+    return;
+  }
+
+  // PromiseId
+  let p_id: PromiseId = match v8::Local::<v8::Integer>::try_from(args.get(1))
+    .map(|l| l.value() as PromiseId)
+    .map_err(AnyError::from)
+  {
+    Ok(p_id) => p_id as u64,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
+
+  // Structured args
+  let v = v8::Local::<v8::Value>::try_from(args.get(2)).unwrap();
+
+  // Buf arg (optional)
+  let arg3 = args.get(3);
+  let buf: OpBuf = if arg3.is_null_or_undefined() {
+    None
+  } else {
+    match v8::Local::<v8::ArrayBufferView>::try_from(arg3)
       .map(|view| ZeroCopyBuf::new(scope, view))
-      .map_err(|err| {
-        let msg = format!("Invalid argument at position {}: {}", idx, err);
-        let msg = v8::String::new(scope, &msg).unwrap();
-        v8::Exception::type_error(scope, msg)
-      })
-  });
-
-  let bufs = match buf_iter.collect::<Result<_, _>>() {
-    Ok(bufs) => bufs,
-    Err(exc) => {
-      scope.throw_exception(exc);
-      return;
+      .map_err(AnyError::from)
+    {
+      Ok(buf) => Some(buf),
+      Err(err) => {
+        throw_type_error(scope, format!("Err with buf arg: {}", err));
+        return;
+      }
     }
   };
 
-  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
+  let payload = OpPayload::new(scope, v);
+  let op = OpTable::route_op(op_id, state.op_state.clone(), p_id, payload, buf);
   assert_eq!(state.shared.size(), 0);
   match op {
-    Op::Sync(buf) if !buf.is_empty() => {
-      rv.set(boxed_slice_to_uint8array(scope, buf).into());
-    }
-    Op::Sync(_) => {}
+    Op::Sync(resp) => match resp {
+      OpResponse::Value(v) => {
+        rv.set(to_v8(scope, v).unwrap());
+      }
+      OpResponse::Buffer(buf) => {
+        rv.set(boxed_slice_to_uint8array(scope, buf).into());
+      }
+    },
     Op::Async(fut) => {
-      let fut2 = fut.map(move |buf| (op_id, buf));
+      let fut2 = fut.map(move |resp| (op_id, resp));
       state.pending_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      let fut2 = fut.map(move |buf| (op_id, buf));
+      let fut2 = fut.map(move |resp| (op_id, resp));
       state.pending_unref_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }
     Op::NotFound => {
-      let msg = format!("Unknown op id: {}", op_id);
-      let msg = v8::String::new(scope, &msg).unwrap();
-      let exc = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exc);
+      throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
 }

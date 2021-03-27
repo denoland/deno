@@ -30,22 +30,13 @@ SharedQueue Binary Layout
   const core = window.Deno.core;
   const { recv, send } = core;
 
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////// Dispatch /////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////
-
-  const dispatch = send;
-  const dispatchByName = (opName, control, ...zeroCopy) =>
-    dispatch(opsCache[opName], control, ...zeroCopy);
-
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  //////////////////////////////////// Shared array buffer ///////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////
-
   let sharedBytes;
   let shared32;
 
+  let asyncHandlers;
+
   let opsCache = {};
+  const errorMap = {};
 
   function init() {
     const shared = core.shared;
@@ -54,7 +45,6 @@ SharedQueue Binary Layout
     assert(shared32 == null);
     sharedBytes = new Uint8Array(shared);
     shared32 = new Int32Array(shared);
-
     asyncHandlers = [];
     // Callers should not call core.recv, use setAsyncHandler.
     recv(handleAsyncMsgFromRust);
@@ -62,10 +52,9 @@ SharedQueue Binary Layout
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = send(0);
-    const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    opsCache = JSON.parse(opsMapJson);
-    return { ...opsCache };
+    const opEntries = send(0);
+    opsCache = Object.freeze(Object.fromEntries(opEntries));
+    return opsCache;
   }
 
   function assert(cond) {
@@ -160,11 +149,34 @@ SharedQueue Binary Layout
     return [opId, buf];
   }
 
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////// Error handling //////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////
+  function setAsyncHandler(opId, cb) {
+    assert(opId != null);
+    asyncHandlers[opId] = cb;
+  }
 
-  const errorMap = {};
+  function setAsyncHandlerByName(opName, cb) {
+    setAsyncHandler(opsCache[opName], cb);
+  }
+
+  function handleAsyncMsgFromRust() {
+    // TODO: remove unused shared queue stuff
+    // while (true) {
+    //   const opIdBuf = shift();
+    //   if (opIdBuf == null) {
+    //     break;
+    //   }
+    //   assert(asyncHandlers[opIdBuf[0]] != null);
+    //   asyncHandlers[opIdBuf[0]](opIdBuf[1]);
+    // }
+
+    for (let i = 0; i < arguments.length; i += 2) {
+      opAsyncHandler(arguments[i + 1]);
+    }
+  }
+
+  function dispatch(opName, promiseId, control, zeroCopy) {
+    return send(opsCache[opName], promiseId, control, zeroCopy);
+  }
 
   function registerErrorClass(errorName, className, args) {
     if (typeof errorMap[errorName] !== "undefined") {
@@ -173,227 +185,93 @@ SharedQueue Binary Layout
     errorMap[errorName] = [className, args ?? []];
   }
 
-  function handleError(className, message) {
-    if (typeof errorMap[className] === "undefined") {
+  function getErrorClassAndArgs(errorName) {
+    return errorMap[errorName] ?? [undefined, []];
+  }
+
+  let nextPromiseId = 1;
+  const promiseTable = new Map();
+
+  function processResponse(res) {
+    // const [ok, promiseId, err] = res;
+    if (res[2] === null) {
+      return res[0];
+    }
+    throw processErr(res[2]);
+  }
+
+  function processErr(err) {
+    const [ErrorClass, args] = getErrorClassAndArgs(err.className);
+    if (!ErrorClass) {
       return new Error(
-        `Unregistered error class: "${className}"\n` +
-          `  ${message}\n` +
-          `  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        `Unregistered error class: "${err.className}"\n  ${err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
     }
-
-    const [ErrorClass, args] = errorMap[className];
-    return new ErrorClass(message, ...args);
+    return new ErrorClass(err.message, ...args);
   }
 
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////// Async handling //////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////
-
-  let asyncHandlers = [];
-
-  function setAsyncHandler(opId, cb) {
-    assert(opId != null);
-    asyncHandlers[opId] = cb;
-  }
-
-  function handleAsyncMsgFromRust() {
-    while (true) {
-      const opIdBuf = shift();
-      if (opIdBuf == null) {
-        break;
-      }
-      assert(asyncHandlers[opIdBuf[0]] != null);
-      asyncHandlers[opIdBuf[0]](opIdBuf[1], true);
-    }
-
-    for (let i = 0; i < arguments.length; i += 2) {
-      asyncHandlers[arguments[i]](arguments[i + 1], false);
-    }
-  }
-
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////// General sync & async ops handling ////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////
-
-  let nextRequestId = 1;
-  const promiseTable = {};
-
-  function asyncHandle(u8Array, isCopyNeeded, opResultParser) {
-    const [requestId, result, error] = opResultParser(u8Array, isCopyNeeded);
-    if (error !== null) {
-      promiseTable[requestId][1](error);
-    } else {
-      promiseTable[requestId][0](result);
-    }
-    delete promiseTable[requestId];
-  }
-
-  function opAsync(opName, opRequestBuilder, opResultParser) {
-    const opId = opsCache[opName];
-    // Make sure requests of this type are handled by the asyncHandler
-    // The asyncHandler's role is to call the "promiseTable[requestId]" function
-    if (typeof asyncHandlers[opId] === "undefined") {
-      asyncHandlers[opId] = (buffer, isCopyNeeded) =>
-        asyncHandle(buffer, isCopyNeeded, opResultParser);
-    }
-
-    const requestId = nextRequestId++;
-
-    // Create and store promise
-    const promise = new Promise((resolve, reject) => {
-      promiseTable[requestId] = [resolve, reject];
+  async function jsonOpAsync(opName, args = null, zeroCopy = null) {
+    // setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
+    
+    const promiseId = nextPromiseId++;
+    dispatch(opName, promiseId, args, zeroCopy);
+    let resolve, reject;
+    const promise = new Promise((resolve_, reject_) => {
+      resolve = resolve_;
+      reject = reject_;
     });
-
-    // Synchronously dispatch async request
-    core.dispatch(opId, ...opRequestBuilder(requestId));
-
-    // Wait for async response
-    return promise;
+    promise.resolve = resolve;
+    promise.reject = reject;
+    promiseTable.set(promiseId, promise);
+    return await promise;
   }
 
-  function opSync(opName, opRequestBuilder, opResultParser) {
-    const opId = opsCache[opName];
-    const u8Array = core.dispatch(opId, ...opRequestBuilder());
-
-    const [_, result, error] = opResultParser(u8Array, false);
-    if (error !== null) throw error;
-    return result;
+  function jsonOpSync(opName, args = null, zeroCopy = null) {
+    return processResponse(dispatch(opName, 0, args, zeroCopy));
   }
 
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////// Bin ops handling /////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////
-
-  const binRequestHeaderByteLength = 8 + 4;
-  const scratchBuffer = new ArrayBuffer(binRequestHeaderByteLength);
-  const scratchView = new DataView(scratchBuffer);
-
-  function binOpBuildRequest(requestId, argument, zeroCopy) {
-    scratchView.setBigUint64(0, BigInt(requestId), true);
-    scratchView.setUint32(8, argument, true);
-    return [scratchView, ...zeroCopy];
-  }
-
-  function binOpParseResult(u8Array, isCopyNeeded) {
-    // Decode header value from u8Array
-    const headerByteLength = 8 + 2 * 4;
-    assert(u8Array.byteLength >= headerByteLength);
-    assert(u8Array.byteLength % 4 == 0);
-    const view = new DataView(
-      u8Array.buffer,
-      u8Array.byteOffset + u8Array.byteLength - headerByteLength,
-      headerByteLength,
-    );
-
-    const requestId = Number(view.getBigUint64(0, true));
-    const status = view.getUint32(8, true);
-    const result = view.getUint32(12, true);
-
-    // Error handling
-    if (status !== 0) {
-      const className = core.decode(u8Array.subarray(0, result));
-      const message = core.decode(u8Array.subarray(result, -headerByteLength))
-        .trim();
-
-      return [requestId, null, handleError(className, message)];
-    }
-
-    if (u8Array.byteLength === headerByteLength) {
-      return [requestId, result, null];
-    }
-
-    // Rest of response buffer is passed as reference or as a copy
-    let respBuffer = null;
-    if (isCopyNeeded) {
-      // Copy part of the response array (if sent through shared array buf)
-      respBuffer = u8Array.slice(0, result);
+  function opAsyncHandler(res) {
+    // const [ok, promiseId, err] = res;
+    const promiseId = res[1];
+    const promise = promiseTable.get(promiseId);
+    promiseTable.delete(promiseId);
+    if (!res[2]) {
+      promise.resolve(res[0]);
     } else {
-      // Create view on existing array (if sent through overflow)
-      respBuffer = u8Array.subarray(0, result);
+      promise.reject(processErr(res[2]));
     }
-
-    return [requestId, respBuffer, null];
   }
-
-  function binOpAsync(opName, argument = 0, ...zeroCopy) {
-    return opAsync(
-      opName,
-      (requestId) => binOpBuildRequest(requestId, argument, zeroCopy),
-      binOpParseResult,
-    );
+  
+  function binOpSync(opName, args = null, zeroCopy = null) {
+    return jsonOpSync(opName, args, zeroCopy);
   }
-
-  function binOpSync(opName, argument = 0, ...zeroCopy) {
-    return opSync(
-      opName,
-      () => binOpBuildRequest(0, argument, zeroCopy),
-      binOpParseResult,
-    );
-  }
-
-  ////////////////////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////// Json ops handling ////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////////
-
-  const jsonRequestHeaderLength = 8;
-
-  function jsonOpBuildRequest(requestId, argument, zeroCopy) {
-    const u8Array = core.encode(
-      "\0".repeat(jsonRequestHeaderLength) + JSON.stringify(argument),
-    );
-    new DataView(u8Array.buffer).setBigUint64(0, BigInt(requestId), true);
-    return [u8Array, ...zeroCopy];
-  }
-
-  function jsonOpParseResult(u8Array, _) {
-    const data = JSON.parse(core.decode(u8Array));
-
-    if ("err" in data) {
-      return [
-        data.requestId,
-        null,
-        handleError(data.err.className, data.err.message),
-      ];
-    }
-
-    return [data.requestId, data.ok, null];
-  }
-
-  function jsonOpAsync(opName, argument = null, ...zeroCopy) {
-    return opAsync(
-      opName,
-      (requestId) => jsonOpBuildRequest(requestId, argument, zeroCopy),
-      jsonOpParseResult,
-    );
-  }
-
-  function jsonOpSync(opName, argument = null, ...zeroCopy) {
-    return opSync(
-      opName,
-      () => [core.encode(JSON.stringify(argument)), ...zeroCopy],
-      jsonOpParseResult,
-    );
+  
+  function binOpAsync(opName, args = null, zeroCopy = null) {
+    return jsonOpAsync(opName, args, zeroCopy);
   }
 
   function resources() {
     return jsonOpSync("op_resources");
   }
+
   function close(rid) {
-    return jsonOpSync("op_close", { rid });
+    jsonOpSync("op_close", { rid });
   }
 
   Object.assign(window.Deno.core, {
-    jsonOpAsync,
-    jsonOpSync,
     binOpAsync,
     binOpSync,
-    dispatch,
-    dispatchByName,
+    jsonOpAsync,
+    jsonOpSync,
+    setAsyncHandler,
+    setAsyncHandlerByName,
+    dispatch: send,
+    dispatchByName: dispatch,
     ops,
     close,
     resources,
     registerErrorClass,
+    getErrorClassAndArgs,
     sharedQueueInit: init,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
@@ -405,7 +283,5 @@ SharedQueue Binary Layout
       reset,
       shift,
     },
-    // setAsyncHandler is private but exposed for testing.
-    setAsyncHandler,
   });
 })(this);

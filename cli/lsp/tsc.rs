@@ -1387,11 +1387,12 @@ fn cache_snapshot(
   Ok(())
 }
 
+// buffer-less json_sync ops
 fn op<F, V, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
   V: de::DeserializeOwned,
-  R: Serialize,
+  R: Serialize + 'static,
 {
   json_op_sync(move |s, args, _bufs| {
     let state = s.borrow_mut::<State>();
