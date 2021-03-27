@@ -235,100 +235,101 @@ pub fn resolve_import(
   ResolvedDependency::Resolved(specifier)
 }
 
+pub fn parse_module(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<ast::ParsedModule, AnyError> {
+  let source_map = Rc::new(swc_common::SourceMap::default());
+  ast::parse_with_source_map(
+    &specifier.to_string(),
+    source,
+    &media_type,
+    source_map,
+  )
+}
+
 // TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
 // Module::parse() and should be refactored out to a common function.
 pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
-  source: &str,
   media_type: &MediaType,
+  parsed_module: &ast::ParsedModule,
   maybe_import_map: &Option<ImportMap>,
-) -> Option<(HashMap<String, Dependency>, Option<ResolvedDependency>)> {
-  let specifier_str = specifier.to_string();
-  let source_map = Rc::new(swc_common::SourceMap::default());
+) -> (HashMap<String, Dependency>, Option<ResolvedDependency>) {
   let mut maybe_type = None;
-  if let Ok(parsed_module) =
-    ast::parse_with_source_map(&specifier_str, source, &media_type, source_map)
-  {
-    let mut dependencies = HashMap::<String, Dependency>::new();
+  let mut dependencies = HashMap::<String, Dependency>::new();
 
-    // Parse leading comments for supported triple slash references.
-    for comment in parsed_module.get_leading_comments().iter() {
-      if let Some(ts_reference) = parse_ts_reference(&comment.text) {
-        match ts_reference {
-          TypeScriptReference::Path(import) => {
-            let dep = dependencies.entry(import.clone()).or_default();
-            let resolved_import =
-              resolve_import(&import, specifier, maybe_import_map);
-            dep.maybe_code = Some(resolved_import);
-          }
-          TypeScriptReference::Types(import) => {
-            let resolved_import =
-              resolve_import(&import, specifier, maybe_import_map);
-            if media_type == &MediaType::JavaScript
-              || media_type == &MediaType::JSX
-            {
-              maybe_type = Some(resolved_import)
-            } else {
-              let dep = dependencies.entry(import).or_default();
-              dep.maybe_type = Some(resolved_import);
-            }
-          }
-        }
-      }
-    }
-
-    // Parse ES and type only imports
-    let descriptors = parsed_module.analyze_dependencies();
-    for desc in descriptors.into_iter().filter(|desc| {
-      desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
-    }) {
-      let resolved_import =
-        resolve_import(&desc.specifier, specifier, maybe_import_map);
-
-      let maybe_resolved_type_dependency =
-        // Check for `@deno-types` pragmas that affect the import
-        if let Some(comment) = desc.leading_comments.last() {
-          if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
-            Some(resolve_import(deno_types, specifier, maybe_import_map))
-          } else {
-            None
-          }
-        } else {
-          None
-        };
-
-      let dep = dependencies.entry(desc.specifier.to_string()).or_default();
-      dep.is_dynamic = desc.is_dynamic;
-      match desc.kind {
-        swc_ecmascript::dep_graph::DependencyKind::ExportType
-        | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
-          dep.maybe_type = Some(resolved_import)
-        }
-        _ => {
-          dep.maybe_code_specifier_range = Some(Range {
-            start: Position {
-              line: (desc.specifier_line - 1) as u32,
-              character: desc.specifier_col as u32,
-            },
-            end: Position {
-              line: (desc.specifier_line - 1) as u32,
-              character: (desc.specifier_col
-                + desc.specifier.chars().count()
-                + 2) as u32,
-            },
-          });
+  // Parse leading comments for supported triple slash references.
+  for comment in parsed_module.get_leading_comments().iter() {
+    if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+      match ts_reference {
+        TypeScriptReference::Path(import) => {
+          let dep = dependencies.entry(import.clone()).or_default();
+          let resolved_import =
+            resolve_import(&import, specifier, maybe_import_map);
           dep.maybe_code = Some(resolved_import);
         }
-      }
-      if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
-        dep.maybe_type = maybe_resolved_type_dependency;
+        TypeScriptReference::Types(import) => {
+          let resolved_import =
+            resolve_import(&import, specifier, maybe_import_map);
+          if media_type == &MediaType::JavaScript
+            || media_type == &MediaType::Jsx
+          {
+            maybe_type = Some(resolved_import)
+          } else {
+            let dep = dependencies.entry(import).or_default();
+            dep.maybe_type = Some(resolved_import);
+          }
+        }
       }
     }
-
-    Some((dependencies, maybe_type))
-  } else {
-    None
   }
+
+  // Parse ES and type only imports
+  let descriptors = parsed_module.analyze_dependencies();
+  for desc in descriptors.into_iter().filter(|desc| {
+    desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
+  }) {
+    let resolved_import =
+      resolve_import(&desc.specifier, specifier, maybe_import_map);
+
+    let maybe_resolved_type_dependency =
+      // Check for `@deno-types` pragmas that affect the import
+      if let Some(comment) = desc.leading_comments.last() {
+        parse_deno_types(&comment.text).as_ref().map(|deno_types| resolve_import(deno_types, specifier, maybe_import_map))
+      } else {
+        None
+      };
+
+    let dep = dependencies.entry(desc.specifier.to_string()).or_default();
+    dep.is_dynamic = desc.is_dynamic;
+    match desc.kind {
+      swc_ecmascript::dep_graph::DependencyKind::ExportType
+      | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
+        dep.maybe_type = Some(resolved_import)
+      }
+      _ => {
+        dep.maybe_code_specifier_range = Some(Range {
+          start: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: desc.specifier_col as u32,
+          },
+          end: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
+              as u32,
+          },
+        });
+        dep.maybe_code = Some(resolved_import);
+      }
+    }
+    if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
+      dep.maybe_type = maybe_resolved_type_dependency;
+    }
+  }
+
+  (dependencies, maybe_type)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -695,10 +696,14 @@ mod tests {
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
     import * as React from "https://cdn.skypack.dev/react";
     "#;
-    let actual =
-      analyze_dependencies(&specifier, source, &MediaType::TypeScript, &None);
-    assert!(actual.is_some());
-    let (actual, maybe_type) = actual.unwrap();
+    let parsed_module =
+      parse_module(&specifier, source, &MediaType::TypeScript).unwrap();
+    let (actual, maybe_type) = analyze_dependencies(
+      &specifier,
+      &MediaType::TypeScript,
+      &parsed_module,
+      &None,
+    );
     assert!(maybe_type.is_none());
     assert_eq!(actual.len(), 2);
     assert_eq!(

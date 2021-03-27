@@ -964,7 +964,7 @@ impl HttpServerCount {
             break;
           }
         } else {
-          panic!(maybe_line.unwrap_err());
+          panic!("{}", maybe_line.unwrap_err());
         }
       }
       self.test_server = Some(test_server);

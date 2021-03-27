@@ -197,12 +197,10 @@ pub fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
     Some(TypeScriptReference::Path(
       captures.get(1).unwrap().as_str().to_string(),
     ))
-  } else if let Some(captures) = TYPES_REFERENCE_RE.captures(comment) {
-    Some(TypeScriptReference::Types(
-      captures.get(1).unwrap().as_str().to_string(),
-    ))
   } else {
-    None
+    TYPES_REFERENCE_RE.captures(comment).map(|captures| {
+      TypeScriptReference::Types(captures.get(1).unwrap().as_str().to_string())
+    })
   }
 }
 
@@ -300,17 +298,14 @@ impl Module {
         module.is_parsed = true;
       }
     }
-    module.maybe_types = if let Some(ref specifier) = cached_module.maybe_types
-    {
-      Some((
+    module.maybe_types = cached_module.maybe_types.map(|specifier| {
+      (
         specifier.clone(),
         module
           .resolve_import(&specifier, None)
           .expect("could not resolve module"),
-      ))
-    } else {
-      None
-    };
+      )
+    });
     module
   }
 
@@ -348,7 +343,7 @@ impl Module {
             let specifier =
               self.resolve_import(&import, Some(location.clone()))?;
             if self.media_type == MediaType::JavaScript
-              || self.media_type == MediaType::JSX
+              || self.media_type == MediaType::Jsx
             {
               // TODO(kitsonk) we need to specifically update the cache when
               // this value changes
@@ -1073,8 +1068,8 @@ impl Graph {
           for (_, module_slot) in self.modules.iter_mut() {
             if let ModuleSlot::Module(module) = module_slot {
               if !(emit_options.check_js
-                || module.media_type == MediaType::JSX
-                || module.media_type == MediaType::TSX
+                || module.media_type == MediaType::Jsx
+                || module.media_type == MediaType::Tsx
                 || module.media_type == MediaType::TypeScript)
               {
                 emitted_files
@@ -1274,9 +1269,9 @@ impl Graph {
       let mut specifiers = HashSet::<&ModuleSpecifier>::new();
       for (_, module_slot) in self.modules.iter() {
         if let ModuleSlot::Module(module) = module_slot {
-          if module.media_type == MediaType::JSX
+          if module.media_type == MediaType::Jsx
             || module.media_type == MediaType::TypeScript
-            || module.media_type == MediaType::TSX
+            || module.media_type == MediaType::Tsx
           {
             specifiers.insert(&module.specifier);
           }
@@ -1418,7 +1413,7 @@ impl Graph {
     self.modules.iter().all(|(_, m)| {
       if let ModuleSlot::Module(m) = m {
         let needs_emit = match m.media_type {
-          MediaType::TypeScript | MediaType::TSX | MediaType::JSX => true,
+          MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => true,
           MediaType::JavaScript => check_js,
           _ => false,
         };
@@ -1462,7 +1457,7 @@ impl Graph {
     let check_js = config.get_check_js();
     self.modules.iter().any(|(_, m)| match m {
       ModuleSlot::Module(m) => match m.media_type {
-        MediaType::TypeScript | MediaType::TSX | MediaType::JSX => true,
+        MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => true,
         MediaType::JavaScript => check_js,
         _ => false,
       },
@@ -1618,8 +1613,8 @@ impl Graph {
         // if we don't have check_js enabled, we won't touch non TypeScript or JSX
         // modules
         if !(emit_options.check_js
-          || module.media_type == MediaType::JSX
-          || module.media_type == MediaType::TSX
+          || module.media_type == MediaType::Jsx
+          || module.media_type == MediaType::Tsx
           || module.media_type == MediaType::TypeScript)
         {
           continue;
@@ -1734,11 +1729,8 @@ impl GraphBuilder {
     maybe_import_map: Option<ImportMap>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    let internal_import_map = if let Some(import_map) = maybe_import_map {
-      Some(Arc::new(Mutex::new(import_map)))
-    } else {
-      None
-    };
+    let internal_import_map =
+      maybe_import_map.map(|import_map| Arc::new(Mutex::new(import_map)));
     GraphBuilder {
       graph: Graph::new(handler, maybe_lockfile),
       maybe_import_map: internal_import_map,
@@ -2069,8 +2061,8 @@ pub mod tests {
     let source = "console.log(42);".to_string();
     let maybe_version = Some(get_version(&source, &version::deno(), b""));
     let module = Module {
-      source,
       maybe_version,
+      source,
       ..Module::default()
     };
     assert!(module.is_emit_valid(b""));
@@ -2079,8 +2071,8 @@ pub mod tests {
     let old_source = "console.log(43);";
     let maybe_version = Some(get_version(old_source, &version::deno(), b""));
     let module = Module {
-      source,
       maybe_version,
+      source,
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));
@@ -2088,8 +2080,8 @@ pub mod tests {
     let source = "console.log(42);".to_string();
     let maybe_version = Some(get_version(&source, "0.0.0", b""));
     let module = Module {
-      source,
       maybe_version,
+      source,
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));

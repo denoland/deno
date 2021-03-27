@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.15.0"
+version = "0.16.0"
 edition = "2018"
 description = "Web Cryptography API implementation for Deno"
 authors = ["the Deno authors"]
@@ -14,11 +14,12 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.81.0", path = "../../core" }
-rand = "0.7.0"
+deno_core = { version = "0.82.0", path = "../../core" }
+rand = "0.8.3"
 ring = { version = "0.16.20", features = ["std"] }
-rsa = { git = "https://github.com/RustCrypto/RSA", rev = "616b08d" }
+rsa = { git = "https://github.com/littledivy/RSA", rev = "5d3a76c" }
 sha-1 = "0.9.4"
 sha2 = "0.9.3"
 serde = { version = "1.0.123", features = ["derive"] }
 tokio = { version = "1.2.0", features = ["full"] }
+

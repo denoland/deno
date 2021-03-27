@@ -140,14 +140,14 @@ fn get_stdio_stream(
 use nix::sys::termios;
 
 #[derive(Default)]
-pub struct TTYMetadata {
+pub struct TtyMetadata {
   #[cfg(unix)]
   pub mode: Option<termios::Termios>,
 }
 
 #[derive(Default)]
 pub struct FileMetadata {
-  pub tty: TTYMetadata,
+  pub tty: TtyMetadata,
 }
 
 #[derive(Debug)]

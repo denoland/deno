@@ -79,7 +79,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectTLSArgs {
+pub struct ConnectTlsArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -88,7 +88,7 @@ pub struct ConnectTLSArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartTLSArgs {
+struct StartTlsArgs {
   rid: ResourceId,
   cert_file: Option<String>,
   hostname: String,
@@ -96,7 +96,7 @@ struct StartTLSArgs {
 
 async fn op_start_tls(
   state: Rc<RefCell<OpState>>,
-  args: StartTLSArgs,
+  args: StartTlsArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
@@ -166,7 +166,7 @@ async fn op_start_tls(
 
 async fn op_connect_tls(
   state: Rc<RefCell<OpState>>,
-  args: ConnectTLSArgs,
+  args: ConnectTlsArgs,
   _zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
   {

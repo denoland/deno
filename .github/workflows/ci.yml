@@ -61,18 +61,6 @@ jobs:
           fetch-depth: 5
           submodules: true
 
-      # Install gnu-tar because BSD tar is buggy on Github's macos machines.
-      # https://github.com/actions/cache/issues/403
-      # https://github.com/actions-rs/cargo/issues/111.
-      - name: Install GNU tar
-        if: matrix.build == 'macos'
-        run: |
-          brew install gnu-tar
-          echo "::add-path::/usr/local/opt/gnu-tar/libexec/gnubin"
-
-      - name: Write git_submodule_status.txt
-        run: git submodule status --recursive > git_submodule_status.txt
-
       - name: Create source tarballs (release, linux)
         if: |
           startsWith(matrix.os, 'ubuntu') &&
@@ -83,22 +71,10 @@ jobs:
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
-      - name: Cargo Cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target/*/.*
-            target/*/build
-            target/*/deps
-          key: cargo-cache-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-cache-${{ runner.os }}-
-
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.50.0
+          rust-version: 1.51.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'

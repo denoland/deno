@@ -10,30 +10,30 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::WebGPUError;
+use super::error::WebGpuError;
 
-pub(crate) struct WebGPUPipelineLayout(
+pub(crate) struct WebGpuPipelineLayout(
   pub(crate) wgpu_core::id::PipelineLayoutId,
 );
-impl Resource for WebGPUPipelineLayout {
+impl Resource for WebGpuPipelineLayout {
   fn name(&self) -> Cow<str> {
     "webGPUPipelineLayout".into()
   }
 }
 
-pub(crate) struct WebGPUComputePipeline(
+pub(crate) struct WebGpuComputePipeline(
   pub(crate) wgpu_core::id::ComputePipelineId,
 );
-impl Resource for WebGPUComputePipeline {
+impl Resource for WebGpuComputePipeline {
   fn name(&self) -> Cow<str> {
     "webGPUComputePipeline".into()
   }
 }
 
-pub(crate) struct WebGPURenderPipeline(
+pub(crate) struct WebGpuRenderPipeline(
   pub(crate) wgpu_core::id::RenderPipelineId,
 );
-impl Resource for WebGPURenderPipeline {
+impl Resource for WebGpuRenderPipeline {
   fn name(&self) -> Cow<str> {
     "webGPURenderPipeline".into()
   }
@@ -64,7 +64,7 @@ fn serialize_stencil_operation(
 }
 
 fn serialize_stencil_face_state(
-  state: GPUStencilFaceState,
+  state: GpuStencilFaceState,
 ) -> wgpu_types::StencilFaceState {
   wgpu_types::StencilFaceState {
     compare: state
@@ -114,7 +114,7 @@ fn serialize_blend_factor(blend_factor: &str) -> wgpu_types::BlendFactor {
 }
 
 fn serialize_blend_component(
-  blend: GPUBlendComponent,
+  blend: GpuBlendComponent,
 ) -> wgpu_types::BlendState {
   wgpu_types::BlendState {
     src_factor: blend
@@ -145,7 +145,7 @@ fn serialize_blend_component(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUProgrammableStage {
+struct GpuProgrammableStage {
   module: u32,
   entry_point: String,
 }
@@ -156,7 +156,7 @@ pub struct CreateComputePipelineArgs {
   device_rid: ResourceId,
   label: Option<String>,
   layout: Option<u32>,
-  compute: GPUProgrammableStage,
+  compute: GpuProgrammableStage,
 }
 
 pub fn op_webgpu_create_compute_pipeline(
@@ -167,14 +167,14 @@ pub fn op_webgpu_create_compute_pipeline(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
 
   let pipeline_layout = if let Some(rid) = args.layout {
     let id = state
       .resource_table
-      .get::<WebGPUPipelineLayout>(rid)
+      .get::<WebGpuPipelineLayout>(rid)
       .ok_or_else(bad_resource_id)?;
     Some(id.0)
   } else {
@@ -183,7 +183,7 @@ pub fn op_webgpu_create_compute_pipeline(
 
   let compute_shader_module_resource = state
     .resource_table
-    .get::<super::shader::WebGPUShaderModule>(args.compute.module)
+    .get::<super::shader::WebGpuShaderModule>(args.compute.module)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgpu_core::pipeline::ComputePipelineDescriptor {
@@ -211,11 +211,11 @@ pub fn op_webgpu_create_compute_pipeline(
 
   let rid = state
     .resource_table
-    .add(WebGPUComputePipeline(compute_pipeline));
+    .add(WebGpuComputePipeline(compute_pipeline));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from),
+    "err": maybe_err.map(WebGpuError::from),
   }))
 }
 
@@ -234,7 +234,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
     .resource_table
-    .get::<WebGPUComputePipeline>(args.compute_pipeline_rid)
+    .get::<WebGpuComputePipeline>(args.compute_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
   let compute_pipeline = compute_pipeline_resource.0;
 
@@ -244,18 +244,18 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
 
   let rid = state
     .resource_table
-    .add(super::binding::WebGPUBindGroupLayout(bind_group_layout));
+    .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
 
   Ok(json!({
     "rid": rid,
     "label": label,
-    "err": maybe_err.map(WebGPUError::from)
+    "err": maybe_err.map(WebGpuError::from)
   }))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUPrimitiveState {
+struct GpuPrimitiveState {
   topology: Option<String>,
   strip_index_format: Option<String>,
   front_face: Option<String>,
@@ -264,7 +264,7 @@ struct GPUPrimitiveState {
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct GPUBlendComponent {
+struct GpuBlendComponent {
   src_factor: Option<String>,
   dst_factor: Option<String>,
   operation: Option<String>,
@@ -272,22 +272,22 @@ struct GPUBlendComponent {
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct GPUBlendState {
-  color: GPUBlendComponent,
-  alpha: GPUBlendComponent,
+struct GpuBlendState {
+  color: GpuBlendComponent,
+  alpha: GpuBlendComponent,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUColorTargetState {
+struct GpuColorTargetState {
   format: String,
-  blend: Option<GPUBlendState>,
+  blend: Option<GpuBlendState>,
   write_mask: Option<u32>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUStencilFaceState {
+struct GpuStencilFaceState {
   compare: Option<String>,
   fail_op: Option<String>,
   depth_fail_op: Option<String>,
@@ -296,12 +296,12 @@ struct GPUStencilFaceState {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUDepthStencilState {
+struct GpuDepthStencilState {
   format: String,
   depth_write_enabled: Option<bool>,
   depth_compare: Option<String>,
-  stencil_front: Option<GPUStencilFaceState>,
-  stencil_back: Option<GPUStencilFaceState>,
+  stencil_front: Option<GpuStencilFaceState>,
+  stencil_back: Option<GpuStencilFaceState>,
   stencil_read_mask: Option<u32>,
   stencil_write_mask: Option<u32>,
   depth_bias: Option<i32>,
@@ -312,7 +312,7 @@ struct GPUDepthStencilState {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUVertexAttribute {
+struct GpuVertexAttribute {
   format: String,
   offset: u64,
   shader_location: u32,
@@ -320,23 +320,23 @@ struct GPUVertexAttribute {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUVertexBufferLayout {
+struct GpuVertexBufferLayout {
   array_stride: u64,
   step_mode: Option<String>,
-  attributes: Vec<GPUVertexAttribute>,
+  attributes: Vec<GpuVertexAttribute>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUVertexState {
+struct GpuVertexState {
   module: u32,
   entry_point: String,
-  buffers: Option<Vec<Option<GPUVertexBufferLayout>>>,
+  buffers: Option<Vec<Option<GpuVertexBufferLayout>>>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUMultisampleState {
+struct GpuMultisampleState {
   count: Option<u32>,
   mask: Option<u64>, // against spec, but future proof
   alpha_to_coverage_enabled: Option<bool>,
@@ -344,8 +344,8 @@ struct GPUMultisampleState {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPUFragmentState {
-  targets: Vec<GPUColorTargetState>,
+struct GpuFragmentState {
+  targets: Vec<GpuColorTargetState>,
   module: u32,
   entry_point: String,
 }
@@ -356,11 +356,11 @@ pub struct CreateRenderPipelineArgs {
   device_rid: ResourceId,
   label: Option<String>,
   layout: Option<u32>,
-  vertex: GPUVertexState,
-  primitive: Option<GPUPrimitiveState>,
-  depth_stencil: Option<GPUDepthStencilState>,
-  multisample: Option<GPUMultisampleState>,
-  fragment: Option<GPUFragmentState>,
+  vertex: GpuVertexState,
+  primitive: Option<GpuPrimitiveState>,
+  depth_stencil: Option<GpuDepthStencilState>,
+  multisample: Option<GpuMultisampleState>,
+  fragment: Option<GpuFragmentState>,
 }
 
 pub fn op_webgpu_create_render_pipeline(
@@ -371,14 +371,14 @@ pub fn op_webgpu_create_render_pipeline(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
 
   let layout = if let Some(rid) = args.layout {
     let pipeline_layout_resource = state
       .resource_table
-      .get::<WebGPUPipelineLayout>(rid)
+      .get::<WebGpuPipelineLayout>(rid)
       .ok_or_else(bad_resource_id)?;
     Some(pipeline_layout_resource.0)
   } else {
@@ -387,7 +387,7 @@ pub fn op_webgpu_create_render_pipeline(
 
   let vertex_shader_module_resource = state
     .resource_table
-    .get::<super::shader::WebGPUShaderModule>(args.vertex.module)
+    .get::<super::shader::WebGpuShaderModule>(args.vertex.module)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgpu_core::pipeline::RenderPipelineDescriptor {
@@ -400,63 +400,61 @@ pub fn op_webgpu_create_render_pipeline(
       },
       buffers: Cow::from(if let Some(buffers) = args.vertex.buffers {
         let mut return_buffers = vec![];
-        for buffer in buffers {
-          if let Some(buffer) = buffer {
-            return_buffers.push(wgpu_core::pipeline::VertexBufferLayout {
-              array_stride: buffer.array_stride,
-              step_mode: match buffer.step_mode {
-                Some(step_mode) => match step_mode.as_str() {
-                  "vertex" => wgpu_types::InputStepMode::Vertex,
-                  "instance" => wgpu_types::InputStepMode::Instance,
-                  _ => unreachable!(),
-                },
-                None => wgpu_types::InputStepMode::Vertex,
+        for buffer in buffers.into_iter().flatten() {
+          return_buffers.push(wgpu_core::pipeline::VertexBufferLayout {
+            array_stride: buffer.array_stride,
+            step_mode: match buffer.step_mode {
+              Some(step_mode) => match step_mode.as_str() {
+                "vertex" => wgpu_types::InputStepMode::Vertex,
+                "instance" => wgpu_types::InputStepMode::Instance,
+                _ => unreachable!(),
               },
-              attributes: Cow::from(
-                buffer
-                  .attributes
-                  .iter()
-                  .map(|attribute| wgpu_types::VertexAttribute {
-                    format: match attribute.format.as_str() {
-                      "uchar2" => wgpu_types::VertexFormat::Uchar2,
-                      "uchar4" => wgpu_types::VertexFormat::Uchar4,
-                      "char2" => wgpu_types::VertexFormat::Char2,
-                      "char4" => wgpu_types::VertexFormat::Char4,
-                      "uchar2norm" => wgpu_types::VertexFormat::Uchar2Norm,
-                      "uchar4norm" => wgpu_types::VertexFormat::Uchar4,
-                      "char2norm" => wgpu_types::VertexFormat::Char2Norm,
-                      "char4norm" => wgpu_types::VertexFormat::Char4Norm,
-                      "ushort2" => wgpu_types::VertexFormat::Ushort2,
-                      "ushort4" => wgpu_types::VertexFormat::Ushort4,
-                      "short2" => wgpu_types::VertexFormat::Short2,
-                      "short4" => wgpu_types::VertexFormat::Short4,
-                      "ushort2norm" => wgpu_types::VertexFormat::Ushort2Norm,
-                      "ushort4norm" => wgpu_types::VertexFormat::Ushort4Norm,
-                      "short2norm" => wgpu_types::VertexFormat::Short2Norm,
-                      "short4norm" => wgpu_types::VertexFormat::Short4Norm,
-                      "half2" => wgpu_types::VertexFormat::Half2,
-                      "half4" => wgpu_types::VertexFormat::Half4,
-                      "float" => wgpu_types::VertexFormat::Float,
-                      "float2" => wgpu_types::VertexFormat::Float2,
-                      "float3" => wgpu_types::VertexFormat::Float3,
-                      "float4" => wgpu_types::VertexFormat::Float4,
-                      "uint" => wgpu_types::VertexFormat::Uint,
-                      "uint2" => wgpu_types::VertexFormat::Uint2,
-                      "uint3" => wgpu_types::VertexFormat::Uint3,
-                      "uint4" => wgpu_types::VertexFormat::Uint4,
-                      "int" => wgpu_types::VertexFormat::Int,
-                      "int2" => wgpu_types::VertexFormat::Int2,
-                      "int3" => wgpu_types::VertexFormat::Int3,
-                      "int4" => wgpu_types::VertexFormat::Int4,
-                      _ => unreachable!(),
-                    },
-                    offset: attribute.offset,
-                    shader_location: attribute.shader_location,
-                  })
-                  .collect::<Vec<wgpu_types::VertexAttribute>>(),
-              ),
-            })
-          }
+              None => wgpu_types::InputStepMode::Vertex,
+            },
+            attributes: Cow::from(
+              buffer
+                .attributes
+                .iter()
+                .map(|attribute| wgpu_types::VertexAttribute {
+                  format: match attribute.format.as_str() {
+                    "uchar2" => wgpu_types::VertexFormat::Uchar2,
+                    "uchar4" => wgpu_types::VertexFormat::Uchar4,
+                    "char2" => wgpu_types::VertexFormat::Char2,
+                    "char4" => wgpu_types::VertexFormat::Char4,
+                    "uchar2norm" => wgpu_types::VertexFormat::Uchar2Norm,
+                    "uchar4norm" => wgpu_types::VertexFormat::Uchar4,
+                    "char2norm" => wgpu_types::VertexFormat::Char2Norm,
+                    "char4norm" => wgpu_types::VertexFormat::Char4Norm,
+                    "ushort2" => wgpu_types::VertexFormat::Ushort2,
+                    "ushort4" => wgpu_types::VertexFormat::Ushort4,
+                    "short2" => wgpu_types::VertexFormat::Short2,
+                    "short4" => wgpu_types::VertexFormat::Short4,
+                    "ushort2norm" => wgpu_types::VertexFormat::Ushort2Norm,
+                    "ushort4norm" => wgpu_types::VertexFormat::Ushort4Norm,
+                    "short2norm" => wgpu_types::VertexFormat::Short2Norm,
+                    "short4norm" => wgpu_types::VertexFormat::Short4Norm,
+                    "half2" => wgpu_types::VertexFormat::Half2,
+                    "half4" => wgpu_types::VertexFormat::Half4,
+                    "float" => wgpu_types::VertexFormat::Float,
+                    "float2" => wgpu_types::VertexFormat::Float2,
+                    "float3" => wgpu_types::VertexFormat::Float3,
+                    "float4" => wgpu_types::VertexFormat::Float4,
+                    "uint" => wgpu_types::VertexFormat::Uint,
+                    "uint2" => wgpu_types::VertexFormat::Uint2,
+                    "uint3" => wgpu_types::VertexFormat::Uint3,
+                    "uint4" => wgpu_types::VertexFormat::Uint4,
+                    "int" => wgpu_types::VertexFormat::Int,
+                    "int2" => wgpu_types::VertexFormat::Int2,
+                    "int3" => wgpu_types::VertexFormat::Int3,
+                    "int4" => wgpu_types::VertexFormat::Int4,
+                    _ => unreachable!(),
+                  },
+                  offset: attribute.offset,
+                  shader_location: attribute.shader_location,
+                })
+                .collect::<Vec<wgpu_types::VertexAttribute>>(),
+            ),
+          });
         }
         return_buffers
       } else {
@@ -540,7 +538,7 @@ pub fn op_webgpu_create_render_pipeline(
     fragment: args.fragment.map(|fragment| {
       let fragment_shader_module_resource = state
         .resource_table
-        .get::<super::shader::WebGPUShaderModule>(fragment.module)
+        .get::<super::shader::WebGpuShaderModule>(fragment.module)
         .ok_or_else(bad_resource_id)
         .unwrap();
 
@@ -601,11 +599,11 @@ pub fn op_webgpu_create_render_pipeline(
 
   let rid = state
     .resource_table
-    .add(WebGPURenderPipeline(render_pipeline));
+    .add(WebGpuRenderPipeline(render_pipeline));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from)
+    "err": maybe_err.map(WebGpuError::from)
   }))
 }
 
@@ -624,7 +622,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table
-    .get::<WebGPURenderPipeline>(args.render_pipeline_rid)
+    .get::<WebGpuRenderPipeline>(args.render_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
   let render_pipeline = render_pipeline_resource.0;
 
@@ -634,11 +632,11 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
 
   let rid = state
     .resource_table
-    .add(super::binding::WebGPUBindGroupLayout(bind_group_layout));
+    .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
 
   Ok(json!({
     "rid": rid,
     "label": label,
-    "err": maybe_err.map(WebGPUError::from),
+    "err": maybe_err.map(WebGpuError::from),
   }))
 }

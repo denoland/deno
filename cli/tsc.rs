@@ -134,9 +134,9 @@ fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
         }
         MediaType::TypeScript
       }
-      Some("tsx") => MediaType::TSX,
+      Some("tsx") => MediaType::Tsx,
       Some("js") => MediaType::JavaScript,
-      Some("jsx") => MediaType::JSX,
+      Some("jsx") => MediaType::Jsx,
       _ => MediaType::Unknown,
     },
   }
@@ -634,10 +634,10 @@ mod tests {
   fn test_get_tsc_media_type() {
     let fixtures = vec![
       ("file:///a.ts", MediaType::TypeScript),
-      ("file:///a.tsx", MediaType::TSX),
+      ("file:///a.tsx", MediaType::Tsx),
       ("file:///a.d.ts", MediaType::Dts),
       ("file:///a.js", MediaType::JavaScript),
-      ("file:///a.jsx", MediaType::JSX),
+      ("file:///a.jsx", MediaType::Jsx),
       ("file:///a.cjs", MediaType::Unknown),
       ("file:///a.mjs", MediaType::Unknown),
       ("file:///a.json", MediaType::Unknown),
