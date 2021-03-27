@@ -15,14 +15,14 @@
     },
     "events": {
       "AddEventListenerOptions-signal.any.js": true,
-      "Event-dispatch-listener-order.window.js": true,
+      "Event-dispatch-listener-order.window.js": false,
       "Event-isTrusted.any.js": true,
-      "EventListener-addEventListener.sub.window.js": true,
+      "EventListener-addEventListener.sub.window.js": false,
       "EventTarget-constructible.any.js": true,
-      "event-global-extra.window.js": true,
+      "event-global-extra.window.js": false,
       "event-global.worker.js": true,
-      "legacy-pre-activation-behavior.window.js": true,
-      "relatedTarget.window.js": true,
+      "legacy-pre-activation-behavior.window.js": false,
+      "relatedTarget.window.js": false,
       "Event-constructors.any.js": [
         "Untitled 2",
         "Untitled 3"
