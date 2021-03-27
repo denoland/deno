@@ -584,7 +584,7 @@ name = "deno_crypto"
 version = "0.16.0"
 dependencies = [
  "deno_core",
- "rand 0.7.3",
+ "rand 0.8.3",
  "ring",
  "rsa",
  "serde",
@@ -1994,9 +1994,9 @@ dependencies = [
 
 [[package]]
 name = "num-bigint-dig"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d51546d704f52ef14b3c962b5776e53d5b862e5790e40a350d366c209bd7f7a"
+checksum = "4547ee5541c18742396ae2c895d0717d0f886d8823b8399cdaf7b07d63ad0480"
 dependencies = [
  "autocfg 0.1.7",
  "byteorder",
@@ -2005,7 +2005,7 @@ dependencies = [
  "num-integer",
  "num-iter",
  "num-traits",
- "rand 0.7.3",
+ "rand 0.8.3",
  "smallvec",
  "zeroize",
 ]
@@ -2632,7 +2632,7 @@ dependencies = [
 [[package]]
 name = "rsa"
 version = "0.3.0"
-source = "git+https://github.com/RustCrypto/RSA?rev=616b08d#616b08d94bbb03c8fdb1a57188c38701faf6877b"
+source = "git+https://github.com/littledivy/RSA?rev=5d3a76c#5d3a76c429a19658cf78280539a25e5b12eda200"
 dependencies = [
  "byteorder",
  "digest",
@@ -2642,7 +2642,7 @@ dependencies = [
  "num-iter",
  "num-traits",
  "pem",
- "rand 0.7.3",
+ "rand 0.8.3",
  "simple_asn1",
  "subtle",
  "zeroize",
