@@ -184,11 +184,11 @@ pub async fn op_webcrypto_generate_key(
 
       let private_key: RSAPrivateKey = tokio::task::spawn_blocking(
         move || -> Result<RSAPrivateKey, rsa::errors::Error> {
-          Ok(RSAPrivateKey::new_with_exp(
+          RSAPrivateKey::new_with_exp(
             &mut rng,
             modulus_length as usize,
             &exponent,
-          )?)
+          )
         },
       )
       .await
@@ -243,8 +243,7 @@ pub async fn op_webcrypto_generate_key(
 
       let private_key: EphemeralPrivateKey = tokio::task::spawn_blocking(
         move || -> Result<EphemeralPrivateKey, ring::error::Unspecified> {
-          let pk = EphemeralPrivateKey::generate(&agreement, &rng)?;
-          Ok(pk)
+          EphemeralPrivateKey::generate(&agreement, &rng)
         },
       )
       .await
@@ -345,7 +344,7 @@ pub async fn op_webcrypto_generate_key(
 
       let key: HmacKey = tokio::task::spawn_blocking(
         move || -> Result<HmacKey, ring::error::Unspecified> {
-          Ok(HmacKey::generate(hash, &rng)?)
+          HmacKey::generate(hash, &rng)
         },
       )
       .await

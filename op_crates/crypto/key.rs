@@ -66,9 +66,9 @@ impl TryInto<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
   }
 }
 
-impl Into<HmacAlgorithm> for WebCryptoHash {
-  fn into(self) -> HmacAlgorithm {
-    match self {
+impl From<WebCryptoHash> for HmacAlgorithm {
+  fn from(hash: WebCryptoHash) -> HmacAlgorithm {
+    match hash {
       WebCryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
       WebCryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
       WebCryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
