@@ -10,7 +10,6 @@
 
 pub use crate::Op;
 pub use crate::OpId;
-pub use crate::OpResponse;
 pub use crate::ZeroCopyBuf;
 
 pub type InitFn = fn(&mut dyn Interface);
