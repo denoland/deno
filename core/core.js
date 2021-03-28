@@ -17,7 +17,9 @@
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    return opsCache = Object.freeze(Object.fromEntries(send(0)));
+    const newOpsCache = Object.fromEntries(send(0));
+    opsCache = Object.freeze(newOpsCache);
+    return opsCache;
   }
 
   function handleAsyncMsgFromRust() {
