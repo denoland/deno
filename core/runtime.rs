@@ -352,10 +352,7 @@ impl JsRuntime {
   /// This function mustn't be called during snapshotting.
   fn core_js_init(&mut self) {
     self
-      .execute(
-        "deno:core/init.js",
-        "Deno.core.init()",
-      )
+      .execute("deno:core/init.js", "Deno.core.init()")
       .unwrap();
   }
 
