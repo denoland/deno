@@ -92,7 +92,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     match ValueType::from_v8(self.input) {
       ValueType::Null => self.deserialize_unit(visitor),
       ValueType::Bool => self.deserialize_bool(visitor),
-      ValueType::Number => self.deserialize_f64(visitor),
+      // Handle floats & ints separately to work with loosely-typed serde_json
+      ValueType::Number => {
+        if self.input.is_uint32() {
+          self.deserialize_u32(visitor)
+        } else if self.input.is_int32() {
+          self.deserialize_i32(visitor)
+        } else {
+          self.deserialize_f64(visitor)
+        }
+      }
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
