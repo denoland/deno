@@ -88,7 +88,7 @@
     }
 
     // Normalizes { hash: { name: "SHA-256" } } to { hash: "SHA-256" }
-    if(algorithm.hash && typeof algorithm.hash !== "string") {
+    if (algorithm.hash && typeof algorithm.hash !== "string") {
       algorithm.hash = algorithm.hash.name;
     }
 
