@@ -54,7 +54,6 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
   }
 
   pub fn deserialize<T: DeserializeOwned>(self) -> Result<T, AnyError> {
-    // TODO: Map errors
     serde_v8::from_v8(self.scope.unwrap(), self.value.unwrap())
       .map_err(AnyError::from)
   }
