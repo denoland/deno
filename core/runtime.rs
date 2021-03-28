@@ -45,7 +45,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, OpResponse)>>>;
+type PendingOpFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResponse)>>>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -441,7 +441,7 @@ impl JsRuntime {
   /// * [json_op_async()](fn.json_op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(RcOpState, PromiseId, OpPayload, OpBuf) -> Op + 'static,
+    F: Fn(RcOpState, OpPayload, OpBuf) -> Op + 'static,
   {
     Self::state(self.v8_isolate())
       .borrow_mut()
@@ -1318,9 +1318,12 @@ impl JsRuntime {
     self.mod_instantiate(root_id).map(|_| root_id)
   }
 
-  fn poll_pending_ops(&mut self, cx: &mut Context) -> Vec<(OpId, OpResponse)> {
+  fn poll_pending_ops(
+    &mut self,
+    cx: &mut Context,
+  ) -> Vec<(PromiseId, OpResponse)> {
     let state_rc = Self::state(self.v8_isolate());
-    let mut overflow_response: Vec<(OpId, OpResponse)> = Vec::new();
+    let mut overflow_response: Vec<(PromiseId, OpResponse)> = Vec::new();
 
     let mut state = state_rc.borrow_mut();
 
@@ -1332,8 +1335,8 @@ impl JsRuntime {
       match pending_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((op_id, resp))) => {
-          overflow_response.push((op_id, resp));
+        Poll::Ready(Some((p_id, resp))) => {
+          overflow_response.push((p_id, resp));
         }
       };
     }
@@ -1343,8 +1346,8 @@ impl JsRuntime {
       match unref_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((op_id, resp))) => {
-          overflow_response.push((op_id, resp));
+        Poll::Ready(Some((p_id, resp))) => {
+          overflow_response.push((p_id, resp));
         }
       };
     }
@@ -1381,7 +1384,7 @@ impl JsRuntime {
   // Send finished responses to JS
   fn async_op_response(
     &mut self,
-    overflown_responses: Vec<(OpId, OpResponse)>,
+    overflown_responses: Vec<(PromiseId, OpResponse)>,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
@@ -1410,8 +1413,8 @@ impl JsRuntime {
     let mut args: Vec<v8::Local<v8::Value>> =
       Vec::with_capacity(2 * overflown_responses_size);
     for overflown_response in overflown_responses {
-      let (op_id, resp) = overflown_response;
-      args.push(v8::Integer::new(tc_scope, op_id as i32).into());
+      let (p_id, resp) = overflown_response;
+      args.push(v8::Integer::new(tc_scope, p_id as i32).into());
       args.push(match resp {
         OpResponse::Value(value) => serde_v8::to_v8(tc_scope, value).unwrap(),
         OpResponse::Buffer(buf) => {

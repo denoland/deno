@@ -428,7 +428,7 @@ fn send<'s>(
   };
 
   let payload = OpPayload::new(scope, v);
-  let op = OpTable::route_op(op_id, state.op_state.clone(), p_id, payload, buf);
+  let op = OpTable::route_op(op_id, state.op_state.clone(), payload, buf);
   match op {
     Op::Sync(resp) => match resp {
       OpResponse::Value(v) => {
@@ -439,12 +439,12 @@ fn send<'s>(
       }
     },
     Op::Async(fut) => {
-      let fut2 = fut.map(move |resp| (op_id, resp));
+      let fut2 = fut.map(move |resp| (p_id, resp));
       state.pending_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      let fut2 = fut.map(move |resp| (op_id, resp));
+      let fut2 = fut.map(move |resp| (p_id, resp));
       state.pending_unref_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }

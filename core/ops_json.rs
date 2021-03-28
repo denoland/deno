@@ -9,7 +9,6 @@ use crate::OpBuf;
 use crate::OpFn;
 use crate::OpPayload;
 use crate::OpState;
-use crate::PromiseId;
 use crate::RcOpState;
 use crate::ZeroCopyBuf;
 use serde::de::DeserializeOwned;
@@ -45,7 +44,7 @@ where
   V: DeserializeOwned,
   R: Serialize + 'static,
 {
-  Box::new(move |state, _, payload, buf: OpBuf| -> Op {
+  Box::new(move |state, payload, buf: OpBuf| -> Op {
     // For sig compat map OpBuf to BufVec
     let mut bufs: BufVec = match buf {
       Some(b) => vec![b],
@@ -56,7 +55,7 @@ where
     let result = payload
       .deserialize()
       .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs));
-    Op::Sync(serialize_op_result(None, result, state))
+    Op::Sync(serialize_op_result(result, state))
   })
 }
 
@@ -91,36 +90,31 @@ where
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
-  let try_dispatch_op = move |state: RcOpState,
-                              pid: PromiseId,
-                              p: OpPayload,
-                              b: OpBuf|
-        -> Result<Op, AnyError> {
-    // For sig compat map OpBuf to BufVec
-    let bufs: BufVec = match b {
-      Some(b) => vec![b],
-      None => vec![],
-    }
-    .into();
-    // Parse args
-    let args = p
-      .deserialize()
-      .map_err(|e| type_error(format!("Error parsing json-op args: {}", e)))?;
-
-    use crate::futures::FutureExt;
-    let fut = op_fn(state.clone(), args, bufs)
-      .map(move |result| serialize_op_result(Some(pid), result, state));
-    Ok(Op::Async(Box::pin(fut)))
-  };
-
-  Box::new(
-    move |state: RcOpState, pid: PromiseId, p: OpPayload, b: OpBuf| -> Op {
-      match try_dispatch_op(state.clone(), pid, p, b) {
-        Ok(op) => op,
-        Err(err) => {
-          Op::Sync(serialize_op_result(None, Err::<(), AnyError>(err), state))
-        }
+  let try_dispatch_op =
+    move |state: RcOpState, p: OpPayload, b: OpBuf| -> Result<Op, AnyError> {
+      // For sig compat map OpBuf to BufVec
+      let bufs: BufVec = match b {
+        Some(b) => vec![b],
+        None => vec![],
       }
-    },
-  )
+      .into();
+      // Parse args
+      let args = p.deserialize().map_err(|e| {
+        type_error(format!("Error parsing json-op args: {}", e))
+      })?;
+
+      use crate::futures::FutureExt;
+      let fut = op_fn(state.clone(), args, bufs)
+        .map(move |result| serialize_op_result(result, state));
+      Ok(Op::Async(Box::pin(fut)))
+    };
+
+  Box::new(move |state: RcOpState, p: OpPayload, b: OpBuf| -> Op {
+    match try_dispatch_op(state.clone(), p, b) {
+      Ok(op) => op,
+      Err(err) => {
+        Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+      }
+    }
+  })
 }

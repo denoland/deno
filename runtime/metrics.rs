@@ -106,7 +106,7 @@ use deno_core::OpFn;
 use std::collections::HashMap;
 
 pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
-  Box::new(move |op_state, pid, payload, buf| -> Op {
+  Box::new(move |op_state, payload, buf| -> Op {
     // TODOs:
     // * The 'bytes' metrics seem pretty useless, especially now that the
     //   distinction between 'control' and 'data' buffers has become blurry.
@@ -121,7 +121,7 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
       None => 0,
     };
 
-    let op = (op_fn)(op_state.clone(), pid, payload, buf);
+    let op = (op_fn)(op_state.clone(), payload, buf);
 
     let op_state_ = op_state.clone();
     let mut s = op_state.borrow_mut();

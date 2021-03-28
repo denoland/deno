@@ -27,7 +27,7 @@ pub type RcOpState = Rc<RefCell<OpState>>;
 pub type PromiseId = u64;
 pub type OpBuf = Option<ZeroCopyBuf>;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
-pub type OpFn = dyn Fn(RcOpState, PromiseId, OpPayload, OpBuf) -> Op + 'static;
+pub type OpFn = dyn Fn(RcOpState, OpPayload, OpBuf) -> Op + 'static;
 pub type OpId = usize;
 
 pub struct OpPayload<'a, 'b, 'c> {
@@ -75,7 +75,7 @@ pub enum Op {
 }
 
 #[derive(Serialize)]
-pub struct OpResult<R>(Option<R>, Option<PromiseId>, Option<OpError>);
+pub struct OpResult<R>(Option<R>, Option<OpError>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,15 +85,13 @@ pub struct OpError {
 }
 
 pub fn serialize_op_result<R: Serialize + 'static>(
-  promise_id: Option<PromiseId>,
   result: Result<R, AnyError>,
   state: RcOpState,
 ) -> OpResponse {
   OpResponse::Value(Box::new(match result {
-    Ok(v) => OpResult::<R>(Some(v), promise_id, None),
+    Ok(v) => OpResult::<R>(Some(v), None),
     Err(err) => OpResult::<R>(
       None,
-      promise_id,
       Some(OpError {
         class_name: (state.borrow().get_error_class_fn)(&err),
         message: err.to_string(),
@@ -142,7 +140,7 @@ pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 impl OpTable {
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<OpState>>, PromiseId, OpPayload, OpBuf) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, OpPayload, OpBuf) -> Op + 'static,
   {
     let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(prev.is_none());
@@ -156,7 +154,6 @@ impl OpTable {
   pub fn route_op(
     op_id: OpId,
     state: RcOpState,
-    p_id: PromiseId,
     payload: OpPayload,
     buf: OpBuf,
   ) -> Op {
@@ -167,7 +164,7 @@ impl OpTable {
       .get_index(op_id)
       .map(|(_, op_fn)| op_fn.clone());
     match op_fn {
-      Some(f) => (f)(state, p_id, payload, buf),
+      Some(f) => (f)(state, payload, buf),
       None => Op::NotFound,
     }
   }
@@ -175,12 +172,7 @@ impl OpTable {
 
 impl Default for OpTable {
   fn default() -> Self {
-    fn dummy(
-      _state: Rc<RefCell<OpState>>,
-      _pid: PromiseId,
-      _p: OpPayload,
-      _b: OpBuf,
-    ) -> Op {
+    fn dummy(_state: Rc<RefCell<OpState>>, _p: OpPayload, _b: OpBuf) -> Op {
       unreachable!()
     }
     Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
@@ -237,11 +229,11 @@ mod tests {
     let bar_id;
     {
       let op_table = &mut state.borrow_mut().op_table;
-      foo_id = op_table.register_op("foo", |_, _, _, _| {
+      foo_id = op_table.register_op("foo", |_, _, _| {
         Op::Sync(OpResponse::Buffer(b"oof!"[..].into()))
       });
       assert_eq!(foo_id, 1);
-      bar_id = op_table.register_op("bar", |_, _, _, _| {
+      bar_id = op_table.register_op("bar", |_, _, _| {
         Op::Sync(OpResponse::Buffer(b"rab!"[..].into()))
       });
       assert_eq!(bar_id, 2);
@@ -250,7 +242,6 @@ mod tests {
     let foo_res = OpTable::route_op(
       foo_id,
       state.clone(),
-      0,
       OpPayload::empty(),
       Default::default(),
     );
@@ -260,7 +251,6 @@ mod tests {
     let bar_res = OpTable::route_op(
       bar_id,
       state.clone(),
-      0,
       OpPayload::empty(),
       Default::default(),
     );

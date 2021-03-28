@@ -20,7 +20,7 @@
 
   function handleAsyncMsgFromRust() {
     for (let i = 0; i < arguments.length; i += 2) {
-      opAsyncHandler(arguments[i + 1]);
+      opAsyncHandler(arguments[i], arguments[i + 1]);
     }
   }
 
@@ -43,11 +43,11 @@
   const promiseTable = new Map();
 
   function processResponse(res) {
-    // const [ok, promiseId, err] = res;
-    if (res[2] === null) {
+    // const [ok, err] = res;
+    if (res[1] === null) {
       return res[0];
     }
-    throw processErr(res[2]);
+    throw processErr(res[1]);
   }
 
   function processErr(err) {
@@ -80,15 +80,14 @@
     return processResponse(dispatch(opName, 0, args, zeroCopy));
   }
 
-  function opAsyncHandler(res) {
-    // const [ok, promiseId, err] = res;
-    const promiseId = res[1];
+  function opAsyncHandler(promiseId, res) {
+    // const [ok, err] = res;
     const promise = promiseTable.get(promiseId);
     promiseTable.delete(promiseId);
-    if (!res[2]) {
+    if (!res[1]) {
       promise.resolve(res[0]);
     } else {
-      promise.reject(processErr(res[2]));
+      promise.reject(processErr(res[1]));
     }
   }
 

@@ -110,29 +110,26 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    let plugin_op_fn: Box<OpFn> =
-      Box::new(move |state_rc, _pid, _payload, buf| {
-        // For sig compat map OpBuf to BufVec
-        let mut bufs: BufVec = match buf {
-          Some(b) => vec![b],
-          None => vec![],
-        }
-        .into();
+    let plugin_op_fn: Box<OpFn> = Box::new(move |state_rc, _payload, buf| {
+      // For sig compat map OpBuf to BufVec
+      let mut bufs: BufVec = match buf {
+        Some(b) => vec![b],
+        None => vec![],
+      }
+      .into();
 
-        let mut state = state_rc.borrow_mut();
-        let mut interface = PluginInterface::new(&mut state, &plugin_lib);
-        let op = dispatch_op_fn(&mut interface, &mut bufs);
-        match op {
-          sync_op @ Op::Sync(..) => sync_op,
-          Op::Async(fut) => {
-            Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut))
-          }
-          Op::AsyncUnref(fut) => {
-            Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
-          }
-          _ => unreachable!(),
+      let mut state = state_rc.borrow_mut();
+      let mut interface = PluginInterface::new(&mut state, &plugin_lib);
+      let op = dispatch_op_fn(&mut interface, &mut bufs);
+      match op {
+        sync_op @ Op::Sync(..) => sync_op,
+        Op::Async(fut) => Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut)),
+        Op::AsyncUnref(fut) => {
+          Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
         }
-      });
+        _ => unreachable!(),
+      }
+    });
     self.state.op_table.register_op(
       name,
       metrics_op(Box::leak(Box::new(name.to_string())), plugin_op_fn),
