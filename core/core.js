@@ -60,7 +60,7 @@
     return new ErrorClass(err.message, ...args);
   }
 
-  async function jsonOpAsync(opName, args = null, zeroCopy = null) {
+  function jsonOpAsync(opName, args = null, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
     // Handle sync error (e.g: error parsing args)
@@ -73,7 +73,7 @@
     promise.resolve = resolve;
     promise.reject = reject;
     promiseTable.set(promiseId, promise);
-    return await promise;
+    return promise;
   }
 
   function jsonOpSync(opName, args = null, zeroCopy = null) {
