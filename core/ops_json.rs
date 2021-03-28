@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::type_error;
 use crate::error::AnyError;
 use crate::serialize_op_result;
 use crate::BufVec;
@@ -101,7 +102,10 @@ where
       None => vec![],
     }
     .into();
-    let args = p.deserialize().unwrap();
+    // Parse args
+    let args = p
+      .deserialize()
+      .map_err(|e| type_error(format!("Error parsing json-op args: {}", e)))?;
 
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), args, bufs)
