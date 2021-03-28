@@ -2121,19 +2121,6 @@ pub mod tests {
   }
 
   #[test]
-  fn core_test_js() {
-    run_in_task(|mut cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      runtime
-        .execute("core_test.js", include_str!("core_test.js"))
-        .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
-        unreachable!();
-      }
-    });
-  }
-
-  #[test]
   fn syntax_error() {
     let mut runtime = JsRuntime::new(Default::default());
     let src = "hocuspocus(";
