@@ -6,7 +6,7 @@ unitTest(async function metrics(): Promise<void> {
   // control messages.
   const dataMsg = new Uint8Array([13, 13, 13]); // "\r\r\r",
   await Deno.stdout.write(dataMsg);
-  
+
   // WARNING: bytesReceived & bytesSentControl are now always zero
   // following https://github.com/denoland/deno/pull/9843
 
