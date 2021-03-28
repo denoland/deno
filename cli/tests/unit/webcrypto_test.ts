@@ -8,7 +8,7 @@ function closeResource() {
     const rid = Number(i);
     if (
       ["RSAPublicKey", "RSAPrivateKey", "EcdsaKeyPair", "HmacKey"].includes(
-        resources[i],
+        resources[rid],
       )
     ) {
       Deno.close(rid);

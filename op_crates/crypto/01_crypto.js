@@ -88,9 +88,9 @@
     }
 
     // Normalizes { hash: { name: "SHA-256" } } to { hash: "SHA-256" }
-    algorithm.hash = typeof algorithm.hash == "string"
-      ? algorithm.hash
-      : algorithm.hash.name;
+    if(algorithm.hash && typeof algorithm.hash !== "string") {
+      algorithm.hash = algorithm.hash.name;
+    }
 
     const { key, err } = await core.jsonOpAsync("op_webcrypto_generate_key", {
       algorithm,
