@@ -1384,12 +1384,12 @@ impl JsRuntime {
   // Send finished responses to JS
   fn async_op_response(
     &mut self,
-    overflown_responses: Vec<(PromiseId, OpResponse)>,
+    async_responses: Vec<(PromiseId, OpResponse)>,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
-    let overflown_responses_size = overflown_responses.len();
-    if overflown_responses_size == 0 {
+    let async_responses_size = async_responses.len();
+    if async_responses_size == 0 {
       return Ok(());
     }
 
@@ -1411,8 +1411,8 @@ impl JsRuntime {
     let tc_scope = &mut v8::TryCatch::new(scope);
 
     let mut args: Vec<v8::Local<v8::Value>> =
-      Vec::with_capacity(2 * overflown_responses_size);
-    for overflown_response in overflown_responses {
+      Vec::with_capacity(2 * async_responses_size);
+    for overflown_response in async_responses {
       let (p_id, resp) = overflown_response;
       args.push(v8::Integer::new(tc_scope, p_id as i32).into());
       args.push(match resp {
@@ -1423,7 +1423,7 @@ impl JsRuntime {
       });
     }
 
-    if overflown_responses_size > 0 {
+    if async_responses_size > 0 {
       js_recv_cb.call(tc_scope, global, args.as_slice());
     }
 
