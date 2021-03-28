@@ -1335,8 +1335,8 @@ impl JsRuntime {
       match pending_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((p_id, resp))) => {
-          overflow_response.push((p_id, resp));
+        Poll::Ready(Some((promise_id, resp))) => {
+          overflow_response.push((promise_id, resp));
         }
       };
     }
@@ -1346,8 +1346,8 @@ impl JsRuntime {
       match unref_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((p_id, resp))) => {
-          overflow_response.push((p_id, resp));
+        Poll::Ready(Some((promise_id, resp))) => {
+          overflow_response.push((promise_id, resp));
         }
       };
     }
@@ -1413,8 +1413,8 @@ impl JsRuntime {
     let mut args: Vec<v8::Local<v8::Value>> =
       Vec::with_capacity(2 * async_responses_size);
     for overflown_response in async_responses {
-      let (p_id, resp) = overflown_response;
-      args.push(v8::Integer::new(tc_scope, p_id as i32).into());
+      let (promise_id, resp) = overflown_response;
+      args.push(v8::Integer::new(tc_scope, promise_id as i32).into());
       args.push(match resp {
         OpResponse::Value(value) => serde_v8::to_v8(tc_scope, value).unwrap(),
         OpResponse::Buffer(buf) => {

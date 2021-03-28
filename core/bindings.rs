@@ -396,16 +396,17 @@ fn send<'s>(
   }
 
   // PromiseId
-  let p_id: PromiseId = match v8::Local::<v8::Integer>::try_from(args.get(1))
-    .map(|l| l.value() as PromiseId)
-    .map_err(AnyError::from)
-  {
-    Ok(p_id) => p_id as u64,
-    Err(err) => {
-      throw_type_error(scope, format!("invalid promise id: {}", err));
-      return;
-    }
-  };
+  let promise_id: PromiseId =
+    match v8::Local::<v8::Integer>::try_from(args.get(1))
+      .map(|l| l.value() as PromiseId)
+      .map_err(AnyError::from)
+    {
+      Ok(promise_id) => promise_id as u64,
+      Err(err) => {
+        throw_type_error(scope, format!("invalid promise id: {}", err));
+        return;
+      }
+    };
 
   // Structured args
   let v = v8::Local::<v8::Value>::try_from(args.get(2)).unwrap();
@@ -439,12 +440,12 @@ fn send<'s>(
       }
     },
     Op::Async(fut) => {
-      let fut2 = fut.map(move |resp| (p_id, resp));
+      let fut2 = fut.map(move |resp| (promise_id, resp));
       state.pending_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      let fut2 = fut.map(move |resp| (p_id, resp));
+      let fut2 = fut.map(move |resp| (promise_id, resp));
       state.pending_unref_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }
