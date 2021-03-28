@@ -8,6 +8,8 @@
 
   let opsCache = {};
   const errorMap = {};
+  let nextPromiseId = 1;
+  const promiseTable = new Map();
 
   function init() {
     recv(handleAsyncMsgFromRust);
@@ -38,9 +40,6 @@
   function getErrorClassAndArgs(errorName) {
     return errorMap[errorName] ?? [undefined, []];
   }
-
-  let nextPromiseId = 1;
-  const promiseTable = new Map();
 
   function processResponse(res) {
     // const [ok, err] = res;
