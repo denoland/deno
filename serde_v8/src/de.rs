@@ -112,11 +112,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    // if self.input.is_boolean() {
-    //   visitor.visit_bool(self.input.boolean_value(&mut self.scope))
-    // } else {
-    //   Err(Error::ExpectedBoolean)
-    // }
+    // Relaxed typechecking, will map all non-true vals to false
     visitor.visit_bool(self.input.is_true())
   }
 
