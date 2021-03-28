@@ -8,9 +8,9 @@ import {
 
 const readErrorStackPattern = new RegExp(
   `^.*
-    at handleError \\(.*core\\.js:.*\\)
-    at binOpParseResult \\(.*core\\.js:.*\\)
-    at asyncHandle \\(.*core\\.js:.*\\).*$`,
+    at processErr \\(.*core\\.js:.*\\)
+    at opAsyncHandler \\(.*core\\.js:.*\\)
+    at handleAsyncMsgFromRust \\(.*core\\.js:.*\\).*$`,
   "ms",
 );
 
