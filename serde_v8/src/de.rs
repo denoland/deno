@@ -112,11 +112,12 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    if self.input.is_boolean() {
-      visitor.visit_bool(self.input.boolean_value(&mut self.scope))
-    } else {
-      Err(Error::ExpectedBoolean)
-    }
+    // if self.input.is_boolean() {
+    //   visitor.visit_bool(self.input.boolean_value(&mut self.scope))
+    // } else {
+    //   Err(Error::ExpectedBoolean)
+    // }
+    visitor.visit_bool(self.input.is_true())
   }
 
   deserialize_signed!(deserialize_i8, visit_i8, i8);
