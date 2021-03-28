@@ -20,8 +20,6 @@ use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
-use crate::shared_queue::SharedQueue;
-use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::OpPayload;
 use crate::OpResponse;
 use crate::OpState;
@@ -101,7 +99,6 @@ struct ModEvaluate {
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
-  pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -109,7 +106,6 @@ pub(crate) struct JsRuntimeState {
   pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
-  pub(crate) shared: SharedQueue,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
@@ -278,11 +274,9 @@ impl JsRuntime {
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: HashMap::new(),
       pending_mod_evaluate: None,
-      shared_ab: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
       js_error_create_fn,
-      shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
@@ -307,7 +301,7 @@ impl JsRuntime {
     }
 
     if !options.will_snapshot {
-      js_runtime.shared_queue_init();
+      js_runtime.core_js_init();
     }
 
     js_runtime
@@ -352,15 +346,15 @@ impl JsRuntime {
       .unwrap();
   }
 
-  /// Executes a JavaScript code to initialize shared queue binding
-  /// between Rust and JS.
+  /// Executes JavaScript code to initialize core.js,
+  /// specifically the js_recv_cb setter
   ///
   /// This function mustn't be called during snapshotting.
-  fn shared_queue_init(&mut self) {
+  fn core_js_init(&mut self) {
     self
       .execute(
-        "deno:core/shared_queue_init.js",
-        "Deno.core.sharedQueueInit()",
+        "deno:core/init.js",
+        "Deno.core.init()",
       )
       .unwrap();
   }
@@ -1342,19 +1336,6 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((op_id, resp))) => {
-          // let overflow_resp = match resp {
-          //   OpResponse::Value(v) => Some(OpResponse::Value(v)),
-          //   OpResponse::Buffer(buf) => {
-          //     if state.shared.push(op_id, &buf) {
-          //       None
-          //     } else {
-          //       Some(OpResponse::Buffer(buf))
-          //     }
-          //   }
-          // };
-          // if let Some(resp) = overflow_resp {
-          //   overflow_response.push((op_id, resp));
-          // }
           overflow_response.push((op_id, resp));
         }
       };
@@ -1366,19 +1347,6 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((op_id, resp))) => {
-          // let overflow_resp = match resp {
-          //   OpResponse::Value(v) => Some(OpResponse::Value(v)),
-          //   OpResponse::Buffer(buf) => {
-          //     if state.shared.push(op_id, &buf) {
-          //       None
-          //     } else {
-          //       Some(OpResponse::Buffer(buf))
-          //     }
-          //   }
-          // };
-          // if let Some(resp) = overflow_resp {
-          //   overflow_response.push((op_id, resp));
-          // }
           overflow_response.push((op_id, resp));
         }
       };
@@ -1413,17 +1381,15 @@ impl JsRuntime {
     exception_to_err_result(scope, exception, true)
   }
 
-  // Respond using shared queue and optionally overflown response
+  // Send finished responses to JS
   fn async_op_response(
     &mut self,
     overflown_responses: Vec<(OpId, OpResponse)>,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
-    let shared_queue_size = state_rc.borrow().shared.size();
     let overflown_responses_size = overflown_responses.len();
-
-    if shared_queue_size == 0 && overflown_responses_size == 0 {
+    if overflown_responses_size == 0 {
       return Ok(());
     }
 
@@ -1457,18 +1423,12 @@ impl JsRuntime {
       });
     }
 
-    if shared_queue_size > 0 || overflown_responses_size > 0 {
+    if overflown_responses_size > 0 {
       js_recv_cb.call(tc_scope, global, args.as_slice());
     }
 
     match tc_scope.exception() {
-      None => {
-        // The other side should have shifted off all the messages.
-        let shared_queue_size = state_rc.borrow().shared.size();
-        assert_eq!(shared_queue_size, 0);
-
-        Ok(())
-      }
+      None => Ok(()),
       Some(exception) => exception_to_err_result(tc_scope, exception, false),
     }
   }

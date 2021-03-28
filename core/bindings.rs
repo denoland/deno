@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
-use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpBuf;
@@ -40,9 +39,6 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: eval_context.map_fn_to()
-      },
-      v8::ExternalReference {
-        getter: shared_getter.map_fn_to()
       },
       v8::ExternalReference {
         function: queue_microtask.map_fn_to()
@@ -145,9 +141,6 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
   set_func(scope, core_val, "heapStats", heap_stats);
-
-  let shared_key = v8::String::new(scope, "shared").unwrap();
-  core_val.set_accessor(scope, shared_key.into(), shared_getter);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -436,7 +429,6 @@ fn send<'s>(
 
   let payload = OpPayload::new(scope, v);
   let op = OpTable::route_op(op_id, state.op_state.clone(), p_id, payload, buf);
-  assert_eq!(state.shared.size(), 0);
   match op {
     Op::Sync(resp) => match resp {
       OpResponse::Value(v) => {
@@ -734,33 +726,6 @@ fn queue_microtask(
       throw_type_error(scope, "Invalid argument");
     }
   };
-}
-
-fn shared_getter(
-  scope: &mut v8::HandleScope,
-  _name: v8::Local<v8::Name>,
-  _args: v8::PropertyCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-  let JsRuntimeState {
-    shared_ab, shared, ..
-  } = &mut *state;
-
-  // Lazily initialize the persistent external ArrayBuffer.
-  let shared_ab = match shared_ab {
-    Some(ref ab) => v8::Local::new(scope, ab),
-    slot @ None => {
-      let ab = v8::SharedArrayBuffer::with_backing_store(
-        scope,
-        shared.get_backing_store(),
-      );
-      slot.replace(v8::Global::new(scope, ab));
-      ab
-    }
-  };
-  rv.set(shared_ab.into())
 }
 
 // Called by V8 during `Isolate::mod_instantiate`.

@@ -14,7 +14,6 @@ mod ops_json;
 pub mod plugin_api;
 mod resources;
 mod runtime;
-mod shared_queue;
 mod zero_copy_buf;
 
 // Re-exports
