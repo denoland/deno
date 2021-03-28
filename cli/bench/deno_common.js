@@ -20,8 +20,14 @@ function benchUrlParse() {
   });
 }
 
-function benchNow() {
-  benchSync("now", 5e5, () => {
+function benchDateNow() {
+  benchSync("date_now", 5e5, () => {
+    Date.now();
+  });
+}
+
+function benchPerfNow() {
+  benchSync("perf_now", 5e5, () => {
     performance.now();
   });
 }
@@ -46,9 +52,15 @@ function benchReadZero() {
 }
 
 function main() {
+  // v8 builtin that's close to the upper bound non-NOPs
+  benchDateNow();
+  // A very lightweight op, that should be highly optimizable
+  benchPerfNow();
+  // A common "language feature", that should be fast
+  // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
-  benchNow();
-  benchWriteNull();
+  // IO ops
   benchReadZero();
+  benchWriteNull();
 }
 main();
