@@ -59,7 +59,9 @@ macro_rules! sertest {
     fn $fn_name() {
       assert!(
         sercheck($rust, $src),
-        format!("Expected: {} where x={:?}", $src, $rust),
+        "Expected: {} where x={:?}",
+        $src,
+        $rust,
       );
     }
   };
