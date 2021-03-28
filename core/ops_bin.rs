@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::type_error;
 use crate::error::AnyError;
 use crate::futures::future::FutureExt;
 use crate::serialize_op_result;
@@ -77,6 +78,14 @@ where
       None => vec![],
     }
     .into();
+    // Bin op buffer arg assert
+    if bufs.len() == 0 {
+      return Op::Sync(serialize_bin_result::<u32>(
+        None,
+        Err(type_error("bin-ops require a non-null buffer arg")),
+        state,
+      ));
+    }
 
     let result = op_fn(&mut state.borrow_mut(), min_arg, &mut bufs);
     Op::Sync(serialize_bin_result(None, result, state))
@@ -145,6 +154,14 @@ where
         None => vec![],
       }
       .into();
+      // Bin op buffer arg assert
+      if bufs.len() == 0 {
+        return Op::Sync(serialize_bin_result::<u32>(
+          None,
+          Err(type_error("bin-ops require a non-null buffer arg")),
+          state,
+        ));
+      }
 
       let fut = op_fn(state.clone(), min_arg, bufs)
         .map(move |result| serialize_bin_result(Some(pid), result, state));
