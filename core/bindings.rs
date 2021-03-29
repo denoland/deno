@@ -409,7 +409,7 @@ fn send<'s>(
     };
 
   // Structured args
-  let v = v8::Local::<v8::Value>::try_from(args.get(2)).unwrap();
+  let v = args.get(2);
 
   // Buf arg (optional)
   let arg3 = args.get(3);

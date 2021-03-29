@@ -78,7 +78,7 @@ where
     }
     .into();
     // Bin op buffer arg assert
-    if bufs.len() == 0 {
+    if bufs.is_empty() {
       return Op::Sync(serialize_bin_result::<u32>(
         Err(type_error("bin-ops require a non-null buffer arg")),
         state,
@@ -151,7 +151,7 @@ where
     }
     .into();
     // Bin op buffer arg assert
-    if bufs.len() == 0 {
+    if bufs.is_empty() {
       return Op::Sync(serialize_bin_result::<u32>(
         Err(type_error("bin-ops require a non-null buffer arg")),
         state,
