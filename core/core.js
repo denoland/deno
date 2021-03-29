@@ -70,7 +70,7 @@ SharedQueue Binary Layout
 
   function assert(cond) {
     if (!cond) {
-      throw Error("assert");
+      throw new Error("assert");
     }
   }
 
