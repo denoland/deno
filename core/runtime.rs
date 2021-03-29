@@ -20,6 +20,7 @@ use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
+use crate::OpBuf;
 use crate::OpPayload;
 use crate::OpResponse;
 use crate::OpState;
@@ -1472,7 +1473,6 @@ impl JsRuntime {
 pub mod tests {
   use super::*;
   use crate::modules::ModuleSourceFuture;
-  use crate::BufVec;
   use futures::future::lazy;
   use futures::FutureExt;
   use std::io;
@@ -1488,31 +1488,28 @@ pub mod tests {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
-  fn poll_until_ready(
-    runtime: &mut JsRuntime,
-    max_poll_count: usize,
-  ) -> Result<(), AnyError> {
-    let mut cx = Context::from_waker(futures::task::noop_waker_ref());
-    for _ in 0..max_poll_count {
-      match runtime.poll_event_loop(&mut cx) {
-        Poll::Pending => continue,
-        Poll::Ready(val) => return val,
-      }
-    }
-    panic!(
-      "JsRuntime still not ready after polling {} times.",
-      max_poll_count
-    )
-  }
+  // TODO: maybe use this for other tests after dropping the overflow tests?
+  // fn poll_until_ready(
+  //   runtime: &mut JsRuntime,
+  //   max_poll_count: usize,
+  // ) -> Result<(), AnyError> {
+  //   let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+  //   for _ in 0..max_poll_count {
+  //     match runtime.poll_event_loop(&mut cx) {
+  //       Poll::Pending => continue,
+  //       Poll::Ready(val) => return val,
+  //     }
+  //   }
+  //   panic!(
+  //     "JsRuntime still not ready after polling {} times.",
+  //     max_poll_count
+  //   )
+  // }
 
   enum Mode {
     Async,
     AsyncUnref,
-    AsyncZeroCopy(u8),
-    OverflowReqSync,
-    OverflowResSync,
-    OverflowReqAsync,
-    OverflowResAsync,
+    AsyncZeroCopy(bool),
   }
 
   struct TestState {
@@ -1520,68 +1517,35 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(op_state: Rc<RefCell<OpState>>, bufs: BufVec) -> Op {
+  fn dispatch(op_state: Rc<RefCell<OpState>>, payload: OpPayload, buf: OpBuf) -> Op {
     let op_state_ = op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
     match test_state.mode {
       Mode::Async => {
-        assert_eq!(bufs.len(), 1);
-        assert_eq!(bufs[0].len(), 1);
-        assert_eq!(bufs[0][0], 42);
-        let buf = vec![43u8].into_boxed_slice();
-        Op::Async(futures::future::ready(buf).boxed())
+        let control: u8 = payload.deserialize().unwrap();
+        assert_eq!(control, 42);
+        let resp = OpResponse::Value(Box::new(43));
+        Op::Async(Box::pin(futures::future::ready(resp)))
       }
       Mode::AsyncUnref => {
-        assert_eq!(bufs.len(), 1);
-        assert_eq!(bufs[0].len(), 1);
-        assert_eq!(bufs[0][0], 42);
+        let control: u8 = payload.deserialize().unwrap();
+        assert_eq!(control, 42);
         let fut = async {
           // This future never finish.
           futures::future::pending::<()>().await;
-          vec![43u8].into_boxed_slice()
+          OpResponse::Value(Box::new(43))
         };
-        Op::AsyncUnref(fut.boxed())
+        Op::AsyncUnref(Box::pin(fut))
       }
-      Mode::AsyncZeroCopy(count) => {
-        assert_eq!(bufs.len(), count as usize);
-        bufs.iter().enumerate().for_each(|(idx, buf)| {
+      Mode::AsyncZeroCopy(has_buffer) => {
+        assert_eq!(buf.is_some(), has_buffer);
+        if let Some(buf) = buf {
           assert_eq!(buf.len(), 1);
-          assert_eq!(idx, buf[0] as usize);
-        });
+        }
 
-        let buf = vec![43u8].into_boxed_slice();
-        Op::Async(futures::future::ready(buf).boxed())
-      }
-      Mode::OverflowReqSync => {
-        assert_eq!(bufs.len(), 1);
-        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-        let buf = vec![43u8].into_boxed_slice();
-        Op::Sync(buf)
-      }
-      Mode::OverflowResSync => {
-        assert_eq!(bufs.len(), 1);
-        assert_eq!(bufs[0].len(), 1);
-        assert_eq!(bufs[0][0], 42);
-        let mut vec = vec![0u8; 100 * 1024 * 1024];
-        vec[0] = 99;
-        let buf = vec.into_boxed_slice();
-        Op::Sync(buf)
-      }
-      Mode::OverflowReqAsync => {
-        assert_eq!(bufs.len(), 1);
-        assert_eq!(bufs[0].len(), 100 * 1024 * 1024);
-        let buf = vec![43u8].into_boxed_slice();
-        Op::Async(futures::future::ready(buf).boxed())
-      }
-      Mode::OverflowResAsync => {
-        assert_eq!(bufs.len(), 1);
-        assert_eq!(bufs[0].len(), 1);
-        assert_eq!(bufs[0][0], 42);
-        let mut vec = vec![0u8; 100 * 1024 * 1024];
-        vec[0] = 4;
-        let buf = vec.into_boxed_slice();
-        Op::Async(futures::future::ready(buf).boxed())
+        let resp = OpResponse::Value(Box::new(43));
+        Op::Async(Box::pin(futures::future::ready(resp)))
       }
     }
   }
@@ -1620,10 +1584,10 @@ pub mod tests {
       .execute(
         "filename.js",
         r#"
-        let control = new Uint8Array([42]);
-        Deno.core.send(1, control);
+        let control = 42;
+        Deno.core.send(1, null, control);
         async function main() {
-          Deno.core.send(1, control);
+          Deno.core.send(1, null, control);
         }
         main();
         "#,
@@ -1634,7 +1598,7 @@ pub mod tests {
 
   #[test]
   fn test_dispatch_no_zero_copy_buf() {
-    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(0));
+    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(false));
     runtime
       .execute(
         "filename.js",
@@ -1648,34 +1612,16 @@ pub mod tests {
 
   #[test]
   fn test_dispatch_stack_zero_copy_bufs() {
-    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
+    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(true));
     runtime
       .execute(
         "filename.js",
         r#"
         let zero_copy_a = new Uint8Array([0]);
-        let zero_copy_b = new Uint8Array([1]);
-        Deno.core.send(1, zero_copy_a, zero_copy_b);
+        Deno.core.send(1, null, null, zero_copy_a);
         "#,
       )
       .unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-  }
-
-  #[test]
-  fn test_dispatch_heap_zero_copy_bufs() {
-    let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(5));
-    runtime.execute(
-      "filename.js",
-      r#"
-        let zero_copy_a = new Uint8Array([0]);
-        let zero_copy_b = new Uint8Array([1]);
-        let zero_copy_c = new Uint8Array([2]);
-        let zero_copy_d = new Uint8Array([3]);
-        let zero_copy_e = new Uint8Array([4]);
-        Deno.core.send(1, zero_copy_a, zero_copy_b, zero_copy_c, zero_copy_d, zero_copy_e);
-        "#,
-    ).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1701,8 +1647,8 @@ pub mod tests {
           "check1.js",
           r#"
          assert(nrecv == 0);
-         let control = new Uint8Array([42]);
-         Deno.core.send(1, control);
+         let control = 42;
+         Deno.core.send(1, null, control);
          assert(nrecv == 0);
          "#,
         )
@@ -1715,7 +1661,7 @@ pub mod tests {
           "check2.js",
           r#"
          assert(nrecv == 1);
-         Deno.core.send(1, control);
+         Deno.core.send(1, null, control);
          assert(nrecv == 1);
          "#,
         )
@@ -1741,8 +1687,8 @@ pub mod tests {
             // This handler will never be called
             assert(false);
           });
-          let control = new Uint8Array([42]);
-          Deno.core.send(1, control);
+          let control = 42;
+          Deno.core.send(1, null, control);
         "#,
         )
         .unwrap();
@@ -1807,7 +1753,7 @@ pub mod tests {
   #[test]
   fn test_pre_dispatch() {
     run_in_task(|mut cx| {
-      let (mut runtime, _dispatch_count) = setup(Mode::OverflowResAsync);
+      let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute(
           "bad_op_id.js",
@@ -2075,7 +2021,7 @@ pub mod tests {
         import { b } from './b.js'
         if (b() != 'b') throw Error();
         let control = 42;
-        Deno.core.send(1, 0, control);
+        Deno.core.send(1, null, control);
       "#,
       )
       .unwrap();
