@@ -2037,13 +2037,12 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+    let dispatcher = move |_state, payload: OpPayload, _buf| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      assert_eq!(bufs.len(), 1);
-      assert_eq!(bufs[0].len(), 1);
-      assert_eq!(bufs[0][0], 42);
-      let buf = [43u8, 0, 0, 0][..].into();
-      Op::Async(futures::future::ready(buf).boxed())
+      let control: u8 = payload.deserialize().unwrap();
+      assert_eq!(control, 42);
+      let resp = OpResponse::Value(Box::new(43));
+      Op::Async(Box::pin(futures::future::ready(resp)))
     };
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2075,8 +2074,8 @@ pub mod tests {
         r#"
         import { b } from './b.js'
         if (b() != 'b') throw Error();
-        let control = new Uint8Array([42]);
-        Deno.core.send(1, control);
+        let control = 42;
+        Deno.core.send(1, 0, control);
       "#,
       )
       .unwrap();
