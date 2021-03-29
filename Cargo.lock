@@ -2631,8 +2631,9 @@ dependencies = [
 
 [[package]]
 name = "rsa"
-version = "0.3.0"
-source = "git+https://github.com/littledivy/RSA?rev=5d3a76c#5d3a76c429a19658cf78280539a25e5b12eda200"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68ef841a26fc5d040ced0417c6c6a64ee851f42489df11cdf0218e545b6f8d28"
 dependencies = [
  "byteorder",
  "digest",
