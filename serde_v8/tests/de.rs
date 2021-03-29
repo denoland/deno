@@ -79,12 +79,7 @@ detest!(
     operator: None
   }
 );
-detest!(
-  de_enum,
-  Alpha,
-  "'A'",
-  Alpha::A
-);
+detest!(de_enum, Alpha, "'A'", Alpha::A);
 
 #[test]
 fn de_f64() {
