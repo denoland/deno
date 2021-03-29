@@ -127,7 +127,7 @@ detest!(
   de_json_int,
   serde_json::Value,
   "123",
-  serde_json::Value::Number(serde_json::Number::from_f64(123.0).unwrap())
+  serde_json::Value::Number(serde_json::Number::from(123))
 );
 detest!(
   de_json_float,
@@ -169,7 +169,7 @@ detest!(
     vec![
       (
         "a".to_string(),
-        serde_json::Value::Number(serde_json::Number::from_f64(1.0).unwrap()),
+        serde_json::Value::Number(serde_json::Number::from(1)),
       ),
       (
         "b".to_string(),
