@@ -12,6 +12,13 @@ struct MathOp {
   pub operator: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+enum Alpha {
+  A,
+  B,
+  C,
+}
+
 fn dedo(
   code: &str,
   f: impl FnOnce(&mut v8::HandleScope, v8::Local<v8::Value>),
@@ -71,6 +78,12 @@ detest!(
     b: 3,
     operator: None
   }
+);
+detest!(
+  de_enum,
+  Alpha,
+  "'A'",
+  Alpha::A
 );
 
 #[test]
