@@ -215,7 +215,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    let arr = v8::Local::<v8::Array>::try_from(self.input).unwrap();
+    let arr = v8::Local::<v8::Array>::try_from(self.input)
+      .map_err(|_| Error::ExpectedArray)?;
     let len = arr.length();
     let obj = v8::Local::<v8::Object>::from(arr);
     let seq = SeqAccess {
