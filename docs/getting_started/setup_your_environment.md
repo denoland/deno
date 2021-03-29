@@ -100,9 +100,8 @@ Support for JetBrains IDEs is available through
 
 Once installed, replace the content of 
 `External Libraries > Deno Library > lib > lib.deno.d.ts` with the output of 
-`deno types`. that will fix outdates typings, making it usable for current 
-versions. You will have to do this every time you change deno version.
-
+`deno types`. This will ensure the typings for the extension match the current
+version.  You will have to do this every time you update the version of Deno.
 For more information on how to set-up your JetBrains IDE for Deno, read
 [this comment](https://youtrack.jetbrains.com/issue/WEB-41607#focus=streamItem-27-4160152.0-0)
 on YouTrack.
