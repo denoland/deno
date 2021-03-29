@@ -13,10 +13,19 @@ struct MathOp {
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
-enum Alpha {
+enum EnumUnit {
   A,
   B,
   C,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+enum EnumPayloads {
+  UInt(u64),
+  Int(i64),
+  Float(f64),
+  Point { x: i64, y: i64 },
+  Tuple(bool, i64, ()),
 }
 
 fn dedo(
@@ -79,7 +88,43 @@ detest!(
     operator: None
   }
 );
-detest!(de_enum, Alpha, "'A'", Alpha::A);
+
+// Unit enums
+detest!(de_enum_unit_a, EnumUnit, "'A'", EnumUnit::A);
+detest!(de_enum_unit_b, EnumUnit, "'B'", EnumUnit::B);
+detest!(de_enum_unit_c, EnumUnit, "'C'", EnumUnit::C);
+
+// Enums with payloads (tuples & struct)
+detest!(
+  de_enum_payload_int,
+  EnumPayloads,
+  "({ Int: -123 })",
+  EnumPayloads::Int(-123)
+);
+detest!(
+  de_enum_payload_uint,
+  EnumPayloads,
+  "({ UInt: 123 })",
+  EnumPayloads::UInt(123)
+);
+detest!(
+  de_enum_payload_float,
+  EnumPayloads,
+  "({ Float: 1.23 })",
+  EnumPayloads::Float(1.23)
+);
+detest!(
+  de_enum_payload_point,
+  EnumPayloads,
+  "({ Point: { x: 1, y: 2 } })",
+  EnumPayloads::Point { x: 1, y: 2 }
+);
+detest!(
+  de_enum_payload_tuple,
+  EnumPayloads,
+  "({ Tuple: [true, 123, null ] })",
+  EnumPayloads::Tuple(true, 123, ())
+);
 
 #[test]
 fn de_f64() {
