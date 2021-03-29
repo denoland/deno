@@ -36,6 +36,7 @@ pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
 pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
+pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
@@ -54,7 +55,7 @@ macro_rules! inc {
   };
 }
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Contains static assets that are not preloaded in the compiler snapshot.
   pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
     ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),

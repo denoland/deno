@@ -25,6 +25,8 @@ use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use log::debug;
+use log::warn;
 use std::collections::HashMap;
 use std::env;
 use std::fs::read;

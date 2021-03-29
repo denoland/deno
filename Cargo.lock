@@ -2834,7 +2834,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "rusty_v8",
  "serde",

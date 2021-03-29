@@ -31,6 +31,7 @@ use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
 use futures::Future;
+use log::debug;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;

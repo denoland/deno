@@ -1,10 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
-
 mod async_cancel;
 mod async_cell;
 mod bindings;

@@ -98,7 +98,8 @@ pub struct JsError {
   pub stack: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
   pub function_name: Option<String>,
@@ -107,6 +108,9 @@ pub struct JsStackFrame {
   pub line_number: Option<i64>,
   pub column_number: Option<i64>,
   pub eval_origin: Option<String>,
+  // Warning! isToplevel has inconsistent snake<>camel case, "typo" originates in v8:
+  // https://source.chromium.org/search?q=isToplevel&sq=&ss=chromium%2Fchromium%2Fsrc:v8%2F
+  #[serde(rename = "isToplevel")]
   pub is_top_level: Option<bool>,
   pub is_eval: bool,
   pub is_native: bool,
@@ -150,6 +154,14 @@ fn get_property<'a>(
   object.get(scope, key.into())
 }
 
+#[derive(serde::Deserialize)]
+struct NativeJsError {
+  name: Option<String>,
+  message: Option<String>,
+  // Warning! .stack is special so handled by itself
+  // stack: Option<String>,
+}
+
 impl JsError {
   pub(crate) fn create(js_error: Self) -> AnyError {
     js_error.into()
@@ -170,17 +182,11 @@ impl JsError {
       let exception: v8::Local<v8::Object> =
         exception.clone().try_into().unwrap();
 
+      let e: NativeJsError =
+        serde_v8::from_v8(scope, exception.into()).unwrap();
       // Get the message by formatting error.name and error.message.
-      let name = get_property(scope, exception, "name")
-        .filter(|v| !v.is_undefined())
-        .and_then(|m| m.to_string(scope))
-        .map(|s| s.to_rust_string_lossy(scope))
-        .unwrap_or_else(|| "Error".to_string());
-      let message_prop = get_property(scope, exception, "message")
-        .filter(|v| !v.is_undefined())
-        .and_then(|m| m.to_string(scope))
-        .map(|s| s.to_rust_string_lossy(scope))
-        .unwrap_or_else(|| "".to_string());
+      let name = e.name.unwrap_or_else(|| "Error".to_string());
+      let message_prop = e.message.unwrap_or_else(|| "".to_string());
       let message = if !name.is_empty() && !message_prop.is_empty() {
         format!("Uncaught {}: {}", name, message_prop)
       } else if !name.is_empty() {
@@ -200,118 +206,15 @@ impl JsError {
 
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
+      // Ignore non-array values
       let frames_v8: Option<v8::Local<v8::Array>> =
         frames_v8.and_then(|a| a.try_into().ok());
 
-      // Convert them into Vec<JSStack> and Vec<String> respectively.
-      let mut frames: Vec<JsStackFrame> = vec![];
-      if let Some(frames_v8) = frames_v8 {
-        for i in 0..frames_v8.length() {
-          let call_site: v8::Local<v8::Object> =
-            frames_v8.get_index(scope, i).unwrap().try_into().unwrap();
-          let type_name: Option<v8::Local<v8::String>> =
-            get_property(scope, call_site, "typeName")
-              .unwrap()
-              .try_into()
-              .ok();
-          let type_name = type_name.map(|s| s.to_rust_string_lossy(scope));
-          let function_name: Option<v8::Local<v8::String>> =
-            get_property(scope, call_site, "functionName")
-              .unwrap()
-              .try_into()
-              .ok();
-          let function_name =
-            function_name.map(|s| s.to_rust_string_lossy(scope));
-          let method_name: Option<v8::Local<v8::String>> =
-            get_property(scope, call_site, "methodName")
-              .unwrap()
-              .try_into()
-              .ok();
-          let method_name = method_name.map(|s| s.to_rust_string_lossy(scope));
-          let file_name: Option<v8::Local<v8::String>> =
-            get_property(scope, call_site, "fileName")
-              .unwrap()
-              .try_into()
-              .ok();
-          let file_name = file_name.map(|s| s.to_rust_string_lossy(scope));
-          let line_number: Option<v8::Local<v8::Integer>> =
-            get_property(scope, call_site, "lineNumber")
-              .unwrap()
-              .try_into()
-              .ok();
-          let line_number = line_number.map(|n| n.value());
-          let column_number: Option<v8::Local<v8::Integer>> =
-            get_property(scope, call_site, "columnNumber")
-              .unwrap()
-              .try_into()
-              .ok();
-          let column_number = column_number.map(|n| n.value());
-          let eval_origin: Option<v8::Local<v8::String>> =
-            get_property(scope, call_site, "evalOrigin")
-              .unwrap()
-              .try_into()
-              .ok();
-          let eval_origin = eval_origin.map(|s| s.to_rust_string_lossy(scope));
-          let is_top_level: Option<v8::Local<v8::Boolean>> =
-            get_property(scope, call_site, "isToplevel")
-              .unwrap()
-              .try_into()
-              .ok();
-          let is_top_level = is_top_level.map(|b| b.is_true());
-          let is_eval: v8::Local<v8::Boolean> =
-            get_property(scope, call_site, "isEval")
-              .unwrap()
-              .try_into()
-              .unwrap();
-          let is_eval = is_eval.is_true();
-          let is_native: v8::Local<v8::Boolean> =
-            get_property(scope, call_site, "isNative")
-              .unwrap()
-              .try_into()
-              .unwrap();
-          let is_native = is_native.is_true();
-          let is_constructor: v8::Local<v8::Boolean> =
-            get_property(scope, call_site, "isConstructor")
-              .unwrap()
-              .try_into()
-              .unwrap();
-          let is_constructor = is_constructor.is_true();
-          let is_async: v8::Local<v8::Boolean> =
-            get_property(scope, call_site, "isAsync")
-              .unwrap()
-              .try_into()
-              .unwrap();
-          let is_async = is_async.is_true();
-          let is_promise_all: v8::Local<v8::Boolean> =
-            get_property(scope, call_site, "isPromiseAll")
-              .unwrap()
-              .try_into()
-              .unwrap();
-          let is_promise_all = is_promise_all.is_true();
-          let promise_index: Option<v8::Local<v8::Integer>> =
-            get_property(scope, call_site, "promiseIndex")
-              .unwrap()
-              .try_into()
-              .ok();
-          let promise_index = promise_index.map(|n| n.value());
-          frames.push(JsStackFrame {
-            type_name,
-            function_name,
-            method_name,
-            file_name,
-            line_number,
-            column_number,
-            eval_origin,
-            is_top_level,
-            is_eval,
-            is_native,
-            is_constructor,
-            is_async,
-            is_promise_all,
-            promise_index,
-          });
-        }
-      }
+      // Convert them into Vec<JsStackFrame>
+      let frames: Vec<JsStackFrame> = match frames_v8 {
+        Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
+        None => vec![],
+      };
       (message, frames, stack)
     } else {
       // The exception is not a JS Error object.

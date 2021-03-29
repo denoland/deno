@@ -1,5 +1,7 @@
 # serde_v8
 
+Author: Aaron O'Mullan <aaron.omullan@gmail.com>
+
 Serde support for encoding/decoding (rusty_)v8 values.
 
 Broadly `serde_v8` aims to provide an expressive but ~maximally efficient

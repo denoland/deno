@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use rusty_v8 as v8;
 
 use serde::Serialize;
@@ -58,7 +59,9 @@ macro_rules! sertest {
     fn $fn_name() {
       assert!(
         sercheck($rust, $src),
-        format!("Expected: {} where x={:?}", $src, $rust),
+        "Expected: {} where x={:?}",
+        $src,
+        $rust,
       );
     }
   };

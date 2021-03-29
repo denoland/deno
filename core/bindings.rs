@@ -9,6 +9,8 @@ use crate::OpTable;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rusty_v8 as v8;
+use serde::Serialize;
+use serde_v8::to_v8;
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
@@ -17,10 +19,7 @@ use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
 
-use serde::Serialize;
-use serde_v8::to_v8;
-
-lazy_static! {
+lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
       v8::ExternalReference {
@@ -875,64 +874,13 @@ fn heap_stats(
   _args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  fn set_prop(
-    scope: &mut v8::HandleScope,
-    obj: v8::Local<v8::Object>,
-    name: &'static str,
-    value: usize,
-  ) {
-    let key = v8::String::new(scope, name).unwrap();
-    let val = v8::Number::new(scope, value as f64);
-    obj.set(scope, key.into(), val.into());
-  }
-
-  let s = get_heap_stats(scope);
-
-  // TODO: use serde for this once we have serde_v8
-  let obj = v8::Object::new(scope);
-  set_prop(scope, obj, "totalHeapSize", s.total_heap_size);
-  set_prop(
-    scope,
-    obj,
-    "totalHeapSizexecutable",
-    s.total_heap_size_executable,
-  );
-  set_prop(scope, obj, "totalPhysicalSize", s.total_physical_size);
-  set_prop(scope, obj, "totalAvailableSize", s.total_available_size);
-  set_prop(
-    scope,
-    obj,
-    "totalGlobalHandlesSize",
-    s.total_global_handles_size,
-  );
-  set_prop(
-    scope,
-    obj,
-    "usedGlobalHandlesSize",
-    s.used_global_handles_size,
-  );
-  set_prop(scope, obj, "usedHeapSize", s.used_heap_size);
-  set_prop(scope, obj, "heapSizeLimit", s.heap_size_limit);
-  set_prop(scope, obj, "mallocedMemory", s.malloced_memory);
-  set_prop(scope, obj, "externalMemory", s.external_memory);
-  set_prop(scope, obj, "peakMallocedMemory", s.peak_malloced_memory);
-  set_prop(
-    scope,
-    obj,
-    "numberOfNativeContexts",
-    s.number_of_native_contexts,
-  );
-  set_prop(
-    scope,
-    obj,
-    "numberOfDetachedContexts",
-    s.number_of_detached_contexts,
-  );
-
-  rv.set(obj.into());
+  let stats = get_heap_stats(scope);
+  rv.set(to_v8(scope, stats).unwrap());
 }
 
 // HeapStats stores values from a isolate.get_heap_statistics() call
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct HeapStats {
   total_heap_size: usize,
   total_heap_size_executable: usize,
