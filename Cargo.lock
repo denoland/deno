@@ -564,8 +564,8 @@ name = "deno_core"
 version = "0.82.0"
 dependencies = [
  "anyhow",
- "erased-serde",
  "bencher",
+ "erased-serde",
  "futures",
  "indexmap",
  "lazy_static",
