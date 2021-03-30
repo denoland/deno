@@ -178,7 +178,7 @@
     const simpleAlg = typeof alg == "string";
     const saltLength = simpleAlg ? null : alg.saltLength;
     const hash = simpleAlg ? null : alg.hash;
-    const algorithm = (simpleParam ? alg : alg.name).toLowerCase();
+    const algorithm = (simpleAlg ? alg : alg.name).toLowerCase();
 
     const { signature, err } = await core.jsonOpAsync("op_webcrypto_sign_key", {
       rid,
