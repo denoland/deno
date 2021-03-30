@@ -1414,7 +1414,7 @@ impl JsRuntime {
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
     // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
-    // promise_id is a simple integer, op_result is a ops::OpResult
+    // promise_id is a simple integer, op_result is an ops::OpResult
     // which contains a value OR an error, encoded as a tuple.
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
