@@ -36,7 +36,7 @@ pub struct CompletionItemData {
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-pub fn get_import_completions(
+pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   state_snapshot: &language_server::StateSnapshot,
@@ -55,16 +55,38 @@ pub fn get_import_completions(
           items: get_local_completions(specifier, &current_specifier, &range)?,
         }));
       }
-      // completion of modules within the workspace
+      // completion of modules form a module registry or cache
       if !current_specifier.is_empty() {
-        return Some(lsp::CompletionResponse::List(lsp::CompletionList {
-          is_incomplete: false,
-          items: get_workspace_completions(
+        let maybe_items = if state_snapshot
+          .config
+          .settings
+          .suggest
+          .imports
+          .auto_discovery
+        {
+          let offset = if position.character > range.start.character {
+            (position.character - range.start.character) as usize
+          } else {
+            0
+          };
+          state_snapshot
+            .module_registries
+            .get_completions(&current_specifier, offset, &range, state_snapshot)
+            .await
+        } else {
+          None
+        };
+        let items = maybe_items.unwrap_or_else(|| {
+          get_workspace_completions(
             specifier,
             &current_specifier,
             &range,
             state_snapshot,
-          ),
+          )
+        });
+        return Some(lsp::CompletionResponse::List(lsp::CompletionList {
+          is_incomplete: false,
+          items,
         }));
       }
     }
@@ -738,8 +760,8 @@ mod tests {
     }
   }
 
-  #[test]
-  fn test_get_import_completions() {
+  #[tokio::test]
+  async fn test_get_import_completions() {
     let specifier = resolve_url("file:///a/b/c.ts").unwrap();
     let position = lsp::Position {
       line: 0,
@@ -752,7 +774,8 @@ mod tests {
       ],
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
-    let actual = get_import_completions(&specifier, &position, &state_snapshot);
+    let actual =
+      get_import_completions(&specifier, &position, &state_snapshot).await;
     assert_eq!(
       actual,
       Some(lsp::CompletionResponse::List(lsp::CompletionList {

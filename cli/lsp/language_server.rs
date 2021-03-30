@@ -48,6 +48,7 @@ use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::performance::Performance;
+use super::registries;
 use super::sources;
 use super::sources::Sources;
 use super::text;
@@ -57,6 +58,9 @@ use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
+
+pub const REGISTRIES_PATH: &str = "registries";
+const SOURCES_PATH: &str = "deps";
 
 lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -71,6 +75,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: Config,
   pub documents: DocumentCache,
+  pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
 }
@@ -87,6 +92,12 @@ pub(crate) struct Inner {
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
+  /// Handles module registries, which allow discovery of modules
+  module_registries: registries::ModuleRegistry,
+  /// The path to the module registries cache
+  module_registries_location: PathBuf,
+  /// A flag to memoize the last setting of the registry reload
+  module_registries_reload: bool,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -119,8 +130,11 @@ impl Inner {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
-    let location = dir.root.join("deps");
-    let sources = Sources::new(&location);
+    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    let module_registries =
+      registries::ModuleRegistry::new(&module_registries_location, false);
+    let sources_location = dir.root.join(SOURCES_PATH);
+    let sources = Sources::new(&sources_location);
     let ts_server = Arc::new(TsServer::new());
     let performance = Performance::default();
     let diagnostics_server = diagnostics::DiagnosticsServer::new();
@@ -134,6 +148,9 @@ impl Inner {
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
+      module_registries,
+      module_registries_location,
+      module_registries_reload: false,
       navigation_trees: Default::default(),
       performance,
       sources,
@@ -276,6 +293,7 @@ impl Inner {
       assets: self.assets.clone(),
       config: self.config.clone(),
       documents: self.documents.clone(),
+      module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
     }
@@ -323,6 +341,30 @@ impl Inner {
       self.maybe_import_map = Some(import_map);
     } else {
       self.maybe_import_map = None;
+    }
+    self.performance.measure(mark);
+    Ok(())
+  }
+
+  async fn update_registries(&mut self) -> Result<(), AnyError> {
+    let mark = self.performance.mark("update_registries");
+    let reload = self.config.settings.suggest.imports.reload_cache;
+    if reload != self.module_registries_reload {
+      self.module_registries = registries::ModuleRegistry::new(
+        &self.module_registries_location,
+        reload,
+      );
+      self.module_registries_reload = reload;
+    }
+    for (registry, enabled) in self.config.settings.suggest.imports.hosts.iter()
+    {
+      if *enabled {
+        info!("Enabling auto complete registry for: {}", registry);
+        self.module_registries.enable(registry).await?;
+      } else {
+        info!("Disabling auto complete registry for: {}", registry);
+        self.module_registries.disable(registry).await?;
+      }
     }
     self.performance.measure(mark);
     Ok(())
@@ -495,6 +537,13 @@ impl Inner {
         .show_message(MessageType::Warning, err.to_string())
         .await;
     }
+    // Check to see if we need to setup any module registries
+    if let Err(err) = self.update_registries().await {
+      self
+        .client
+        .show_message(MessageType::Warning, err.to_string())
+        .await;
+    }
 
     if self
       .config
@@ -623,6 +672,12 @@ impl Inner {
         error!("failed to update settings: {}", err);
       }
       if let Err(err) = self.update_import_map().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.update_registries().await {
         self
           .client
           .show_message(MessageType::Warning, err.to_string())
@@ -1394,7 +1449,9 @@ impl Inner {
       &specifier,
       &params.text_document_position.position,
       &self.snapshot(),
-    ) {
+    )
+    .await
+    {
       Some(response)
     } else {
       let line_index =
