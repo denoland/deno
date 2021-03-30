@@ -24,6 +24,7 @@ use crate::OpPayload;
 use crate::OpResponse;
 use crate::OpState;
 use crate::PromiseId;
+use crate::ZeroCopyBuf;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;

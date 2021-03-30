@@ -26,7 +26,8 @@ pub use erased_serde::Serialize as Serializable;
 pub type RcOpState = Rc<RefCell<OpState>>;
 pub type PromiseId = u64;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
-pub type OpFn = dyn Fn(RcOpState, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
+pub type OpFn =
+  dyn Fn(RcOpState, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
 pub type OpId = usize;
 
 pub struct OpPayload<'a, 'b, 'c> {
@@ -153,7 +154,7 @@ impl OpTable {
     op_id: OpId,
     state: RcOpState,
     payload: OpPayload,
-    buf: Option<ZeroCopyBuf>s,
+    buf: Option<ZeroCopyBuf>,
   ) -> Op {
     let op_fn = state
       .borrow()
@@ -170,7 +171,11 @@ impl OpTable {
 
 impl Default for OpTable {
   fn default() -> Self {
-    fn dummy(_state: Rc<RefCell<OpState>>, _p: OpPayload, _b: Option<ZeroCopyBuf>) -> Op {
+    fn dummy(
+      _state: Rc<RefCell<OpState>>,
+      _p: OpPayload,
+      _b: Option<ZeroCopyBuf>,
+    ) -> Op {
       unreachable!()
     }
     Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())

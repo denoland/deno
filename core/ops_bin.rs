@@ -141,25 +141,27 @@ where
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: ValueOrVector,
 {
-  Box::new(move |state: RcOpState, p: OpPayload, b: Option<ZeroCopyBuf>| -> Op {
-    let min_arg: u32 = p.deserialize().unwrap();
-    // For sig compat map Option<ZeroCopyBuf> to BufVec
-    let bufs: BufVec = match b {
-      Some(b) => vec![b],
-      None => vec![],
-    }
-    .into();
-    // Bin op buffer arg assert
-    // if bufs.is_empty() {
-    //   return Op::Sync(serialize_bin_result::<u32>(
-    //     Err(type_error("bin-ops require a non-null buffer arg")),
-    //     state,
-    //   ));
-    // }
+  Box::new(
+    move |state: RcOpState, p: OpPayload, b: Option<ZeroCopyBuf>| -> Op {
+      let min_arg: u32 = p.deserialize().unwrap();
+      // For sig compat map Option<ZeroCopyBuf> to BufVec
+      let bufs: BufVec = match b {
+        Some(b) => vec![b],
+        None => vec![],
+      }
+      .into();
+      // Bin op buffer arg assert
+      // if bufs.is_empty() {
+      //   return Op::Sync(serialize_bin_result::<u32>(
+      //     Err(type_error("bin-ops require a non-null buffer arg")),
+      //     state,
+      //   ));
+      // }
 
-    let fut = op_fn(state.clone(), min_arg, bufs)
-      .map(move |result| serialize_bin_result(result, state));
-    let temp = Box::pin(fut);
-    Op::Async(temp)
-  })
+      let fut = op_fn(state.clone(), min_arg, bufs)
+        .map(move |result| serialize_bin_result(result, state));
+      let temp = Box::pin(fut);
+      Op::Async(temp)
+    },
+  )
 }
