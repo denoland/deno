@@ -38,3 +38,8 @@ path = "examples/http_bench_json_ops.rs"
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
 tokio = { version = "1.4.0", features = ["full"] }
+bencher = "0.1"
+
+[[bench]]
+name = "op_baseline"
+harness = false
