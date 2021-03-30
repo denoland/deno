@@ -65,7 +65,6 @@ pub use crate::ops::OpResponse;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::ops::PromiseId;
-pub use crate::ops::RcOpState;
 pub use crate::ops::Serializable;
 pub use crate::ops_bin::bin_op_async;
 pub use crate::ops_bin::bin_op_sync;

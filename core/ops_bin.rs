@@ -10,10 +10,11 @@ use crate::OpFn;
 use crate::OpPayload;
 use crate::OpResponse;
 use crate::OpState;
-use crate::RcOpState;
 use crate::ZeroCopyBuf;
 use std::boxed::Box;
+use std::cell::RefCell;
 use std::future::Future;
+use std::rc::Rc;
 
 // TODO: rewrite this, to have consistent buffer returns
 // possibly via direct serde_v8 support
@@ -92,7 +93,7 @@ where
 // wraps serialize_op_result but handles ValueOrVector
 fn serialize_bin_result<R>(
   result: Result<R, AnyError>,
-  state: RcOpState,
+  state: Rc<RefCell<OpState>>,
 ) -> OpResponse
 where
   R: ValueOrVector,
@@ -137,12 +138,15 @@ where
 /// A more complete example is available in the examples directory.
 pub fn bin_op_async<F, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(RcOpState, u32, BufVec) -> R + 'static,
+  F: Fn(Rc<RefCell<OpState>>, u32, BufVec) -> R + 'static,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: ValueOrVector,
 {
   Box::new(
-    move |state: RcOpState, p: OpPayload, b: Option<ZeroCopyBuf>| -> Op {
+    move |state: Rc<RefCell<OpState>>,
+          p: OpPayload,
+          b: Option<ZeroCopyBuf>|
+          -> Op {
       let min_arg: u32 = p.deserialize().unwrap();
       // For sig compat map Option<ZeroCopyBuf> to BufVec
       let bufs: BufVec = match b {

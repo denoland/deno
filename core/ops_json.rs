@@ -8,11 +8,12 @@ use crate::Op;
 use crate::OpFn;
 use crate::OpPayload;
 use crate::OpState;
-use crate::RcOpState;
 use crate::ZeroCopyBuf;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::future::Future;
+use std::rc::Rc;
 
 /// Creates an op that passes data synchronously using JSON.
 ///
@@ -84,12 +85,12 @@ where
 /// A more complete example is available in the examples directory.
 pub fn json_op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(RcOpState, V, BufVec) -> R + 'static,
+  F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
-  let try_dispatch_op = move |state: RcOpState,
+  let try_dispatch_op = move |state: Rc<RefCell<OpState>>,
                               p: OpPayload,
                               b: Option<ZeroCopyBuf>|
         -> Result<Op, AnyError> {
@@ -111,7 +112,10 @@ where
   };
 
   Box::new(
-    move |state: RcOpState, p: OpPayload, b: Option<ZeroCopyBuf>| -> Op {
+    move |state: Rc<RefCell<OpState>>,
+          p: OpPayload,
+          b: Option<ZeroCopyBuf>|
+          -> Op {
       match try_dispatch_op(state.clone(), p, b) {
         Ok(op) => op,
         Err(err) => {

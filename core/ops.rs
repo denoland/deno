@@ -23,11 +23,10 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub use erased_serde::Serialize as Serializable;
-pub type RcOpState = Rc<RefCell<OpState>>;
 pub type PromiseId = u64;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
 pub type OpFn =
-  dyn Fn(RcOpState, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
+  dyn Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
 pub type OpId = usize;
 
 pub struct OpPayload<'a, 'b, 'c> {
@@ -85,7 +84,7 @@ pub struct OpError {
 
 pub fn serialize_op_result<R: Serialize + 'static>(
   result: Result<R, AnyError>,
-  state: RcOpState,
+  state: Rc<RefCell<OpState>>,
 ) -> OpResponse {
   OpResponse::Value(Box::new(match result {
     Ok(v) => OpResult::<R>(Some(v), None),
@@ -146,13 +145,13 @@ impl OpTable {
     op_id
   }
 
-  pub fn op_entries(state: RcOpState) -> Vec<(String, OpId)> {
+  pub fn op_entries(state: Rc<RefCell<OpState>>) -> Vec<(String, OpId)> {
     state.borrow().op_table.0.keys().cloned().zip(0..).collect()
   }
 
   pub fn route_op(
     op_id: OpId,
-    state: RcOpState,
+    state: Rc<RefCell<OpState>>,
     payload: OpPayload,
     buf: Option<ZeroCopyBuf>,
   ) -> Op {

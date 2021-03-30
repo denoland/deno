@@ -442,7 +442,7 @@ impl JsRuntime {
   /// * [json_op_async()](fn.json_op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(RcOpState, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,
   {
     Self::state(self.v8_isolate())
       .borrow_mut()
