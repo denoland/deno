@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::type_error;
+// use crate::error::type_error;
 use crate::error::AnyError;
 use crate::futures::future::FutureExt;
 use crate::serialize_op_result;
