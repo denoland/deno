@@ -78,7 +78,7 @@
   }
 
   function jsonOpSync(opName, args = null, zeroCopy = null) {
-    return processResponse(dispatch(opName, 0, args, zeroCopy));
+    return processResponse(dispatch(opName, null, args, zeroCopy));
   }
 
   function opAsyncHandler(promiseId, res) {
