@@ -268,8 +268,13 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       Some(names) => from_v8(self.scope, names.into()).unwrap(),
       None => vec![],
     };
-    let keys: Vec<v8::Local<v8::Value>> =
-      keys.drain(..).map(|x| x.into()).collect();
+    let keys: Vec<v8::Local<v8::Value>> = keys
+      .drain(..)
+      .map(|x| x.into())
+      // Filter keys to drop keys whose value is undefined
+      // TODO: optimize, since this doubles our get calls
+      .filter(|key| !obj.get(self.scope, *key).unwrap().is_undefined())
+      .collect();
 
     let map = MapAccess {
       obj,
