@@ -396,17 +396,23 @@ fn send<'s>(
   }
 
   // PromiseId
-  let promise_id: PromiseId =
-    match v8::Local::<v8::Integer>::try_from(args.get(1))
+  let arg1 = args.get(1);
+  let promise_id = if arg1.is_null_or_undefined() {
+    Ok(0) // Accept null or undefined as 0
+  } else {
+    // Otherwise expect int
+    v8::Local::<v8::Integer>::try_from(arg1)
       .map(|l| l.value() as PromiseId)
       .map_err(AnyError::from)
-    {
-      Ok(promise_id) => promise_id as u64,
-      Err(err) => {
-        throw_type_error(scope, format!("invalid promise id: {}", err));
-        return;
-      }
-    };
+  };
+  // Fail if promise id invalid (not null/undefined or int)
+  let promise_id: PromiseId = match promise_id {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
 
   // Structured args
   let v = args.get(2);
