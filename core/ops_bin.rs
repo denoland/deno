@@ -78,12 +78,12 @@ where
     }
     .into();
     // Bin op buffer arg assert
-    if bufs.is_empty() {
-      return Op::Sync(serialize_bin_result::<u32>(
-        Err(type_error("bin-ops require a non-null buffer arg")),
-        state,
-      ));
-    }
+    // if bufs.is_empty() {
+    //   return Op::Sync(serialize_bin_result::<u32>(
+    //     Err(type_error("bin-ops require a non-null buffer arg")),
+    //     state,
+    //   ));
+    // }
 
     let result = op_fn(&mut state.borrow_mut(), min_arg, &mut bufs);
     Op::Sync(serialize_bin_result(result, state))
@@ -151,12 +151,12 @@ where
     }
     .into();
     // Bin op buffer arg assert
-    if bufs.is_empty() {
-      return Op::Sync(serialize_bin_result::<u32>(
-        Err(type_error("bin-ops require a non-null buffer arg")),
-        state,
-      ));
-    }
+    // if bufs.is_empty() {
+    //   return Op::Sync(serialize_bin_result::<u32>(
+    //     Err(type_error("bin-ops require a non-null buffer arg")),
+    //     state,
+    //   ));
+    // }
 
     let fut = op_fn(state.clone(), min_arg, bufs)
       .map(move |result| serialize_bin_result(result, state));
