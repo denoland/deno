@@ -45,7 +45,7 @@ fn bench_op_pi_bin(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.binOpSync("pi_bin", 0);
+      Deno.core.binOpSync("pi_bin", 0, nopView);
     }"#,
   );
 }
