@@ -9,33 +9,76 @@ use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::rc::Rc;
+use wgpu_core::id::DeviceId;
+
+use crate::Instance;
 
 use super::error::WebGpuError;
 
-pub(crate) struct WebGpuPipelineLayout(
-  pub(crate) wgpu_core::id::PipelineLayoutId,
-);
+pub(crate) struct WebGpuPipelineLayout {
+  pub instance: Rc<Instance>,
+  pub _device: Rc<DeviceId>,
+  pub pipeline_layout: Rc<wgpu_core::id::PipelineLayoutId>,
+}
 impl Resource for WebGpuPipelineLayout {
   fn name(&self) -> Cow<str> {
     "webGPUPipelineLayout".into()
   }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUPipelineLayout while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let pipeline_layout = Rc::try_unwrap(resource.pipeline_layout)
+      .map_err(|_| "closed webGPUPipelineLayout while it still had children")
+      .unwrap();
+    gfx_select!(pipeline_layout => instance.pipeline_layout_drop(pipeline_layout));
+  }
 }
 
-pub(crate) struct WebGpuComputePipeline(
-  pub(crate) wgpu_core::id::ComputePipelineId,
-);
+pub(crate) struct WebGpuComputePipeline {
+  instance: Rc<Instance>,
+  device: Rc<DeviceId>,
+  pub compute_pipeline: Rc<wgpu_core::id::ComputePipelineId>,
+}
 impl Resource for WebGpuComputePipeline {
   fn name(&self) -> Cow<str> {
     "webGPUComputePipeline".into()
   }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUComputePipeline while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let compute_pipeline = Rc::try_unwrap(resource.compute_pipeline)
+      .map_err(|_| "closed webGPUComputePipeline while it still had children")
+      .unwrap();
+    gfx_select!(compute_pipeline => instance.compute_pipeline_drop(compute_pipeline));
+  }
 }
 
-pub(crate) struct WebGpuRenderPipeline(
-  pub(crate) wgpu_core::id::RenderPipelineId,
-);
+pub(crate) struct WebGpuRenderPipeline {
+  instance: Rc<Instance>,
+  device: Rc<DeviceId>,
+  pub render_pipeline: Rc<wgpu_core::id::RenderPipelineId>,
+}
 impl Resource for WebGpuRenderPipeline {
   fn name(&self) -> Cow<str> {
     "webGPURenderPipeline".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPURenderPipeline while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let render_pipeline = Rc::try_unwrap(resource.render_pipeline)
+      .map_err(|_| "closed webGPURenderPipeline while it still had children")
+      .unwrap();
+    gfx_select!(render_pipeline => instance.render_pipeline_drop(render_pipeline));
   }
 }
 
@@ -164,19 +207,19 @@ pub fn op_webgpu_create_compute_pipeline(
   args: CreateComputePipelineArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let pipeline_layout = if let Some(rid) = args.layout {
-    let id = state
+    let pipeline_layout_resource = state
       .resource_table
       .get::<WebGpuPipelineLayout>(rid)
       .ok_or_else(bad_resource_id)?;
-    Some(id.0)
+    Some(*pipeline_layout_resource.pipeline_layout)
   } else {
     None
   };
@@ -190,7 +233,7 @@ pub fn op_webgpu_create_compute_pipeline(
     label: args.label.map(Cow::from),
     layout: pipeline_layout,
     stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-      module: compute_shader_module_resource.0,
+      module: *compute_shader_module_resource.shader_module,
       entry_point: Cow::from(args.compute.entry_point),
     },
   };
@@ -203,15 +246,17 @@ pub fn op_webgpu_create_compute_pipeline(
   };
 
   let (compute_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
   ));
 
-  let rid = state
-    .resource_table
-    .add(WebGpuComputePipeline(compute_pipeline));
+  let rid = state.resource_table.add(WebGpuComputePipeline {
+    instance,
+    device,
+    compute_pipeline: Rc::new(compute_pipeline),
+  });
 
   Ok(json!({
     "rid": rid,
@@ -231,20 +276,25 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   args: ComputePipelineGetBindGroupLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
     .resource_table
     .get::<WebGpuComputePipeline>(args.compute_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
-  let compute_pipeline = compute_pipeline_resource.0;
+  let instance = compute_pipeline_resource.instance.clone();
+  let device = compute_pipeline_resource.device.clone();
+  let compute_pipeline = compute_pipeline_resource.compute_pipeline.clone();
 
-  let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData));
+  let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(*compute_pipeline, args.index, std::marker::PhantomData));
 
   let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
 
   let rid = state
     .resource_table
-    .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
+    .add(super::binding::WebGpuBindGroupLayout {
+      instance,
+      device,
+      bind_group_layout: Rc::new(bind_group_layout),
+    });
 
   Ok(json!({
     "rid": rid,
@@ -368,19 +418,19 @@ pub fn op_webgpu_create_render_pipeline(
   args: CreateRenderPipelineArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let layout = if let Some(rid) = args.layout {
     let pipeline_layout_resource = state
       .resource_table
       .get::<WebGpuPipelineLayout>(rid)
       .ok_or_else(bad_resource_id)?;
-    Some(pipeline_layout_resource.0)
+    Some(*pipeline_layout_resource.pipeline_layout)
   } else {
     None
   };
@@ -395,7 +445,7 @@ pub fn op_webgpu_create_render_pipeline(
     layout,
     vertex: wgpu_core::pipeline::VertexState {
       stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-        module: vertex_shader_module_resource.0,
+        module: *vertex_shader_module_resource.shader_module,
         entry_point: Cow::from(args.vertex.entry_point),
       },
       buffers: Cow::from(if let Some(buffers) = args.vertex.buffers {
@@ -544,7 +594,7 @@ pub fn op_webgpu_create_render_pipeline(
 
       wgpu_core::pipeline::FragmentState {
         stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
-          module: fragment_shader_module_resource.0,
+          module: *fragment_shader_module_resource.shader_module,
           entry_point: Cow::from(fragment.entry_point),
         },
         targets: Cow::from(
@@ -591,15 +641,17 @@ pub fn op_webgpu_create_render_pipeline(
   };
 
   let (render_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData,
     implicit_pipelines
   ));
 
-  let rid = state
-    .resource_table
-    .add(WebGpuRenderPipeline(render_pipeline));
+  let rid = state.resource_table.add(WebGpuRenderPipeline {
+    instance,
+    device,
+    render_pipeline: Rc::new(render_pipeline),
+  });
 
   Ok(json!({
     "rid": rid,
@@ -619,20 +671,25 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   args: RenderPipelineGetBindGroupLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table
     .get::<WebGpuRenderPipeline>(args.render_pipeline_rid)
     .ok_or_else(bad_resource_id)?;
-  let render_pipeline = render_pipeline_resource.0;
+  let instance = render_pipeline_resource.instance.clone();
+  let device = render_pipeline_resource.device.clone();
+  let render_pipeline = render_pipeline_resource.render_pipeline.clone();
 
-  let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData));
+  let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(*render_pipeline, args.index, std::marker::PhantomData));
 
   let label = gfx_select!(bind_group_layout => instance.bind_group_layout_label(bind_group_layout));
 
   let rid = state
     .resource_table
-    .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
+    .add(super::binding::WebGpuBindGroupLayout {
+      instance,
+      device,
+      bind_group_layout: Rc::new(bind_group_layout),
+    });
 
   Ok(json!({
     "rid": rid,

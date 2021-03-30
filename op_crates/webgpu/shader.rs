@@ -9,13 +9,31 @@ use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::rc::Rc;
+
+use crate::Instance;
 
 use super::error::WebGpuError;
 
-pub(crate) struct WebGpuShaderModule(pub(crate) wgpu_core::id::ShaderModuleId);
+pub(crate) struct WebGpuShaderModule {
+  instance: Rc<Instance>,
+  _device: Rc<wgpu_core::id::DeviceId>,
+  pub shader_module: Rc<wgpu_core::id::ShaderModuleId>,
+}
 impl Resource for WebGpuShaderModule {
   fn name(&self) -> Cow<str> {
     "webGPUShaderModule".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUShaderModule while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let shader_module = Rc::try_unwrap(resource.shader_module)
+      .map_err(|_| "closed webGPUShaderModule while it still had children")
+      .unwrap();
+    gfx_select!(shader_module => instance.shader_module_drop(shader_module));
   }
 }
 
@@ -33,12 +51,12 @@ pub fn op_webgpu_create_shader_module(
   args: CreateShaderModuleArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let source = match args.code {
     Some(code) => {
@@ -63,13 +81,17 @@ pub fn op_webgpu_create_shader_module(
   };
 
   let (shader_module, maybe_err) = gfx_select!(device => instance.device_create_shader_module(
-    device,
+    *device,
     &descriptor,
     source,
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGpuShaderModule(shader_module));
+  let rid = state.resource_table.add(WebGpuShaderModule {
+    instance,
+    _device: device,
+    shader_module: Rc::new(shader_module),
+  });
 
   Ok(json!({
     "rid": rid,

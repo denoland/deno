@@ -10,12 +10,17 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::rc::Rc;
+
+use crate::Instance;
 
 use super::error::WebGpuError;
 
-pub(crate) struct WebGpuRenderPass(
-  pub(crate) RefCell<wgpu_core::command::RenderPass>,
-);
+pub(crate) struct WebGpuRenderPass {
+  pub instance: Rc<Instance>,
+  pub command_encoder: Rc<wgpu_core::id::CommandEncoderId>,
+  pub render_pass: RefCell<wgpu_core::command::RenderPass>,
+}
 impl Resource for WebGpuRenderPass {
   fn name(&self) -> Cow<str> {
     "webGPURenderPass".into()
@@ -45,7 +50,7 @@ pub fn op_webgpu_render_pass_set_viewport(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_viewport(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
     args.x,
     args.y,
     args.width,
@@ -78,7 +83,7 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_scissor_rect(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
     args.x,
     args.y,
     args.width,
@@ -115,7 +120,7 @@ pub fn op_webgpu_render_pass_set_blend_color(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_blend_color(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
     &wgpu_types::Color {
       r: args.color.r,
       g: args.color.g,
@@ -145,7 +150,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_stencil_reference(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
     args.reference,
   );
 
@@ -176,8 +181,8 @@ pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
 
   unsafe {
     wgpu_core::command::render_ffi::wgpu_render_pass_begin_pipeline_statistics_query(
-      &mut render_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
+      &mut render_pass_resource.render_pass.borrow_mut(),
+      *query_set_resource.query_set,
       args.query_index,
     );
   }
@@ -203,7 +208,7 @@ pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
 
   unsafe {
     wgpu_core::command::render_ffi::wgpu_render_pass_end_pipeline_statistics_query(
-      &mut render_pass_resource.0.borrow_mut(),
+      &mut render_pass_resource.render_pass.borrow_mut(),
     );
   }
 
@@ -234,8 +239,8 @@ pub fn op_webgpu_render_pass_write_timestamp(
 
   unsafe {
     wgpu_core::command::render_ffi::wgpu_render_pass_write_timestamp(
-      &mut render_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
+      &mut render_pass_resource.render_pass.borrow_mut(),
+      *query_set_resource.query_set,
       args.query_index,
     );
   }
@@ -262,7 +267,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
       .resource_table
       .get::<super::bundle::WebGpuRenderBundle>(*rid)
       .ok_or_else(bad_resource_id)?;
-    render_bundle_ids.push(render_bundle_resource.0);
+    render_bundle_ids.push(*render_bundle_resource.render_bundle);
   }
 
   let render_pass_resource = state
@@ -272,7 +277,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
 
   unsafe {
     wgpu_core::command::render_ffi::wgpu_render_pass_execute_bundles(
-      &mut render_pass_resource.0.borrow_mut(),
+      &mut render_pass_resource.render_pass.borrow_mut(),
       render_bundle_ids.as_ptr(),
       args.bundles.len(),
     );
@@ -284,7 +289,6 @@ pub fn op_webgpu_render_pass_execute_bundles(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassEndPassArgs {
-  command_encoder_rid: ResourceId,
   render_pass_rid: ResourceId,
 }
 
@@ -293,21 +297,14 @@ pub fn op_webgpu_render_pass_end_pass(
   args: RenderPassEndPassArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let command_encoder_resource = state
-    .resource_table
-    .get::<super::command_encoder::WebGpuCommandEncoder>(
-      args.command_encoder_rid,
-    )
-    .ok_or_else(bad_resource_id)?;
-  let command_encoder = command_encoder_resource.0;
   let render_pass_resource = state
     .resource_table
     .take::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
-  let render_pass = &render_pass_resource.0.borrow();
-  let instance = state.borrow::<super::Instance>();
+  let instance = render_pass_resource.instance.clone();
+  let command_encoder = render_pass_resource.command_encoder.clone();
 
-  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass)).err();
+  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_run_render_pass(*command_encoder, &render_pass_resource.render_pass.borrow())).err();
 
   Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
@@ -345,9 +342,9 @@ pub fn op_webgpu_render_pass_set_bind_group(
   match args.dynamic_offsets_data {
     Some(data) => unsafe {
       wgpu_core::command::render_ffi::wgpu_render_pass_set_bind_group(
-        &mut render_pass_resource.0.borrow_mut(),
+        &mut render_pass_resource.render_pass.borrow_mut(),
         args.index,
-        bind_group_resource.0,
+        *bind_group_resource.bind_group,
         data.as_slice().as_ptr(),
         args.dynamic_offsets_data_length,
       );
@@ -358,9 +355,9 @@ pub fn op_webgpu_render_pass_set_bind_group(
       assert!(suffix.is_empty());
       unsafe {
         wgpu_core::command::render_ffi::wgpu_render_pass_set_bind_group(
-          &mut render_pass_resource.0.borrow_mut(),
+          &mut render_pass_resource.render_pass.borrow_mut(),
           args.index,
-          bind_group_resource.0,
+          *bind_group_resource.bind_group,
           data[args.dynamic_offsets_data_start..].as_ptr(),
           args.dynamic_offsets_data_length,
         );
@@ -391,7 +388,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
   unsafe {
     let label = std::ffi::CString::new(args.group_label).unwrap();
     wgpu_core::command::render_ffi::wgpu_render_pass_push_debug_group(
-      &mut render_pass_resource.0.borrow_mut(),
+      &mut render_pass_resource.render_pass.borrow_mut(),
       label.as_ptr(),
       0, // wgpu#975
     );
@@ -417,7 +414,7 @@ pub fn op_webgpu_render_pass_pop_debug_group(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_pop_debug_group(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
   );
 
   Ok(json!({}))
@@ -443,7 +440,7 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
   unsafe {
     let label = std::ffi::CString::new(args.marker_label).unwrap();
     wgpu_core::command::render_ffi::wgpu_render_pass_insert_debug_marker(
-      &mut render_pass_resource.0.borrow_mut(),
+      &mut render_pass_resource.render_pass.borrow_mut(),
       label.as_ptr(),
       0, // wgpu#975
     );
@@ -474,8 +471,8 @@ pub fn op_webgpu_render_pass_set_pipeline(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_pipeline(
-    &mut render_pass_resource.0.borrow_mut(),
-    render_pipeline_resource.0,
+    &mut render_pass_resource.render_pass.borrow_mut(),
+    *render_pipeline_resource.render_pipeline,
   );
 
   Ok(json!({}))
@@ -505,12 +502,15 @@ pub fn op_webgpu_render_pass_set_index_buffer(
     .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  render_pass_resource.0.borrow_mut().set_index_buffer(
-    buffer_resource.0,
-    super::pipeline::serialize_index_format(args.index_format),
-    args.offset,
-    std::num::NonZeroU64::new(args.size),
-  );
+  render_pass_resource
+    .render_pass
+    .borrow_mut()
+    .set_index_buffer(
+      *buffer_resource.buffer,
+      super::pipeline::serialize_index_format(args.index_format),
+      args.offset,
+      std::num::NonZeroU64::new(args.size),
+    );
 
   Ok(json!({}))
 }
@@ -540,9 +540,9 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_vertex_buffer(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
     args.slot,
-    buffer_resource.0,
+    *buffer_resource.buffer,
     args.offset,
     std::num::NonZeroU64::new(args.size),
   );
@@ -571,7 +571,7 @@ pub fn op_webgpu_render_pass_draw(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
     args.vertex_count,
     args.instance_count,
     args.first_vertex,
@@ -603,7 +603,7 @@ pub fn op_webgpu_render_pass_draw_indexed(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indexed(
-    &mut render_pass_resource.0.borrow_mut(),
+    &mut render_pass_resource.render_pass.borrow_mut(),
     args.index_count,
     args.instance_count,
     args.first_index,
@@ -637,8 +637,8 @@ pub fn op_webgpu_render_pass_draw_indirect(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indirect(
-    &mut render_pass_resource.0.borrow_mut(),
-    buffer_resource.0,
+    &mut render_pass_resource.render_pass.borrow_mut(),
+    *buffer_resource.buffer,
     args.indirect_offset,
   );
 
@@ -668,8 +668,8 @@ pub fn op_webgpu_render_pass_draw_indexed_indirect(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indexed_indirect(
-    &mut render_pass_resource.0.borrow_mut(),
-    buffer_resource.0,
+    &mut render_pass_resource.render_pass.borrow_mut(),
+    *buffer_resource.buffer,
     args.indirect_offset,
   );
 

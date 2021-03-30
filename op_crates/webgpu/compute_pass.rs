@@ -10,12 +10,17 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::rc::Rc;
+
+use crate::Instance;
 
 use super::error::WebGpuError;
 
-pub(crate) struct WebGpuComputePass(
-  pub(crate) RefCell<wgpu_core::command::ComputePass>,
-);
+pub(crate) struct WebGpuComputePass {
+  pub instance: Rc<Instance>,
+  pub command_encoder: Rc<wgpu_core::id::CommandEncoderId>,
+  pub compute_pass: RefCell<wgpu_core::command::ComputePass>,
+}
 impl Resource for WebGpuComputePass {
   fn name(&self) -> Cow<str> {
     "webGPUComputePass".into()
@@ -44,8 +49,8 @@ pub fn op_webgpu_compute_pass_set_pipeline(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::compute_ffi::wgpu_compute_pass_set_pipeline(
-    &mut compute_pass_resource.0.borrow_mut(),
-    compute_pipeline_resource.0,
+    &mut compute_pass_resource.compute_pass.borrow_mut(),
+    *compute_pipeline_resource.compute_pipeline,
   );
 
   Ok(json!({}))
@@ -71,7 +76,7 @@ pub fn op_webgpu_compute_pass_dispatch(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::compute_ffi::wgpu_compute_pass_dispatch(
-    &mut compute_pass_resource.0.borrow_mut(),
+    &mut compute_pass_resource.compute_pass.borrow_mut(),
     args.x,
     args.y,
     args.z,
@@ -103,8 +108,8 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::compute_ffi::wgpu_compute_pass_dispatch_indirect(
-    &mut compute_pass_resource.0.borrow_mut(),
-    buffer_resource.0,
+    &mut compute_pass_resource.compute_pass.borrow_mut(),
+    *buffer_resource.buffer,
     args.indirect_offset,
   );
 
@@ -135,8 +140,8 @@ pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
 
   unsafe {
     wgpu_core::command::compute_ffi::wgpu_compute_pass_begin_pipeline_statistics_query(
-      &mut compute_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
+      &mut compute_pass_resource.compute_pass.borrow_mut(),
+      *query_set_resource.query_set,
       args.query_index,
     );
   }
@@ -162,7 +167,7 @@ pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
 
   unsafe {
     wgpu_core::command::compute_ffi::wgpu_compute_pass_end_pipeline_statistics_query(
-      &mut compute_pass_resource.0.borrow_mut(),
+      &mut compute_pass_resource.compute_pass.borrow_mut(),
     );
   }
 
@@ -193,8 +198,8 @@ pub fn op_webgpu_compute_pass_write_timestamp(
 
   unsafe {
     wgpu_core::command::compute_ffi::wgpu_compute_pass_write_timestamp(
-      &mut compute_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
+      &mut compute_pass_resource.compute_pass.borrow_mut(),
+      *query_set_resource.query_set,
       args.query_index,
     );
   }
@@ -205,7 +210,6 @@ pub fn op_webgpu_compute_pass_write_timestamp(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComputePassEndPassArgs {
-  command_encoder_rid: ResourceId,
   compute_pass_rid: ResourceId,
 }
 
@@ -214,24 +218,17 @@ pub fn op_webgpu_compute_pass_end_pass(
   args: ComputePassEndPassArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let command_encoder_resource = state
-    .resource_table
-    .get::<super::command_encoder::WebGpuCommandEncoder>(
-      args.command_encoder_rid,
-    )
-    .ok_or_else(bad_resource_id)?;
-  let command_encoder = command_encoder_resource.0;
   let compute_pass_resource = state
     .resource_table
     .take::<WebGpuComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
-  let compute_pass = &compute_pass_resource.0.borrow();
-  let instance = state.borrow::<super::Instance>();
+  let instance = compute_pass_resource.instance.clone();
+  let command_encoder = compute_pass_resource.command_encoder.clone();
 
   let maybe_err =
     gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(
-      command_encoder,
-      compute_pass
+      *command_encoder,
+      &compute_pass_resource.compute_pass.borrow()
     ))
     .err();
 
@@ -263,23 +260,36 @@ pub fn op_webgpu_compute_pass_set_bind_group(
     .get::<WebGpuComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::compute_ffi::wgpu_compute_pass_set_bind_group(
-      &mut compute_pass_resource.0.borrow_mut(),
-      args.index,
-      bind_group_resource.0,
-      match args.dynamic_offsets_data {
-        Some(data) => data.as_ptr(),
-        None => {
-          let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
-          assert!(prefix.is_empty());
-          assert!(suffix.is_empty());
-          data[args.dynamic_offsets_data_start..].as_ptr()
-        }
-      },
-      args.dynamic_offsets_data_length,
-    );
-  }
+  // I know this might look like it can be easily deduplicated, but it can not
+  // be due to the lifetime of the args.dynamic_offsets_data slice. Because we
+  // need to use a raw pointer here the slice can be freed before the pointer
+  // is used in wgpu_render_pass_set_bind_group. See
+  // https://matrix.to/#/!XFRnMvAfptAHthwBCx:matrix.org/$HgrlhD-Me1DwsGb8UdMu2Hqubgks8s7ILwWRwigOUAg
+  match args.dynamic_offsets_data {
+    Some(data) => unsafe {
+      wgpu_core::command::compute_ffi::wgpu_compute_pass_set_bind_group(
+        &mut compute_pass_resource.compute_pass.borrow_mut(),
+        args.index,
+        *bind_group_resource.bind_group,
+        data.as_ptr(),
+        args.dynamic_offsets_data_length,
+      )
+    },
+    None => {
+      let (prefix, data, suffix) = unsafe { zero_copy[0].align_to::<u32>() };
+      assert!(prefix.is_empty());
+      assert!(suffix.is_empty());
+      unsafe {
+        wgpu_core::command::compute_ffi::wgpu_compute_pass_set_bind_group(
+          &mut compute_pass_resource.compute_pass.borrow_mut(),
+          args.index,
+          *bind_group_resource.bind_group,
+          data[args.dynamic_offsets_data_start..].as_ptr(),
+          args.dynamic_offsets_data_length,
+        )
+      }
+    }
+  };
 
   Ok(json!({}))
 }
@@ -304,7 +314,7 @@ pub fn op_webgpu_compute_pass_push_debug_group(
   unsafe {
     let label = std::ffi::CString::new(args.group_label).unwrap();
     wgpu_core::command::compute_ffi::wgpu_compute_pass_push_debug_group(
-      &mut compute_pass_resource.0.borrow_mut(),
+      &mut compute_pass_resource.compute_pass.borrow_mut(),
       label.as_ptr(),
       0, // wgpu#975
     );
@@ -330,7 +340,7 @@ pub fn op_webgpu_compute_pass_pop_debug_group(
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::compute_ffi::wgpu_compute_pass_pop_debug_group(
-    &mut compute_pass_resource.0.borrow_mut(),
+    &mut compute_pass_resource.compute_pass.borrow_mut(),
   );
 
   Ok(json!({}))
@@ -356,7 +366,7 @@ pub fn op_webgpu_compute_pass_insert_debug_marker(
   unsafe {
     let label = std::ffi::CString::new(args.marker_label).unwrap();
     wgpu_core::command::compute_ffi::wgpu_compute_pass_insert_debug_marker(
-      &mut compute_pass_resource.0.borrow_mut(),
+      &mut compute_pass_resource.compute_pass.borrow_mut(),
       label.as_ptr(),
       0, // wgpu#975
     );

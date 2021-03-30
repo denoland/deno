@@ -10,8 +10,7 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 
 use super::error::WebGpuError;
-
-type WebGpuQueue = super::WebGpuDevice;
+use super::WebGpuDevice;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,12 +24,12 @@ pub fn op_webgpu_queue_submit(
   args: QueueSubmitArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
-  let queue_resource = state
+  let device_resource = state
     .resource_table
-    .get::<WebGpuQueue>(args.queue_rid)
+    .get::<WebGpuDevice>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
-  let queue = queue_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let mut ids = vec![];
 
@@ -39,11 +38,11 @@ pub fn op_webgpu_queue_submit(
       .resource_table
       .get::<super::command_encoder::WebGpuCommandBuffer>(rid)
       .ok_or_else(bad_resource_id)?;
-    ids.push(buffer_resource.0);
+    ids.push(*buffer_resource.command_buffer);
   }
 
   let maybe_err =
-    gfx_select!(queue => instance.queue_submit(queue, &ids)).err();
+    gfx_select!(device => instance.queue_submit(*device, &ids)).err();
 
   Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
@@ -59,7 +58,6 @@ struct GpuImageDataLayout {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueWriteBufferArgs {
-  queue_rid: ResourceId,
   buffer: u32,
   buffer_offset: u64,
   data_offset: usize,
@@ -71,25 +69,21 @@ pub fn op_webgpu_write_buffer(
   args: QueueWriteBufferArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.buffer)
     .ok_or_else(bad_resource_id)?;
-  let buffer = buffer_resource.0;
-  let queue_resource = state
-    .resource_table
-    .get::<WebGpuQueue>(args.queue_rid)
-    .ok_or_else(bad_resource_id)?;
-  let queue = queue_resource.0;
+  let instance = buffer_resource.instance.clone();
+  let device = buffer_resource.device.clone();
+  let buffer = buffer_resource.buffer.clone();
 
   let data = match args.size {
     Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
     None => &zero_copy[0][args.data_offset..],
   };
-  let maybe_err = gfx_select!(queue => instance.queue_write_buffer(
-    queue,
-    buffer,
+  let maybe_err = gfx_select!(device => instance.queue_write_buffer(
+    *device,
+    *buffer,
     args.buffer_offset,
     data
   ))
@@ -112,19 +106,19 @@ pub fn op_webgpu_write_texture(
   args: QueueWriteTextureArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
     .get::<super::texture::WebGpuTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
-  let queue_resource = state
+  let device_resource = state
     .resource_table
-    .get::<WebGpuQueue>(args.queue_rid)
+    .get::<WebGpuDevice>(args.queue_rid)
     .ok_or_else(bad_resource_id)?;
-  let queue = queue_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let destination = wgpu_core::command::TextureCopyView {
-    texture: texture_resource.0,
+    texture: *texture_resource.texture,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
       .destination
@@ -141,8 +135,8 @@ pub fn op_webgpu_write_texture(
     rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
   };
 
-  let maybe_err = gfx_select!(queue => instance.queue_write_texture(
-    queue,
+  let maybe_err = gfx_select!(device => instance.queue_write_texture(
+    *device,
     &destination,
     &*zero_copy[0],
     &data_layout,

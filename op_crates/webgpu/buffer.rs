@@ -15,20 +15,51 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use crate::Instance;
+
 use super::error::DomExceptionOperationError;
 use super::error::WebGpuError;
 
-pub(crate) struct WebGpuBuffer(pub(crate) wgpu_core::id::BufferId);
+pub(crate) struct WebGpuBuffer {
+  pub instance: Rc<Instance>,
+  pub device: Rc<wgpu_core::id::DeviceId>,
+  pub buffer: Rc<wgpu_core::id::BufferId>,
+}
 impl Resource for WebGpuBuffer {
   fn name(&self) -> Cow<str> {
     "webGPUBuffer".into()
   }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUBuffer while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let buffer = Rc::try_unwrap(resource.buffer)
+      .map_err(|_| "closed webGPUBuffer while it still had children")
+      .unwrap();
+    gfx_select!(buffer => instance.buffer_drop(buffer, true));
+  }
 }
 
-struct WebGpuBufferMapped(*mut u8, usize);
+struct WebGpuBufferMapped {
+  instance: Rc<Instance>,
+  buffer: Rc<wgpu_core::id::BufferId>,
+  slice_pointer: *mut u8,
+  range_size: usize,
+}
 impl Resource for WebGpuBufferMapped {
   fn name(&self) -> Cow<str> {
     "webGPUBufferMapped".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUBuffer while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let buffer = resource.buffer;
+    gfx_select!(buffer => instance.buffer_unmap(*buffer)).unwrap();
   }
 }
 
@@ -47,12 +78,12 @@ pub fn op_webgpu_create_buffer(
   args: CreateBufferArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::from),
@@ -62,12 +93,16 @@ pub fn op_webgpu_create_buffer(
   };
 
   let (buffer, maybe_err) = gfx_select!(device => instance.device_create_buffer(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGpuBuffer(buffer));
+  let rid = state.resource_table.add(WebGpuBuffer {
+    instance,
+    device,
+    buffer: Rc::new(buffer),
+  });
 
   Ok(json!({
     "rid": rid,
@@ -79,7 +114,6 @@ pub fn op_webgpu_create_buffer(
 #[serde(rename_all = "camelCase")]
 pub struct BufferGetMapAsyncArgs {
   buffer_rid: ResourceId,
-  device_rid: ResourceId,
   mode: u32,
   offset: u64,
   size: u64,
@@ -92,20 +126,17 @@ pub async fn op_webgpu_buffer_get_map_async(
 ) -> Result<Value, AnyError> {
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
+  let instance;
   let device;
   {
-    let state_ = state.borrow();
-    let instance = state_.borrow::<super::Instance>();
-    let buffer_resource = state_
+    let buffer_resource = state
+      .borrow()
       .resource_table
       .get::<WebGpuBuffer>(args.buffer_rid)
       .ok_or_else(bad_resource_id)?;
-    let buffer = buffer_resource.0;
-    let device_resource = state_
-      .resource_table
-      .get::<super::WebGpuDevice>(args.device_rid)
-      .ok_or_else(bad_resource_id)?;
-    device = device_resource.0;
+    instance = buffer_resource.instance.clone();
+    device = buffer_resource.device.clone();
+    let buffer = buffer_resource.buffer.clone();
 
     let boxed_sender = Box::new(sender);
     let sender_ptr = Box::into_raw(boxed_sender) as *mut u8;
@@ -126,7 +157,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 
     // TODO(lucacasonato): error handling
     gfx_select!(buffer => instance.buffer_map_async(
-      buffer,
+      *buffer,
       args.offset..(args.offset + args.size),
       wgpu_core::resource::BufferMapOperation {
         host: match args.mode {
@@ -144,11 +175,7 @@ pub async fn op_webgpu_buffer_get_map_async(
   let done_ = done.clone();
   let device_poll_fut = async move {
     while !*done.borrow() {
-      {
-        let state = state.borrow();
-        let instance = state.borrow::<super::Instance>();
-        gfx_select!(device => instance.device_poll(device, false)).unwrap()
-      }
+      gfx_select!(device => instance.device_poll(*device, false)).unwrap();
       tokio::time::sleep(Duration::from_millis(10)).await;
     }
     Ok::<(), AnyError>(())
@@ -179,15 +206,15 @@ pub fn op_webgpu_buffer_get_mapped_range(
   args: BufferGetMappedRangeArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
     .get::<WebGpuBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
-  let buffer = buffer_resource.0;
+  let instance = buffer_resource.instance.clone();
+  let buffer = buffer_resource.buffer.clone();
 
   let slice_pointer = gfx_select!(buffer => instance.buffer_get_mapped_range(
-    buffer,
+    *buffer,
     args.offset,
     std::num::NonZeroU64::new(args.size)
   ))
@@ -198,9 +225,12 @@ pub fn op_webgpu_buffer_get_mapped_range(
   };
   zero_copy[0].copy_from_slice(slice);
 
-  let rid = state
-    .resource_table
-    .add(WebGpuBufferMapped(slice_pointer, args.size as usize));
+  let rid = state.resource_table.add(WebGpuBufferMapped {
+    instance,
+    buffer,
+    slice_pointer,
+    range_size: args.size as usize,
+  });
 
   Ok(json!({
     "rid": rid,
@@ -210,7 +240,6 @@ pub fn op_webgpu_buffer_get_mapped_range(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferUnmapArgs {
-  buffer_rid: ResourceId,
   mapped_rid: ResourceId,
 }
 
@@ -223,22 +252,19 @@ pub fn op_webgpu_buffer_unmap(
     .resource_table
     .take::<WebGpuBufferMapped>(args.mapped_rid)
     .ok_or_else(bad_resource_id)?;
-  let instance = state.borrow::<super::Instance>();
-  let buffer_resource = state
-    .resource_table
-    .get::<WebGpuBuffer>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
-  let buffer = buffer_resource.0;
+  let instance = mapped_resource.instance.clone();
+  let buffer = mapped_resource.buffer.clone();
 
-  let slice_pointer = mapped_resource.0;
-  let size = mapped_resource.1;
+  let slice_pointer = mapped_resource.slice_pointer;
+  let range_size = mapped_resource.range_size;
 
   if let Some(buffer) = zero_copy.get(0) {
-    let slice = unsafe { std::slice::from_raw_parts_mut(slice_pointer, size) };
+    let slice =
+      unsafe { std::slice::from_raw_parts_mut(slice_pointer, range_size) };
     slice.copy_from_slice(&buffer);
   }
 
-  let maybe_err = gfx_select!(buffer => instance.buffer_unmap(buffer)).err();
+  let maybe_err = gfx_select!(buffer => instance.buffer_unmap(*buffer)).err();
 
   Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }

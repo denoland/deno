@@ -1656,7 +1656,6 @@
         "op_webgpu_buffer_get_map_async",
         {
           bufferRid,
-          deviceRid: device.rid,
           mode,
           offset,
           size: rangeSize,
@@ -3529,13 +3528,12 @@
         prefix,
         context: "encoder referenced by this",
       });
-      const commandEncoderRid = assertResource(this[_encoder], {
+      assertResource(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
       const { err } = core.jsonOpSync("op_webgpu_render_pass_end_pass", {
-        commandEncoderRid,
         renderPassRid,
       });
       device.pushError(err);
@@ -4261,13 +4259,12 @@
         prefix,
         context: "encoder referenced by this",
       });
-      const commandEncoderRid = assertResource(this[_encoder], {
+      assertResource(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
       const { err } = core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
-        commandEncoderRid,
         computePassRid,
       });
       device.pushError(err);
