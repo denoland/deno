@@ -5,12 +5,14 @@ use deno_core::json_op_sync;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::Op;
+use deno_core::OpResponse;
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
   runtime.register_op("pi_bin", bin_op_sync(|_, _, _| Ok(314159)));
   runtime.register_op("pi_json", json_op_sync(|_, _: (), _| Ok(314159)));
-  runtime.register_op("nop", |_, _| Op::Sync(Box::new(9_u64.to_le_bytes())));
+  runtime
+    .register_op("nop", |_, _, _| Op::Sync(OpResponse::Value(Box::new(9))));
 
   // Init ops
   runtime
@@ -61,7 +63,7 @@ fn bench_op_nop(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.dispatchByName("nop", nopView);
+      Deno.core.dispatchByName("nop", null, null, nopView);
     }"#,
   );
 }
