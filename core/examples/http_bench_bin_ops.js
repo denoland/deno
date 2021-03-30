@@ -11,7 +11,7 @@ const responseBuf = new Uint8Array(
 
 // This buffer exists purely to avoid trigerring the bin-op buf assert
 // in practice all deno bin ops accept buffers, this bench is an exception
-// TODO: remove once we drop variadic BufVec compat
+// TODO(@AaronO): remove once we drop variadic BufVec compat
 const nopBuffer = new Uint8Array();
 
 /** Listens on 0.0.0.0:4500, returns rid. */
