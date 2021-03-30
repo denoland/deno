@@ -173,14 +173,12 @@
     }
   }
 
-  async function sign(algorithm, key, data) {
+  async function sign(alg, key, data) {
     const rid = key[ridSymbol];
-    const simpleParam = typeof algorithm == "string";
-
-    // Normalize params. We've got serde doing the null to Option serialization.
-    const saltLength = simpleParam ? null : algorithm.saltLength || null;
-    const hash = simpleParam ? null : algorithm.hash || null;
-    algorithm = simpleParam ? algorithm : algorithm.name;
+    const simpleAlg = typeof alg == "string";
+    const saltLength = simpleAlg ? null : alg.saltLength;
+    const hash = simpleAlg ? null : alg.hash;
+    const algorithm = (simpleParam ? alg : alg.name).toLowerCase();
 
     const { signature, err } = await core.jsonOpAsync("op_webcrypto_sign_key", {
       rid,
