@@ -53,9 +53,19 @@
     #keyType;
 
     constructor(key, rid) {
-      this.#usages = key.usages;
+      this.#usages = key.keyUsages;
       this.#extractable = key.extractable;
-      this.#algorithm = key.algorithm;
+      let algorithm = key.algorithm;
+      algorithm.name = algorithm.name?.toUpperCase();
+      if (algorithm.name.startsWith("RSASSA-PKCS1")) {
+        // As per spec, `v` cannot be upper case.
+        algorithm.name = "RSASSA-PKCS1-v1_5";
+      }
+      let hash = algorithm.hash;
+      if (typeof hash == "string") {
+        hash = { name: hash };
+      }
+      this.#algorithm = { ...algorithm, hash };
       this.#keyType = key.keyType;
       this[ridSymbol] = rid;
     }
@@ -72,12 +82,13 @@
       return this.#algorithm;
     }
 
-    get keyType() {
+    get type() {
       return this.#keyType;
     }
   }
 
-  async function generateKey(algorithm, extractable, keyUsages) {
+  // Normalize an algorithm object. makes it less painful to serialize.
+  function normalize(algorithm) {
     if (algorithm.publicExponent) {
       if (!(algorithm.publicExponent instanceof Uint8Array)) {
         throw new DOMException(
@@ -87,24 +98,79 @@
       }
     }
 
+    const hash = algorithm.hash;
     // Normalizes { hash: { name: "SHA-256" } } to { hash: "SHA-256" }
-    if (algorithm.hash && typeof algorithm.hash !== "string") {
-      algorithm.hash = algorithm.hash.name;
+    if (hash && typeof hash !== "string") {
+      hash = hash.name;
+    }
+    // Algorithm names are not case-sensitive. We use lowercase for internal serialization.
+    const name = algorithm.name.toLowerCase();
+    return { ...algorithm, name, hash };
+  }
+
+  function validateUsages(usages, keyType) {
+    let validUsages = [];
+    if (keyType == "public") {
+      ["encrypt", "verify", "wrapKey"].forEach((usage) => {
+        if (usages.includes(usage)) {
+          validUsages.push(usage);
+        }
+      });
+    } else if (keyType == "private") {
+      ["decrypt", "sign", "unwrapKey", "deriveKey", "deriveBits"].forEach(
+        (usage) => {
+          if (usages.includes(usage)) {
+            validUsages.push(usage);
+          }
+        },
+      );
+    } /* secret */ else {
+      validUsages = usages;
     }
 
+    return validUsages;
+  }
+
+  async function generateKey(algorithm, extractable, keyUsages) {
+    let normalizedAlgorithm = normalize(algorithm);
+
     const { key, err } = await core.jsonOpAsync("op_webcrypto_generate_key", {
-      algorithm,
+      algorithm: normalizedAlgorithm,
       extractable,
       keyUsages,
-    }, algorithm.publicExponent || new Uint8Array());
+    }, normalizedAlgorithm.publicExponent || new Uint8Array());
 
     // A DOMError.
     if (err) throw new Error(err);
 
-    return key.single ? new CryptoKey(key.single.key, key.single.rid) : {
-      privateKey: new CryptoKey(key.pair.key.privateKey, key.pair.private_rid),
-      publicKey: new CryptoKey(key.pair.key.publicKey, key.pair.public_rid),
-    };
+    if (key.single) {
+      const { keyType } = key.single.key;
+      const usages = validateUsages(keyUsages, keyType);
+      return new CryptoKey(
+        { keyType, algorithm, extractable, keyUsages: usages },
+        key.single.rid,
+      );
+    } /* CryptoKeyPair */ else {
+      const privateKeyType = key.pair.key.privateKey.keyType;
+      const privateKeyUsages = validateUsages(keyUsages, privateKeyType);
+
+      const publicKeyType = key.pair.key.publicKey.keyType;
+      const publicKeyUsages = validateUsages(keyUsages, publicKeyType);
+      return {
+        privateKey: new CryptoKey({
+          keyType: privateKeyType,
+          algorithm,
+          extractable,
+          keyUsages: privateKeyUsages,
+        }, key.pair.private_rid),
+        publicKey: new CryptoKey({
+          keyType: publicKeyType,
+          algorithm,
+          extractable: true,
+          keyUsages: publicKeyUsages,
+        }, key.pair.public_rid),
+      };
+    }
   }
 
   async function sign(algorithm, key, data) {
@@ -135,10 +201,12 @@
   window.crypto = {
     getRandomValues,
     subtle,
+    CryptoKey,
   };
   window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.crypto = {
     getRandomValues,
     subtle,
+    CryptoKey,
   };
 })(this);

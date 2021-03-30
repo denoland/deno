@@ -34,7 +34,7 @@ pub enum WebCryptoNamedCurve {
   P256,
   #[serde(rename = "P-384")]
   P384,
-  #[serde(rename = "P-512")]
+  #[serde(rename = "P-521")]
   P521,
 }
 
@@ -92,25 +92,25 @@ pub enum KeyUsage {
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum Algorithm {
-  #[serde(rename = "RSASSA-PKCS1-v1_5")]
+  #[serde(rename = "rsassa-pkcs1-v1_5")]
   RsassaPkcs1v15,
-  #[serde(rename = "RSA-PSS")]
+  #[serde(rename = "rsa-pss")]
   RsaPss,
-  #[serde(rename = "RSA-OAEP")]
+  #[serde(rename = "rsa-oaep")]
   RsaOaep,
-  #[serde(rename = "ECDSA")]
+  #[serde(rename = "ecdsa")]
   Ecdsa,
-  #[serde(rename = "ECDH")]
+  #[serde(rename = "ecdh")]
   Ecdh,
-  #[serde(rename = "AES-CTR")]
+  #[serde(rename = "aes-ctr")]
   AesCtr,
-  #[serde(rename = "AES-CBC")]
+  #[serde(rename = "aes-cbc")]
   AesCbc,
-  #[serde(rename = "AES-GCM")]
+  #[serde(rename = "aes-gcm")]
   AesGcm,
-  #[serde(rename = "RSA-PSS")]
+  #[serde(rename = "aes-kw")]
   AesKw,
-  #[serde(rename = "HMAC")]
+  #[serde(rename = "hmac")]
   Hmac,
 }
 

@@ -1,6 +1,18 @@
 {
   "WebCryptoAPI": {
-    "getRandomValues.any.js": true
+    "getRandomValues.any.js": true,
+    "generateKey": {
+      "successes_HMAC.https.any.js": true,
+      "failures_ECDH.https.any.js": false,
+      "failures_ECDSA.https.any.js": false,
+      "failures_HMAC.https.any.js": false,
+      "failures_RSA-PSS.https.any.js": false,
+      "failures_RSASSA-PKCS1-v1_5.https.any.js": false,
+      "successes_ECDH.https.any.js": false,
+      "successes_ECDSA.https.any.js": false,
+      "successes_RSA-PSS.https.any.js": true,
+      "successes_RSASSA-PKCS1-v1_5.https.any.js": true
+    }
   },
   "console": {
     "console-is-a-namespace.any.js": true,
