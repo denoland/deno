@@ -25,9 +25,8 @@ use std::rc::Rc;
 pub use erased_serde::Serialize as Serializable;
 pub type RcOpState = Rc<RefCell<OpState>>;
 pub type PromiseId = u64;
-pub type OpBuf = Option<ZeroCopyBuf>;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
-pub type OpFn = dyn Fn(RcOpState, OpPayload, OpBuf) -> Op + 'static;
+pub type OpFn = dyn Fn(RcOpState, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
 pub type OpId = usize;
 
 pub struct OpPayload<'a, 'b, 'c> {
@@ -139,7 +138,7 @@ pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 impl OpTable {
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<OpState>>, OpPayload, OpBuf) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,
   {
     let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(prev.is_none());
@@ -154,7 +153,7 @@ impl OpTable {
     op_id: OpId,
     state: RcOpState,
     payload: OpPayload,
-    buf: OpBuf,
+    buf: Option<ZeroCopyBuf>s,
   ) -> Op {
     let op_fn = state
       .borrow()
@@ -171,7 +170,7 @@ impl OpTable {
 
 impl Default for OpTable {
   fn default() -> Self {
-    fn dummy(_state: Rc<RefCell<OpState>>, _p: OpPayload, _b: OpBuf) -> Op {
+    fn dummy(_state: Rc<RefCell<OpState>>, _p: OpPayload, _b: Option<ZeroCopyBuf>) -> Op {
       unreachable!()
     }
     Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())

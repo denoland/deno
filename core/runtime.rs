@@ -20,7 +20,6 @@ use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
-use crate::OpBuf;
 use crate::OpPayload;
 use crate::OpResponse;
 use crate::OpState;
@@ -442,7 +441,7 @@ impl JsRuntime {
   /// * [json_op_async()](fn.json_op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(RcOpState, OpPayload, OpBuf) -> Op + 'static,
+    F: Fn(RcOpState, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,
   {
     Self::state(self.v8_isolate())
       .borrow_mut()
@@ -1520,7 +1519,7 @@ pub mod tests {
   fn dispatch(
     op_state: Rc<RefCell<OpState>>,
     payload: OpPayload,
-    buf: OpBuf,
+    buf: Option<ZeroCopyBuf>,
   ) -> Op {
     let op_state_ = op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();

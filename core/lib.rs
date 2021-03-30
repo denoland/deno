@@ -58,7 +58,6 @@ pub use crate::ops::op_resources;
 pub use crate::ops::serialize_op_result;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
-pub use crate::ops::OpBuf;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpPayload;

@@ -111,7 +111,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
     let plugin_op_fn: Box<OpFn> = Box::new(move |state_rc, _payload, buf| {
-      // For sig compat map OpBuf to BufVec
+      // For sig compat map Option<ZeroCopyBuf> to BufVec
       let mut bufs: BufVec = match buf {
         Some(b) => vec![b],
         None => vec![],

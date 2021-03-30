@@ -6,7 +6,6 @@ use crate::futures::future::FutureExt;
 use crate::serialize_op_result;
 use crate::BufVec;
 use crate::Op;
-use crate::OpBuf;
 use crate::OpFn;
 use crate::OpPayload;
 use crate::OpResponse;
@@ -71,7 +70,7 @@ where
 {
   Box::new(move |state, payload, buf| -> Op {
     let min_arg: u32 = payload.deserialize().unwrap();
-    // For sig compat map OpBuf to BufVec
+    // For sig compat map Option<ZeroCopyBuf> to BufVec
     let mut bufs: BufVec = match buf {
       Some(b) => vec![b],
       None => vec![],
@@ -142,9 +141,9 @@ where
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: ValueOrVector,
 {
-  Box::new(move |state: RcOpState, p: OpPayload, b: OpBuf| -> Op {
+  Box::new(move |state: RcOpState, p: OpPayload, b: Option<ZeroCopyBuf>| -> Op {
     let min_arg: u32 = p.deserialize().unwrap();
-    // For sig compat map OpBuf to BufVec
+    // For sig compat map Option<ZeroCopyBuf> to BufVec
     let bufs: BufVec = match b {
       Some(b) => vec![b],
       None => vec![],

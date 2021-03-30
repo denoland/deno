@@ -5,7 +5,6 @@ use crate::error::AnyError;
 use crate::serialize_op_result;
 use crate::BufVec;
 use crate::Op;
-use crate::OpBuf;
 use crate::OpFn;
 use crate::OpPayload;
 use crate::OpState;
@@ -44,8 +43,8 @@ where
   V: DeserializeOwned,
   R: Serialize + 'static,
 {
-  Box::new(move |state, payload, buf: OpBuf| -> Op {
-    // For sig compat map OpBuf to BufVec
+  Box::new(move |state, payload, buf: Option<ZeroCopyBuf>| -> Op {
+    // For sig compat map Option<ZeroCopyBuf> to BufVec
     let mut bufs: BufVec = match buf {
       Some(b) => vec![b],
       None => vec![],
@@ -91,8 +90,8 @@ where
   RV: Serialize + 'static,
 {
   let try_dispatch_op =
-    move |state: RcOpState, p: OpPayload, b: OpBuf| -> Result<Op, AnyError> {
-      // For sig compat map OpBuf to BufVec
+    move |state: RcOpState, p: OpPayload, b: Option<ZeroCopyBuf>| -> Result<Op, AnyError> {
+      // For sig compat map Option<ZeroCopyBuf> to BufVec
       let bufs: BufVec = match b {
         Some(b) => vec![b],
         None => vec![],
@@ -109,7 +108,7 @@ where
       Ok(Op::Async(Box::pin(fut)))
     };
 
-  Box::new(move |state: RcOpState, p: OpPayload, b: OpBuf| -> Op {
+  Box::new(move |state: RcOpState, p: OpPayload, b: Option<ZeroCopyBuf>| -> Op {
     match try_dispatch_op(state.clone(), p, b) {
       Ok(op) => op,
       Err(err) => {

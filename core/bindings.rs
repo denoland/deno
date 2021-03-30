@@ -3,7 +3,6 @@
 use crate::error::AnyError;
 use crate::JsRuntime;
 use crate::Op;
-use crate::OpBuf;
 use crate::OpId;
 use crate::OpPayload;
 use crate::OpResponse;
@@ -419,7 +418,7 @@ fn send<'s>(
 
   // Buf arg (optional)
   let arg3 = args.get(3);
-  let buf: OpBuf = if arg3.is_null_or_undefined() {
+  let buf: Option<ZeroCopyBuf> = if arg3.is_null_or_undefined() {
     None
   } else {
     match v8::Local::<v8::ArrayBufferView>::try_from(arg3)
