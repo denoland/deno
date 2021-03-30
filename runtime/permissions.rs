@@ -17,6 +17,10 @@ use std::hash::Hash;
 use std::io;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
+use std::sync::atomic::AtomicBool;
+#[cfg(test)]
+use std::sync::atomic::Ordering;
+#[cfg(test)]
 use std::sync::Mutex;
 
 const PERMISSION_EMOJI: &str = "⚠️";
@@ -30,45 +34,33 @@ pub enum PermissionState {
 }
 
 impl PermissionState {
-  /// Check the permission state. Errors if denied.
-  /// Ok value is whether PromptResult is AllowAlways.
-  /// first Err value is whether PromptResult is DenyAlways.
+  /// Check the permission state.
   fn check(
     self,
     name: &str,
     info: Option<&str>,
     prompt: bool,
-  ) -> Result<bool, (bool, AnyError)> {
+  ) -> Result<(), AnyError> {
     let access = format!(
       "{} access{}",
       name,
       info.map_or(Default::default(), |info| { format!(" to {}", info) }),
     );
-    let mut e_result = false;
     if self == PermissionState::Granted {
       log_perm_access(&access);
-      Ok(true)
+      Ok(())
     } else {
-      if prompt && self == PermissionState::Prompt {
-        match permission_prompt(&access) {
-          PromptResult::AllowAlways => {
-            log_perm_access(&access);
-            return Ok(true);
-          }
-          PromptResult::AllowOnce => {
-            log_perm_access(&access);
-            return Ok(false);
-          }
-          PromptResult::DenyOnce => e_result = false,
-          PromptResult::DenyAlways => e_result = true,
-        }
+      if prompt && self == PermissionState::Prompt && permission_prompt(&access)
+      {
+        log_perm_access(&access);
+        return Ok(());
       }
 
       let message = format!(
         "Requires {}, run again with the --allow-{} flag",
         access, name
       );
-      Err((e_result, custom_error("PermissionDenied", message)))
+      Err(custom_error("PermissionDenied", message))
     }
   }
 }
@@ -89,14 +81,6 @@ impl Default for PermissionState {
   }
 }
 
-#[derive(Debug, Clone)]
-pub enum PromptResult {
-  AllowAlways,
-  AllowOnce,
-  DenyOnce,
-  DenyAlways,
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UnitPermission {
   pub name: &'static str,
@@ -112,11 +96,10 @@ impl UnitPermission {
 
   pub fn request(&mut self) -> PermissionState {
     if self.state == PermissionState::Prompt {
-      match permission_prompt(&format!("access to {}", self.description)) {
-        PromptResult::AllowAlways => self.state = PermissionState::Granted,
-        PromptResult::AllowOnce => return PermissionState::Granted,
-        PromptResult::DenyOnce => return PermissionState::Denied,
-        PromptResult::DenyAlways => self.state = PermissionState::Denied,
+      if permission_prompt(&format!("access to {}", self.description)) {
+        self.state = PermissionState::Granted;
+      } else {
+        self.state = PermissionState::Denied;
       }
     }
     self.state
@@ -130,20 +113,9 @@ impl UnitPermission {
   }
 
   pub fn check(&mut self) -> Result<(), AnyError> {
-    match self.state.check(self.name, None, self.prompt) {
-      Ok(always) => {
-        if always {
-          self.state = PermissionState::Granted;
-        }
-        Ok(())
-      }
-      Err((always, e)) => {
-        if always {
-          self.state = PermissionState::Denied;
-        }
-        Err(e)
-      }
-    }
+    self.state.check(self.name, None, self.prompt)?;
+    self.state = PermissionState::Granted;
+    Ok(())
   }
 }
 
@@ -224,27 +196,22 @@ impl UnaryPermission<ReadDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        match permission_prompt(&format!(
+        if permission_prompt(&format!(
           "read access to \"{}\"",
           display_path.display()
         )) {
-          PromptResult::AllowAlways => {
-            self
-              .granted_list
-              .retain(|path| !path.0.starts_with(&resolved_path));
-            self.granted_list.insert(ReadDescriptor(resolved_path));
-            PermissionState::Granted
-          }
-          PromptResult::AllowOnce => PermissionState::Granted,
-          PromptResult::DenyOnce => PermissionState::Denied,
-          PromptResult::DenyAlways => {
-            self
-              .denied_list
-              .retain(|path| !resolved_path.starts_with(&path.0));
-            self.denied_list.insert(ReadDescriptor(resolved_path));
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
+          self
+            .granted_list
+            .retain(|path| !path.0.starts_with(&resolved_path));
+          self.granted_list.insert(ReadDescriptor(resolved_path));
+          PermissionState::Granted
+        } else {
+          self
+            .denied_list
+            .retain(|path| !resolved_path.starts_with(&path.0));
+          self.denied_list.insert(ReadDescriptor(resolved_path));
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
         }
       } else {
         state
@@ -252,18 +219,13 @@ impl UnaryPermission<ReadDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        match permission_prompt("read access") {
-          PromptResult::AllowAlways => {
-            self.granted_list.clear();
-            self.global_state = PermissionState::Granted;
-            PermissionState::Granted
-          }
-          PromptResult::AllowOnce => PermissionState::Granted,
-          PromptResult::DenyOnce => PermissionState::Denied,
-          PromptResult::DenyAlways => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
+        if permission_prompt("read access") {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        } else {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
         }
       } else {
         state
@@ -286,30 +248,15 @@ impl UnaryPermission<ReadDescriptor> {
     self.query(path)
   }
 
-  fn base_check(&mut self, path: PathBuf, info: &str) -> Result<(), AnyError> {
-    match self
-      .query(Some(&path))
-      .check(self.name, Some(info), self.prompt)
-    {
-      Ok(always) => {
-        if always {
-          self.granted_list.insert(ReadDescriptor(path));
-        }
-        Ok(())
-      }
-      Err((always, e)) => {
-        if always {
-          self.denied_list.insert(ReadDescriptor(path));
-          self.global_state = PermissionState::Denied;
-        }
-        Err(e)
-      }
-    }
-  }
-
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    self.base_check(resolved_path, &format!("\"{}\"", display_path.display()))
+    self.query(Some(&resolved_path)).check(
+      self.name,
+      Some(&format!("\"{}\"", display_path.display())),
+      self.prompt,
+    )?;
+    self.granted_list.insert(ReadDescriptor(resolved_path));
+    Ok(())
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -320,7 +267,13 @@ impl UnaryPermission<ReadDescriptor> {
     display: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
-    self.base_check(resolved_path, &format!("<{}>", display))
+    self.query(Some(&resolved_path)).check(
+      self.name,
+      Some(&format!("<{}>", display)),
+      self.prompt,
+    )?;
+    self.granted_list.insert(ReadDescriptor(resolved_path));
+    Ok(())
   }
 }
 
@@ -357,27 +310,22 @@ impl UnaryPermission<WriteDescriptor> {
       let (resolved_path, display_path) = resolved_and_display_path(path);
       let state = self.query(Some(&resolved_path));
       if state == PermissionState::Prompt {
-        match permission_prompt(&format!(
+        if permission_prompt(&format!(
           "write access to \"{}\"",
           display_path.display()
         )) {
-          PromptResult::AllowAlways => {
-            self
-              .granted_list
-              .retain(|path| !path.0.starts_with(&resolved_path));
-            self.granted_list.insert(WriteDescriptor(resolved_path));
-            PermissionState::Granted
-          }
-          PromptResult::AllowOnce => PermissionState::Granted,
-          PromptResult::DenyOnce => PermissionState::Denied,
-          PromptResult::DenyAlways => {
-            self
-              .denied_list
-              .retain(|path| !resolved_path.starts_with(path.0.clone()));
-            self.denied_list.insert(WriteDescriptor(resolved_path));
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
+          self
+            .granted_list
+            .retain(|path| !path.0.starts_with(&resolved_path));
+          self.granted_list.insert(WriteDescriptor(resolved_path));
+          PermissionState::Granted
+        } else {
+          self
+            .denied_list
+            .retain(|path| !resolved_path.starts_with(&path.0));
+          self.denied_list.insert(WriteDescriptor(resolved_path));
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
         }
       } else {
         state
@@ -385,18 +333,13 @@ impl UnaryPermission<WriteDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        match permission_prompt("write access") {
-          PromptResult::AllowAlways => {
-            self.granted_list.clear();
-            self.global_state = PermissionState::Granted;
-            PermissionState::Granted
-          }
-          PromptResult::AllowOnce => PermissionState::Granted,
-          PromptResult::DenyOnce => PermissionState::Denied,
-          PromptResult::DenyAlways => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
+        if permission_prompt("write access") {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        } else {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
         }
       } else {
         state
@@ -421,25 +364,13 @@ impl UnaryPermission<WriteDescriptor> {
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    match self.query(Some(&resolved_path)).check(
+    self.query(Some(&resolved_path)).check(
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
       self.prompt,
-    ) {
-      Ok(always) => {
-        if always {
-          self.granted_list.insert(WriteDescriptor(resolved_path));
-        }
-        Ok(())
-      }
-      Err((always, e)) => {
-        if always {
-          self.denied_list.insert(WriteDescriptor(resolved_path));
-          self.global_state = PermissionState::Denied;
-        }
-        Err(e)
-      }
-    }
+    )?;
+    self.granted_list.insert(WriteDescriptor(resolved_path));
+    Ok(())
   }
 }
 
@@ -487,24 +418,19 @@ impl UnaryPermission<NetDescriptor> {
       let state = self.query(Some(host));
       if state == PermissionState::Prompt {
         let host = NetDescriptor::new(&host);
-        match permission_prompt(&format!("network access to \"{}\"", host)) {
-          PromptResult::AllowAlways => {
-            if host.1.is_none() {
-              self.granted_list.retain(|h| h.0 != host.0);
-            }
-            self.granted_list.insert(host);
-            PermissionState::Granted
+        if permission_prompt(&format!("network access to \"{}\"", host)) {
+          if host.1.is_none() {
+            self.granted_list.retain(|h| h.0 != host.0);
           }
-          PromptResult::AllowOnce => PermissionState::Granted,
-          PromptResult::DenyOnce => PermissionState::Denied,
-          PromptResult::DenyAlways => {
-            if host.1.is_some() {
-              self.denied_list.remove(&host);
-            }
-            self.denied_list.insert(host);
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
+          self.granted_list.insert(host);
+          PermissionState::Granted
+        } else {
+          if host.1.is_some() {
+            self.denied_list.remove(&host);
           }
+          self.denied_list.insert(host);
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
         }
       } else {
         state
@@ -512,18 +438,13 @@ impl UnaryPermission<NetDescriptor> {
     } else {
       let state = self.query::<&str>(None);
       if state == PermissionState::Prompt {
-        match permission_prompt("network access") {
-          PromptResult::AllowAlways => {
-            self.granted_list.clear();
-            self.global_state = PermissionState::Granted;
-            PermissionState::Granted
-          }
-          PromptResult::AllowOnce => PermissionState::Granted,
-          PromptResult::DenyOnce => PermissionState::Denied,
-          PromptResult::DenyAlways => {
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
+        if permission_prompt("network access") {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        } else {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
         }
       } else {
         state
@@ -549,37 +470,18 @@ impl UnaryPermission<NetDescriptor> {
     self.query(host)
   }
 
-  fn base_check<T: AsRef<str>>(
-    &mut self,
-    host: &(T, Option<u16>),
-    info: &str,
-  ) -> Result<(), AnyError> {
-    let new_host = NetDescriptor::new(&host);
-    match self
-      .query(Some(host))
-      .check(self.name, Some(info), self.prompt)
-    {
-      Ok(always) => {
-        if always {
-          self.granted_list.insert(new_host);
-        }
-        Ok(())
-      }
-      Err((always, e)) => {
-        if always {
-          self.denied_list.insert(new_host);
-          self.global_state = PermissionState::Denied;
-        }
-        Err(e)
-      }
-    }
-  }
-
   pub fn check<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
-    self.base_check(host, &format!("\"{}\"", NetDescriptor::new(&host)))
+    let new_host = NetDescriptor::new(&host);
+    self.query(Some(host)).check(
+      self.name,
+      Some(&format!("\"{}\"", new_host)),
+      self.prompt,
+    )?;
+    self.granted_list.insert(new_host);
+    Ok(())
   }
 
   pub fn check_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
@@ -591,11 +493,14 @@ impl UnaryPermission<NetDescriptor> {
       None => hostname.clone(),
       Some(port) => format!("{}:{}", hostname, port),
     };
-
-    self.base_check(
-      &(&hostname, url.port_or_known_default()),
-      &format!("\"{}\"", display_host),
-    )
+    let host = &(&hostname, url.port_or_known_default());
+    self.query(Some(host)).check(
+      self.name,
+      Some(&format!("\"{}\"", display_host)),
+      self.prompt,
+    )?;
+    self.granted_list.insert(NetDescriptor::new(&host));
+    Ok(())
   }
 }
 
@@ -842,11 +747,11 @@ fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
 /// Shows the permission prompt and returns the answer according to the user input.
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
-fn permission_prompt(message: &str) -> PromptResult {
+fn permission_prompt(message: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    return PromptResult::DenyAlways;
+    return false;
   };
-  let opts = "[a/y/n/d (a = allow always, y = allow once, n = deny once, d = deny always)] ";
+  let opts = "[g/d (g = grant, d = deny)] ";
   let msg = format!(
     "{}  ️Deno requests {}. Grant? {}",
     PERMISSION_EMOJI, message, opts
@@ -858,14 +763,12 @@ fn permission_prompt(message: &str) -> PromptResult {
     let stdin = io::stdin();
     let result = stdin.read_line(&mut input);
     if result.is_err() {
-      return PromptResult::DenyOnce;
+      return false;
     };
     let ch = input.chars().next().unwrap();
     match ch.to_ascii_lowercase() {
-      'a' => return PromptResult::AllowAlways,
-      'y' => return PromptResult::AllowOnce,
-      'n' => return PromptResult::DenyOnce,
-      'd' => return PromptResult::DenyAlways,
+      'g' => return true,
+      'd' => return false,
       _ => {
         // If we don't get a recognized option try again.
         let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
@@ -878,19 +781,22 @@ fn permission_prompt(message: &str) -> PromptResult {
 // When testing, permission prompt returns the value of STUB_PROMPT_VALUE
 // which we set from the test functions.
 #[cfg(test)]
-fn permission_prompt(_message: &str) -> PromptResult {
-  (*STUB_PROMPT_VALUE).lock().unwrap().clone()
+fn permission_prompt(_message: &str) -> bool {
+  STUB_PROMPT_VALUE.load(Ordering::SeqCst)
 }
 
 #[cfg(test)]
 lazy_static::lazy_static! {
-  static ref STUB_PROMPT_VALUE: Mutex<PromptResult> =
-    Mutex::new(PromptResult::AllowAlways);
+  /// Lock this when you use `set_prompt_result` in a test case.
+  static ref PERMISSION_PROMPT_GUARD: Mutex<()> = Mutex::new(());
 }
 
 #[cfg(test)]
-fn set_prompt_result(value: PromptResult) {
-  *(*STUB_PROMPT_VALUE).lock().unwrap() = value;
+static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
+
+#[cfg(test)]
+fn set_prompt_result(value: bool) {
+  STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
 }
 
 #[cfg(test)]
@@ -1262,155 +1168,40 @@ mod tests {
   }
 
   #[test]
-  fn test_prompt_fallback() {
-    let mut perms = Permissions::prompt();
-
-    {
-      set_prompt_result(PromptResult::DenyAlways);
-      assert!(perms.read.check(&Path::new("/bar1")).is_err());
-      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
-      assert!(perms.read.check(&Path::new("/bar1")).is_err());
-    }
-    {
-      set_prompt_result(PromptResult::AllowAlways);
-      assert!(perms.read.check(&Path::new("/foo")).is_ok());
-      set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
-      assert!(perms.read.check(&Path::new("/foo")).is_ok());
-    }
-    {
-      set_prompt_result(PromptResult::AllowOnce);
-      assert!(perms.read.check(&Path::new("/bar")).is_ok());
-      set_prompt_result(PromptResult::DenyOnce);
-      assert!(perms.read.check(&Path::new("/bar")).is_err());
-    }
-    {
-      set_prompt_result(PromptResult::DenyOnce);
-      assert!(perms.read.check(&Path::new("/foo1")).is_err());
-      set_prompt_result(PromptResult::AllowOnce);
-      assert!(perms.read.check(&Path::new("/foo1")).is_ok());
-    }
-
-    {
-      set_prompt_result(PromptResult::DenyAlways);
-      assert!(perms.write.check(&Path::new("/bar1")).is_err());
-      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
-      assert!(perms.write.check(&Path::new("/bar1")).is_err());
-    }
-    {
-      set_prompt_result(PromptResult::AllowAlways);
-      assert!(perms.write.check(&Path::new("/foo")).is_ok());
-      set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
-      assert!(perms.write.check(&Path::new("/foo")).is_ok());
-    }
-    {
-      set_prompt_result(PromptResult::AllowOnce);
-      assert!(perms.write.check(&Path::new("/bar")).is_ok());
-      set_prompt_result(PromptResult::DenyOnce);
-      assert!(perms.write.check(&Path::new("/bar")).is_err());
-    }
-    {
-      set_prompt_result(PromptResult::DenyOnce);
-      assert!(perms.write.check(&Path::new("/foo1")).is_err());
-      set_prompt_result(PromptResult::AllowOnce);
-      assert!(perms.write.check(&Path::new("/foo1")).is_ok());
-    }
-
-    {
-      set_prompt_result(PromptResult::DenyAlways);
-      assert!(perms.net.check(&("bar", Some(1234))).is_err());
-      set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
-      assert!(perms.net.check(&("bar", Some(1234))).is_err());
-    }
-    {
-      set_prompt_result(PromptResult::AllowAlways);
-      assert!(perms.net.check(&("localhost", Some(1234))).is_ok());
-      set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
-      assert!(perms.net.check(&("localhost", Some(1234))).is_ok());
-    }
-    {
-      set_prompt_result(PromptResult::AllowOnce);
-      assert!(perms.net.check(&("deno.land", Some(1234))).is_ok());
-      set_prompt_result(PromptResult::DenyOnce);
-      assert!(perms.net.check(&("deno.land", Some(1234))).is_err());
-    }
-    {
-      set_prompt_result(PromptResult::DenyOnce);
-      assert!(perms.net.check(&("foo", Some(1234))).is_err());
-      set_prompt_result(PromptResult::AllowOnce);
-      assert!(perms.net.check(&("foo", Some(1234))).is_ok());
-    }
-  }
-
-  #[test]
-  fn test_prompt_fallback_unit_allow_always() {
-    let mut perms = Permissions::prompt();
-    set_prompt_result(PromptResult::AllowAlways);
-    assert!(perms.env.check().is_ok());
-    set_prompt_result(PromptResult::DenyOnce); // doesnt prompt
-    assert!(perms.env.check().is_ok());
-  }
-
-  #[test]
-  fn test_prompt_fallback_unit_allow_once() {
-    let mut perms = Permissions::prompt();
-    set_prompt_result(PromptResult::AllowOnce);
-    assert!(perms.env.check().is_ok());
-    set_prompt_result(PromptResult::DenyOnce);
-    assert!(perms.env.check().is_err());
-  }
-
-  #[test]
-  fn test_prompt_fallback_unit_deny_once() {
-    let mut perms = Permissions::prompt();
-    set_prompt_result(PromptResult::DenyOnce);
-    assert!(perms.env.check().is_err());
-    set_prompt_result(PromptResult::AllowOnce);
-    assert!(perms.env.check().is_ok());
-  }
-
-  #[test]
-  fn test_prompt_fallback_unit_deny_always() {
-    let mut perms = Permissions::prompt();
-    set_prompt_result(PromptResult::DenyAlways);
-    assert!(perms.env.check().is_err());
-    set_prompt_result(PromptResult::AllowOnce); // doesnt prompt
-    assert!(perms.env.check().is_err());
-  }
-
-  #[test]
   fn test_request() {
     let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
-      set_prompt_result(PromptResult::AllowAlways);
+      let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+      set_prompt_result(true);
       assert_eq!(perms.read.request(Some(&Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
-      set_prompt_result(PromptResult::DenyAlways);
+      set_prompt_result(false);
       assert_eq!(perms.read.request(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      set_prompt_result(PromptResult::DenyAlways);
+      set_prompt_result(false);
       assert_eq!(perms.write.request(Some(&Path::new("/foo"))), PermissionState::Denied);
       assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      set_prompt_result(PromptResult::AllowAlways);
+      set_prompt_result(true);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
-      set_prompt_result(PromptResult::AllowAlways);
+      set_prompt_result(true);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
-      set_prompt_result(PromptResult::DenyAlways);
+      set_prompt_result(false);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      set_prompt_result(PromptResult::AllowAlways);
+      set_prompt_result(true);
       assert_eq!(perms.env.request(), PermissionState::Granted);
-      set_prompt_result(PromptResult::DenyAlways);
+      set_prompt_result(false);
       assert_eq!(perms.env.request(), PermissionState::Granted);
-      set_prompt_result(PromptResult::DenyAlways);
+      set_prompt_result(false);
       assert_eq!(perms.run.request(), PermissionState::Denied);
-      set_prompt_result(PromptResult::AllowAlways);
+      set_prompt_result(true);
       assert_eq!(perms.run.request(), PermissionState::Denied);
-      set_prompt_result(PromptResult::AllowAlways);
+      set_prompt_result(true);
       assert_eq!(perms.plugin.request(), PermissionState::Granted);
-      set_prompt_result(PromptResult::DenyAlways);
+      set_prompt_result(false);
       assert_eq!(perms.plugin.request(), PermissionState::Granted);
-      set_prompt_result(PromptResult::DenyAlways);
+      set_prompt_result(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
-      set_prompt_result(PromptResult::AllowAlways);
+      set_prompt_result(true);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
     };
   }
