@@ -232,11 +232,9 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
     .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::bundle_ffi::wgpu_render_bundle_pop_debug_group(
-      &mut render_bundle_encoder_resource.0.borrow_mut(),
-    );
-  }
+  wgpu_core::command::bundle_ffi::wgpu_render_bundle_pop_debug_group(
+    &mut render_bundle_encoder_resource.0.borrow_mut(),
+  );
 
   Ok(json!({}))
 }

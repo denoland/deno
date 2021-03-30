@@ -171,7 +171,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 pub struct BufferGetMappedRangeArgs {
   buffer_rid: ResourceId,
   offset: u64,
-  size: u64,
+  size: Option<u64>,
 }
 
 pub fn op_webgpu_buffer_get_mapped_range(
@@ -186,21 +186,22 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .ok_or_else(bad_resource_id)?;
   let buffer = buffer_resource.0;
 
-  let slice_pointer = gfx_select!(buffer => instance.buffer_get_mapped_range(
-    buffer,
-    args.offset,
-    std::num::NonZeroU64::new(args.size)
-  ))
-  .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
+  let (slice_pointer, range_size) =
+    gfx_select!(buffer => instance.buffer_get_mapped_range(
+      buffer,
+      args.offset,
+      std::num::NonZeroU64::new(args.size.unwrap_or(0))
+    ))
+    .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
 
   let slice = unsafe {
-    std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
+    std::slice::from_raw_parts_mut(slice_pointer, range_size as usize)
   };
   zero_copy[0].copy_from_slice(slice);
 
   let rid = state
     .resource_table
-    .add(WebGpuBufferMapped(slice_pointer, args.size as usize));
+    .add(WebGpuBufferMapped(slice_pointer, range_size as usize));
 
   Ok(json!({
     "rid": rid,

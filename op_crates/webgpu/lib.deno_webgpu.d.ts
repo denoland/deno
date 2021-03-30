@@ -72,7 +72,7 @@ declare class GPUAdapter {
   readonly features: GPUAdapterFeatures;
   readonly limits: GPUAdapterLimits;
 
-  requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice | null>;
+  requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
 }
 
 declare interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
@@ -114,7 +114,6 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
     | ((this: GPUDevice, ev: GPUUncapturedErrorEvent) => any)
     | null;
 
-  readonly adapter: GPUAdapter;
   readonly features: ReadonlyArray<GPUFeatureName>;
   readonly limits: Record<string, number>;
   readonly queue: GPUQueue;
@@ -619,37 +618,36 @@ declare type GPUStencilOperation =
 declare type GPUIndexFormat = "uint16" | "uint32";
 
 declare type GPUVertexFormat =
-  | "uchar2"
-  | "uchar4"
-  | "char2"
-  | "char4"
-  | "uchar2norm"
-  | "uchar4norm"
-  | "char2norm"
-  | "char4norm"
-  | "ushort2"
-  | "ushort4"
-  | "short2"
-  | "short4"
-  | "ushort2norm"
-  | "ushort4norm"
-  | "short2norm"
-  | "short4norm"
-  | "half2"
-  | "half4"
-  | "float"
-  | "float2"
-  | "float3"
-  | "float4"
-  | "uint"
-  | "uint2"
-  | "uint3"
-  | "uint4"
-  | "int"
-  | "int2"
-  | "int3"
-  | "int4";
-
+  | "uint8x2"
+  | "uint8x4"
+  | "sint8x2"
+  | "sint8x4"
+  | "unorm8x2"
+  | "unorm8x4"
+  | "snorm8x2"
+  | "snorm8x4"
+  | "uint16x2"
+  | "uint16x4"
+  | "sint16x2"
+  | "sint16x4"
+  | "unorm16x2"
+  | "unorm16x4"
+  | "snorm16x2"
+  | "snorm16x4"
+  | "float16x2"
+  | "float16x4"
+  | "float32"
+  | "float32x2"
+  | "float32x3"
+  | "float32x4"
+  | "uint32"
+  | "uint32x2"
+  | "uint32x3"
+  | "uint32x4"
+  | "sint32"
+  | "sint32x2"
+  | "sint32x3"
+  | "sint32x4";
 declare type GPUInputStepMode = "vertex" | "instance";
 
 declare interface GPUVertexState extends GPUProgrammableStage {
@@ -1118,9 +1116,9 @@ declare interface GPUOrigin3DDict {
 declare type GPUOrigin3D = number[] | GPUOrigin3DDict;
 
 declare interface GPUExtent3DDict {
-  width?: number;
+  width: number;
   height?: number;
-  depth?: number;
+  depthOrArrayLayers?: number;
 }
 
 declare type GPUExtent3D = number[] | GPUExtent3DDict;

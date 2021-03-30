@@ -10,6 +10,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::num::NonZeroU32;
 
 use super::error::WebGpuError;
 
@@ -131,8 +132,8 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       .get::<super::texture::WebGpuTextureView>(color_attachment.view)
       .ok_or_else(bad_resource_id)?;
 
-    let attachment = wgpu_core::command::ColorAttachmentDescriptor {
-      attachment: texture_view_resource.0,
+    let attachment = wgpu_core::command::RenderPassColorAttachment {
+      view: texture_view_resource.0,
       resolve_target: color_attachment
         .resolve_target
         .map(|rid| {
@@ -184,8 +185,8 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       .ok_or_else(bad_resource_id)?;
 
     depth_stencil_attachment =
-      Some(wgpu_core::command::DepthStencilAttachmentDescriptor {
-        attachment: texture_view_resource.0,
+      Some(wgpu_core::command::RenderPassDepthStencilAttachment {
+        view: texture_view_resource.0,
         depth: match attachment.depth_load_op.as_str() {
           "load" => wgpu_core::command::PassChannel {
             load_op: wgpu_core::command::LoadOp::Load,
@@ -378,15 +379,17 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     .get::<super::texture::WebGpuTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
 
-  let source = wgpu_core::command::BufferCopyView {
+  let source = wgpu_core::command::ImageCopyBuffer {
     buffer: source_buffer_resource.0,
-    layout: wgpu_types::TextureDataLayout {
+    layout: wgpu_types::ImageDataLayout {
       offset: args.source.offset.unwrap_or(0),
-      bytes_per_row: args.source.bytes_per_row.unwrap_or(0),
-      rows_per_image: args.source.rows_per_image.unwrap_or(0),
+      // TODO(lucacasonato): check with spec if non zero is correct here
+      bytes_per_row: NonZeroU32::new(args.source.bytes_per_row.unwrap_or(0)),
+      // TODO(lucacasonato): check with spec if non zero is correct here
+      rows_per_image: NonZeroU32::new(args.source.rows_per_image.unwrap_or(0)),
     },
   };
-  let destination = wgpu_core::command::TextureCopyView {
+  let destination = wgpu_core::command::ImageCopyTexture {
     texture: destination_texture_resource.0,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
@@ -405,7 +408,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     &wgpu_types::Extent3d {
       width: args.copy_size.width.unwrap_or(1),
       height: args.copy_size.height.unwrap_or(1),
-      depth: args.copy_size.depth.unwrap_or(1),
+      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
     }
   )).err();
 
@@ -441,7 +444,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     .get::<super::buffer::WebGpuBuffer>(args.destination.buffer)
     .ok_or_else(bad_resource_id)?;
 
-  let source = wgpu_core::command::TextureCopyView {
+  let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,
     mip_level: args.source.mip_level.unwrap_or(0),
     origin: args.source.origin.map_or(Default::default(), |origin| {
@@ -452,12 +455,18 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
       }
     }),
   };
-  let destination = wgpu_core::command::BufferCopyView {
+  let destination = wgpu_core::command::ImageCopyBuffer {
     buffer: destination_buffer_resource.0,
-    layout: wgpu_types::TextureDataLayout {
+    layout: wgpu_types::ImageDataLayout {
       offset: args.destination.offset.unwrap_or(0),
-      bytes_per_row: args.destination.bytes_per_row.unwrap_or(0),
-      rows_per_image: args.destination.rows_per_image.unwrap_or(0),
+      // TODO(lucacasonato): check with spec if non zero is correct here
+      bytes_per_row: NonZeroU32::new(
+        args.destination.bytes_per_row.unwrap_or(0),
+      ),
+      // TODO(lucacasonato): check with spec if non zero is correct here
+      rows_per_image: NonZeroU32::new(
+        args.destination.rows_per_image.unwrap_or(0),
+      ),
     },
   };
   let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_copy_texture_to_buffer(
@@ -467,7 +476,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     &wgpu_types::Extent3d {
       width: args.copy_size.width.unwrap_or(1),
       height: args.copy_size.height.unwrap_or(1),
-      depth: args.copy_size.depth.unwrap_or(1),
+      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
     }
   )).err();
 
@@ -503,7 +512,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     .get::<super::texture::WebGpuTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
 
-  let source = wgpu_core::command::TextureCopyView {
+  let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,
     mip_level: args.source.mip_level.unwrap_or(0),
     origin: args.source.origin.map_or(Default::default(), |origin| {
@@ -514,7 +523,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
       }
     }),
   };
-  let destination = wgpu_core::command::TextureCopyView {
+  let destination = wgpu_core::command::ImageCopyTexture {
     texture: destination_texture_resource.0,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
@@ -533,7 +542,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     &wgpu_types::Extent3d {
       width: args.copy_size.width.unwrap_or(1),
       height: args.copy_size.height.unwrap_or(1),
-      depth: args.copy_size.depth.unwrap_or(1),
+      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
     }
   )).err();
 

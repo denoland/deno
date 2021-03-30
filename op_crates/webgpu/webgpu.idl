@@ -7,38 +7,34 @@ dictionary GPUObjectDescriptorBase {
 };
 
 interface GPUAdapterLimits {
-    readonly attribute GPUSize32 maxTextureDimension1D;
-    readonly attribute GPUSize32 maxTextureDimension2D;
-    readonly attribute GPUSize32 maxTextureDimension3D;
-    readonly attribute GPUSize32 maxTextureArrayLayers;
-    readonly attribute GPUSize32 maxBindGroups;
-    readonly attribute GPUSize32 maxDynamicUniformBuffersPerPipelineLayout;
-    readonly attribute GPUSize32 maxDynamicStorageBuffersPerPipelineLayout;
-    readonly attribute GPUSize32 maxSampledTexturesPerShaderStage;
-    readonly attribute GPUSize32 maxSamplersPerShaderStage;
-    readonly attribute GPUSize32 maxStorageBuffersPerShaderStage;
-    readonly attribute GPUSize32 maxStorageTexturesPerShaderStage;
-    readonly attribute GPUSize32 maxUniformBuffersPerShaderStage;
-    readonly attribute GPUSize32 maxUniformBufferBindingSize;
-    readonly attribute GPUSize32 maxStorageBufferBindingSize;
-    readonly attribute GPUSize32 maxVertexBuffers;
-    readonly attribute GPUSize32 maxVertexAttributes;
-    readonly attribute GPUSize32 maxVertexBufferArrayStride;
+    readonly attribute unsigned long maxTextureDimension1D;
+    readonly attribute unsigned long maxTextureDimension2D;
+    readonly attribute unsigned long maxTextureDimension3D;
+    readonly attribute unsigned long maxTextureArrayLayers;
+    readonly attribute unsigned long maxBindGroups;
+    readonly attribute unsigned long maxDynamicUniformBuffersPerPipelineLayout;
+    readonly attribute unsigned long maxDynamicStorageBuffersPerPipelineLayout;
+    readonly attribute unsigned long maxSampledTexturesPerShaderStage;
+    readonly attribute unsigned long maxSamplersPerShaderStage;
+    readonly attribute unsigned long maxStorageBuffersPerShaderStage;
+    readonly attribute unsigned long maxStorageTexturesPerShaderStage;
+    readonly attribute unsigned long maxUniformBuffersPerShaderStage;
+    readonly attribute unsigned long maxUniformBufferBindingSize;
+    readonly attribute unsigned long maxStorageBufferBindingSize;
+    readonly attribute unsigned long maxVertexBuffers;
+    readonly attribute unsigned long maxVertexAttributes;
+    readonly attribute unsigned long maxVertexBufferArrayStride;
 };
 
 interface GPUAdapterFeatures {
     readonly setlike<GPUFeatureName>;
 };
 
-[Exposed=Window]
-partial interface Navigator {
+interface mixin NavigatorGPU {
     [SameObject] readonly attribute GPU gpu;
 };
-
-[Exposed=DedicatedWorker]
-partial interface WorkerNavigator {
-    [SameObject] readonly attribute GPU gpu;
-};
+Navigator includes NavigatorGPU;
+WorkerNavigator includes NavigatorGPU;
 
 [Exposed=(Window, DedicatedWorker)]
 interface GPU {
@@ -59,7 +55,7 @@ interface GPUAdapter {
     [SameObject] readonly attribute GPUAdapterFeatures features;
     [SameObject] readonly attribute GPUAdapterLimits limits;
 
-    Promise<GPUDevice?> requestDevice(optional GPUDeviceDescriptor descriptor = {});
+    Promise<GPUDevice> requestDevice(optional GPUDeviceDescriptor descriptor = {});
 };
 
 dictionary GPUDeviceDescriptor : GPUObjectDescriptorBase {
@@ -78,7 +74,6 @@ enum GPUFeatureName {
 
 [Exposed=(Window, DedicatedWorker), Serializable]
 interface GPUDevice : EventTarget {
-    [SameObject] readonly attribute GPUAdapter adapter;
     readonly attribute FrozenArray<GPUFeatureName> features;
     readonly attribute object limits;
 
@@ -624,36 +619,36 @@ enum GPUIndexFormat {
 };
 
 enum GPUVertexFormat {
-    "uchar2",
-    "uchar4",
-    "char2",
-    "char4",
-    "uchar2norm",
-    "uchar4norm",
-    "char2norm",
-    "char4norm",
-    "ushort2",
-    "ushort4",
-    "short2",
-    "short4",
-    "ushort2norm",
-    "ushort4norm",
-    "short2norm",
-    "short4norm",
-    "half2",
-    "half4",
-    "float",
-    "float2",
-    "float3",
-    "float4",
-    "uint",
-    "uint2",
-    "uint3",
-    "uint4",
-    "int",
-    "int2",
-    "int3",
-    "int4"
+    "uint8x2",
+    "uint8x4",
+    "sint8x2",
+    "sint8x4",
+    "unorm8x2",
+    "unorm8x4",
+    "snorm8x2",
+    "snorm8x4",
+    "uint16x2",
+    "uint16x4",
+    "sint16x2",
+    "sint16x4",
+    "unorm16x2",
+    "unorm16x4",
+    "snorm16x2",
+    "snorm16x4",
+    "float16x2",
+    "float16x4",
+    "float32",
+    "float32x2",
+    "float32x3",
+    "float32x4",
+    "uint32",
+    "uint32x2",
+    "uint32x3",
+    "uint32x4",
+    "sint32",
+    "sint32x2",
+    "sint32x3",
+    "sint32x4",
 };
 
 enum GPUInputStepMode {
@@ -838,7 +833,7 @@ dictionary GPURenderPassColorAttachment {
     GPUTextureView resolveTarget;
 
     required (GPULoadOp or GPUColor) loadValue;
-    GPUStoreOp storeOp = "store";
+    required GPUStoreOp storeOp;
 };
 
 dictionary GPURenderPassDepthStencilAttachment {
@@ -1016,7 +1011,7 @@ dictionary GPUOrigin3DDict {
 typedef (sequence<GPUIntegerCoordinate> or GPUOrigin3DDict) GPUOrigin3D;
 
 dictionary GPUExtent3DDict {
-    GPUIntegerCoordinate width = 1;
+    required GPUIntegerCoordinate width;
     GPUIntegerCoordinate height = 1;
     GPUIntegerCoordinate depthOrArrayLayers = 1;
 };

@@ -244,15 +244,23 @@ pub async fn op_webgpu_request_adapter(
     gfx_select!(adapter => instance.adapter_limits(adapter))?;
 
   let limits = json!({
-    "maxBindGroups": adapter_limits.max_bind_groups,
-    "maxDynamicUniformBuffersPerPipelineLayout": adapter_limits.max_dynamic_uniform_buffers_per_pipeline_layout,
-    "maxDynamicStorageBuffersPerPipelineLayout": adapter_limits.max_dynamic_storage_buffers_per_pipeline_layout,
-    "maxSampledTexturesPerShaderStage": adapter_limits.max_sampled_textures_per_shader_stage,
-    "maxSamplersPerShaderStage": adapter_limits.max_samplers_per_shader_stage,
-    "maxStorageBuffersPerShaderStage": adapter_limits.max_storage_buffers_per_shader_stage,
-    "maxStorageTexturesPerShaderStage": adapter_limits.max_storage_textures_per_shader_stage,
-    "maxUniformBuffersPerShaderStage": adapter_limits.max_uniform_buffers_per_shader_stage,
-    "maxUniformBufferBindingSize": adapter_limits.max_uniform_buffer_binding_size
+     "maxTextureDimension1D": adapter_limits.max_texture_dimension_1d,
+     "maxTextureDimension2D": adapter_limits.max_texture_dimension_2d,
+     "maxTextureDimension3D": adapter_limits.max_texture_dimension_3d,
+     "maxTextureArrayLayers": adapter_limits.max_texture_array_layers,
+     "maxBindGroups": adapter_limits.max_bind_groups,
+     "maxDynamicUniformBuffersPerPipelineLayout": adapter_limits.max_dynamic_uniform_buffers_per_pipeline_layout,
+     "maxDynamicStorageBuffersPerPipelineLayout": adapter_limits.max_dynamic_storage_buffers_per_pipeline_layout,
+     "maxSampledTexturesPerShaderStage": adapter_limits.max_sampled_textures_per_shader_stage,
+     "maxSamplersPerShaderStage": adapter_limits.max_samplers_per_shader_stage,
+     "maxStorageBuffersPerShaderStage": adapter_limits.max_storage_buffers_per_shader_stage,
+     "maxStorageTexturesPerShaderStage": adapter_limits.max_storage_textures_per_shader_stage,
+     "maxUniformBuffersPerShaderStage": adapter_limits.max_uniform_buffers_per_shader_stage,
+     "maxUniformBufferBindingSize": adapter_limits.max_uniform_buffer_binding_size,
+     "maxStorageBufferBindingSize": adapter_limits.max_storage_buffer_binding_size,
+     "maxVertexBuffers": adapter_limits.max_vertex_buffers,
+     "maxVertexAttributes": adapter_limits.max_vertex_attributes,
+     "maxVertexBufferArrayStride": adapter_limits.max_vertex_buffer_array_stride,
   });
 
   let rid = state.resource_table.add(WebGpuAdapter(adapter));
@@ -268,10 +276,10 @@ pub async fn op_webgpu_request_adapter(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuLimits {
-  _max_texture_dimension1d: Option<u32>,
-  _max_texture_dimension2d: Option<u32>,
-  _max_texture_dimension3d: Option<u32>,
-  _max_texture_array_layers: Option<u32>,
+  max_texture_dimension_1d: Option<u32>,
+  max_texture_dimension_2d: Option<u32>,
+  max_texture_dimension_3d: Option<u32>,
+  max_texture_array_layers: Option<u32>,
   max_bind_groups: Option<u32>,
   max_dynamic_uniform_buffers_per_pipeline_layout: Option<u32>,
   max_dynamic_storage_buffers_per_pipeline_layout: Option<u32>,
@@ -281,10 +289,55 @@ struct GpuLimits {
   max_storage_textures_per_shader_stage: Option<u32>,
   max_uniform_buffers_per_shader_stage: Option<u32>,
   max_uniform_buffer_binding_size: Option<u32>,
-  _max_storage_buffer_binding_size: Option<u32>,
-  _max_vertex_buffers: Option<u32>,
-  _max_vertex_attributes: Option<u32>,
-  _max_vertex_buffer_array_stride: Option<u32>,
+  max_storage_buffer_binding_size: Option<u32>,
+  max_vertex_buffers: Option<u32>,
+  max_vertex_attributes: Option<u32>,
+  max_vertex_buffer_array_stride: Option<u32>,
+}
+
+impl Into<wgpu_types::Limits> for GpuLimits {
+  fn into(self) -> wgpu_types::Limits {
+    wgpu_types::Limits {
+      max_texture_dimension_1d: self.max_texture_dimension_1d.unwrap_or(8192),
+      max_texture_dimension_2d: self.max_texture_dimension_2d.unwrap_or(8192),
+      max_texture_dimension_3d: self.max_texture_dimension_3d.unwrap_or(2048),
+      max_texture_array_layers: self.max_texture_array_layers.unwrap_or(2048),
+      max_bind_groups: self.max_bind_groups.unwrap_or(4),
+      max_dynamic_uniform_buffers_per_pipeline_layout: self
+        .max_dynamic_uniform_buffers_per_pipeline_layout
+        .unwrap_or(8),
+      max_dynamic_storage_buffers_per_pipeline_layout: self
+        .max_dynamic_storage_buffers_per_pipeline_layout
+        .unwrap_or(4),
+      max_sampled_textures_per_shader_stage: self
+        .max_sampled_textures_per_shader_stage
+        .unwrap_or(16),
+      max_samplers_per_shader_stage: self
+        .max_samplers_per_shader_stage
+        .unwrap_or(16),
+      max_storage_buffers_per_shader_stage: self
+        .max_storage_buffers_per_shader_stage
+        .unwrap_or(4),
+      max_storage_textures_per_shader_stage: self
+        .max_storage_textures_per_shader_stage
+        .unwrap_or(4),
+      max_uniform_buffers_per_shader_stage: self
+        .max_uniform_buffers_per_shader_stage
+        .unwrap_or(12),
+      max_uniform_buffer_binding_size: self
+        .max_uniform_buffer_binding_size
+        .unwrap_or(16384),
+      max_storage_buffer_binding_size: self
+        .max_storage_buffer_binding_size
+        .unwrap_or(134217728),
+      max_vertex_buffers: self.max_vertex_buffers.unwrap_or(8),
+      max_vertex_attributes: self.max_vertex_attributes.unwrap_or(16),
+      max_vertex_buffer_array_stride: self
+        .max_vertex_buffer_array_stride
+        .unwrap_or(2048),
+      max_push_constant_size: 0,
+    }
+  }
 }
 
 #[derive(Deserialize)]
@@ -393,34 +446,7 @@ pub async fn op_webgpu_request_device(
     features,
     limits: args
       .non_guaranteed_limits
-      .map_or(Default::default(), |limits| wgpu_types::Limits {
-        max_bind_groups: limits.max_bind_groups.unwrap_or(4),
-        max_dynamic_uniform_buffers_per_pipeline_layout: limits
-          .max_dynamic_uniform_buffers_per_pipeline_layout
-          .unwrap_or(8),
-        max_dynamic_storage_buffers_per_pipeline_layout: limits
-          .max_dynamic_storage_buffers_per_pipeline_layout
-          .unwrap_or(4),
-        max_sampled_textures_per_shader_stage: limits
-          .max_sampled_textures_per_shader_stage
-          .unwrap_or(16),
-        max_samplers_per_shader_stage: limits
-          .max_samplers_per_shader_stage
-          .unwrap_or(16),
-        max_storage_buffers_per_shader_stage: limits
-          .max_storage_buffers_per_shader_stage
-          .unwrap_or(4),
-        max_storage_textures_per_shader_stage: limits
-          .max_storage_textures_per_shader_stage
-          .unwrap_or(4),
-        max_uniform_buffers_per_shader_stage: limits
-          .max_uniform_buffers_per_shader_stage
-          .unwrap_or(12),
-        max_uniform_buffer_binding_size: limits
-          .max_uniform_buffer_binding_size
-          .unwrap_or(16384),
-        max_push_constant_size: 0,
-      }),
+      .map_or(wgpu_types::Limits::default(), Into::into),
   };
 
   let (device, maybe_err) = gfx_select!(adapter => instance.adapter_request_device(

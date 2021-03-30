@@ -174,13 +174,11 @@ pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
     .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::render_ffi::wgpu_render_pass_begin_pipeline_statistics_query(
-      &mut render_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
-      args.query_index,
-    );
-  }
+  wgpu_core::command::render_ffi::wgpu_render_pass_begin_pipeline_statistics_query(
+    &mut render_pass_resource.0.borrow_mut(),
+    query_set_resource.0,
+    args.query_index,
+  );
 
   Ok(json!({}))
 }
@@ -201,11 +199,9 @@ pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
     .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::render_ffi::wgpu_render_pass_end_pipeline_statistics_query(
-      &mut render_pass_resource.0.borrow_mut(),
-    );
-  }
+  wgpu_core::command::render_ffi::wgpu_render_pass_end_pipeline_statistics_query(
+    &mut render_pass_resource.0.borrow_mut(),
+  );
 
   Ok(json!({}))
 }
@@ -232,13 +228,11 @@ pub fn op_webgpu_render_pass_write_timestamp(
     .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::render_ffi::wgpu_render_pass_write_timestamp(
-      &mut render_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
-      args.query_index,
-    );
-  }
+  wgpu_core::command::render_ffi::wgpu_render_pass_write_timestamp(
+    &mut render_pass_resource.0.borrow_mut(),
+    query_set_resource.0,
+    args.query_index,
+  );
 
   Ok(json!({}))
 }

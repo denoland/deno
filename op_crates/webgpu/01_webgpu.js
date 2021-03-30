@@ -79,7 +79,7 @@
       return {
         width: data[0],
         height: data[1],
-        depth: data[2],
+        depthOrArrayLayers: data[2],
       };
     } else {
       return data;
@@ -245,7 +245,7 @@
           );
         }
       }
-      const nonGuaranteedLimits = descriptor.nonGuaranteedLimits ?? [];
+      const nonGuaranteedLimits = descriptor.nonGuaranteedLimits;
       // TODO(lucacasonato): validate nonGuaranteedLimits
 
       const { rid, features, limits } = await core.jsonOpAsync(
@@ -320,16 +320,20 @@
     }
 
     get maxTextureDimension1D() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxTextureDimension1D;
     }
     get maxTextureDimension2D() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxTextureDimension2D;
     }
     get maxTextureDimension3D() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxTextureDimension3D;
     }
     get maxTextureArrayLayers() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxTextureArrayLayers;
     }
     get maxBindGroups() {
       webidl.assertBranded(this, GPUAdapterLimits);
@@ -368,16 +372,20 @@
       return this[_limits].maxUniformBufferBindingSize;
     }
     get maxStorageBufferBindingSize() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxStorageBufferBindingSize;
     }
     get maxVertexBuffers() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxVertexBuffers;
     }
     get maxVertexAttributes() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxVertexAttributes;
     }
     get maxVertexBufferArrayStride() {
-      throw new TypeError("Not yet implemented");
+      webidl.assertBranded(this, GPUAdapterLimits);
+      return this[_limits].maxVertexBufferArrayStride;
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
@@ -661,10 +669,6 @@
       }
     }
 
-    get adapter() {
-      webidl.assertBranded(this, GPUDevice);
-      return this[_device].adapter;
-    }
     get features() {
       webidl.assertBranded(this, GPUDevice);
       return this[_device].features;
@@ -1291,7 +1295,6 @@
     [Symbol.for("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
-          adapter: this.adapter,
           features: this.features,
           label: this.label,
           limits: this.limits,
@@ -1693,41 +1696,7 @@
       if (size === undefined) {
         rangeSize = Math.max(0, this[_size] - offset);
       } else {
-        rangeSize = this[_size];
-      }
-      if (this[_state] !== "mapped" && this[_state] !== "mapped at creation") {
-        throw new DOMException(
-          `${prefix}: buffer is not mapped.`,
-          "OperationError",
-        );
-      }
-      if ((offset % 8) !== 0) {
-        throw new DOMException(
-          `${prefix}: offset must be a multiple of 8.`,
-          "OperationError",
-        );
-      }
-      if ((rangeSize % 4) !== 0) {
-        throw new DOMException(
-          `${prefix}: rangeSize must be a multiple of 4.`,
-          "OperationError",
-        );
-      }
-      const mappingRange = this[_mappingRange];
-      if (!mappingRange) {
-        throw new DOMException(`${prefix}: invalid state.`, "OperationError");
-      }
-      if (offset < mappingRange[0]) {
-        throw new DOMException(
-          `${prefix}: offset is out of bounds.`,
-          "OperationError",
-        );
-      }
-      if ((offset + rangeSize) > mappingRange[1]) {
-        throw new DOMException(
-          `${prefix}: offset is out of bounds.`,
-          "OperationError",
-        );
+        rangeSize = size;
       }
       const mappedRanges = this[_mappedRanges];
       if (!mappedRanges) {
@@ -1752,8 +1721,8 @@
         "op_webgpu_buffer_get_mapped_range",
         {
           bufferRid,
-          offset: offset - mappingRange[0],
-          size: rangeSize,
+          offset,
+          size,
         },
         new Uint8Array(buffer),
       );

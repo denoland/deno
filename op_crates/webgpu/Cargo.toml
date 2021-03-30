@@ -17,5 +17,5 @@ path = "lib.rs"
 deno_core = { version = "0.82.0", path = "../../core" }
 tokio = { version = "1.4.0", features = ["full"] }
 serde = { version = "1.0.123", features = ["derive"] }
-wgpu-core = { version = "0.7.0", features = ["trace"] }
-wgpu-types = "0.7.0"
+wgpu-core = { git = "https://github.com/gfx-rs/wgpu", rev = "456525d9c7ac500a54fd2275a03bf434ab863a81", features = ["trace"] }
+wgpu-types = { git = "https://github.com/gfx-rs/wgpu", rev = "456525d9c7ac500a54fd2275a03bf434ab863a81" }
