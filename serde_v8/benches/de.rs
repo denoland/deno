@@ -1,8 +1,6 @@
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
 use rusty_v8 as v8;
-use serde_json;
-use serde_v8;
 use std::convert::TryFrom;
 
 use serde::Deserialize;
