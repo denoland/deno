@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
@@ -24,6 +23,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use log::debug;
 use std::env;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;

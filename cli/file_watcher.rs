@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::ready;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
+use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;

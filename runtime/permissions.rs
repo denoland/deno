@@ -9,6 +9,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use log::debug;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -882,7 +883,7 @@ fn permission_prompt(_message: &str) -> PromptResult {
 }
 
 #[cfg(test)]
-lazy_static! {
+lazy_static::lazy_static! {
   static ref STUB_PROMPT_VALUE: Mutex<PromptResult> =
     Mutex::new(PromptResult::AllowAlways);
 }

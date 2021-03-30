@@ -17,6 +17,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use log::debug;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;

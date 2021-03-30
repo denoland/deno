@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "textDocument/selectionRange",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "positions": [
+      {
+        "line": 2,
+        "character": 8
+      }
+    ]
+  }
+}

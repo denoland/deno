@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::metrics::metrics_op;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
@@ -16,6 +15,7 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
+use log::debug;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;

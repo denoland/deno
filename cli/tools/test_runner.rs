@@ -6,7 +6,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use std::path::Path;
-use std::path::PathBuf;
 
 fn is_supported(p: &Path) -> bool {
   use std::path::Component;
@@ -34,7 +33,7 @@ fn is_supported(p: &Path) -> bool {
 
 pub fn prepare_test_modules_urls(
   include: Vec<String>,
-  root_path: &PathBuf,
+  root_path: &Path,
 ) -> Result<Vec<Url>, AnyError> {
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
