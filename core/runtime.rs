@@ -1517,7 +1517,11 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(op_state: Rc<RefCell<OpState>>, payload: OpPayload, buf: OpBuf) -> Op {
+  fn dispatch(
+    op_state: Rc<RefCell<OpState>>,
+    payload: OpPayload,
+    buf: OpBuf,
+  ) -> Op {
     let op_state_ = op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
