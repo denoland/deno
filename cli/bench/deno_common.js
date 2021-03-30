@@ -7,9 +7,10 @@ function benchSync(name, n, innerLoop) {
   const t2 = Date.now();
   const dt = (t2 - t1) / 1e3;
   const r = n / dt;
+  const ns = Math.floor(dt / n * 1e9);
   console.log(
     `${name}:${" ".repeat(20 - name.length)}\t` +
-      `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s`,
+      `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s, t = ${ns}ns/op`,
   );
 }
 
@@ -19,8 +20,14 @@ function benchUrlParse() {
   });
 }
 
-function benchNow() {
-  benchSync("now", 5e5, () => {
+function benchDateNow() {
+  benchSync("date_now", 5e5, () => {
+    Date.now();
+  });
+}
+
+function benchPerfNow() {
+  benchSync("perf_now", 5e5, () => {
     performance.now();
   });
 }
@@ -45,9 +52,15 @@ function benchReadZero() {
 }
 
 function main() {
+  // v8 builtin that's close to the upper bound non-NOPs
+  benchDateNow();
+  // A very lightweight op, that should be highly optimizable
+  benchPerfNow();
+  // A common "language feature", that should be fast
+  // also a decent representation of a non-trivial JSON-op
   benchUrlParse();
-  benchNow();
-  benchWriteNull();
+  // IO ops
   benchReadZero();
+  benchWriteNull();
 }
 main();

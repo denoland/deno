@@ -49,7 +49,7 @@ macro_rules! detest {
     fn $fn_name() {
       dedo($src, |scope, v| {
         let rt = serde_v8::from_v8(scope, v);
-        assert!(rt.is_ok(), format!("from_v8(\"{}\"): {:?}", $src, rt.err()));
+        assert!(rt.is_ok(), "from_v8(\"{}\"): {:?}", $src, rt.err());
         let t: $t = rt.unwrap();
         assert_eq!(t, $rust);
       });
