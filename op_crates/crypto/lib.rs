@@ -231,19 +231,24 @@ pub async fn op_webcrypto_generate_key(
       );
 
       // Determine agreement from algorithm named_curve.
-      let agreement: &RingAlgorithm = args
+      let agreement: Result<&RingAlgorithm, WebCryptoError> = args
         .algorithm
         .named_curve
         .ok_or_else(|| {
           WebCryptoError::MissingArgument("namedCurve".to_string())
         })?
-        .try_into()?;
+        .try_into();
+      if agreement.is_err() {
+        return Ok(
+          json!({ "err": DomError("namedCurve not supported".to_string()) }),
+        );
+      }
       // Generate private key from agreement and ring rng.
       let rng = RingRand::SystemRandom::new();
 
       let private_key: EphemeralPrivateKey = tokio::task::spawn_blocking(
         move || -> Result<EphemeralPrivateKey, ring::error::Unspecified> {
-          EphemeralPrivateKey::generate(&agreement, &rng)
+          EphemeralPrivateKey::generate(&agreement.unwrap(), &rng)
         },
       )
       .await
@@ -281,17 +286,22 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::Ecdsa => {
       validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let curve: &EcdsaSigningAlgorithm = args
+      let curve: Result<&EcdsaSigningAlgorithm, WebCryptoError> = args
         .algorithm
         .named_curve
         .ok_or_else(|| {
           WebCryptoError::MissingArgument("namedCurve".to_string())
         })?
-        .try_into()?;
-
+        .try_into();
+      if curve.is_err() {
+        return Ok(
+          json!({ "err": DomError("namedCurve not supported".to_string()) }),
+        );
+      }
       let rng = RingRand::SystemRandom::new();
       let private_key: EcdsaKeyPair = tokio::task::spawn_blocking(
         move || -> Result<EcdsaKeyPair, ring::error::Unspecified> {
+          let curve = curve.unwrap();
           let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
           Ok(EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?)
         },
