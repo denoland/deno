@@ -55,7 +55,7 @@
     constructor(key, rid) {
       this.#usages = key.keyUsages;
       this.#extractable = key.extractable;
-      let algorithm = key.algorithm;
+      const algorithm = key.algorithm;
       algorithm.name = algorithm.name?.toUpperCase();
       if (algorithm.name.startsWith("RSASSA-PKCS1")) {
         // As per spec, `v` cannot be upper case.
@@ -132,7 +132,7 @@
   }
 
   async function generateKey(algorithm, extractable, keyUsages) {
-    let normalizedAlgorithm = normalize(algorithm);
+    const normalizedAlgorithm = normalize(algorithm);
 
     const { key, err } = await core.jsonOpAsync("op_webcrypto_generate_key", {
       algorithm: normalizedAlgorithm,
