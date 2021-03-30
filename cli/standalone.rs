@@ -109,6 +109,16 @@ fn read_string_slice(
 
 const SPECIFIER: &str = "file://$deno$/bundle.js";
 
+fn module_supported(specifier: &str) -> Result<(), AnyError> {
+  if specifier == SPECIFIER || specifier.starts_with("data:text/javascript;") {
+    Ok(())
+  } else {
+    Err(type_error(
+      "Self-contained binaries don't support module loading",
+    ))
+  }
+}
+
 struct EmbeddedModuleLoader(String);
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -119,11 +129,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if specifier != SPECIFIER {
-      return Err(type_error(
-        "Self-contained binaries don't support module loading",
-      ));
-    }
+    module_supported(specifier)?;
     Ok(resolve_url(specifier)?)
   }
 
@@ -137,11 +143,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let module_specifier = module_specifier.clone();
     let code = self.0.to_string();
     async move {
-      if module_specifier.to_string() != SPECIFIER {
-        return Err(type_error(
-          "Self-contained binaries don't support module loading",
-        ));
-      }
+      module_supported(&module_specifier.to_string())?;
       Ok(deno_core::ModuleSource {
         code,
         module_url_specified: module_specifier.to_string(),
