@@ -14,15 +14,14 @@ pub fn deno_plugin_init(interface: &mut dyn Interface) {
 
 fn op_test_sync(
   _interface: &mut dyn Interface,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Op {
-  if !zero_copy.is_empty() {
+  if zero_copy.is_some() {
     println!("Hello from plugin.");
   }
-  let zero_copy = zero_copy.to_vec();
-  for (idx, buf) in zero_copy.iter().enumerate() {
+  if let Some(buf) = zero_copy {
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
-    println!("zero_copy[{}]: {}", idx, buf_str);
+    println!("zero_copy: {}", buf_str);
   }
   let result = b"test";
   let result_box: Box<[u8]> = Box::new(*result);
@@ -31,16 +30,15 @@ fn op_test_sync(
 
 fn op_test_async(
   _interface: &mut dyn Interface,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Op {
-  if !zero_copy.is_empty() {
+  if zero_copy.is_some() {
     println!("Hello from plugin.");
   }
-  let zero_copy = zero_copy.to_vec();
   let fut = async move {
-    for (idx, buf) in zero_copy.iter().enumerate() {
+    if let Some(buf) = zero_copy {
       let buf_str = std::str::from_utf8(&buf[..]).unwrap();
-      println!("zero_copy[{}]: {}", idx, buf_str);
+      println!("zero_copy: {}", buf_str);
     }
     let (tx, rx) = futures::channel::oneshot::channel::<Result<(), ()>>();
     std::thread::spawn(move || {

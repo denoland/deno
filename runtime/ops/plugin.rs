@@ -6,7 +6,6 @@ use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
@@ -111,16 +110,9 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
     let plugin_op_fn: Box<OpFn> = Box::new(move |state_rc, _payload, buf| {
-      // For sig compat map Option<ZeroCopyBuf> to BufVec
-      let mut bufs: BufVec = match buf {
-        Some(b) => vec![b],
-        None => vec![],
-      }
-      .into();
-
       let mut state = state_rc.borrow_mut();
       let mut interface = PluginInterface::new(&mut state, &plugin_lib);
-      let op = dispatch_op_fn(&mut interface, &mut bufs);
+      let op = dispatch_op_fn(&mut interface, buf);
       match op {
         sync_op @ Op::Sync(..) => sync_op,
         Op::Async(fut) => Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut)),
