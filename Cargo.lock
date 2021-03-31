@@ -2750,6 +2750,7 @@ dependencies = [
 name = "serde_v8"
 version = "0.1.0"
 dependencies = [
+ "bencher",
  "rusty_v8",
  "serde",
  "serde_json",
