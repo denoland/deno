@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::file_fetcher::map_content_type;
+use crate::data_url::map_content_type;
 use crate::media_type::MediaType;
 
 use deno_core::error::AnyError;

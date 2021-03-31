@@ -6,6 +6,7 @@ mod ast;
 mod auth_tokens;
 mod checksum;
 mod colors;
+mod data_url;
 mod deno_dir;
 mod diagnostics;
 mod diff;

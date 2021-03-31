@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::data_url::get_source_from_data_url;
 use crate::version;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -109,16 +110,6 @@ fn read_string_slice(
 
 const SPECIFIER: &str = "file://$deno$/bundle.js";
 
-fn module_supported(specifier: &str) -> Result<(), AnyError> {
-  if specifier == SPECIFIER || specifier.starts_with("data:text/javascript;") {
-    Ok(())
-  } else {
-    Err(type_error(
-      "Self-contained binaries don't support module loading",
-    ))
-  }
-}
-
 struct EmbeddedModuleLoader(String);
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -129,7 +120,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    module_supported(specifier)?;
+    if specifier != SPECIFIER {
+      return Err(type_error(
+        "Self-contained binaries don't support module loading",
+      ));
+    }
     Ok(resolve_url(specifier)?)
   }
 
@@ -140,18 +135,24 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone().to_string();
-    let code = if module_specifier.starts_with("data:text/javascript;") {
-      module_specifier.to_string()
+    let module_specifier = module_specifier.clone();
+    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
+    let code = if let Some((ref source, _, _)) = is_data_uri {
+      source.to_string()
     } else {
       self.0.to_string()
     };
     async move {
-      module_supported(&module_specifier)?;
+      if is_data_uri.is_none() && module_specifier.to_string() != SPECIFIER {
+        return Err(type_error(
+          "Self-contained binaries don't support module loading",
+        ));
+      }
+
       Ok(deno_core::ModuleSource {
         code,
-        module_url_specified: module_specifier.clone(),
-        module_url_found: module_specifier,
+        module_url_specified: module_specifier.to_string(),
+        module_url_found: module_specifier.to_string(),
       })
     }
     .boxed_local()

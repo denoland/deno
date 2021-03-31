@@ -3,9 +3,15 @@
 #![deny(warnings)]
 
 mod colors;
+mod data_url;
 mod standalone;
 mod tokio_util;
 mod version;
+// Certain unused items for `denort` that used by the CLI.
+#[allow(dead_code)]
+mod media_type;
+#[allow(dead_code)]
+mod text_encoding;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
