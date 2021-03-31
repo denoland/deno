@@ -353,7 +353,9 @@
       "default-reader.any.js": true,
       "floating-point-total-queue-size.any.js": true,
       "garbage-collection.any.js": true,
-      "general.any.js": true,
+      "general.any.js": [
+        "ReadableStream: if pull rejects, it should error the stream"
+      ],
       "patched-global.any.js": true,
       "reentrant-strategies.any.js": true,
       "tee.any.js": true,
@@ -734,16 +736,10 @@
     "urlsearchparams-constructor.any.js": [
       "Construct with 2 unpaired surrogates (no trailing)",
       "Construct with 3 unpaired surrogates (no leading)",
-      "Construct with object with NULL, non-ASCII, and surrogate keys",
-      "URLSearchParams constructor, empty string as argument"
+      "Construct with object with NULL, non-ASCII, and surrogate keys"
     ],
     "urlsearchparams-delete.any.js": true,
-    "urlsearchparams-foreach.any.js": [
-      "For-of Check",
-      "delete next param during iteration",
-      "delete current param during iteration",
-      "delete every param seen during iteration"
-    ],
+    "urlsearchparams-foreach.any.js": true,
     "urlsearchparams-get.any.js": true,
     "urlsearchparams-getall.any.js": true,
     "urlsearchparams-has.any.js": true,
