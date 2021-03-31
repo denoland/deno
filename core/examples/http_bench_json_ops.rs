@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
@@ -136,7 +136,7 @@ fn op_listen(
 fn op_close(
   state: &mut OpState,
   rid: ResourceId,
-  _buf: &mut [ZeroCopyBuf],
+  _buf: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   log::debug!("close rid={}", rid);
   state
@@ -149,7 +149,7 @@ fn op_close(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _bufs: Option<ZeroCopyBuf>,
+  _buf: Option<ZeroCopyBuf>,
 ) -> Result<ResourceId, AnyError> {
   log::debug!("accept rid={}", rid);
 
@@ -166,9 +166,9 @@ async fn op_accept(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<usize, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  let mut buf = assert_opbuf(buf)?;
   log::debug!("read rid={}", rid);
 
   let stream = state
@@ -176,16 +176,16 @@ async fn op_read(
     .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
-  let nread = stream.read(&mut bufs[0]).await?;
+  let nread = stream.read(&mut buf).await?;
   Ok(nread)
 }
 
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<usize, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  let buf = assert_opbuf(buf)?;
   log::debug!("write rid={}", rid);
 
   let stream = state
@@ -193,7 +193,7 @@ async fn op_write(
     .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
-  let nwritten = stream.write(&bufs[0]).await?;
+  let nwritten = stream.write(&buf).await?;
   Ok(nwritten)
 }
 
