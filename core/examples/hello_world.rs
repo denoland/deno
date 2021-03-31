@@ -35,7 +35,7 @@ fn main() {
       }
 
       // Write the contents of every buffer to stdout
-      for buf in zero_copy {
+      if let Some(buf) = zero_copy {
         out.write_all(&buf).unwrap();
       }
 
