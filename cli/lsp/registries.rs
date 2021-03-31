@@ -3,9 +3,12 @@
 use super::language_server;
 use super::path_to_regex::parse;
 use super::path_to_regex::string_to_regex;
+use super::path_to_regex::Compiler;
+use super::path_to_regex::Key;
 use super::path_to_regex::MatchResult;
 use super::path_to_regex::Matcher;
 use super::path_to_regex::StringOrNumber;
+use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
 use crate::deno_dir;
@@ -25,7 +28,6 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use log::error;
-use log::info;
 use lspower::lsp;
 use percent_encoding;
 use regex::Regex;
@@ -81,7 +83,7 @@ fn base_url(url: &Url) -> Result<Url, AnyError> {
 #[derive(Debug)]
 enum CompletorType {
   Literal(String),
-  Variable(String),
+  Key(Key),
 }
 
 fn get_completor_type(
@@ -106,10 +108,13 @@ fn get_completor_type(
           return None;
         }
         if let StringOrNumber::String(name) = &k.name {
-          let value = match_result.get(name).unwrap_or("");
+          let value = match_result
+            .get(name)
+            .map(|s| s.to_string(Some(&k)))
+            .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
-            return Some(CompletorType::Variable(name.clone()));
+            return Some(CompletorType::Key(k.clone()));
           }
         }
         if let Some(suffix) = &k.suffix {
@@ -127,16 +132,27 @@ fn get_completor_type(
 
 fn get_completion_endpoint(
   url: &str,
+  tokens: &[Token],
   match_result: &MatchResult,
 ) -> Result<ModuleSpecifier, AnyError> {
   let mut url_str = url.to_string();
   for (key, value) in match_result.params.iter() {
     if let StringOrNumber::String(name) = key {
-      url_str = url_str.replace(&format!("${{{}}}", name), value);
+      let maybe_key = tokens.iter().find_map(|t| match t {
+        Token::Key(k) if k.name == *key => Some(k),
+        _ => None,
+      });
+      url_str = url_str.replace(
+        &format!("${{{}}}", name),
+        &value.to_string(maybe_key.clone()),
+      );
       url_str = url_str.replace(
         &format!("${{{{{}}}}}", name),
-        &percent_encoding::percent_encode(value.as_bytes(), COMPONENT)
-          .to_string(),
+        &percent_encoding::percent_encode(
+          value.to_string(maybe_key).as_bytes(),
+          COMPONENT,
+        )
+        .to_string(),
       );
     }
   }
@@ -310,17 +326,18 @@ impl ModuleRegistry {
               })
               .ok()?;
             let mut i = tokens.len();
-            let last_key_name = tokens.iter().last().map_or_else(
-              || "".to_string(),
-              |t| {
-                if let Token::Key(key) = t {
-                  if let StringOrNumber::String(s) = &key.name {
-                    return s.clone();
+            let last_key_name =
+              StringOrNumber::String(tokens.iter().last().map_or_else(
+                || "".to_string(),
+                |t| {
+                  if let Token::Key(key) = t {
+                    if let StringOrNumber::String(s) = &key.name {
+                      return s.clone();
+                    }
                   }
-                }
-                "".to_string()
-              },
-            );
+                  "".to_string()
+                },
+              ));
             loop {
               let matcher = Matcher::new(&tokens[..i], None)
                 .map_err(|e| {
@@ -363,61 +380,58 @@ impl ModuleRegistry {
                       },
                     );
                   }
-                  Some(CompletorType::Variable(s)) => {
+                  Some(CompletorType::Key(k)) => {
                     let maybe_url = registry.variables.iter().find_map(|v| {
-                      if s == v.key {
+                      if k.name == StringOrNumber::String(v.key.clone()) {
                         Some(v.url.as_str())
                       } else {
                         None
                       }
                     });
                     if let Some(url) = maybe_url {
-                      if let Some(items) =
-                        self.get_variable_items(url, &match_result).await
+                      if let Some(items) = self
+                        .get_variable_items(url, &tokens, &match_result)
+                        .await
                       {
+                        let compiler = Compiler::new(&tokens[..i], None);
                         for item in items {
                           let label = item.clone();
-                          let kind = if s == last_key_name {
+                          let kind = if k.name == last_key_name {
                             Some(lsp::CompletionItemKind::File)
                           } else {
                             Some(lsp::CompletionItemKind::Folder)
                           };
-                          let full_text = format!(
-                            "{}{}{}",
-                            &current_specifier[..offset],
-                            item,
-                            &current_specifier[offset..]
+                          let mut params = match_result.params.clone();
+                          params.insert(
+                            k.name.clone(),
+                            StringOrVec::from_str(&item, &k),
                           );
+                          let path =
+                            compiler.to_path(&params).unwrap_or_default();
+                          let mut item_specifier = origin.clone();
+                          item_specifier.set_path(&path);
+                          let full_text = item_specifier.as_str();
                           let text_edit = Some(lsp::CompletionTextEdit::Edit(
                             lsp::TextEdit {
                               range: *range,
-                              new_text: full_text.clone(),
+                              new_text: full_text.to_string(),
                             },
                           ));
-                          let command = if let Ok(target_specifier) =
-                            resolve_url(&full_text)
+                          let command = if k.name == last_key_name
+                            && !state_snapshot
+                              .sources
+                              .contains_key(&item_specifier)
                           {
-                            if s == last_key_name
-                              && !state_snapshot
-                                .sources
-                                .contains_key(&target_specifier)
-                            {
-                              info!("cache: {}", target_specifier);
-                              Some(lsp::Command {
-                                title: "".to_string(),
-                                command: "deno.cache".to_string(),
-                                arguments: Some(vec![json!([
-                                  full_text.clone()
-                                ])]),
-                              })
-                            } else {
-                              None
-                            }
+                            Some(lsp::Command {
+                              title: "".to_string(),
+                              command: "deno.cache".to_string(),
+                              arguments: Some(vec![json!([item_specifier])]),
+                            })
                           } else {
                             None
                           };
-                          let detail = Some(format!("({})", s));
-                          let filter_text = Some(full_text);
+                          let detail = Some(format!("({})", k.name));
+                          let filter_text = Some(full_text.to_string());
                           completions.insert(
                             item,
                             lsp::CompletionItem {
@@ -518,9 +532,10 @@ impl ModuleRegistry {
   async fn get_variable_items(
     &self,
     url: &str,
+    tokens: &[Token],
     match_result: &MatchResult,
   ) -> Option<Vec<String>> {
-    let specifier = get_completion_endpoint(url, match_result)
+    let specifier = get_completion_endpoint(url, tokens, match_result)
       .map_err(|err| {
         error!("Internal error mapping endpoint \"{}\". {}", url, err);
       })

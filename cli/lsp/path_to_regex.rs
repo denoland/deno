@@ -31,6 +31,7 @@ use deno_core::error::AnyError;
 use fancy_regex::Regex as FancyRegex;
 use regex::Regex;
 use std::collections::HashMap;
+use std::fmt;
 use std::iter::Peekable;
 
 lazy_static::lazy_static! {
@@ -220,6 +221,79 @@ pub enum StringOrNumber {
   Number(usize),
 }
 
+impl fmt::Display for StringOrNumber {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self {
+      Self::Number(n) => write!(f, "{}", n),
+      Self::String(s) => write!(f, "{}", s),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub enum StringOrVec {
+  String(String),
+  Vec(Vec<String>),
+}
+
+impl StringOrVec {
+  pub fn from_str(s: &str, key: &Key) -> StringOrVec {
+    match &key.modifier {
+      Some(m) if m == "+" || m == "*" => {
+        let pat = format!(
+          "{}{}",
+          key.prefix.clone().unwrap_or_default(),
+          key.suffix.clone().unwrap_or_default()
+        );
+        s.split(&pat)
+          .map(String::from)
+          .collect::<Vec<String>>()
+          .into()
+      }
+      _ => s.into(),
+    }
+  }
+
+  pub fn to_string(&self, maybe_key: Option<&Key>) -> String {
+    match self {
+      Self::String(s) => s.clone(),
+      Self::Vec(v) => {
+        let (prefix, suffix) = if let Some(key) = maybe_key {
+          (
+            key.prefix.clone().unwrap_or_default(),
+            key.suffix.clone().unwrap_or_default(),
+          )
+        } else {
+          ("/".to_string(), "".to_string())
+        };
+        let mut s = String::new();
+        for segment in v {
+          s.push_str(&format!("{}{}{}", prefix, segment, suffix));
+        }
+        s
+      }
+    }
+  }
+}
+
+impl Default for StringOrVec {
+  fn default() -> Self {
+    Self::String("".to_string())
+  }
+}
+
+impl<'a> From<&'a str> for StringOrVec {
+  fn from(s: &'a str) -> Self {
+    Self::String(s.to_string())
+  }
+}
+
+impl From<Vec<String>> for StringOrVec {
+  fn from(v: Vec<String>) -> Self {
+    Self::Vec(v)
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct Key {
   pub name: StringOrNumber,
@@ -239,6 +313,21 @@ pub enum Token {
 pub struct ParseOptions {
   delimiter: Option<String>,
   prefixes: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct TokensToCompilerOptions {
+  sensitive: bool,
+  validate: bool,
+}
+
+impl Default for TokensToCompilerOptions {
+  fn default() -> Self {
+    Self {
+      sensitive: false,
+      validate: true,
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -345,7 +434,7 @@ pub fn parse(
     let pattern = try_consume(&TokenType::Pattern, &mut tokens);
 
     if name.is_some() || pattern.is_some() {
-      let mut prefix = char.unwrap_or("".to_string());
+      let mut prefix = char.unwrap_or_default();
       if !prefixes.contains(&prefix) {
         path.push_str(&prefix);
         prefix = String::new();
@@ -417,7 +506,7 @@ pub fn parse(
       let pattern = if maybe_name.is_some() && maybe_pattern.is_none() {
         default_pattern.clone()
       } else {
-        maybe_pattern.unwrap_or("".to_string())
+        maybe_pattern.unwrap_or_default()
       };
       result.push(Token::Key(Key {
         name,
@@ -452,8 +541,7 @@ pub fn tokens_to_regex(
     ends_with,
   } = maybe_options.unwrap_or_default();
   let has_ends_with = ends_with.is_some();
-  let ends_with =
-    format!(r"[{}]|$", ends_with.unwrap_or_else(|| "".to_string()));
+  let ends_with = format!(r"[{}]|$", ends_with.unwrap_or_default());
   let delimiter =
     format!(r"[{}]", delimiter.unwrap_or_else(|| "/#?".to_string()));
   let mut route = if start {
@@ -502,8 +590,7 @@ pub fn tokens_to_regex(
                 )
               }
               _ => {
-                let modifier =
-                  key.modifier.clone().unwrap_or_else(|| "".to_string());
+                let modifier = key.modifier.clone().unwrap_or_default();
                 format!(
                   r"(?:{}({}){}){}",
                   prefix, key.pattern, suffix, modifier
@@ -511,12 +598,11 @@ pub fn tokens_to_regex(
               }
             }
           } else {
-            let modifier =
-              key.modifier.clone().unwrap_or_else(|| "".to_string());
+            let modifier = key.modifier.clone().unwrap_or_default();
             format!(r"({}){}", key.pattern, modifier)
           }
         } else {
-          let modifier = key.modifier.clone().unwrap_or_else(|| "".to_string());
+          let modifier = key.modifier.clone().unwrap_or_default();
           format!(r"(?:{}{}){}", prefix, suffix, modifier)
         }
       }
@@ -577,19 +663,139 @@ pub fn string_to_regex(
   tokens_to_regex(&parse(path, parse_options)?, tokens_to_regex_options)
 }
 
+pub struct Compiler {
+  matches: Vec<Option<Regex>>,
+  tokens: Vec<Token>,
+  validate: bool,
+}
+
+impl Compiler {
+  pub fn new(
+    tokens: &[Token],
+    maybe_options: Option<TokensToCompilerOptions>,
+  ) -> Self {
+    let TokensToCompilerOptions {
+      sensitive,
+      validate,
+    } = maybe_options.unwrap_or_default();
+    let flags = if sensitive { "" } else { "(?i)" };
+
+    let matches = tokens
+      .iter()
+      .map(|t| {
+        if let Token::Key(k) = t {
+          Some(Regex::new(&format!("{}^(?:{})$", flags, k.pattern)).unwrap())
+        } else {
+          None
+        }
+      })
+      .collect();
+
+    Self {
+      matches,
+      tokens: tokens.iter().cloned().collect(),
+      validate,
+    }
+  }
+
+  pub fn to_path(
+    &self,
+    params: &HashMap<StringOrNumber, StringOrVec>,
+  ) -> Result<String, AnyError> {
+    let mut path = String::new();
+
+    for (i, token) in self.tokens.iter().enumerate() {
+      match token {
+        Token::String(s) => path.push_str(s),
+        Token::Key(k) => {
+          let value = params.get(&k.name);
+          let optional = k.modifier == Some("?".to_string())
+            || k.modifier == Some("*".to_string());
+          let repeat = k.modifier == Some("*".to_string())
+            || k.modifier == Some("+".to_string());
+
+          match value {
+            Some(StringOrVec::Vec(v)) => {
+              if !repeat {
+                return Err(anyhow!(
+                  "Expected \"{:?}\" to not repeat, but got a vector",
+                  k.name
+                ));
+              }
+
+              if v.is_empty() {
+                if !optional {
+                  return Err(anyhow!(
+                    "Expected \"{:?}\" to not be empty.",
+                    k.name
+                  ));
+                }
+              } else {
+                let prefix = k.prefix.clone().unwrap_or_default();
+                let suffix = k.suffix.clone().unwrap_or_default();
+                for segment in v {
+                  if self.validate {
+                    if let Some(re) = &self.matches[i] {
+                      if !re.is_match(segment) {
+                        return Err(anyhow!(
+                          "Expected all \"{:?}\" to match \"{}\", but got {}",
+                          k.name,
+                          k.pattern,
+                          segment
+                        ));
+                      }
+                    }
+                  }
+                  path.push_str(&format!("{}{}{}", prefix, segment, suffix));
+                }
+              }
+            }
+            Some(StringOrVec::String(s)) => {
+              if self.validate {
+                if let Some(re) = &self.matches[i] {
+                  if !re.is_match(s) {
+                    return Err(anyhow!(
+                      "Expected \"{:?}\" to match \"{}\", but got \"{}\"",
+                      k.name,
+                      k.pattern,
+                      s
+                    ));
+                  }
+                }
+              }
+              let prefix = k.prefix.clone().unwrap_or_default();
+              let suffix = k.suffix.clone().unwrap_or_default();
+              path.push_str(&format!("{}{}{}", prefix, s, suffix));
+            }
+            None => {
+              if !optional {
+                let key_type = if repeat { "an array" } else { "a string" };
+                return Err(anyhow!(
+                  "Expected \"{:?}\" to be {}",
+                  k.name,
+                  key_type
+                ));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    Ok(path)
+  }
+}
+
 #[derive(Debug)]
 pub struct MatchResult {
   pub path: String,
   pub index: usize,
-  pub params: HashMap<StringOrNumber, String>,
+  pub params: HashMap<StringOrNumber, StringOrVec>,
 }
 
 impl MatchResult {
-  pub fn get(&self, key: &str) -> Option<&str> {
-    self
-      .params
-      .get(&StringOrNumber::String(key.to_string()))
-      .map(|s| s.as_str())
+  pub fn get(&self, key: &str) -> Option<&StringOrVec> {
+    self.params.get(&StringOrNumber::String(key.to_string()))
   }
 }
 
@@ -617,7 +823,23 @@ impl Matcher {
     if let Some(keys) = &self.maybe_keys {
       for (i, key) in keys.iter().enumerate() {
         if let Some(m) = caps.get(i + 1) {
-          params.insert(key.name.clone(), m.as_str().to_string());
+          let value = if key.modifier == Some("*".to_string())
+            || key.modifier == Some("+".to_string())
+          {
+            let pat = format!(
+              "{}{}",
+              key.prefix.clone().unwrap_or_default(),
+              key.suffix.clone().unwrap_or_default()
+            );
+            m.as_str()
+              .split(&pat)
+              .map(String::from)
+              .collect::<Vec<String>>()
+              .into()
+          } else {
+            m.as_str().into()
+          };
+          params.insert(key.name.clone(), value);
         }
       }
     }
@@ -661,6 +883,30 @@ mod tests {
         assert!(actual.is_none(), "Match failure for path \"{}\" and fixture \"{}\". Expected None got {:?}", path, fixture, actual);
       }
     }
+  }
+
+  #[test]
+  fn test_compiler() {
+    let tokens = parse("/x/:a@:b/:c*", None).expect("could not parse");
+    let mut params = HashMap::<StringOrNumber, StringOrVec>::new();
+    params.insert(
+      StringOrNumber::String("a".to_string()),
+      StringOrVec::String("y".to_string()),
+    );
+    params.insert(
+      StringOrNumber::String("b".to_string()),
+      StringOrVec::String("v1.0.0".to_string()),
+    );
+    params.insert(
+      StringOrNumber::String("c".to_string()),
+      StringOrVec::Vec(vec!["z".to_string(), "example.ts".to_string()]),
+    );
+    let compiler = Compiler::new(&tokens, None);
+    let actual = compiler.to_path(&params);
+    println!("{:?}", actual);
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(actual, "/x/y@v1.0.0/z/example.ts".to_string());
   }
 
   #[test]
