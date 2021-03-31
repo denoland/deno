@@ -144,11 +144,6 @@ fn op_now(
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let mut zero_copy = assert_opbuf(zero_copy)?;
-  match zero_copy.len() {
-    0 => return Err(type_error("no buffer specified")),
-    1 => {}
-    _ => return Err(type_error("Invalid number of arguments")),
-  }
 
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
