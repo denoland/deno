@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
@@ -252,8 +253,10 @@ pub struct ComputePassSetBindGroupArgs {
 pub fn op_webgpu_compute_pass_set_bind_group(
   state: &mut OpState,
   args: ComputePassSetBindGroupArgs,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let zero_copy = assert_opbuf(zero_copy)?;
+
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGpuBindGroup>(args.bind_group)
@@ -271,7 +274,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
         None => {
-          let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
+          let (prefix, data, suffix) = zero_copy.align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
           data[args.dynamic_offsets_data_start..].as_ptr()

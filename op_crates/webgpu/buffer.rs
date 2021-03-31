@@ -1,14 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -177,8 +178,9 @@ pub struct BufferGetMappedRangeArgs {
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: BufferGetMappedRangeArgs,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let mut zero_copy = assert_opbuf(zero_copy)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
@@ -196,7 +198,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
   let slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
   };
-  zero_copy[0].copy_from_slice(slice);
+  zero_copy.copy_from_slice(slice);
 
   let rid = state
     .resource_table
@@ -217,7 +219,7 @@ pub struct BufferUnmapArgs {
 pub fn op_webgpu_buffer_unmap(
   state: &mut OpState,
   args: BufferUnmapArgs,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let mapped_resource = state
     .resource_table
@@ -233,7 +235,7 @@ pub fn op_webgpu_buffer_unmap(
   let slice_pointer = mapped_resource.0;
   let size = mapped_resource.1;
 
-  if let Some(buffer) = zero_copy.get(0) {
+  if let Some(buffer) = zero_copy {
     let slice = unsafe { std::slice::from_raw_parts_mut(slice_pointer, size) };
     slice.copy_from_slice(&buffer);
   }

@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
@@ -31,8 +32,9 @@ pub struct CreateShaderModuleArgs {
 pub fn op_webgpu_create_shader_module(
   state: &mut OpState,
   args: CreateShaderModuleArgs,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let zero_copy = assert_opbuf(zero_copy)?;
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -45,7 +47,7 @@ pub fn op_webgpu_create_shader_module(
       wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::from(code))
     }
     None => wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::from(unsafe {
-      let (prefix, data, suffix) = zero_copy[0].align_to::<u32>();
+      let (prefix, data, suffix) = zero_copy.align_to::<u32>();
       assert!(prefix.is_empty());
       assert!(suffix.is_empty());
       data
