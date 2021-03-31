@@ -9,6 +9,7 @@
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
+use deno_core::assert_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -17,7 +18,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -141,8 +141,9 @@ async fn op_global_timer(
 fn op_now(
   op_state: &mut OpState,
   _argument: u32,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
+  let mut zero_copy = assert_opbuf(zero_copy)?;
   match zero_copy.len() {
     0 => return Err(type_error("no buffer specified")),
     1 => {}
@@ -163,7 +164,7 @@ fn op_now(
 
   let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0);
 
-  (&mut zero_copy[0]).copy_from_slice(&result.to_be_bytes());
+  (&mut zero_copy).copy_from_slice(&result.to_be_bytes());
 
   Ok(0)
 }

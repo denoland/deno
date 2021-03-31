@@ -6,7 +6,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;

@@ -3,6 +3,7 @@ use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use deno_core::assert_opbuf;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -12,7 +13,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
@@ -110,13 +110,13 @@ async fn accept_tcp(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  bufs: BufVec,
+  _buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
-    "tcp" => accept_tcp(state, args, bufs).await,
+    "tcp" => accept_tcp(state, args, _buf).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(state, args, bufs).await,
+    "unix" => net_unix::accept_unix(state, args, _buf).await,
     _ => Err(generic_error(format!(
       "Unsupported transport protocol {}",
       args.transport
@@ -133,10 +133,10 @@ pub(crate) struct ReceiveArgs {
 async fn receive_udp(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-  let mut zero_copy = zero_copy[0].clone();
+  let zero_copy = assert_opbuf(zero_copy)?;
+  let mut zero_copy = zero_copy.clone();
 
   let rid = args.rid;
 
@@ -164,10 +164,8 @@ async fn receive_udp(
 async fn op_datagram_receive(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-
   let args: ReceiveArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
@@ -191,10 +189,10 @@ struct SendArgs {
 async fn op_datagram_send(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-  let zero_copy = zero_copy[0].clone();
+  let zero_copy = assert_opbuf(zero_copy)?;
+  let zero_copy = zero_copy.clone();
 
   match serde_json::from_value(args)? {
     SendArgs {

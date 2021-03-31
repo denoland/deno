@@ -12,7 +12,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;

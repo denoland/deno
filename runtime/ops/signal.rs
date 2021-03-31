@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;

@@ -3,18 +3,19 @@
 use crate::ops::io::UnixStreamResource;
 use crate::ops::net::AcceptArgs;
 use crate::ops::net::ReceiveArgs;
+use deno_core::assert_opbuf;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -100,12 +101,11 @@ pub(crate) async fn accept_unix(
 pub(crate) async fn receive_unix_packet(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  let mut buf = assert_opbuf(buf)?;
 
   let rid = args.rid;
-  let mut buf = bufs.into_iter().next().unwrap();
 
   let resource = state
     .borrow()
