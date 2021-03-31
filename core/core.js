@@ -45,10 +45,14 @@
 
   function processResponse(res) {
     // .$err_class_name is a special key that should only exist on errors
-    if (!res.$err_class_name) {
+    if (!isErr(res)) {
       return res;
     }
     throw processErr(res);
+  }
+
+  function isErr(res) {
+    return !!(res && res.$err_class_name);
   }
 
   function processErr(err) {
@@ -86,10 +90,10 @@
     // const [ok, err] = res;
     const promise = promiseTable.get(promiseId);
     promiseTable.delete(promiseId);
-    if (!res[1]) {
-      promise.resolve(res[0]);
+    if (!isErr(res)) {
+      promise.resolve(res);
     } else {
-      promise.reject(processErr(res[1]));
+      promise.reject(processErr(res));
     }
   }
 
