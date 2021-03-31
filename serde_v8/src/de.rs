@@ -154,7 +154,12 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     if self.input.is_string() {
-      let string = self.input.to_rust_string_lossy(self.scope);
+      // TODO(@AaronO): implement a `.to_rust_string -> Option<String>` in rusty-v8
+      let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
+      let string = match v8_to_rust_string(self.scope, v8_string) {
+        Some(string) => string,
+        None => return Err(Error::ExpectedUTF8),
+      };
       visitor.visit_string(string)
     } else {
       Err(Error::ExpectedString)
@@ -598,5 +603,17 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
   ) -> Result<V::Value> {
     let mut d = Deserializer::new(self.scope, self.value, None);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
+  }
+}
+
+// Like v8::String::to_rust_string_lossy except returns None on non-utf8
+fn v8_to_rust_string(
+  scope: &mut v8::HandleScope,
+  s: v8::Local<v8::String>,
+) -> Option<String> {
+  let string = s.to_rust_string_lossy(scope);
+  match string.find(std::char::REPLACEMENT_CHARACTER) {
+    Some(_) => None,
+    None => Some(string),
   }
 }
