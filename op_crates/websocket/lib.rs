@@ -225,10 +225,9 @@ pub async fn op_ws_send(
   args: SendArgs,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let buf = assert_opbuf(buf)?;
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(buf.to_vec()),
+    "binary" => Message::Binary(assert_opbuf(buf)?.to_vec()),
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };
