@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -11,7 +12,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::JsRuntime;
@@ -223,11 +223,12 @@ pub struct SendArgs {
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
-  bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let buf = assert_opbuf(buf)?;
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(bufs[0].to_vec()),
+    "binary" => Message::Binary(buf.to_vec()),
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };
