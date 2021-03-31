@@ -120,7 +120,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Some(module_specifier) = resolve_url(&specifier).ok() {
+    if let Ok(module_specifier) = resolve_url(&specifier) {
       if get_source_from_data_url(&module_specifier).is_ok()
         || specifier == SPECIFIER
       {
