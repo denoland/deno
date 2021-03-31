@@ -533,7 +533,7 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
   args: WorkerArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let id = args.id as u32;
 

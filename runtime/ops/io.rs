@@ -616,7 +616,7 @@ struct ShutdownArgs {
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   args: ShutdownArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow()

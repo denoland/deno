@@ -38,7 +38,7 @@ pub struct OpenPluginArgs {
 pub fn op_open_plugin(
   state: &mut OpState,
   args: OpenPluginArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let filename = PathBuf::from(&args.filename);
 

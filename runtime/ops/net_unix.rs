@@ -63,7 +63,7 @@ pub struct UnixListenArgs {
 pub(crate) async fn accept_unix(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 

@@ -94,7 +94,7 @@ pub struct CheckPermissionArgs {
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
   args: CheckPermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -116,7 +116,7 @@ pub struct CreateArgs {
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -254,7 +254,7 @@ pub struct CloseArgs {
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
@@ -284,7 +284,7 @@ pub struct NextEventArgs {
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   args: NextEventArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow_mut()

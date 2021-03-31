@@ -63,7 +63,7 @@ pub(crate) struct AcceptArgs {
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -260,7 +260,7 @@ struct ConnectArgs {
 async fn op_connect(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   match serde_json::from_value(args)? {
     ConnectArgs {
@@ -424,7 +424,7 @@ fn listen_udp(
 fn op_listen(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let permissions = state.borrow::<Permissions>();
   match serde_json::from_value(args)? {
@@ -550,7 +550,7 @@ pub struct NameServer {
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let ResolveAddrArgs {
     query,

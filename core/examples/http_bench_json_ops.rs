@@ -122,7 +122,7 @@ fn create_js_runtime() -> JsRuntime {
 fn op_listen(
   state: &mut OpState,
   _args: (),
-  _bufs: &mut [ZeroCopyBuf],
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<ResourceId, AnyError> {
   log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
@@ -149,7 +149,7 @@ fn op_close(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<ResourceId, AnyError> {
   log::debug!("accept rid={}", rid);
 

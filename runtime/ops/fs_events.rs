@@ -93,7 +93,7 @@ pub struct OpenArgs {
 fn op_fs_events_open(
   state: &mut OpState,
   args: OpenArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
@@ -134,7 +134,7 @@ pub struct PollArgs {
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   args: PollArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow()

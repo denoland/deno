@@ -85,7 +85,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 fn op_global_timer_stop(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.cancel();
@@ -108,7 +108,7 @@ pub struct GlobalTimerArgs {
 fn op_global_timer_start(
   state: &mut OpState,
   args: GlobalTimerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let val = args.timeout;
 
@@ -121,7 +121,7 @@ fn op_global_timer_start(
 async fn op_global_timer(
   state: Rc<RefCell<OpState>>,
   _args: Value,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let maybe_timer_fut = {
     let mut s = state.borrow_mut();
@@ -177,7 +177,7 @@ pub struct SleepArgs {
 fn op_sleep_sync(
   state: &mut OpState,
   args: SleepArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.sleepSync");
   sleep(Duration::from_millis(args.millis));

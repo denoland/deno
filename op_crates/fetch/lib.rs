@@ -397,7 +397,7 @@ pub struct CreateHttpClientOptions {
 pub fn op_create_http_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError>
 where
   FP: FetchPermissions + 'static,

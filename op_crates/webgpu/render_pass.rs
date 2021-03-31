@@ -37,7 +37,7 @@ pub struct RenderPassSetViewportArgs {
 pub fn op_webgpu_render_pass_set_viewport(
   state: &mut OpState,
   args: RenderPassSetViewportArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -70,7 +70,7 @@ pub struct RenderPassSetScissorRectArgs {
 pub fn op_webgpu_render_pass_set_scissor_rect(
   state: &mut OpState,
   args: RenderPassSetScissorRectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -107,7 +107,7 @@ pub struct RenderPassSetBlendColorArgs {
 pub fn op_webgpu_render_pass_set_blend_color(
   state: &mut OpState,
   args: RenderPassSetBlendColorArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -137,7 +137,7 @@ pub struct RenderPassSetStencilReferenceArgs {
 pub fn op_webgpu_render_pass_set_stencil_reference(
   state: &mut OpState,
   args: RenderPassSetStencilReferenceArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -163,7 +163,7 @@ pub struct RenderPassBeginPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassBeginPipelineStatisticsQueryArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -194,7 +194,7 @@ pub struct RenderPassEndPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassEndPipelineStatisticsQueryArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -221,7 +221,7 @@ pub struct RenderPassWriteTimestampArgs {
 pub fn op_webgpu_render_pass_write_timestamp(
   state: &mut OpState,
   args: RenderPassWriteTimestampArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -253,7 +253,7 @@ pub struct RenderPassExecuteBundlesArgs {
 pub fn op_webgpu_render_pass_execute_bundles(
   state: &mut OpState,
   args: RenderPassExecuteBundlesArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let mut render_bundle_ids = vec![];
 
@@ -291,7 +291,7 @@ pub struct RenderPassEndPassArgs {
 pub fn op_webgpu_render_pass_end_pass(
   state: &mut OpState,
   args: RenderPassEndPassArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table
@@ -381,7 +381,7 @@ pub struct RenderPassPushDebugGroupArgs {
 pub fn op_webgpu_render_pass_push_debug_group(
   state: &mut OpState,
   args: RenderPassPushDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -409,7 +409,7 @@ pub struct RenderPassPopDebugGroupArgs {
 pub fn op_webgpu_render_pass_pop_debug_group(
   state: &mut OpState,
   args: RenderPassPopDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -433,7 +433,7 @@ pub struct RenderPassInsertDebugMarkerArgs {
 pub fn op_webgpu_render_pass_insert_debug_marker(
   state: &mut OpState,
   args: RenderPassInsertDebugMarkerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -462,7 +462,7 @@ pub struct RenderPassSetPipelineArgs {
 pub fn op_webgpu_render_pass_set_pipeline(
   state: &mut OpState,
   args: RenderPassSetPipelineArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pipeline_resource = state
     .resource_table
@@ -494,7 +494,7 @@ pub struct RenderPassSetIndexBufferArgs {
 pub fn op_webgpu_render_pass_set_index_buffer(
   state: &mut OpState,
   args: RenderPassSetIndexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -528,7 +528,7 @@ pub struct RenderPassSetVertexBufferArgs {
 pub fn op_webgpu_render_pass_set_vertex_buffer(
   state: &mut OpState,
   args: RenderPassSetVertexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -563,7 +563,7 @@ pub struct RenderPassDrawArgs {
 pub fn op_webgpu_render_pass_draw(
   state: &mut OpState,
   args: RenderPassDrawArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -595,7 +595,7 @@ pub struct RenderPassDrawIndexedArgs {
 pub fn op_webgpu_render_pass_draw_indexed(
   state: &mut OpState,
   args: RenderPassDrawIndexedArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
@@ -625,7 +625,7 @@ pub struct RenderPassDrawIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndirectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -656,7 +656,7 @@ pub struct RenderPassDrawIndexedIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indexed_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndexedIndirectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table

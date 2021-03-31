@@ -97,7 +97,7 @@ struct StartTlsArgs {
 async fn op_start_tls(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -167,7 +167,7 @@ async fn op_start_tls(
 async fn op_connect_tls(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   {
     let s = state.borrow();
@@ -307,7 +307,7 @@ pub struct ListenTlsArgs {
 fn op_listen_tls(
   state: &mut OpState,
   args: ListenTlsArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   assert_eq!(args.transport, "tcp");
 
@@ -357,7 +357,7 @@ pub struct AcceptTlsArgs {
 async fn op_accept_tls(
   state: Rc<RefCell<OpState>>,
   args: AcceptTlsArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
