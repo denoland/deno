@@ -44,7 +44,7 @@
   }
 
   function processResponse(res) {
-    // const [ok, err] = res;
+    // .$err_class_name is a special key that should only exist on errors
     if (!res.$err_class_name) {
       return res;
     }
