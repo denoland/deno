@@ -1495,24 +1495,6 @@ pub mod tests {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
-  // TODO: maybe use this for other tests after dropping the overflow tests?
-  // fn poll_until_ready(
-  //   runtime: &mut JsRuntime,
-  //   max_poll_count: usize,
-  // ) -> Result<(), AnyError> {
-  //   let mut cx = Context::from_waker(futures::task::noop_waker_ref());
-  //   for _ in 0..max_poll_count {
-  //     match runtime.poll_event_loop(&mut cx) {
-  //       Poll::Pending => continue,
-  //       Poll::Ready(val) => return val,
-  //     }
-  //   }
-  //   panic!(
-  //     "JsRuntime still not ready after polling {} times.",
-  //     max_poll_count
-  //   )
-  // }
-
   enum Mode {
     Async,
     AsyncUnref,
