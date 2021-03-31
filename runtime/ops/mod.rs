@@ -48,7 +48,7 @@ pub fn reg_json_async<F, V, R, RV>(
   F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: Serialize,
+  RV: Serialize + 'static,
 {
   rt.register_op(name, metrics_op(name, json_op_async(op_fn)));
 }
@@ -57,7 +57,7 @@ pub fn reg_json_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
   F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
-  R: Serialize,
+  R: Serialize + 'static,
 {
   rt.register_op(name, metrics_op(name, json_op_sync(op_fn)));
 }

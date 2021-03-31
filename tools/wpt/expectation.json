@@ -633,6 +633,7 @@
     ],
     "idlharness.any.js": false,
     "url-constructor.any.js": [
+      "Parsing: <https://x/�?�#�> against <about:blank>",
       "Parsing: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>",
       "Parsing: <file://%43%7C> against <about:blank>",
       "Parsing: <file://%43|> against <about:blank>",
@@ -686,7 +687,8 @@
       "Parsing: <path> against <non-spec:/..//p>"
     ],
     "url-origin.any.js": [
-      "Origin parsing: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>"
+      "Origin parsing: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>",
+      "Origin parsing: <https://x/�?�#�> against <about:blank>"
     ],
     "url-searchparams.any.js": true,
     "url-setters-stripping.any.js": [
@@ -742,7 +744,12 @@
     "urlsearchparams-getall.any.js": true,
     "urlsearchparams-has.any.js": true,
     "urlsearchparams-set.any.js": true,
-    "urlsearchparams-sort.any.js": true,
+    "urlsearchparams-sort.any.js": [
+      "Parse and sort: �=x&￼&�=a",
+      "URL parse and sort: �=x&￼&�=a",
+      "Parse and sort: é&e�&é",
+      "URL parse and sort: é&e�&é"
+    ],
     "urlsearchparams-stringifier.any.js": true
   },
   "fetch": {

@@ -14,6 +14,7 @@ path = "lib.rs"
 
 [dependencies]
 anyhow = "1.0.38"
+erased-serde = "0.3.13"
 futures = "0.3.12"
 indexmap = "1.6.1"
 lazy_static = "1.4.0"

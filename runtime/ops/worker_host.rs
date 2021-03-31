@@ -255,6 +255,14 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
     formatter.write_str("a vector of strings or a boolean")
   }
 
+  // visit_unit maps undefined/missing values to false
+  fn visit_unit<E>(self) -> Result<UnaryPermissionBase, E>
+  where
+    E: de::Error,
+  {
+    self.visit_bool(false)
+  }
+
   fn visit_bool<E>(self, v: bool) -> Result<UnaryPermissionBase, E>
   where
     E: de::Error,

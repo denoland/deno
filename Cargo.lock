@@ -565,6 +565,7 @@ version = "0.82.0"
 dependencies = [
  "anyhow",
  "bencher",
+ "erased-serde",
  "futures",
  "indexmap",
  "lazy_static",
@@ -895,6 +896,15 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
+]
+
+[[package]]
+name = "erased-serde"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0465971a8cc1fa2455c8465aaa377131e1f1cf4983280f474a13e68793aa770c"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

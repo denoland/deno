@@ -92,7 +92,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     match ValueType::from_v8(self.input) {
       ValueType::Null => self.deserialize_unit(visitor),
       ValueType::Bool => self.deserialize_bool(visitor),
-      ValueType::Number => self.deserialize_f64(visitor),
+      // Handle floats & ints separately to work with loosely-typed serde_json
+      ValueType::Number => {
+        if self.input.is_uint32() {
+          self.deserialize_u32(visitor)
+        } else if self.input.is_int32() {
+          self.deserialize_i32(visitor)
+        } else {
+          self.deserialize_f64(visitor)
+        }
+      }
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
@@ -103,11 +112,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    if self.input.is_boolean() {
-      visitor.visit_bool(self.input.boolean_value(&mut self.scope))
-    } else {
-      Err(Error::ExpectedBoolean)
-    }
+    // Relaxed typechecking, will map all non-true vals to false
+    visitor.visit_bool(self.input.is_true())
   }
 
   deserialize_signed!(deserialize_i8, visit_i8, i8);
@@ -148,7 +154,12 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     if self.input.is_string() {
-      let string = self.input.to_rust_string_lossy(self.scope);
+      // TODO(@AaronO): implement a `.to_rust_string -> Option<String>` in rusty-v8
+      let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
+      let string = match v8_to_rust_string(self.scope, v8_string) {
+        Some(string) => string,
+        None => return Err(Error::ExpectedUtf8),
+      };
       visitor.visit_string(string)
     } else {
       Err(Error::ExpectedString)
@@ -209,7 +220,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    let arr = v8::Local::<v8::Array>::try_from(self.input).unwrap();
+    let arr = v8::Local::<v8::Array>::try_from(self.input)
+      .map_err(|_| Error::ExpectedArray)?;
     let len = arr.length();
     let obj = v8::Local::<v8::Object>::from(arr);
     let seq = SeqAccess {
@@ -261,8 +273,13 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       Some(names) => from_v8(self.scope, names.into()).unwrap(),
       None => vec![],
     };
-    let keys: Vec<v8::Local<v8::Value>> =
-      keys.drain(..).map(|x| x.into()).collect();
+    let keys: Vec<v8::Local<v8::Value>> = keys
+      .drain(..)
+      .map(|x| x.into())
+      // Filter keys to drop keys whose value is undefined
+      // TODO: optimize, since this doubles our get calls
+      .filter(|key| !obj.get(self.scope, *key).unwrap().is_undefined())
+      .collect();
 
     let map = MapAccess {
       obj,
@@ -305,16 +322,51 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     visitor.visit_map(map)
   }
 
+  /// To be compatible with `serde-json`, we expect enums to be:
+  /// - `"Variant"`: strings for unit variants, i.e: Enum::Variant
+  /// - `{ Variant: payload }`: single K/V pairs, converted to `Enum::Variant { payload }`
   fn deserialize_enum<V>(
     self,
     _name: &str,
     _variants: &'static [&'static str],
-    _visitor: V,
+    visitor: V,
   ) -> Result<V::Value>
   where
     V: Visitor<'de>,
   {
-    unimplemented!();
+    // Unit variant
+    if self.input.is_string() {
+      let payload = v8::undefined(self.scope).into();
+      visitor.visit_enum(EnumAccess {
+        scope: self.scope,
+        tag: self.input,
+        payload,
+      })
+    }
+    // Struct or tuple variant
+    else if self.input.is_object() {
+      // Assume object
+      let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
+      // Unpack single-key
+      let tag = {
+        let prop_names = obj.get_own_property_names(self.scope);
+        let prop_names = prop_names.ok_or(Error::ExpectedEnum)?;
+        if prop_names.length() != 1 {
+          return Err(Error::LengthMismatch);
+        }
+        prop_names.get_index(self.scope, 0).unwrap()
+      };
+
+      let payload = obj.get(self.scope, tag).unwrap();
+      visitor.visit_enum(EnumAccess {
+        scope: self.scope,
+        tag,
+        payload,
+      })
+    } else {
+      // TODO: improve error
+      Err(Error::ExpectedEnum)
+    }
   }
 
   // An identifier in Serde is the type that identifies a field of a struct or
@@ -481,5 +533,87 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
     } else {
       Ok(None)
     }
+  }
+}
+
+struct EnumAccess<'a, 'b, 's> {
+  tag: v8::Local<'a, v8::Value>,
+  payload: v8::Local<'a, v8::Value>,
+  scope: &'b mut v8::HandleScope<'s>,
+  // p1: std::marker::PhantomData<&'x ()>,
+}
+
+impl<'de, 'a, 'b, 's, 'x> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
+  type Error = Error;
+  type Variant = VariantDeserializer<'a, 'b, 's>;
+
+  fn variant_seed<V: de::DeserializeSeed<'de>>(
+    self,
+    seed: V,
+  ) -> Result<(V::Value, Self::Variant)> {
+    let seed = {
+      let mut dtag = Deserializer::new(self.scope, self.tag, None);
+      seed.deserialize(&mut dtag)
+    };
+    let dpayload = VariantDeserializer::<'a, 'b, 's> {
+      scope: self.scope,
+      value: self.payload,
+    };
+
+    Ok((seed?, dpayload))
+  }
+}
+
+struct VariantDeserializer<'a, 'b, 's> {
+  value: v8::Local<'a, v8::Value>,
+  scope: &'b mut v8::HandleScope<'s>,
+}
+
+impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
+  for VariantDeserializer<'a, 'b, 's>
+{
+  type Error = Error;
+
+  fn unit_variant(self) -> Result<()> {
+    let mut d = Deserializer::new(self.scope, self.value, None);
+    de::Deserialize::deserialize(&mut d)
+  }
+
+  fn newtype_variant_seed<T: de::DeserializeSeed<'de>>(
+    self,
+    seed: T,
+  ) -> Result<T::Value> {
+    let mut d = Deserializer::new(self.scope, self.value, None);
+    seed.deserialize(&mut d)
+  }
+
+  fn tuple_variant<V: de::Visitor<'de>>(
+    self,
+    len: usize,
+    visitor: V,
+  ) -> Result<V::Value> {
+    let mut d = Deserializer::new(self.scope, self.value, None);
+    de::Deserializer::deserialize_tuple(&mut d, len, visitor)
+  }
+
+  fn struct_variant<V: de::Visitor<'de>>(
+    self,
+    fields: &'static [&'static str],
+    visitor: V,
+  ) -> Result<V::Value> {
+    let mut d = Deserializer::new(self.scope, self.value, None);
+    de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
+  }
+}
+
+// Like v8::String::to_rust_string_lossy except returns None on non-utf8
+fn v8_to_rust_string(
+  scope: &mut v8::HandleScope,
+  s: v8::Local<v8::String>,
+) -> Option<String> {
+  let string = s.to_rust_string_lossy(scope);
+  match string.find(std::char::REPLACEMENT_CHARACTER) {
+    Some(_) => None,
+    None => Some(string),
   }
 }
