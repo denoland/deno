@@ -55,6 +55,7 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
   pub fn deserialize<T: DeserializeOwned>(self) -> Result<T, AnyError> {
     serde_v8::from_v8(self.scope.unwrap(), self.value.unwrap())
       .map_err(AnyError::from)
+      .map_err(|e| type_error(format!("Error parsing args: {}", e)))
   }
 }
 
