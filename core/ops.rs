@@ -99,10 +99,7 @@ pub fn serialize_op_result<R: Serialize + 'static>(
   }))
 }
 
-/// Provides a convenient means for ops to assert a buffer arg is passed, e.g:
-/// ```
-/// let buf = assert_opbuf(opbuf)?;
-/// ```
+/// Provides a convenient means for ops to assert if a buffer arg is passed
 pub fn assert_opbuf(
   opbuf: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
