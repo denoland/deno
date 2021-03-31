@@ -2,12 +2,8 @@
 
 use crate::bindings;
 use rusty_v8 as v8;
-use smallvec::SmallVec;
 use std::ops::Deref;
 use std::ops::DerefMut;
-
-// TODO(@AaronO): remove ? possibly move ZeroCopyBuf into serde_v8
-// pub type BufVec = SmallVec<[ZeroCopyBuf; 2]>;
 
 /// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
