@@ -46,7 +46,7 @@
   function processResponse(res) {
     // const [ok, err] = res;
     if (!res.$err_class_name) {
-      return res[0];
+      return res;
     }
     throw processErr(res);
   }
