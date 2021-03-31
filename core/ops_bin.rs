@@ -64,7 +64,8 @@ impl ValueOrVector for u32 {
 /// A more complete example is available in the examples directory.
 pub fn bin_op_sync<F, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, u32, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
+  F:
+    Fn(&mut OpState, u32, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   R: ValueOrVector,
 {
   Box::new(move |state, payload, buf| -> Op {
