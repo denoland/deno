@@ -2,7 +2,6 @@
 
 use crate::error::AnyError;
 use crate::serialize_op_result;
-use crate::BufVec;
 use crate::Op;
 use crate::OpFn;
 use crate::OpPayload;
@@ -39,21 +38,14 @@ use std::rc::Rc;
 /// A more complete example is available in the examples directory.
 pub fn json_op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
   R: Serialize + 'static,
 {
-  Box::new(move |state, payload, buf: Option<ZeroCopyBuf>| -> Op {
-    // For sig compat map Option<ZeroCopyBuf> to BufVec
-    let mut bufs: BufVec = match buf {
-      Some(b) => vec![b],
-      None => vec![],
-    }
-    .into();
-
+  Box::new(move |state, payload, buf| -> Op {
     let result = payload
       .deserialize()
-      .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs));
+      .and_then(|args| op_fn(&mut state.borrow_mut(), args, buf));
     Op::Sync(serialize_op_result(result, state))
   })
 }
@@ -84,26 +76,20 @@ where
 /// A more complete example is available in the examples directory.
 pub fn json_op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
+  F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
   let try_dispatch_op = move |state: Rc<RefCell<OpState>>,
                               p: OpPayload,
-                              b: Option<ZeroCopyBuf>|
+                              buf: Option<ZeroCopyBuf>|
         -> Result<Op, AnyError> {
-    // For sig compat map Option<ZeroCopyBuf> to BufVec
-    let bufs: BufVec = match b {
-      Some(b) => vec![b],
-      None => vec![],
-    }
-    .into();
     // Parse args
     let args = p.deserialize()?;
 
     use crate::futures::FutureExt;
-    let fut = op_fn(state.clone(), args, bufs)
+    let fut = op_fn(state.clone(), args, buf)
       .map(move |result| serialize_op_result(result, state));
     Ok(Op::Async(Box::pin(fut)))
   };

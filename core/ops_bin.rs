@@ -1,10 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::type_error;
 use crate::error::AnyError;
 use crate::futures::future::FutureExt;
 use crate::serialize_op_result;
-use crate::BufVec;
 use crate::Op;
 use crate::OpFn;
 use crate::OpPayload;
@@ -66,26 +64,12 @@ impl ValueOrVector for u32 {
 /// A more complete example is available in the examples directory.
 pub fn bin_op_sync<F, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, u32, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  F: Fn(&mut OpState, u32, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   R: ValueOrVector,
 {
   Box::new(move |state, payload, buf| -> Op {
     let min_arg: u32 = payload.deserialize().unwrap();
-    // For sig compat map Option<ZeroCopyBuf> to BufVec
-    let mut bufs: BufVec = match buf {
-      Some(b) => vec![b],
-      None => vec![],
-    }
-    .into();
-    // Bin op buffer arg assert
-    if bufs.is_empty() {
-      return Op::Sync(serialize_bin_result::<u32>(
-        Err(type_error("bin-ops require a non-null buffer arg")),
-        state,
-      ));
-    }
-
-    let result = op_fn(&mut state.borrow_mut(), min_arg, &mut bufs);
+    let result = op_fn(&mut state.borrow_mut(), min_arg, buf);
     Op::Sync(serialize_bin_result(result, state))
   })
 }
@@ -138,7 +122,7 @@ where
 /// A more complete example is available in the examples directory.
 pub fn bin_op_async<F, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(Rc<RefCell<OpState>>, u32, BufVec) -> R + 'static,
+  F: Fn(Rc<RefCell<OpState>>, u32, Option<ZeroCopyBuf>) -> R + 'static,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: ValueOrVector,
 {
@@ -148,21 +132,7 @@ where
           b: Option<ZeroCopyBuf>|
           -> Op {
       let min_arg: u32 = p.deserialize().unwrap();
-      // For sig compat map Option<ZeroCopyBuf> to BufVec
-      let bufs: BufVec = match b {
-        Some(b) => vec![b],
-        None => vec![],
-      }
-      .into();
-      // Bin op buffer arg assert
-      if bufs.is_empty() {
-        return Op::Sync(serialize_bin_result::<u32>(
-          Err(type_error("bin-ops require a non-null buffer arg")),
-          state,
-        ));
-      }
-
-      let fut = op_fn(state.clone(), min_arg, bufs)
+      let fut = op_fn(state.clone(), min_arg, b)
         .map(move |result| serialize_bin_result(result, state));
       let temp = Box::pin(fut);
       Op::Async(temp)
