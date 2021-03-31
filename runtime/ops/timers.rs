@@ -10,7 +10,6 @@
 
 use crate::permissions::Permissions;
 use deno_core::assert_opbuf;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
