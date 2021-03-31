@@ -44,13 +44,13 @@
   }
 
   function processResponse(res) {
-    // .$err_class_name is a special key that should only exist on errors
     if (!isErr(res)) {
       return res;
     }
     throw processErr(res);
   }
 
+  // .$err_class_name is a special key that should only exist on errors
   function isErr(res) {
     return !!(res && res.$err_class_name);
   }
@@ -87,7 +87,6 @@
   }
 
   function opAsyncHandler(promiseId, res) {
-    // const [ok, err] = res;
     const promise = promiseTable.get(promiseId);
     promiseTable.delete(promiseId);
     if (!isErr(res)) {
