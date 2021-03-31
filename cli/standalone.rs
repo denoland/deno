@@ -140,14 +140,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-    let code = self.0.to_string();
+    let module_specifier = module_specifier.clone().to_string();
+    let code = if module_specifier.starts_with("data:text/javascript;") {
+      module_specifier.to_string()
+    } else {
+      self.0.to_string()
+    };
     async move {
-      module_supported(&module_specifier.to_string())?;
+      module_supported(&module_specifier)?;
       Ok(deno_core::ModuleSource {
         code,
-        module_url_specified: module_specifier.to_string(),
-        module_url_found: module_specifier.to_string(),
+        module_url_specified: module_specifier.clone(),
+        module_url_found: module_specifier,
       })
     }
     .boxed_local()
