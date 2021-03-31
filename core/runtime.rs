@@ -510,8 +510,8 @@ impl JsRuntime {
 
     // Ops
     {
-      let overflow_response = self.poll_pending_ops(cx);
-      self.async_op_response(overflow_response)?;
+      let async_responses = self.poll_pending_ops(cx);
+      self.async_op_response(async_responses)?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
     }
@@ -1324,7 +1324,7 @@ impl JsRuntime {
     cx: &mut Context,
   ) -> Vec<(PromiseId, OpResponse)> {
     let state_rc = Self::state(self.v8_isolate());
-    let mut overflow_response: Vec<(PromiseId, OpResponse)> = Vec::new();
+    let mut async_responses: Vec<(PromiseId, OpResponse)> = Vec::new();
 
     let mut state = state_rc.borrow_mut();
 
@@ -1337,7 +1337,7 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((promise_id, resp))) => {
-          overflow_response.push((promise_id, resp));
+          async_responses.push((promise_id, resp));
         }
       };
     }
@@ -1348,12 +1348,12 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((promise_id, resp))) => {
-          overflow_response.push((promise_id, resp));
+          async_responses.push((promise_id, resp));
         }
       };
     }
 
-    overflow_response
+    async_responses
   }
 
   fn check_promise_exceptions(&mut self) -> Result<(), AnyError> {
