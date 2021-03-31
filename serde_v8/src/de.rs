@@ -158,7 +158,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
       let string = match v8_to_rust_string(self.scope, v8_string) {
         Some(string) => string,
-        None => return Err(Error::ExpectedUTF8),
+        None => return Err(Error::ExpectedUtf8),
       };
       visitor.visit_string(string)
     } else {
