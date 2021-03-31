@@ -45,17 +45,18 @@
 
   function processResponse(res) {
     // const [ok, err] = res;
-    if (res[1] === null) {
+    if (!res.$err_class_name) {
       return res[0];
     }
-    throw processErr(res[1]);
+    throw processErr(res);
   }
 
   function processErr(err) {
-    const [ErrorClass, args] = getErrorClassAndArgs(err.className);
+    const className = err.$err_class_name;
+    const [ErrorClass, args] = getErrorClassAndArgs(className);
     if (!ErrorClass) {
       return new Error(
-        `Unregistered error class: "${err.className}"\n  ${err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        `Unregistered error class: "${className}"\n  ${err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
     }
     return new ErrorClass(err.message, ...args);
