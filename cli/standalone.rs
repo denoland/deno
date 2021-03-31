@@ -120,14 +120,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if specifier != SPECIFIER
-      || get_source_from_data_url(&resolve_url(&specifier)?).is_err()
-    {
-      return Err(type_error(
-        "Self-contained binaries don't support module loading",
-      ));
+    if let Some(module_specifier) = resolve_url(&specifier).ok() {
+      if get_source_from_data_url(&module_specifier).is_ok()
+        || specifier == SPECIFIER
+      {
+        return Ok(module_specifier);
+      }
     }
-    Ok(resolve_url(specifier)?)
+    Err(type_error(
+      "Self-contained binaries don't support module loading",
+    ))
   }
 
   fn load(
