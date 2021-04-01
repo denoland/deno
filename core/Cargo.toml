@@ -14,6 +14,7 @@ path = "lib.rs"
 
 [dependencies]
 anyhow = "1.0.38"
+erased-serde = "0.3.13"
 futures = "0.3.12"
 indexmap = "1.6.1"
 lazy_static = "1.4.0"
@@ -38,3 +39,8 @@ path = "examples/http_bench_json_ops.rs"
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
 tokio = { version = "1.4.0", features = ["full"] }
+bencher = "0.1"
+
+[[bench]]
+name = "op_baseline"
+harness = false

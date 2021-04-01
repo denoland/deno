@@ -14,6 +14,15 @@ rusty_v8 = "0.21.0"
 
 [dev-dependencies]
 serde_json = "1.0.62"
+bencher = "0.1"
 
 [[example]]
 name = "basic"
+
+[[bench]]
+name = "de"
+harness = false
+
+[[bench]]
+name = "ser"
+harness = false

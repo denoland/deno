@@ -201,6 +201,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "bencher"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dfdb4953a096c551ce9ace855a604d702e6e62d77fac690575ae347571717f5"
+
+[[package]]
 name = "bit-set"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -564,6 +570,8 @@ name = "deno_core"
 version = "0.82.0"
 dependencies = [
  "anyhow",
+ "bencher",
+ "erased-serde",
  "futures",
  "indexmap",
  "lazy_static",
@@ -900,6 +908,15 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
+]
+
+[[package]]
+name = "erased-serde"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0465971a8cc1fa2455c8465aaa377131e1f1cf4983280f474a13e68793aa770c"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -2836,6 +2853,7 @@ dependencies = [
 name = "serde_v8"
 version = "0.1.0"
 dependencies = [
+ "bencher",
  "rusty_v8",
  "serde",
  "serde_json",
