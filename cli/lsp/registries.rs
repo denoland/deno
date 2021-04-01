@@ -712,14 +712,8 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap();
     assert_eq!(completions.len(), 2);
-    assert!(
-      completions[0].label == *"a"
-        || completions[0].label == *"b"
-    );
-    assert!(
-      completions[1].label == *"a"
-        || completions[1].label == *"b"
-    );
+    assert!(completions[0].label == *"a" || completions[0].label == *"b");
+    assert!(completions[1].label == *"a" || completions[1].label == *"b");
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
