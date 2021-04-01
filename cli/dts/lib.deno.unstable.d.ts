@@ -1131,7 +1131,7 @@ declare namespace Deno {
    * seconds (UNIX epoch time) or as `Date` objects.
    *
    * ```ts
-   * const file = Deno.openSync("file.txt", { create: true });
+   * const file = Deno.openSync("file.txt", { create: true, write: true });
    * Deno.futimeSync(file.rid, 1556495550, new Date());
    * ```
    */
@@ -1148,7 +1148,7 @@ declare namespace Deno {
    * (UNIX epoch time) or as `Date` objects.
    *
    * ```ts
-   * const file = await Deno.open("file.txt", { create: true });
+   * const file = await Deno.open("file.txt", { create: true, write: true });
    * await Deno.futime(file.rid, 1556495550, new Date());
    * ```
    */
