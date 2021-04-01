@@ -391,7 +391,7 @@ impl ModuleRegistry {
                         .await
                       {
                         let compiler = Compiler::new(&tokens[..i], None);
-                        for item in items {
+                        for (idx, item) in items.into_iter().enumerate() {
                           let label = item.clone();
                           let kind = if k.name == last_key_name {
                             Some(lsp::CompletionItemKind::File)
@@ -429,6 +429,7 @@ impl ModuleRegistry {
                           };
                           let detail = Some(format!("({})", k.name));
                           let filter_text = Some(full_text.to_string());
+                          let sort_text = Some(format!("{:0>10}", idx + 1));
                           completions.insert(
                             item,
                             lsp::CompletionItem {
@@ -436,7 +437,7 @@ impl ModuleRegistry {
                               kind,
                               detail,
                               filter_text,
-                              sort_text: Some("1".to_string()),
+                              sort_text,
                               text_edit,
                               command,
                               ..Default::default()
