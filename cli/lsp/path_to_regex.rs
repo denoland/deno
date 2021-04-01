@@ -852,10 +852,13 @@ impl Matcher {
 mod tests {
   use super::*;
 
+  type FixtureMatch<'a> = (&'a str, usize, usize);
+  type Fixture<'a> = (&'a str, Option<FixtureMatch<'a>>);
+
   fn test_path(
     path: &str,
     maybe_options: Option<PathToRegexOptions>,
-    fixtures: &[(&str, Option<(&str, usize, usize)>)],
+    fixtures: &[Fixture],
   ) {
     let result = string_to_regex(path, maybe_options);
     assert!(result.is_ok(), "Could not parse path: \"{}\"", path);

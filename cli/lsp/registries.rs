@@ -713,12 +713,12 @@ mod tests {
     let completions = completions.unwrap();
     assert_eq!(completions.len(), 2);
     assert!(
-      completions[0].label == "a".to_string()
-        || completions[0].label == "b".to_string()
+      completions[0].label == *"a"
+        || completions[0].label == *"b"
     );
     assert!(
-      completions[1].label == "a".to_string()
-        || completions[1].label == "b".to_string()
+      completions[1].label == *"a"
+        || completions[1].label == *"b"
     );
     let range = lsp::Range {
       start: lsp::Position {
