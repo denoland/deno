@@ -1188,10 +1188,10 @@ impl CompletionEntry {
     }
 
     let text_edit =
-      if let (Some(text_span), Some(new_text)) = (range, insert_text) {
+      if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
         let range = text_span.to_range(line_index);
         let insert_replace_edit = lsp::InsertReplaceEdit {
-          new_text,
+          new_text: new_text.clone(),
           insert: range,
           replace: range,
         };
@@ -1216,6 +1216,7 @@ impl CompletionEntry {
       preselect,
       text_edit,
       filter_text,
+      insert_text,
       detail,
       tags,
       data: Some(json!({
