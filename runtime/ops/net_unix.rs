@@ -103,7 +103,7 @@ pub(crate) async fn receive_unix_packet(
   args: ReceiveArgs,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let mut buf = buf.ok_or(null_opbuf())?;
+  let mut buf = buf.ok_or_else(null_opbuf)?;
 
   let rid = args.rid;
 

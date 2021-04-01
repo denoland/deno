@@ -287,7 +287,7 @@ pub async fn op_fetch_request_write(
   data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
-  let data = data.ok_or(null_opbuf())?;
+  let data = data.ok_or_else(null_opbuf)?;
   let buf = Vec::from(&*data);
 
   let resource = state
@@ -314,7 +314,7 @@ pub async fn op_fetch_response_read(
   data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
-  let data = data.ok_or(null_opbuf())?;
+  let data = data.ok_or_else(null_opbuf)?;
 
   let resource = state
     .borrow()

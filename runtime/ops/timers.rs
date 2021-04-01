@@ -142,7 +142,7 @@ fn op_now(
   _argument: u32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let mut zero_copy = zero_copy.ok_or(null_opbuf())?;
+  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
 
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();

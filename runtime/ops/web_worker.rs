@@ -17,7 +17,7 @@ pub fn init(
     rt,
     "op_worker_post_message",
     move |_state, _args: Value, buf| {
-      let buf = buf.ok_or(null_opbuf())?;
+      let buf = buf.ok_or_else(null_opbuf)?;
       let msg_buf: Box<[u8]> = (*buf).into();
       sender_
         .clone()

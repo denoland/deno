@@ -329,7 +329,7 @@ pub fn op_webgpu_render_pass_set_bind_group(
   args: RenderPassSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = zero_copy.ok_or(null_opbuf())?;
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGpuBindGroup>(args.bind_group)

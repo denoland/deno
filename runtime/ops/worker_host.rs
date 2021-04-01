@@ -569,7 +569,7 @@ fn op_host_post_message(
   args: WorkerArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let data = data.ok_or(null_opbuf())?;
+  let data = data.ok_or_else(null_opbuf)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data).into_boxed_slice();
 

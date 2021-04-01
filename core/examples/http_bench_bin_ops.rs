@@ -168,7 +168,7 @@ async fn op_read(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let mut buf = buf.ok_or(null_opbuf())?;
+  let mut buf = buf.ok_or_else(null_opbuf)?;
   log::debug!("read rid={}", rid);
 
   let stream = state
@@ -185,7 +185,7 @@ async fn op_write(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = buf.ok_or(null_opbuf())?;
+  let buf = buf.ok_or_else(null_opbuf)?;
   log::debug!("write rid={}", rid);
 
   let stream = state

@@ -135,7 +135,7 @@ async fn receive_udp(
   args: ReceiveArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = zero_copy.ok_or(null_opbuf())?;
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let mut zero_copy = zero_copy.clone();
 
   let rid = args.rid;
@@ -191,7 +191,7 @@ async fn op_datagram_send(
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = zero_copy.ok_or(null_opbuf())?;
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let zero_copy = zero_copy.clone();
 
   match serde_json::from_value(args)? {

@@ -272,7 +272,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
         None => {
-          let zero_copy = zero_copy.ok_or(null_opbuf())?;
+          let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
           let (prefix, data, suffix) = zero_copy.align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());

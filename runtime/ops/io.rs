@@ -525,7 +525,7 @@ fn op_read_sync(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let mut buf = buf.ok_or(null_opbuf())?;
+  let mut buf = buf.ok_or_else(null_opbuf)?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .read(&mut buf)
@@ -540,7 +540,7 @@ async fn op_read_async(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = &mut buf.ok_or(null_opbuf())?;
+  let buf = &mut buf.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
@@ -571,7 +571,7 @@ fn op_write_sync(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = buf.ok_or(null_opbuf())?;
+  let buf = buf.ok_or_else(null_opbuf)?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .write(&buf)
@@ -586,7 +586,7 @@ async fn op_write_async(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = &buf.ok_or(null_opbuf())?;
+  let buf = &buf.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table

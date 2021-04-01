@@ -227,7 +227,7 @@ pub async fn op_ws_send(
 ) -> Result<Value, AnyError> {
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(buf.ok_or(null_opbuf())?.to_vec()),
+    "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };
