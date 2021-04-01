@@ -7,6 +7,7 @@ unitTest(function version(): void {
   // Unreleased version of TypeScript now set the version to 0-dev
   assert(
     pattern.test(Deno.version.typescript) ||
-      Deno.version.typescript === "0-dev",
+      Deno.version.typescript === "0-dev" ||
+      Deno.version.typescript === "0-beta",
   );
 });
