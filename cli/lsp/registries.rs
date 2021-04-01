@@ -29,7 +29,6 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use log::error;
 use lspower::lsp;
-use percent_encoding;
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -375,6 +374,7 @@ impl ModuleRegistry {
                         label,
                         kind: Some(lsp::CompletionItemKind::Folder),
                         filter_text,
+                        sort_text: Some("1".to_string()),
                         text_edit,
                         ..Default::default()
                       },
@@ -439,6 +439,7 @@ impl ModuleRegistry {
                               kind,
                               detail,
                               filter_text,
+                              sort_text: Some("1".to_string()),
                               text_edit,
                               command,
                               ..Default::default()
@@ -476,6 +477,7 @@ impl ModuleRegistry {
                         label,
                         kind,
                         filter_text,
+                        sort_text: Some("1".to_string()),
                         text_edit,
                         ..Default::default()
                       },
@@ -514,7 +516,7 @@ impl ModuleRegistry {
                 label: origin.clone(),
                 kind: Some(lsp::CompletionItemKind::Folder),
                 detail: Some("(registry)".to_string()),
-                filter_text: Some(origin),
+                sort_text: Some("1".to_string()),
                 text_edit,
                 ..Default::default()
               })
