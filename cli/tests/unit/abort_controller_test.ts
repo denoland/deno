@@ -56,6 +56,6 @@ unitTest(function controllerHasProperToString() {
 });
 
 unitTest(function signalHasMethodAbort() {
-  const aborted = AbortSignal.abort();
-  assertEquals(abort.aborted, true);
+  const signal = AbortSignal.abort();
+  assertEquals(signal.aborted, true);
 });
