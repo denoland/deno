@@ -141,10 +141,8 @@ fn get_completion_endpoint(
         Token::Key(k) if k.name == *key => Some(k),
         _ => None,
       });
-      url_str = url_str.replace(
-        &format!("${{{}}}", name),
-        &value.to_string(maybe_key.clone()),
-      );
+      url_str =
+        url_str.replace(&format!("${{{}}}", name), &value.to_string(maybe_key));
       url_str = url_str.replace(
         &format!("${{{{{}}}}}", name),
         &percent_encoding::percent_encode(
@@ -174,21 +172,18 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   }
   for registry in &config.registries {
     let (_, keys) = string_to_regex(&registry.schema, None)?;
-    let key_names: HashSet<String> = keys.map_or_else(
-      || HashSet::new(),
-      |keys| {
-        keys
-          .iter()
-          .filter_map(|k| {
-            if let StringOrNumber::String(s) = &k.name {
-              Some(s.clone())
-            } else {
-              None
-            }
-          })
-          .collect()
-      },
-    );
+    let key_names: HashSet<String> = keys.map_or_else(HashSet::new, |keys| {
+      keys
+        .iter()
+        .filter_map(|k| {
+          if let StringOrNumber::String(s) = &k.name {
+            Some(s.clone())
+          } else {
+            None
+          }
+        })
+        .collect()
+    });
     let mut variable_names = HashSet::<String>::new();
     for variable in &registry.variables {
       variable_names.insert(variable.key.clone());
@@ -292,6 +287,8 @@ impl ModuleRegistry {
 
   pub async fn enable(&mut self, origin: &str) -> Result<(), AnyError> {
     let origin = base_url(&Url::parse(origin)?)?;
+    #[allow(clippy::map_entry)]
+    // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
       let configs = self.fetch_config(&origin).await?;
       self.origins.insert(origin, configs);
@@ -513,7 +510,7 @@ impl ModuleRegistry {
                   new_text: origin.clone(),
                 }));
               Some(lsp::CompletionItem {
-                label: origin.clone(),
+                label: origin,
                 kind: Some(lsp::CompletionItemKind::Folder),
                 detail: Some("(registry)".to_string()),
                 sort_text: Some("1".to_string()),

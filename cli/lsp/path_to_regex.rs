@@ -108,18 +108,14 @@ fn lexer(s: &str) -> Result<Vec<LexToken>, AnyError> {
       }
       Some(':') => {
         let mut name = String::new();
-        loop {
-          if let Some(c) = chars.peek() {
-            if (*c >= '0' && *c <= '9')
-              || (*c >= 'A' && *c <= 'Z')
-              || (*c >= 'a' && *c <= 'z')
-              || *c == '_'
-            {
-              let ch = chars.next().unwrap();
-              name.push(ch);
-            } else {
-              break;
-            }
+        while let Some(c) = chars.peek() {
+          if (*c >= '0' && *c <= '9')
+            || (*c >= 'A' && *c <= 'Z')
+            || (*c >= 'a' && *c <= 'z')
+            || *c == '_'
+          {
+            let ch = chars.next().unwrap();
+            name.push(ch);
           } else {
             break;
           }
@@ -451,7 +447,7 @@ pub fn parse(
           key += 1;
           default
         },
-        |s| StringOrNumber::String(s),
+        StringOrNumber::String,
       );
       let prefix = if prefix.is_empty() {
         None
@@ -501,7 +497,7 @@ pub fn parse(
             StringOrNumber::String("".to_string())
           }
         },
-        |s| StringOrNumber::String(s),
+        StringOrNumber::String,
       );
       let pattern = if maybe_name.is_some() && maybe_pattern.is_none() {
         default_pattern.clone()
@@ -617,12 +613,12 @@ pub fn tokens_to_regex(
     if has_ends_with {
       route.push_str(&format!(r"(?={})", ends_with));
     } else {
-      route.push_str("$");
+      route.push('$');
     }
   } else {
     let is_end_deliminated = match maybe_end_token {
-      Some(Token::String(s)) => {
-        if let Some(c) = s.clone().pop() {
+      Some(Token::String(mut s)) => {
+        if let Some(c) = s.pop() {
           delimiter.contains(c)
         } else {
           false
@@ -693,7 +689,7 @@ impl Compiler {
 
     Self {
       matches,
-      tokens: tokens.iter().cloned().collect(),
+      tokens: tokens.to_vec(),
       validate,
     }
   }
