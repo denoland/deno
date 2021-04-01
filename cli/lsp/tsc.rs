@@ -1248,7 +1248,7 @@ pub struct OutliningSpan {
   kind: OutliningSpanKind,
 }
 
-const FOLD_END_PAIR_CHARACTERS: &[&str] = &["}", "]", ")", "`"];
+const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
 
 impl OutliningSpan {
   pub fn to_folding_range(
@@ -1288,16 +1288,8 @@ impl OutliningSpan {
     line_folding_only: bool,
   ) -> u32 {
     if line_folding_only && range.end.character > 0 {
-      let offset_start: usize = line_index
-        .offset(lsp::Position {
-          character: range.end.character - 1,
-          ..range.end
-        })
-        .unwrap()
-        .into();
       let offset_end: usize = line_index.offset(range.end).unwrap().into();
-      let fold_end_char: &str =
-        unsafe { text_content.get_unchecked(offset_start..offset_end) };
+      let fold_end_char = text_content.as_bytes()[offset_end - 1];
       if FOLD_END_PAIR_CHARACTERS.contains(&fold_end_char) {
         return cmp::max(range.end.line - 1, range.start.line);
       }
