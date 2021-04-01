@@ -3022,6 +3022,68 @@ mod tests {
     harness.run().await;
   }
 
+  #[tokio::test]
+  async fn test_completions_optional() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_optional.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_optional.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": "b?",
+                "kind": 5,
+                "sortText": "1",
+                "filterText": "b",
+                "insertText": "b",
+                "data": {
+                  "tsc": {
+                    "specifier": "file:///a/file.ts",
+                    "position": 79,
+                    "name": "b",
+                    "useCodeSnippet": false
+                  }
+                }
+              }
+            ]
+          }),
+        ),
+      ),
+      (
+        "completion_resolve_request_optional.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "b?",
+            "kind": 5,
+            "detail": "(property) A.b?: string | undefined",
+            "documentation": {
+              "kind": "markdown",
+              "value": ""
+            },
+            "sortText": "1",
+            "filterText": "b",
+            "insertText": "b"
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
   #[derive(Deserialize)]
   struct PerformanceAverages {
     averages: Vec<PerformanceAverage>,
