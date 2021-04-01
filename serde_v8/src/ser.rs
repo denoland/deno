@@ -101,12 +101,14 @@ pub struct ArraySerializer<'a, 'b> {
 }
 
 impl<'a, 'b> ArraySerializer<'a, 'b> {
-  pub fn new(scope: ScopePtr<'a, 'b>) -> Self {
-    // let serializer = Serializer::new(scope);
+  pub fn new(scope: ScopePtr<'a, 'b>, len: Option<usize>) -> Self {
+    let pending = match len {
+      Some(len) => Vec::with_capacity(len),
+      None => vec![],
+    };
     Self {
       scope,
-      // serializer,
-      pending: vec![],
+      pending,
     }
   }
 }
@@ -422,8 +424,8 @@ impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
   }
 
   /// Serialises any Rust iterable into a JS Array
-  fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-    Ok(ArraySerializer::new(self.scope))
+  fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
+    Ok(ArraySerializer::new(self.scope, len))
   }
 
   fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
