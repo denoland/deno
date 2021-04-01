@@ -59,6 +59,10 @@ pub fn resource_unavailable() -> AnyError {
   )
 }
 
+pub fn null_opbuf() -> AnyError {
+  type_error("expected non-null op buffer arg")
+}
+
 /// A simple error type that lets the creator specify both the error message and
 /// the error class name. This type is private; externally it only ever appears
 /// wrapped in an `AnyError`. To retrieve the error class name from a wrapped
