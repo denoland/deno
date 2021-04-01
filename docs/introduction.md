@@ -57,8 +57,8 @@ have been historically written with Bash or Python.
   than Node.
 - Deno requires explicit permissions for file, network, and environment access.
 - Deno always dies on uncaught errors.
-- Deno uses "ES Modules" and does not support `require()`. Third party modules are
-  imported via URLs:
+- Deno uses "ES Modules" and does not support `require()`. Third party modules
+  are imported via URLs:
 
   ```javascript
   import * as log from "https://deno.land/std@$STD_VERSION/log/mod.ts";
