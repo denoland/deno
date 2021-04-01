@@ -697,7 +697,7 @@ fn permission_prompt(message: &str) -> bool {
     };
     let ch = match input.chars().next() {
       None => return false,
-      Some(v) => v
+      Some(v) => v,
     };
     match ch.to_ascii_lowercase() {
       'g' => return true,
