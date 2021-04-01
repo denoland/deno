@@ -109,7 +109,7 @@ impl_resource! {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WebCryptoAlgorithmArg {
+pub struct WebCryptoAlgorithmArg {
   name: Algorithm,
   modulus_length: Option<u32>,
   hash: Option<WebCryptoHash>,
@@ -120,7 +120,7 @@ struct WebCryptoAlgorithmArg {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WebCryptoGenerateKeyArg {
+pub struct WebCryptoGenerateKeyArg {
   algorithm: WebCryptoAlgorithmArg,
   extractable: bool,
   key_usages: Vec<KeyUsage>,
@@ -152,10 +152,9 @@ macro_rules! validate_usage {
 
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: WebCryptoGenerateKeyArg,
   zero_copy: BufVec,
 ) -> Result<Value, AnyError> {
-  let args: WebCryptoGenerateKeyArg = serde_json::from_value(args)?;
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
 
