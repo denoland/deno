@@ -9,7 +9,7 @@
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
-use deno_core::assert_opbuf;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
@@ -142,7 +142,7 @@ fn op_now(
   _argument: u32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let mut zero_copy = assert_opbuf(zero_copy)?;
+  let mut zero_copy = zero_copy.ok_or(null_opbuf())?;
 
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();

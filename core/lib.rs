@@ -53,7 +53,6 @@ pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
-pub use crate::ops::assert_opbuf;
 pub use crate::ops::op_close;
 pub use crate::ops::op_resources;
 pub use crate::ops::serialize_op_result;

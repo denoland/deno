@@ -3,9 +3,9 @@
 use crate::ops::io::UnixStreamResource;
 use crate::ops::net::AcceptArgs;
 use crate::ops::net::ReceiveArgs;
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -103,7 +103,7 @@ pub(crate) async fn receive_unix_packet(
   args: ReceiveArgs,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let mut buf = assert_opbuf(buf)?;
+  let mut buf = buf.ok_or(null_opbuf())?;
 
   let rid = args.rid;
 

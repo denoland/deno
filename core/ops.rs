@@ -99,16 +99,6 @@ pub fn serialize_op_result<R: Serialize + 'static>(
   }))
 }
 
-/// Provides a convenient means for ops to assert if a buffer arg is passed
-pub fn assert_opbuf(
-  opbuf: Option<ZeroCopyBuf>,
-) -> Result<ZeroCopyBuf, AnyError> {
-  match opbuf {
-    Some(opbuf) => Ok(opbuf),
-    None => Err(type_error("expected non-null op buffer arg")),
-  }
-}
-
 /// Maintains the resources and ops inside a JS runtime.
 pub struct OpState {
   pub resource_table: ResourceTable,

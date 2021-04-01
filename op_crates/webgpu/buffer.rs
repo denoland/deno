@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
 use deno_core::serde_json::json;
@@ -180,7 +180,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
   args: BufferGetMappedRangeArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let mut zero_copy = assert_opbuf(zero_copy)?;
+  let mut zero_copy = zero_copy.ok_or(null_opbuf())?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table

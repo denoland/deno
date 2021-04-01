@@ -3,10 +3,10 @@ use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -135,7 +135,7 @@ async fn receive_udp(
   args: ReceiveArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = assert_opbuf(zero_copy)?;
+  let zero_copy = zero_copy.ok_or(null_opbuf())?;
   let mut zero_copy = zero_copy.clone();
 
   let rid = args.rid;
@@ -191,7 +191,7 @@ async fn op_datagram_send(
   args: Value,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = assert_opbuf(zero_copy)?;
+  let zero_copy = zero_copy.ok_or(null_opbuf())?;
   let zero_copy = zero_copy.clone();
 
   match serde_json::from_value(args)? {

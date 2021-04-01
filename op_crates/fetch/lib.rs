@@ -2,9 +2,9 @@
 
 #![deny(warnings)]
 
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
@@ -287,7 +287,7 @@ pub async fn op_fetch_request_write(
   data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
-  let data = assert_opbuf(data)?;
+  let data = data.ok_or(null_opbuf())?;
   let buf = Vec::from(&*data);
 
   let resource = state
@@ -314,7 +314,7 @@ pub async fn op_fetch_response_read(
   data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
-  let data = assert_opbuf(data)?;
+  let data = data.ok_or(null_opbuf())?;
 
   let resource = state
     .borrow()

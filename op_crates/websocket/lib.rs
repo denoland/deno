@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
@@ -227,7 +227,7 @@ pub async fn op_ws_send(
 ) -> Result<Value, AnyError> {
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(assert_opbuf(buf)?.to_vec()),
+    "binary" => Message::Binary(buf.ok_or(null_opbuf())?.to_vec()),
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };

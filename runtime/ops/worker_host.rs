@@ -12,9 +12,9 @@ use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
-use deno_core::assert_opbuf;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -569,7 +569,7 @@ fn op_host_post_message(
   args: WorkerArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let data = assert_opbuf(data)?;
+  let data = data.ok_or(null_opbuf())?;
   let id = args.id as u32;
   let msg = Vec::from(&*data).into_boxed_slice();
 

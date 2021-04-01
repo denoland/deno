@@ -47,13 +47,13 @@ pub fn op_webgpu_create_shader_module(
     }
     None => wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::from(unsafe {
       match &zero_copy {
-        Some(zero_copy) => {    
+        Some(zero_copy) => {
           let (prefix, data, suffix) = zero_copy.align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
           data
         }
-        None => return Err(null_opbuf())
+        None => return Err(null_opbuf()),
       }
     })),
   };

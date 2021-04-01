@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -72,7 +72,7 @@ pub fn op_webgpu_write_buffer(
   args: QueueWriteBufferArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = assert_opbuf(zero_copy)?;
+  let zero_copy = zero_copy.ok_or(null_opbuf())?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
@@ -114,7 +114,7 @@ pub fn op_webgpu_write_texture(
   args: QueueWriteTextureArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = assert_opbuf(zero_copy)?;
+  let zero_copy = zero_copy.ok_or(null_opbuf())?;
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table

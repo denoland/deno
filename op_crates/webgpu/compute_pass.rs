@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -272,7 +272,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
         None => {
-          let zero_copy = assert_opbuf(zero_copy)?;
+          let zero_copy = zero_copy.ok_or(null_opbuf())?;
           let (prefix, data, suffix) = zero_copy.align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());

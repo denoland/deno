@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::assert_opbuf;
+use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
@@ -525,7 +525,7 @@ fn op_read_sync(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let mut buf = assert_opbuf(buf)?;
+  let mut buf = buf.ok_or(null_opbuf())?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .read(&mut buf)
@@ -540,7 +540,7 @@ async fn op_read_async(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = &mut assert_opbuf(buf)?;
+  let buf = &mut buf.ok_or(null_opbuf())?;
   let resource = state
     .borrow()
     .resource_table
@@ -571,7 +571,7 @@ fn op_write_sync(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = assert_opbuf(buf)?;
+  let buf = buf.ok_or(null_opbuf())?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .write(&buf)
@@ -586,7 +586,7 @@ async fn op_write_async(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = &assert_opbuf(buf)?;
+  let buf = &buf.ok_or(null_opbuf())?;
   let resource = state
     .borrow()
     .resource_table

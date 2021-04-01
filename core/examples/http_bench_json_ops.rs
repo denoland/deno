@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use deno_core::assert_opbuf;
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -168,7 +168,7 @@ async fn op_read(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<usize, AnyError> {
-  let mut buf = assert_opbuf(buf)?;
+  let mut buf = buf.ok_or(null_opbuf())?;
   log::debug!("read rid={}", rid);
 
   let stream = state
@@ -185,7 +185,7 @@ async fn op_write(
   rid: ResourceId,
   buf: Option<ZeroCopyBuf>,
 ) -> Result<usize, AnyError> {
-  let buf = assert_opbuf(buf)?;
+  let buf = buf.ok_or(null_opbuf())?;
   log::debug!("write rid={}", rid);
 
   let stream = state
