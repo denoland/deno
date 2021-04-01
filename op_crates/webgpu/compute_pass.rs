@@ -255,8 +255,6 @@ pub fn op_webgpu_compute_pass_set_bind_group(
   args: ComputePassSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let zero_copy = assert_opbuf(zero_copy)?;
-
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGpuBindGroup>(args.bind_group)
@@ -274,6 +272,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
       match args.dynamic_offsets_data {
         Some(data) => data.as_ptr(),
         None => {
+          let zero_copy = assert_opbuf(zero_copy)?;
           let (prefix, data, suffix) = zero_copy.align_to::<u32>();
           assert!(prefix.is_empty());
           assert!(suffix.is_empty());
