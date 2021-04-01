@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+#![allow(deprecated)]
+
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::analysis::ResolvedDependencyErr;
@@ -39,7 +41,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
-use text_size::TextSize;
+use text_size::{TextRange, TextSize};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -411,6 +413,33 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
   }
 }
 
+impl From<ScriptElementKind> for lsp::SymbolKind {
+  fn from(kind: ScriptElementKind) -> Self {
+    match kind {
+      ScriptElementKind::ModuleElement => lsp::SymbolKind::Module,
+      ScriptElementKind::ClassElement => lsp::SymbolKind::Class,
+      ScriptElementKind::EnumElement => lsp::SymbolKind::Enum,
+      ScriptElementKind::InterfaceElement => lsp::SymbolKind::Interface,
+      ScriptElementKind::MemberFunctionElement => lsp::SymbolKind::Method,
+      ScriptElementKind::MemberVariableElement => lsp::SymbolKind::Property,
+      ScriptElementKind::MemberGetAccessorElement => lsp::SymbolKind::Property,
+      ScriptElementKind::MemberSetAccessorElement => lsp::SymbolKind::Property,
+      ScriptElementKind::VariableElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::ConstElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::LocalVariableElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::FunctionElement => lsp::SymbolKind::Function,
+      ScriptElementKind::LocalFunctionElement => lsp::SymbolKind::Function,
+      ScriptElementKind::ConstructSignatureElement => {
+        lsp::SymbolKind::Constructor
+      }
+      ScriptElementKind::ConstructorImplementationElement => {
+        lsp::SymbolKind::Constructor
+      }
+      _ => lsp::SymbolKind::Variable,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
@@ -583,6 +612,80 @@ impl NavigationTree {
         "source": source
       })),
     }
+  }
+
+  pub fn collect_document_symbols(
+    &self,
+    line_index: &LineIndex,
+    document_symbols: &mut Vec<lsp::DocumentSymbol>,
+  ) -> bool {
+    let mut should_include = self.should_include_entry();
+    if !should_include
+      && self.child_items.as_ref().map_or(true, |it| it.is_empty())
+    {
+      return false;
+    }
+
+    let children = self
+      .child_items
+      .as_ref()
+      .map_or(&[] as &[NavigationTree], |it| it.as_slice());
+    for span in self.spans.iter() {
+      let range = TextRange::at(span.start.into(), span.length.into());
+      let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
+      for child in children.iter() {
+        if child
+          .spans
+          .iter()
+          .map(|child_span| {
+            TextRange::at(child_span.start.into(), child_span.length.into())
+          })
+          .any(|child_range| range.intersect(child_range).is_some())
+        {
+          let included_child =
+            child.collect_document_symbols(line_index, &mut symbol_children);
+          should_include = should_include || included_child;
+        }
+      }
+
+      if should_include {
+        let mut selection_span = span;
+        if let Some(name_span) = self.name_span.as_ref() {
+          let name_range =
+            TextRange::at(name_span.start.into(), name_span.length.into());
+          if range.contains_range(name_range) {
+            selection_span = name_span;
+          }
+        }
+
+        let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+        let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
+        if kind_modifiers.contains("deprecated") {
+          tags = Some(vec![lsp::SymbolTag::Deprecated]);
+        }
+
+        document_symbols.push(lsp::DocumentSymbol {
+          name: self.text.clone(),
+          kind: self.kind.clone().into(),
+          range: span.to_range(line_index),
+          selection_range: selection_span.to_range(line_index),
+          tags,
+          children: Some(symbol_children),
+          detail: None,
+          deprecated: None,
+        })
+      }
+    }
+
+    should_include
+  }
+
+  fn should_include_entry(&self) -> bool {
+    if let ScriptElementKind::Alias = self.kind {
+      return false;
+    }
+
+    !self.text.is_empty() && self.text != "<function>" && self.text != "<class>"
   }
 
   pub fn walk<F>(&self, callback: &F)

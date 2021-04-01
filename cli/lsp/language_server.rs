@@ -654,6 +654,49 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  async fn document_symbol(
+    &self,
+    params: DocumentSymbolParams,
+  ) -> LspResult<Option<DocumentSymbolResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("selection_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetNavigationTree(specifier);
+    let navigation_tree: tsc::NavigationTree = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    if let Some(child_items) = navigation_tree.child_items {
+      let mut document_symbols = Vec::<DocumentSymbol>::new();
+      for item in child_items {
+        item.collect_document_symbols(&line_index, &mut document_symbols);
+      }
+      self.performance.measure(mark);
+      Ok(Some(DocumentSymbolResponse::Nested(document_symbols)))
+    } else {
+      self.performance.measure(mark);
+      Ok(None)
+    }
+  }
+
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
@@ -1760,6 +1803,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: DidChangeWatchedFilesParams,
   ) {
     self.0.lock().await.did_change_watched_files(params).await
+  }
+
+  async fn document_symbol(
+    &self,
+    params: DocumentSymbolParams,
+  ) -> LspResult<Option<DocumentSymbolResponse>> {
+    self.0.lock().await.document_symbol(params).await
   }
 
   async fn formatting(

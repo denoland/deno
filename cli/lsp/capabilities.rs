@@ -96,7 +96,7 @@ pub fn server_capabilities(
     )),
     references_provider: Some(OneOf::Left(true)),
     document_highlight_provider: Some(OneOf::Left(true)),
-    document_symbol_provider: None,
+    document_symbol_provider: Some(OneOf::Left(true)),
     workspace_symbol_provider: None,
     code_action_provider: Some(code_action_provider),
     code_lens_provider: Some(CodeLensOptions {
