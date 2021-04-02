@@ -5,11 +5,11 @@ use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
 use deno_core::v8;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpResponse;
 use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -29,8 +29,6 @@ fn create_js_runtime() -> JsRuntime {
       r#"
       Deno.core.ops();
       Deno.core.registerErrorClass('Error', Error);
-      const nopBuffer = new ArrayBuffer(10);
-      const nopView = new DataView(nopBuffer);
     "#,
     )
     .unwrap();
@@ -42,7 +40,7 @@ fn create_js_runtime() -> JsRuntime {
 async fn op_pi_async(
   _: Rc<RefCell<OpState>>,
   _: (),
-  _: BufVec,
+  _: Option<ZeroCopyBuf>,
 ) -> Result<i64, AnyError> {
   Ok(314159)
 }
@@ -76,7 +74,7 @@ fn bench_op_pi_bin(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.binOpSync("pi_bin", 0, nopView);
+      Deno.core.binOpSync("pi_bin", 0, null);
     }"#,
   );
 }
@@ -94,7 +92,7 @@ fn bench_op_nop(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.dispatchByName("nop", null, null, nopView);
+      Deno.core.dispatchByName("nop", null, null, null);
     }"#,
   );
 }
