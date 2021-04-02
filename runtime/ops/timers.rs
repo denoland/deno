@@ -136,6 +136,7 @@ async fn op_global_timer(
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
+#[allow(clippy::unnecessary_wraps)]
 fn op_now(
   op_state: &mut OpState,
   _argument: (),
