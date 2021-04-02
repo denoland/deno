@@ -239,7 +239,7 @@ impl Inner {
       self
         .assets
         .get(specifier)
-        .map(|o| o.clone().map(|a| a.text.clone()))?
+        .map(|o| o.clone().map(|a| a.text))?
     } else if self.documents.contains_key(specifier) {
       self.documents.content(specifier).unwrap()
     } else {
