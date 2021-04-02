@@ -534,9 +534,9 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
       Ok(None)
     }
   }
-  
+
   fn size_hint(&self) -> Option<usize> {
-    Some((self.len-self.pos) as usize)
+    Some((self.len - self.pos) as usize)
   }
 }
 
