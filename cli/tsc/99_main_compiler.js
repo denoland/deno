@@ -675,6 +675,14 @@ delete Object.prototype.__proto__;
           languageService.getNavigationTree(request.specifier),
         );
       }
+      case "getOutliningSpans": {
+        return respond(
+          id,
+          languageService.getOutliningSpans(
+            request.specifier,
+          ),
+        );
+      }
       case "getQuickInfo": {
         return respond(
           id,
