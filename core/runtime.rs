@@ -1405,11 +1405,6 @@ impl JsRuntime {
 
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-    let context = scope.get_current_context();
-    let global: v8::Local<v8::Value> = context.global(scope).into();
-    let js_recv_cb = js_recv_cb_handle.get(scope);
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
 
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
@@ -1422,18 +1417,19 @@ impl JsRuntime {
       Vec::with_capacity(2 * async_responses_size);
     for overflown_response in async_responses {
       let (promise_id, resp) = overflown_response;
-      args.push(v8::Integer::new(tc_scope, promise_id as i32).into());
+      args.push(v8::Integer::new(scope, promise_id as i32).into());
       args.push(match resp {
-        OpResponse::Value(value) => serde_v8::to_v8(tc_scope, value).unwrap(),
+        OpResponse::Value(value) => serde_v8::to_v8(scope, value).unwrap(),
         OpResponse::Buffer(buf) => {
-          bindings::boxed_slice_to_uint8array(tc_scope, buf).into()
+          bindings::boxed_slice_to_uint8array(scope, buf).into()
         }
       });
     }
 
-    if async_responses_size > 0 {
-      js_recv_cb.call(tc_scope, global, args.as_slice());
-    }
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let js_recv_cb = js_recv_cb_handle.get(tc_scope);
+    let this = v8::undefined(tc_scope).into();
+    js_recv_cb.call(tc_scope, this, args.as_slice());
 
     match tc_scope.exception() {
       None => Ok(()),
@@ -1450,17 +1446,15 @@ impl JsRuntime {
 
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-    let context = scope.get_current_context();
-    let global: v8::Local<v8::Value> = context.global(scope).into();
     let js_macrotask_cb = js_macrotask_cb_handle.get(scope);
 
     // Repeatedly invoke macrotask callback until it returns true (done),
     // such that ready microtasks would be automatically run before
     // next macrotask is processed.
     let tc_scope = &mut v8::TryCatch::new(scope);
-
+    let this = v8::undefined(tc_scope).into();
     loop {
-      let is_done = js_macrotask_cb.call(tc_scope, global, &[]);
+      let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
 
       if let Some(exception) = tc_scope.exception() {
         return exception_to_err_result(tc_scope, exception, false);
