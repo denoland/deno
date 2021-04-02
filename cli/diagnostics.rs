@@ -63,7 +63,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "utimeSync",
 ];
 
-lazy_static! {
+lazy_static::lazy_static! {
   static ref MSG_MISSING_PROPERTY_DENO: Regex =
     Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
       .unwrap();

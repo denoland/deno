@@ -1,10 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
-
 mod async_cancel;
 mod async_cell;
 mod bindings;
@@ -20,7 +14,6 @@ mod ops_json;
 pub mod plugin_api;
 mod resources;
 mod runtime;
-mod shared_queue;
 mod zero_copy_buf;
 
 // Re-exports
@@ -62,12 +55,17 @@ pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::op_close;
 pub use crate::ops::op_resources;
+pub use crate::ops::serialize_op_result;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
+pub use crate::ops::OpPayload;
+pub use crate::ops::OpResponse;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
+pub use crate::ops::PromiseId;
+pub use crate::ops::Serializable;
 pub use crate::ops_bin::bin_op_async;
 pub use crate::ops_bin::bin_op_sync;
 pub use crate::ops_bin::ValueOrVector;

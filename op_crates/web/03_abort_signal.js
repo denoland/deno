@@ -14,6 +14,12 @@
     #aborted = false;
     #abortAlgorithms = new Set();
 
+    static abort() {
+      const signal = new AbortSignal(illegalConstructorKey);
+      signal[signalAbort]();
+      return signal;
+    }
+
     [add](algorithm) {
       this.#abortAlgorithms.add(algorithm);
     }

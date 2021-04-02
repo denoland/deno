@@ -16,8 +16,8 @@ pub fn init(
         .unwrap()
     });
     state.put::<HttpClientDefaults>(HttpClientDefaults {
-      ca_data,
       user_agent,
+      ca_data,
     });
   }
   super::reg_json_sync(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);

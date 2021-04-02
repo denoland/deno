@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use serde::Serialize;
 use std::fmt;
@@ -29,81 +30,81 @@ use wgpu_core::resource::CreateTextureViewError;
 #[derive(Serialize)]
 #[serde(tag = "type", content = "value")]
 #[serde(rename_all = "kebab-case")]
-pub enum WebGPUError {
+pub enum WebGpuError {
   Lost,
   OutOfMemory,
   Validation(String),
 }
 
-impl From<CreateBufferError> for WebGPUError {
+impl From<CreateBufferError> for WebGpuError {
   fn from(err: CreateBufferError) -> Self {
     match err {
       CreateBufferError::Device(err) => err.into(),
       CreateBufferError::AccessError(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<DeviceError> for WebGPUError {
+impl From<DeviceError> for WebGpuError {
   fn from(err: DeviceError) -> Self {
     match err {
-      DeviceError::Lost => WebGPUError::Lost,
-      DeviceError::OutOfMemory => WebGPUError::OutOfMemory,
-      DeviceError::Invalid => WebGPUError::Validation(err.to_string()),
+      DeviceError::Lost => WebGpuError::Lost,
+      DeviceError::OutOfMemory => WebGpuError::OutOfMemory,
+      DeviceError::Invalid => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<BufferAccessError> for WebGPUError {
+impl From<BufferAccessError> for WebGpuError {
   fn from(err: BufferAccessError) -> Self {
     match err {
       BufferAccessError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<CreateBindGroupLayoutError> for WebGPUError {
+impl From<CreateBindGroupLayoutError> for WebGpuError {
   fn from(err: CreateBindGroupLayoutError) -> Self {
     match err {
       CreateBindGroupLayoutError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<CreatePipelineLayoutError> for WebGPUError {
+impl From<CreatePipelineLayoutError> for WebGpuError {
   fn from(err: CreatePipelineLayoutError) -> Self {
     match err {
       CreatePipelineLayoutError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<CreateBindGroupError> for WebGPUError {
+impl From<CreateBindGroupError> for WebGpuError {
   fn from(err: CreateBindGroupError) -> Self {
     match err {
       CreateBindGroupError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<RenderBundleError> for WebGPUError {
+impl From<RenderBundleError> for WebGpuError {
   fn from(err: RenderBundleError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<CreateRenderBundleError> for WebGPUError {
+impl From<CreateRenderBundleError> for WebGpuError {
   fn from(err: CreateRenderBundleError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<CommandAllocatorError> for WebGPUError {
+impl From<CommandAllocatorError> for WebGpuError {
   fn from(err: CommandAllocatorError) -> Self {
     match err {
       CommandAllocatorError::Device(err) => err.into(),
@@ -111,142 +112,142 @@ impl From<CommandAllocatorError> for WebGPUError {
   }
 }
 
-impl From<CopyError> for WebGPUError {
+impl From<CopyError> for WebGpuError {
   fn from(err: CopyError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<CommandEncoderError> for WebGPUError {
+impl From<CommandEncoderError> for WebGpuError {
   fn from(err: CommandEncoderError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<QueryError> for WebGPUError {
+impl From<QueryError> for WebGpuError {
   fn from(err: QueryError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<ComputePassError> for WebGPUError {
+impl From<ComputePassError> for WebGpuError {
   fn from(err: ComputePassError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<CreateComputePipelineError> for WebGPUError {
+impl From<CreateComputePipelineError> for WebGpuError {
   fn from(err: CreateComputePipelineError) -> Self {
     match err {
       CreateComputePipelineError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<GetBindGroupLayoutError> for WebGPUError {
+impl From<GetBindGroupLayoutError> for WebGpuError {
   fn from(err: GetBindGroupLayoutError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<CreateRenderPipelineError> for WebGPUError {
+impl From<CreateRenderPipelineError> for WebGpuError {
   fn from(err: CreateRenderPipelineError) -> Self {
     match err {
       CreateRenderPipelineError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<RenderPassError> for WebGPUError {
+impl From<RenderPassError> for WebGpuError {
   fn from(err: RenderPassError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<CreateSamplerError> for WebGPUError {
+impl From<CreateSamplerError> for WebGpuError {
   fn from(err: CreateSamplerError) -> Self {
     match err {
       CreateSamplerError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<CreateShaderModuleError> for WebGPUError {
+impl From<CreateShaderModuleError> for WebGpuError {
   fn from(err: CreateShaderModuleError) -> Self {
     match err {
       CreateShaderModuleError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<CreateTextureError> for WebGPUError {
+impl From<CreateTextureError> for WebGpuError {
   fn from(err: CreateTextureError) -> Self {
     match err {
       CreateTextureError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<CreateTextureViewError> for WebGPUError {
+impl From<CreateTextureViewError> for WebGpuError {
   fn from(err: CreateTextureViewError) -> Self {
-    WebGPUError::Validation(err.to_string())
+    WebGpuError::Validation(err.to_string())
   }
 }
 
-impl From<CreateQuerySetError> for WebGPUError {
+impl From<CreateQuerySetError> for WebGpuError {
   fn from(err: CreateQuerySetError) -> Self {
     match err {
       CreateQuerySetError::Device(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<QueueSubmitError> for WebGPUError {
+impl From<QueueSubmitError> for WebGpuError {
   fn from(err: QueueSubmitError) -> Self {
     match err {
       QueueSubmitError::Queue(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
-impl From<QueueWriteError> for WebGPUError {
+impl From<QueueWriteError> for WebGpuError {
   fn from(err: QueueWriteError) -> Self {
     match err {
       QueueWriteError::Queue(err) => err.into(),
-      err => WebGPUError::Validation(err.to_string()),
+      err => WebGpuError::Validation(err.to_string()),
     }
   }
 }
 
 #[derive(Debug)]
-pub struct DOMExceptionOperationError {
+pub struct DomExceptionOperationError {
   pub msg: String,
 }
 
-impl DOMExceptionOperationError {
+impl DomExceptionOperationError {
   pub fn new(msg: &str) -> Self {
-    DOMExceptionOperationError {
+    DomExceptionOperationError {
       msg: msg.to_string(),
     }
   }
 }
 
-impl fmt::Display for DOMExceptionOperationError {
+impl fmt::Display for DomExceptionOperationError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.pad(&self.msg)
   }
 }
 
-impl std::error::Error for DOMExceptionOperationError {}
+impl std::error::Error for DomExceptionOperationError {}
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DOMExceptionOperationError>()
+  e.downcast_ref::<DomExceptionOperationError>()
     .map(|_| "DOMExceptionOperationError")
 }

@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::NetDescriptor;
@@ -28,6 +27,7 @@ use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -253,6 +253,14 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
 
   fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
     formatter.write_str("a vector of strings or a boolean")
+  }
+
+  // visit_unit maps undefined/missing values to false
+  fn visit_unit<E>(self) -> Result<UnaryPermissionBase, E>
+  where
+    E: de::Error,
+  {
+    self.visit_bool(false)
   }
 
   fn visit_bool<E>(self, v: bool) -> Result<UnaryPermissionBase, E>

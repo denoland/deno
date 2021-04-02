@@ -248,7 +248,7 @@ mod tests {
 
   #[test]
   fn test_collect_files() {
-    fn create_files(dir_path: &PathBuf, files: &[&str]) {
+    fn create_files(dir_path: &Path, files: &[&str]) {
       std::fs::create_dir(dir_path).expect("Failed to create directory");
       for f in files {
         let path = dir_path.join(f);

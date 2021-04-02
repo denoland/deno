@@ -11,21 +11,21 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::error::WebGPUError;
+use super::error::WebGpuError;
 
-pub(crate) struct WebGPUCommandEncoder(
+pub(crate) struct WebGpuCommandEncoder(
   pub(crate) wgpu_core::id::CommandEncoderId,
 );
-impl Resource for WebGPUCommandEncoder {
+impl Resource for WebGpuCommandEncoder {
   fn name(&self) -> Cow<str> {
     "webGPUCommandEncoder".into()
   }
 }
 
-pub(crate) struct WebGPUCommandBuffer(
+pub(crate) struct WebGpuCommandBuffer(
   pub(crate) wgpu_core::id::CommandBufferId,
 );
-impl Resource for WebGPUCommandBuffer {
+impl Resource for WebGpuCommandBuffer {
   fn name(&self) -> Cow<str> {
     "webGPUCommandBuffer".into()
   }
@@ -55,7 +55,7 @@ pub fn op_webgpu_create_command_encoder(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
 
@@ -71,27 +71,27 @@ pub fn op_webgpu_create_command_encoder(
 
   let rid = state
     .resource_table
-    .add(WebGPUCommandEncoder(command_encoder));
+    .add(WebGpuCommandEncoder(command_encoder));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from),
+    "err": maybe_err.map(WebGpuError::from),
   }))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPURenderPassColorAttachment {
+pub struct GpuRenderPassColorAttachment {
   view: u32,
   resolve_target: Option<u32>,
   load_op: String,
-  load_value: Option<super::render_pass::GPUColor>,
+  load_value: Option<super::render_pass::GpuColor>,
   store_op: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPURenderPassDepthStencilAttachment {
+struct GpuRenderPassDepthStencilAttachment {
   view: u32,
   depth_load_op: String,
   depth_load_value: Option<f32>,
@@ -108,8 +108,8 @@ struct GPURenderPassDepthStencilAttachment {
 pub struct CommandEncoderBeginRenderPassArgs {
   command_encoder_rid: ResourceId,
   label: Option<String>,
-  color_attachments: Vec<GPURenderPassColorAttachment>,
-  depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachment>,
+  color_attachments: Vec<GpuRenderPassColorAttachment>,
+  depth_stencil_attachment: Option<GpuRenderPassDepthStencilAttachment>,
   _occlusion_query_set: Option<u32>, // not yet implemented
 }
 
@@ -120,7 +120,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut color_attachments = vec![];
@@ -128,7 +128,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   for color_attachment in args.color_attachments {
     let texture_view_resource = state
       .resource_table
-      .get::<super::texture::WebGPUTextureView>(color_attachment.view)
+      .get::<super::texture::WebGpuTextureView>(color_attachment.view)
       .ok_or_else(bad_resource_id)?;
 
     let attachment = wgpu_core::command::ColorAttachmentDescriptor {
@@ -138,7 +138,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
         .map(|rid| {
           state
             .resource_table
-            .get::<super::texture::WebGPUTextureView>(rid)
+            .get::<super::texture::WebGpuTextureView>(rid)
             .ok_or_else(bad_resource_id)
         })
         .transpose()?
@@ -180,7 +180,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   if let Some(attachment) = args.depth_stencil_attachment {
     let texture_view_resource = state
       .resource_table
-      .get::<super::texture::WebGPUTextureView>(attachment.view)
+      .get::<super::texture::WebGpuTextureView>(attachment.view)
       .ok_or_else(bad_resource_id)?;
 
     depth_stencil_attachment =
@@ -232,7 +232,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
 
   let rid = state
     .resource_table
-    .add(super::render_pass::WebGPURenderPass(RefCell::new(
+    .add(super::render_pass::WebGpuRenderPass(RefCell::new(
       render_pass,
     )));
 
@@ -255,7 +255,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   let descriptor = wgpu_core::command::ComputePassDescriptor {
@@ -269,7 +269,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 
   let rid = state
     .resource_table
-    .add(super::compute_pass::WebGPUComputePass(RefCell::new(
+    .add(super::compute_pass::WebGpuComputePass(RefCell::new(
       compute_pass,
     )));
 
@@ -297,17 +297,17 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let source_buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.source)
+    .get::<super::buffer::WebGpuBuffer>(args.source)
     .ok_or_else(bad_resource_id)?;
   let source_buffer = source_buffer_resource.0;
   let destination_buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.destination)
+    .get::<super::buffer::WebGpuBuffer>(args.destination)
     .ok_or_else(bad_resource_id)?;
   let destination_buffer = destination_buffer_resource.0;
 
@@ -320,12 +320,12 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
     args.size
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPUImageCopyBuffer {
+pub struct GpuImageCopyBuffer {
   buffer: u32,
   offset: Option<u64>,
   bytes_per_row: Option<u32>,
@@ -334,7 +334,7 @@ pub struct GPUImageCopyBuffer {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPUOrigin3D {
+pub struct GpuOrigin3D {
   pub x: Option<u32>,
   pub y: Option<u32>,
   pub z: Option<u32>,
@@ -342,10 +342,10 @@ pub struct GPUOrigin3D {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPUImageCopyTexture {
+pub struct GpuImageCopyTexture {
   pub texture: u32,
   pub mip_level: Option<u32>,
-  pub origin: Option<GPUOrigin3D>,
+  pub origin: Option<GpuOrigin3D>,
   pub _aspect: Option<String>, // not yet implemented
 }
 
@@ -353,9 +353,9 @@ pub struct GPUImageCopyTexture {
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyBufferToTextureArgs {
   command_encoder_rid: ResourceId,
-  source: GPUImageCopyBuffer,
-  destination: GPUImageCopyTexture,
-  copy_size: super::texture::GPUExtent3D,
+  source: GpuImageCopyBuffer,
+  destination: GpuImageCopyTexture,
+  copy_size: super::texture::GpuExtent3D,
 }
 
 pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
@@ -366,16 +366,16 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let source_buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.source.buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.source.buffer)
     .ok_or_else(bad_resource_id)?;
   let destination_texture_resource = state
     .resource_table
-    .get::<super::texture::WebGPUTexture>(args.destination.texture)
+    .get::<super::texture::WebGpuTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
 
   let source = wgpu_core::command::BufferCopyView {
@@ -409,16 +409,16 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     }
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyTextureToBufferArgs {
   command_encoder_rid: ResourceId,
-  source: GPUImageCopyTexture,
-  destination: GPUImageCopyBuffer,
-  copy_size: super::texture::GPUExtent3D,
+  source: GpuImageCopyTexture,
+  destination: GpuImageCopyBuffer,
+  copy_size: super::texture::GpuExtent3D,
 }
 
 pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
@@ -429,16 +429,16 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let source_texture_resource = state
     .resource_table
-    .get::<super::texture::WebGPUTexture>(args.source.texture)
+    .get::<super::texture::WebGpuTexture>(args.source.texture)
     .ok_or_else(bad_resource_id)?;
   let destination_buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.destination.buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.destination.buffer)
     .ok_or_else(bad_resource_id)?;
 
   let source = wgpu_core::command::TextureCopyView {
@@ -471,16 +471,16 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     }
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyTextureToTextureArgs {
   command_encoder_rid: ResourceId,
-  source: GPUImageCopyTexture,
-  destination: GPUImageCopyTexture,
-  copy_size: super::texture::GPUExtent3D,
+  source: GpuImageCopyTexture,
+  destination: GpuImageCopyTexture,
+  copy_size: super::texture::GpuExtent3D,
 }
 
 pub fn op_webgpu_command_encoder_copy_texture_to_texture(
@@ -491,16 +491,16 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let source_texture_resource = state
     .resource_table
-    .get::<super::texture::WebGPUTexture>(args.source.texture)
+    .get::<super::texture::WebGpuTexture>(args.source.texture)
     .ok_or_else(bad_resource_id)?;
   let destination_texture_resource = state
     .resource_table
-    .get::<super::texture::WebGPUTexture>(args.destination.texture)
+    .get::<super::texture::WebGpuTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
 
   let source = wgpu_core::command::TextureCopyView {
@@ -537,7 +537,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     }
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -555,7 +555,7 @@ pub fn op_webgpu_command_encoder_push_debug_group(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
 
@@ -563,7 +563,7 @@ pub fn op_webgpu_command_encoder_push_debug_group(
     .command_encoder_push_debug_group(command_encoder, &args.group_label))
   .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -580,13 +580,13 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
 
   let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_pop_debug_group(command_encoder)).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -604,7 +604,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
 
@@ -613,7 +613,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
     &args.marker_label
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -632,12 +632,12 @@ pub fn op_webgpu_command_encoder_write_timestamp(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let query_set_resource = state
     .resource_table
-    .get::<super::WebGPUQuerySet>(args.query_set)
+    .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
   let maybe_err =
@@ -648,7 +648,7 @@ pub fn op_webgpu_command_encoder_write_timestamp(
     ))
     .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -670,16 +670,16 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
-    .get::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let query_set_resource = state
     .resource_table
-    .get::<super::WebGPUQuerySet>(args.query_set)
+    .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
   let destination_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.destination)
+    .get::<super::buffer::WebGpuBuffer>(args.destination)
     .ok_or_else(bad_resource_id)?;
 
   let maybe_err =
@@ -693,7 +693,7 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
     ))
     .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -710,7 +710,7 @@ pub fn op_webgpu_command_encoder_finish(
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table
-    .take::<WebGPUCommandEncoder>(args.command_encoder_rid)
+    .take::<WebGpuCommandEncoder>(args.command_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let instance = state.borrow::<super::Instance>();
@@ -726,10 +726,10 @@ pub fn op_webgpu_command_encoder_finish(
 
   let rid = state
     .resource_table
-    .add(WebGPUCommandBuffer(command_buffer));
+    .add(WebGpuCommandBuffer(command_buffer));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from)
+    "err": maybe_err.map(WebGpuError::from)
   }))
 }

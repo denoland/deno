@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
@@ -21,6 +20,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -504,21 +504,21 @@ fn op_listen(
 #[serde(untagged)]
 enum DnsReturnRecord {
   A(String),
-  AAAA(String),
-  ANAME(String),
-  CNAME(String),
-  MX {
+  Aaaa(String),
+  Aname(String),
+  Cname(String),
+  Mx {
     preference: u16,
     exchange: String,
   },
-  PTR(String),
-  SRV {
+  Ptr(String),
+  Srv {
     priority: u16,
     weight: u16,
     port: u16,
     target: String,
   },
-  TXT(Vec<String>),
+  Txt(Vec<String>),
 }
 
 #[derive(Deserialize)]
@@ -610,24 +610,24 @@ fn rdata_to_return_record(
       AAAA => r
         .as_aaaa()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::AAAA),
+        .map(DnsReturnRecord::Aaaa),
       ANAME => r
         .as_aname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::ANAME),
+        .map(DnsReturnRecord::Aname),
       CNAME => r
         .as_cname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::CNAME),
-      MX => r.as_mx().map(|mx| DnsReturnRecord::MX {
+        .map(DnsReturnRecord::Cname),
+      MX => r.as_mx().map(|mx| DnsReturnRecord::Mx {
         preference: mx.preference(),
         exchange: mx.exchange().to_string(),
       }),
       PTR => r
         .as_ptr()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::PTR),
-      SRV => r.as_srv().map(|srv| DnsReturnRecord::SRV {
+        .map(DnsReturnRecord::Ptr),
+      SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
         priority: srv.priority(),
         weight: srv.weight(),
         port: srv.port(),
@@ -641,7 +641,7 @@ fn rdata_to_return_record(
             bytes.iter().map(|&b| b as char).collect::<String>()
           })
           .collect();
-        DnsReturnRecord::TXT(texts)
+        DnsReturnRecord::Txt(texts)
       }),
       // TODO(magurotuna): Other record types are not supported
       _ => todo!(),
@@ -674,21 +674,21 @@ mod tests {
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::AAAA("::1".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aaaa("::1".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::ANAME("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aname("".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::CNAME("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Cname("".to_string())));
   }
 
   #[test]
@@ -697,7 +697,7 @@ mod tests {
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::MX {
+      Some(DnsReturnRecord::Mx {
         preference: 10,
         exchange: "".to_string()
       })
@@ -708,7 +708,7 @@ mod tests {
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::PTR("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ptr("".to_string())));
   }
 
   #[test]
@@ -717,7 +717,7 @@ mod tests {
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::SRV {
+      Some(DnsReturnRecord::Srv {
         priority: 1,
         weight: 2,
         port: 3,
@@ -737,7 +737,7 @@ mod tests {
     ]));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::TXT(vec![
+      Some(DnsReturnRecord::Txt(vec![
         "foo".to_string(),
         "bar".to_string(),
         "£".to_string(),

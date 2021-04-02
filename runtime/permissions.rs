@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
@@ -9,6 +8,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use log::debug;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -717,7 +717,7 @@ fn permission_prompt(_message: &str) -> bool {
 }
 
 #[cfg(test)]
-lazy_static! {
+lazy_static::lazy_static! {
   /// Lock this when you use `set_prompt_result` in a test case.
   static ref PERMISSION_PROMPT_GUARD: Mutex<()> = Mutex::new(());
 }
