@@ -162,7 +162,7 @@ pub struct CreateComputePipelineArgs {
 pub fn op_webgpu_create_compute_pipeline(
   state: &mut OpState,
   args: CreateComputePipelineArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -229,7 +229,7 @@ pub struct ComputePipelineGetBindGroupLayoutArgs {
 pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   state: &mut OpState,
   args: ComputePipelineGetBindGroupLayoutArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
@@ -366,7 +366,7 @@ pub struct CreateRenderPipelineArgs {
 pub fn op_webgpu_create_render_pipeline(
   state: &mut OpState,
   args: CreateRenderPipelineArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -617,7 +617,7 @@ pub struct RenderPipelineGetBindGroupLayoutArgs {
 pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   state: &mut OpState,
   args: RenderPipelineGetBindGroupLayoutArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state

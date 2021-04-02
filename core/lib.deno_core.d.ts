@@ -11,14 +11,14 @@ declare namespace Deno {
     function jsonOpSync(
       opName: string,
       args?: any,
-      ...zeroCopy: Uint8Array[]
+      zeroCopy?: Uint8Array,
     ): any;
 
     /** Send a JSON op to Rust, and asynchronously receive the result. */
     function jsonOpAsync(
       opName: string,
       args?: any,
-      ...zeroCopy: Uint8Array[]
+      zeroCopy?: Uint8Array,
     ): Promise<any>;
 
     /**

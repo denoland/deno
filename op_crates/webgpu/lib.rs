@@ -7,9 +7,9 @@ use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -194,7 +194,7 @@ pub struct RequestAdapterArgs {
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
@@ -299,7 +299,7 @@ pub struct RequestDeviceArgs {
 pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource = state
@@ -472,7 +472,7 @@ pub struct CreateQuerySetArgs {
 pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   args: CreateQuerySetArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let device_resource = state
     .resource_table

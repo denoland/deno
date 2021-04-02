@@ -8,9 +8,9 @@ import {
 
 const readErrorStackPattern = new RegExp(
   `^.*
-    at handleError \\(.*core\\.js:.*\\)
-    at binOpParseResult \\(.*core\\.js:.*\\)
-    at asyncHandle \\(.*core\\.js:.*\\).*$`,
+    at processErr \\(.*core\\.js:.*\\)
+    at opAsyncHandler \\(.*core\\.js:.*\\)
+    at handleAsyncMsgFromRust \\(.*core\\.js:.*\\).*$`,
   "ms",
 );
 
@@ -32,45 +32,3 @@ declare global {
     var core: any; // eslint-disable-line no-var
   }
 }
-
-unitTest(function binOpsHeaderTooShort(): void {
-  for (const op of ["op_read_sync", "op_read_async"]) {
-    const readOpId = Deno.core.ops()[op];
-    const res = Deno.core.send(
-      readOpId,
-      new Uint8Array([
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-      ]),
-    );
-
-    const headerByteLength = 4 * 4;
-    assert(res.byteLength > headerByteLength);
-    const view = new DataView(
-      res.buffer,
-      res.byteOffset + res.byteLength - headerByteLength,
-      headerByteLength,
-    );
-
-    const requestId = Number(view.getBigUint64(0, true));
-    const status = view.getUint32(8, true);
-    const result = view.getUint32(12, true);
-
-    assert(requestId === 0);
-    assert(status !== 0);
-    assertEquals(new TextDecoder().decode(res.slice(0, result)), "TypeError");
-    assertEquals(
-      new TextDecoder().decode(res.slice(result, -headerByteLength)).trim(),
-      "Unparsable control buffer",
-    );
-  }
-});

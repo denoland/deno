@@ -14,6 +14,7 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -23,7 +24,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -255,6 +255,14 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
     formatter.write_str("a vector of strings or a boolean")
   }
 
+  // visit_unit maps undefined/missing values to false
+  fn visit_unit<E>(self) -> Result<UnaryPermissionBase, E>
+  where
+    E: de::Error,
+  {
+    self.visit_bool(false)
+  }
+
   fn visit_bool<E>(self, v: bool) -> Result<UnaryPermissionBase, E>
   where
     E: de::Error,
@@ -361,7 +369,7 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
-  _data: &mut [ZeroCopyBuf],
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -449,7 +457,7 @@ pub struct WorkerArgs {
 fn op_host_terminate_worker(
   state: &mut OpState,
   args: WorkerArgs,
-  _data: &mut [ZeroCopyBuf],
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let id = args.id as u32;
   let worker_thread = state
@@ -525,7 +533,7 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
   args: WorkerArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let id = args.id as u32;
 
@@ -559,11 +567,11 @@ async fn op_host_get_message(
 fn op_host_post_message(
   state: &mut OpState,
   args: WorkerArgs,
-  data: &mut [ZeroCopyBuf],
+  data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(data.len(), 1, "Invalid number of arguments");
+  let data = data.ok_or_else(null_opbuf)?;
   let id = args.id as u32;
-  let msg = Vec::from(&*data[0]).into_boxed_slice();
+  let msg = Vec::from(&*data).into_boxed_slice();
 
   debug!("post message to worker {}", id);
   let worker_thread = state

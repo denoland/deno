@@ -67,7 +67,7 @@ pub struct SetRawArgs {
 fn op_set_raw(
   state: &mut OpState,
   args: SetRawArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
@@ -222,7 +222,7 @@ pub struct IsattyArgs {
 fn op_isatty(
   state: &mut OpState,
   args: IsattyArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -263,7 +263,7 @@ struct ConsoleSize {
 fn op_console_size(
   state: &mut OpState,
   args: ConsoleSizeArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
 

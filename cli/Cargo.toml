@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.8.2"
+version = "1.8.3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -24,8 +24,8 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.82.0" }
-deno_runtime = { path = "../runtime", version = "0.10.0" }
+deno_core = { path = "../core", version = "0.83.0" }
+deno_runtime = { path = "../runtime", version = "0.10.1" }
 regex = "1.4.3"
 serde = { version = "1.0.123", features = ["derive"] }
 
@@ -34,10 +34,10 @@ winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.82.0" }
+deno_core = { path = "../core", version = "0.83.0" }
 deno_doc = "0.1.23"
 deno_lint = "0.2.19"
-deno_runtime = { path = "../runtime", version = "0.10.0" }
+deno_runtime = { path = "../runtime", version = "0.10.1" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
@@ -101,4 +101,4 @@ nix = "0.20.0"
 OriginalFilename = "deno.exe"
 LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
 ProductName = "Deno"
-FileDescription = "A secure runtime for JavaScript and TypeScript."
+FileDescription = "Deno: A secure runtime for JavaScript and TypeScript"

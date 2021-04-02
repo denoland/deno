@@ -9,14 +9,19 @@ const responseBuf = new Uint8Array(
     .map((c) => c.charCodeAt(0)),
 );
 
+// This buffer exists purely to avoid trigerring the bin-op buf assert
+// in practice all deno bin ops accept buffers, this bench is an exception
+// TODO(@AaronO): remove once we drop variadic BufVec compat
+const nopBuffer = new Uint8Array();
+
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.binOpSync("listen");
+  return Deno.core.binOpSync("listen", 0, nopBuffer);
 }
 
 /** Accepts a connection, returns rid. */
 function accept(rid) {
-  return Deno.core.binOpAsync("accept", rid);
+  return Deno.core.binOpAsync("accept", rid, nopBuffer);
 }
 
 /**
@@ -33,7 +38,7 @@ function write(rid, data) {
 }
 
 function close(rid) {
-  Deno.core.binOpSync("close", rid);
+  Deno.core.binOpSync("close", rid, nopBuffer);
 }
 
 async function serve(rid) {

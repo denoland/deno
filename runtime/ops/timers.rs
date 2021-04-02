@@ -9,7 +9,7 @@
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
-use deno_core::error::type_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
@@ -17,7 +17,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -85,7 +84,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 fn op_global_timer_stop(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.cancel();
@@ -108,7 +107,7 @@ pub struct GlobalTimerArgs {
 fn op_global_timer_start(
   state: &mut OpState,
   args: GlobalTimerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let val = args.timeout;
 
@@ -121,7 +120,7 @@ fn op_global_timer_start(
 async fn op_global_timer(
   state: Rc<RefCell<OpState>>,
   _args: Value,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let maybe_timer_fut = {
     let mut s = state.borrow_mut();
@@ -141,13 +140,9 @@ async fn op_global_timer(
 fn op_now(
   op_state: &mut OpState,
   _argument: u32,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  match zero_copy.len() {
-    0 => return Err(type_error("no buffer specified")),
-    1 => {}
-    _ => return Err(type_error("Invalid number of arguments")),
-  }
+  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
 
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
@@ -163,7 +158,7 @@ fn op_now(
 
   let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0);
 
-  (&mut zero_copy[0]).copy_from_slice(&result.to_be_bytes());
+  (&mut zero_copy).copy_from_slice(&result.to_be_bytes());
 
   Ok(0)
 }
@@ -177,7 +172,7 @@ pub struct SleepArgs {
 fn op_sleep_sync(
   state: &mut OpState,
   args: SleepArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.sleepSync");
   sleep(Duration::from_millis(args.millis));

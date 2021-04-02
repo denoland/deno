@@ -28,7 +28,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 fn op_exec_path(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
@@ -51,7 +51,7 @@ pub struct SetEnv {
 fn op_set_env(
   state: &mut OpState,
   args: SetEnv,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   state.borrow::<Permissions>().env.check()?;
   let invalid_key =
@@ -67,7 +67,7 @@ fn op_set_env(
 fn op_env(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   state.borrow::<Permissions>().env.check()?;
   let v = env::vars().collect::<HashMap<String, String>>();
@@ -82,7 +82,7 @@ pub struct GetEnv {
 fn op_get_env(
   state: &mut OpState,
   args: GetEnv,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   state.borrow::<Permissions>().env.check()?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
@@ -103,7 +103,7 @@ pub struct DeleteEnv {
 fn op_delete_env(
   state: &mut OpState,
   args: DeleteEnv,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   state.borrow::<Permissions>().env.check()?;
   if args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]) {
@@ -121,7 +121,7 @@ pub struct Exit {
 fn op_exit(
   _state: &mut OpState,
   args: Exit,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   std::process::exit(args.code)
 }
@@ -129,7 +129,7 @@ fn op_exit(
 fn op_loadavg(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.loadavg");
   state.borrow::<Permissions>().env.check()?;
@@ -142,7 +142,7 @@ fn op_loadavg(
 fn op_hostname(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.hostname");
   state.borrow::<Permissions>().env.check()?;
@@ -153,7 +153,7 @@ fn op_hostname(
 fn op_os_release(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
   state.borrow::<Permissions>().env.check()?;
@@ -164,7 +164,7 @@ fn op_os_release(
 fn op_system_memory_info(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
   state.borrow::<Permissions>().env.check()?;
@@ -185,7 +185,7 @@ fn op_system_memory_info(
 fn op_system_cpu_info(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.systemCpuInfo");
   state.borrow::<Permissions>().env.check()?;

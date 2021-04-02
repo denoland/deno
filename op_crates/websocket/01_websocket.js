@@ -25,6 +25,19 @@
     }
   }
 
+  /**
+   * Tries to close the resource (and ignores BadResource errors).
+   * @param {number} rid
+   */
+  function tryClose(rid) {
+    try {
+      core.close(rid);
+    } catch (err) {
+      // Ignore error if the socket has already been closed.
+      if (!(err instanceof Deno.errors.BadResource)) throw err;
+    }
+  }
+
   const handlerSymbol = Symbol("eventHandlers");
   function makeWrappedHandler(handler) {
     function wrappedHandler(...args) {
@@ -125,7 +138,7 @@
               const event = new CloseEvent("close");
               event.target = this;
               this.dispatchEvent(event);
-              core.close(this.#rid);
+              tryClose(this.#rid);
             });
           } else {
             this.#readyState = OPEN;
@@ -289,7 +302,7 @@
           });
           event.target = this;
           this.dispatchEvent(event);
-          core.close(this.#rid);
+          tryClose(this.#rid);
         });
       }
     }
@@ -350,7 +363,7 @@
             });
             event.target = this;
             this.dispatchEvent(event);
-            core.close(this.#rid);
+            tryClose(this.#rid);
 
             break;
           }
@@ -365,7 +378,7 @@
             const closeEv = new CloseEvent("close");
             closeEv.target = this;
             this.dispatchEvent(closeEv);
-            core.close(this.#rid);
+            tryClose(this.#rid);
 
             break;
           }

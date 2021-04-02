@@ -6,10 +6,10 @@ use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
+use deno_core::OpFn;
 use deno_core::OpId;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -18,7 +18,6 @@ use dlopen::symbor::Library;
 use log::debug;
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -38,7 +37,7 @@ pub struct OpenPluginArgs {
 pub fn op_open_plugin(
   state: &mut OpState,
   args: OpenPluginArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let filename = PathBuf::from(&args.filename);
 
@@ -110,11 +109,10 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    let plugin_op_fn = move |state_rc: Rc<RefCell<OpState>>,
-                             mut zero_copy: BufVec| {
+    let plugin_op_fn: Box<OpFn> = Box::new(move |state_rc, _payload, buf| {
       let mut state = state_rc.borrow_mut();
       let mut interface = PluginInterface::new(&mut state, &plugin_lib);
-      let op = dispatch_op_fn(&mut interface, &mut zero_copy);
+      let op = dispatch_op_fn(&mut interface, buf);
       match op {
         sync_op @ Op::Sync(..) => sync_op,
         Op::Async(fut) => Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut)),
@@ -123,13 +121,10 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
         }
         _ => unreachable!(),
       }
-    };
+    });
     self.state.op_table.register_op(
       name,
-      metrics_op(
-        Box::leak(Box::new(name.to_string())),
-        Box::new(plugin_op_fn),
-      ),
+      metrics_op(Box::leak(Box::new(name.to_string())), plugin_op_fn),
     )
   }
 }
