@@ -71,24 +71,67 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
 type Instance = wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>;
 
-struct WebGpuAdapter(wgpu_core::id::AdapterId);
+struct WebGpuAdapter {
+  instance: Rc<Instance>,
+  adapter: Rc<wgpu_core::id::AdapterId>,
+}
 impl Resource for WebGpuAdapter {
   fn name(&self) -> Cow<str> {
     "webGPUAdapter".into()
   }
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUAdapter while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let adapter = Rc::try_unwrap(resource.adapter)
+      .map_err(|_| "closed webGPUAdapter while it still had children")
+      .unwrap();
+    gfx_select!(adapter => instance.adapter_drop(adapter));
+  }
 }
 
-struct WebGpuDevice(wgpu_core::id::DeviceId);
+struct WebGpuDevice {
+  instance: Rc<Instance>,
+  _adapter: Rc<wgpu_core::id::AdapterId>,
+  device: Rc<wgpu_core::id::DeviceId>,
+}
 impl Resource for WebGpuDevice {
   fn name(&self) -> Cow<str> {
     "webGPUDevice".into()
   }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUDevice while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let device = Rc::try_unwrap(resource.device)
+      .map_err(|_| "closed webGPUDevice while it still had children")
+      .unwrap();
+    gfx_select!(device => instance.device_drop(device));
+  }
 }
 
-struct WebGpuQuerySet(wgpu_core::id::QuerySetId);
+struct WebGpuQuerySet {
+  instance: Rc<Instance>,
+  _device: Rc<wgpu_core::id::DeviceId>,
+  query_set: Rc<wgpu_core::id::QuerySetId>,
+}
 impl Resource for WebGpuQuerySet {
   fn name(&self) -> Cow<str> {
     "webGPUQuerySet".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUQuerySet while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let query_set = Rc::try_unwrap(resource.query_set)
+      .map_err(|_| "closed webGPUQuerySet while it still had children")
+      .unwrap();
+    gfx_select!(query_set => instance.query_set_drop(query_set));
   }
 }
 
@@ -198,16 +241,12 @@ pub async fn op_webgpu_request_adapter(
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
-  let instance = if let Some(instance) = state.try_borrow::<Instance>() {
-    instance
-  } else {
-    state.put(wgpu_core::hub::Global::new(
-      "webgpu",
-      wgpu_core::hub::IdentityManagerFactory,
-      wgpu_types::BackendBit::PRIMARY,
-    ));
-    state.borrow::<Instance>()
-  };
+
+  let instance = wgpu_core::hub::Global::new(
+    "webgpu",
+    wgpu_core::hub::IdentityManagerFactory,
+    wgpu_types::BackendBit::PRIMARY,
+  );
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
@@ -255,7 +294,10 @@ pub async fn op_webgpu_request_adapter(
     "maxUniformBufferBindingSize": adapter_limits.max_uniform_buffer_binding_size
   });
 
-  let rid = state.resource_table.add(WebGpuAdapter(adapter));
+  let rid = state.resource_table.add(WebGpuAdapter {
+    instance: Rc::new(instance),
+    adapter: Rc::new(adapter),
+  });
 
   Ok(json!({
     "rid": rid,
@@ -306,8 +348,8 @@ pub async fn op_webgpu_request_device(
     .resource_table
     .get::<WebGpuAdapter>(args.adapter_rid)
     .ok_or_else(bad_resource_id)?;
-  let adapter = adapter_resource.0;
-  let instance = state.borrow::<Instance>();
+  let instance = adapter_resource.instance.clone();
+  let adapter = adapter_resource.adapter.clone();
 
   let mut features: wgpu_types::Features = wgpu_types::Features::empty();
 
@@ -424,7 +466,7 @@ pub async fn op_webgpu_request_device(
   };
 
   let (device, maybe_err) = gfx_select!(adapter => instance.adapter_request_device(
-    adapter,
+    *adapter,
     &descriptor,
     std::env::var("DENO_WEBGPU_TRACE").ok().as_ref().map(std::path::Path::new),
     std::marker::PhantomData
@@ -449,7 +491,11 @@ pub async fn op_webgpu_request_device(
      "maxUniformBufferBindingSize": limits.max_uniform_buffer_binding_size,
   });
 
-  let rid = state.resource_table.add(WebGpuDevice(device));
+  let rid = state.resource_table.add(WebGpuDevice {
+    instance,
+    _adapter: adapter,
+    device: Rc::new(device),
+  });
 
   Ok(json!({
     "rid": rid,
@@ -478,8 +524,8 @@ pub fn op_webgpu_create_query_set(
     .resource_table
     .get::<WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
-  let instance = &state.borrow::<Instance>();
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let descriptor = wgpu_types::QuerySetDescriptor {
     ty: match args.kind.as_str() {
@@ -537,12 +583,16 @@ pub fn op_webgpu_create_query_set(
   };
 
   let (query_set, maybe_err) = gfx_select!(device => instance.device_create_query_set(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGpuQuerySet(query_set));
+  let rid = state.resource_table.add(WebGpuQuerySet {
+    instance,
+    _device: device,
+    query_set: Rc::new(query_set),
+  });
 
   Ok(json!({
     "rid": rid,

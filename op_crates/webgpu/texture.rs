@@ -9,19 +9,53 @@ use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::rc::Rc;
+
+use crate::Instance;
 
 use super::error::WebGpuError;
-pub(crate) struct WebGpuTexture(pub(crate) wgpu_core::id::TextureId);
+pub(crate) struct WebGpuTexture {
+  instance: Rc<Instance>,
+  _device: Rc<wgpu_core::id::DeviceId>,
+  pub texture: Rc<wgpu_core::id::TextureId>,
+}
 impl Resource for WebGpuTexture {
   fn name(&self) -> Cow<str> {
     "webGPUTexture".into()
   }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUTexture while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let texture = Rc::try_unwrap(resource.texture)
+      .map_err(|_| "closed webGPUTexture while it still had children")
+      .unwrap();
+    gfx_select!(texture => instance.texture_drop(texture, true));
+  }
 }
 
-pub(crate) struct WebGpuTextureView(pub(crate) wgpu_core::id::TextureViewId);
+pub(crate) struct WebGpuTextureView {
+  instance: Rc<Instance>,
+  _texture: Rc<wgpu_core::id::TextureId>,
+  pub texture_view: Rc<wgpu_core::id::TextureViewId>,
+}
 impl Resource for WebGpuTextureView {
   fn name(&self) -> Cow<str> {
     "webGPUTextureView".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUTextureView while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let texture_view = Rc::try_unwrap(resource.texture_view)
+      .map_err(|_| "closed webGPUTextureView while it still had children")
+      .unwrap();
+    gfx_select!(texture_view => instance.texture_view_drop(texture_view, true))
+      .unwrap();
   }
 }
 
@@ -149,12 +183,12 @@ pub fn op_webgpu_create_texture(
   args: CreateTextureArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let descriptor = wgpu_core::resource::TextureDescriptor {
     label: args.label.map(Cow::from),
@@ -179,12 +213,16 @@ pub fn op_webgpu_create_texture(
   };
 
   let (texture, maybe_err) = gfx_select!(device => instance.device_create_texture(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGpuTexture(texture));
+  let rid = state.resource_table.add(WebGpuTexture {
+    instance,
+    _device: device,
+    texture: Rc::new(texture),
+  });
 
   Ok(json!({
     "rid": rid,
@@ -211,12 +249,12 @@ pub fn op_webgpu_create_texture_view(
   args: CreateTextureViewArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
     .get::<WebGpuTexture>(args.texture_rid)
     .ok_or_else(bad_resource_id)?;
-  let texture = texture_resource.0;
+  let instance = texture_resource.instance.clone();
+  let texture = texture_resource.texture.clone();
 
   let descriptor = wgpu_core::resource::TextureViewDescriptor {
     label: args.label.map(Cow::from),
@@ -243,12 +281,16 @@ pub fn op_webgpu_create_texture_view(
   };
 
   let (texture_view, maybe_err) = gfx_select!(texture => instance.texture_create_view(
-    texture,
+    *texture,
     &descriptor,
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGpuTextureView(texture_view));
+  let rid = state.resource_table.add(WebGpuTextureView {
+    instance,
+    _texture: texture,
+    texture_view: Rc::new(texture_view),
+  });
 
   Ok(json!({
     "rid": rid,

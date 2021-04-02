@@ -9,22 +9,53 @@ use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::rc::Rc;
+
+use crate::Instance;
 
 use super::error::WebGpuError;
 
-pub(crate) struct WebGpuBindGroupLayout(
-  pub(crate) wgpu_core::id::BindGroupLayoutId,
-);
+pub(crate) struct WebGpuBindGroupLayout {
+  pub instance: Rc<Instance>,
+  pub device: Rc<wgpu_core::id::DeviceId>,
+  pub bind_group_layout: Rc<wgpu_core::id::BindGroupLayoutId>,
+}
 impl Resource for WebGpuBindGroupLayout {
   fn name(&self) -> Cow<str> {
     "webGPUBindGroupLayout".into()
   }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUBindGroupLayout while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let bind_group_layout = Rc::try_unwrap(resource.bind_group_layout)
+      .map_err(|_| "closed webGPUBindGroupLayout while it still had children")
+      .unwrap();
+    gfx_select!(bind_group_layout => instance.bind_group_layout_drop(bind_group_layout));
+  }
 }
 
-pub(crate) struct WebGpuBindGroup(pub(crate) wgpu_core::id::BindGroupId);
+pub(crate) struct WebGpuBindGroup {
+  instance: Rc<Instance>,
+  _device: Rc<wgpu_core::id::DeviceId>,
+  pub bind_group: Rc<wgpu_core::id::BindGroupId>,
+}
 impl Resource for WebGpuBindGroup {
   fn name(&self) -> Cow<str> {
     "webGPUBindGroup".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    let resource = Rc::try_unwrap(self)
+      .map_err(|_| "closed webGPUBindGroup while in use")
+      .unwrap();
+    let instance = resource.instance;
+    let bind_group = Rc::try_unwrap(resource.bind_group)
+      .map_err(|_| "closed webGPUBindGroup while it still had children")
+      .unwrap();
+    gfx_select!(bind_group => instance.bind_group_drop(bind_group));
   }
 }
 
@@ -84,12 +115,12 @@ pub fn op_webgpu_create_bind_group_layout(
   args: CreateBindGroupLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let mut entries = vec![];
 
@@ -198,14 +229,16 @@ pub fn op_webgpu_create_bind_group_layout(
   };
 
   let (bind_group_layout, maybe_err) = gfx_select!(device => instance.device_create_bind_group_layout(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData
   ));
 
-  let rid = state
-    .resource_table
-    .add(WebGpuBindGroupLayout(bind_group_layout));
+  let rid = state.resource_table.add(WebGpuBindGroupLayout {
+    instance,
+    device,
+    bind_group_layout: Rc::new(bind_group_layout),
+  });
 
   Ok(json!({
     "rid": rid,
@@ -226,12 +259,12 @@ pub fn op_webgpu_create_pipeline_layout(
   args: CreatePipelineLayoutArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
     .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
+  let instance = device_resource.instance.clone();
+  let device = device_resource.device.clone();
 
   let mut bind_group_layouts = vec![];
 
@@ -240,7 +273,7 @@ pub fn op_webgpu_create_pipeline_layout(
       .resource_table
       .get::<WebGpuBindGroupLayout>(*rid)
       .ok_or_else(bad_resource_id)?;
-    bind_group_layouts.push(bind_group_layout.0);
+    bind_group_layouts.push(*bind_group_layout.bind_group_layout);
   }
 
   let descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
@@ -250,14 +283,18 @@ pub fn op_webgpu_create_pipeline_layout(
   };
 
   let (pipeline_layout, maybe_err) = gfx_select!(device => instance.device_create_pipeline_layout(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData
   ));
 
   let rid = state
     .resource_table
-    .add(super::pipeline::WebGpuPipelineLayout(pipeline_layout));
+    .add(super::pipeline::WebGpuPipelineLayout {
+      instance,
+      _device: device,
+      pipeline_layout: Rc::new(pipeline_layout),
+    });
 
   Ok(json!({
     "rid": rid,
@@ -270,7 +307,7 @@ pub fn op_webgpu_create_pipeline_layout(
 struct GpuBindGroupEntry {
   binding: u32,
   kind: String,
-  resource: u32,
+  resource: ResourceId,
   offset: Option<u64>,
   size: Option<u64>,
 }
@@ -278,9 +315,8 @@ struct GpuBindGroupEntry {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBindGroupArgs {
-  device_rid: ResourceId,
   label: Option<String>,
-  layout: u32,
+  layout: ResourceId,
   entries: Vec<GpuBindGroupEntry>,
 }
 
@@ -289,13 +325,6 @@ pub fn op_webgpu_create_bind_group(
   args: CreateBindGroupArgs,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, AnyError> {
-  let instance = state.borrow::<super::Instance>();
-  let device_resource = state
-    .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
-
   let mut entries = vec![];
 
   for entry in &args.entries {
@@ -307,7 +336,9 @@ pub fn op_webgpu_create_bind_group(
             .resource_table
             .get::<super::sampler::WebGpuSampler>(entry.resource)
             .ok_or_else(bad_resource_id)?;
-          wgpu_core::binding_model::BindingResource::Sampler(sampler_resource.0)
+          wgpu_core::binding_model::BindingResource::Sampler(
+            *sampler_resource.sampler,
+          )
         }
         "GPUTextureView" => {
           let texture_view_resource = state
@@ -315,7 +346,7 @@ pub fn op_webgpu_create_bind_group(
             .get::<super::texture::WebGpuTextureView>(entry.resource)
             .ok_or_else(bad_resource_id)?;
           wgpu_core::binding_model::BindingResource::TextureView(
-            texture_view_resource.0,
+            *texture_view_resource.texture_view,
           )
         }
         "GPUBufferBinding" => {
@@ -325,7 +356,7 @@ pub fn op_webgpu_create_bind_group(
             .ok_or_else(bad_resource_id)?;
           wgpu_core::binding_model::BindingResource::Buffer(
             wgpu_core::binding_model::BufferBinding {
-              buffer_id: buffer_resource.0,
+              buffer_id: *buffer_resource.buffer,
               offset: entry.offset.unwrap_or(0),
               size: std::num::NonZeroU64::new(entry.size.unwrap_or(0)),
             },
@@ -341,20 +372,26 @@ pub fn op_webgpu_create_bind_group(
     .resource_table
     .get::<WebGpuBindGroupLayout>(args.layout)
     .ok_or_else(bad_resource_id)?;
+  let instance = bind_group_layout.instance.clone();
+  let device = bind_group_layout.device.clone();
 
   let descriptor = wgpu_core::binding_model::BindGroupDescriptor {
     label: args.label.map(Cow::from),
-    layout: bind_group_layout.0,
+    layout: *bind_group_layout.bind_group_layout,
     entries: Cow::from(entries),
   };
 
   let (bind_group, maybe_err) = gfx_select!(device => instance.device_create_bind_group(
-    device,
+    *device,
     &descriptor,
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGpuBindGroup(bind_group));
+  let rid = state.resource_table.add(WebGpuBindGroup {
+    instance,
+    _device: device,
+    bind_group: Rc::new(bind_group),
+  });
 
   Ok(json!({
     "rid": rid,
