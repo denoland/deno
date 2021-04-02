@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -154,7 +153,7 @@ macro_rules! validate_usage {
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
   args: WebCryptoGenerateKeyArg,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
@@ -163,21 +162,14 @@ pub async fn op_webcrypto_generate_key(
   let key = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
       validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
-
-      let public_exponent = if !zero_copy.is_empty() {
-        Some(&*zero_copy[0])
-      } else {
-        None
-      };
-
-      let exp = public_exponent.ok_or_else(|| {
+      let exp = zero_copy.ok_or_else(|| {
         WebCryptoError::MissingArgument("publicExponent".to_string())
       })?;
       let modulus_length = args.algorithm.modulus_length.ok_or_else(|| {
         WebCryptoError::MissingArgument("modulusLength".to_string())
       })?;
 
-      let exponent = BigUint::from_bytes_be(exp);
+      let exponent = BigUint::from_bytes_be(&exp);
 
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
@@ -390,13 +382,12 @@ struct WebCryptoSignArg {
 pub async fn op_webcrypto_sign_key(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1);
-
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let state = state.borrow();
   let args: WebCryptoSignArg = serde_json::from_value(args)?;
-  let data = &*zero_copy[0];
+  let data = &*zero_copy;
   let algorithm = args.algorithm;
 
   let signature = match algorithm {
