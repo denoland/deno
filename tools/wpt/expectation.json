@@ -409,7 +409,9 @@
       ],
       "patched-global.any.js": true,
       "reentrant-strategies.any.js": true,
-      "tee.any.js": true,
+      "tee.any.js": [
+        "ReadableStream teeing: failing to cancel when canceling both branches in sequence with delay"
+      ],
       "templated.any.js": [
         "ReadableStream (empty) reader: canceling via the stream should fail"
       ]
