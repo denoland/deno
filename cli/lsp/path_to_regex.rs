@@ -290,6 +290,7 @@ impl From<Vec<String>> for StringOrVec {
   }
 }
 
+/// Meta data about a key.
 #[derive(Debug, Clone)]
 pub struct Key {
   pub name: StringOrNumber,
@@ -299,6 +300,7 @@ pub struct Key {
   pub modifier: Option<String>,
 }
 
+/// A token is a string (nothing special) or key metadata (capture group).
 #[derive(Debug, Clone)]
 pub enum Token {
   String(String),
@@ -408,6 +410,7 @@ fn consume_text(
   }
 }
 
+/// Parse a string for the raw tokens.
 pub fn parse(
   s: &str,
   maybe_options: Option<ParseOptions>,
@@ -694,6 +697,7 @@ impl Compiler {
     }
   }
 
+  /// Convert a map of key values into a string.
   pub fn to_path(
     &self,
     params: &HashMap<StringOrNumber, StringOrVec>,
@@ -810,6 +814,7 @@ impl Matcher {
     Ok(Self { maybe_keys, re })
   }
 
+  /// Match a string path, optionally returning the match result.
   pub fn matches(&self, path: &str) -> Option<MatchResult> {
     let caps = self.re.captures(path).ok()??;
     let m = caps.get(0)?;
@@ -902,7 +907,6 @@ mod tests {
     );
     let compiler = Compiler::new(&tokens, None);
     let actual = compiler.to_path(&params);
-    println!("{:?}", actual);
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, "/x/y@v1.0.0/z/example.ts".to_string());

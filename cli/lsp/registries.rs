@@ -248,16 +248,12 @@ impl Default for ModuleRegistry {
 }
 
 impl ModuleRegistry {
-  pub fn new(location: &Path, reload: bool) -> Self {
+  pub fn new(location: &Path) -> Self {
     let http_cache = HttpCache::new(location);
-    let cache_setting = if reload {
-      CacheSetting::ReloadAll
-    } else {
-      CacheSetting::Use
-    };
-    let file_fetcher = FileFetcher::new(http_cache, cache_setting, true, None)
-      .context("Error creating file fetcher in module registry.")
-      .unwrap();
+    let file_fetcher =
+      FileFetcher::new(http_cache, CacheSetting::Use, true, None)
+        .context("Error creating file fetcher in module registry.")
+        .unwrap();
 
     Self {
       origins: HashMap::new(),
@@ -606,7 +602,7 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let mut module_registry = ModuleRegistry::new(&location, true);
+    let mut module_registry = ModuleRegistry::new(&location);
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -667,7 +663,7 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let mut module_registry = ModuleRegistry::new(&location, true);
+    let mut module_registry = ModuleRegistry::new(&location);
     module_registry
       .enable("http://localhost:4545/")
       .await

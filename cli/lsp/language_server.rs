@@ -96,8 +96,6 @@ pub(crate) struct Inner {
   module_registries: registries::ModuleRegistry,
   /// The path to the module registries cache
   module_registries_location: PathBuf,
-  /// A flag to memoize the last setting of the registry reload
-  module_registries_reload: bool,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -132,7 +130,7 @@ impl Inner {
       .expect("could not access DENO_DIR");
     let module_registries_location = dir.root.join(REGISTRIES_PATH);
     let module_registries =
-      registries::ModuleRegistry::new(&module_registries_location, false);
+      registries::ModuleRegistry::new(&module_registries_location);
     let sources_location = dir.root.join(SOURCES_PATH);
     let sources = Sources::new(&sources_location);
     let ts_server = Arc::new(TsServer::new());
@@ -150,7 +148,6 @@ impl Inner {
       maybe_import_map_uri: Default::default(),
       module_registries,
       module_registries_location,
-      module_registries_reload: false,
       navigation_trees: Default::default(),
       performance,
       sources,
@@ -348,14 +345,6 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries");
-    let reload = self.config.settings.suggest.imports.reload_cache;
-    if reload != self.module_registries_reload {
-      self.module_registries = registries::ModuleRegistry::new(
-        &self.module_registries_location,
-        reload,
-      );
-      self.module_registries_reload = reload;
-    }
     for (registry, enabled) in self.config.settings.suggest.imports.hosts.iter()
     {
       if *enabled {
@@ -1716,16 +1705,12 @@ impl Inner {
   ) -> LspResult<Option<Value>> {
     match method {
       "deno/cache" => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => Ok(Some(
-          serde_json::to_value(self.cache(params).await?).map_err(|err| {
-            error!("Failed to serialize cache response: {}", err);
-            LspError::internal_error()
-          })?,
-        )),
+        Some(Ok(params)) => self.cache(params).await,
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
       "deno/performance" => Ok(Some(self.get_performance())),
+      "deno/reloadImportRegistries" => self.reload_import_registries().await,
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -2036,7 +2021,7 @@ struct VirtualTextDocumentParams {
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
-  async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
+  async fn cache(&mut self, params: CacheParams) -> LspResult<Option<Value>> {
     let mark = self.performance.mark("cache");
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !params.uris.is_empty() {
@@ -2077,12 +2062,28 @@ impl Inner {
       LspError::internal_error()
     })?;
     self.performance.measure(mark);
-    Ok(true)
+    Ok(Some(json!(true)))
   }
 
   fn get_performance(&self) -> Value {
     let averages = self.performance.averages();
     json!({ "averages": averages })
+  }
+
+  async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
+    fs::remove_dir_all(&self.module_registries_location)
+      .await
+      .map_err(|err| {
+        error!("Unable to remove registries cache: {}", err);
+        LspError::internal_error()
+      })?;
+    self.module_registries =
+      registries::ModuleRegistry::new(&self.module_registries_location);
+    self.update_registries().await.map_err(|err| {
+      error!("Unable to update registries: {}", err);
+      LspError::internal_error()
+    })?;
+    Ok(Some(json!(true)))
   }
 
   async fn virtual_text_document(

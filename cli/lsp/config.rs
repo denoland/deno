@@ -73,19 +73,13 @@ impl Default for CompletionSettings {
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
   #[serde(default)]
-  pub auto_discovery: bool,
-  #[serde(default)]
   pub hosts: HashMap<String, bool>,
-  #[serde(default)]
-  pub reload_cache: bool,
 }
 
 impl Default for ImportCompletionSettings {
   fn default() -> Self {
     Self {
-      auto_discovery: true,
       hosts: HashMap::default(),
-      reload_cache: false,
     }
   }
 }

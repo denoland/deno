@@ -57,25 +57,15 @@ pub async fn get_import_completions(
       }
       // completion of modules form a module registry or cache
       if !current_specifier.is_empty() {
-        let maybe_items = if state_snapshot
-          .config
-          .settings
-          .suggest
-          .imports
-          .auto_discovery
-        {
-          let offset = if position.character > range.start.character {
-            (position.character - range.start.character) as usize
-          } else {
-            0
-          };
-          state_snapshot
-            .module_registries
-            .get_completions(&current_specifier, offset, &range, state_snapshot)
-            .await
+        let offset = if position.character > range.start.character {
+          (position.character - range.start.character) as usize
         } else {
-          None
+          0
         };
+        let maybe_items = state_snapshot
+          .module_registries
+          .get_completions(&current_specifier, offset, &range, state_snapshot)
+          .await;
         let items = maybe_items.unwrap_or_else(|| {
           get_workspace_completions(
             specifier,
