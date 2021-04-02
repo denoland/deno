@@ -240,12 +240,10 @@ impl Inner {
         .assets
         .get(specifier)
         .map(|o| o.clone().map(|a| a.text.clone()))?
+    } else if self.documents.contains_key(specifier) {
+      self.documents.content(specifier).unwrap()
     } else {
-      if self.documents.contains_key(specifier) {
-        self.documents.content(specifier).unwrap()
-      } else {
-        self.sources.get_source(specifier)
-      }
+      self.sources.get_source(specifier)
     }
   }
 
