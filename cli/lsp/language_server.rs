@@ -228,24 +228,25 @@ impl Inner {
     maybe_line_index
   }
 
+  // TODO(@kitsonk) we really should find a better way to just return the
+  // content as a `&str`, or be able to get the byte at a particular offset
+  // which is all that this API that is consuming it is trying to do at the
+  // moment
   /// Searches already cached assets and documents and returns its text
   /// content. If not found, `None` is returned.
   fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    let maybe_text = if specifier.scheme() == "asset" {
-      if let Some(Some(asset)) = self.assets.get(specifier) {
-        Some(asset.text.clone())
-      } else {
-        None
-      }
+    if specifier.scheme() == "asset" {
+      self
+        .assets
+        .get(specifier)
+        .map(|o| o.clone().map(|a| a.text.clone()))?
     } else {
-      let documents = &self.documents;
-      if documents.contains_key(specifier) {
-        documents.content(specifier).unwrap()
+      if self.documents.contains_key(specifier) {
+        self.documents.content(specifier).unwrap()
       } else {
         self.sources.get_source(specifier)
       }
-    };
-    maybe_text
+    }
   }
 
   async fn get_navigation_tree(
@@ -1555,18 +1556,7 @@ impl Inner {
         )));
       };
 
-    let text_content =
-      if let Some(text_content) = self.get_text_content(&specifier) {
-        text_content
-      } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
-
-    let req = tsc::RequestMethod::GetOutliningSpans(specifier);
-
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
     let outlining_spans: Vec<tsc::OutliningSpan> = self
       .ts_server
       .request(self.snapshot(), req)
@@ -1575,18 +1565,32 @@ impl Inner {
         error!("Failed to request to tsserver {}", err);
         LspError::invalid_request()
       })?;
-    let folding_ranges: Vec<FoldingRange> = outlining_spans
-      .iter()
-      .map(|span| {
-        span.to_folding_range(
-          &line_index,
-          &text_content,
-          self.config.client_capabilities.line_folding_only,
-        )
-      })
-      .collect();
+
+    let response = if !outlining_spans.is_empty() {
+      let text_content =
+        self.get_text_content(&specifier).ok_or_else(|| {
+          LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          ))
+        })?;
+      Some(
+        outlining_spans
+          .iter()
+          .map(|span| {
+            span.to_folding_range(
+              &line_index,
+              text_content.as_str().as_bytes(),
+              self.config.client_capabilities.line_folding_only,
+            )
+          })
+          .collect::<Vec<FoldingRange>>(),
+      )
+    } else {
+      None
+    };
     self.performance.measure(mark);
-    Ok(Some(folding_ranges))
+    Ok(response)
   }
 
   async fn rename(

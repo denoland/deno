@@ -1255,7 +1255,7 @@ impl OutliningSpan {
   pub fn to_folding_range(
     &self,
     line_index: &LineIndex,
-    text_content: &str,
+    content: &[u8],
     line_folding_only: bool,
   ) -> lsp::FoldingRange {
     let range = self.text_span.to_range(line_index);
@@ -1269,7 +1269,7 @@ impl OutliningSpan {
       end_line: self.adjust_folding_end_line(
         &range,
         line_index,
-        text_content,
+        content,
         line_folding_only,
       ),
       end_character: if line_folding_only {
@@ -1285,12 +1285,12 @@ impl OutliningSpan {
     &self,
     range: &lsp::Range,
     line_index: &LineIndex,
-    text_content: &str,
+    content: &[u8],
     line_folding_only: bool,
   ) -> u32 {
     if line_folding_only && range.end.character > 0 {
       let offset_end: usize = line_index.offset(range.end).unwrap().into();
-      let fold_end_char = text_content.as_bytes()[offset_end - 1];
+      let fold_end_char = content[offset_end - 1];
       if FOLD_END_PAIR_CHARACTERS.contains(&fold_end_char) {
         return cmp::max(range.end.line - 1, range.start.line);
       }
