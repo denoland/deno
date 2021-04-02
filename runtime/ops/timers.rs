@@ -142,7 +142,6 @@ fn op_now(
   _argument: (),
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<f64, AnyError> {
-
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
   let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
