@@ -191,7 +191,7 @@ impl Default for OpTable {
 pub fn op_resources(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let serialized_resources: HashMap<u32, String> = state
     .resource_table
@@ -207,7 +207,7 @@ pub fn op_resources(
 pub fn op_close(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args
     .get("rid")

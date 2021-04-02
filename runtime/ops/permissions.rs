@@ -28,7 +28,7 @@ pub struct PermissionArgs {
 pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
@@ -59,7 +59,7 @@ pub fn op_query_permission(
 pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
@@ -90,7 +90,7 @@ pub fn op_revoke_permission(
 pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();

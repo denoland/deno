@@ -2,6 +2,7 @@
 
 #![deny(warnings)]
 
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -29,15 +30,15 @@ pub fn init(isolate: &mut JsRuntime) {
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
   _args: Value,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1);
+  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   if let Some(seeded_rng) = maybe_seeded_rng {
-    seeded_rng.fill(&mut *zero_copy[0]);
+    seeded_rng.fill(&mut *zero_copy);
   } else {
     let mut rng = thread_rng();
-    rng.fill(&mut *zero_copy[0]);
+    rng.fill(&mut *zero_copy);
   }
 
   Ok(json!({}))

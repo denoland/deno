@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -23,7 +24,7 @@ pub struct QueueSubmitArgs {
 pub fn op_webgpu_queue_submit(
   state: &mut OpState,
   args: QueueSubmitArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let queue_resource = state
@@ -69,8 +70,9 @@ pub struct QueueWriteBufferArgs {
 pub fn op_webgpu_write_buffer(
   state: &mut OpState,
   args: QueueWriteBufferArgs,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
@@ -84,8 +86,8 @@ pub fn op_webgpu_write_buffer(
   let queue = queue_resource.0;
 
   let data = match args.size {
-    Some(size) => &zero_copy[0][args.data_offset..(args.data_offset + size)],
-    None => &zero_copy[0][args.data_offset..],
+    Some(size) => &zero_copy[args.data_offset..(args.data_offset + size)],
+    None => &zero_copy[args.data_offset..],
   };
   let maybe_err = gfx_select!(queue => instance.queue_write_buffer(
     queue,
@@ -110,8 +112,9 @@ pub struct QueueWriteTextureArgs {
 pub fn op_webgpu_write_texture(
   state: &mut OpState,
   args: QueueWriteTextureArgs,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
@@ -144,7 +147,7 @@ pub fn op_webgpu_write_texture(
   let maybe_err = gfx_select!(queue => instance.queue_write_texture(
     queue,
     &destination,
-    &*zero_copy[0],
+    &*zero_copy,
     &data_layout,
     &wgpu_types::Extent3d {
       width: args.size.width.unwrap_or(1),

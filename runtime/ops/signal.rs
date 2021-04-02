@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
@@ -70,7 +69,7 @@ pub struct SignalArgs {
 fn op_signal_bind(
   state: &mut OpState,
   args: BindSignalArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.signal");
   let resource = SignalStreamResource {
@@ -89,7 +88,7 @@ fn op_signal_bind(
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   args: SignalArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.signal");
   let rid = args.rid;
@@ -112,7 +111,7 @@ async fn op_signal_poll(
 pub fn op_signal_unbind(
   state: &mut OpState,
   args: SignalArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.signal");
   let rid = args.rid;
@@ -127,7 +126,7 @@ pub fn op_signal_unbind(
 pub fn op_signal_bind(
   _state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   unimplemented!();
 }
@@ -136,7 +135,7 @@ pub fn op_signal_bind(
 fn op_signal_unbind(
   _state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   unimplemented!();
 }
@@ -145,7 +144,7 @@ fn op_signal_unbind(
 async fn op_signal_poll(
   _state: Rc<RefCell<OpState>>,
   _args: Value,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   unimplemented!();
 }

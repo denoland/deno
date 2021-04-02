@@ -576,7 +576,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_v8",
- "smallvec",
  "tokio",
  "url",
 ]
