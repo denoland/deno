@@ -74,11 +74,16 @@ pub enum Op {
 }
 
 #[derive(Serialize)]
-pub struct OpResult<R>(Option<R>, Option<OpError>);
+#[serde(untagged)]
+pub enum OpResult<R> {
+  Ok(R),
+  Err(OpError),
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpError {
+  #[serde(rename = "$err_class_name")]
   class_name: &'static str,
   message: String,
 }
@@ -88,14 +93,11 @@ pub fn serialize_op_result<R: Serialize + 'static>(
   state: Rc<RefCell<OpState>>,
 ) -> OpResponse {
   OpResponse::Value(Box::new(match result {
-    Ok(v) => OpResult::<R>(Some(v), None),
-    Err(err) => OpResult::<R>(
-      None,
-      Some(OpError {
-        class_name: (state.borrow().get_error_class_fn)(&err),
-        message: err.to_string(),
-      }),
-    ),
+    Ok(v) => OpResult::Ok(v),
+    Err(err) => OpResult::Err(OpError {
+      class_name: (state.borrow().get_error_class_fn)(&err),
+      message: err.to_string(),
+    }),
   }))
 }
 
@@ -189,7 +191,7 @@ impl Default for OpTable {
 pub fn op_resources(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let serialized_resources: HashMap<u32, String> = state
     .resource_table
@@ -205,7 +207,7 @@ pub fn op_resources(
 pub fn op_close(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args
     .get("rid")

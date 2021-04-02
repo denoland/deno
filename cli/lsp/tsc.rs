@@ -35,10 +35,10 @@ use log::warn;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
+use std::{borrow::Cow, cmp};
 use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -1228,6 +1228,91 @@ impl CompletionEntry {
 }
 
 #[derive(Debug, Deserialize)]
+pub enum OutliningSpanKind {
+  #[serde(rename = "comment")]
+  Comment,
+  #[serde(rename = "region")]
+  Region,
+  #[serde(rename = "code")]
+  Code,
+  #[serde(rename = "imports")]
+  Imports,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutliningSpan {
+  text_span: TextSpan,
+  hint_span: TextSpan,
+  banner_text: String,
+  auto_collapse: bool,
+  kind: OutliningSpanKind,
+}
+
+const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
+
+impl OutliningSpan {
+  pub fn to_folding_range(
+    &self,
+    line_index: &LineIndex,
+    content: &[u8],
+    line_folding_only: bool,
+  ) -> lsp::FoldingRange {
+    let range = self.text_span.to_range(line_index);
+    lsp::FoldingRange {
+      start_line: range.start.line,
+      start_character: if line_folding_only {
+        None
+      } else {
+        Some(range.start.character)
+      },
+      end_line: self.adjust_folding_end_line(
+        &range,
+        line_index,
+        content,
+        line_folding_only,
+      ),
+      end_character: if line_folding_only {
+        None
+      } else {
+        Some(range.end.character)
+      },
+      kind: self.get_folding_range_kind(&self.kind),
+    }
+  }
+
+  fn adjust_folding_end_line(
+    &self,
+    range: &lsp::Range,
+    line_index: &LineIndex,
+    content: &[u8],
+    line_folding_only: bool,
+  ) -> u32 {
+    if line_folding_only && range.end.character > 0 {
+      let offset_end: usize = line_index.offset(range.end).unwrap().into();
+      let fold_end_char = content[offset_end - 1];
+      if FOLD_END_PAIR_CHARACTERS.contains(&fold_end_char) {
+        return cmp::max(range.end.line - 1, range.start.line);
+      }
+    }
+
+    range.end.line
+  }
+
+  fn get_folding_range_kind(
+    &self,
+    span_kind: &OutliningSpanKind,
+  ) -> Option<lsp::FoldingRangeKind> {
+    match span_kind {
+      OutliningSpanKind::Comment => Some(lsp::FoldingRangeKind::Comment),
+      OutliningSpanKind::Region => Some(lsp::FoldingRangeKind::Region),
+      OutliningSpanKind::Imports => Some(lsp::FoldingRangeKind::Imports),
+      _ => None,
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItems {
   items: Vec<SignatureHelpItem>,
@@ -1859,6 +1944,8 @@ pub enum RequestMethod {
   GetImplementation((ModuleSpecifier, u32)),
   /// Get a "navigation tree" for a specifier.
   GetNavigationTree(ModuleSpecifier),
+  /// Get outlining spans for a specifier.
+  GetOutliningSpans(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Get document references for a specific position.
@@ -1965,6 +2052,11 @@ impl RequestMethod {
       RequestMethod::GetNavigationTree(specifier) => json!({
         "id": id,
         "method": "getNavigationTree",
+        "specifier": specifier,
+      }),
+      RequestMethod::GetOutliningSpans(specifier) => json!({
+        "id": id,
+        "method": "getOutliningSpans",
         "specifier": specifier,
       }),
       RequestMethod::GetQuickInfo((specifier, position)) => json!({

@@ -500,7 +500,7 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "deno"
-version = "1.8.2"
+version = "1.8.3"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -560,14 +560,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.82.0"
+version = "0.83.0"
 dependencies = [
  "anyhow",
  "bencher",
@@ -582,14 +582,13 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_v8",
- "smallvec",
  "tokio",
  "url",
 ]
 
 [[package]]
 name = "deno_crypto"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
@@ -619,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.24.0"
+version = "0.24.1"
 dependencies = [
  "bytes",
  "deno_core",
@@ -650,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "atty",
  "deno_console",
@@ -694,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deno_core",
  "idna",
@@ -703,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.32.0"
+version = "0.32.1"
 dependencies = [
  "deno_core",
  "futures",
@@ -711,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "deno_core",
  "serde",
@@ -722,14 +721,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "deno_core",
  "http",
