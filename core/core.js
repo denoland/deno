@@ -32,7 +32,8 @@
 
   function getPromise(promiseId) {
     // Check if out of ring bounds, fallback to map
-    if (promiseId <= nextPromiseId - RING_SIZE) {
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
       const promise = promiseMap.get(promiseId);
       promiseMap.delete(promiseId);
       return promise;
