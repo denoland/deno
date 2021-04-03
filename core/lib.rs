@@ -14,6 +14,7 @@ mod ops_json;
 pub mod plugin_api;
 mod resources;
 mod runtime;
+mod v8_serializable;
 mod zero_copy_buf;
 
 // Re-exports
@@ -65,7 +66,6 @@ pub use crate::ops::OpResponse;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::ops::PromiseId;
-pub use crate::ops::Serializable;
 pub use crate::ops_bin::bin_op_async;
 pub use crate::ops_bin::bin_op_sync;
 pub use crate::ops_bin::ValueOrVector;

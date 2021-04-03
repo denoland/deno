@@ -6,6 +6,7 @@ use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use crate::v8_serializable::V8Serializable;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
@@ -22,7 +23,6 @@ use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub use erased_serde::Serialize as Serializable;
 pub type PromiseId = u64;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
 pub type OpFn =
@@ -60,7 +60,7 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
 }
 
 pub enum OpResponse {
-  Value(Box<dyn Serializable>),
+  Value(Box<dyn V8Serializable>),
   Buffer(Box<[u8]>),
 }
 
