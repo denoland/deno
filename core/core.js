@@ -9,10 +9,54 @@
   let opsCache = {};
   const errorMap = {};
   let nextPromiseId = 1;
-  const promiseTable = new Map();
-
+  const promiseMap = new Map();
+  const SECTOR_SIZE = 1024;
+  const RING_SECTORS = 4;
+  const RING_SIZE = SECTOR_SIZE * RING_SECTORS;
+  const NO_PROMISE = null; // Alias to null is faster than plain nulls
+  const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
+  
   function init() {
     recv(handleAsyncMsgFromRust);
+  }
+  
+  function setPromise(promiseId) {
+    // const idx = ringSlot(promiseId);
+    const idx = promiseId % RING_SIZE;
+    // Move old promise from ring to map
+    const oldPromise = promiseRing[idx];
+    if(oldPromise !== NO_PROMISE) {
+      const oldPromiseId = promiseId - RING_SIZE;
+      promiseMap.set(oldPromiseId, oldPromise);
+    }
+    // Set new promise
+    return promiseRing[idx] = newPromise();
+  }
+  
+  function getPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    if(promiseId <= nextPromiseId - RING_SIZE) {  
+      const promise = promiseMap.get(promiseId);
+      promiseMap.delete(promiseId);
+      return promise;
+    }
+    // Otherwise take from ring
+    // const idx = ringSlot(promiseId);
+    const idx = promiseId % RING_SIZE;
+    const promise = promiseRing[idx];
+    promiseRing[idx] = NO_PROMISE;
+    return promise;
+  }
+  
+  function newPromise() {
+    let resolve, reject;
+    const promise = new Promise((resolve_, reject_) => {
+      resolve = resolve_;
+      reject = reject_;
+    });
+    promise.resolve = resolve;
+    promise.reject = reject;
+    return promise;
   }
 
   function ops() {
@@ -65,21 +109,13 @@
     }
     return new ErrorClass(err.message, ...args);
   }
-
+  
   function jsonOpAsync(opName, args = null, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) processResponse(maybeError);
-    let resolve, reject;
-    const promise = new Promise((resolve_, reject_) => {
-      resolve = resolve_;
-      reject = reject_;
-    });
-    promise.resolve = resolve;
-    promise.reject = reject;
-    promiseTable.set(promiseId, promise);
-    return promise;
+    return setPromise(promiseId);
   }
 
   function jsonOpSync(opName, args = null, zeroCopy = null) {
@@ -87,8 +123,7 @@
   }
 
   function opAsyncHandler(promiseId, res) {
-    const promise = promiseTable.get(promiseId);
-    promiseTable.delete(promiseId);
+    const promise = getPromise(promiseId);
     if (!isErr(res)) {
       promise.resolve(res);
     } else {
