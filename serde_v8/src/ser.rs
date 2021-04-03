@@ -12,19 +12,16 @@ use crate::magic;
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
 
-type ScopePtr<'a, 'b, 'c> = &'c RefCell<v8::EscapableHandleScope<'a, 'b>>;
+type ScopePtr<'a, 'b, 'c> = &'c RefCell<&'b mut v8::HandleScope<'a>>;
 
 pub fn to_v8<'a, T>(scope: &mut v8::HandleScope<'a>, input: T) -> JsResult<'a>
 where
   T: Serialize,
 {
-  let subscope = v8::EscapableHandleScope::new(scope);
-  let scopeptr = RefCell::new(subscope);
+  let scopeptr = RefCell::new(scope);
   let serializer = Serializer::new(&scopeptr);
-  let x = input.serialize(serializer)?;
-  let x = scopeptr.borrow_mut().escape(x);
-
-  Ok(x)
+  
+  input.serialize(serializer)
 }
 
 /// Wraps other serializers into an enum tagged variant form.
