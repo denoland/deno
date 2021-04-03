@@ -10,9 +10,7 @@
   const errorMap = {};
   let nextPromiseId = 1;
   const promiseMap = new Map();
-  const SECTOR_SIZE = 1024;
-  const RING_SECTORS = 4;
-  const RING_SIZE = SECTOR_SIZE * RING_SECTORS;
+  const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
 
