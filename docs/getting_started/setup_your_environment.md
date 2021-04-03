@@ -206,6 +206,10 @@ filetypes = ["typescript", "javascript"]
 roots = [".git"]
 command = "deno"
 args = ["lsp"]
+
+[language.deno.initialization_options]
+enable = true
+lint = true
 ```
 
 ##### Example for Vim/Neovim
