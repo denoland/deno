@@ -22,7 +22,6 @@ use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub use erased_serde::Serialize as Serializable;
 pub type PromiseId = u64;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
 pub type OpFn =
@@ -60,7 +59,7 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
 }
 
 pub enum OpResponse {
-  Value(Box<dyn Serializable>),
+  Value(Box<dyn serde_v8::Serializable>),
   Buffer(Box<[u8]>),
 }
 

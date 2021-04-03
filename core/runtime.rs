@@ -1419,7 +1419,7 @@ impl JsRuntime {
       let (promise_id, resp) = overflown_response;
       args.push(v8::Integer::new(scope, promise_id as i32).into());
       args.push(match resp {
-        OpResponse::Value(value) => serde_v8::to_v8(scope, value).unwrap(),
+        OpResponse::Value(value) => value.to_v8(scope).unwrap(),
         OpResponse::Buffer(buf) => {
           bindings::boxed_slice_to_uint8array(scope, buf).into()
         }
