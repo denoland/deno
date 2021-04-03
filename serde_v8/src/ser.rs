@@ -20,7 +20,7 @@ where
 {
   let scopeptr = RefCell::new(scope);
   let serializer = Serializer::new(&scopeptr);
-  
+
   input.serialize(serializer)
 }
 
