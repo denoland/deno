@@ -61,7 +61,7 @@ lazy_static::lazy_static! {
         function: get_proxy_details.map_fn_to()
       },
       v8::ExternalReference {
-        function: heap_stats.map_fn_to(),
+        function: memory_usage.map_fn_to(),
       },
     ]);
 }
@@ -139,7 +139,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
-  set_func(scope, core_val, "heapStats", heap_stats);
+  set_func(scope, core_val, "memoryUsage", memory_usage);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -865,50 +865,36 @@ fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   scope.throw_exception(exception);
 }
 
-fn heap_stats(
+fn memory_usage(
   scope: &mut v8::HandleScope,
   _args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let stats = get_heap_stats(scope);
+  let stats = get_memory_usage(scope);
   rv.set(to_v8(scope, stats).unwrap());
 }
 
 // HeapStats stores values from a isolate.get_heap_statistics() call
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HeapStats {
-  total_heap_size: usize,
-  total_heap_size_executable: usize,
-  total_physical_size: usize,
-  total_available_size: usize,
-  total_global_handles_size: usize,
-  used_global_handles_size: usize,
-  used_heap_size: usize,
-  heap_size_limit: usize,
-  malloced_memory: usize,
-  external_memory: usize,
-  peak_malloced_memory: usize,
-  number_of_native_contexts: usize,
-  number_of_detached_contexts: usize,
+struct MemoryUsage {
+  rss: usize,
+  heap_total: usize,
+  heap_used: usize,
+  external: usize,
+  array_buffers: usize,
 }
-fn get_heap_stats(isolate: &mut v8::Isolate) -> HeapStats {
+fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   isolate.get_heap_statistics(&mut s);
 
-  HeapStats {
-    total_heap_size: s.total_heap_size(),
-    total_heap_size_executable: s.total_heap_size_executable(),
-    total_physical_size: s.total_physical_size(),
-    total_available_size: s.total_available_size(),
-    total_global_handles_size: s.total_global_handles_size(),
-    used_global_handles_size: s.used_global_handles_size(),
-    used_heap_size: s.used_heap_size(),
-    heap_size_limit: s.heap_size_limit(),
-    malloced_memory: s.malloced_memory(),
-    external_memory: s.external_memory(),
-    peak_malloced_memory: s.peak_malloced_memory(),
-    number_of_native_contexts: s.number_of_native_contexts(),
-    number_of_detached_contexts: s.number_of_detached_contexts(),
+  MemoryUsage {
+    rss: s.total_physical_size(),
+    heap_total: s.total_heap_size(),
+    heap_used: s.used_heap_size(),
+    external: s.external_memory(),
+    // TODO: track ArrayBuffers, would require using a custom allocator to track
+    // but it's otherwise a subset of external so can be indirectly tracked
+    array_buffers: 0,
   }
 }

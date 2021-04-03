@@ -2,15 +2,15 @@
 "use strict";
 
 function allocTest(alloc, allocAssert, deallocAssert) {
-  // Helper func that GCs then returns heapStats
+  // Helper func that GCs then returns memory usage
   const sample = () => {
     // deno-lint-ignore no-undef
     gc();
-    return Deno.core.heapStats();
+    return Deno.core.memoryUsage();
   };
-  const delta = (t1, t2) => t2.usedHeapSize - t1.usedHeapSize;
+  const delta = (t1, t2) => t2.heapUsed - t1.heapUsed;
 
-  // Sample "clean" heapStats
+  // Sample "clean" heap usage
   const t1 = sample();
 
   // Alloc
