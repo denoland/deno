@@ -6,7 +6,6 @@ use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
-use crate::v8_serializable::V8Serializable;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
@@ -60,7 +59,7 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
 }
 
 pub enum OpResponse {
-  Value(Box<dyn V8Serializable>),
+  Value(Box<dyn serde_v8::Serializable>),
   Buffer(Box<[u8]>),
 }
 

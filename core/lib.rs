@@ -14,7 +14,6 @@ mod ops_json;
 pub mod plugin_api;
 mod resources;
 mod runtime;
-mod v8_serializable;
 mod zero_copy_buf;
 
 // Re-exports
