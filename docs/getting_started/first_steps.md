@@ -8,6 +8,8 @@ you might want to follow a guide
 [on the basics of JavaScript](https://developer.mozilla.org/en-US/docs/Learn/JavaScript)
 before attempting to start with Deno.
 
+**NOTE**: Deno supports the [`top-level await` ECMAScript proposal](https://github.com/tc39/proposal-top-level-await) which "_enables modules to act as big async functions_", allowing `await` to be used outside an `async` function at the top level.
+
 ### Hello World
 
 Deno is a runtime for JavaScript/TypeScript which tries to be web compatible and
