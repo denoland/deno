@@ -703,17 +703,17 @@ impl Inner {
         LspError::invalid_request()
       })?;
 
-    if let Some(child_items) = navigation_tree.child_items {
+    let response = if let Some(child_items) = navigation_tree.child_items {
       let mut document_symbols = Vec::<DocumentSymbol>::new();
       for item in child_items {
         item.collect_document_symbols(&line_index, &mut document_symbols);
       }
-      self.performance.measure(mark);
-      Ok(Some(DocumentSymbolResponse::Nested(document_symbols)))
+      Some(DocumentSymbolResponse::Nested(document_symbols))
     } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
   }
 
   async fn formatting(
@@ -2191,10 +2191,20 @@ mod tests {
               _ => panic!("unexpected result: {:?}", result),
             },
             LspResponse::Request(id, value) => match result {
-              Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
-                resp,
-                jsonrpc::Response::ok(jsonrpc::Id::Number(*id), value.clone())
-              ),
+              Some(jsonrpc::Outgoing::Response(resp)) => {
+                let (_, res) = resp.clone().into_parts();
+                println!(
+                  "{}",
+                  serde_json::to_string_pretty(&res.unwrap()).unwrap()
+                );
+                assert_eq!(
+                  resp,
+                  jsonrpc::Response::ok(
+                    jsonrpc::Id::Number(*id),
+                    value.clone()
+                  )
+                )
+              }
               _ => panic!("unexpected result: {:?}", result),
             },
             LspResponse::RequestAssert(assert) => match result {
@@ -2556,6 +2566,401 @@ mod tests {
       time.elapsed().as_millis() <= 10000,
       "the execution time exceeded 10000ms"
     );
+  }
+
+  #[tokio::test]
+  async fn test_document_symbol() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "document_symbol_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "document_symbol_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "name": "bar",
+              "kind": 13,
+              "range": {
+                "start": {
+                  "line": 17,
+                  "character": 4
+                },
+                "end": {
+                  "line": 17,
+                  "character": 26
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 17,
+                  "character": 4
+                },
+                "end": {
+                  "line": 17,
+                  "character": 7
+                }
+              }
+            },
+            {
+              "name": "Bar",
+              "kind": 5,
+              "range": {
+                "start": {
+                  "line": 4,
+                  "character": 0
+                },
+                "end": {
+                  "line": 13,
+                  "character": 1
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 4,
+                  "character": 6
+                },
+                "end": {
+                  "line": 4,
+                  "character": 9
+                }
+              },
+              "children": [
+                {
+                  "name": "constructor",
+                  "kind": 9,
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 35
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 5,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 35
+                    }
+                  }
+                },
+                {
+                  "name": "baz",
+                  "kind": 6,
+                  "tags": [
+                    1
+                  ],
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 25
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 8,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 5
+                    }
+                  }
+                },
+                {
+                  "name": "foo",
+                  "kind": 6,
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 24
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 6,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 5
+                    }
+                  }
+                },
+                {
+                  "name": "getStaticBar",
+                  "kind": 6,
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 57
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 12,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 29
+                    }
+                  }
+                },
+                {
+                  "name": "staticBar",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 32
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 11,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 18
+                    }
+                  }
+                },
+                {
+                  "name": "value",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 35
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 9,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 11
+                    }
+                  }
+                },
+                {
+                  "name": "value",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 42
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 10,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 11
+                    }
+                  }
+                },
+                {
+                  "name": "x",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 30
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 5,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 22
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "IFoo",
+              "kind": 11,
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 1
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 0,
+                  "character": 10
+                },
+                "end": {
+                  "line": 0,
+                  "character": 14
+                }
+              },
+              "children": [
+                {
+                  "name": "foo",
+                  "kind": 6,
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 17
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 1,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 5
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Values",
+              "kind": 10,
+              "range": {
+                "start": {
+                  "line": 15,
+                  "character": 0
+                },
+                "end": {
+                  "line": 15,
+                  "character": 30
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 15,
+                  "character": 5
+                },
+                "end": {
+                  "line": 15,
+                  "character": 11
+                }
+              },
+              "children": [
+                {
+                  "name": "value1",
+                  "kind": 13,
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 20
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 15,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 20
+                    }
+                  }
+                },
+                {
+                  "name": "value2",
+                  "kind": 13,
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 28
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 15,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 28
+                    }
+                  }
+                }
+              ]
+            }
+          ]),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
   }
 
   #[tokio::test]

@@ -621,7 +621,7 @@ impl NavigationTree {
   ) -> bool {
     let mut should_include = self.should_include_entry();
     if !should_include
-      && self.child_items.as_ref().map_or(true, |it| it.is_empty())
+      && self.child_items.as_ref().map_or(true, |v| v.is_empty())
     {
       return false;
     }
@@ -629,7 +629,7 @@ impl NavigationTree {
     let children = self
       .child_items
       .as_ref()
-      .map_or(&[] as &[NavigationTree], |it| it.as_slice());
+      .map_or(&[] as &[NavigationTree], |v| v.as_slice());
     for span in self.spans.iter() {
       let range = TextRange::at(span.start.into(), span.length.into());
       let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
@@ -664,13 +664,19 @@ impl NavigationTree {
           tags = Some(vec![lsp::SymbolTag::Deprecated]);
         }
 
+        let children = if !symbol_children.is_empty() {
+          Some(symbol_children)
+        } else {
+          None
+        };
+
         document_symbols.push(lsp::DocumentSymbol {
           name: self.text.clone(),
           kind: self.kind.clone().into(),
           range: span.to_range(line_index),
           selection_range: selection_span.to_range(line_index),
           tags,
-          children: Some(symbol_children),
+          children,
           detail: None,
           deprecated: None,
         })

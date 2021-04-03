@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didOpen",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "interface IFoo {\n  foo(): boolean;\n}\n\nclass Bar implements IFoo {\n  constructor(public x: number) { }\n  foo() { return true; }\n  /** @deprecated */\n  baz() { return false; }\n  get value(): number { return 0; }\n  set value(newVavlue: number) { return; }\n  static staticBar = new Bar(0);\n  private static getStaticBar() { return Bar.staticBar; }\n}\n\nenum Values { value1, value2 }\n\nvar bar: IFoo = new Bar(3);"
+    }
+  }
+}
