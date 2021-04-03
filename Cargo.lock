@@ -790,9 +790,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b630fed636a84b5ac3dd50dcf66592f13a4c53f76d25e2a943dac7b43fe67244"
+checksum = "192d9caba72e0955a19026d139a4e412f9be3b0ba0712f1f584f2cf6e391f472"
 dependencies = [
  "dprint-core",
  "jsonc-parser",
@@ -1682,9 +1682,12 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "115430ba8632b03631e02fbf25836b1fa213f2f99a91a13b60bf7625166c5d36"
+checksum = "0cb8a8eb6349c33f5ff1c6f12d09936f048c039411c9a08cd54a378fbf1905e2"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "kernel32-sys"

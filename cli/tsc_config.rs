@@ -8,13 +8,11 @@ use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use jsonc_parser::JsonValue;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 /// The transpile options that are significant out of a user provided tsconfig
 /// file, that we want to deserialize out of the final config for a transpile.
@@ -148,31 +146,6 @@ pub fn json_merge(a: &mut Value, b: &Value) {
   }
 }
 
-/// Convert a jsonc libraries `JsonValue` to a serde `Value`.
-fn jsonc_to_serde(j: JsonValue) -> Value {
-  match j {
-    JsonValue::Array(arr) => {
-      let vec = arr.into_iter().map(jsonc_to_serde).collect();
-      Value::Array(vec)
-    }
-    JsonValue::Boolean(bool) => Value::Bool(bool),
-    JsonValue::Null => Value::Null,
-    JsonValue::Number(num) => {
-      let number =
-        serde_json::Number::from_str(&num).expect("could not parse number");
-      Value::Number(number)
-    }
-    JsonValue::Object(obj) => {
-      let mut map = serde_json::map::Map::new();
-      for (key, json_value) in obj.into_iter() {
-        map.insert(key, jsonc_to_serde(json_value));
-      }
-      Value::Object(map)
-    }
-    JsonValue::String(str) => Value::String(str.into_owned()),
-  }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TsConfigJson {
@@ -220,8 +193,8 @@ pub fn parse_config(
   path: &Path,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   assert!(!config_text.is_empty());
-  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
-  let config: TsConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
+  let jsonc = jsonc_parser::parse_to_serde_value(config_text)?.unwrap();
+  let config: TsConfigJson = serde_json::from_value(jsonc)?;
 
   if let Some(compiler_options) = config.compiler_options {
     parse_compiler_options(&compiler_options, Some(path.to_owned()), false)
