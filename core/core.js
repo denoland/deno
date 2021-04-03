@@ -21,7 +21,6 @@
   }
 
   function setPromise(promiseId) {
-    // const idx = ringSlot(promiseId);
     const idx = promiseId % RING_SIZE;
     // Move old promise from ring to map
     const oldPromise = promiseRing[idx];
@@ -41,7 +40,6 @@
       return promise;
     }
     // Otherwise take from ring
-    // const idx = ringSlot(promiseId);
     const idx = promiseId % RING_SIZE;
     const promise = promiseRing[idx];
     promiseRing[idx] = NO_PROMISE;
