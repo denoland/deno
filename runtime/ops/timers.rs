@@ -9,7 +9,6 @@
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
@@ -76,7 +75,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
   super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
-  super::reg_bin_sync(rt, "op_now", op_now);
+  super::reg_json_sync(rt, "op_now", op_now);
   super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 
@@ -137,13 +136,12 @@ async fn op_global_timer(
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
+#[allow(clippy::unnecessary_wraps)]
 fn op_now(
   op_state: &mut OpState,
-  _argument: u32,
-  zero_copy: Option<ZeroCopyBuf>,
-) -> Result<u32, AnyError> {
-  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
-
+  _argument: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<f64, AnyError> {
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
   let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
@@ -158,9 +156,7 @@ fn op_now(
 
   let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0);
 
-  (&mut zero_copy).copy_from_slice(&result.to_be_bytes());
-
-  Ok(0)
+  Ok(result)
 }
 
 #[derive(Deserialize)]

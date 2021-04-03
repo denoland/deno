@@ -17,10 +17,8 @@
     await core.jsonOpAsync("op_global_timer");
   }
 
-  const nowBytes = new Uint8Array(8);
   function opNow() {
-    core.binOpSync("op_now", 0, nowBytes);
-    return new DataView(nowBytes.buffer).getFloat64();
+    return core.jsonOpSync("op_now");
   }
 
   function sleepSync(millis = 0) {
