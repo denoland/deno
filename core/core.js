@@ -15,27 +15,27 @@
   const RING_SIZE = SECTOR_SIZE * RING_SECTORS;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
-  
+
   function init() {
     recv(handleAsyncMsgFromRust);
   }
-  
+
   function setPromise(promiseId) {
     // const idx = ringSlot(promiseId);
     const idx = promiseId % RING_SIZE;
     // Move old promise from ring to map
     const oldPromise = promiseRing[idx];
-    if(oldPromise !== NO_PROMISE) {
+    if (oldPromise !== NO_PROMISE) {
       const oldPromiseId = promiseId - RING_SIZE;
       promiseMap.set(oldPromiseId, oldPromise);
     }
     // Set new promise
     return promiseRing[idx] = newPromise();
   }
-  
+
   function getPromise(promiseId) {
     // Check if out of ring bounds, fallback to map
-    if(promiseId <= nextPromiseId - RING_SIZE) {  
+    if (promiseId <= nextPromiseId - RING_SIZE) {
       const promise = promiseMap.get(promiseId);
       promiseMap.delete(promiseId);
       return promise;
@@ -47,7 +47,7 @@
     promiseRing[idx] = NO_PROMISE;
     return promise;
   }
-  
+
   function newPromise() {
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
@@ -109,7 +109,7 @@
     }
     return new ErrorClass(err.message, ...args);
   }
-  
+
   function jsonOpAsync(opName, args = null, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
