@@ -169,7 +169,7 @@ fn jsonc_to_serde(j: JsonValue) -> Value {
       }
       Value::Object(map)
     }
-    JsonValue::String(str) => Value::String(str),
+    JsonValue::String(str) => Value::String(str.into_owned()),
   }
 }
 
