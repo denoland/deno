@@ -433,6 +433,7 @@ delete Object.prototype.__proto__;
       [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
+      memoryUsage: core.memoryUsage,
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {

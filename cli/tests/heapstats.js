@@ -6,7 +6,7 @@ function allocTest(alloc, allocAssert, deallocAssert) {
   const sample = () => {
     // deno-lint-ignore no-undef
     gc();
-    return Deno.core.memoryUsage();
+    return Deno.memoryUsage();
   };
   const delta = (t1, t2) => t2.heapUsed - t1.heapUsed;
 
