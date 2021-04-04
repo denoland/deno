@@ -9,7 +9,6 @@ use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
@@ -186,13 +185,13 @@ struct SendArgs {
 
 async fn op_datagram_send(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: SendArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let zero_copy = zero_copy.clone();
 
-  match serde_json::from_value(args)? {
+  match args {
     SendArgs {
       rid,
       transport,
@@ -255,10 +254,10 @@ struct ConnectArgs {
 
 async fn op_connect(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ConnectArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  match serde_json::from_value(args)? {
+  match args {
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
@@ -419,11 +418,11 @@ fn listen_udp(
 
 fn op_listen(
   state: &mut OpState,
-  args: Value,
+  args: ListenArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let permissions = state.borrow::<Permissions>();
-  match serde_json::from_value(args)? {
+  match args {
     ListenArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
