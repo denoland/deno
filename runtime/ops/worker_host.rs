@@ -448,18 +448,12 @@ fn op_create_worker(
   Ok(json!({ "id": worker_id }))
 }
 
-#[derive(Deserialize)]
-pub struct WorkerArgs {
-  id: i32,
-}
-
 #[allow(clippy::unnecessary_wraps)]
 fn op_host_terminate_worker(
   state: &mut OpState,
-  args: WorkerArgs,
+  id: WorkerId,
   _data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let id = args.id as u32;
+) -> Result<(), AnyError> {
   let worker_thread = state
     .borrow_mut::<WorkersTable>()
     .remove(&id)
@@ -470,7 +464,7 @@ fn op_host_terminate_worker(
     .join()
     .expect("Panic in worker thread")
     .expect("Panic in worker event loop");
-  Ok(json!({}))
+  Ok(())
 }
 
 fn serialize_worker_event(event: WorkerEvent) -> Value {
@@ -532,11 +526,9 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
-  args: WorkerArgs,
+  id: WorkerId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let id = args.id as u32;
-
   let worker_handle = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
@@ -566,11 +558,10 @@ async fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &mut OpState,
-  args: WorkerArgs,
+  id: WorkerId,
   data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let data = data.ok_or_else(null_opbuf)?;
-  let id = args.id as u32;
   let msg = Vec::from(&*data).into_boxed_slice();
 
   debug!("post message to worker {}", id);
@@ -579,5 +570,5 @@ fn op_host_post_message(
     .get(&id)
     .expect("No worker handle found");
   worker_thread.worker_handle.post_message(msg)?;
-  Ok(json!({}))
+  Ok(())
 }

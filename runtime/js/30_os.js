@@ -44,7 +44,7 @@
       return;
     }
 
-    core.jsonOpSync("op_exit", { code });
+    core.jsonOpSync("op_exit", code);
     throw new Error("Code not reachable");
   }
 
@@ -53,11 +53,11 @@
   }
 
   function getEnv(key) {
-    return core.jsonOpSync("op_get_env", { key })[0];
+    return core.jsonOpSync("op_get_env", key);
   }
 
   function deleteEnv(key) {
-    core.jsonOpSync("op_delete_env", { key });
+    core.jsonOpSync("op_delete_env", key);
   }
 
   const env = {

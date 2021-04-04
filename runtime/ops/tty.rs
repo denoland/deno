@@ -5,8 +5,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
@@ -68,7 +66,7 @@ fn op_set_raw(
   state: &mut OpState,
   args: SetRawArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
   let rid = args.rid;
@@ -210,22 +208,15 @@ fn op_set_raw(
       }
     }
 
-    Ok(json!({}))
+    Ok(())
   }
-}
-
-#[derive(Deserialize)]
-pub struct IsattyArgs {
-  rid: ResourceId,
 }
 
 fn op_isatty(
   state: &mut OpState,
-  args: IsattyArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
+) -> Result<bool, AnyError> {
   let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {
       #[cfg(windows)]
@@ -246,12 +237,7 @@ fn op_isatty(
     }
     _ => Ok(false),
   })?;
-  Ok(json!(isatty))
-}
-
-#[derive(Deserialize)]
-pub struct ConsoleSizeArgs {
-  rid: ResourceId,
+  Ok(isatty)
 }
 
 #[derive(Serialize)]
@@ -262,12 +248,10 @@ struct ConsoleSize {
 
 fn op_console_size(
   state: &mut OpState,
-  args: ConsoleSizeArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
-
-  let rid = args.rid;
 
   let size = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {

@@ -18,6 +18,7 @@ use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
 use log::debug;
 use serde::Deserialize;
+use serde::Serialize;
 use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
@@ -183,27 +184,27 @@ fn op_open_sync(
   state: &mut OpState,
   args: OpenArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(state, args)?;
   let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let resource = StdFileResource::fs_file(tokio_file);
   let rid = state.resource_table.add(resource);
-  Ok(json!(rid))
+  Ok(rid)
 }
 
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(path)
     .await?;
   let resource = StdFileResource::fs_file(tokio_file);
   let rid = state.borrow_mut().resource_table.add(resource);
-  Ok(json!(rid))
+  Ok(rid)
 }
 
 #[derive(Deserialize)]
@@ -235,7 +236,7 @@ fn op_seek_sync(
   state: &mut OpState,
   args: SeekArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<u64, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
   let pos = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.seek(seek_from).map_err(AnyError::from),
@@ -243,14 +244,14 @@ fn op_seek_sync(
       "cannot seek on this type of resource".to_string(),
     )),
   })?;
-  Ok(json!(pos))
+  Ok(pos)
 }
 
 async fn op_seek_async(
   state: Rc<RefCell<OpState>>,
   args: SeekArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<u64, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
 
   let resource = state
@@ -268,35 +269,26 @@ async fn op_seek_async(
     .await;
 
   let pos = (*fs_file).0.as_mut().unwrap().seek(seek_from).await?;
-  Ok(json!(pos))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FdatasyncArgs {
-  rid: ResourceId,
+  Ok(pos)
 }
 
 fn op_fdatasync_sync(
   state: &mut OpState,
-  args: FdatasyncArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
+) -> Result<(), AnyError> {
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_data().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
   })?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
-  args: FdatasyncArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -312,35 +304,26 @@ async fn op_fdatasync_async(
     .await;
 
   (*fs_file).0.as_mut().unwrap().sync_data().await?;
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FsyncArgs {
-  rid: ResourceId,
+  Ok(())
 }
 
 fn op_fsync_sync(
   state: &mut OpState,
-  args: FsyncArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
+) -> Result<(), AnyError> {
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.sync_all().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot sync this type of resource".to_string())),
   })?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
-  args: FsyncArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -356,22 +339,16 @@ async fn op_fsync_async(
     .await;
 
   (*fs_file).0.as_mut().unwrap().sync_all().await?;
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FstatArgs {
-  rid: ResourceId,
+  Ok(())
 }
 
 fn op_fstat_sync(
   state: &mut OpState,
-  args: FstatArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.fstat");
-  let metadata = StdFileResource::with(state, args.rid, |r| match r {
+  let metadata = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
   })?;
@@ -380,13 +357,10 @@ fn op_fstat_sync(
 
 async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
-  args: FstatArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.fstat");
-
-  let rid = args.rid;
-
   let resource = state
     .borrow_mut()
     .resource_table
@@ -405,17 +379,12 @@ async fn op_fstat_async(
   Ok(get_stat_json(metadata))
 }
 
-#[derive(Deserialize)]
-pub struct UmaskArgs {
-  mask: Option<u32>,
-}
-
 #[allow(clippy::unnecessary_wraps)]
 fn op_umask(
   state: &mut OpState,
-  args: UmaskArgs,
+  mask: Option<u32>,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<u32, AnyError> {
   super::check_unstable(state, "Deno.umask");
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
@@ -430,7 +399,7 @@ fn op_umask(
     use nix::sys::stat::mode_t;
     use nix::sys::stat::umask;
     use nix::sys::stat::Mode;
-    let r = if let Some(mask) = args.mask {
+    let r = if let Some(mask) = mask {
       // If mask provided, return previous.
       umask(Mode::from_bits_truncate(mask as mode_t))
     } else {
@@ -439,24 +408,19 @@ fn op_umask(
       let _ = umask(prev);
       prev
     };
-    Ok(json!(r.bits() as u32))
+    Ok(r.bits() as u32)
   }
-}
-
-#[derive(Deserialize)]
-pub struct ChdirArgs {
-  directory: String,
 }
 
 fn op_chdir(
   state: &mut OpState,
-  args: ChdirArgs,
+  directory: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let d = PathBuf::from(&args.directory);
+) -> Result<(), AnyError> {
+  let d = PathBuf::from(&directory);
   state.borrow::<Permissions>().read.check(&d)?;
   set_current_dir(&d)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -471,7 +435,7 @@ fn op_mkdir_sync(
   state: &mut OpState,
   args: MkdirArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
   state.borrow::<Permissions>().write.check(&path)?;
@@ -484,7 +448,7 @@ fn op_mkdir_sync(
     builder.mode(mode);
   }
   builder.create(path)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_mkdir_async(
@@ -527,7 +491,7 @@ fn op_chmod_sync(
   state: &mut OpState,
   args: ChmodArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
@@ -538,7 +502,7 @@ fn op_chmod_sync(
     use std::os::unix::fs::PermissionsExt;
     let permissions = PermissionsExt::from_mode(mode);
     std::fs::set_permissions(&path, permissions)?;
-    Ok(json!({}))
+    Ok(())
   }
   // TODO Implement chmod for Windows (#4357)
   #[cfg(not(unix))]
@@ -553,7 +517,7 @@ async fn op_chmod_async(
   state: Rc<RefCell<OpState>>,
   args: ChmodArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
@@ -569,7 +533,7 @@ async fn op_chmod_async(
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
       std::fs::set_permissions(&path, permissions)?;
-      Ok(json!({}))
+      Ok(())
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
@@ -595,7 +559,7 @@ fn op_chown_sync(
   state: &mut OpState,
   args: ChownArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   state.borrow::<Permissions>().write.check(&path)?;
   debug!(
@@ -610,7 +574,7 @@ fn op_chown_sync(
     let nix_uid = args.uid.map(Uid::from_raw);
     let nix_gid = args.gid.map(Gid::from_raw);
     chown(&path, nix_uid, nix_gid)?;
-    Ok(json!({}))
+    Ok(())
   }
   // TODO Implement chown for Windows
   #[cfg(not(unix))]
@@ -623,7 +587,7 @@ async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
   args: ChownArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
 
   {
@@ -644,7 +608,7 @@ async fn op_chown_async(
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
       chown(&path, nix_uid, nix_gid)?;
-      Ok(json!({}))
+      Ok(())
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
@@ -665,7 +629,7 @@ fn op_remove_sync(
   state: &mut OpState,
   args: RemoveArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
@@ -700,14 +664,14 @@ fn op_remove_sync(
     // pipes, sockets, etc...
     std::fs::remove_file(&path)?;
   }
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_remove_async(
   state: Rc<RefCell<OpState>>,
   args: RemoveArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
@@ -746,7 +710,7 @@ async fn op_remove_async(
       // pipes, sockets, etc...
       std::fs::remove_file(&path)?;
     }
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -763,7 +727,7 @@ fn op_copy_file_sync(
   state: &mut OpState,
   args: CopyFileArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
@@ -781,14 +745,14 @@ fn op_copy_file_sync(
 
   // returns size of from as u64 (we ignore)
   std::fs::copy(&from, &to)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_copy_file_async(
   state: Rc<RefCell<OpState>>,
   args: CopyFileArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
@@ -810,7 +774,7 @@ async fn op_copy_file_async(
 
     // returns size of from as u64 (we ignore)
     std::fs::copy(&from, &to)?;
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -924,18 +888,12 @@ async fn op_stat_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RealpathArgs {
-  path: String,
-}
-
 fn op_realpath_sync(
   state: &mut OpState,
-  args: RealpathArgs,
+  path: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let path = PathBuf::from(&args.path);
+) -> Result<String, AnyError> {
+  let path = PathBuf::from(&path);
 
   let permissions = state.borrow::<Permissions>();
   permissions.read.check(&path)?;
@@ -948,15 +906,15 @@ fn op_realpath_sync(
   // CreateFile and GetFinalPathNameByHandle on Windows
   let realpath = canonicalize_path(&path)?;
   let realpath_str = into_string(realpath.into_os_string())?;
-  Ok(json!(realpath_str))
+  Ok(realpath_str)
 }
 
 async fn op_realpath_async(
   state: Rc<RefCell<OpState>>,
-  args: RealpathArgs,
+  path: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let path = PathBuf::from(&args.path);
+) -> Result<String, AnyError> {
+  let path = PathBuf::from(&path);
 
   {
     let state = state.borrow();
@@ -973,24 +931,27 @@ async fn op_realpath_async(
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = canonicalize_path(&path)?;
     let realpath_str = into_string(realpath.into_os_string())?;
-    Ok(json!(realpath_str))
+    Ok(realpath_str)
   })
   .await
   .unwrap()
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReadDirArgs {
-  path: String,
+pub struct DirEntry {
+  name: String,
+  is_file: bool,
+  is_directory: bool,
+  is_symlink: bool,
 }
 
 fn op_read_dir_sync(
   state: &mut OpState,
-  args: ReadDirArgs,
+  path: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let path = PathBuf::from(&args.path);
+) -> Result<Vec<DirEntry>, AnyError> {
+  let path = PathBuf::from(&path);
 
   state.borrow::<Permissions>().read.check(&path)?;
 
@@ -1000,27 +961,33 @@ fn op_read_dir_sync(
       let entry = entry.unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
       if let Ok(name) = into_string(entry.file_name()) {
-        Some(json!({
-          "name": name,
-          "isFile": entry.file_type().map_or(false, |file_type| file_type.is_file()),
-          "isDirectory": entry.file_type().map_or(false, |file_type| file_type.is_dir()),
-          "isSymlink": entry.file_type().map_or(false, |file_type| file_type.is_symlink()),
-        }))
+        Some(DirEntry {
+          name,
+          is_file: entry
+            .file_type()
+            .map_or(false, |file_type| file_type.is_file()),
+          is_directory: entry
+            .file_type()
+            .map_or(false, |file_type| file_type.is_dir()),
+          is_symlink: entry
+            .file_type()
+            .map_or(false, |file_type| file_type.is_symlink()),
+        })
       } else {
         None
       }
     })
-  .collect();
+    .collect();
 
-  Ok(json!({ "entries": entries }))
+  Ok(entries)
 }
 
 async fn op_read_dir_async(
   state: Rc<RefCell<OpState>>,
-  args: ReadDirArgs,
+  path: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let path = PathBuf::from(&args.path);
+) -> Result<Vec<DirEntry>, AnyError> {
+  let path = PathBuf::from(&path);
   {
     let state = state.borrow();
     state.borrow::<Permissions>().read.check(&path)?;
@@ -1032,22 +999,28 @@ async fn op_read_dir_async(
         let entry = entry.unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
         if let Ok(name) = into_string(entry.file_name()) {
-          Some(json!({
-            "name": name,
-            "isFile": entry.file_type().map_or(false, |file_type| file_type.is_file()),
-            "isDirectory": entry.file_type().map_or(false, |file_type| file_type.is_dir()),
-            "isSymlink": entry.file_type().map_or(false, |file_type| file_type.is_symlink()),
-          }))
+          Some(DirEntry {
+            name,
+            is_file: entry
+              .file_type()
+              .map_or(false, |file_type| file_type.is_file()),
+            is_directory: entry
+              .file_type()
+              .map_or(false, |file_type| file_type.is_dir()),
+            is_symlink: entry
+              .file_type()
+              .map_or(false, |file_type| file_type.is_symlink()),
+          })
         } else {
           None
         }
       })
-    .collect();
+      .collect();
 
-    Ok(json!({ "entries": entries }))
+    Ok(entries)
   })
   .await
-    .unwrap()
+  .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -1061,7 +1034,7 @@ fn op_rename_sync(
   state: &mut OpState,
   args: RenameArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1071,14 +1044,14 @@ fn op_rename_sync(
   permissions.write.check(&newpath)?;
   debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
   std::fs::rename(&oldpath, &newpath)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_rename_async(
   state: Rc<RefCell<OpState>>,
   args: RenameArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
   {
@@ -1095,7 +1068,7 @@ async fn op_rename_async(
       newpath.display()
     );
     std::fs::rename(&oldpath, &newpath)?;
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -1112,7 +1085,7 @@ fn op_link_sync(
   state: &mut OpState,
   args: LinkArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1124,14 +1097,14 @@ fn op_link_sync(
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
   std::fs::hard_link(&oldpath, &newpath)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_link_async(
   state: Rc<RefCell<OpState>>,
   args: LinkArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1147,7 +1120,7 @@ async fn op_link_async(
   tokio::task::spawn_blocking(move || {
     debug!("op_link_async {} {}", oldpath.display(), newpath.display());
     std::fs::hard_link(&oldpath, &newpath)?;
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -1173,7 +1146,7 @@ fn op_symlink_sync(
   state: &mut OpState,
   args: SymlinkArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1188,7 +1161,7 @@ fn op_symlink_sync(
   {
     use std::os::unix::fs::symlink;
     symlink(&oldpath, &newpath)?;
-    Ok(json!({}))
+    Ok(())
   }
   #[cfg(not(unix))]
   {
@@ -1214,7 +1187,7 @@ fn op_symlink_sync(
         }
       }
     };
-    Ok(json!({}))
+    Ok(())
   }
 }
 
@@ -1222,7 +1195,7 @@ async fn op_symlink_async(
   state: Rc<RefCell<OpState>>,
   args: SymlinkArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -1237,7 +1210,7 @@ async fn op_symlink_async(
     {
       use std::os::unix::fs::symlink;
       symlink(&oldpath, &newpath)?;
-      Ok(json!({}))
+      Ok(())
     }
     #[cfg(not(unix))]
     {
@@ -1263,40 +1236,34 @@ async fn op_symlink_async(
           }
         }
       };
-      Ok(json!({}))
+      Ok(())
     }
   })
   .await
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReadLinkArgs {
-  path: String,
-}
-
 fn op_read_link_sync(
   state: &mut OpState,
-  args: ReadLinkArgs,
+  path: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let path = PathBuf::from(&args.path);
+) -> Result<String, AnyError> {
+  let path = PathBuf::from(&path);
 
   state.borrow::<Permissions>().read.check(&path)?;
 
   debug!("op_read_link_value {}", path.display());
   let target = std::fs::read_link(&path)?.into_os_string();
   let targetstr = into_string(target)?;
-  Ok(json!(targetstr))
+  Ok(targetstr)
 }
 
 async fn op_read_link_async(
   state: Rc<RefCell<OpState>>,
-  args: ReadLinkArgs,
+  path: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let path = PathBuf::from(&args.path);
+) -> Result<String, AnyError> {
+  let path = PathBuf::from(&path);
   {
     let state = state.borrow();
     state.borrow::<Permissions>().read.check(&path)?;
@@ -1305,7 +1272,7 @@ async fn op_read_link_async(
     debug!("op_read_link_async {}", path.display());
     let target = std::fs::read_link(&path)?.into_os_string();
     let targetstr = into_string(target)?;
-    Ok(json!(targetstr))
+    Ok(targetstr)
   })
   .await
   .unwrap()
@@ -1322,7 +1289,7 @@ fn op_ftruncate_sync(
   state: &mut OpState,
   args: FtruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.ftruncate");
   let rid = args.rid;
   let len = args.len as u64;
@@ -1330,14 +1297,14 @@ fn op_ftruncate_sync(
     Ok(std_file) => std_file.set_len(len).map_err(AnyError::from),
     Err(_) => Err(type_error("cannot truncate this type of resource")),
   })?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   args: FtruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable2(&state, "Deno.ftruncate");
   let rid = args.rid;
   let len = args.len as u64;
@@ -1357,7 +1324,7 @@ async fn op_ftruncate_async(
     .await;
 
   (*fs_file).0.as_mut().unwrap().set_len(len).await?;
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -1371,7 +1338,7 @@ fn op_truncate_sync(
   state: &mut OpState,
   args: TruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
@@ -1380,14 +1347,14 @@ fn op_truncate_sync(
   debug!("op_truncate_sync {} {}", path.display(), len);
   let f = std::fs::OpenOptions::new().write(true).open(&path)?;
   f.set_len(len)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_truncate_async(
   state: Rc<RefCell<OpState>>,
   args: TruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = PathBuf::from(&args.path);
   let len = args.len;
   {
@@ -1398,7 +1365,7 @@ async fn op_truncate_async(
     debug!("op_truncate_async {} {}", path.display(), len);
     let f = std::fs::OpenOptions::new().write(true).open(&path)?;
     f.set_len(len)?;
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -1461,7 +1428,7 @@ fn op_make_temp_dir_sync(
   state: &mut OpState,
   args: MakeTempArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1483,14 +1450,14 @@ fn op_make_temp_dir_sync(
   )?;
   let path_str = into_string(path.into_os_string())?;
 
-  Ok(json!(path_str))
+  Ok(path_str)
 }
 
 async fn op_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1514,7 +1481,7 @@ async fn op_make_temp_dir_async(
     )?;
     let path_str = into_string(path.into_os_string())?;
 
-    Ok(json!(path_str))
+    Ok(path_str)
   })
   .await
   .unwrap()
@@ -1524,7 +1491,7 @@ fn op_make_temp_file_sync(
   state: &mut OpState,
   args: MakeTempArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1546,14 +1513,14 @@ fn op_make_temp_file_sync(
   )?;
   let path_str = into_string(path.into_os_string())?;
 
-  Ok(json!(path_str))
+  Ok(path_str)
 }
 
 async fn op_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
@@ -1577,7 +1544,7 @@ async fn op_make_temp_file_async(
     )?;
     let path_str = into_string(path.into_os_string())?;
 
-    Ok(json!(path_str))
+    Ok(path_str)
   })
   .await
   .unwrap()
@@ -1595,7 +1562,7 @@ fn op_futime_sync(
   state: &mut OpState,
   args: FutimeArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.futimeSync");
   let rid = args.rid;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
@@ -1611,14 +1578,14 @@ fn op_futime_sync(
     )),
   })?;
 
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
   args: FutimeArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable2(&state, "Deno.futime");
   let rid = args.rid;
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
@@ -1649,7 +1616,7 @@ async fn op_futime_async(
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_handle_times(&std_file, Some(atime), Some(mtime))?;
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -1667,7 +1634,7 @@ fn op_utime_sync(
   state: &mut OpState,
   args: UtimeArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.utime");
 
   let path = PathBuf::from(&args.path);
@@ -1676,14 +1643,14 @@ fn op_utime_sync(
 
   state.borrow::<Permissions>().write.check(&path)?;
   filetime::set_file_times(path, atime, mtime)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
   args: UtimeArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable(&state.borrow(), "Deno.utime");
 
   let path = PathBuf::from(&args.path);
@@ -1694,7 +1661,7 @@ async fn op_utime_async(
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_times(path, atime, mtime)?;
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -1702,14 +1669,14 @@ async fn op_utime_async(
 
 fn op_cwd(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   let path = current_dir()?;
   state
     .borrow::<Permissions>()
     .read
     .check_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
-  Ok(json!(path_str))
+  Ok(path_str)
 }
