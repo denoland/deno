@@ -1713,26 +1713,27 @@ declare namespace Deno {
   export type Addr = NetAddr | UnixAddr;
 
   /** A generic network listener for stream-oriented protocols. */
-  export interface Listener extends AsyncIterable<Conn> {
+  export interface Listener<Address extends Addr>
+    extends AsyncIterable<Conn<Address>> {
     /** Waits for and resolves to the next connection to the `Listener`. */
-    accept(): Promise<Conn>;
+    accept(): Promise<Conn<Address>>;
     /** Close closes the listener. Any pending accept promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `Listener`. */
-    readonly addr: Addr;
+    readonly addr: Address;
 
     /** Return the rid of the `Listener`. */
     readonly rid: number;
 
-    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<Conn<Address>>;
   }
 
-  export interface Conn extends Reader, Writer, Closer {
+  export interface Conn<Address extends Addr> extends Reader, Writer, Closer {
     /** The local address of the connection. */
-    readonly localAddr: Addr;
+    readonly localAddr: Address;
     /** The remote address of the connection. */
-    readonly remoteAddr: Addr;
+    readonly remoteAddr: Address;
     /** The resource ID of the connection. */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
@@ -1760,7 +1761,7 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport?: "tcp" },
-  ): Listener;
+  ): Listener<NetAddr>;
 
   export interface ListenTlsOptions extends ListenOptions {
     /** Server certificate file. */
@@ -1779,7 +1780,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission. */
-  export function listenTls(options: ListenTlsOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): Listener<NetAddr>;
 
   export interface ConnectOptions {
     /** The port to connect to. */
@@ -1802,7 +1803,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission for "tcp". */
-  export function connect(options: ConnectOptions): Promise<Conn>;
+  export function connect(options: ConnectOptions): Promise<Conn<NetAddr>>;
 
   export interface ConnectTlsOptions {
     /** The port to connect to. */
@@ -1828,7 +1829,9 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(
+    options: ConnectTlsOptions,
+  ): Promise<Conn<NetAddr>>;
 
   /** Shutdown socket send operations.
    *
@@ -1944,10 +1947,10 @@ declare namespace Deno {
      *
      * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
      * manually before the process can exit.
-     * 
+     *
      * To run process to completion and collect output from both `stdout` and
      * `stderr` use:
-     * 
+     *
      * ```ts
      * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
