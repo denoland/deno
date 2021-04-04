@@ -1713,7 +1713,7 @@ declare namespace Deno {
   export type Addr = NetAddr | UnixAddr;
 
   /** A generic network listener for stream-oriented protocols. */
-  export interface Listener<Address extends Addr>
+  export interface Listener<Address extends Addr = Addr>
     extends AsyncIterable<Conn<Address>> {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<Conn<Address>>;
@@ -1729,7 +1729,8 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn<Address>>;
   }
 
-  export interface Conn<Address extends Addr> extends Reader, Writer, Closer {
+  export interface Conn<Address extends Addr = Addr>
+    extends Reader, Writer, Closer {
     /** The local address of the connection. */
     readonly localAddr: Address;
     /** The remote address of the connection. */
