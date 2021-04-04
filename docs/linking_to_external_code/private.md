@@ -60,7 +60,7 @@ variable scoped to the `raw.githubusercontent.com` hostname. For example:
 DENO_AUTH_TOKENS=a1b2c3d4e5f6@raw.githubusercontent.com
 ```
 
-This should allow Deno to access any modules that the user who the token was
+This should allow `Deno` to access any modules that the user to who the token was
 issued for has access to.
 
 When the token is incorrect, or the user does not have access to the module,
