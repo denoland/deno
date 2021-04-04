@@ -106,10 +106,7 @@ impl<'a, 'b> ArraySerializer<'a, 'b> {
       Some(len) => Vec::with_capacity(len),
       None => vec![],
     };
-    Self {
-      scope,
-      pending,
-    }
+    Self { scope, pending }
   }
 }
 
