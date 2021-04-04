@@ -337,13 +337,6 @@ pub async fn op_webcrypto_generate_key(
         .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
         .into();
       let rng = RingRand::SystemRandom::new();
-
-      // if let Some(length) = args.algorithm.length {
-      //   let mut alg = hash.digest_algorithm();
-      //   alg.output_len = length as usize;
-      //   alg.chaining_len = length as usize;
-      // };
-
       let key: HmacKey = tokio::task::spawn_blocking(
         move || -> Result<HmacKey, ring::error::Unspecified> {
           HmacKey::generate(hash, &rng)
