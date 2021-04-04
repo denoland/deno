@@ -109,10 +109,9 @@ async fn accept_tcp(
 
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: AcceptArgs,
   _buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, _buf).await,
     #[cfg(unix)]
@@ -163,10 +162,9 @@ async fn receive_udp(
 
 async fn op_datagram_receive(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ReceiveArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: ReceiveArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
     #[cfg(unix)]
