@@ -33,15 +33,21 @@ Metrics is Deno's internal counter for various statistics.
 
 ```shell
 > console.table(Deno.metrics())
-┌──────────────────┬────────┐
-│     (index)      │ Values │
-├──────────────────┼────────┤
-│  opsDispatched   │   9    │
-│   opsCompleted   │   9    │
-│ bytesSentControl │  504   │
-│  bytesSentData   │   0    │
-│  bytesReceived   │  856   │
-└──────────────────┴────────┘
+┌─────────────────────────┬───────────┐
+│          (idx)          │  Values   │
+├─────────────────────────┼───────────┤
+│      opsDispatched      │    0      │
+│    opsDispatchedSync    │    0      │
+│   opsDispatchedAsync    │    0      │
+│ opsDispatchedAsyncUnref │    0      │
+│      opsCompleted       │    0      │
+│    opsCompletedSync     │    0      │
+│    opsCompletedAsync    │    0      │
+│ opsCompletedAsyncUnref  │    0      │
+│    bytesSentControl     │   504     │
+│      bytesSentData      │    0      │
+│      bytesReceived      │   856     │
+└─────────────────────────┴───────────┘
 ```
 
 ### Schematic diagram
