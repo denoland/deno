@@ -44,23 +44,23 @@ impl PermissionState {
     let access = format!(
       "{} access{}",
       name,
-      info.map_or(Default::default(), |info| { format!(" to {}", info) }),
+      info.map_or(String::new(), |info| { format!(" to {}", info) }),
     );
-    if self == PermissionState::Granted {
+    if self == PermissionState::Granted
+      || (prompt
+        && self == PermissionState::Prompt
+        && permission_prompt(&access))
+    {
       log_perm_access(&access);
       Ok(())
     } else {
-      if prompt && self == PermissionState::Prompt && permission_prompt(&access)
-      {
-        log_perm_access(&access);
-        return Ok(());
-      }
-
-      let message = format!(
-        "Requires {}, run again with the --allow-{} flag",
-        access, name
-      );
-      Err(custom_error("PermissionDenied", message))
+      Err(custom_error(
+        "PermissionDenied",
+        format!(
+          "Requires {}, run again with the --allow-{} flag",
+          access, name
+        ),
+      ))
     }
   }
 }
