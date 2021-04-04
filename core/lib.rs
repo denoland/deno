@@ -65,7 +65,6 @@ pub use crate::ops::OpResponse;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::ops::PromiseId;
-pub use crate::ops::Serializable;
 pub use crate::ops_bin::bin_op_async;
 pub use crate::ops_bin::bin_op_sync;
 pub use crate::ops_bin::ValueOrVector;
@@ -79,7 +78,6 @@ pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
-pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 
 pub fn v8_version() -> &'static str {

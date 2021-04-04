@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
@@ -11,7 +12,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::JsRuntime;
@@ -94,7 +94,7 @@ pub struct CheckPermissionArgs {
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
   args: CheckPermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -116,7 +116,7 @@ pub struct CreateArgs {
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -223,11 +223,11 @@ pub struct SendArgs {
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
-  bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(bufs[0].to_vec()),
+    "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };
@@ -254,7 +254,7 @@ pub struct CloseArgs {
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
@@ -284,7 +284,7 @@ pub struct NextEventArgs {
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   args: NextEventArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow_mut()

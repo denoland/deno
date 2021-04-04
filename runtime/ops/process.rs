@@ -12,7 +12,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -85,7 +84,7 @@ impl ChildResource {
 fn op_run(
   state: &mut OpState,
   run_args: RunArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   state.borrow::<Permissions>().run.check()?;
 
@@ -185,7 +184,7 @@ pub struct RunStatusArgs {
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   args: RunStatusArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -280,7 +279,7 @@ struct KillArgs {
 fn op_kill(
   state: &mut OpState,
   args: KillArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow::<Permissions>().run.check()?;

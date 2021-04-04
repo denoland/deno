@@ -50,7 +50,7 @@ pub struct CreateCommandEncoderArgs {
 pub fn op_webgpu_create_command_encoder(
   state: &mut OpState,
   args: CreateCommandEncoderArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -116,7 +116,7 @@ pub struct CommandEncoderBeginRenderPassArgs {
 pub fn op_webgpu_command_encoder_begin_render_pass(
   state: &mut OpState,
   args: CommandEncoderBeginRenderPassArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table
@@ -251,7 +251,7 @@ pub struct CommandEncoderBeginComputePassArgs {
 pub fn op_webgpu_command_encoder_begin_compute_pass(
   state: &mut OpState,
   args: CommandEncoderBeginComputePassArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table
@@ -292,7 +292,7 @@ pub struct CommandEncoderCopyBufferToBufferArgs {
 pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -361,7 +361,7 @@ pub struct CommandEncoderCopyBufferToTextureArgs {
 pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToTextureArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -424,7 +424,7 @@ pub struct CommandEncoderCopyTextureToBufferArgs {
 pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -486,7 +486,7 @@ pub struct CommandEncoderCopyTextureToTextureArgs {
 pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToTextureArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -550,7 +550,7 @@ pub struct CommandEncoderPushDebugGroupArgs {
 pub fn op_webgpu_command_encoder_push_debug_group(
   state: &mut OpState,
   args: CommandEncoderPushDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -575,7 +575,7 @@ pub struct CommandEncoderPopDebugGroupArgs {
 pub fn op_webgpu_command_encoder_pop_debug_group(
   state: &mut OpState,
   args: CommandEncoderPopDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -599,7 +599,7 @@ pub struct CommandEncoderInsertDebugMarkerArgs {
 pub fn op_webgpu_command_encoder_insert_debug_marker(
   state: &mut OpState,
   args: CommandEncoderInsertDebugMarkerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -627,7 +627,7 @@ pub struct CommandEncoderWriteTimestampArgs {
 pub fn op_webgpu_command_encoder_write_timestamp(
   state: &mut OpState,
   args: CommandEncoderWriteTimestampArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -665,7 +665,7 @@ pub struct CommandEncoderResolveQuerySetArgs {
 pub fn op_webgpu_command_encoder_resolve_query_set(
   state: &mut OpState,
   args: CommandEncoderResolveQuerySetArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -706,7 +706,7 @@ pub struct CommandEncoderFinishArgs {
 pub fn op_webgpu_command_encoder_finish(
   state: &mut OpState,
   args: CommandEncoderFinishArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table

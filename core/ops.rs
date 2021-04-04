@@ -22,7 +22,6 @@ use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub use erased_serde::Serialize as Serializable;
 pub type PromiseId = u64;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
 pub type OpFn =
@@ -60,7 +59,7 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
 }
 
 pub enum OpResponse {
-  Value(Box<dyn Serializable>),
+  Value(Box<dyn serde_v8::Serializable>),
   Buffer(Box<[u8]>),
 }
 
@@ -191,7 +190,7 @@ impl Default for OpTable {
 pub fn op_resources(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let serialized_resources: HashMap<u32, String> = state
     .resource_table
@@ -207,7 +206,7 @@ pub fn op_resources(
 pub fn op_close(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args
     .get("rid")
