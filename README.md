@@ -1,6 +1,6 @@
 # Deno
 
-[![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
+[![Build Status - Cirrus][]][build status] [![Twitter handle][]][twitter badge] [![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
 <img align="right" src=docs/images/deno3.png height="150px">
 
@@ -92,7 +92,7 @@ We appreciate your help!
 To contribute, please read our
 [guidelines](https://github.com/denoland/deno/blob/main/docs/contributing/style_guide.md).
 
-[Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
-[Build status]: https://github.com/denoland/deno/actions
-[Twitter badge]: https://twitter.com/intent/follow?screen_name=deno_land
-[Twitter handle]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
+[build status - cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
+[build status]: https://github.com/denoland/deno/actions
+[twitter badge]: https://twitter.com/intent/follow?screen_name=deno_land
+[twitter handle]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
