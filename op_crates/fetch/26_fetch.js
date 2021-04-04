@@ -888,25 +888,25 @@
   }
 
   /**
-   * @param {{rid: number}} args
+   * @param {number} rid
    * @returns {Promise<{status: number, statusText: string, headers: Record<string,string[]>, url: string, responseRid: number}>}
    */
-  function opFetchSend(args) {
-    return core.jsonOpAsync("op_fetch_send", args);
+  function opFetchSend(rid) {
+    return core.jsonOpAsync("op_fetch_send", rid);
   }
 
   /**
-   * @param {{rid: number}} args 
+   * @param {number} rid 
    * @param {Uint8Array} body 
    * @returns {Promise<void>}
    */
-  function opFetchRequestWrite(args, body) {
+  function opFetchRequestWrite(rid, body) {
     const zeroCopy = new Uint8Array(
       body.buffer,
       body.byteOffset,
       body.byteLength,
     );
-    return core.jsonOpAsync("op_fetch_request_write", args, zeroCopy);
+    return core.jsonOpAsync("op_fetch_request_write", rid, zeroCopy);
   }
 
   const NULL_BODY_STATUS = [101, 204, 205, 304];
@@ -1276,7 +1276,7 @@
          */
         async write(chunk, controller) {
           try {
-            await opFetchRequestWrite({ rid: requestBodyRid }, chunk);
+            await opFetchRequestWrite(requestBodyRid, chunk);
           } catch (err) {
             controller.error(err);
           }
@@ -1288,7 +1288,7 @@
       body.pipeTo(writer);
     }
 
-    return await opFetchSend({ rid: requestRid });
+    return await opFetchSend(requestRid);
   }
 
   /**
@@ -1400,9 +1400,9 @@
           async pull(controller) {
             try {
               const chunk = new Uint8Array(16 * 1024 + 256);
-              const { read } = await core.jsonOpAsync(
+              const read = await core.jsonOpAsync(
                 "op_fetch_response_read",
-                { rid },
+                rid,
                 chunk,
               );
               if (read != 0) {
