@@ -358,7 +358,7 @@
       ],
       "patched-global.any.js": true,
       "reentrant-strategies.any.js": true,
-      "tee.any.js": true,
+      "tee.any.js": false,
       "templated.any.js": [
         "ReadableStream (empty) reader: canceling via the stream should fail"
       ]
