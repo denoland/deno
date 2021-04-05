@@ -21,7 +21,12 @@
   }
 
   function systemCpuInfo() {
-    return core.jsonOpSync("op_system_cpu_info");
+    const { cores, speed } = core.jsonOpSync("op_system_cpu_info");
+    // Map nulls to undefined for compatibility
+    return {
+      cores: cores ?? undefined,
+      speed: speed ?? undefined,
+    };
   }
 
   // This is an internal only method used by the test harness to override the
@@ -53,7 +58,7 @@
   }
 
   function getEnv(key) {
-    return core.jsonOpSync("op_get_env", key);
+    return core.jsonOpSync("op_get_env", key) ?? undefined;
   }
 
   function deleteEnv(key) {
