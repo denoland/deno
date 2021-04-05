@@ -152,7 +152,7 @@ fn op_os_release(
   Ok(release)
 }
 
-// Copied from sys-info/lib.rs (then tweaked) 
+// Copied from sys-info/lib.rs (then tweaked)
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemInfo {
