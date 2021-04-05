@@ -90,7 +90,7 @@ unitTest(async function blobStream(): Promise<void> {
     }
   };
   await read();
-  const decoder = new TextDecoder()
+  const decoder = new TextDecoder();
   assertEquals(decoder.decode(bytes), "Hello World");
 });
 
