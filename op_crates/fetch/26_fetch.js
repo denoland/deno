@@ -884,7 +884,7 @@
     if (body != null) {
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
     }
-    return core.jsonOpSync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+    return core.jsonOpSync("op_fetch", args, zeroCopy);
   }
 
   /**
