@@ -17,6 +17,6 @@ declare namespace globalThis {
       byteLength(b64: string): number;
       toByteArray(b64: string): Uint8Array;
       fromByteArray(uint8: Uint8Array): string;
-    }
+    };
   }
 }
