@@ -391,7 +391,7 @@ fn op_umask(
   // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
   #[cfg(not(unix))]
   {
-    let _ = args.mask; // avoid unused warning.
+    let _ = mask; // avoid unused warning.
     Err(not_supported())
   }
   #[cfg(unix)]

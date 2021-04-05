@@ -145,7 +145,7 @@ fn op_set_raw(
       return Err(Error::last_os_error().into());
     }
 
-    Ok(json!({}))
+    Ok(())
   }
   #[cfg(unix)]
   {
