@@ -123,9 +123,9 @@ declare namespace Deno {
 
   export interface SystemCpuInfo {
     /** Total number of logical cpus in the system */
-    cores: number | undefined;
+    cores: number | null;
     /** The speed of the cpu measured in MHz */
-    speed: number | undefined;
+    speed: number | null;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.

@@ -185,7 +185,7 @@ declare namespace Deno {
      * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
      * ```
      * Requires `allow-env` permission. */
-    get(key: string): string | undefined;
+    get(key: string): string | null;
 
     /** Set the value of an environment variable.
      *
