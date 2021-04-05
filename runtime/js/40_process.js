@@ -4,7 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { File } = window.__bootstrap.files;
-  const { readAll } = window.__bootstrap.buffer;
+  const { readAll } = window.__bootstrap.io;
   const { assert, pathFromURL } = window.__bootstrap.util;
 
   function opKill(pid, signo) {

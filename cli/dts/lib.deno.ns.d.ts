@@ -405,9 +405,9 @@ declare namespace Deno {
    *
    * ```ts
    * const source = await Deno.open("my_file.txt");
-   * const buffer = new Deno.Buffer()
    * const bytesCopied1 = await Deno.copy(source, Deno.stdout);
-   * const bytesCopied2 = await Deno.copy(source, buffer);
+   * const destination = await Deno.create("my_file_2.txt");
+   * const bytesCopied2 = await Deno.copy(source, destination);
    * ```
    *
    * @param src The source to copy from
@@ -837,7 +837,10 @@ declare namespace Deno {
    */
   export function isatty(rid: number): boolean;
 
-  /** A variable-sized buffer of bytes with `read()` and `write()` methods.
+  /**
+   * @deprecated Use Buffer from https://deno.land/std/io/buffer.ts instead. Deno.Buffer will be removed in Deno 2.0.
+   * 
+   * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Deno.Buffer is almost always used with some I/O like files and sockets. It
    * allows one to buffer up a download from a socket. Buffer grows and shrinks
@@ -917,7 +920,10 @@ declare namespace Deno {
     readFromSync(r: ReaderSync): number;
   }
 
-  /** Read Reader `r` until EOF (`null`) and resolve to the content as
+  /**
+   * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * 
+   * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
    * ```ts
@@ -938,7 +944,10 @@ declare namespace Deno {
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
-  /** Synchronously reads Reader `r` until EOF (`null`) and returns the content
+  /**
+   * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
+   * 
+   * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
    * ```ts
@@ -959,7 +968,10 @@ declare namespace Deno {
    */
   export function readAllSync(r: ReaderSync): Uint8Array;
 
-  /** Write all the content of the array buffer (`arr`) to the writer (`w`).
+  /**
+   * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * 
+   * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
    * // Example writing to stdout
@@ -981,7 +993,10 @@ declare namespace Deno {
    */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
-  /** Synchronously write all the content of the array buffer (`arr`) to the
+  /**
+   * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
+   * 
+   * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
    * ```ts
