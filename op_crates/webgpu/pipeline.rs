@@ -2,12 +2,11 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 
 use super::error::{WebGpuError, WebGpuResult};
@@ -223,11 +222,19 @@ pub struct ComputePipelineGetBindGroupLayoutArgs {
   index: u32,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineLayout {
+  rid: ResourceId,
+  label: String,
+  err: Option<WebGpuError>,
+}
+
 pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   state: &mut OpState,
   args: ComputePipelineGetBindGroupLayoutArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<PipelineLayout, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
     .resource_table
@@ -243,11 +250,11 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
     .resource_table
     .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
 
-  Ok(json!({
-    "rid": rid,
-    "label": label,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(PipelineLayout {
+    rid,
+    label,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }
 
 #[derive(Deserialize)]
@@ -612,7 +619,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   state: &mut OpState,
   args: RenderPipelineGetBindGroupLayoutArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<PipelineLayout, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table
@@ -628,9 +635,9 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
     .resource_table
     .add(super::binding::WebGpuBindGroupLayout(bind_group_layout));
 
-  Ok(json!({
-    "rid": rid,
-    "label": label,
-    "err": maybe_err.map(WebGpuError::from),
-  }))
+  Ok(PipelineLayout {
+    rid,
+    label,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }

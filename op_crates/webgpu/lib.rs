@@ -4,13 +4,12 @@
 
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -113,73 +112,75 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webgpu.d.ts")
 }
 
-fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
-  let mut return_features: Vec<&str> = vec![];
+fn deserialize_features(features: &wgpu_types::Features) -> Vec<String> {
+  let mut return_features: Vec<String> = vec![];
 
   if features.contains(wgpu_types::Features::DEPTH_CLAMPING) {
-    return_features.push("depth-clamping");
+    return_features.push("depth-clamping".to_string());
   }
   if features.contains(wgpu_types::Features::PIPELINE_STATISTICS_QUERY) {
-    return_features.push("pipeline-statistics-query");
+    return_features.push("pipeline-statistics-query".to_string());
   }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_BC) {
-    return_features.push("texture-compression-bc");
+    return_features.push("texture-compression-bc".to_string());
   }
   if features.contains(wgpu_types::Features::TIMESTAMP_QUERY) {
-    return_features.push("timestamp-query");
+    return_features.push("timestamp-query".to_string());
   }
 
   // extended from spec
   if features.contains(wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS) {
-    return_features.push("mappable-primary-buffers");
+    return_features.push("mappable-primary-buffers".to_string());
   }
   if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY) {
-    return_features.push("sampled-texture-binding-array");
+    return_features.push("sampled-texture-binding-array".to_string());
   }
   if features
     .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING)
   {
-    return_features.push("sampled-texture-array-dynamic-indexing");
+    return_features.push("sampled-texture-array-dynamic-indexing".to_string());
   }
   if features
     .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING)
   {
-    return_features.push("sampled-texture-array-non-uniform-indexing");
+    return_features
+      .push("sampled-texture-array-non-uniform-indexing".to_string());
   }
   if features.contains(wgpu_types::Features::UNSIZED_BINDING_ARRAY) {
-    return_features.push("unsized-binding-array");
+    return_features.push("unsized-binding-array".to_string());
   }
   if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT) {
-    return_features.push("multi-draw-indirect");
+    return_features.push("multi-draw-indirect".to_string());
   }
   if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT) {
-    return_features.push("multi-draw-indirect-count");
+    return_features.push("multi-draw-indirect-count".to_string());
   }
   if features.contains(wgpu_types::Features::PUSH_CONSTANTS) {
-    return_features.push("push-constants");
+    return_features.push("push-constants".to_string());
   }
   if features.contains(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER) {
-    return_features.push("address-mode-clamp-to-border");
+    return_features.push("address-mode-clamp-to-border".to_string());
   }
   if features.contains(wgpu_types::Features::NON_FILL_POLYGON_MODE) {
-    return_features.push("non-fill-polygon-mode");
+    return_features.push("non-fill-polygon-mode".to_string());
   }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2) {
-    return_features.push("texture-compression-etc2");
+    return_features.push("texture-compression-etc2".to_string());
   }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR) {
-    return_features.push("texture-compression-astc-ldr");
+    return_features.push("texture-compression-astc-ldr".to_string());
   }
   if features
     .contains(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
   {
-    return_features.push("texture-adapter-specific-format-features");
+    return_features
+      .push("texture-adapter-specific-format-features".to_string());
   }
   if features.contains(wgpu_types::Features::SHADER_FLOAT64) {
-    return_features.push("shader-float64");
+    return_features.push("shader-float64".to_string());
   }
   if features.contains(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT) {
-    return_features.push("vertex-attribute-64bit");
+    return_features.push("vertex-attribute-64bit".to_string());
   }
 
   return_features
@@ -191,11 +192,27 @@ pub struct RequestAdapterArgs {
   power_preference: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum GpuFeaturesOrErr {
+  Error { err: String },
+  Features(GpuFeatures),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuFeatures {
+  rid: ResourceId,
+  name: Option<String>,
+  limits: wgpu_types::Limits,
+  features: Vec<String>,
+}
+
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<GpuFeaturesOrErr, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
   let instance = if let Some(instance) = state.try_borrow::<Instance>() {
@@ -231,9 +248,9 @@ pub async fn op_webgpu_request_adapter(
   let adapter = match res {
     Ok(adapter) => adapter,
     Err(err) => {
-      return Ok(json!({
-        "err": err.to_string()
-      }))
+      return Ok(GpuFeaturesOrErr::Error {
+        err: err.to_string(),
+      })
     }
   };
   let name = gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
@@ -243,25 +260,13 @@ pub async fn op_webgpu_request_adapter(
   let adapter_limits =
     gfx_select!(adapter => instance.adapter_limits(adapter))?;
 
-  let limits = json!({
-    "maxBindGroups": adapter_limits.max_bind_groups,
-    "maxDynamicUniformBuffersPerPipelineLayout": adapter_limits.max_dynamic_uniform_buffers_per_pipeline_layout,
-    "maxDynamicStorageBuffersPerPipelineLayout": adapter_limits.max_dynamic_storage_buffers_per_pipeline_layout,
-    "maxSampledTexturesPerShaderStage": adapter_limits.max_sampled_textures_per_shader_stage,
-    "maxSamplersPerShaderStage": adapter_limits.max_samplers_per_shader_stage,
-    "maxStorageBuffersPerShaderStage": adapter_limits.max_storage_buffers_per_shader_stage,
-    "maxStorageTexturesPerShaderStage": adapter_limits.max_storage_textures_per_shader_stage,
-    "maxUniformBuffersPerShaderStage": adapter_limits.max_uniform_buffers_per_shader_stage,
-    "maxUniformBufferBindingSize": adapter_limits.max_uniform_buffer_binding_size
-  });
-
   let rid = state.resource_table.add(WebGpuAdapter(adapter));
 
-  Ok(json!({
-    "rid": rid,
-    "name": name,
-    "features": features,
-    "limits": limits
+  Ok(GpuFeaturesOrErr::Features(GpuFeatures {
+    rid,
+    name: Some(name),
+    features,
+    limits: adapter_limits,
   }))
 }
 
@@ -300,7 +305,7 @@ pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<GpuFeatures, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
@@ -437,25 +442,15 @@ pub async fn op_webgpu_request_device(
     gfx_select!(device => instance.device_features(device))?;
   let features = deserialize_features(&device_features);
   let limits = gfx_select!(device => instance.device_limits(device))?;
-  let json_limits = json!({
-     "maxBindGroups": limits.max_bind_groups,
-     "maxDynamicUniformBuffersPerPipelineLayout": limits.max_dynamic_uniform_buffers_per_pipeline_layout,
-     "maxDynamicStorageBuffersPerPipelineLayout": limits.max_dynamic_storage_buffers_per_pipeline_layout,
-     "maxSampledTexturesPerShaderStage": limits.max_sampled_textures_per_shader_stage,
-     "maxSamplersPerShaderStage": limits.max_samplers_per_shader_stage,
-     "maxStorageBuffersPerShaderStage": limits.max_storage_buffers_per_shader_stage,
-     "maxStorageTexturesPerShaderStage": limits.max_storage_textures_per_shader_stage,
-     "maxUniformBuffersPerShaderStage": limits.max_uniform_buffers_per_shader_stage,
-     "maxUniformBufferBindingSize": limits.max_uniform_buffer_binding_size,
-  });
 
   let rid = state.resource_table.add(WebGpuDevice(device));
 
-  Ok(json!({
-    "rid": rid,
-    "features": features,
-    "limits": json_limits,
-  }))
+  Ok(GpuFeatures {
+    rid,
+    name: None,
+    features,
+    limits,
+  })
 }
 
 #[derive(Deserialize)]
