@@ -4,6 +4,7 @@ use crate::error::bad_resource_id;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
+use crate::resources::ResourceId;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
 use crate::ZeroCopyBuf;
@@ -12,10 +13,7 @@ use indexmap::IndexMap;
 use rusty_v8 as v8;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use serde_json::json;
-use serde_json::Value;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::iter::once;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -189,15 +187,15 @@ impl Default for OpTable {
 /// This op must be wrapped in `json_op_sync`.
 pub fn op_resources(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let serialized_resources: HashMap<u32, String> = state
+) -> Result<Vec<(u32, String)>, AnyError> {
+  let serialized_resources = state
     .resource_table
     .names()
     .map(|(rid, name)| (rid, name.to_string()))
     .collect();
-  Ok(json!(serialized_resources))
+  Ok(serialized_resources)
 }
 
 /// Remove a resource from the resource table.
@@ -205,20 +203,15 @@ pub fn op_resources(
 /// This op must be wrapped in `json_op_sync`.
 pub fn op_close(
   state: &mut OpState,
-  args: Value,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args
-    .get("rid")
-    .and_then(Value::as_u64)
-    .ok_or_else(|| type_error("missing or invalid `rid`"))?;
-
+) -> Result<(), AnyError> {
   state
     .resource_table
-    .close(rid as u32)
+    .close(rid)
     .ok_or_else(bad_resource_id)?;
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[cfg(test)]
