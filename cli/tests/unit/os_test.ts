@@ -23,7 +23,7 @@ unitTest({ perms: { env: true } }, function envNotFound(): void {
 unitTest({ perms: { env: true } }, function deleteEnv(): void {
   Deno.env.set("TEST_VAR", "A");
   assertEquals(Deno.env.get("TEST_VAR"), "A");
-  assertEquals(Deno.env.delete("TEST_VAR"), null);
+  assertEquals(Deno.env.delete("TEST_VAR"), undefined);
   assertEquals(Deno.env.get("TEST_VAR"), null);
 });
 
