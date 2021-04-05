@@ -1,10 +1,6 @@
 # Deno
 
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
-[![Badge-Discord]][Link-Discord]
-
-[Link-Discord]: https://discord.gg/deno "Discord"
-[Badge-Discord]: https://img.shields.io/discord/629491597070827530?logo=discord "chat on discord"
 
 <img align="right" src=docs/images/deno3.png height="150px">
 
