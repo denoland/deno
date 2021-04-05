@@ -194,14 +194,14 @@ pub struct RequestAdapterArgs {
 
 #[derive(Serialize)]
 #[serde(untagged)]
-pub enum GpuFeaturesOrErr {
+pub enum GpuAdapterDeviceOrErr {
   Error { err: String },
-  Features(GpuFeatures),
+  Features(GpuAdapterDevice),
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GpuFeatures {
+pub struct GpuAdapterDevice {
   rid: ResourceId,
   name: Option<String>,
   limits: wgpu_types::Limits,
@@ -212,7 +212,7 @@ pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<GpuFeaturesOrErr, AnyError> {
+) -> Result<GpuAdapterDeviceOrErr, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
   let instance = if let Some(instance) = state.try_borrow::<Instance>() {
@@ -248,7 +248,7 @@ pub async fn op_webgpu_request_adapter(
   let adapter = match res {
     Ok(adapter) => adapter,
     Err(err) => {
-      return Ok(GpuFeaturesOrErr::Error {
+      return Ok(GpuAdapterDeviceOrErr::Error {
         err: err.to_string(),
       })
     }
@@ -262,7 +262,7 @@ pub async fn op_webgpu_request_adapter(
 
   let rid = state.resource_table.add(WebGpuAdapter(adapter));
 
-  Ok(GpuFeaturesOrErr::Features(GpuFeatures {
+  Ok(GpuAdapterDeviceOrErr::Features(GpuAdapterDevice {
     rid,
     name: Some(name),
     features,
@@ -305,7 +305,7 @@ pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<GpuFeatures, AnyError> {
+) -> Result<GpuAdapterDevice, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
@@ -445,7 +445,7 @@ pub async fn op_webgpu_request_device(
 
   let rid = state.resource_table.add(WebGpuDevice(device));
 
-  Ok(GpuFeatures {
+  Ok(GpuAdapterDevice {
     rid,
     name: None,
     features,
