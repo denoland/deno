@@ -205,7 +205,7 @@ pub fn op_webgpu_create_bind_group_layout(
     .resource_table
     .add(WebGpuBindGroupLayout(bind_group_layout));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -254,7 +254,7 @@ pub fn op_webgpu_create_pipeline_layout(
     .resource_table
     .add(super::pipeline::WebGpuPipelineLayout(pipeline_layout));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -348,5 +348,5 @@ pub fn op_webgpu_create_bind_group(
 
   let rid = state.resource_table.add(WebGpuBindGroup(bind_group));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }

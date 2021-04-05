@@ -184,7 +184,7 @@ pub fn op_webgpu_create_texture(
 
   let rid = state.resource_table.add(WebGpuTexture(texture));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -245,5 +245,5 @@ pub fn op_webgpu_create_texture_view(
 
   let rid = state.resource_table.add(WebGpuTextureView(texture_view));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }

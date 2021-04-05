@@ -2,8 +2,6 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
@@ -73,7 +71,7 @@ pub fn op_webgpu_create_command_encoder(
     .resource_table
     .add(WebGpuCommandEncoder(command_encoder));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -114,7 +112,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   state: &mut OpState,
   args: CommandEncoderBeginRenderPassArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
     .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
@@ -233,9 +231,7 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       render_pass,
     )));
 
-  Ok(json!({
-    "rid": rid,
-  }))
+  Ok(WebGpuResult::rid(rid))
 }
 
 #[derive(Deserialize)]
@@ -249,7 +245,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
   state: &mut OpState,
   args: CommandEncoderBeginComputePassArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
     .get::<WebGpuCommandEncoder>(args.command_encoder_rid)
@@ -270,9 +266,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
       compute_pass,
     )));
 
-  Ok(json!({
-    "rid": rid,
-  }))
+  Ok(WebGpuResult::rid(rid))
 }
 
 #[derive(Deserialize)]
@@ -725,5 +719,5 @@ pub fn op_webgpu_command_encoder_finish(
     .resource_table
     .add(WebGpuCommandBuffer(command_buffer));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }

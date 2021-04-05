@@ -544,5 +544,5 @@ pub fn op_webgpu_create_query_set(
 
   let rid = state.resource_table.add(WebGpuQuerySet(query_set));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }

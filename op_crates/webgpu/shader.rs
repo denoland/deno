@@ -75,5 +75,5 @@ pub fn op_webgpu_create_shader_module(
 
   let rid = state.resource_table.add(WebGpuShaderModule(shader_module));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }

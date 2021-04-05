@@ -121,5 +121,5 @@ pub fn op_webgpu_create_sampler(
 
   let rid = state.resource_table.add(WebGpuSampler(sampler));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }

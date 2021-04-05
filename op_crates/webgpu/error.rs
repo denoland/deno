@@ -36,7 +36,17 @@ pub struct WebGpuResult {
 }
 
 impl WebGpuResult {
-  pub fn rid<T: Into<WebGpuError>>(rid: ResourceId, err: Option<T>) -> Self {
+  pub fn rid(rid: ResourceId) -> Self {
+    Self {
+      rid: Some(rid),
+      err: None,
+    }
+  }
+
+  pub fn rid_err<T: Into<WebGpuError>>(
+    rid: ResourceId,
+    err: Option<T>,
+  ) -> Self {
     Self {
       rid: Some(rid),
       err: err.map(|e| e.into()),

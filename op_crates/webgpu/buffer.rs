@@ -4,8 +4,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -70,7 +68,7 @@ pub fn op_webgpu_create_buffer(
 
   let rid = state.resource_table.add(WebGpuBuffer(buffer));
 
-  Ok(WebGpuResult::rid(rid, maybe_err))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -176,7 +174,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: BufferGetMappedRangeArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
@@ -201,9 +199,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .resource_table
     .add(WebGpuBufferMapped(slice_pointer, args.size as usize));
 
-  Ok(json!({
-    "rid": rid,
-  }))
+  Ok(WebGpuResult::rid(rid))
 }
 
 #[derive(Deserialize)]
