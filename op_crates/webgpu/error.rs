@@ -59,6 +59,13 @@ impl WebGpuResult {
       err: err.map(|e| e.into()),
     }
   }
+
+  pub fn empty() -> Self {
+    Self {
+      rid: None,
+      err: None,
+    }
+  }
 }
 
 #[derive(Serialize)]

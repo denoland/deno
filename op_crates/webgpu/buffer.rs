@@ -85,7 +85,7 @@ pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
   args: BufferGetMapAsyncArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
   let device;
@@ -159,7 +159,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   tokio::try_join!(device_poll_fut, receiver_fut)?;
 
-  Ok(())
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
