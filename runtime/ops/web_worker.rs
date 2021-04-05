@@ -16,14 +16,14 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_worker_post_message",
-    move |_state, _args: Value, buf| {
+    move |_state, _args: (), buf| {
       let buf = buf.ok_or_else(null_opbuf)?;
       let msg_buf: Box<[u8]> = (*buf).into();
       sender_
         .clone()
         .try_send(WorkerEvent::Message(msg_buf))
         .expect("Failed to post message to host");
-      Ok(json!({}))
+      Ok(())
     },
   );
 
