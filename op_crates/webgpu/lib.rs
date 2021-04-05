@@ -112,75 +112,73 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webgpu.d.ts")
 }
 
-fn deserialize_features(features: &wgpu_types::Features) -> Vec<String> {
-  let mut return_features: Vec<String> = vec![];
+fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
+  let mut return_features: Vec<&'static str> = vec![];
 
   if features.contains(wgpu_types::Features::DEPTH_CLAMPING) {
-    return_features.push("depth-clamping".to_string());
+    return_features.push("depth-clamping");
   }
   if features.contains(wgpu_types::Features::PIPELINE_STATISTICS_QUERY) {
-    return_features.push("pipeline-statistics-query".to_string());
+    return_features.push("pipeline-statistics-query");
   }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_BC) {
-    return_features.push("texture-compression-bc".to_string());
+    return_features.push("texture-compression-bc");
   }
   if features.contains(wgpu_types::Features::TIMESTAMP_QUERY) {
-    return_features.push("timestamp-query".to_string());
+    return_features.push("timestamp-query");
   }
 
   // extended from spec
   if features.contains(wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS) {
-    return_features.push("mappable-primary-buffers".to_string());
+    return_features.push("mappable-primary-buffers");
   }
   if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY) {
-    return_features.push("sampled-texture-binding-array".to_string());
+    return_features.push("sampled-texture-binding-array");
   }
   if features
     .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING)
   {
-    return_features.push("sampled-texture-array-dynamic-indexing".to_string());
+    return_features.push("sampled-texture-array-dynamic-indexing");
   }
   if features
     .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING)
   {
-    return_features
-      .push("sampled-texture-array-non-uniform-indexing".to_string());
+    return_features.push("sampled-texture-array-non-uniform-indexing");
   }
   if features.contains(wgpu_types::Features::UNSIZED_BINDING_ARRAY) {
-    return_features.push("unsized-binding-array".to_string());
+    return_features.push("unsized-binding-array");
   }
   if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT) {
-    return_features.push("multi-draw-indirect".to_string());
+    return_features.push("multi-draw-indirect");
   }
   if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT) {
-    return_features.push("multi-draw-indirect-count".to_string());
+    return_features.push("multi-draw-indirect-count");
   }
   if features.contains(wgpu_types::Features::PUSH_CONSTANTS) {
-    return_features.push("push-constants".to_string());
+    return_features.push("push-constants");
   }
   if features.contains(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER) {
-    return_features.push("address-mode-clamp-to-border".to_string());
+    return_features.push("address-mode-clamp-to-border");
   }
   if features.contains(wgpu_types::Features::NON_FILL_POLYGON_MODE) {
-    return_features.push("non-fill-polygon-mode".to_string());
+    return_features.push("non-fill-polygon-mode");
   }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2) {
-    return_features.push("texture-compression-etc2".to_string());
+    return_features.push("texture-compression-etc2");
   }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR) {
-    return_features.push("texture-compression-astc-ldr".to_string());
+    return_features.push("texture-compression-astc-ldr");
   }
   if features
     .contains(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
   {
-    return_features
-      .push("texture-adapter-specific-format-features".to_string());
+    return_features.push("texture-adapter-specific-format-features");
   }
   if features.contains(wgpu_types::Features::SHADER_FLOAT64) {
-    return_features.push("shader-float64".to_string());
+    return_features.push("shader-float64");
   }
   if features.contains(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT) {
-    return_features.push("vertex-attribute-64bit".to_string());
+    return_features.push("vertex-attribute-64bit");
   }
 
   return_features
@@ -205,7 +203,7 @@ pub struct GpuAdapterDevice {
   rid: ResourceId,
   name: Option<String>,
   limits: wgpu_types::Limits,
-  features: Vec<String>,
+  features: Vec<&'static str>,
 }
 
 pub async fn op_webgpu_request_adapter(
