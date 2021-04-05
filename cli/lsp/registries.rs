@@ -491,35 +491,38 @@ impl ModuleRegistry {
       }
     }
     if !current_specifier.is_empty() {
-      Some(
-        self
-          .origins
-          .keys()
-          .filter_map(|k| {
-            let mut origin = k.as_str().to_string();
-            if origin.ends_with('/') {
-              origin.pop();
-            }
-            if origin.starts_with(current_specifier) {
-              let text_edit =
-                Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                  range: *range,
-                  new_text: origin.clone(),
-                }));
-              Some(lsp::CompletionItem {
-                label: origin,
-                kind: Some(lsp::CompletionItemKind::Folder),
-                detail: Some("(registry)".to_string()),
-                sort_text: Some("1".to_string()),
-                text_edit,
-                ..Default::default()
-              })
-            } else {
-              None
-            }
-          })
-          .collect(),
-      )
+      let items = self
+        .origins
+        .keys()
+        .filter_map(|k| {
+          let mut origin = k.as_str().to_string();
+          if origin.ends_with('/') {
+            origin.pop();
+          }
+          if origin.starts_with(current_specifier) {
+            let text_edit =
+              Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                range: *range,
+                new_text: origin.clone(),
+              }));
+            Some(lsp::CompletionItem {
+              label: origin,
+              kind: Some(lsp::CompletionItemKind::Folder),
+              detail: Some("(registry)".to_string()),
+              sort_text: Some("1".to_string()),
+              text_edit,
+              ..Default::default()
+            })
+          } else {
+            None
+          }
+        })
+        .collect::<Vec<lsp::CompletionItem>>();
+      if !items.is_empty() {
+        Some(items)
+      } else {
+        None
+      }
     } else {
       None
     }
@@ -624,12 +627,12 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap();
     assert_eq!(completions.len(), 1);
-    assert_eq!(completions[0].label, "http://localhost:4545/");
+    assert_eq!(completions[0].label, "http://localhost:4545");
     assert_eq!(
       completions[0].text_edit,
       Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range,
-        new_text: "http://localhost:4545/".to_string()
+        new_text: "http://localhost:4545".to_string()
       }))
     );
     let range = lsp::Range {
@@ -648,12 +651,12 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap();
     assert_eq!(completions.len(), 1);
-    assert_eq!(completions[0].label, "http://localhost:4545/");
+    assert_eq!(completions[0].label, "http://localhost:4545");
     assert_eq!(
       completions[0].text_edit,
       Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range,
-        new_text: "http://localhost:4545/".to_string()
+        new_text: "http://localhost:4545".to_string()
       }))
     );
   }
