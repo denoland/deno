@@ -26,15 +26,15 @@ mod macros {
   macro_rules! gfx_select {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
       match $id.backend() {
-        #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "ios", target_os = "macos"))))]
+        #[cfg(not(target_os = "macos"))]
         wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::backend::Vulkan>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), any(target_os = "ios", target_os = "macos")))]
+        #[cfg(target_os = "macos")]
         wgpu_types::Backend::Metal => $global.$method::<wgpu_core::backend::Metal>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        #[cfg(windows)]
         wgpu_types::Backend::Dx12 => $global.$method::<wgpu_core::backend::Dx12>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        #[cfg(windows)]
         wgpu_types::Backend::Dx11 => $global.$method::<wgpu_core::backend::Dx11>( $($param),* ),
-        #[cfg(any(target_arch = "wasm32", all(unix, not(any(target_os = "ios", target_os = "macos")))))]
+        #[cfg(all(unix, not(target_os = "macos")))]
         wgpu_types::Backend::Gl => $global.$method::<wgpu_core::backend::Gl>( $($param),+ ),
         other => panic!("Unexpected backend {:?}", other),
       }
