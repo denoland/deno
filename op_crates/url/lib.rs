@@ -4,8 +4,6 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
@@ -34,13 +32,28 @@ pub struct UrlParseArgs {
   set_username: Option<String>,
 }
 
+#[derive(Serialize)]
+pub struct UrlParts {
+  href: String,
+  hash: String,
+  host: String,
+  hostname: String,
+  origin: String,
+  password: String,
+  pathname: String,
+  port: String,
+  protocol: String,
+  search: String,
+  username: String,
+}
+
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
 pub fn op_url_parse(
   _state: &mut deno_core::OpState,
   args: UrlParseArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<UrlParts, AnyError> {
   let base_url = args
     .base_href
     .as_ref()
@@ -75,20 +88,6 @@ pub fn op_url_parse(
       .map_err(|_| uri_error("Invalid username"))?;
   }
 
-  #[derive(Serialize)]
-  struct UrlParts<'a> {
-    href: &'a str,
-    hash: &'a str,
-    host: &'a str,
-    hostname: &'a str,
-    origin: &'a str,
-    password: &'a str,
-    pathname: &'a str,
-    port: &'a str,
-    protocol: &'a str,
-    search: &'a str,
-    username: &'a str,
-  }
   // TODO(nayeemrmn): Panic that occurs in rust-url for the `non-spec:`
   // url-constructor wpt tests: https://github.com/servo/rust-url/issues/670.
   let username = catch_unwind(|| quirks::username(&url)).map_err(|_| {
@@ -102,41 +101,42 @@ pub fn op_url_parse(
         .unwrap_or_default()
     ))
   })?;
-  Ok(json!(UrlParts {
-    href: quirks::href(&url),
-    hash: quirks::hash(&url),
-    host: quirks::host(&url),
-    hostname: quirks::hostname(&url),
-    origin: &quirks::origin(&url),
-    password: quirks::password(&url),
-    pathname: quirks::pathname(&url),
-    port: quirks::port(&url),
-    protocol: quirks::protocol(&url),
-    search: quirks::search(&url),
-    username,
-  }))
+  Ok(UrlParts {
+    href: quirks::href(&url).to_string(),
+    hash: quirks::hash(&url).to_string(),
+    host: quirks::host(&url).to_string(),
+    hostname: quirks::hostname(&url).to_string(),
+    origin: quirks::origin(&url),
+    password: quirks::password(&url).to_string(),
+    pathname: quirks::pathname(&url).to_string(),
+    port: quirks::port(&url).to_string(),
+    protocol: quirks::protocol(&url).to_string(),
+    search: quirks::search(&url).to_string(),
+    username: username.to_string(),
+  })
 }
 
 pub fn op_url_parse_search_params(
   _state: &mut deno_core::OpState,
   args: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<Vec<(String, String)>, AnyError> {
   let search_params: Vec<_> = form_urlencoded::parse(args.as_bytes())
     .into_iter()
+    .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
     .collect();
-  Ok(json!(search_params))
+  Ok(search_params)
 }
 
 pub fn op_url_stringify_search_params(
   _state: &mut deno_core::OpState,
   args: Vec<(String, String)>,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();
-  Ok(json!(search))
+  Ok(search)
 }
 
 /// Load and execute the javascript code.

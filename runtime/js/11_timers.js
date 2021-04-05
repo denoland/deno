@@ -10,7 +10,7 @@
   }
 
   function opStartGlobalTimer(timeout) {
-    return core.jsonOpSync("op_global_timer_start", { timeout });
+    return core.jsonOpSync("op_global_timer_start", timeout);
   }
 
   async function opWaitGlobalTimer() {
@@ -22,7 +22,7 @@
   }
 
   function sleepSync(millis = 0) {
-    return core.jsonOpSync("op_sleep_sync", { millis });
+    return core.jsonOpSync("op_sleep_sync", millis);
   }
 
   // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
