@@ -312,7 +312,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use Deno.iter() to turn a Reader into an AsyncIterator.
+     * Use iter() from https://deno.land/std/io/util.ts to turn a Reader into an
+     * AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | null>;
   }
@@ -336,7 +337,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use Deno.iterSync() to turn a ReaderSync into an Iterator.
+     * Use iterSync() from https://deno.land/std/io/util.ts to turn a ReaderSync
+     * into an Iterator.
      */
     readSync(p: Uint8Array): number | null;
   }
@@ -422,7 +424,10 @@ declare namespace Deno {
     },
   ): Promise<number>;
 
-  /** Turns a Reader, `r`, into an async iterator.
+  /**
+   * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
+   * 
+   * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
    * let f = await Deno.open("/etc/passwd");
@@ -458,7 +463,10 @@ declare namespace Deno {
     },
   ): AsyncIterableIterator<Uint8Array>;
 
-  /** Turns a ReaderSync, `r`, into an iterator.
+  /**
+   * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
+   * 
+   * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
    * let f = Deno.openSync("/etc/passwd");
