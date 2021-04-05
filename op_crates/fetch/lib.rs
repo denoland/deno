@@ -70,10 +70,6 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("20_headers.js"),
     ),
     (
-      "deno:op_crates/fetch/21_file.js",
-      include_str!("21_file.js"),
-    ),
-    (
       "deno:op_crates/fetch/26_fetch.js",
       include_str!("26_fetch.js"),
     ),

@@ -784,7 +784,8 @@
     },
     "file": {
       "File-constructor.any.js": true
-    }
+    },
+    "fileReader.any.js": true
   },
   "html": {
     "webappapis": {
