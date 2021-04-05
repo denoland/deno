@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
@@ -7,13 +6,13 @@ use crate::resolve_addr::resolve_addr_sync;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
@@ -21,6 +20,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -63,7 +63,7 @@ pub(crate) struct AcceptArgs {
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -110,13 +110,13 @@ async fn accept_tcp(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  bufs: BufVec,
+  _buf: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
-    "tcp" => accept_tcp(state, args, bufs).await,
+    "tcp" => accept_tcp(state, args, _buf).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(state, args, bufs).await,
+    "unix" => net_unix::accept_unix(state, args, _buf).await,
     _ => Err(generic_error(format!(
       "Unsupported transport protocol {}",
       args.transport
@@ -133,10 +133,10 @@ pub(crate) struct ReceiveArgs {
 async fn receive_udp(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-  let mut zero_copy = zero_copy[0].clone();
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let mut zero_copy = zero_copy.clone();
 
   let rid = args.rid;
 
@@ -164,10 +164,8 @@ async fn receive_udp(
 async fn op_datagram_receive(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-
   let args: ReceiveArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
@@ -191,10 +189,10 @@ struct SendArgs {
 async fn op_datagram_send(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  zero_copy: BufVec,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-  let zero_copy = zero_copy[0].clone();
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let zero_copy = zero_copy.clone();
 
   match serde_json::from_value(args)? {
     SendArgs {
@@ -260,7 +258,7 @@ struct ConnectArgs {
 async fn op_connect(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   match serde_json::from_value(args)? {
     ConnectArgs {
@@ -424,7 +422,7 @@ fn listen_udp(
 fn op_listen(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let permissions = state.borrow::<Permissions>();
   match serde_json::from_value(args)? {
@@ -504,21 +502,21 @@ fn op_listen(
 #[serde(untagged)]
 enum DnsReturnRecord {
   A(String),
-  AAAA(String),
-  ANAME(String),
-  CNAME(String),
-  MX {
+  Aaaa(String),
+  Aname(String),
+  Cname(String),
+  Mx {
     preference: u16,
     exchange: String,
   },
-  PTR(String),
-  SRV {
+  Ptr(String),
+  Srv {
     priority: u16,
     weight: u16,
     port: u16,
     target: String,
   },
-  TXT(Vec<String>),
+  Txt(Vec<String>),
 }
 
 #[derive(Deserialize)]
@@ -550,7 +548,7 @@ pub struct NameServer {
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let ResolveAddrArgs {
     query,
@@ -610,24 +608,24 @@ fn rdata_to_return_record(
       AAAA => r
         .as_aaaa()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::AAAA),
+        .map(DnsReturnRecord::Aaaa),
       ANAME => r
         .as_aname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::ANAME),
+        .map(DnsReturnRecord::Aname),
       CNAME => r
         .as_cname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::CNAME),
-      MX => r.as_mx().map(|mx| DnsReturnRecord::MX {
+        .map(DnsReturnRecord::Cname),
+      MX => r.as_mx().map(|mx| DnsReturnRecord::Mx {
         preference: mx.preference(),
         exchange: mx.exchange().to_string(),
       }),
       PTR => r
         .as_ptr()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::PTR),
-      SRV => r.as_srv().map(|srv| DnsReturnRecord::SRV {
+        .map(DnsReturnRecord::Ptr),
+      SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
         priority: srv.priority(),
         weight: srv.weight(),
         port: srv.port(),
@@ -641,7 +639,7 @@ fn rdata_to_return_record(
             bytes.iter().map(|&b| b as char).collect::<String>()
           })
           .collect();
-        DnsReturnRecord::TXT(texts)
+        DnsReturnRecord::Txt(texts)
       }),
       // TODO(magurotuna): Other record types are not supported
       _ => todo!(),
@@ -674,21 +672,21 @@ mod tests {
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::AAAA("::1".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aaaa("::1".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::ANAME("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aname("".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::CNAME("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Cname("".to_string())));
   }
 
   #[test]
@@ -697,7 +695,7 @@ mod tests {
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::MX {
+      Some(DnsReturnRecord::Mx {
         preference: 10,
         exchange: "".to_string()
       })
@@ -708,7 +706,7 @@ mod tests {
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::PTR("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ptr("".to_string())));
   }
 
   #[test]
@@ -717,7 +715,7 @@ mod tests {
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::SRV {
+      Some(DnsReturnRecord::Srv {
         priority: 1,
         weight: 2,
         port: 3,
@@ -737,7 +735,7 @@ mod tests {
     ]));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::TXT(vec![
+      Some(DnsReturnRecord::Txt(vec![
         "foo".to_string(),
         "bar".to_string(),
         "£".to_string(),

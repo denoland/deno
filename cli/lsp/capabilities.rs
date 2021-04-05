@@ -11,10 +11,12 @@ use lspower::lsp::CodeActionOptions;
 use lspower::lsp::CodeActionProviderCapability;
 use lspower::lsp::CodeLensOptions;
 use lspower::lsp::CompletionOptions;
+use lspower::lsp::FoldingRangeProviderCapability;
 use lspower::lsp::HoverProviderCapability;
 use lspower::lsp::ImplementationProviderCapability;
 use lspower::lsp::OneOf;
 use lspower::lsp::SaveOptions;
+use lspower::lsp::SelectionRangeProviderCapability;
 use lspower::lsp::ServerCapabilities;
 use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
@@ -104,8 +106,10 @@ pub fn server_capabilities(
     document_formatting_provider: Some(OneOf::Left(true)),
     document_range_formatting_provider: None,
     document_on_type_formatting_provider: None,
-    selection_range_provider: None,
-    folding_range_provider: None,
+    selection_range_provider: Some(SelectionRangeProviderCapability::Simple(
+      true,
+    )),
+    folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
     rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,

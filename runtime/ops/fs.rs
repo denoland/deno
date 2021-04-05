@@ -10,13 +10,13 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
+use log::debug;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::convert::From;
@@ -182,7 +182,7 @@ fn open_helper(
 fn op_open_sync(
   state: &mut OpState,
   args: OpenArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let (path, open_options) = open_helper(state, args)?;
   let std_file = open_options.open(path)?;
@@ -195,7 +195,7 @@ fn op_open_sync(
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
@@ -234,7 +234,7 @@ fn seek_helper(args: SeekArgs) -> Result<(u32, SeekFrom), AnyError> {
 fn op_seek_sync(
   state: &mut OpState,
   args: SeekArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
   let pos = StdFileResource::with(state, rid, |r| match r {
@@ -249,7 +249,7 @@ fn op_seek_sync(
 async fn op_seek_async(
   state: Rc<RefCell<OpState>>,
   args: SeekArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
 
@@ -280,7 +280,7 @@ pub struct FdatasyncArgs {
 fn op_fdatasync_sync(
   state: &mut OpState,
   args: FdatasyncArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
   StdFileResource::with(state, rid, |r| match r {
@@ -293,7 +293,7 @@ fn op_fdatasync_sync(
 async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   args: FdatasyncArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -324,7 +324,7 @@ pub struct FsyncArgs {
 fn op_fsync_sync(
   state: &mut OpState,
   args: FsyncArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
   StdFileResource::with(state, rid, |r| match r {
@@ -337,7 +337,7 @@ fn op_fsync_sync(
 async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
   args: FsyncArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -368,7 +368,7 @@ pub struct FstatArgs {
 fn op_fstat_sync(
   state: &mut OpState,
   args: FstatArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.fstat");
   let metadata = StdFileResource::with(state, args.rid, |r| match r {
@@ -381,7 +381,7 @@ fn op_fstat_sync(
 async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
   args: FstatArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.fstat");
 
@@ -414,7 +414,7 @@ pub struct UmaskArgs {
 fn op_umask(
   state: &mut OpState,
   args: UmaskArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.umask");
   // TODO implement umask for Windows
@@ -451,7 +451,7 @@ pub struct ChdirArgs {
 fn op_chdir(
   state: &mut OpState,
   args: ChdirArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let d = PathBuf::from(&args.directory);
   state.borrow::<Permissions>().read.check(&d)?;
@@ -470,7 +470,7 @@ pub struct MkdirArgs {
 fn op_mkdir_sync(
   state: &mut OpState,
   args: MkdirArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
@@ -490,7 +490,7 @@ fn op_mkdir_sync(
 async fn op_mkdir_async(
   state: Rc<RefCell<OpState>>,
   args: MkdirArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
@@ -526,7 +526,7 @@ pub struct ChmodArgs {
 fn op_chmod_sync(
   state: &mut OpState,
   args: ChmodArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
@@ -552,7 +552,7 @@ fn op_chmod_sync(
 async fn op_chmod_async(
   state: Rc<RefCell<OpState>>,
   args: ChmodArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
@@ -594,7 +594,7 @@ pub struct ChownArgs {
 fn op_chown_sync(
   state: &mut OpState,
   args: ChownArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   state.borrow::<Permissions>().write.check(&path)?;
@@ -622,7 +622,7 @@ fn op_chown_sync(
 async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
   args: ChownArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = Path::new(&args.path).to_path_buf();
 
@@ -664,7 +664,7 @@ pub struct RemoveArgs {
 fn op_remove_sync(
   state: &mut OpState,
   args: RemoveArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
@@ -706,7 +706,7 @@ fn op_remove_sync(
 async fn op_remove_async(
   state: Rc<RefCell<OpState>>,
   args: RemoveArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
@@ -762,7 +762,7 @@ pub struct CopyFileArgs {
 fn op_copy_file_sync(
   state: &mut OpState,
   args: CopyFileArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
@@ -787,7 +787,7 @@ fn op_copy_file_sync(
 async fn op_copy_file_async(
   state: Rc<RefCell<OpState>>,
   args: CopyFileArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
@@ -884,7 +884,7 @@ pub struct StatArgs {
 fn op_stat_sync(
   state: &mut OpState,
   args: StatArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
@@ -901,7 +901,7 @@ fn op_stat_sync(
 async fn op_stat_async(
   state: Rc<RefCell<OpState>>,
   args: StatArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
@@ -933,7 +933,7 @@ pub struct RealpathArgs {
 fn op_realpath_sync(
   state: &mut OpState,
   args: RealpathArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
 
@@ -954,7 +954,7 @@ fn op_realpath_sync(
 async fn op_realpath_async(
   state: Rc<RefCell<OpState>>,
   args: RealpathArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
 
@@ -988,7 +988,7 @@ pub struct ReadDirArgs {
 fn op_read_dir_sync(
   state: &mut OpState,
   args: ReadDirArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
 
@@ -1018,7 +1018,7 @@ fn op_read_dir_sync(
 async fn op_read_dir_async(
   state: Rc<RefCell<OpState>>,
   args: ReadDirArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   {
@@ -1060,7 +1060,7 @@ pub struct RenameArgs {
 fn op_rename_sync(
   state: &mut OpState,
   args: RenameArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1077,7 +1077,7 @@ fn op_rename_sync(
 async fn op_rename_async(
   state: Rc<RefCell<OpState>>,
   args: RenameArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1111,7 +1111,7 @@ pub struct LinkArgs {
 fn op_link_sync(
   state: &mut OpState,
   args: LinkArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1130,7 +1130,7 @@ fn op_link_sync(
 async fn op_link_async(
   state: Rc<RefCell<OpState>>,
   args: LinkArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1172,7 +1172,7 @@ pub struct SymlinkOptions {
 fn op_symlink_sync(
   state: &mut OpState,
   args: SymlinkArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1221,7 +1221,7 @@ fn op_symlink_sync(
 async fn op_symlink_async(
   state: Rc<RefCell<OpState>>,
   args: SymlinkArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1279,7 +1279,7 @@ pub struct ReadLinkArgs {
 fn op_read_link_sync(
   state: &mut OpState,
   args: ReadLinkArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
 
@@ -1294,7 +1294,7 @@ fn op_read_link_sync(
 async fn op_read_link_async(
   state: Rc<RefCell<OpState>>,
   args: ReadLinkArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   {
@@ -1321,7 +1321,7 @@ pub struct FtruncateArgs {
 fn op_ftruncate_sync(
   state: &mut OpState,
   args: FtruncateArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.ftruncate");
   let rid = args.rid;
@@ -1336,7 +1336,7 @@ fn op_ftruncate_sync(
 async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   args: FtruncateArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.ftruncate");
   let rid = args.rid;
@@ -1370,7 +1370,7 @@ pub struct TruncateArgs {
 fn op_truncate_sync(
   state: &mut OpState,
   args: TruncateArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   let len = args.len;
@@ -1386,7 +1386,7 @@ fn op_truncate_sync(
 async fn op_truncate_async(
   state: Rc<RefCell<OpState>>,
   args: TruncateArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = PathBuf::from(&args.path);
   let len = args.len;
@@ -1460,7 +1460,7 @@ pub struct MakeTempArgs {
 fn op_make_temp_dir_sync(
   state: &mut OpState,
   args: MakeTempArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1489,7 +1489,7 @@ fn op_make_temp_dir_sync(
 async fn op_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1523,7 +1523,7 @@ async fn op_make_temp_dir_async(
 fn op_make_temp_file_sync(
   state: &mut OpState,
   args: MakeTempArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1552,7 +1552,7 @@ fn op_make_temp_file_sync(
 async fn op_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1594,7 +1594,7 @@ pub struct FutimeArgs {
 fn op_futime_sync(
   state: &mut OpState,
   args: FutimeArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.futimeSync");
   let rid = args.rid;
@@ -1617,7 +1617,7 @@ fn op_futime_sync(
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
   args: FutimeArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable2(&state, "Deno.futime");
   let rid = args.rid;
@@ -1666,7 +1666,7 @@ pub struct UtimeArgs {
 fn op_utime_sync(
   state: &mut OpState,
   args: UtimeArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(state, "Deno.utime");
 
@@ -1682,7 +1682,7 @@ fn op_utime_sync(
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
   args: UtimeArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   super::check_unstable(&state.borrow(), "Deno.utime");
 
@@ -1703,7 +1703,7 @@ async fn op_utime_async(
 fn op_cwd(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let path = current_dir()?;
   state

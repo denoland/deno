@@ -35,8 +35,8 @@
     "tools/wpt/manifest.json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.41.0.wasm",
-    "https://plugins.dprint.dev/json-0.9.0.wasm",
-    "https://plugins.dprint.dev/markdown-0.6.0.wasm"
+    "https://plugins.dprint.dev/typescript-0.43.0.wasm",
+    "https://plugins.dprint.dev/json-0.10.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.6.2.wasm"
   ]
 }

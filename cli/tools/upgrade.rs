@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
-lazy_static! {
+lazy_static::lazy_static! {
   static ref ARCHIVE_NAME: String = format!("deno-{}.zip", env!("TARGET"));
 }
 

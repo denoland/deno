@@ -675,6 +675,14 @@ delete Object.prototype.__proto__;
           languageService.getNavigationTree(request.specifier),
         );
       }
+      case "getOutliningSpans": {
+        return respond(
+          id,
+          languageService.getOutliningSpans(
+            request.specifier,
+          ),
+        );
+      }
       case "getQuickInfo": {
         return respond(
           id,
@@ -700,6 +708,15 @@ delete Object.prototype.__proto__;
             request.specifier,
             request.position,
             request.options,
+          ),
+        );
+      }
+      case "getSmartSelectionRange": {
+        return respond(
+          id,
+          languageService.getSmartSelectionRange(
+            request.specifier,
+            request.position,
           ),
         );
       }

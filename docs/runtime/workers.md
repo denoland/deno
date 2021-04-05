@@ -11,7 +11,7 @@ the `type: "module"` option when creating a new worker.
 
 Use of relative module specifiers in the main worker are only supported with
 `--location <href>` passed on the CLI. This is not recommended for portability.
-You can instead use the `URL` contructor and `import.meta.url` to easily create
+You can instead use the `URL` constructor and `import.meta.url` to easily create
 a specifier for some nearby script. Dedicated workers, however, have a location
 and this capability by default.
 

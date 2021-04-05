@@ -22,7 +22,7 @@ struct SendTestMessageArgs {
 fn op_send_test_message(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let args: SendTestMessageArgs = serde_json::from_value(args)?;
   let sender = state.borrow::<Sender<TestMessage>>().clone();

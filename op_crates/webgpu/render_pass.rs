@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -11,12 +12,12 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::error::WebGPUError;
+use super::error::WebGpuError;
 
-pub(crate) struct WebGPURenderPass(
+pub(crate) struct WebGpuRenderPass(
   pub(crate) RefCell<wgpu_core::command::RenderPass>,
 );
-impl Resource for WebGPURenderPass {
+impl Resource for WebGpuRenderPass {
   fn name(&self) -> Cow<str> {
     "webGPURenderPass".into()
   }
@@ -37,11 +38,11 @@ pub struct RenderPassSetViewportArgs {
 pub fn op_webgpu_render_pass_set_viewport(
   state: &mut OpState,
   args: RenderPassSetViewportArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_viewport(
@@ -70,11 +71,11 @@ pub struct RenderPassSetScissorRectArgs {
 pub fn op_webgpu_render_pass_set_scissor_rect(
   state: &mut OpState,
   args: RenderPassSetScissorRectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_scissor_rect(
@@ -90,7 +91,7 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPUColor {
+pub struct GpuColor {
   pub r: f64,
   pub g: f64,
   pub b: f64,
@@ -101,17 +102,17 @@ pub struct GPUColor {
 #[serde(rename_all = "camelCase")]
 pub struct RenderPassSetBlendColorArgs {
   render_pass_rid: ResourceId,
-  color: GPUColor,
+  color: GpuColor,
 }
 
 pub fn op_webgpu_render_pass_set_blend_color(
   state: &mut OpState,
   args: RenderPassSetBlendColorArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_blend_color(
@@ -137,11 +138,11 @@ pub struct RenderPassSetStencilReferenceArgs {
 pub fn op_webgpu_render_pass_set_stencil_reference(
   state: &mut OpState,
   args: RenderPassSetStencilReferenceArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_stencil_reference(
@@ -163,15 +164,15 @@ pub struct RenderPassBeginPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassBeginPipelineStatisticsQueryArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
   let query_set_resource = state
     .resource_table
-    .get::<super::WebGPUQuerySet>(args.query_set)
+    .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -194,11 +195,11 @@ pub struct RenderPassEndPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassEndPipelineStatisticsQueryArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -221,15 +222,15 @@ pub struct RenderPassWriteTimestampArgs {
 pub fn op_webgpu_render_pass_write_timestamp(
   state: &mut OpState,
   args: RenderPassWriteTimestampArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
   let query_set_resource = state
     .resource_table
-    .get::<super::WebGPUQuerySet>(args.query_set)
+    .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -253,21 +254,21 @@ pub struct RenderPassExecuteBundlesArgs {
 pub fn op_webgpu_render_pass_execute_bundles(
   state: &mut OpState,
   args: RenderPassExecuteBundlesArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let mut render_bundle_ids = vec![];
 
   for rid in &args.bundles {
     let render_bundle_resource = state
       .resource_table
-      .get::<super::bundle::WebGPURenderBundle>(*rid)
+      .get::<super::bundle::WebGpuRenderBundle>(*rid)
       .ok_or_else(bad_resource_id)?;
     render_bundle_ids.push(render_bundle_resource.0);
   }
 
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -291,25 +292,25 @@ pub struct RenderPassEndPassArgs {
 pub fn op_webgpu_render_pass_end_pass(
   state: &mut OpState,
   args: RenderPassEndPassArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let command_encoder_resource = state
     .resource_table
-    .get::<super::command_encoder::WebGPUCommandEncoder>(
+    .get::<super::command_encoder::WebGpuCommandEncoder>(
       args.command_encoder_rid,
     )
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
   let render_pass_resource = state
     .resource_table
-    .take::<WebGPURenderPass>(args.render_pass_rid)
+    .take::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
   let render_pass = &render_pass_resource.0.borrow();
   let instance = state.borrow::<super::Instance>();
 
   let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass)).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -326,15 +327,16 @@ pub struct RenderPassSetBindGroupArgs {
 pub fn op_webgpu_render_pass_set_bind_group(
   state: &mut OpState,
   args: RenderPassSetBindGroupArgs,
-  zero_copy: &mut [ZeroCopyBuf],
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let bind_group_resource = state
     .resource_table
-    .get::<super::binding::WebGPUBindGroup>(args.bind_group)
+    .get::<super::binding::WebGpuBindGroup>(args.bind_group)
     .ok_or_else(bad_resource_id)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   // I know this might look like it can be easily deduplicated, but it can not
@@ -353,7 +355,7 @@ pub fn op_webgpu_render_pass_set_bind_group(
       );
     },
     None => {
-      let (prefix, data, suffix) = unsafe { zero_copy[0].align_to::<u32>() };
+      let (prefix, data, suffix) = unsafe { zero_copy.align_to::<u32>() };
       assert!(prefix.is_empty());
       assert!(suffix.is_empty());
       unsafe {
@@ -381,11 +383,11 @@ pub struct RenderPassPushDebugGroupArgs {
 pub fn op_webgpu_render_pass_push_debug_group(
   state: &mut OpState,
   args: RenderPassPushDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -409,11 +411,11 @@ pub struct RenderPassPopDebugGroupArgs {
 pub fn op_webgpu_render_pass_pop_debug_group(
   state: &mut OpState,
   args: RenderPassPopDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_pop_debug_group(
@@ -433,11 +435,11 @@ pub struct RenderPassInsertDebugMarkerArgs {
 pub fn op_webgpu_render_pass_insert_debug_marker(
   state: &mut OpState,
   args: RenderPassInsertDebugMarkerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -462,15 +464,15 @@ pub struct RenderPassSetPipelineArgs {
 pub fn op_webgpu_render_pass_set_pipeline(
   state: &mut OpState,
   args: RenderPassSetPipelineArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pipeline_resource = state
     .resource_table
-    .get::<super::pipeline::WebGPURenderPipeline>(args.pipeline)
+    .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)
     .ok_or_else(bad_resource_id)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_pipeline(
@@ -494,15 +496,15 @@ pub struct RenderPassSetIndexBufferArgs {
 pub fn op_webgpu_render_pass_set_index_buffer(
   state: &mut OpState,
   args: RenderPassSetIndexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)
     .ok_or_else(bad_resource_id)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   render_pass_resource.0.borrow_mut().set_index_buffer(
@@ -528,15 +530,15 @@ pub struct RenderPassSetVertexBufferArgs {
 pub fn op_webgpu_render_pass_set_vertex_buffer(
   state: &mut OpState,
   args: RenderPassSetVertexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)
     .ok_or_else(bad_resource_id)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_vertex_buffer(
@@ -563,11 +565,11 @@ pub struct RenderPassDrawArgs {
 pub fn op_webgpu_render_pass_draw(
   state: &mut OpState,
   args: RenderPassDrawArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw(
@@ -595,11 +597,11 @@ pub struct RenderPassDrawIndexedArgs {
 pub fn op_webgpu_render_pass_draw_indexed(
   state: &mut OpState,
   args: RenderPassDrawIndexedArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indexed(
@@ -625,15 +627,15 @@ pub struct RenderPassDrawIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndirectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
     .ok_or_else(bad_resource_id)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indirect(
@@ -656,15 +658,15 @@ pub struct RenderPassDrawIndexedIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indexed_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndexedIndirectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
     .ok_or_else(bad_resource_id)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGPURenderPass>(args.render_pass_rid)
+    .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indexed_indirect(

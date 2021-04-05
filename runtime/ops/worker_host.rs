@@ -1,20 +1,20 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
-use crate::permissions::BooleanPermission;
-use crate::permissions::NetPermission;
+use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
-use crate::permissions::ReadPermission;
+use crate::permissions::ReadDescriptor;
 use crate::permissions::UnaryPermission;
-use crate::permissions::WritePermission;
+use crate::permissions::UnitPermission;
+use crate::permissions::WriteDescriptor;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -24,10 +24,10 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -109,9 +109,9 @@ pub fn init(
 }
 
 fn merge_boolean_permission(
-  mut main: BooleanPermission,
+  mut main: UnitPermission,
   worker: Option<PermissionState>,
-) -> Result<BooleanPermission, AnyError> {
+) -> Result<UnitPermission, AnyError> {
   if let Some(worker) = worker {
     if worker < main.state {
       return Err(custom_error(
@@ -126,9 +126,9 @@ fn merge_boolean_permission(
 }
 
 fn merge_net_permission(
-  mut main: UnaryPermission<NetPermission>,
-  worker: Option<UnaryPermission<NetPermission>>,
-) -> Result<UnaryPermission<NetPermission>, AnyError> {
+  mut main: UnaryPermission<NetDescriptor>,
+  worker: Option<UnaryPermission<NetDescriptor>>,
+) -> Result<UnaryPermission<NetDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
       || !worker
@@ -149,9 +149,9 @@ fn merge_net_permission(
 }
 
 fn merge_read_permission(
-  mut main: UnaryPermission<ReadPermission>,
-  worker: Option<UnaryPermission<ReadPermission>>,
-) -> Result<UnaryPermission<ReadPermission>, AnyError> {
+  mut main: UnaryPermission<ReadDescriptor>,
+  worker: Option<UnaryPermission<ReadDescriptor>>,
+) -> Result<UnaryPermission<ReadDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
       || !worker
@@ -172,9 +172,9 @@ fn merge_read_permission(
 }
 
 fn merge_write_permission(
-  mut main: UnaryPermission<WritePermission>,
-  worker: Option<UnaryPermission<WritePermission>>,
-) -> Result<UnaryPermission<WritePermission>, AnyError> {
+  mut main: UnaryPermission<WriteDescriptor>,
+  worker: Option<UnaryPermission<WriteDescriptor>>,
+) -> Result<UnaryPermission<WriteDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
       || !worker
@@ -216,15 +216,15 @@ struct PermissionsArg {
   #[serde(default, deserialize_with = "as_permission_state")]
   hrtime: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_net_permission")]
-  net: Option<UnaryPermission<NetPermission>>,
+  net: Option<UnaryPermission<NetDescriptor>>,
   #[serde(default, deserialize_with = "as_permission_state")]
   plugin: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
-  read: Option<UnaryPermission<ReadPermission>>,
+  read: Option<UnaryPermission<ReadDescriptor>>,
   #[serde(default, deserialize_with = "as_permission_state")]
   run: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_write_permission")]
-  write: Option<UnaryPermission<WritePermission>>,
+  write: Option<UnaryPermission<WriteDescriptor>>,
 }
 
 fn as_permission_state<'de, D>(
@@ -253,6 +253,14 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
 
   fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
     formatter.write_str("a vector of strings or a boolean")
+  }
+
+  // visit_unit maps undefined/missing values to false
+  fn visit_unit<E>(self) -> Result<UnaryPermissionBase, E>
+  where
+    E: de::Error,
+  {
+    self.visit_bool(false)
   }
 
   fn visit_bool<E>(self, v: bool) -> Result<UnaryPermissionBase, E>
@@ -288,20 +296,20 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
 
 fn as_unary_net_permission<'de, D>(
   deserializer: D,
-) -> Result<Option<UnaryPermission<NetPermission>>, D::Error>
+) -> Result<Option<UnaryPermission<NetDescriptor>>, D::Error>
 where
   D: Deserializer<'de>,
 {
   let value: UnaryPermissionBase =
     deserializer.deserialize_any(ParseBooleanOrStringVec)?;
 
-  let allowed: HashSet<NetPermission> = value
+  let allowed: HashSet<NetDescriptor> = value
     .paths
     .into_iter()
-    .map(NetPermission::from_string)
+    .map(NetDescriptor::from_string)
     .collect();
 
-  Ok(Some(UnaryPermission::<NetPermission> {
+  Ok(Some(UnaryPermission::<NetDescriptor> {
     global_state: value.global_state,
     granted_list: allowed,
     ..Default::default()
@@ -310,7 +318,7 @@ where
 
 fn as_unary_read_permission<'de, D>(
   deserializer: D,
-) -> Result<Option<UnaryPermission<ReadPermission>>, D::Error>
+) -> Result<Option<UnaryPermission<ReadDescriptor>>, D::Error>
 where
   D: Deserializer<'de>,
 {
@@ -320,7 +328,7 @@ where
   let paths: Vec<PathBuf> =
     value.paths.into_iter().map(PathBuf::from).collect();
 
-  Ok(Some(UnaryPermission::<ReadPermission> {
+  Ok(Some(UnaryPermission::<ReadDescriptor> {
     global_state: value.global_state,
     granted_list: resolve_read_allowlist(&Some(paths)),
     ..Default::default()
@@ -329,7 +337,7 @@ where
 
 fn as_unary_write_permission<'de, D>(
   deserializer: D,
-) -> Result<Option<UnaryPermission<WritePermission>>, D::Error>
+) -> Result<Option<UnaryPermission<WriteDescriptor>>, D::Error>
 where
   D: Deserializer<'de>,
 {
@@ -339,7 +347,7 @@ where
   let paths: Vec<PathBuf> =
     value.paths.into_iter().map(PathBuf::from).collect();
 
-  Ok(Some(UnaryPermission::<WritePermission> {
+  Ok(Some(UnaryPermission::<WriteDescriptor> {
     global_state: value.global_state,
     granted_list: resolve_write_allowlist(&Some(paths)),
     ..Default::default()
@@ -361,7 +369,7 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
-  _data: &mut [ZeroCopyBuf],
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -449,7 +457,7 @@ pub struct WorkerArgs {
 fn op_host_terminate_worker(
   state: &mut OpState,
   args: WorkerArgs,
-  _data: &mut [ZeroCopyBuf],
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let id = args.id as u32;
   let worker_thread = state
@@ -525,7 +533,7 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
   args: WorkerArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let id = args.id as u32;
 
@@ -559,11 +567,11 @@ async fn op_host_get_message(
 fn op_host_post_message(
   state: &mut OpState,
   args: WorkerArgs,
-  data: &mut [ZeroCopyBuf],
+  data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  assert_eq!(data.len(), 1, "Invalid number of arguments");
+  let data = data.ok_or_else(null_opbuf)?;
   let id = args.id as u32;
-  let msg = Vec::from(&*data[0]).into_boxed_slice();
+  let msg = Vec::from(&*data).into_boxed_slice();
 
   debug!("post message to worker {}", id);
   let worker_thread = state

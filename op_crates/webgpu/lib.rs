@@ -7,9 +7,9 @@ use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -18,8 +18,8 @@ use std::rc::Rc;
 pub use wgpu_core;
 pub use wgpu_types;
 
-use error::DOMExceptionOperationError;
-use error::WebGPUError;
+use error::DomExceptionOperationError;
+use error::WebGpuError;
 
 #[macro_use]
 mod macros {
@@ -71,22 +71,22 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
 type Instance = wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>;
 
-struct WebGPUAdapter(wgpu_core::id::AdapterId);
-impl Resource for WebGPUAdapter {
+struct WebGpuAdapter(wgpu_core::id::AdapterId);
+impl Resource for WebGpuAdapter {
   fn name(&self) -> Cow<str> {
     "webGPUAdapter".into()
   }
 }
 
-struct WebGPUDevice(wgpu_core::id::DeviceId);
-impl Resource for WebGPUDevice {
+struct WebGpuDevice(wgpu_core::id::DeviceId);
+impl Resource for WebGpuDevice {
   fn name(&self) -> Cow<str> {
     "webGPUDevice".into()
   }
 }
 
-struct WebGPUQuerySet(wgpu_core::id::QuerySetId);
-impl Resource for WebGPUQuerySet {
+struct WebGpuQuerySet(wgpu_core::id::QuerySetId);
+impl Resource for WebGpuQuerySet {
   fn name(&self) -> Cow<str> {
     "webGPUQuerySet".into()
   }
@@ -194,7 +194,7 @@ pub struct RequestAdapterArgs {
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
@@ -255,7 +255,7 @@ pub async fn op_webgpu_request_adapter(
     "maxUniformBufferBindingSize": adapter_limits.max_uniform_buffer_binding_size
   });
 
-  let rid = state.resource_table.add(WebGPUAdapter(adapter));
+  let rid = state.resource_table.add(WebGpuAdapter(adapter));
 
   Ok(json!({
     "rid": rid,
@@ -267,7 +267,7 @@ pub async fn op_webgpu_request_adapter(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GPULimits {
+struct GpuLimits {
   _max_texture_dimension1d: Option<u32>,
   _max_texture_dimension2d: Option<u32>,
   _max_texture_dimension3d: Option<u32>,
@@ -293,18 +293,18 @@ pub struct RequestDeviceArgs {
   adapter_rid: ResourceId,
   label: Option<String>,
   non_guaranteed_features: Option<Vec<String>>,
-  non_guaranteed_limits: Option<GPULimits>,
+  non_guaranteed_limits: Option<GpuLimits>,
 }
 
 pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
-    .get::<WebGPUAdapter>(args.adapter_rid)
+    .get::<WebGpuAdapter>(args.adapter_rid)
     .ok_or_else(bad_resource_id)?;
   let adapter = adapter_resource.0;
   let instance = state.borrow::<Instance>();
@@ -430,7 +430,7 @@ pub async fn op_webgpu_request_device(
     std::marker::PhantomData
   ));
   if let Some(err) = maybe_err {
-    return Err(DOMExceptionOperationError::new(&err.to_string()).into());
+    return Err(DomExceptionOperationError::new(&err.to_string()).into());
   }
 
   let device_features =
@@ -449,7 +449,7 @@ pub async fn op_webgpu_request_device(
      "maxUniformBufferBindingSize": limits.max_uniform_buffer_binding_size,
   });
 
-  let rid = state.resource_table.add(WebGPUDevice(device));
+  let rid = state.resource_table.add(WebGpuDevice(device));
 
   Ok(json!({
     "rid": rid,
@@ -472,11 +472,11 @@ pub struct CreateQuerySetArgs {
 pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   args: CreateQuerySetArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let device_resource = state
     .resource_table
-    .get::<WebGPUDevice>(args.device_rid)
+    .get::<WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
   let instance = &state.borrow::<Instance>();
@@ -542,10 +542,10 @@ pub fn op_webgpu_create_query_set(
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGPUQuerySet(query_set));
+  let rid = state.resource_table.add(WebGpuQuerySet(query_set));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from),
+    "err": maybe_err.map(WebGpuError::from),
   }))
 }

@@ -2864,6 +2864,11 @@ console.log("finish");
     output: "087_no_check_imports_not_used_as_values.ts.out",
   });
 
+  itest!(_088_dynamic_import_already_evaluating {
+    args: "run --allow-read 088_dynamic_import_already_evaluating.ts",
+    output: "088_dynamic_import_already_evaluating.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -3240,6 +3245,11 @@ console.log("finish");
     output: "exit_error42.ts.out",
   });
 
+  itest!(heapstats {
+    args: "run --quiet --v8-flags=--expose-gc heapstats.js",
+    output: "heapstats.js.out",
+  });
+
   itest!(https_import {
     args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
     output: "https_import.ts.out",
@@ -3275,6 +3285,11 @@ console.log("finish");
   itest!(runtime_decorators {
     args: "run --quiet --reload --no-check runtime_decorators.ts",
     output: "runtime_decorators.ts.out",
+  });
+
+  itest!(lib_dom_asynciterable {
+    args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
+    output: "lib_dom_asynciterable.ts.out",
   });
 
   itest!(lib_ref {

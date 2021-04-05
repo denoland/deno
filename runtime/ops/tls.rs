@@ -14,7 +14,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
@@ -79,7 +78,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectTLSArgs {
+pub struct ConnectTlsArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -88,7 +87,7 @@ pub struct ConnectTLSArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartTLSArgs {
+struct StartTlsArgs {
   rid: ResourceId,
   cert_file: Option<String>,
   hostname: String,
@@ -96,8 +95,8 @@ struct StartTLSArgs {
 
 async fn op_start_tls(
   state: Rc<RefCell<OpState>>,
-  args: StartTLSArgs,
-  _zero_copy: BufVec,
+  args: StartTlsArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 
@@ -166,8 +165,8 @@ async fn op_start_tls(
 
 async fn op_connect_tls(
   state: Rc<RefCell<OpState>>,
-  args: ConnectTLSArgs,
-  _zero_copy: BufVec,
+  args: ConnectTlsArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   {
     let s = state.borrow();
@@ -307,7 +306,7 @@ pub struct ListenTlsArgs {
 fn op_listen_tls(
   state: &mut OpState,
   args: ListenTlsArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   assert_eq!(args.transport, "tcp");
 
@@ -357,7 +356,7 @@ pub struct AcceptTlsArgs {
 async fn op_accept_tls(
   state: Rc<RefCell<OpState>>,
   args: AcceptTlsArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let rid = args.rid;
 

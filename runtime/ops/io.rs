@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
@@ -7,7 +8,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
@@ -42,7 +42,7 @@ use tokio::net::unix;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Due to portability issues on Windows handle to stdout is created from raw
   /// file descriptor.  The caveat of that approach is fact that when this
   /// handle is dropped underlying file descriptor is closed - that is highly
@@ -140,14 +140,14 @@ fn get_stdio_stream(
 use nix::sys::termios;
 
 #[derive(Default)]
-pub struct TTYMetadata {
+pub struct TtyMetadata {
   #[cfg(unix)]
   pub mode: Option<termios::Termios>,
 }
 
 #[derive(Default)]
 pub struct FileMetadata {
-  pub tty: TTYMetadata,
+  pub tty: TtyMetadata,
 }
 
 #[derive(Debug)]
@@ -523,11 +523,12 @@ impl Resource for StdFileResource {
 fn op_read_sync(
   state: &mut OpState,
   rid: ResourceId,
-  bufs: &mut [ZeroCopyBuf],
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
+  let mut buf = buf.ok_or_else(null_opbuf)?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
-      .read(&mut bufs[0])
+      .read(&mut buf)
       .map(|n: usize| n as u32)
       .map_err(AnyError::from),
     Err(_) => Err(not_supported()),
@@ -537,9 +538,9 @@ fn op_read_sync(
 async fn op_read_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = &mut bufs[0];
+  let buf = &mut buf.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
@@ -568,11 +569,12 @@ async fn op_read_async(
 fn op_write_sync(
   state: &mut OpState,
   rid: ResourceId,
-  bufs: &mut [ZeroCopyBuf],
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
+  let buf = buf.ok_or_else(null_opbuf)?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
-      .write(&bufs[0])
+      .write(&buf)
       .map(|nwritten: usize| nwritten as u32)
       .map_err(AnyError::from),
     Err(_) => Err(not_supported()),
@@ -582,9 +584,9 @@ fn op_write_sync(
 async fn op_write_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  let buf = &bufs[0];
+  let buf = &buf.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
@@ -616,7 +618,7 @@ struct ShutdownArgs {
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   args: ShutdownArgs,
-  _zero_copy: BufVec,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow()

@@ -10,16 +10,16 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::WebGPUError;
-pub(crate) struct WebGPUTexture(pub(crate) wgpu_core::id::TextureId);
-impl Resource for WebGPUTexture {
+use super::error::WebGpuError;
+pub(crate) struct WebGpuTexture(pub(crate) wgpu_core::id::TextureId);
+impl Resource for WebGpuTexture {
   fn name(&self) -> Cow<str> {
     "webGPUTexture".into()
   }
 }
 
-pub(crate) struct WebGPUTextureView(pub(crate) wgpu_core::id::TextureViewId);
-impl Resource for WebGPUTextureView {
+pub(crate) struct WebGpuTextureView(pub(crate) wgpu_core::id::TextureViewId);
+impl Resource for WebGpuTextureView {
   fn name(&self) -> Cow<str> {
     "webGPUTextureView".into()
   }
@@ -125,7 +125,7 @@ pub fn serialize_dimension(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GPUExtent3D {
+pub struct GpuExtent3D {
   pub width: Option<u32>,
   pub height: Option<u32>,
   pub depth: Option<u32>,
@@ -136,7 +136,7 @@ pub struct GPUExtent3D {
 pub struct CreateTextureArgs {
   device_rid: ResourceId,
   label: Option<String>,
-  size: GPUExtent3D,
+  size: GpuExtent3D,
   mip_level_count: Option<u32>,
   sample_count: Option<u32>,
   dimension: Option<String>,
@@ -147,12 +147,12 @@ pub struct CreateTextureArgs {
 pub fn op_webgpu_create_texture(
   state: &mut OpState,
   args: CreateTextureArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
 
@@ -184,11 +184,11 @@ pub fn op_webgpu_create_texture(
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGPUTexture(texture));
+  let rid = state.resource_table.add(WebGpuTexture(texture));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from)
+    "err": maybe_err.map(WebGpuError::from)
   }))
 }
 
@@ -209,12 +209,12 @@ pub struct CreateTextureViewArgs {
 pub fn op_webgpu_create_texture_view(
   state: &mut OpState,
   args: CreateTextureViewArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
-    .get::<WebGPUTexture>(args.texture_rid)
+    .get::<WebGpuTexture>(args.texture_rid)
     .ok_or_else(bad_resource_id)?;
   let texture = texture_resource.0;
 
@@ -248,10 +248,10 @@ pub fn op_webgpu_create_texture_view(
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGPUTextureView(texture_view));
+  let rid = state.resource_table.add(WebGpuTextureView(texture_view));
 
   Ok(json!({
     "rid": rid,
-    "err": maybe_err.map(WebGPUError::from)
+    "err": maybe_err.map(WebGpuError::from)
   }))
 }

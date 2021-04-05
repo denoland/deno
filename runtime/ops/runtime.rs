@@ -24,7 +24,7 @@ pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
 fn op_main_module(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = deno_core::resolve_url_or_path(&main)?;
@@ -42,7 +42,7 @@ fn op_main_module(
 fn op_metrics(
   state: &mut OpState,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let m = state.borrow::<RuntimeMetrics>();
   let combined = m.combined_metrics();
