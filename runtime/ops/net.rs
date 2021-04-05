@@ -342,14 +342,10 @@ async fn op_connect(
       Ok(OpConn {
         rid,
         local_addr: Some(OpAddr::Unix(net_unix::UnixAddr {
-          path: local_addr
-            .as_pathname()
-            .and_then(|p| into_string(p.into()).ok()),
+          path: local_addr.as_pathname().and_then(net_unix::pathstring),
         })),
         remote_addr: Some(OpAddr::Unix(net_unix::UnixAddr {
-          path: remote_addr
-            .as_pathname()
-            .and_then(|p| into_string(p.into()).ok()),
+          path: remote_addr.as_pathname().and_then(net_unix::pathstring),
         })),
       })
     }
@@ -515,9 +511,7 @@ fn op_listen(
         local_addr.as_pathname().unwrap().display(),
       );
       let unix_addr = net_unix::UnixAddr {
-        path: local_addr
-          .as_pathname()
-          .and_then(|p| into_string(p.into()).ok()),
+        path: local_addr.as_pathname().and_then(net_unix::pathstring),
       };
 
       Ok(OpConn {
@@ -533,13 +527,6 @@ fn op_listen(
     #[cfg(unix)]
     _ => Err(type_error("Wrong argument format!")),
   }
-}
-
-fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
-  s.into_string().map_err(|s| {
-    let message = format!("File name or path {:?} is not valid UTF-8", s);
-    custom_error("InvalidData", message)
-  })
 }
 
 #[derive(Serialize, PartialEq, Debug)]

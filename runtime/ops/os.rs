@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::utils::into_string;
 use crate::permissions::Permissions;
-use deno_core::error::{custom_error, type_error, AnyError};
+use deno_core::error::{type_error, AnyError};
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -40,14 +41,6 @@ fn op_exec_path(
   let path = exe_url.to_file_path().unwrap();
 
   into_string(path.into_os_string())
-}
-
-// TODO(@AaronO): share this code with fs' into_string()
-fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
-  s.into_string().map_err(|s| {
-    let message = format!("File name or path {:?} is not valid UTF-8", s);
-    custom_error("InvalidData", message)
-  })
 }
 
 #[derive(Deserialize)]

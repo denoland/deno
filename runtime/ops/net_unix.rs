@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::utils::into_string;
 use crate::ops::io::UnixStreamResource;
 use crate::ops::net::AcceptArgs;
 use crate::ops::net::OpAddr;
@@ -95,14 +96,10 @@ pub(crate) async fn accept_unix(
   Ok(OpConn {
     rid,
     local_addr: Some(OpAddr::Unix(UnixAddr {
-      path: local_addr
-        .as_pathname()
-        .and_then(|p| into_string(p.into()).ok()),
+      path: local_addr.as_pathname().and_then(pathstring),
     })),
     remote_addr: Some(OpAddr::Unix(UnixAddr {
-      path: remote_addr
-        .as_pathname()
-        .and_then(|p| into_string(p.into()).ok()),
+      path: remote_addr.as_pathname().and_then(pathstring),
     })),
   })
 }
@@ -130,9 +127,7 @@ pub(crate) async fn receive_unix_packet(
   Ok(OpPacket {
     size,
     remote_addr: OpAddr::UnixPacket(UnixAddr {
-      path: remote_addr
-        .as_pathname()
-        .and_then(|p| into_string(p.into()).ok()),
+      path: remote_addr.as_pathname().and_then(pathstring),
     }),
   })
 }
@@ -173,9 +168,6 @@ pub fn listen_unix_packet(
   Ok((rid, local_addr))
 }
 
-fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
-  s.into_string().map_err(|s| {
-    let message = format!("File name or path {:?} is not valid UTF-8", s);
-    custom_error("InvalidData", message)
-  })
+pub fn pathstring(pathname: &Path) -> Option<String> {
+  into_string(pathname.into()).ok()
 }
