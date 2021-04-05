@@ -1,10 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::metrics::OpMetrics;
 use crate::metrics::RuntimeMetrics;
 use crate::ops::UnstableChecker;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
@@ -23,9 +23,9 @@ pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
 
 fn op_main_module(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<String, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = deno_core::resolve_url_or_path(&main)?;
   if main_url.scheme() == "file" {
@@ -35,15 +35,21 @@ fn op_main_module(
       .read
       .check_blind(&main_path, "main_module")?;
   }
-  Ok(json!(&main))
+  Ok(main)
+}
+
+#[derive(serde::Serialize)]
+struct MetricsReturn {
+  combined: OpMetrics,
+  ops: Value,
 }
 
 #[allow(clippy::unnecessary_wraps)]
 fn op_metrics(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<MetricsReturn, AnyError> {
   let m = state.borrow::<RuntimeMetrics>();
   let combined = m.combined_metrics();
   let unstable_checker = state.borrow::<UnstableChecker>();
@@ -52,10 +58,13 @@ fn op_metrics(
   } else {
     None
   };
-  Ok(json!({ "combined": combined, "ops": maybe_ops }))
+  Ok(MetricsReturn {
+    combined,
+    ops: json!(maybe_ops),
+  })
 }
 
-pub fn ppid() -> Value {
+pub fn ppid() -> i64 {
   #[cfg(windows)]
   {
     // Adopted from rustup:
@@ -77,7 +86,7 @@ pub fn ppid() -> Value {
       // and contains our parent's pid
       let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
       if snapshot == INVALID_HANDLE_VALUE {
-        return serde_json::to_value(-1).unwrap();
+        return -1;
       }
 
       let mut entry: PROCESSENTRY32 = mem::zeroed();
@@ -87,7 +96,7 @@ pub fn ppid() -> Value {
       let success = Process32First(snapshot, &mut entry);
       if success == 0 {
         CloseHandle(snapshot);
-        return serde_json::to_value(-1).unwrap();
+        return -1;
       }
 
       let this_pid = GetCurrentProcessId();
@@ -95,7 +104,7 @@ pub fn ppid() -> Value {
         let success = Process32Next(snapshot, &mut entry);
         if success == 0 {
           CloseHandle(snapshot);
-          return serde_json::to_value(-1).unwrap();
+          return -1;
         }
       }
       CloseHandle(snapshot);
@@ -104,12 +113,12 @@ pub fn ppid() -> Value {
       // wherein the parent process already exited and the OS
       // reassigned its ID.
       let parent_id = entry.th32ParentProcessID;
-      serde_json::to_value(parent_id).unwrap()
+      parent_id.into()
     }
   }
   #[cfg(not(windows))]
   {
     use std::os::unix::process::parent_id;
-    serde_json::to_value(parent_id()).unwrap()
+    parent_id().into()
   }
 }

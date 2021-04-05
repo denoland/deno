@@ -4,8 +4,6 @@ use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -16,7 +14,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io::Read;
@@ -610,20 +607,15 @@ async fn op_write_async(
   Ok(nwritten as u32)
 }
 
-#[derive(Deserialize)]
-struct ShutdownArgs {
-  rid: ResourceId,
-}
-
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
-  args: ShutdownArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let resource = state
     .borrow()
     .resource_table
-    .get_any(args.rid)
+    .get_any(rid)
     .ok_or_else(bad_resource_id)?;
   if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.shutdown().await?;
@@ -638,5 +630,5 @@ async fn op_shutdown(
   } else {
     return Err(not_supported());
   }
-  Ok(json!({}))
+  Ok(())
 }

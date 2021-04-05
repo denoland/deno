@@ -57,11 +57,6 @@ pub type CreateWebWorkerCb =
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
-#[derive(Deserialize)]
-struct HostUnhandledErrorArgs {
-  message: String,
-}
-
 pub struct WorkerThread {
   join_handle: JoinHandle<Result<(), AnyError>>,
   worker_handle: WebWorkerHandle,
@@ -95,12 +90,12 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_host_unhandled_error",
-    move |_state, args: HostUnhandledErrorArgs, _zero_copy| {
+    move |_state, message: String, _zero_copy| {
       if let Some(mut sender) = sender.clone() {
         sender
-          .try_send(WorkerEvent::Error(generic_error(args.message)))
+          .try_send(WorkerEvent::Error(generic_error(message)))
           .expect("Failed to propagate error event to parent worker");
-        Ok(json!(true))
+        Ok(true)
       } else {
         Err(generic_error("Cannot be called from main worker."))
       }
@@ -370,7 +365,7 @@ fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
   _data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
     Some(args.source_code.clone())
@@ -445,21 +440,15 @@ fn op_create_worker(
     .borrow_mut::<WorkersTable>()
     .insert(worker_id, worker_thread);
 
-  Ok(json!({ "id": worker_id }))
-}
-
-#[derive(Deserialize)]
-pub struct WorkerArgs {
-  id: i32,
+  Ok(worker_id)
 }
 
 #[allow(clippy::unnecessary_wraps)]
 fn op_host_terminate_worker(
   state: &mut OpState,
-  args: WorkerArgs,
+  id: WorkerId,
   _data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let id = args.id as u32;
+) -> Result<(), AnyError> {
   let worker_thread = state
     .borrow_mut::<WorkersTable>()
     .remove(&id)
@@ -470,7 +459,7 @@ fn op_host_terminate_worker(
     .join()
     .expect("Panic in worker thread")
     .expect("Panic in worker event loop");
-  Ok(json!({}))
+  Ok(())
 }
 
 fn serialize_worker_event(event: WorkerEvent) -> Value {
@@ -532,11 +521,9 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
-  args: WorkerArgs,
+  id: WorkerId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let id = args.id as u32;
-
   let worker_handle = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
@@ -566,11 +553,10 @@ async fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &mut OpState,
-  args: WorkerArgs,
+  id: WorkerId,
   data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let data = data.ok_or_else(null_opbuf)?;
-  let id = args.id as u32;
   let msg = Vec::from(&*data).into_boxed_slice();
 
   debug!("post message to worker {}", id);
@@ -579,5 +565,5 @@ fn op_host_post_message(
     .get(&id)
     .expect("No worker handle found");
   worker_thread.worker_handle.post_message(msg)?;
-  Ok(json!({}))
+  Ok(())
 }

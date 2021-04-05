@@ -12,7 +12,7 @@
   }
 
   function opRunStatus(rid) {
-    return core.jsonOpAsync("op_run_status", { rid });
+    return core.jsonOpAsync("op_run_status", rid);
   }
 
   function opRun(request) {
