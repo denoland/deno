@@ -7,9 +7,6 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
@@ -346,20 +343,20 @@ fn op_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<FsStat, AnyError> {
   super::check_unstable(state, "Deno.fstat");
   let metadata = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
   })?;
-  Ok(get_stat_json(metadata))
+  Ok(get_stat(metadata))
 }
 
 async fn op_fstat_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<FsStat, AnyError> {
   super::check_unstable2(&state, "Deno.fstat");
   let resource = state
     .borrow_mut()
@@ -376,7 +373,7 @@ async fn op_fstat_async(
     .await;
 
   let metadata = (*fs_file).0.as_mut().unwrap().metadata().await?;
-  Ok(get_stat_json(metadata))
+  Ok(get_stat(metadata))
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -455,7 +452,7 @@ async fn op_mkdir_async(
   state: Rc<RefCell<OpState>>,
   args: MkdirArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
@@ -474,7 +471,7 @@ async fn op_mkdir_async(
       builder.mode(mode);
     }
     builder.create(path)?;
-    Ok(json!({}))
+    Ok(())
   })
   .await
   .unwrap()
@@ -780,23 +777,44 @@ async fn op_copy_file_async(
   .unwrap()
 }
 
-fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Value {
+fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<u64> {
   match maybe_time {
     Ok(time) => {
       let msec = time
         .duration_since(UNIX_EPOCH)
-        .map(|t| t.as_secs_f64() * 1000f64)
-        .unwrap_or_else(|err| err.duration().as_secs_f64() * -1000f64);
-      serde_json::Number::from_f64(msec)
-        .map(Value::Number)
-        .unwrap_or(Value::Null)
+        .map(|t| t.as_millis() as u64)
+        .unwrap_or_else(|err| err.duration().as_millis() as u64);
+      Some(msec)
     }
-    Err(_) => Value::Null,
+    Err(_) => None,
   }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsStat {
+  is_file: bool,
+  is_directory: bool,
+  is_symlink: bool,
+  size: u64,
+  // In milliseconds, like JavaScript. Available on both Unix or Windows.
+  mtime: Option<u64>,
+  atime: Option<u64>,
+  birthtime: Option<u64>,
+  // Following are only valid under Unix.
+  dev: u64,
+  ino: u64,
+  mode: u32,
+  nlink: u64,
+  uid: u32,
+  gid: u32,
+  rdev: u64,
+  blksize: u64,
+  blocks: u64,
+}
+
 #[inline(always)]
-fn get_stat_json(metadata: std::fs::Metadata) -> Value {
+fn get_stat(metadata: std::fs::Metadata) -> FsStat {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member:ident) => {{
@@ -813,29 +831,26 @@ fn get_stat_json(metadata: std::fs::Metadata) -> Value {
 
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
-  let json_val = json!({
-    "isFile": metadata.is_file(),
-    "isDirectory": metadata.is_dir(),
-    "isSymlink": metadata.file_type().is_symlink(),
-    "size": metadata.len(),
+  FsStat {
+    is_file: metadata.is_file(),
+    is_directory: metadata.is_dir(),
+    is_symlink: metadata.file_type().is_symlink(),
+    size: metadata.len(),
     // In milliseconds, like JavaScript. Available on both Unix or Windows.
-    "mtime": to_msec(metadata.modified()),
-    "atime": to_msec(metadata.accessed()),
-    "birthtime": to_msec(metadata.created()),
+    mtime: to_msec(metadata.modified()),
+    atime: to_msec(metadata.accessed()),
+    birthtime: to_msec(metadata.created()),
     // Following are only valid under Unix.
-    "dev": usm!(dev),
-    "ino": usm!(ino),
-    "mode": usm!(mode),
-    "nlink": usm!(nlink),
-    "uid": usm!(uid),
-    "gid": usm!(gid),
-    "rdev": usm!(rdev),
-    // TODO(kevinkassimo): *time_nsec requires BigInt.
-    // Probably should be treated as String if we need to add them.
-    "blksize": usm!(blksize),
-    "blocks": usm!(blocks),
-  });
-  json_val
+    dev: usm!(dev),
+    ino: usm!(ino),
+    mode: usm!(mode),
+    nlink: usm!(nlink),
+    uid: usm!(uid),
+    gid: usm!(gid),
+    rdev: usm!(rdev),
+    blksize: usm!(blksize),
+    blocks: usm!(blocks),
+  }
 }
 
 #[derive(Deserialize)]
@@ -849,7 +864,7 @@ fn op_stat_sync(
   state: &mut OpState,
   args: StatArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<FsStat, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
   state.borrow::<Permissions>().read.check(&path)?;
@@ -859,14 +874,14 @@ fn op_stat_sync(
   } else {
     std::fs::metadata(&path)?
   };
-  Ok(get_stat_json(metadata))
+  Ok(get_stat(metadata))
 }
 
 async fn op_stat_async(
   state: Rc<RefCell<OpState>>,
   args: StatArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<FsStat, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
@@ -882,7 +897,7 @@ async fn op_stat_async(
     } else {
       std::fs::metadata(&path)?
     };
-    Ok(get_stat_json(metadata))
+    Ok(get_stat(metadata))
   })
   .await
   .unwrap()
