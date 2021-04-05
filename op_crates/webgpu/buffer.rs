@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use super::error::DomExceptionOperationError;
-use super::error::WebGpuError;
+use super::error::{WebGpuError, WebGpuResult};
 
 pub(crate) struct WebGpuBuffer(pub(crate) wgpu_core::id::BufferId);
 impl Resource for WebGpuBuffer {
@@ -47,7 +47,7 @@ pub fn op_webgpu_create_buffer(
   state: &mut OpState,
   args: CreateBufferArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -70,10 +70,10 @@ pub fn op_webgpu_create_buffer(
 
   let rid = state.resource_table.add(WebGpuBuffer(buffer));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }
 
 #[derive(Deserialize)]
@@ -90,7 +90,7 @@ pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
   args: BufferGetMapAsyncArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
   let device;
@@ -164,7 +164,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   tokio::try_join!(device_poll_fut, receiver_fut)?;
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -220,7 +220,7 @@ pub fn op_webgpu_buffer_unmap(
   state: &mut OpState,
   args: BufferUnmapArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let mapped_resource = state
     .resource_table
     .take::<WebGpuBufferMapped>(args.mapped_rid)
@@ -242,5 +242,5 @@ pub fn op_webgpu_buffer_unmap(
 
   let maybe_err = gfx_select!(buffer => instance.buffer_unmap(buffer)).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }

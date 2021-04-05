@@ -3,15 +3,13 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::WebGpuError;
+use super::error::{WebGpuError, WebGpuResult};
 
 pub(crate) struct WebGpuShaderModule(pub(crate) wgpu_core::id::ShaderModuleId);
 impl Resource for WebGpuShaderModule {
@@ -33,7 +31,7 @@ pub fn op_webgpu_create_shader_module(
   state: &mut OpState,
   args: CreateShaderModuleArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -77,8 +75,8 @@ pub fn op_webgpu_create_shader_module(
 
   let rid = state.resource_table.add(WebGpuShaderModule(shader_module));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }

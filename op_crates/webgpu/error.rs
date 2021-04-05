@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
+use deno_core::ResourceId;
 use serde::Serialize;
+use std::convert::From;
 use std::fmt;
 use wgpu_core::binding_model::CreateBindGroupError;
 use wgpu_core::binding_model::CreateBindGroupLayoutError;
@@ -26,6 +28,21 @@ use wgpu_core::resource::CreateQuerySetError;
 use wgpu_core::resource::CreateSamplerError;
 use wgpu_core::resource::CreateTextureError;
 use wgpu_core::resource::CreateTextureViewError;
+
+#[derive(Serialize)]
+pub struct WebGpuResult {
+  pub rid: ResourceId,
+  pub err: Option<WebGpuError>,
+}
+
+impl WebGpuResult {
+  pub fn maybe_err<T: Into<WebGpuError>>(maybe_err: Option<T>) -> Self {
+    Self {
+      rid: 0, // NOTE: callers shouldn't use/need this field
+      err: maybe_err.map(|e| e.into()),
+    }
+  }
+}
 
 #[derive(Serialize)]
 #[serde(tag = "type", content = "value")]

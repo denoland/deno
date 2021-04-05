@@ -13,7 +13,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::error::WebGpuError;
+use super::error::{WebGpuError, WebGpuResult};
 use super::texture::serialize_texture_format;
 
 struct WebGpuRenderBundleEncoder(
@@ -102,7 +102,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
   state: &mut OpState,
   args: RenderBundleEncoderFinishArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
     .take::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -124,10 +124,10 @@ pub fn op_webgpu_render_bundle_encoder_finish(
 
   let rid = state.resource_table.add(WebGpuRenderBundle(render_bundle));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }
 
 #[derive(Deserialize)]
@@ -145,7 +145,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   state: &mut OpState,
   args: RenderBundleEncoderSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
 
   let bind_group_resource = state
@@ -188,7 +188,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
     }
   };
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -202,7 +202,7 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   state: &mut OpState,
   args: RenderBundleEncoderPushDebugGroupArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -216,7 +216,7 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -229,7 +229,7 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   state: &mut OpState,
   args: RenderBundleEncoderPopDebugGroupArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -241,7 +241,7 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -255,7 +255,7 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   state: &mut OpState,
   args: RenderBundleEncoderInsertDebugMarkerArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -269,7 +269,7 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -283,7 +283,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   state: &mut OpState,
   args: RenderBundleEncoderSetPipelineArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let render_pipeline_resource = state
     .resource_table
     .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)
@@ -298,7 +298,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
     render_pipeline_resource.0,
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -315,7 +315,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
   state: &mut OpState,
   args: RenderBundleEncoderSetIndexBufferArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.buffer)
@@ -335,7 +335,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
       std::num::NonZeroU64::new(args.size),
     );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -352,7 +352,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   state: &mut OpState,
   args: RenderBundleEncoderSetVertexBufferArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.buffer)
@@ -370,7 +370,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
     std::num::NonZeroU64::new(args.size),
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -387,7 +387,7 @@ pub fn op_webgpu_render_bundle_encoder_draw(
   state: &mut OpState,
   args: RenderBundleEncoderDrawArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -401,7 +401,7 @@ pub fn op_webgpu_render_bundle_encoder_draw(
     args.first_instance,
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -419,7 +419,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   state: &mut OpState,
   args: RenderBundleEncoderDrawIndexedArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
     .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
@@ -434,7 +434,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
     args.first_instance,
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -449,7 +449,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
   state: &mut OpState,
   args: RenderBundleEncoderDrawIndirectArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
@@ -465,5 +465,5 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
     args.indirect_offset,
   );
 
-  Ok(json!({}))
+  Ok(())
 }

@@ -19,7 +19,7 @@ pub use wgpu_core;
 pub use wgpu_types;
 
 use error::DomExceptionOperationError;
-use error::WebGpuError;
+use error::{WebGpuError, WebGpuResult};
 
 #[macro_use]
 mod macros {
@@ -473,7 +473,7 @@ pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   args: CreateQuerySetArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let device_resource = state
     .resource_table
     .get::<WebGpuDevice>(args.device_rid)
@@ -544,8 +544,8 @@ pub fn op_webgpu_create_query_set(
 
   let rid = state.resource_table.add(WebGpuQuerySet(query_set));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from),
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }

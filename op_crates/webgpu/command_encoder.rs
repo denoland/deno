@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::error::WebGpuError;
+use super::error::{WebGpuError, WebGpuResult};
 
 pub(crate) struct WebGpuCommandEncoder(
   pub(crate) wgpu_core::id::CommandEncoderId,
@@ -51,7 +51,7 @@ pub fn op_webgpu_create_command_encoder(
   state: &mut OpState,
   args: CreateCommandEncoderArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -73,10 +73,10 @@ pub fn op_webgpu_create_command_encoder(
     .resource_table
     .add(WebGpuCommandEncoder(command_encoder));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from),
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }
 
 #[derive(Deserialize)]
@@ -293,7 +293,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToBufferArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -320,7 +320,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
     args.size
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -362,7 +362,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToTextureArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -409,7 +409,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     }
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -425,7 +425,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToBufferArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -471,7 +471,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     }
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -487,7 +487,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToTextureArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -537,7 +537,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     }
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -551,7 +551,7 @@ pub fn op_webgpu_command_encoder_push_debug_group(
   state: &mut OpState,
   args: CommandEncoderPushDebugGroupArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -563,7 +563,7 @@ pub fn op_webgpu_command_encoder_push_debug_group(
     .command_encoder_push_debug_group(command_encoder, &args.group_label))
   .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -576,7 +576,7 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
   state: &mut OpState,
   args: CommandEncoderPopDebugGroupArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -586,7 +586,7 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
 
   let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_pop_debug_group(command_encoder)).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -600,7 +600,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
   state: &mut OpState,
   args: CommandEncoderInsertDebugMarkerArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -613,7 +613,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
     &args.marker_label
   )).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -628,7 +628,7 @@ pub fn op_webgpu_command_encoder_write_timestamp(
   state: &mut OpState,
   args: CommandEncoderWriteTimestampArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -648,7 +648,7 @@ pub fn op_webgpu_command_encoder_write_timestamp(
     ))
     .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -666,7 +666,7 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
   state: &mut OpState,
   args: CommandEncoderResolveQuerySetArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
     .resource_table
@@ -693,7 +693,7 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
     ))
     .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -707,7 +707,7 @@ pub fn op_webgpu_command_encoder_finish(
   state: &mut OpState,
   args: CommandEncoderFinishArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
     .take::<WebGpuCommandEncoder>(args.command_encoder_rid)
@@ -728,8 +728,8 @@ pub fn op_webgpu_command_encoder_finish(
     .resource_table
     .add(WebGpuCommandBuffer(command_buffer));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }

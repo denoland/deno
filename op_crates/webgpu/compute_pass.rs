@@ -3,8 +3,6 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
@@ -12,7 +10,7 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::error::WebGpuError;
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuComputePass(
   pub(crate) RefCell<wgpu_core::command::ComputePass>,
@@ -34,7 +32,7 @@ pub fn op_webgpu_compute_pass_set_pipeline(
   state: &mut OpState,
   args: ComputePassSetPipelineArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pipeline_resource = state
     .resource_table
     .get::<super::pipeline::WebGpuComputePipeline>(args.pipeline)
@@ -49,7 +47,7 @@ pub fn op_webgpu_compute_pass_set_pipeline(
     compute_pipeline_resource.0,
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -65,7 +63,7 @@ pub fn op_webgpu_compute_pass_dispatch(
   state: &mut OpState,
   args: ComputePassDispatchArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)
@@ -78,7 +76,7 @@ pub fn op_webgpu_compute_pass_dispatch(
     args.z,
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -93,7 +91,7 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
   state: &mut OpState,
   args: ComputePassDispatchIndirectArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
@@ -109,7 +107,7 @@ pub fn op_webgpu_compute_pass_dispatch_indirect(
     args.indirect_offset,
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -124,7 +122,7 @@ pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
   args: ComputePassBeginPipelineStatisticsQueryArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)
@@ -142,7 +140,7 @@ pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -155,7 +153,7 @@ pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
   state: &mut OpState,
   args: ComputePassEndPipelineStatisticsQueryArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)
@@ -167,7 +165,7 @@ pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -182,7 +180,7 @@ pub fn op_webgpu_compute_pass_write_timestamp(
   state: &mut OpState,
   args: ComputePassWriteTimestampArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)
@@ -200,7 +198,7 @@ pub fn op_webgpu_compute_pass_write_timestamp(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -214,7 +212,7 @@ pub fn op_webgpu_compute_pass_end_pass(
   state: &mut OpState,
   args: ComputePassEndPassArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGpuCommandEncoder>(
@@ -236,7 +234,7 @@ pub fn op_webgpu_compute_pass_end_pass(
     ))
     .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -254,7 +252,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
   state: &mut OpState,
   args: ComputePassSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGpuBindGroup>(args.bind_group)
@@ -283,7 +281,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -297,7 +295,7 @@ pub fn op_webgpu_compute_pass_push_debug_group(
   state: &mut OpState,
   args: ComputePassPushDebugGroupArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)
@@ -312,7 +310,7 @@ pub fn op_webgpu_compute_pass_push_debug_group(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -325,7 +323,7 @@ pub fn op_webgpu_compute_pass_pop_debug_group(
   state: &mut OpState,
   args: ComputePassPopDebugGroupArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)
@@ -335,7 +333,7 @@ pub fn op_webgpu_compute_pass_pop_debug_group(
     &mut compute_pass_resource.0.borrow_mut(),
   );
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -349,7 +347,7 @@ pub fn op_webgpu_compute_pass_insert_debug_marker(
   state: &mut OpState,
   args: ComputePassInsertDebugMarkerArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)
@@ -364,5 +362,5 @@ pub fn op_webgpu_compute_pass_insert_debug_marker(
     );
   }
 
-  Ok(json!({}))
+  Ok(())
 }

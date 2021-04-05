@@ -10,7 +10,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::WebGpuError;
+use super::error::{WebGpuError, WebGpuResult};
 
 pub(crate) struct WebGpuPipelineLayout(
   pub(crate) wgpu_core::id::PipelineLayoutId,
@@ -163,7 +163,7 @@ pub fn op_webgpu_create_compute_pipeline(
   state: &mut OpState,
   args: CreateComputePipelineArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -213,10 +213,10 @@ pub fn op_webgpu_create_compute_pipeline(
     .resource_table
     .add(WebGpuComputePipeline(compute_pipeline));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from),
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }
 
 #[derive(Deserialize)]
@@ -367,7 +367,7 @@ pub fn op_webgpu_create_render_pipeline(
   state: &mut OpState,
   args: CreateRenderPipelineArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -601,10 +601,10 @@ pub fn op_webgpu_create_render_pipeline(
     .resource_table
     .add(WebGpuRenderPipeline(render_pipeline));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult {
+    rid,
+    err: maybe_err.map(WebGpuError::from),
+  })
 }
 
 #[derive(Deserialize)]
