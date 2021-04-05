@@ -17,14 +17,14 @@ unitTest({ perms: { env: true } }, function envSuccess(): void {
 
 unitTest({ perms: { env: true } }, function envNotFound(): void {
   const r = Deno.env.get("env_var_does_not_exist!");
-  assertEquals(r, null);
+  assertEquals(r, undefined);
 });
 
 unitTest({ perms: { env: true } }, function deleteEnv(): void {
   Deno.env.set("TEST_VAR", "A");
   assertEquals(Deno.env.get("TEST_VAR"), "A");
   assertEquals(Deno.env.delete("TEST_VAR"), undefined);
-  assertEquals(Deno.env.get("TEST_VAR"), null);
+  assertEquals(Deno.env.get("TEST_VAR"), undefined);
 });
 
 unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
@@ -206,6 +206,6 @@ unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
 
 unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
   const { cores, speed } = Deno.systemCpuInfo();
-  assert(cores === null || cores > 0);
-  assert(speed === null || speed > 0);
+  assert(cores === undefined || cores > 0);
+  assert(speed === undefined || speed > 0);
 });
