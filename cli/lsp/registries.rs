@@ -85,6 +85,8 @@ enum CompletorType {
   Key(Key),
 }
 
+/// Determine if a completion at a given offset is a string literal or a key/
+/// variable.
 fn get_completor_type(
   offset: usize,
   tokens: &[Token],
@@ -129,6 +131,8 @@ fn get_completor_type(
   None
 }
 
+/// Convert a completion URL string from a completions configuration into a
+/// fully qualified URL which can be fetched to provide the completions.
 fn get_completion_endpoint(
   url: &str,
   tokens: &[Token],
@@ -163,6 +167,7 @@ fn parse_replacement_variables<S: AsRef<str>>(s: S) -> HashSet<String> {
     .collect()
 }
 
+/// Validate a registry configuration JSON structure.
 fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   if config.version != 1 {
     return Err(anyhow!(
@@ -208,22 +213,32 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
 
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryConfigurationVariable {
+  /// The name of the variable.
   key: String,
+  /// The URL with variable substitutions of the endpoint that will provide
+  /// completions for the variable.
   url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryConfiguration {
+  /// A Express-like path which describes how URLs are composed for a registry.
   schema: String,
+  /// The variables denoted in the `schema` should have a variable entry.
   variables: Vec<RegistryConfigurationVariable>,
 }
 
+/// A structure that represents the configuration of an origin and its module
+/// registries.
 #[derive(Debug, Deserialize)]
 struct RegistryConfigurationJson {
   version: u32,
   registries: Vec<RegistryConfiguration>,
 }
 
+/// A structure which holds the information about currently configured module
+/// registries and can provide completion information for URLs that match
+/// one of the enabled registries.
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
   origins: HashMap<ModuleSpecifier, Vec<RegistryConfiguration>>,
@@ -261,12 +276,89 @@ impl ModuleRegistry {
     }
   }
 
+  fn complete_literal(
+    &self,
+    s: String,
+    completions: &mut HashMap<String, lsp::CompletionItem>,
+    current_specifier: &str,
+    offset: usize,
+    range: &lsp::Range,
+  ) {
+    let label = if s.starts_with('/') {
+      s[0..].to_string()
+    } else {
+      s.to_string()
+    };
+    let full_text = format!(
+      "{}{}{}",
+      &current_specifier[..offset],
+      s,
+      &current_specifier[offset..]
+    );
+    let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+      range: *range,
+      new_text: full_text.clone(),
+    }));
+    let filter_text = Some(full_text);
+    completions.insert(
+      s,
+      lsp::CompletionItem {
+        label,
+        kind: Some(lsp::CompletionItemKind::Folder),
+        filter_text,
+        sort_text: Some("1".to_string()),
+        text_edit,
+        ..Default::default()
+      },
+    );
+  }
+
+  fn complete_origins(
+    &self,
+    current_specifier: &str,
+    range: &lsp::Range,
+  ) -> Option<Vec<lsp::CompletionItem>> {
+    let items = self
+      .origins
+      .keys()
+      .filter_map(|k| {
+        let mut origin = k.as_str().to_string();
+        if origin.ends_with('/') {
+          origin.pop();
+        }
+        if origin.starts_with(current_specifier) {
+          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: *range,
+            new_text: origin.clone(),
+          }));
+          Some(lsp::CompletionItem {
+            label: origin,
+            kind: Some(lsp::CompletionItemKind::Folder),
+            detail: Some("(registry)".to_string()),
+            sort_text: Some("1".to_string()),
+            text_edit,
+            ..Default::default()
+          })
+        } else {
+          None
+        }
+      })
+      .collect::<Vec<lsp::CompletionItem>>();
+    if !items.is_empty() {
+      Some(items)
+    } else {
+      None
+    }
+  }
+
+  /// Disable a registry, removing its configuration, if any, from memory.
   pub async fn disable(&mut self, origin: &str) -> Result<(), AnyError> {
     let origin = base_url(&Url::parse(origin)?)?;
     self.origins.remove(&origin);
     Ok(())
   }
 
+  /// Attempt to fetch the configuration for a specific origin.
   async fn fetch_config(
     &self,
     origin: &ModuleSpecifier,
@@ -281,6 +373,8 @@ impl ModuleRegistry {
     Ok(config.registries)
   }
 
+  /// Enable a registry by attempting to retrieve its configuration and
+  /// validating it.
   pub async fn enable(&mut self, origin: &str) -> Result<(), AnyError> {
     let origin = base_url(&Url::parse(origin)?)?;
     #[allow(clippy::map_entry)]
@@ -293,6 +387,8 @@ impl ModuleRegistry {
     Ok(())
   }
 
+  /// For a string specifier from the client, provide a set of completions, if
+  /// any, for the specifier.
   pub async fn get_completions(
     &self,
     current_specifier: &str,
@@ -343,36 +439,13 @@ impl ModuleRegistry {
                 let completor_type =
                   get_completor_type(path_offset, &tokens, &match_result);
                 match completor_type {
-                  Some(CompletorType::Literal(s)) => {
-                    let label = if s.starts_with('/') {
-                      s[0..].to_string()
-                    } else {
-                      s.to_string()
-                    };
-                    let full_text = format!(
-                      "{}{}{}",
-                      &current_specifier[..offset],
-                      s,
-                      &current_specifier[offset..]
-                    );
-                    let text_edit =
-                      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                        range: *range,
-                        new_text: full_text.clone(),
-                      }));
-                    let filter_text = Some(full_text);
-                    completions.insert(
-                      s,
-                      lsp::CompletionItem {
-                        label,
-                        kind: Some(lsp::CompletionItemKind::Folder),
-                        filter_text,
-                        sort_text: Some("1".to_string()),
-                        text_edit,
-                        ..Default::default()
-                      },
-                    );
-                  }
+                  Some(CompletorType::Literal(s)) => self.complete_literal(
+                    s,
+                    &mut completions,
+                    current_specifier,
+                    offset,
+                    range,
+                  ),
                   Some(CompletorType::Key(k)) => {
                     let maybe_url = registry.variables.iter().find_map(|v| {
                       if k.name == StringOrNumber::String(v.key.clone()) {
@@ -448,6 +521,9 @@ impl ModuleRegistry {
                 break;
               }
               i -= 1;
+              // If we have fallen though to the first token, and we still
+              // didn't get a match, but the first token is a string literal, we
+              // need to suggest the string literal.
               if i == 0 {
                 if let Token::String(s) = &tokens[i] {
                   if s.starts_with(path) {
@@ -491,38 +567,9 @@ impl ModuleRegistry {
       }
     }
     if !current_specifier.is_empty() {
-      let items = self
-        .origins
-        .keys()
-        .filter_map(|k| {
-          let mut origin = k.as_str().to_string();
-          if origin.ends_with('/') {
-            origin.pop();
-          }
-          if origin.starts_with(current_specifier) {
-            let text_edit =
-              Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                range: *range,
-                new_text: origin.clone(),
-              }));
-            Some(lsp::CompletionItem {
-              label: origin,
-              kind: Some(lsp::CompletionItemKind::Folder),
-              detail: Some("(registry)".to_string()),
-              sort_text: Some("1".to_string()),
-              text_edit,
-              ..Default::default()
-            })
-          } else {
-            None
-          }
-        })
-        .collect::<Vec<lsp::CompletionItem>>();
-      if !items.is_empty() {
-        Some(items)
-      } else {
-        None
-      }
+      // If we didn't have any matches of suggestions matching an origin, we
+      // will attempt to return any enabled origins that currently match.
+      self.complete_origins(current_specifier, range)
     } else {
       None
     }

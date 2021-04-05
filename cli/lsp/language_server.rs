@@ -3281,6 +3281,64 @@ mod tests {
     harness.run().await;
   }
 
+  #[tokio::test]
+  async fn test_completions_registry() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_registry.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_registry.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_registry.json",
+        LspResponse::RequestAssert(|value| {
+          let response: CompletionResult =
+            serde_json::from_value(value).unwrap();
+          let result = response.result.unwrap();
+          if let CompletionResponse::List(list) = result {
+            assert_eq!(list.items.len(), 3);
+          } else {
+            panic!("unexpected result");
+          }
+        }),
+      ),
+      (
+        "completion_resolve_request_registry.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "v2.0.0",
+            "kind": 19,
+            "detail": "(version)",
+            "sortText": "0000000003",
+            "filterText": "http://localhost:4545/x/a@v2.0.0",
+            "textEdit": {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 20
+                },
+                "end": {
+                  "line": 0,
+                  "character": 46
+                }
+              },
+              "newText": "http://localhost:4545/x/a@v2.0.0"
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
   #[derive(Deserialize)]
   struct PerformanceAverages {
     averages: Vec<PerformanceAverage>,
