@@ -19,7 +19,7 @@ pub use wgpu_core;
 pub use wgpu_types;
 
 use error::DomExceptionOperationError;
-use error::{WebGpuError, WebGpuResult};
+use error::WebGpuResult;
 
 #[macro_use]
 mod macros {
@@ -544,8 +544,5 @@ pub fn op_webgpu_create_query_set(
 
   let rid = state.resource_table.add(WebGpuQuerySet(query_set));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }

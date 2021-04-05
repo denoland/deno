@@ -213,10 +213,7 @@ pub fn op_webgpu_create_compute_pipeline(
     .resource_table
     .add(WebGpuComputePipeline(compute_pipeline));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -601,10 +598,7 @@ pub fn op_webgpu_create_render_pipeline(
     .resource_table
     .add(WebGpuRenderPipeline(render_pipeline));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]

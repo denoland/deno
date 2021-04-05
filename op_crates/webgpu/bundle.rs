@@ -124,10 +124,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
 
   let rid = state.resource_table.add(WebGpuRenderBundle(render_bundle));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]

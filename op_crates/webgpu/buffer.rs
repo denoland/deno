@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use super::error::DomExceptionOperationError;
-use super::error::{WebGpuError, WebGpuResult};
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuBuffer(pub(crate) wgpu_core::id::BufferId);
 impl Resource for WebGpuBuffer {
@@ -70,10 +70,7 @@ pub fn op_webgpu_create_buffer(
 
   let rid = state.resource_table.add(WebGpuBuffer(buffer));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]

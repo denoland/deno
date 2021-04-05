@@ -8,7 +8,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::{WebGpuError, WebGpuResult};
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuBindGroupLayout(
   pub(crate) wgpu_core::id::BindGroupLayoutId,
@@ -205,10 +205,7 @@ pub fn op_webgpu_create_bind_group_layout(
     .resource_table
     .add(WebGpuBindGroupLayout(bind_group_layout));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -257,10 +254,7 @@ pub fn op_webgpu_create_pipeline_layout(
     .resource_table
     .add(super::pipeline::WebGpuPipelineLayout(pipeline_layout));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -354,8 +348,5 @@ pub fn op_webgpu_create_bind_group(
 
   let rid = state.resource_table.add(WebGpuBindGroup(bind_group));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }

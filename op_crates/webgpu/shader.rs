@@ -9,7 +9,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::{WebGpuError, WebGpuResult};
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuShaderModule(pub(crate) wgpu_core::id::ShaderModuleId);
 impl Resource for WebGpuShaderModule {
@@ -75,8 +75,5 @@ pub fn op_webgpu_create_shader_module(
 
   let rid = state.resource_table.add(WebGpuShaderModule(shader_module));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }

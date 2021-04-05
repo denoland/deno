@@ -31,15 +31,22 @@ use wgpu_core::resource::CreateTextureViewError;
 
 #[derive(Serialize)]
 pub struct WebGpuResult {
-  pub rid: ResourceId,
+  pub rid: Option<ResourceId>,
   pub err: Option<WebGpuError>,
 }
 
 impl WebGpuResult {
-  pub fn maybe_err<T: Into<WebGpuError>>(maybe_err: Option<T>) -> Self {
+  pub fn rid<T: Into<WebGpuError>>(rid: ResourceId, err: Option<T>) -> Self {
     Self {
-      rid: 0, // NOTE: callers shouldn't use/need this field
-      err: maybe_err.map(|e| e.into()),
+      rid: Some(rid),
+      err: err.map(|e| e.into()),
+    }
+  }
+
+  pub fn maybe_err<T: Into<WebGpuError>>(err: Option<T>) -> Self {
+    Self {
+      rid: None,
+      err: err.map(|e| e.into()),
     }
   }
 }

@@ -8,7 +8,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::{WebGpuError, WebGpuResult};
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuSampler(pub(crate) wgpu_core::id::SamplerId);
 impl Resource for WebGpuSampler {
@@ -121,8 +121,5 @@ pub fn op_webgpu_create_sampler(
 
   let rid = state.resource_table.add(WebGpuSampler(sampler));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }

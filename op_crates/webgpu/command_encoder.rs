@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::error::{WebGpuError, WebGpuResult};
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuCommandEncoder(
   pub(crate) wgpu_core::id::CommandEncoderId,
@@ -73,10 +73,7 @@ pub fn op_webgpu_create_command_encoder(
     .resource_table
     .add(WebGpuCommandEncoder(command_encoder));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -728,8 +725,5 @@ pub fn op_webgpu_command_encoder_finish(
     .resource_table
     .add(WebGpuCommandBuffer(command_buffer));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }

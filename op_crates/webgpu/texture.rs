@@ -8,7 +8,7 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::{WebGpuError, WebGpuResult};
+use super::error::WebGpuResult;
 pub(crate) struct WebGpuTexture(pub(crate) wgpu_core::id::TextureId);
 impl Resource for WebGpuTexture {
   fn name(&self) -> Cow<str> {
@@ -184,10 +184,7 @@ pub fn op_webgpu_create_texture(
 
   let rid = state.resource_table.add(WebGpuTexture(texture));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -248,8 +245,5 @@ pub fn op_webgpu_create_texture_view(
 
   let rid = state.resource_table.add(WebGpuTextureView(texture_view));
 
-  Ok(WebGpuResult {
-    rid,
-    err: maybe_err.map(WebGpuError::from),
-  })
+  Ok(WebGpuResult::rid(rid, maybe_err))
 }
