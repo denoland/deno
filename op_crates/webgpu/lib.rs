@@ -40,6 +40,17 @@ mod macros {
       }
     };
   }
+
+  macro_rules! gfx_put {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* ) => $state:expr, $rc:expr) => {{
+      let (val, maybe_err) = gfx_select!($id => $global.$method($($param),*));
+      let rid = $state.resource_table.add($rc(val));
+      Ok(json!({
+        "rid": rid,
+        "err": maybe_err.map(WebGpuError::from),
+      }))
+    }};
+  }
 }
 
 pub mod binding;
@@ -536,16 +547,9 @@ pub fn op_webgpu_create_query_set(
     count: args.count,
   };
 
-  let (query_set, maybe_err) = gfx_select!(device => instance.device_create_query_set(
+  gfx_put!(device => instance.device_create_query_set(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuQuerySet(query_set));
-
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from),
-  }))
+  ) => state, WebGpuQuerySet)
 }

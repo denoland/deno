@@ -63,20 +63,11 @@ pub fn op_webgpu_create_command_encoder(
     label: args.label.map(Cow::from),
   };
 
-  let (command_encoder, maybe_err) = gfx_select!(device => instance.device_create_command_encoder(
+  gfx_put!(device => instance.device_create_command_encoder(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state
-    .resource_table
-    .add(WebGpuCommandEncoder(command_encoder));
-
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from),
-  }))
+  ) => state, WebGpuCommandEncoder)
 }
 
 #[derive(Deserialize)]
@@ -719,17 +710,8 @@ pub fn op_webgpu_command_encoder_finish(
     label: args.label.map(Cow::from),
   };
 
-  let (command_buffer, maybe_err) = gfx_select!(command_encoder => instance.command_encoder_finish(
+  gfx_put!(command_encoder => instance.command_encoder_finish(
     command_encoder,
     &descriptor
-  ));
-
-  let rid = state
-    .resource_table
-    .add(WebGpuCommandBuffer(command_buffer));
-
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  ) => state, WebGpuCommandBuffer)
 }

@@ -68,17 +68,10 @@ pub fn op_webgpu_create_shader_module(
     flags,
   };
 
-  let (shader_module, maybe_err) = gfx_select!(device => instance.device_create_shader_module(
+  gfx_put!(device => instance.device_create_shader_module(
     device,
     &descriptor,
     source,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuShaderModule(shader_module));
-
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  ) => state, WebGpuShaderModule)
 }

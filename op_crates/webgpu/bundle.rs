@@ -114,20 +114,13 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     .into_inner();
   let instance = state.borrow::<super::Instance>();
 
-  let (render_bundle, maybe_err) = gfx_select!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
+  gfx_put!(render_bundle_encoder.parent() => instance.render_bundle_encoder_finish(
     render_bundle_encoder,
     &wgpu_core::command::RenderBundleDescriptor {
       label: args.label.map(Cow::from),
     },
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuRenderBundle(render_bundle));
-
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  ) => state, WebGpuRenderBundle)
 }
 
 #[derive(Deserialize)]

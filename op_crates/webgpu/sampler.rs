@@ -115,16 +115,9 @@ pub fn op_webgpu_create_sampler(
     border_color: None, // native-only
   };
 
-  let (sampler, maybe_err) = gfx_select!(device => instance.device_create_sampler(
+  gfx_put!(device => instance.device_create_sampler(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuSampler(sampler));
-
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  ) => state, WebGpuSampler)
 }
