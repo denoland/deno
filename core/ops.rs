@@ -189,7 +189,7 @@ pub fn op_resources(
   state: &mut OpState,
   _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Vec<(u32, String)>, AnyError> {
+) -> Result<Vec<(ResourceId, String)>, AnyError> {
   let serialized_resources = state
     .resource_table
     .names()
@@ -203,9 +203,11 @@ pub fn op_resources(
 /// This op must be wrapped in `json_op_sync`.
 pub fn op_close(
   state: &mut OpState,
-  rid: ResourceId,
+  rid: Option<ResourceId>,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
+  // TODO(@AaronO): drop Option after improving type-strictness balance in serde_v8
+  let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
   state
     .resource_table
     .close(rid)
