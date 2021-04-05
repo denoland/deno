@@ -197,7 +197,7 @@
         }
       }
 
-      const { id } = createWorker(
+      const id = createWorker(
         specifier,
         hasSourceCode,
         sourceCode,
@@ -270,7 +270,7 @@
             } else {
               core.jsonOpSync(
                 "op_host_unhandled_error",
-                { message: event.error.message },
+                event.error.message,
               );
             }
           }
@@ -289,7 +289,7 @@
             } else {
               core.jsonOpSync(
                 "op_host_unhandled_error",
-                { message: event.error.message },
+                event.error.message,
               );
             }
           }

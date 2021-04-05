@@ -57,11 +57,6 @@ pub type CreateWebWorkerCb =
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
-#[derive(Deserialize)]
-struct HostUnhandledErrorArgs {
-  message: String,
-}
-
 pub struct WorkerThread {
   join_handle: JoinHandle<Result<(), AnyError>>,
   worker_handle: WebWorkerHandle,
@@ -95,12 +90,12 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_host_unhandled_error",
-    move |_state, args: HostUnhandledErrorArgs, _zero_copy| {
+    move |_state, message: String, _zero_copy| {
       if let Some(mut sender) = sender.clone() {
         sender
-          .try_send(WorkerEvent::Error(generic_error(args.message)))
+          .try_send(WorkerEvent::Error(generic_error(message)))
           .expect("Failed to propagate error event to parent worker");
-        Ok(json!(true))
+        Ok(true)
       } else {
         Err(generic_error("Cannot be called from main worker."))
       }
@@ -370,7 +365,7 @@ fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
   _data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
     Some(args.source_code.clone())
@@ -445,7 +440,7 @@ fn op_create_worker(
     .borrow_mut::<WorkersTable>()
     .insert(worker_id, worker_thread);
 
-  Ok(json!({ "id": worker_id }))
+  Ok(worker_id)
 }
 
 #[allow(clippy::unnecessary_wraps)]
