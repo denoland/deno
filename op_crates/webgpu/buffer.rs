@@ -233,7 +233,5 @@ pub fn op_webgpu_buffer_unmap(
     slice.copy_from_slice(&buffer);
   }
 
-  let maybe_err = gfx_select!(buffer => instance.buffer_unmap(buffer)).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  gfx_ok!(buffer => instance.buffer_unmap(buffer))
 }

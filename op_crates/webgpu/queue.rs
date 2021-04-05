@@ -144,7 +144,7 @@ pub fn op_webgpu_write_texture(
     rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
   };
 
-  let maybe_err = gfx_select!(queue => instance.queue_write_texture(
+  gfx_ok!(queue => instance.queue_write_texture(
     queue,
     &destination,
     &*zero_copy,
@@ -155,7 +155,4 @@ pub fn op_webgpu_write_texture(
       depth: args.size.depth.unwrap_or(1),
     }
   ))
-  .err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }

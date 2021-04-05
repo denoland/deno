@@ -308,9 +308,7 @@ pub fn op_webgpu_render_pass_end_pass(
   let render_pass = &render_pass_resource.0.borrow();
   let instance = state.borrow::<super::Instance>();
 
-  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass)).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  gfx_ok!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass))
 }
 
 #[derive(Deserialize)]

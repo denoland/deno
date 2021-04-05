@@ -302,16 +302,14 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
     .ok_or_else(bad_resource_id)?;
   let destination_buffer = destination_buffer_resource.0;
 
-  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_copy_buffer_to_buffer(
+  gfx_ok!(command_encoder => instance.command_encoder_copy_buffer_to_buffer(
     command_encoder,
     source_buffer,
     args.source_offset,
     destination_buffer,
     args.destination_offset,
     args.size
-  )).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  ))
 }
 
 #[derive(Deserialize)]
@@ -389,7 +387,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
         z: origin.z.unwrap_or(0),
       }),
   };
-  let maybe_err = gfx_select!(command_encoder => instance.command_encoder_copy_buffer_to_texture(
+  gfx_ok!(command_encoder => instance.command_encoder_copy_buffer_to_texture(
     command_encoder,
     &source,
     &destination,
@@ -398,9 +396,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
       height: args.copy_size.height.unwrap_or(1),
       depth: args.copy_size.depth.unwrap_or(1),
     }
-  )).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  ))
 }
 
 #[derive(Deserialize)]
@@ -451,7 +447,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
       rows_per_image: args.destination.rows_per_image.unwrap_or(0),
     },
   };
-  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_copy_texture_to_buffer(
+  gfx_ok!(command_encoder => instance.command_encoder_copy_texture_to_buffer(
     command_encoder,
     &source,
     &destination,
@@ -460,9 +456,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
       height: args.copy_size.height.unwrap_or(1),
       depth: args.copy_size.depth.unwrap_or(1),
     }
-  )).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  ))
 }
 
 #[derive(Deserialize)]
@@ -517,7 +511,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
         z: origin.z.unwrap_or(0),
       }),
   };
-  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_copy_texture_to_texture(
+  gfx_ok!(command_encoder => instance.command_encoder_copy_texture_to_texture(
     command_encoder,
     &source,
     &destination,
@@ -526,9 +520,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
       height: args.copy_size.height.unwrap_or(1),
       depth: args.copy_size.depth.unwrap_or(1),
     }
-  )).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  ))
 }
 
 #[derive(Deserialize)]
@@ -550,11 +542,8 @@ pub fn op_webgpu_command_encoder_push_debug_group(
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
 
-  let maybe_err = gfx_select!(command_encoder => instance
+  gfx_ok!(command_encoder => instance
     .command_encoder_push_debug_group(command_encoder, &args.group_label))
-  .err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
 }
 
 #[derive(Deserialize)]
@@ -575,9 +564,7 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
 
-  let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_pop_debug_group(command_encoder)).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  gfx_ok!(command_encoder => instance.command_encoder_pop_debug_group(command_encoder))
 }
 
 #[derive(Deserialize)]
@@ -599,12 +586,10 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
     .ok_or_else(bad_resource_id)?;
   let command_encoder = command_encoder_resource.0;
 
-  let maybe_err = gfx_select!(command_encoder => instance.command_encoder_insert_debug_marker(
+  gfx_ok!(command_encoder => instance.command_encoder_insert_debug_marker(
     command_encoder,
     &args.marker_label
-  )).err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  ))
 }
 
 #[derive(Deserialize)]
@@ -631,15 +616,11 @@ pub fn op_webgpu_command_encoder_write_timestamp(
     .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
-  let maybe_err =
-    gfx_select!(command_encoder => instance.command_encoder_write_timestamp(
-      command_encoder,
-      query_set_resource.0,
-      args.query_index
-    ))
-    .err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  gfx_ok!(command_encoder => instance.command_encoder_write_timestamp(
+    command_encoder,
+    query_set_resource.0,
+    args.query_index
+  ))
 }
 
 #[derive(Deserialize)]
@@ -673,18 +654,14 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
     .get::<super::buffer::WebGpuBuffer>(args.destination)
     .ok_or_else(bad_resource_id)?;
 
-  let maybe_err =
-    gfx_select!(command_encoder => instance.command_encoder_resolve_query_set(
-      command_encoder,
-      query_set_resource.0,
-      args.first_query,
-      args.query_count,
-      destination_resource.0,
-      args.destination_offset
-    ))
-    .err();
-
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  gfx_ok!(command_encoder => instance.command_encoder_resolve_query_set(
+    command_encoder,
+    query_set_resource.0,
+    args.first_query,
+    args.query_count,
+    destination_resource.0,
+    args.destination_offset
+  ))
 }
 
 #[derive(Deserialize)]

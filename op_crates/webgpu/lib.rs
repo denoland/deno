@@ -51,6 +51,13 @@ mod macros {
       }))
     }};
   }
+
+  macro_rules! gfx_ok {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {{
+      let maybe_err = gfx_select!($id => $global.$method($($param),*)).err();
+      Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+    }};
+  }
 }
 
 pub mod binding;
