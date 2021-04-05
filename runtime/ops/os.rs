@@ -152,19 +152,15 @@ fn op_os_release(
   Ok(release)
 }
 
-// Copied from sys-info/lib.rs
+// Copied from sys-info/lib.rs (then tweaked) 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemInfo {
-  /// Total physical memory.
   pub total: u64,
   pub free: u64,
-  pub avail: u64,
-
+  pub available: u64,
   pub buffers: u64,
   pub cached: u64,
-
-  /// Total swap memory.
   pub swap_total: u64,
   pub swap_free: u64,
 }
@@ -180,7 +176,7 @@ fn op_system_memory_info(
     Ok(info) => Ok(Some(MemInfo {
       total: info.total,
       free: info.free,
-      avail: info.avail,
+      available: info.avail,
       buffers: info.buffers,
       cached: info.cached,
       swap_total: info.swap_total,
