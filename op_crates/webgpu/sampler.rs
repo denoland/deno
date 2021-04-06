@@ -2,15 +2,13 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::WebGpuError;
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuSampler(pub(crate) wgpu_core::id::SamplerId);
 impl Resource for WebGpuSampler {
@@ -83,7 +81,7 @@ pub fn op_webgpu_create_sampler(
   state: &mut OpState,
   args: CreateSamplerArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table

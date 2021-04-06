@@ -358,7 +358,7 @@
       ],
       "patched-global.any.js": true,
       "reentrant-strategies.any.js": true,
-      "tee.any.js": true,
+      "tee.any.js": false,
       "templated.any.js": [
         "ReadableStream (empty) reader: canceling via the stream should fail"
       ]
@@ -784,7 +784,8 @@
     },
     "file": {
       "File-constructor.any.js": true
-    }
+    },
+    "fileReader.any.js": true
   },
   "html": {
     "webappapis": {

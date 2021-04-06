@@ -6,7 +6,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="./lib.deno_file.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
 

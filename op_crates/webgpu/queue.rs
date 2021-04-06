@@ -3,14 +3,12 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 
-use super::error::WebGpuError;
+use super::error::WebGpuResult;
 
 type WebGpuQueue = super::WebGpuDevice;
 
@@ -25,7 +23,7 @@ pub fn op_webgpu_queue_submit(
   state: &mut OpState,
   args: QueueSubmitArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let queue_resource = state
     .resource_table
@@ -46,7 +44,7 @@ pub fn op_webgpu_queue_submit(
   let maybe_err =
     gfx_select!(queue => instance.queue_submit(queue, &ids)).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -71,7 +69,7 @@ pub fn op_webgpu_write_buffer(
   state: &mut OpState,
   args: QueueWriteBufferArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
@@ -97,7 +95,7 @@ pub fn op_webgpu_write_buffer(
   ))
   .err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -113,7 +111,7 @@ pub fn op_webgpu_write_texture(
   state: &mut OpState,
   args: QueueWriteTextureArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state

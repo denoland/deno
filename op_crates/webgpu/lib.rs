@@ -4,13 +4,12 @@
 
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -19,7 +18,7 @@ pub use wgpu_core;
 pub use wgpu_types;
 
 use error::DomExceptionOperationError;
-use error::WebGpuError;
+use error::WebGpuResult;
 
 #[macro_use]
 mod macros {
@@ -45,17 +44,14 @@ mod macros {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* ) => $state:expr, $rc:expr) => {{
       let (val, maybe_err) = gfx_select!($id => $global.$method($($param),*));
       let rid = $state.resource_table.add($rc(val));
-      Ok(json!({
-        "rid": rid,
-        "err": maybe_err.map(WebGpuError::from),
-      }))
+      Ok(WebGpuResult::rid_err(rid, maybe_err))
     }};
   }
 
   macro_rules! gfx_ok {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {{
       let maybe_err = gfx_select!($id => $global.$method($($param),*)).err();
-      Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+      Ok(WebGpuResult::maybe_err(maybe_err))
     }};
   }
 }
@@ -131,8 +127,8 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webgpu.d.ts")
 }
 
-fn deserialize_features(features: &wgpu_types::Features) -> Vec<&str> {
-  let mut return_features: Vec<&str> = vec![];
+fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
+  let mut return_features: Vec<&'static str> = vec![];
 
   if features.contains(wgpu_types::Features::DEPTH_CLAMPING) {
     return_features.push("depth-clamping");
@@ -209,11 +205,27 @@ pub struct RequestAdapterArgs {
   power_preference: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum GpuAdapterDeviceOrErr {
+  Error { err: String },
+  Features(GpuAdapterDevice),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuAdapterDevice {
+  rid: ResourceId,
+  name: Option<String>,
+  limits: wgpu_types::Limits,
+  features: Vec<&'static str>,
+}
+
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<GpuAdapterDeviceOrErr, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
   let instance = if let Some(instance) = state.try_borrow::<Instance>() {
@@ -249,9 +261,9 @@ pub async fn op_webgpu_request_adapter(
   let adapter = match res {
     Ok(adapter) => adapter,
     Err(err) => {
-      return Ok(json!({
-        "err": err.to_string()
-      }))
+      return Ok(GpuAdapterDeviceOrErr::Error {
+        err: err.to_string(),
+      })
     }
   };
   let name = gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
@@ -261,25 +273,13 @@ pub async fn op_webgpu_request_adapter(
   let adapter_limits =
     gfx_select!(adapter => instance.adapter_limits(adapter))?;
 
-  let limits = json!({
-    "maxBindGroups": adapter_limits.max_bind_groups,
-    "maxDynamicUniformBuffersPerPipelineLayout": adapter_limits.max_dynamic_uniform_buffers_per_pipeline_layout,
-    "maxDynamicStorageBuffersPerPipelineLayout": adapter_limits.max_dynamic_storage_buffers_per_pipeline_layout,
-    "maxSampledTexturesPerShaderStage": adapter_limits.max_sampled_textures_per_shader_stage,
-    "maxSamplersPerShaderStage": adapter_limits.max_samplers_per_shader_stage,
-    "maxStorageBuffersPerShaderStage": adapter_limits.max_storage_buffers_per_shader_stage,
-    "maxStorageTexturesPerShaderStage": adapter_limits.max_storage_textures_per_shader_stage,
-    "maxUniformBuffersPerShaderStage": adapter_limits.max_uniform_buffers_per_shader_stage,
-    "maxUniformBufferBindingSize": adapter_limits.max_uniform_buffer_binding_size
-  });
-
   let rid = state.resource_table.add(WebGpuAdapter(adapter));
 
-  Ok(json!({
-    "rid": rid,
-    "name": name,
-    "features": features,
-    "limits": limits
+  Ok(GpuAdapterDeviceOrErr::Features(GpuAdapterDevice {
+    rid,
+    name: Some(name),
+    features,
+    limits: adapter_limits,
   }))
 }
 
@@ -318,7 +318,7 @@ pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<GpuAdapterDevice, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
@@ -455,25 +455,15 @@ pub async fn op_webgpu_request_device(
     gfx_select!(device => instance.device_features(device))?;
   let features = deserialize_features(&device_features);
   let limits = gfx_select!(device => instance.device_limits(device))?;
-  let json_limits = json!({
-     "maxBindGroups": limits.max_bind_groups,
-     "maxDynamicUniformBuffersPerPipelineLayout": limits.max_dynamic_uniform_buffers_per_pipeline_layout,
-     "maxDynamicStorageBuffersPerPipelineLayout": limits.max_dynamic_storage_buffers_per_pipeline_layout,
-     "maxSampledTexturesPerShaderStage": limits.max_sampled_textures_per_shader_stage,
-     "maxSamplersPerShaderStage": limits.max_samplers_per_shader_stage,
-     "maxStorageBuffersPerShaderStage": limits.max_storage_buffers_per_shader_stage,
-     "maxStorageTexturesPerShaderStage": limits.max_storage_textures_per_shader_stage,
-     "maxUniformBuffersPerShaderStage": limits.max_uniform_buffers_per_shader_stage,
-     "maxUniformBufferBindingSize": limits.max_uniform_buffer_binding_size,
-  });
 
   let rid = state.resource_table.add(WebGpuDevice(device));
 
-  Ok(json!({
-    "rid": rid,
-    "features": features,
-    "limits": json_limits,
-  }))
+  Ok(GpuAdapterDevice {
+    rid,
+    name: None,
+    features,
+    limits,
+  })
 }
 
 #[derive(Deserialize)]
@@ -491,7 +481,7 @@ pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   args: CreateQuerySetArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let device_resource = state
     .resource_table
     .get::<WebGpuDevice>(args.device_rid)
