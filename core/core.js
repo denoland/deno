@@ -105,11 +105,11 @@
   }
 
   function resources() {
-    return jsonOpSync("op_resources");
+    return Object.fromEntries(jsonOpSync("op_resources"));
   }
 
   function close(rid) {
-    jsonOpSync("op_close", { rid });
+    jsonOpSync("op_close", rid);
   }
 
   Object.assign(window.Deno.core, {

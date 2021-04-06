@@ -58,7 +58,7 @@
   }
 
   function chdir(directory) {
-    core.jsonOpSync("op_chdir", { directory });
+    core.jsonOpSync("op_chdir", directory);
   }
 
   function makeTempDirSync(options = {}) {
@@ -101,14 +101,8 @@
     await core.jsonOpAsync("op_mkdir_async", mkdirArgs(path, options));
   }
 
-  function res(response) {
-    return response.entries;
-  }
-
   function readDirSync(path) {
-    return res(
-      core.jsonOpSync("op_read_dir_sync", { path: pathFromURL(path) }),
-    )[
+    return core.jsonOpSync("op_read_dir_sync", pathFromURL(path))[
       Symbol.iterator
     ]();
   }
@@ -116,11 +110,8 @@
   function readDir(path) {
     const array = core.jsonOpAsync(
       "op_read_dir_async",
-      { path: pathFromURL(path) },
-    )
-      .then(
-        res,
-      );
+      pathFromURL(path),
+    );
     return {
       async *[Symbol.asyncIterator]() {
         yield* await array;
@@ -129,19 +120,19 @@
   }
 
   function readLinkSync(path) {
-    return core.jsonOpSync("op_read_link_sync", { path: pathFromURL(path) });
+    return core.jsonOpSync("op_read_link_sync", pathFromURL(path));
   }
 
   function readLink(path) {
-    return core.jsonOpAsync("op_read_link_async", { path: pathFromURL(path) });
+    return core.jsonOpAsync("op_read_link_async", pathFromURL(path));
   }
 
   function realPathSync(path) {
-    return core.jsonOpSync("op_realpath_sync", { path });
+    return core.jsonOpSync("op_realpath_sync", path);
   }
 
   function realPath(path) {
-    return core.jsonOpAsync("op_realpath_async", { path });
+    return core.jsonOpAsync("op_realpath_async", path);
   }
 
   function removeSync(
@@ -198,11 +189,11 @@
   }
 
   function fstatSync(rid) {
-    return parseFileInfo(core.jsonOpSync("op_fstat_sync", { rid }));
+    return parseFileInfo(core.jsonOpSync("op_fstat_sync", rid));
   }
 
   async function fstat(rid) {
-    return parseFileInfo(await core.jsonOpAsync("op_fstat_async", { rid }));
+    return parseFileInfo(await core.jsonOpAsync("op_fstat_async", rid));
   }
 
   async function lstat(path) {
@@ -262,7 +253,7 @@
   }
 
   function umask(mask) {
-    return core.jsonOpSync("op_umask", { mask });
+    return core.jsonOpSync("op_umask", mask);
   }
 
   function linkSync(oldpath, newpath) {
@@ -359,19 +350,19 @@
   }
 
   function fdatasyncSync(rid) {
-    core.jsonOpSync("op_fdatasync_sync", { rid });
+    core.jsonOpSync("op_fdatasync_sync", rid);
   }
 
   async function fdatasync(rid) {
-    await core.jsonOpAsync("op_fdatasync_async", { rid });
+    await core.jsonOpAsync("op_fdatasync_async", rid);
   }
 
   function fsyncSync(rid) {
-    core.jsonOpSync("op_fsync_sync", { rid });
+    core.jsonOpSync("op_fsync_sync", rid);
   }
 
   async function fsync(rid) {
-    await core.jsonOpAsync("op_fsync_async", { rid });
+    await core.jsonOpAsync("op_fsync_async", rid);
   }
 
   window.__bootstrap.fs = {

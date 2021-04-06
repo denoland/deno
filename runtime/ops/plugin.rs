@@ -4,8 +4,6 @@ use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
@@ -13,10 +11,10 @@ use deno_core::OpFn;
 use deno_core::OpId;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use log::debug;
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -28,18 +26,12 @@ pub fn init(rt: &mut JsRuntime) {
   super::reg_json_sync(rt, "op_open_plugin", op_open_plugin);
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenPluginArgs {
-  filename: String,
-}
-
 pub fn op_open_plugin(
   state: &mut OpState,
-  args: OpenPluginArgs,
+  filename: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let filename = PathBuf::from(&args.filename);
+) -> Result<ResourceId, AnyError> {
+  let filename = PathBuf::from(&filename);
 
   super::check_unstable(state, "Deno.openPlugin");
   let permissions = state.borrow::<Permissions>();
@@ -67,7 +59,7 @@ pub fn op_open_plugin(
   let mut interface = PluginInterface::new(state, &plugin_lib);
   deno_plugin_init(&mut interface);
 
-  Ok(json!(rid))
+  Ok(rid)
 }
 
 struct PluginResource {

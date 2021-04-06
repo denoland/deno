@@ -2841,6 +2841,11 @@ console.log("finish");
     output: "087_no_check_imports_not_used_as_values.ts.out",
   });
 
+  itest!(_088_dynamic_import_already_evaluating {
+    args: "run --allow-read 088_dynamic_import_already_evaluating.ts",
+    output: "088_dynamic_import_already_evaluating.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",

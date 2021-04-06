@@ -348,18 +348,11 @@ fn op_listen_tls(
   }))
 }
 
-#[derive(Deserialize)]
-pub struct AcceptTlsArgs {
-  rid: ResourceId,
-}
-
 async fn op_accept_tls(
   state: Rc<RefCell<OpState>>,
-  args: AcceptTlsArgs,
+  rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
   let resource = state
     .borrow()
     .resource_table

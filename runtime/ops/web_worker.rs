@@ -4,7 +4,6 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
 use deno_core::error::null_opbuf;
 use deno_core::futures::channel::mpsc;
-use deno_core::serde_json::{json, Value};
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,
@@ -16,14 +15,14 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_worker_post_message",
-    move |_state, _args: Value, buf| {
+    move |_state, _args: (), buf| {
       let buf = buf.ok_or_else(null_opbuf)?;
       let msg_buf: Box<[u8]> = (*buf).into();
       sender_
         .clone()
         .try_send(WorkerEvent::Message(msg_buf))
         .expect("Failed to post message to host");
-      Ok(json!({}))
+      Ok(())
     },
   );
 
@@ -31,12 +30,12 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_worker_close",
-    move |_state, _args: Value, _bufs| {
+    move |_state, _args: (), _bufs| {
       // Notify parent that we're finished
       sender.clone().close_channel();
       // Terminate execution of current worker
       handle.terminate();
-      Ok(json!({}))
+      Ok(())
     },
   );
 }
