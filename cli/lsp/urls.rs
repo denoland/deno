@@ -135,25 +135,23 @@ impl LspUrlMap {
       specifier.clone()
     } else {
       let mut url = url.clone();
-      if url.scheme() == "file" {
-        if url.as_str().contains("%3A") {
-          let path = url
-            .path_segments()
-            .unwrap()
-            .map(|s| {
-              if s.ends_with("%3A") && s.len() == 4 {
-                percent_encoding::percent_decode_str(s)
-                  .decode_utf8_lossy()
-                  .to_string()
-                  .to_ascii_uppercase()
-              } else {
-                s.to_string()
-              }
-            })
-            .collect::<Vec<String>>()
-            .join("/");
-          url.set_path(&path);
-        }
+      if url.scheme() == "file" && url.as_str().contains("%3A") {
+        let path = url
+          .path_segments()
+          .unwrap()
+          .map(|s| {
+            if s.ends_with("%3A") && s.len() == 4 {
+              percent_encoding::percent_decode_str(s)
+                .decode_utf8_lossy()
+                .to_string()
+                .to_ascii_uppercase()
+            } else {
+              s.to_string()
+            }
+          })
+          .collect::<Vec<String>>()
+          .join("/");
+        url.set_path(&path);
       }
       url
     }
