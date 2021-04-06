@@ -2317,7 +2317,6 @@ declare namespace Deno {
     heapTotal: number;
     heapUsed: number;
     external: number;
-    arrayBuffers: number;
   }
 
   export function memoryUsage(): MemoryUsage;

@@ -882,7 +882,9 @@ struct MemoryUsage {
   heap_total: usize,
   heap_used: usize,
   external: usize,
-  array_buffers: usize,
+  // TODO: track ArrayBuffers, would require using a custom allocator to track
+  // but it's otherwise a subset of external so can be indirectly tracked
+  // array_buffers: usize,
 }
 fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
@@ -893,8 +895,5 @@ fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
     heap_total: s.total_heap_size(),
     heap_used: s.used_heap_size(),
     external: s.external_memory(),
-    // TODO: track ArrayBuffers, would require using a custom allocator to track
-    // but it's otherwise a subset of external so can be indirectly tracked
-    array_buffers: 0,
   }
 }
