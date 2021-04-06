@@ -17,6 +17,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::remove_file;
@@ -54,6 +55,12 @@ impl Resource for UnixDatagramResource {
   fn close(self: Rc<Self>) {
     self.cancel.cancel();
   }
+}
+
+#[derive(Serialize)]
+pub struct UnixAddr {
+  pub path: String,
+  pub transport: String,
 }
 
 #[derive(Deserialize)]

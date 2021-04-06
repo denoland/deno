@@ -10,8 +10,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -34,6 +32,7 @@ use reqwest::Client;
 use reqwest::Method;
 use reqwest::Response;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -121,11 +120,18 @@ pub struct FetchArgs {
   has_body: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchReturn {
+  request_rid: ResourceId,
+  request_body_rid: Option<ResourceId>,
+}
+
 pub fn op_fetch<FP>(
   state: &mut OpState,
   args: FetchArgs,
   data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError>
+) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
@@ -164,7 +170,7 @@ where
 
   let mut request = client.request(method, url);
 
-  let maybe_request_body_rid = if args.has_body {
+  let request_body_rid = if args.has_body {
     match data {
       None => {
         // If no body is passed, we return a writer for streaming the body.
@@ -201,27 +207,31 @@ where
     .resource_table
     .add(FetchRequestResource(Box::pin(fut)));
 
-  Ok(json!({
-    "requestRid": request_rid,
-    "requestBodyRid": maybe_request_body_rid
-  }))
+  Ok(FetchReturn {
+    request_rid,
+    request_body_rid,
+  })
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FetchSendArgs {
-  rid: ResourceId,
+pub struct FetchResponse {
+  status: u16,
+  status_text: String,
+  headers: Vec<(String, String)>,
+  url: String,
+  response_rid: ResourceId,
 }
 
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  args: FetchSendArgs,
+  rid: ResourceId,
   _data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(args.rid)
+    .take::<FetchRequestResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let request = Rc::try_unwrap(request)
@@ -266,27 +276,20 @@ pub async fn op_fetch_send(
       cancel: CancelHandle::default(),
     });
 
-  Ok(json!({
-    "status": status.as_u16(),
-    "statusText": status.canonical_reason().unwrap_or(""),
-    "headers": res_headers,
-    "url": url,
-    "responseRid": rid,
-  }))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchRequestWriteArgs {
-  rid: ResourceId,
+  Ok(FetchResponse {
+    status: status.as_u16(),
+    status_text: status.canonical_reason().unwrap_or("").to_string(),
+    headers: res_headers,
+    url,
+    response_rid: rid,
+  })
 }
 
 pub async fn op_fetch_request_write(
   state: Rc<RefCell<OpState>>,
-  args: FetchRequestWriteArgs,
+  rid: ResourceId,
   data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
+) -> Result<(), AnyError> {
   let data = data.ok_or_else(null_opbuf)?;
   let buf = Vec::from(&*data);
 
@@ -299,21 +302,14 @@ pub async fn op_fetch_request_write(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   body.send(Ok(buf)).or_cancel(cancel).await??;
 
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchResponseReadArgs {
-  rid: ResourceId,
+  Ok(())
 }
 
 pub async fn op_fetch_response_read(
   state: Rc<RefCell<OpState>>,
-  args: FetchResponseReadArgs,
+  rid: ResourceId,
   data: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
+) -> Result<usize, AnyError> {
   let data = data.ok_or_else(null_opbuf)?;
 
   let resource = state
@@ -325,7 +321,7 @@ pub async fn op_fetch_response_read(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let mut buf = data.clone();
   let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
-  Ok(json!({ "read": read }))
+  Ok(read)
 }
 
 struct FetchRequestResource(
@@ -391,7 +387,7 @@ pub fn op_create_http_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError>
+) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
@@ -411,7 +407,7 @@ where
   .unwrap();
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
-  Ok(json!(rid))
+  Ok(rid)
 }
 
 fn get_cert_data(

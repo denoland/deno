@@ -82,28 +82,22 @@ impl Resource for WsStreamResource {
 
 impl WsStreamResource {}
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckPermissionArgs {
-  url: String,
-}
-
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
-  args: CheckPermissionArgs,
+  url: String,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError>
+) -> Result<(), AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
   state
     .borrow::<WP>()
-    .check_net_url(&url::Url::parse(&args.url)?)?;
+    .check_net_url(&url::Url::parse(&url)?)?;
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -224,7 +218,7 @@ pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
   buf: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
     "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
@@ -240,7 +234,7 @@ pub async fn op_ws_send(
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -255,7 +249,7 @@ pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
     code: CloseCode::from(c),
@@ -272,24 +266,18 @@ pub async fn op_ws_close(
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NextEventArgs {
-  rid: ResourceId,
+  Ok(())
 }
 
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
-  args: NextEventArgs,
+  rid: ResourceId,
   _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(args.rid)
+    .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut rx = RcRef::map(&resource, |r| &r.rx).borrow_mut().await;
@@ -325,7 +313,7 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Pong(_))) => json!({ "kind": "pong" }),
     Some(Err(_)) => json!({ "kind": "error" }),
     None => {
-      state.borrow_mut().resource_table.close(args.rid).unwrap();
+      state.borrow_mut().resource_table.close(rid).unwrap();
       json!({ "kind": "closed" })
     }
   };

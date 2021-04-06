@@ -129,7 +129,7 @@ delete Object.prototype.__proto__;
   }
 
   function opPostMessage(data) {
-    core.jsonOpSync("op_worker_post_message", {}, data);
+    core.jsonOpSync("op_worker_post_message", null, data);
   }
 
   function opCloseWorker() {

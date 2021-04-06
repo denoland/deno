@@ -5,9 +5,6 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -66,9 +63,9 @@ pub fn init(isolate: &mut JsRuntime) {
 
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   if let Some(seeded_rng) = maybe_seeded_rng {
@@ -78,7 +75,7 @@ pub fn op_crypto_get_random_values(
     rng.fill(&mut *zero_copy);
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 struct CryptoKeyResource<A> {
@@ -144,17 +141,26 @@ macro_rules! validate_usage {
   ($e: expr, $u: expr) => {
     for usage in $e {
       if !$u.contains(&usage) {
-        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }))
+        return Ok(GenerateKeyResult {
+          key: None,
+          err: Some(DomError("Invalid key usage".to_string())),
+        });
       }
     }
-  }
+  };
+}
+
+#[derive(Serialize)]
+pub struct GenerateKeyResult {
+  key: Option<JsCryptoKey>,
+  err: Option<DomError>,
 }
 
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
   args: WebCryptoGenerateKeyArg,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<GenerateKeyResult, AnyError> {
   let extractable = args.extractable;
   let algorithm = args.algorithm.name;
 
@@ -231,9 +237,10 @@ pub async fn op_webcrypto_generate_key(
         })?
         .try_into();
       if agreement.is_err() {
-        return Ok(
-          json!({ "err": DomError("namedCurve not supported".to_string()) }),
-        );
+        return Ok(GenerateKeyResult {
+          key: None,
+          err: Some(DomError("namedCurve not supported".to_string())),
+        });
       }
       // Generate private key from agreement and ring rng.
       let rng = RingRand::SystemRandom::new();
@@ -286,9 +293,10 @@ pub async fn op_webcrypto_generate_key(
         })?
         .try_into();
       if curve.is_err() {
-        return Ok(
-          json!({ "err": DomError("namedCurve not supported".to_string()) }),
-        );
+        return Ok(GenerateKeyResult {
+          key: None,
+          err: Some(DomError("namedCurve not supported".to_string())),
+        });
       }
       let rng = RingRand::SystemRandom::new();
       let private_key: EcdsaKeyPair = tokio::task::spawn_blocking(
@@ -360,26 +368,34 @@ pub async fn op_webcrypto_generate_key(
     _ => return Err(WebCryptoError::Unsupported.into()),
   };
 
-  Ok(json!({ "key": key }))
+  Ok(GenerateKeyResult {
+    key: Some(key),
+    err: None,
+  })
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WebCryptoSignArg {
+pub struct WebCryptoSignArg {
   rid: u32,
   algorithm: Algorithm,
   salt_length: Option<u32>,
   hash: Option<WebCryptoHash>,
 }
 
+#[derive(Serialize)]
+pub struct SignResult {
+  signature: Option<Vec<u8>>,
+  err: Option<DomError>,
+}
+
 pub async fn op_webcrypto_sign_key(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: WebCryptoSignArg,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<SignResult, AnyError> {
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let state = state.borrow();
-  let args: WebCryptoSignArg = serde_json::from_value(args)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -393,7 +409,10 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
+        return Ok(SignResult {
+          signature: None,
+          err: Some(DomError("Invalid key usage".to_string())),
+        });
       }
 
       let padding = match resource
@@ -426,7 +445,10 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
+        return Ok(SignResult {
+          signature: None,
+          err: Some(DomError("Invalid key usage".to_string())),
+        });
       }
 
       let rng = OsRng;
@@ -483,7 +505,10 @@ pub async fn op_webcrypto_sign_key(
       let key_pair = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
+        return Ok(SignResult {
+          signature: None,
+          err: Some(DomError("Invalid key usage".to_string())),
+        });
       }
 
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
@@ -510,7 +535,10 @@ pub async fn op_webcrypto_sign_key(
       let key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(json!({ "err": DomError("Invalid key usage".to_string()) }));
+        return Ok(SignResult {
+          signature: None,
+          err: Some(DomError("Invalid key usage".to_string())),
+        });
       }
 
       let signature = ring::hmac::sign(&key, &data);
@@ -519,7 +547,10 @@ pub async fn op_webcrypto_sign_key(
     _ => return Err(WebCryptoError::Unsupported.into()),
   };
 
-  Ok(json!({ "signature": signature }))
+  Ok(SignResult {
+    signature: Some(signature),
+    err: None,
+  })
 }
 
 pub fn get_declaration() -> PathBuf {
