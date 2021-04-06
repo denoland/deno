@@ -1162,6 +1162,25 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+async fn run_standalone(
+  source_code: String,
+  metadata: standalone::Metadata,
+) -> Result<(), AnyError> {
+  let main_module = deno_core::resolve_url(standalone::SPECIFIER)?;
+  let (mut worker, options) = standalone::create_standalone_worker(
+    main_module.clone(),
+    source_code,
+    metadata,
+  )?;
+  ops::runtime_compiler::init(&mut worker.js_runtime);
+  worker.bootstrap(&options);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.run_event_loop().await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  std::process::exit(0);
+}
+
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
@@ -1169,7 +1188,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
     Ok(Some((metadata, bundle))) => {
-      tokio_util::run_basic(standalone::run(bundle, metadata))
+      tokio_util::run_basic(run_standalone(bundle, metadata))
     }
     Ok(None) => Ok(()),
     Err(err) => Err(err),

@@ -107,7 +107,7 @@ fn read_string_slice(
   Ok(string)
 }
 
-const SPECIFIER: &str = "file://$deno$/bundle.js";
+pub const SPECIFIER: &str = "file://$deno$/bundle.js";
 
 struct EmbeddedModuleLoader(String);
 
@@ -152,11 +152,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
   }
 }
 
-pub async fn run(
+pub fn create_standalone_worker(
+  main_module: ModuleSpecifier,
   source_code: String,
   metadata: Metadata,
-) -> Result<(), AnyError> {
-  let main_module = resolve_url(SPECIFIER)?;
+) -> Result<(MainWorker, WorkerOptions), AnyError> {
   let permissions = Permissions::from_options(&metadata.permissions);
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
@@ -190,14 +190,8 @@ pub async fn run(
     get_error_class_fn: Some(&get_error_class_name),
     location: metadata.location,
   };
-  let mut worker =
-    MainWorker::from_options(main_module.clone(), permissions, &options);
-  worker.bootstrap(&options);
-  worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  std::process::exit(0);
+  let worker = MainWorker::from_options(main_module, permissions, &options);
+  Ok((worker, options))
 }
 
 fn get_error_class_name(e: &AnyError) -> &'static str {

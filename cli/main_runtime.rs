@@ -21,9 +21,26 @@ pub fn main() {
     std::process::exit(1);
   }
 }
+pub async fn run_standalone(
+  source_code: String,
+  metadata: standalone::Metadata,
+) -> Result<(), AnyError> {
+  let main_module = deno_core::resolve_url(standalone::SPECIFIER)?;
+  let (mut worker, options) = standalone::create_standalone_worker(
+    main_module.clone(),
+    source_code,
+    metadata,
+  )?;
+  worker.bootstrap(&options);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.run_event_loop().await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  std::process::exit(0);
+}
 
 fn run(args: Vec<String>) -> Result<(), AnyError> {
   let (metadata, bundle) = standalone::extract_standalone(args)?
     .ok_or_else(|| anyhow!("This executable is used internally by 'deno compile', it is not meant to be invoked directly."))?;
-  tokio_util::run_basic(standalone::run(bundle, metadata))
+  tokio_util::run_basic(run_standalone(bundle, metadata))
 }
