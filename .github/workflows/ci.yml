@@ -61,6 +61,13 @@ jobs:
           fetch-depth: 5
           submodules: true
 
+      - uses: actions/cache@v2.1.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Create source tarballs (release, linux)
         if: |
           startsWith(matrix.os, 'ubuntu') &&
