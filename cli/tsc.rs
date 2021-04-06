@@ -110,6 +110,19 @@ fn hash_data_url(
   format!("data:///{}{}", hash, media_type.as_ts_extension())
 }
 
+fn hash_blob_url(
+  specifier: &ModuleSpecifier,
+  media_type: &MediaType,
+) -> String {
+  assert_eq!(
+    specifier.scheme(),
+    "blob",
+    "Specifier must be a blob: specifier."
+  );
+  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
+  format!("blob:///{}{}", hash, media_type.as_ts_extension())
+}
+
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
 /// and so we have to detect the apparent media type based on extensions it
 /// supports.
@@ -182,6 +195,7 @@ pub struct Response {
 #[derive(Debug)]
 struct State {
   data_url_map: HashMap<String, ModuleSpecifier>,
+  blob_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
   graph: Arc<Mutex<Graph>>,
@@ -197,9 +211,11 @@ impl State {
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     data_url_map: HashMap<String, ModuleSpecifier>,
+    blob_url_map: HashMap<String, ModuleSpecifier>,
   ) -> Self {
     State {
       data_url_map,
+      blob_url_map,
       hash_data,
       emitted_files: Default::default(),
       graph,
@@ -264,6 +280,8 @@ fn emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
           .map(|s| {
             if let Some(data_specifier) = state.data_url_map.get(s) {
               data_specifier.clone()
+            } else if let Some(blob_specifier) = state.blob_url_map.get(s) {
+              blob_specifier.clone()
             } else if let Some(remapped_specifier) = state.root_map.get(s) {
               remapped_specifier.clone()
             } else {
@@ -315,6 +333,8 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
       state.data_url_map.get(&v.specifier)
     {
       data_specifier.clone()
+    } else if let Some(blob_specifier) = state.blob_url_map.get(&v.specifier) {
+      blob_specifier.clone()
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
       remapped_specifier.clone()
     } else {
@@ -351,6 +371,8 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let mut resolved: Vec<(String, String)> = Vec::new();
   let referrer = if let Some(data_specifier) = state.data_url_map.get(&v.base) {
     data_specifier.clone()
+  } else if let Some(blob_specifier) = state.blob_url_map.get(&v.base) {
+    blob_specifier.clone()
   } else if let Some(remapped_base) = state.root_map.get(&v.base) {
     remapped_base.clone()
   } else {
@@ -378,15 +400,24 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               resolved_specifier
             )
           };
-          let resolved_specifier_str = if resolved_specifier.scheme() == "data"
-          {
-            let specifier_str = hash_data_url(&resolved_specifier, &media_type);
-            state
-              .data_url_map
-              .insert(specifier_str.clone(), resolved_specifier);
-            specifier_str
-          } else {
-            resolved_specifier.to_string()
+          let resolved_specifier_str = match resolved_specifier.scheme() {
+            "data" => {
+              let specifier_str =
+                hash_data_url(&resolved_specifier, &media_type);
+              state
+                .data_url_map
+                .insert(specifier_str.clone(), resolved_specifier);
+              specifier_str
+            }
+            "blob" => {
+              let specifier_str =
+                hash_blob_url(&resolved_specifier, &media_type);
+              state
+                .blob_url_map
+                .insert(specifier_str.clone(), resolved_specifier);
+              specifier_str
+            }
+            _ => resolved_specifier.to_string(),
           };
           resolved.push((
             resolved_specifier_str,
@@ -436,15 +467,22 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
   let mut data_url_map = HashMap::new();
+  let mut blob_url_map = HashMap::new();
   let root_names: Vec<String> = request
     .root_names
     .iter()
-    .map(|(s, mt)| {
-      if s.scheme() == "data" {
+    .map(|(s, mt)| match s.scheme() {
+      "data" => {
         let specifier_str = hash_data_url(s, mt);
         data_url_map.insert(specifier_str.clone(), s.clone());
         specifier_str
-      } else {
+      }
+      "blob" => {
+        let specifier_str = hash_blob_url(s, mt);
+        blob_url_map.insert(specifier_str.clone(), s.clone());
+        specifier_str
+      }
+      _ => {
         let ext_media_type = get_tsc_media_type(s);
         if mt != &ext_media_type {
           let new_specifier = format!("{}{}", s, mt.as_ts_extension());
@@ -466,6 +504,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       request.maybe_tsbuildinfo.clone(),
       root_map,
       data_url_map,
+      blob_url_map,
     ));
   }
 
@@ -546,6 +585,7 @@ mod tests {
       graph,
       hash_data,
       maybe_tsbuildinfo,
+      HashMap::new(),
       HashMap::new(),
       HashMap::new(),
     )

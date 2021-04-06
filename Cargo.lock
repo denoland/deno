@@ -621,6 +621,7 @@ name = "deno_file"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "uuid",
 ]
 
 [[package]]
