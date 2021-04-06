@@ -51,6 +51,8 @@
     truncateSync: __bootstrap.fs.truncateSync,
     truncate: __bootstrap.fs.truncate,
     errors: __bootstrap.errors.errors,
+    // TODO(kt3k): Remove this export at v2
+    // See https://github.com/denoland/deno/issues/9294
     customInspect: __bootstrap.console.customInspect,
     inspect: __bootstrap.console.inspect,
     env: __bootstrap.os.env,

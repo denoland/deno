@@ -426,7 +426,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
-   * 
+   *
    * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
@@ -465,7 +465,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
-   * 
+   *
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
@@ -847,7 +847,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use Buffer from https://deno.land/std/io/buffer.ts instead. Deno.Buffer will be removed in Deno 2.0.
-   * 
+   *
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Deno.Buffer is almost always used with some I/O like files and sockets. It
@@ -930,7 +930,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   * 
+   *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
@@ -954,7 +954,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
-   * 
+   *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
@@ -978,7 +978,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   * 
+   *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
@@ -1003,7 +1003,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
-   * 
+   *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
@@ -1967,10 +1967,10 @@ declare namespace Deno {
      *
      * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
      * manually before the process can exit.
-     * 
+     *
      * To run process to completion and collect output from both `stdout` and
      * `stderr` use:
-     * 
+     *
      * ```ts
      * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
@@ -2097,14 +2097,14 @@ declare namespace Deno {
    * console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
    * ```
    *
-   * You can also register custom inspect functions, via the `customInspect` Deno
-   * symbol on objects, to control and customize the output.
+   * You can also register custom inspect functions, via the symbol `Symbol.for("Deno.customInspect")`,
+   * on objects, to control and customize the output.
    *
    * ```ts
    * class A {
    *   x = 10;
    *   y = "hello";
-   *   [Deno.customInspect](): string {
+   *   [Symbol.for("Deno.customInspect")](inspect): string {
    *     return "x=" + this.x + ", y=" + this.y;
    *   }
    * }
@@ -2289,9 +2289,13 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /** A symbol which can be used as a key for a custom method which will be
+  /**
+   * @deprecated A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console. */
+   * the console.
+   *
+   * This symbol is deprecated since 1.9. Use `Symbol.for("Deno.customInspect")` instead.
+   */
   export const customInspect: unique symbol;
 
   /** The URL of the entrypoint module entered from the command-line. */

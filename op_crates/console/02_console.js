@@ -907,22 +907,11 @@
     inspectOptions,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      return String(value[customInspect]());
-    }
-    // This non-unique symbol is used to support op_crates, ie.
-    // in op_crates/web we don't want to depend on unique "Deno.customInspect"
-    // symbol defined in the public API. Internal only, shouldn't be used
-    // by users.
-    const nonUniqueCustomInspect = Symbol.for("Deno.customInspect");
-    if (
-      nonUniqueCustomInspect in value &&
-      typeof value[nonUniqueCustomInspect] === "function"
-    ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `op_crates` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
-      return String(value[nonUniqueCustomInspect](inspect));
+      return String(value[customInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1771,7 +1760,7 @@
     }
   }
 
-  const customInspect = Symbol("Deno.customInspect");
+  const customInspect = Symbol.for("Deno.customInspect");
 
   function inspect(
     value,
