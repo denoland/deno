@@ -128,12 +128,34 @@ impl LspUrlMap {
   }
 
   /// Normalize URLs from the client, where "virtual" `deno:///` URLs are
-  /// converted into proper module specifiers.
+  /// converted into proper module specifiers, and handle situations where file
+  /// URLs on windows can be canonicalized differently.
   pub fn normalize_url(&self, url: &Url) -> ModuleSpecifier {
     if let Some(specifier) = self.get_specifier(url) {
       specifier.clone()
     } else {
-      url.clone()
+      let mut url = url.clone();
+      if url.scheme() == "file" {
+        if url.as_str().contains("%3A") {
+          let path = url
+            .path_segments()
+            .unwrap()
+            .map(|s| {
+              if s.ends_with("%3A") && s.len() == 4 {
+                percent_encoding::percent_decode_str(s)
+                  .decode_utf8_lossy()
+                  .to_string()
+                  .to_ascii_uppercase()
+              } else {
+                s.to_string()
+              }
+            })
+            .collect::<Vec<String>>()
+            .join("/");
+          url.set_path(&path);
+        }
+      }
+      url
     }
   }
 }
@@ -210,5 +232,16 @@ mod tests {
 
     let actual_specifier = map.normalize_url(&actual_url);
     assert_eq!(actual_specifier, fixture);
+  }
+
+  #[test]
+  fn test_normalize_windows_path() {
+    let map = LspUrlMap::default();
+    let fixture =
+      resolve_url("file:///c%3A/Users/deno/Desktop/a/b/c.js").unwrap();
+    let actual = map.normalize_url(&fixture);
+    let expected =
+      Url::parse("file:///C:/Users/deno/Desktop/a/b/c.js").unwrap();
+    assert_eq!(actual, expected);
   }
 }
