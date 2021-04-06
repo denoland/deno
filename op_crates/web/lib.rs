@@ -30,10 +30,6 @@ pub fn init(isolate: &mut JsRuntime) {
       "deno:op_crates/web/12_location.js",
       include_str!("12_location.js"),
     ),
-    (
-      "deno:op_crates/web/21_filereader.js",
-      include_str!("21_filereader.js"),
-    ),
   ];
   for (url, source_code) in files {
     isolate.execute(url, source_code).unwrap();
