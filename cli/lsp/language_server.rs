@@ -1591,6 +1591,192 @@ impl Inner {
     Ok(response)
   }
 
+  async fn incoming_calls(
+    &mut self,
+    params: CallHierarchyIncomingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("incoming_calls");
+    let specifier = self.url_map.normalize_url(&params.item.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::ProvideCallHierarchyIncomingCalls((
+      specifier.clone(),
+      line_index.offset_tsc(params.item.selection_range.start)?,
+    ));
+    let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_root_path_owned = self
+      .config
+      .root_uri
+      .as_ref()
+      .and_then(|uri| uri.to_file_path().ok());
+    let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
+    for item in incoming_calls.iter() {
+      if let Some(resolved) = item
+        .try_resolve_call_hierarchy_incoming_call(
+          self,
+          maybe_root_path_owned.as_deref(),
+        )
+        .await
+      {
+        resolved_items.push(resolved);
+      }
+    }
+    self.performance.measure(mark);
+    Ok(Some(resolved_items))
+  }
+
+  async fn outgoing_calls(
+    &mut self,
+    params: CallHierarchyOutgoingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("outgoing_calls");
+    let specifier = self.url_map.normalize_url(&params.item.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
+      specifier.clone(),
+      line_index.offset_tsc(params.item.selection_range.start)?,
+    ));
+    let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_root_path_owned = self
+      .config
+      .root_uri
+      .as_ref()
+      .and_then(|uri| uri.to_file_path().ok());
+    let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
+    for item in outgoing_calls.iter() {
+      if let Some(resolved) = item
+        .try_resolve_call_hierarchy_outgoing_call(
+          &line_index,
+          self,
+          maybe_root_path_owned.as_deref(),
+        )
+        .await
+      {
+        resolved_items.push(resolved);
+      }
+    }
+    self.performance.measure(mark);
+    Ok(Some(resolved_items))
+  }
+
+  async fn prepare_call_hierarchy(
+    &mut self,
+    params: CallHierarchyPrepareParams,
+  ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("prepare_call_hierarchy");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::PrepareCallHierarchy((
+      specifier.clone(),
+      line_index.offset_tsc(params.text_document_position_params.position)?,
+    ));
+    let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
+      self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {}", err);
+          LspError::invalid_request()
+        })?;
+
+    let response = if let Some(one_or_many) = maybe_one_or_many {
+      let maybe_root_path_owned = self
+        .config
+        .root_uri
+        .as_ref()
+        .and_then(|uri| uri.to_file_path().ok());
+      let mut resolved_items = Vec::<CallHierarchyItem>::new();
+      match one_or_many {
+        tsc::OneOrMany::One(item) => {
+          if let Some(resolved) = item
+            .try_resolve_call_hierarchy_item(
+              self,
+              maybe_root_path_owned.as_deref(),
+            )
+            .await
+          {
+            resolved_items.push(resolved)
+          }
+        }
+        tsc::OneOrMany::Many(items) => {
+          for item in items.iter() {
+            if let Some(resolved) = item
+              .try_resolve_call_hierarchy_item(
+                self,
+                maybe_root_path_owned.as_deref(),
+              )
+              .await
+            {
+              resolved_items.push(resolved);
+            }
+          }
+        }
+      }
+      Some(resolved_items)
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn rename(
     &mut self,
     params: RenameParams,
@@ -1921,6 +2107,27 @@ impl lspower::LanguageServer for LanguageServer {
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     self.0.lock().await.folding_range(params).await
+  }
+
+  async fn incoming_calls(
+    &self,
+    params: CallHierarchyIncomingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
+    self.0.lock().await.incoming_calls(params).await
+  }
+
+  async fn outgoing_calls(
+    &self,
+    params: CallHierarchyOutgoingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
+    self.0.lock().await.outgoing_calls(params).await
+  }
+
+  async fn prepare_call_hierarchy(
+    &self,
+    params: CallHierarchyPrepareParams,
+  ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
+    self.0.lock().await.prepare_call_hierarchy(params).await
   }
 
   async fn rename(
