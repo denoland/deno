@@ -12,7 +12,7 @@
 
 When building any sort of web application developers will usually need to
 retrieve data from somewhere else on the web. This works no differently in Deno
-than in any other JavaScript application, just call the the `fetch()` method.
+than in any other JavaScript application, just call the `fetch()` method.
 For more information on fetch read the
 [MDN documentation](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API).
 
