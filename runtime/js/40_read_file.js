@@ -3,7 +3,7 @@
 
 ((window) => {
   const { open, openSync } = window.__bootstrap.files;
-  const { readAll, readAllSync } = window.__bootstrap.buffer;
+  const { readAll, readAllSync } = window.__bootstrap.io;
 
   function readFileSync(path) {
     const file = openSync(path);

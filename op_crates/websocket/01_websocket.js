@@ -99,9 +99,7 @@
 
       this.#url = wsURL.href;
 
-      core.jsonOpSync("op_ws_check_permission", {
-        url: this.#url,
-      });
+      core.jsonOpSync("op_ws_check_permission", this.#url);
 
       if (protocols && typeof protocols === "string") {
         protocols = [protocols];
@@ -311,7 +309,7 @@
       while (this.#readyState === OPEN) {
         const message = await core.jsonOpAsync(
           "op_ws_next_event",
-          { rid: this.#rid },
+          this.#rid,
         );
 
         switch (message.kind) {

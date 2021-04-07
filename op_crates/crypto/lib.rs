@@ -4,8 +4,6 @@
 
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -29,9 +27,9 @@ pub fn init(isolate: &mut JsRuntime) {
 
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   if let Some(seeded_rng) = maybe_seeded_rng {
@@ -41,7 +39,7 @@ pub fn op_crypto_get_random_values(
     rng.fill(&mut *zero_copy);
   }
 
-  Ok(json!({}))
+  Ok(())
 }
 
 pub fn get_declaration() -> PathBuf {
