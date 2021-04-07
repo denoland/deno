@@ -2191,20 +2191,10 @@ mod tests {
               _ => panic!("unexpected result: {:?}", result),
             },
             LspResponse::Request(id, value) => match result {
-              Some(jsonrpc::Outgoing::Response(resp)) => {
-                let (_, res) = resp.clone().into_parts();
-                println!(
-                  "{}",
-                  serde_json::to_string_pretty(&res.unwrap()).unwrap()
-                );
-                assert_eq!(
-                  resp,
-                  jsonrpc::Response::ok(
-                    jsonrpc::Id::Number(*id),
-                    value.clone()
-                  )
-                )
-              }
+              Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
+                resp,
+                jsonrpc::Response::ok(jsonrpc::Id::Number(*id), value.clone())
+              ),
               _ => panic!("unexpected result: {:?}", result),
             },
             LspResponse::RequestAssert(assert) => match result {
