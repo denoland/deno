@@ -447,10 +447,11 @@ async fn cache_command(
   flags: Flags,
   files: Vec<String>,
 ) -> Result<(), AnyError> {
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
+  let lib = match (flags.worker, flags.unstable) {
+    (false, false) => module_graph::TypeLib::DenoWindow,
+    (false, true) => module_graph::TypeLib::UnstableDenoWindow,
+    (true, false) => module_graph::TypeLib::DenoWorker,
+    (true, true) => module_graph::TypeLib::UnstableDenoWorker,
   };
   let program_state = ProgramState::build(flags).await?;
 
@@ -537,11 +538,11 @@ async fn create_module_graph_and_maybe_check(
   let module_graph = builder.get_graph();
 
   if !program_state.flags.no_check {
-    // TODO(@kitsonk) support bundling for workers
-    let lib = if program_state.flags.unstable {
-      module_graph::TypeLib::UnstableDenoWindow
-    } else {
-      module_graph::TypeLib::DenoWindow
+    let lib = match (program_state.flags.worker, program_state.flags.unstable) {
+      (false, false) => module_graph::TypeLib::DenoWindow,
+      (false, true) => module_graph::TypeLib::UnstableDenoWindow,
+      (true, false) => module_graph::TypeLib::DenoWorker,
+      (true, true) => module_graph::TypeLib::UnstableDenoWorker,
     };
     let result_info =
       module_graph.clone().check(module_graph::CheckOptions {

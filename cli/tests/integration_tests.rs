@@ -2846,6 +2846,16 @@ console.log("finish");
     output: "088_dynamic_import_already_evaluating.ts.out",
   });
 
+  itest!(_089_cache_worker {
+    args: "cache --worker --reload workers/deno_worker.ts",
+    output_str: Some("[WILDCARD]"),
+  });
+
+  itest!(_090_bundle_worker {
+    args: "bundle --worker --reload workers/deno_worker.ts",
+    output_str: Some("[WILDCARD]"),
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",

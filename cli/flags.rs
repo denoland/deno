@@ -158,6 +158,7 @@ pub struct Flags {
   pub v8_flags: Vec<String>,
   pub version: bool,
   pub watch: bool,
+  pub worker: bool,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -482,6 +483,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
+  worker_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -572,6 +574,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   compile_args_parse(flags, matches);
+  worker_arg_parse(flags, matches);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -989,6 +992,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
+    .arg(worker_arg())
     .arg(watch_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
@@ -1108,6 +1112,7 @@ fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true)
         .min_values(1),
     )
+    .arg(worker_arg())
     .about("Cache the dependencies")
     .long_about(
       "Cache and compile remote dependencies recursively.
@@ -1787,6 +1792,18 @@ fn no_remote_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("no-remote") {
     flags.no_remote = true;
+  }
+}
+
+fn worker_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("worker")
+    .long("worker")
+    .help("Type check as worker code")
+}
+
+fn worker_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("worker") {
+    flags.worker = true;
   }
 }
 
@@ -3535,5 +3552,38 @@ mod tests {
       .unwrap_err()
       .to_string()
       .contains("Expected protocol \"http\" or \"https\""));
+  }
+
+  #[test]
+  fn cache_worker() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "cache", "--worker", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Cache {
+          files: svec!["script.ts"],
+        },
+        worker: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_worker() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "bundle", "--worker", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "script.ts".to_string(),
+          out_file: None,
+        },
+        worker: true,
+        ..Flags::default()
+      }
+    );
   }
 }
