@@ -2,6 +2,7 @@
 
 pub mod crypto;
 pub mod fetch;
+pub mod file;
 pub mod fs;
 pub mod fs_events;
 pub mod io;

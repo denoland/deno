@@ -39,7 +39,7 @@ fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
       };
       out.push(host_port);
     }
-    "data" => (),
+    "data" | "blob" => (),
     scheme => {
       error!("Don't know how to create cache name for scheme: {}", scheme);
       return None;
