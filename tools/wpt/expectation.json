@@ -784,7 +784,10 @@
     "file": {
       "File-constructor.any.js": true
     },
-    "fileReader.any.js": true
+    "fileReader.any.js": true,
+    "url": {
+      "url-format.any.js": true
+    }
   },
   "html": {
     "webappapis": {
