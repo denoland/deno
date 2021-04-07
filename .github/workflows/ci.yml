@@ -55,10 +55,10 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v2
         with:
-          # Use depth > 1, because sometimes we need to rebuild main and if
-          # other commits have landed it will become impossible to rebuild if
-          # the checkout is too shallow.
-          fetch-depth: '0'
+          # Disables shallow clone. We use full git history for restoring the mtime
+          # of each file to enable incremental build.
+          # See https://github.com/denoland/deno/pull/10053
+          fetch-depth: 0
           submodules: true
 
       - name: Create source tarballs (release, linux)
