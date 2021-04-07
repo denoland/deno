@@ -2615,6 +2615,154 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_call_hierarchy() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "prepare_call_hierarchy_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "prepare_call_hierarchy_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "name": "baz",
+              "kind": 6,
+              "detail": "Bar",
+              "uri": "file:///a/file.ts",
+              "range": {
+                "start": {
+                  "line": 5,
+                  "character": 2
+                },
+                "end": {
+                  "line": 7,
+                  "character": 3
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 5,
+                  "character": 2
+                },
+                "end": {
+                  "line": 5,
+                  "character": 5
+                }
+              }
+            }
+          ]),
+        ),
+      ),
+      (
+        "incoming_calls_request.json",
+        LspResponse::Request(
+          4,
+          json!([
+            {
+              "from": {
+                "name": "main",
+                "kind": 12,
+                "detail": "",
+                "uri": "file:///a/file.ts",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 1
+                  }
+                },
+                "selectionRange": {
+                  "start": {
+                    "line": 10,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 13
+                  }
+                }
+              },
+              "fromRanges": [
+                {
+                  "start": {
+                    "line": 12,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 9
+                  }
+                }
+              ]
+            }
+          ]),
+        ),
+      ),
+      (
+        "outgoing_calls_request.json",
+        LspResponse::Request(
+          5,
+          json!([
+            {
+              "to": {
+                "name": "foo",
+                "kind": 12,
+                "detail": "",
+                "uri": "file:///a/file.ts",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 1
+                  }
+                },
+                "selectionRange": {
+                  "start": {
+                    "line": 0,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 12
+                  }
+                }
+              },
+              "fromRanges": [
+                {
+                  "start": {
+                    "line": 6,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 14
+                  }
+                }
+              ]
+            }
+          ]),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
   async fn test_format_mbc() {
     let mut harness = LspTestHarness::new(vec![
       ("initialize_request.json", LspResponse::RequestAny),
