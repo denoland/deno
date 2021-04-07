@@ -969,7 +969,7 @@
 
       // prefer body from init
       if (init.body) {
-        b = init.body;
+        b = makeBody(init.body).body;
       } else if (input instanceof Request) {
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
@@ -979,7 +979,7 @@
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
         }
-        b = input.body;
+        b = makeBody(input.body).body;
       } else {
         b = "";
       }
@@ -1377,13 +1377,7 @@
       method = input.method;
       headers = input.headers;
       if (input.body) {
-        if (input instanceof Request) {
-          const { b, h } = makeBody(init.body, headers);
-          body = b;
-          headers = h;
-        } else {
-          body = input.body;
-        }
+        body = input.body;
       }
     }
 
