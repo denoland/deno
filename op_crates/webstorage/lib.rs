@@ -42,7 +42,7 @@ impl Resource for WebStorageConnectionResource {
 pub fn op_webstorage_open(
   state: &mut OpState,
   persistent: bool,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let connection = if persistent {
     let path = state.borrow::<LocationDataDir>().0.as_ref().unwrap();
@@ -66,7 +66,7 @@ pub fn op_webstorage_open(
 pub fn op_webstorage_length(
   state: &mut OpState,
   rid: u32,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let resource = state
     .resource_table
@@ -90,7 +90,7 @@ pub struct KeyArgs {
 pub fn op_webstorage_key(
   state: &mut OpState,
   args: KeyArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Option<String>, AnyError> {
   let resource = state
     .resource_table
@@ -119,7 +119,7 @@ pub struct SetArgs {
 pub fn op_webstorage_set(
   state: &mut OpState,
   args: SetArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   let resource = state
     .resource_table
@@ -156,7 +156,7 @@ pub struct GetArgs {
 pub fn op_webstorage_get(
   state: &mut OpState,
   args: GetArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Option<String>, AnyError> {
   let resource = state
     .resource_table
@@ -182,7 +182,7 @@ pub struct RemoveArgs {
 pub fn op_webstorage_remove(
   state: &mut OpState,
   args: RemoveArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   let resource = state
     .resource_table
@@ -199,7 +199,7 @@ pub fn op_webstorage_remove(
 pub fn op_webstorage_clear(
   state: &mut OpState,
   rid: u32,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   let resource = state
     .resource_table
@@ -218,7 +218,7 @@ pub fn op_webstorage_clear(
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
   rid: u32,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Vec<String>, AnyError> {
   let resource = state
     .resource_table
