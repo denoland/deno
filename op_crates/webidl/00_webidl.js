@@ -621,7 +621,12 @@
         allMembers.push(member);
       }
     }
-    allMembers.sort((a, b) => a.key.localeCompare(b.key));
+    allMembers.sort((a, b) => {
+      if (a.key == b.key) {
+        return 0;
+      }
+      return a.key < b.key ? -1 : 1;
+    });
 
     return function (V, opts = {}) {
       const typeV = type(V);
