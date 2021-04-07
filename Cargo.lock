@@ -647,6 +647,7 @@ name = "deno_runtime"
 version = "0.10.1"
 dependencies = [
  "atty",
+ "bytes",
  "deno_console",
  "deno_core",
  "deno_crypto",
@@ -678,6 +679,7 @@ dependencies = [
  "test_util",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "trust-dns-proto",
  "trust-dns-resolver",
  "uuid",

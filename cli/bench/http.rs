@@ -33,6 +33,7 @@ pub(crate) fn benchmark(
   res.insert("deno_tcp".to_string(), deno_tcp(deno_exe)?);
   // res.insert("deno_udp".to_string(), deno_udp(deno_exe)?);
   res.insert("deno_http".to_string(), deno_http(deno_exe)?);
+  res.insert("deno_http_native".to_string(), deno_http_native(deno_exe)?);
   // TODO(ry) deno_proxy disabled to make fetch() standards compliant.
   // res.insert("deno_proxy".to_string(), deno_http_proxy(deno_exe) hyper_hello_exe))
   res.insert(
@@ -190,6 +191,25 @@ fn deno_http(deno_exe: &str) -> Result<HttpBenchmarkResult> {
       "--reload",
       "--unstable",
       "test_util/std/http/bench.ts",
+      &server_addr(port),
+    ],
+    port,
+    None,
+    None,
+  )
+}
+
+fn deno_http_native(deno_exe: &str) -> Result<HttpBenchmarkResult> {
+  let port = get_port();
+  println!("http_benchmark testing DENO using native bindings.");
+  run(
+    &[
+      deno_exe,
+      "run",
+      "--allow-net",
+      "--reload",
+      "--unstable",
+      "cli/bench/deno_http_native.js",
       &server_addr(port),
     ],
     port,
