@@ -1397,7 +1397,7 @@ impl OutliningSpan {
     content: &[u8],
     line_folding_only: bool,
   ) -> u32 {
-    if line_folding_only && range.end.character > 0 {
+    if line_folding_only && range.end.line > 0 && range.end.character > 0 {
       let offset_end: usize = line_index.offset(range.end).unwrap().into();
       let fold_end_char = content[offset_end - 1];
       if FOLD_END_PAIR_CHARACTERS.contains(&fold_end_char) {
