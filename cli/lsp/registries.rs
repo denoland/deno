@@ -65,18 +65,8 @@ lazy_static::lazy_static! {
     Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap();
 }
 
-fn base_url(url: &Url) -> Result<Url, AnyError> {
-  let mut url = url.clone();
-  match url.path_segments_mut() {
-    Ok(mut path) => {
-      path.clear();
-    }
-    Err(_) => {
-      return Err(anyhow!("Url cannot be used as base"));
-    }
-  }
-  url.set_query(None);
-  Ok(url)
+fn base_url(url: &Url) -> String {
+  url.origin().ascii_serialization()
 }
 
 #[derive(Debug)]
@@ -241,7 +231,7 @@ struct RegistryConfigurationJson {
 /// one of the enabled registries.
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
-  origins: HashMap<ModuleSpecifier, Vec<RegistryConfiguration>>,
+  origins: HashMap<String, Vec<RegistryConfiguration>>,
   file_fetcher: FileFetcher,
 }
 
@@ -353,7 +343,7 @@ impl ModuleRegistry {
 
   /// Disable a registry, removing its configuration, if any, from memory.
   pub async fn disable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin = base_url(&Url::parse(origin)?)?;
+    let origin = base_url(&Url::parse(origin)?);
     self.origins.remove(&origin);
     Ok(())
   }
@@ -361,9 +351,10 @@ impl ModuleRegistry {
   /// Attempt to fetch the configuration for a specific origin.
   async fn fetch_config(
     &self,
-    origin: &ModuleSpecifier,
+    origin: &str,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    let specifier = origin.join(CONFIG_PATH)?;
+    let origin_url = Url::parse(origin)?;
+    let specifier = origin_url.join(CONFIG_PATH)?;
     let file = self
       .file_fetcher
       .fetch(&specifier, &Permissions::allow_all())
@@ -376,7 +367,7 @@ impl ModuleRegistry {
   /// Enable a registry by attempting to retrieve its configuration and
   /// validating it.
   pub async fn enable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin = base_url(&Url::parse(origin)?)?;
+    let origin = base_url(&Url::parse(origin)?);
     #[allow(clippy::map_entry)]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
@@ -397,8 +388,8 @@ impl ModuleRegistry {
     state_snapshot: &language_server::StateSnapshot,
   ) -> Option<Vec<lsp::CompletionItem>> {
     if let Ok(specifier) = Url::parse(current_specifier) {
-      let origin = base_url(&specifier).ok()?;
-      let origin_len = specifier[..Position::BeforePath].chars().count();
+      let origin = base_url(&specifier);
+      let origin_len = origin.chars().count();
       if offset >= origin_len {
         if let Some(registries) = self.origins.get(&origin) {
           let path = &specifier[Position::BeforePath..];
@@ -474,7 +465,7 @@ impl ModuleRegistry {
                           );
                           let path =
                             compiler.to_path(&params).unwrap_or_default();
-                          let mut item_specifier = origin.clone();
+                          let mut item_specifier = Url::parse(&origin).ok()?;
                           item_specifier.set_path(&path);
                           let full_text = item_specifier.as_str();
                           let text_edit = Some(lsp::CompletionTextEdit::Edit(

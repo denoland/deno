@@ -55,7 +55,7 @@ pub async fn get_import_completions(
           items: get_local_completions(specifier, &current_specifier, &range)?,
         }));
       }
-      // completion of modules form a module registry or cache
+      // completion of modules from a module registry or cache
       if !current_specifier.is_empty() {
         let offset = if position.character > range.start.character {
           (position.character - range.start.character) as usize
