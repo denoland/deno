@@ -1162,12 +1162,31 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+fn metadata_to_flags(metadata: &standalone::Metadata) -> Flags {
+  let permissions = metadata.permissions.clone();
+  Flags {
+    argv: metadata.argv.clone(),
+    unstable: metadata.unstable,
+    seed: metadata.seed,
+    location: metadata.location.clone(),
+    allow_env: permissions.allow_env,
+    allow_hrtime: permissions.allow_hrtime,
+    allow_net: permissions.allow_net,
+    allow_plugin: permissions.allow_plugin,
+    allow_read: permissions.allow_read,
+    allow_run: permissions.allow_run,
+    allow_write: permissions.allow_write,
+    v8_flags: metadata.v8_flags.clone(),
+    log_level: metadata.log_level,
+    ..Default::default()
+  }
+}
+
 async fn run_standalone(
   source_code: String,
   metadata: standalone::Metadata,
-  args: Vec<String>,
 ) -> Result<(), AnyError> {
-  let flags = flags::flags_from_vec(args).expect("Could not parse flags.");
+  let flags = metadata_to_flags(&metadata);
   let program_state = ProgramState::build(flags).await?;
   let main_module = deno_core::resolve_url(standalone::SPECIFIER)?;
   let (mut worker, options) = standalone::create_standalone_worker(
@@ -1196,7 +1215,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
     Ok(Some((metadata, bundle))) => {
-      tokio_util::run_basic(run_standalone(bundle, metadata, args.clone()))
+      tokio_util::run_basic(run_standalone(bundle, metadata))
     }
     Ok(None) => Ok(()),
     Err(err) => Err(err),
