@@ -1291,6 +1291,47 @@
     return await opFetchSend(requestRid);
   }
 
+  function makeBody(initBody, initHeaders) {
+    let body;
+    let headers = initHeaders;
+    if (!initHeaders) {
+      headers = new Headers();
+    }
+    let contentType = "";
+    if (typeof initBody === "string") {
+      body = new TextEncoder().encode(initBody);
+      contentType = "text/plain;charset=UTF-8";
+    } else if (isTypedArray(initBody)) {
+      body = initBody;
+    } else if (initBody instanceof ArrayBuffer) {
+      body = new Uint8Array(initBody);
+    } else if (initBody instanceof URLSearchParams) {
+      body = new TextEncoder().encode(initBody.toString());
+      contentType = "application/x-www-form-urlencoded;charset=UTF-8";
+    } else if (initBody instanceof Blob) {
+      body = initBody[_byteSequence];
+      contentType = initBody.type;
+    } else if (initBody instanceof FormData) {
+      let boundary;
+      if (headers.has("content-type")) {
+        const params = getHeaderValueParams("content-type");
+        boundary = params.get("boundary");
+      }
+      const multipartBuilder = new MultipartBuilder(
+        initBody,
+        boundary,
+      );
+      body = multipartBuilder.getBody();
+      contentType = multipartBuilder.getContentType();
+    } else if (initBody instanceof ReadableStream) {
+      body = initBody;
+    }
+    if (contentType && !headers.has("content-type")) {
+      headers.set("content-type", contentType);
+    }
+    return { body, headers };
+  }
+
   /**
    * @param {Request | URL | string} input 
    * @param {RequestInit & {client: Deno.HttpClient}} [init] 
@@ -1322,41 +1363,9 @@
         // Body should have been a mixin
         // but we are treating it as a separate class
         if (init.body) {
-          if (!headers) {
-            headers = new Headers();
-          }
-          let contentType = "";
-          if (typeof init.body === "string") {
-            body = new TextEncoder().encode(init.body);
-            contentType = "text/plain;charset=UTF-8";
-          } else if (isTypedArray(init.body)) {
-            body = init.body;
-          } else if (init.body instanceof ArrayBuffer) {
-            body = new Uint8Array(init.body);
-          } else if (init.body instanceof URLSearchParams) {
-            body = new TextEncoder().encode(init.body.toString());
-            contentType = "application/x-www-form-urlencoded;charset=UTF-8";
-          } else if (init.body instanceof Blob) {
-            body = init.body[_byteSequence];
-            contentType = init.body.type;
-          } else if (init.body instanceof FormData) {
-            let boundary;
-            if (headers.has("content-type")) {
-              const params = getHeaderValueParams("content-type");
-              boundary = params.get("boundary");
-            }
-            const multipartBuilder = new MultipartBuilder(
-              init.body,
-              boundary,
-            );
-            body = multipartBuilder.getBody();
-            contentType = multipartBuilder.getContentType();
-          } else if (init.body instanceof ReadableStream) {
-            body = init.body;
-          }
-          if (contentType && !headers.has("content-type")) {
-            headers.set("content-type", contentType);
-          }
+          const { b, h } = makeBody(init.body, headers);
+          body = b;
+          headers = h;
         }
 
         if (init.client instanceof HttpClient) {
@@ -1367,9 +1376,14 @@
       url = input.url;
       method = input.method;
       headers = input.headers;
-
       if (input.body) {
-        body = input.body;
+        if (input instanceof Request) {
+          const { b, h } = makeBody(init.body, headers);
+          body = b;
+          headers = h;
+        } else {
+          body = input.body;
+        }
       }
     }
 
