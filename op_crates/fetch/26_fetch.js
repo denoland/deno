@@ -968,9 +968,16 @@
       let b;
       let headers = new Headers();
 
+      // prefer headers from init
+      if (init.headers) {
+        headers = new Headers(init.headers);
+      } else if (input instanceof Request) {
+        headers = input.headers;
+      }
+
       // prefer body from init
       if (init.body) {
-        const body = makeBody(init.body, init.headers);
+        const body = makeBody(init.body, headers);
         b = body.body;
         headers = body.headers;
       } else if (input instanceof Request) {
@@ -982,18 +989,11 @@
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
         }
-        const body = makeBody(init.body, init.headers);
+        const body = makeBody(init.body, headers);
         b = body.body;
         headers = body.headers;
       } else {
         b = "";
-      }
-
-      // prefer headers from init
-      if (init.headers) {
-        headers = new Headers(init.headers);
-      } else if (input instanceof Request) {
-        headers = input.headers;
       }
 
       const contentType = headers.get("content-type") || "";
