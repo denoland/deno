@@ -142,6 +142,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
               // around it. Use the `file_name` we get from V8 if
               // `source_file_name` does not parse as a URL.
               let file_name = match deno_core::resolve_url(source_file_name) {
+                Ok(m) if m.scheme() == "blob" => file_name,
                 Ok(m) => m.to_string(),
                 Err(_) => file_name,
               };
