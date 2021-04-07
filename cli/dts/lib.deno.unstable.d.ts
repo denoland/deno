@@ -434,7 +434,12 @@ declare namespace Deno {
     scopes?: Record<string, Record<string, string>>;
   }
 
-  interface EmitOptions {
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The options for `Deno.emit()` API.
+   */
+  export interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
      * JavaScript bundle that is a single ES module (`"esm"`) or a single file
      * self contained script we executes in an immediately invoked function
@@ -467,7 +472,12 @@ declare namespace Deno {
     sources?: Record<string, string>;
   }
 
-  interface EmitResult {
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The result of `Deno.emit()` API.
+   */
+  export interface EmitResult {
     /** Diagnostic messages returned from the type checker (`tsc`). */
     diagnostics: Diagnostic[];
     /** Any emitted files.  If bundled, then the JavaScript will have the

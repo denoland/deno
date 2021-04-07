@@ -833,12 +833,17 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            match self.ts_server.request(self.snapshot(), req).await {
+              Ok(items) => items,
+              Err(err) => {
+                // sometimes tsc reports errors when retrieving code actions
+                // because they don't reflect the current state of the document
+                // so we will log them to the output, but we won't send an error
+                // message back to the client.
                 error!("Error getting actions from TypeScript: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+                Vec::new()
+              }
+            };
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, self)
@@ -2065,7 +2070,7 @@ impl Inner {
           if let Some(source) = self.sources.get_source(&specifier) {
             Some(source)
           } else {
-            error!("The cached sources was not found: {}", specifier);
+            error!("The cached source was not found: {}", specifier);
             None
           }
         }

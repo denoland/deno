@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::StdFileResource;
+use super::utils::into_string;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
@@ -106,13 +107,6 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
   super::reg_json_sync(rt, "op_utime_sync", op_utime_sync);
   super::reg_json_async(rt, "op_utime_async", op_utime_async);
-}
-
-fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
-  s.into_string().map_err(|s| {
-    let message = format!("File name or path {:?} is not valid UTF-8", s);
-    custom_error("InvalidData", message)
-  })
 }
 
 #[derive(Deserialize)]
