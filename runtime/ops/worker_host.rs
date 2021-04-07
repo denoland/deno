@@ -14,6 +14,7 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -23,7 +24,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -56,11 +56,6 @@ pub type CreateWebWorkerCb =
 /// value if type alises have the same underlying type
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
-
-#[derive(Deserialize)]
-struct HostUnhandledErrorArgs {
-  message: String,
-}
 
 pub struct WorkerThread {
   join_handle: JoinHandle<Result<(), AnyError>>,
@@ -95,12 +90,12 @@ pub fn init(
   super::reg_json_sync(
     rt,
     "op_host_unhandled_error",
-    move |_state, args: HostUnhandledErrorArgs, _zero_copy| {
+    move |_state, message: String, _zero_copy| {
       if let Some(mut sender) = sender.clone() {
         sender
-          .try_send(WorkerEvent::Error(generic_error(args.message)))
+          .try_send(WorkerEvent::Error(generic_error(message)))
           .expect("Failed to propagate error event to parent worker");
-        Ok(json!(true))
+        Ok(true)
       } else {
         Err(generic_error("Cannot be called from main worker."))
       }
@@ -255,6 +250,14 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
     formatter.write_str("a vector of strings or a boolean")
   }
 
+  // visit_unit maps undefined/missing values to false
+  fn visit_unit<E>(self) -> Result<UnaryPermissionBase, E>
+  where
+    E: de::Error,
+  {
+    self.visit_bool(false)
+  }
+
   fn visit_bool<E>(self, v: bool) -> Result<UnaryPermissionBase, E>
   where
     E: de::Error,
@@ -361,8 +364,8 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
-  _data: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _data: Option<ZeroCopyBuf>,
+) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
     Some(args.source_code.clone())
@@ -437,21 +440,15 @@ fn op_create_worker(
     .borrow_mut::<WorkersTable>()
     .insert(worker_id, worker_thread);
 
-  Ok(json!({ "id": worker_id }))
-}
-
-#[derive(Deserialize)]
-pub struct WorkerArgs {
-  id: i32,
+  Ok(worker_id)
 }
 
 #[allow(clippy::unnecessary_wraps)]
 fn op_host_terminate_worker(
   state: &mut OpState,
-  args: WorkerArgs,
-  _data: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let id = args.id as u32;
+  id: WorkerId,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let worker_thread = state
     .borrow_mut::<WorkersTable>()
     .remove(&id)
@@ -462,7 +459,7 @@ fn op_host_terminate_worker(
     .join()
     .expect("Panic in worker thread")
     .expect("Panic in worker event loop");
-  Ok(json!({}))
+  Ok(())
 }
 
 fn serialize_worker_event(event: WorkerEvent) -> Value {
@@ -524,11 +521,9 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
-  args: WorkerArgs,
-  _zero_copy: BufVec,
+  id: WorkerId,
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let id = args.id as u32;
-
   let worker_handle = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
@@ -558,12 +553,11 @@ async fn op_host_get_message(
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &mut OpState,
-  args: WorkerArgs,
-  data: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  assert_eq!(data.len(), 1, "Invalid number of arguments");
-  let id = args.id as u32;
-  let msg = Vec::from(&*data[0]).into_boxed_slice();
+  id: WorkerId,
+  data: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  let data = data.ok_or_else(null_opbuf)?;
+  let msg = Vec::from(&*data).into_boxed_slice();
 
   debug!("post message to worker {}", id);
   let worker_thread = state
@@ -571,5 +565,5 @@ fn op_host_post_message(
     .get(&id)
     .expect("No worker handle found");
   worker_thread.worker_handle.post_message(msg)?;
-  Ok(json!({}))
+  Ok(())
 }

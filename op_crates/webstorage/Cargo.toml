@@ -14,6 +14,6 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.82.0", path = "../../core" }
+deno_core = { version = "0.83.0", path = "../../core" }
 rusqlite = { version = "0.24.2", features = ["unlock_notify", "bundled"] }
 serde = { version = "1.0.123", features = ["derive"] }

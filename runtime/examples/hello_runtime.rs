@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
+use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -40,6 +41,7 @@ async fn main() -> Result<(), AnyError> {
     get_error_class_fn: Some(&get_error_class_name),
     location: None,
     location_data_dir: None,
+    blob_url_store: BlobUrlStore::default(),
   };
 
   let js_path =

@@ -13,6 +13,7 @@ pub struct ClientCapabilities {
   pub status_notification: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
+  pub line_folding_only: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -123,6 +124,14 @@ impl Config {
       self.client_capabilities.workspace_did_change_watched_files = workspace
         .did_change_watched_files
         .and_then(|it| it.dynamic_registration)
+        .unwrap_or(false);
+    }
+
+    if let Some(text_document) = &capabilities.text_document {
+      self.client_capabilities.line_folding_only = text_document
+        .folding_range
+        .as_ref()
+        .and_then(|it| it.line_folding_only)
         .unwrap_or(false);
     }
   }

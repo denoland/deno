@@ -12,6 +12,22 @@ struct MathOp {
   pub operator: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+enum EnumUnit {
+  A,
+  B,
+  C,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+enum EnumPayloads {
+  UInt(u64),
+  Int(i64),
+  Float(f64),
+  Point { x: i64, y: i64 },
+  Tuple(bool, i64, ()),
+}
+
 fn dedo(
   code: &str,
   f: impl FnOnce(&mut v8::HandleScope, v8::Local<v8::Value>),
@@ -33,7 +49,7 @@ macro_rules! detest {
     fn $fn_name() {
       dedo($src, |scope, v| {
         let rt = serde_v8::from_v8(scope, v);
-        assert!(rt.is_ok(), format!("from_v8(\"{}\"): {:?}", $src, rt.err()));
+        assert!(rt.is_ok(), "from_v8(\"{}\"): {:?}", $src, rt.err());
         let t: $t = rt.unwrap();
         assert_eq!(t, $rust);
       });
@@ -71,6 +87,43 @@ detest!(
     b: 3,
     operator: None
   }
+);
+
+// Unit enums
+detest!(de_enum_unit_a, EnumUnit, "'A'", EnumUnit::A);
+detest!(de_enum_unit_b, EnumUnit, "'B'", EnumUnit::B);
+detest!(de_enum_unit_c, EnumUnit, "'C'", EnumUnit::C);
+
+// Enums with payloads (tuples & struct)
+detest!(
+  de_enum_payload_int,
+  EnumPayloads,
+  "({ Int: -123 })",
+  EnumPayloads::Int(-123)
+);
+detest!(
+  de_enum_payload_uint,
+  EnumPayloads,
+  "({ UInt: 123 })",
+  EnumPayloads::UInt(123)
+);
+detest!(
+  de_enum_payload_float,
+  EnumPayloads,
+  "({ Float: 1.23 })",
+  EnumPayloads::Float(1.23)
+);
+detest!(
+  de_enum_payload_point,
+  EnumPayloads,
+  "({ Point: { x: 1, y: 2 } })",
+  EnumPayloads::Point { x: 1, y: 2 }
+);
+detest!(
+  de_enum_payload_tuple,
+  EnumPayloads,
+  "({ Tuple: [true, 123, null ] })",
+  EnumPayloads::Tuple(true, 123, ())
 );
 
 #[test]
@@ -114,7 +167,7 @@ detest!(
   de_json_int,
   serde_json::Value,
   "123",
-  serde_json::Value::Number(serde_json::Number::from_f64(123.0).unwrap())
+  serde_json::Value::Number(serde_json::Number::from(123))
 );
 detest!(
   de_json_float,
@@ -156,7 +209,7 @@ detest!(
     vec![
       (
         "a".to_string(),
-        serde_json::Value::Number(serde_json::Number::from_f64(1.0).unwrap()),
+        serde_json::Value::Number(serde_json::Number::from(1)),
       ),
       (
         "b".to_string(),
