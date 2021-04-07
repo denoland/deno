@@ -970,9 +970,9 @@
 
       // prefer body from init
       if (init.body) {
-        const { body, h } = makeBody(init.body, init.headers).body;
-        b = body;
-        headers = h;
+        const body = makeBody(init.body, init.headers);
+        b = body.body;
+        headers = body.headers;
       } else if (input instanceof Request) {
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
@@ -982,9 +982,9 @@
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
         }
-        const { body, h } = makeBody(init.body, init.headers).body;
-        b = body;
-        headers = h;
+        const body = makeBody(init.body, init.headers);
+        b = body.body;
+        headers = body.headers;
       } else {
         b = "";
       }
@@ -1365,9 +1365,9 @@
         // Body should have been a mixin
         // but we are treating it as a separate class
         if (init.body) {
-          const { b, h } = makeBody(init.body, headers);
-          body = b;
-          headers = h;
+          const b = makeBody(init.body, headers);
+          body = b.body;
+          headers = b.headers;
         }
 
         if (init.client instanceof HttpClient) {
