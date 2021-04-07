@@ -15,7 +15,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct Blob {
   pub data: Vec<u8>,
-  pub r#type: String,
+  pub media_type: String,
 }
 
 pub struct Location(pub Url);
@@ -52,13 +52,13 @@ impl BlobUrlStore {
 
 pub fn op_file_create_object_url(
   state: &mut deno_core::OpState,
-  r#type: String,
+  media_type: String,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<String, AnyError> {
   let data = zero_copy.ok_or_else(null_opbuf)?;
   let blob = Blob {
     data: data.to_vec(),
-    r#type,
+    media_type,
   };
 
   let maybe_location = state.try_borrow::<Location>();

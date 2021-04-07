@@ -482,7 +482,7 @@ impl FileFetcher {
       )
     })?;
 
-    let content_type = blob.r#type;
+    let content_type = blob.media_type;
 
     let (media_type, maybe_charset) =
       map_content_type(specifier, Some(content_type.clone()));
@@ -1083,7 +1083,7 @@ mod tests {
           "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
             .as_bytes()
             .to_vec(),
-        r#type: "application/typescript".to_string(),
+        media_type: "application/typescript".to_string(),
       },
       None,
     );
