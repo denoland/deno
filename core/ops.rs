@@ -145,6 +145,10 @@ impl OpTable {
     op_id
   }
 
+  pub fn next_op_id(&mut self) -> OpId {
+    self.0.len() + 1
+  }
+
   pub fn op_entries(state: Rc<RefCell<OpState>>) -> Vec<(String, OpId)> {
     state.borrow().op_table.0.keys().cloned().zip(0..).collect()
   }

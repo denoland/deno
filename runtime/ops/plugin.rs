@@ -114,10 +114,11 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
         _ => unreachable!(),
       }
     });
-    self.state.op_table.register_op(
-      name,
-      metrics_op(Box::leak(Box::new(name.to_string())), plugin_op_fn),
-    )
+    let op_id = self.state.op_table.next_op_id();
+    self
+      .state
+      .op_table
+      .register_op(name, metrics_op(op_id, plugin_op_fn))
   }
 }
 

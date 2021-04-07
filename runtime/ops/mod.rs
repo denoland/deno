@@ -51,7 +51,8 @@ pub fn reg_json_async<F, V, R, RV>(
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
-  rt.register_op(name, metrics_op(name, json_op_async(op_fn)));
+  let op_id = rt.next_op_id();
+  rt.register_op(name, metrics_op(op_id, json_op_async(op_fn)));
 }
 
 pub fn reg_json_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
@@ -60,7 +61,8 @@ where
   V: DeserializeOwned,
   R: Serialize + 'static,
 {
-  rt.register_op(name, metrics_op(name, json_op_sync(op_fn)));
+  let op_id = rt.next_op_id();
+  rt.register_op(name, metrics_op(op_id, json_op_sync(op_fn)));
 }
 
 pub fn reg_bin_async<F, R, RV>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
@@ -69,7 +71,8 @@ where
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: ValueOrVector,
 {
-  rt.register_op(name, metrics_op(name, bin_op_async(op_fn)));
+  let op_id = rt.next_op_id();
+  rt.register_op(name, metrics_op(op_id, bin_op_async(op_fn)));
 }
 
 pub fn reg_bin_sync<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
@@ -78,7 +81,8 @@ where
     Fn(&mut OpState, u32, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   R: ValueOrVector,
 {
-  rt.register_op(name, metrics_op(name, bin_op_sync(op_fn)));
+  let op_id = rt.next_op_id();
+  rt.register_op(name, metrics_op(op_id, bin_op_sync(op_fn)));
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;

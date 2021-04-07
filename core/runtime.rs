@@ -431,6 +431,15 @@ impl JsRuntime {
     snapshot
   }
 
+  pub fn next_op_id(&mut self) -> OpId {
+    Self::state(self.v8_isolate())
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .next_op_id()
+  }
+
   /// Registers an op that can be called from JavaScript.
   ///
   /// The _op_ mechanism allows to expose Rust functions to the JS runtime,

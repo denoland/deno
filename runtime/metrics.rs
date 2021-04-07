@@ -1,16 +1,30 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::serde::Serialize;
+use deno_core::Op;
+use deno_core::OpFn;
+use deno_core::OpId;
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct RuntimeMetrics {
-  pub ops: HashMap<&'static str, OpMetrics>,
+  max_id: OpId,
+  pub ops: Vec<OpMetrics>,
+}
+
+impl Default for RuntimeMetrics {
+  fn default() -> Self {
+    // 256 is 2^8 and big enough for all of our ops
+    Self {
+      max_id: 0,
+      ops: vec![OpMetrics::default(); 256],
+    }
+  }
 }
 
 impl RuntimeMetrics {
   pub fn combined_metrics(&self) -> OpMetrics {
     let mut total = OpMetrics::default();
 
-    for metrics in self.ops.values() {
+    for metrics in &self.ops {
       total.ops_dispatched += metrics.ops_dispatched;
       total.ops_dispatched_sync += metrics.ops_dispatched_sync;
       total.ops_dispatched_async += metrics.ops_dispatched_async;
@@ -28,7 +42,7 @@ impl RuntimeMetrics {
   }
 }
 
-#[derive(Default, Debug, Serialize)]
+#[derive(Default, Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OpMetrics {
   pub ops_dispatched: u64,
@@ -101,11 +115,7 @@ impl OpMetrics {
   }
 }
 
-use deno_core::Op;
-use deno_core::OpFn;
-use std::collections::HashMap;
-
-pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
+pub fn metrics_op(op_id: OpId, op_fn: Box<OpFn>) -> Box<OpFn> {
   Box::new(move |op_state, payload, buf| -> Op {
     // TODOs:
     // * The 'bytes' metrics seem pretty useless, especially now that the
@@ -127,11 +137,11 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
     let mut s = op_state.borrow_mut();
     let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
 
-    let metrics = if let Some(metrics) = runtime_metrics.ops.get_mut(name) {
+    let metrics = if let Some(metrics) = runtime_metrics.ops.get_mut(op_id) {
       metrics
     } else {
-      runtime_metrics.ops.insert(name, OpMetrics::default());
-      runtime_metrics.ops.get_mut(name).unwrap()
+      // OpMetrics vector is pre-allocated and all should fit all op_ids
+      unreachable!();
     };
 
     use deno_core::futures::future::FutureExt;
@@ -147,7 +157,7 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
           .inspect(move |_resp| {
             let mut s = op_state_.borrow_mut();
             let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
-            let metrics = runtime_metrics.ops.get_mut(name).unwrap();
+            let metrics = runtime_metrics.ops.get_mut(op_id).unwrap();
             metrics.op_completed_async(0);
           })
           .boxed_local();
@@ -159,7 +169,7 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
           .inspect(move |_resp| {
             let mut s = op_state_.borrow_mut();
             let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
-            let metrics = runtime_metrics.ops.get_mut(name).unwrap();
+            let metrics = runtime_metrics.ops.get_mut(op_id).unwrap();
             metrics.op_completed_async_unref(0);
           })
           .boxed_local();
