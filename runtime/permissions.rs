@@ -587,6 +587,7 @@ impl Permissions {
         ))),
       },
       "data" => Ok(()),
+      "blob" => Ok(()),
       _ => self.net.check_url(specifier),
     }
   }
@@ -695,7 +696,10 @@ fn permission_prompt(message: &str) -> bool {
     if result.is_err() {
       return false;
     };
-    let ch = input.chars().next().unwrap();
+    let ch = match input.chars().next() {
+      None => return false,
+      Some(v) => v,
+    };
     match ch.to_ascii_lowercase() {
       'g' => return true,
       'd' => return false,

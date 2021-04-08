@@ -265,9 +265,9 @@ checksum = "39092a32794787acd8525ee150305ff051b0aa6cc2abaf193924f5ab05425f39"
 
 [[package]]
 name = "bumpalo"
-version = "3.6.0"
+version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "099e596ef14349721d9016f6b80dd3419ea1bf289ab9b44df8e4dfd3a005d5d9"
+checksum = "63396b8a4b9de3f4fdfb320ab6080762242f66a8ef174c49d8e19b674db4cdbe"
 
 [[package]]
 name = "byteorder"
@@ -565,7 +565,6 @@ version = "0.83.0"
 dependencies = [
  "anyhow",
  "bencher",
- "erased-serde",
  "futures",
  "indexmap",
  "lazy_static",
@@ -618,6 +617,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_file"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "uuid",
+]
+
+[[package]]
 name = "deno_lint"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -644,6 +651,7 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_file",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -779,9 +787,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.35.2"
+version = "0.35.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0edf9f35fbd32eb53b7e047cb1da4208c70e9c3643a733478fd7c99d98009b3"
+checksum = "93bd44f40b1881477837edc7112695d4b174f058c36c1cbc4c50f8d0482e2ac8"
 dependencies = [
  "bumpalo",
  "fnv",
@@ -790,9 +798,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.9.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1e2cc629e68adce3eed0ce1bfb6c75aa6e53c0f0dda04d230fdf73d275f76"
+checksum = "192d9caba72e0955a19026d139a4e412f9be3b0ba0712f1f584f2cf6e391f472"
 dependencies = [
  "dprint-core",
  "jsonc-parser",
@@ -801,9 +809,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.6.0"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5600cc5d99205c6adfd79c825e4d6ac86581e9215c9b2d69a0448b0c2f2861a1"
+checksum = "adc6e49d7c853ab62958e744f12498368d71c25c398c523364ac1810845089df"
 dependencies = [
  "dprint-core",
  "pulldown-cmark",
@@ -895,15 +903,6 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
-]
-
-[[package]]
-name = "erased-serde"
-version = "0.3.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0465971a8cc1fa2455c8465aaa377131e1f1cf4983280f474a13e68793aa770c"
-dependencies = [
- "serde",
 ]
 
 [[package]]
@@ -1682,9 +1681,12 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.15.1"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da59eeab742770775c0f85b0b7b847f247b540a5389b806301d71c697d62bd8b"
+checksum = "0cb8a8eb6349c33f5ff1c6f12d09936f048c039411c9a08cd54a378fbf1905e2"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "kernel32-sys"

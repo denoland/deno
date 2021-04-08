@@ -22,6 +22,7 @@ deno_core = { path = "../core", version = "0.83.0" }
 deno_console = { path = "../op_crates/console", version = "0.2.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.16.1" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.24.1" }
+deno_file = { path = "../op_crates/file", version = "0.1.0" }
 deno_web = { path = "../op_crates/web", version = "0.32.1" }
 deno_url = { path = "../op_crates/url", version = "0.2.1" }
 deno_webidl = { path = "../op_crates/webidl", version = "0.2.1" }
@@ -37,6 +38,7 @@ deno_core = { path = "../core", version = "0.83.0" }
 deno_console = { path = "../op_crates/console", version = "0.2.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.16.1" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.24.1" }
+deno_file = { path = "../op_crates/file", version = "0.1.0" }
 deno_web = { path = "../op_crates/web", version = "0.32.1" }
 deno_url = { path = "../op_crates/url", version = "0.2.1" }
 deno_webidl = { path = "../op_crates/webidl", version = "0.2.1" }

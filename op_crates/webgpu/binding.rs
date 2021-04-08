@@ -2,15 +2,13 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
-use super::error::WebGpuError;
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuBindGroupLayout(
   pub(crate) wgpu_core::id::BindGroupLayoutId,
@@ -83,7 +81,7 @@ pub fn op_webgpu_create_bind_group_layout(
   state: &mut OpState,
   args: CreateBindGroupLayoutArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -207,10 +205,7 @@ pub fn op_webgpu_create_bind_group_layout(
     .resource_table
     .add(WebGpuBindGroupLayout(bind_group_layout));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -225,7 +220,7 @@ pub fn op_webgpu_create_pipeline_layout(
   state: &mut OpState,
   args: CreatePipelineLayoutArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -259,10 +254,7 @@ pub fn op_webgpu_create_pipeline_layout(
     .resource_table
     .add(super::pipeline::WebGpuPipelineLayout(pipeline_layout));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -288,7 +280,7 @@ pub fn op_webgpu_create_bind_group(
   state: &mut OpState,
   args: CreateBindGroupArgs,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -356,8 +348,5 @@ pub fn op_webgpu_create_bind_group(
 
   let rid = state.resource_table.add(WebGpuBindGroup(bind_group));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGpuError::from)
-  }))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
