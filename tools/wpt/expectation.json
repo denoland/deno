@@ -776,7 +776,6 @@
       "Blob-stream.any.js": true,
       "Blob-text.any.js": true,
       "Blob-constructor.any.js": [
-        "Blob interface object",
         "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
       ],
       "Blob-slice-overflow.any.js": true,
@@ -785,7 +784,33 @@
     "file": {
       "File-constructor.any.js": true
     },
-    "fileReader.any.js": true
+    "fileReader.any.js": true,
+    "url": {
+      "url-format.any.js": true
+    },
+    "reading-data-section": {
+      "Determining-Encoding.any.js": true,
+      "FileReader-event-handler-attributes.any.js": true,
+      "FileReader-multiple-reads.any.js": true,
+      "filereader_abort.any.js": true,
+      "filereader_error.any.js": true,
+      "filereader_events.any.js": false,
+      "filereader_readAsArrayBuffer.any.js": true,
+      "filereader_readAsBinaryString.any.js": true,
+      "filereader_readAsDataURL.any.js": true,
+      "filereader_readAsText.any.js": true,
+      "filereader_readystate.any.js": true,
+      "filereader_result.any.js": [
+        "result is null during \"loadstart\" event for readAsText",
+        "result is null during \"loadstart\" event for readAsDataURL",
+        "result is null during \"loadstart\" event for readAsArrayBuffer",
+        "result is null during \"loadstart\" event for readAsBinaryString",
+        "result is null during \"progress\" event for readAsText",
+        "result is null during \"progress\" event for readAsDataURL",
+        "result is null during \"progress\" event for readAsArrayBuffer",
+        "result is null during \"progress\" event for readAsBinaryString"
+      ]
+    }
   },
   "html": {
     "webappapis": {
