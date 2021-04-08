@@ -159,15 +159,20 @@ async fn op_http_request_next(
         true
       }
       Poll::Ready(Err(e)) => {
+        // TODO(ry) close RequestResource associated with connection
+        // TODO(ry) close ResponseBodyResource associated with connection
         // close ConnResource
         state
           .borrow_mut()
           .resource_table
           .take::<ConnResource>(conn_rid)
           .unwrap();
-        // TODO(ry) close RequestResource associated with connection
-        // TODO(ry) close ResponseBodyResource associated with connection
-        return Poll::Ready(Err(e));
+
+        if should_ignore_error(&e) {
+          true
+        } else {
+          return Poll::Ready(Err(e));
+        }
       }
     };
 
@@ -231,6 +236,20 @@ async fn op_http_request_next(
   })
   .await
   .map_err(AnyError::from)
+}
+
+fn should_ignore_error(e: &AnyError) -> bool {
+  if let Some(e) = e.downcast_ref::<hyper::Error>() {
+    use std::error::Error;
+    if let Some(std_err) = e.source() {
+      if let Some(io_err) = std_err.downcast_ref::<std::io::Error>() {
+        if io_err.kind() == std::io::ErrorKind::NotConnected {
+          return true;
+        }
+      }
+    }
+  }
+  false
 }
 
 fn op_http_start(
