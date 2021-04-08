@@ -25,6 +25,7 @@ use swc_ecmascript::visit::VisitWith;
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
+const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +79,29 @@ pub async fn get_import_completions(
           is_incomplete: false,
           items,
         }));
+      } else {
+        let mut items: Vec<lsp::CompletionItem> = LOCAL_PATHS
+          .iter()
+          .map(|s| lsp::CompletionItem {
+            label: s.to_string(),
+            kind: Some(lsp::CompletionItemKind::Folder),
+            detail: Some("(local)".to_string()),
+            sort_text: Some("1".to_string()),
+            insert_text: Some(s.to_string()),
+            ..Default::default()
+          })
+          .collect();
+        if let Some(origin_items) = state_snapshot
+          .module_registries
+          .get_origin_completions(&current_specifier, &range)
+        {
+          items.extend(origin_items);
+        }
+        return Some(lsp::CompletionResponse::List(lsp::CompletionList {
+          is_incomplete: false,
+          items,
+        }));
+        // TODO(@kitsonk) add bare specifiers from import map
       }
     }
   }

@@ -26,6 +26,7 @@ use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use log::error;
 use lspower::lsp;
@@ -72,7 +73,7 @@ fn base_url(url: &Url) -> String {
 #[derive(Debug)]
 enum CompletorType {
   Literal(String),
-  Key(Key),
+  Key(Key, Option<String>),
 }
 
 /// Determine if a completion at a given offset is a string literal or a key/
@@ -94,6 +95,9 @@ fn get_completor_type(
       Token::Key(k) => {
         if let Some(prefix) = &k.prefix {
           len += prefix.chars().count();
+          if offset < len {
+            return Some(CompletorType::Key(k.clone(), Some(prefix.clone())));
+          }
         }
         if offset < len {
           return None;
@@ -105,7 +109,7 @@ fn get_completor_type(
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
-            return Some(CompletorType::Key(k.clone()));
+            return Some(CompletorType::Key(k.clone(), None));
           }
         }
         if let Some(suffix) = &k.suffix {
@@ -242,8 +246,14 @@ impl Default for ModuleRegistry {
     let location = dir.root.join("registries");
     let http_cache = HttpCache::new(&location);
     let cache_setting = CacheSetting::Use;
-    let file_fetcher =
-      FileFetcher::new(http_cache, cache_setting, true, None).unwrap();
+    let file_fetcher = FileFetcher::new(
+      http_cache,
+      cache_setting,
+      true,
+      None,
+      BlobUrlStore::default(),
+    )
+    .unwrap();
 
     Self {
       origins: HashMap::new(),
@@ -255,10 +265,15 @@ impl Default for ModuleRegistry {
 impl ModuleRegistry {
   pub fn new(location: &Path) -> Self {
     let http_cache = HttpCache::new(location);
-    let file_fetcher =
-      FileFetcher::new(http_cache, CacheSetting::Use, true, None)
-        .context("Error creating file fetcher in module registry.")
-        .unwrap();
+    let file_fetcher = FileFetcher::new(
+      http_cache,
+      CacheSetting::Use,
+      true,
+      None,
+      BlobUrlStore::default(),
+    )
+    .context("Error creating file fetcher in module registry.")
+    .unwrap();
 
     Self {
       origins: HashMap::new(),
@@ -301,44 +316,6 @@ impl ModuleRegistry {
         ..Default::default()
       },
     );
-  }
-
-  fn complete_origins(
-    &self,
-    current_specifier: &str,
-    range: &lsp::Range,
-  ) -> Option<Vec<lsp::CompletionItem>> {
-    let items = self
-      .origins
-      .keys()
-      .filter_map(|k| {
-        let mut origin = k.as_str().to_string();
-        if origin.ends_with('/') {
-          origin.pop();
-        }
-        if origin.starts_with(current_specifier) {
-          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: *range,
-            new_text: origin.clone(),
-          }));
-          Some(lsp::CompletionItem {
-            label: origin,
-            kind: Some(lsp::CompletionItemKind::Folder),
-            detail: Some("(registry)".to_string()),
-            sort_text: Some("1".to_string()),
-            text_edit,
-            ..Default::default()
-          })
-        } else {
-          None
-        }
-      })
-      .collect::<Vec<lsp::CompletionItem>>();
-    if !items.is_empty() {
-      Some(items)
-    } else {
-      None
-    }
   }
 
   /// Disable a registry, removing its configuration, if any, from memory.
@@ -395,6 +372,7 @@ impl ModuleRegistry {
           let path = &specifier[Position::BeforePath..];
           let path_offset = offset - origin_len;
           let mut completions = HashMap::<String, lsp::CompletionItem>::new();
+          let mut did_match = false;
           for registry in registries {
             let tokens = parse(&registry.schema, None)
               .map_err(|e| {
@@ -427,6 +405,7 @@ impl ModuleRegistry {
                 })
                 .ok()?;
               if let Some(match_result) = matcher.matches(path) {
+                did_match = true;
                 let completor_type =
                   get_completor_type(path_offset, &tokens, &match_result);
                 match completor_type {
@@ -437,7 +416,7 @@ impl ModuleRegistry {
                     offset,
                     range,
                   ),
-                  Some(CompletorType::Key(k)) => {
+                  Some(CompletorType::Key(k, p)) => {
                     let maybe_url = registry.variables.iter().find_map(|v| {
                       if k.name == StringOrNumber::String(v.key.clone()) {
                         Some(v.url.as_str())
@@ -450,9 +429,14 @@ impl ModuleRegistry {
                         .get_variable_items(url, &tokens, &match_result)
                         .await
                       {
-                        let compiler = Compiler::new(&tokens[..i], None);
+                        let end = if p.is_some() { i + 1 } else { i };
+                        let compiler = Compiler::new(&tokens[..end], None);
                         for (idx, item) in items.into_iter().enumerate() {
-                          let label = item.clone();
+                          let label = if let Some(p) = &p {
+                            format!("{}{}", p, item)
+                          } else {
+                            item.clone()
+                          };
                           let kind = if k.name == last_key_name {
                             Some(lsp::CompletionItemKind::File)
                           } else {
@@ -549,7 +533,10 @@ impl ModuleRegistry {
               }
             }
           }
-          return if completions.is_empty() {
+          // If we return None, other sources of completions will be looked for
+          // but if we did at least match part of a registry, we should send an
+          // empty vector so that no-completions will be sent back to the client
+          return if completions.is_empty() && !did_match {
             None
           } else {
             Some(completions.into_iter().map(|(_, i)| i).collect())
@@ -557,10 +544,43 @@ impl ModuleRegistry {
         }
       }
     }
-    if !current_specifier.is_empty() {
-      // If we didn't have any matches of suggestions matching an origin, we
-      // will attempt to return any enabled origins that currently match.
-      self.complete_origins(current_specifier, range)
+
+    self.get_origin_completions(current_specifier, range)
+  }
+
+  pub fn get_origin_completions(
+    &self,
+    current_specifier: &str,
+    range: &lsp::Range,
+  ) -> Option<Vec<lsp::CompletionItem>> {
+    let items = self
+      .origins
+      .keys()
+      .filter_map(|k| {
+        let mut origin = k.as_str().to_string();
+        if origin.ends_with('/') {
+          origin.pop();
+        }
+        if origin.starts_with(current_specifier) {
+          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: *range,
+            new_text: origin.clone(),
+          }));
+          Some(lsp::CompletionItem {
+            label: origin,
+            kind: Some(lsp::CompletionItemKind::Folder),
+            detail: Some("(registry)".to_string()),
+            sort_text: Some("2".to_string()),
+            text_edit,
+            ..Default::default()
+          })
+        } else {
+          None
+        }
+      })
+      .collect::<Vec<lsp::CompletionItem>>();
+    if !items.is_empty() {
+      Some(items)
     } else {
       None
     }

@@ -3339,6 +3339,69 @@ mod tests {
     harness.run().await;
   }
 
+  #[tokio::test]
+  async fn test_completion_registry_empty_specifier() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_registry.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_registry_02.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_registry_02.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": ".",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": "."
+              },
+              {
+                "label": "..",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": ".."
+              },
+              {
+                "label": "http://localhost:4545",
+                "kind": 19,
+                "detail": "(registry)",
+                "sortText": "2",
+                "textEdit": {
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  },
+                  "newText": "http://localhost:4545"
+                }
+              }
+            ]
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
   #[derive(Deserialize)]
   struct PerformanceAverages {
     averages: Vec<PerformanceAverage>,
