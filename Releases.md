@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.8.3 / 2021.04.02
+
+- feat(lsp): add import completions (#9821)
+- feat(lsp): implement textDocument/selectionRange (#9845)
+- fix(websocket): ignore resource close error (#9755)
+- fix(lsp): ensure insert_text is passed back on completions (#9951)
+- fix(web): add AbortController.abort() (#9907)
+- fix(crypto): include deno.crypto in `deno types` (#9863)
+- fix(cli): re-add dom.asynciterable lib (#9888)
+
+Release notes for std version 0.92.0:
+https://github.com/denoland/deno_std/releases/tag/0.92.0
+
 ### 1.8.2 / 2021.03.21
 
 - fix: fallback to default UA and CA data for Deno.createHttpClient() (#9830)

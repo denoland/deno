@@ -30,7 +30,7 @@ struct ApplySourceMap {
 fn op_apply_source_map(
   state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
@@ -56,7 +56,7 @@ fn op_apply_source_map(
 fn op_format_diagnostic(
   _state: &mut OpState,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))

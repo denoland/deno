@@ -9,18 +9,13 @@
 //! calls it) for an entire Isolate. This is what is implemented here.
 
 use crate::permissions::Permissions;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
 use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
@@ -77,24 +72,19 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
   super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
   super::reg_json_async(rt, "op_global_timer", op_global_timer);
-  super::reg_bin_sync(rt, "op_now", op_now);
+  super::reg_json_sync(rt, "op_now", op_now);
   super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 
 #[allow(clippy::unnecessary_wraps)]
 fn op_global_timer_stop(
   state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _args: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.cancel();
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-pub struct GlobalTimerArgs {
-  timeout: u64,
+  Ok(())
 }
 
 // Set up a timer that will be later awaited by JS promise.
@@ -107,22 +97,20 @@ pub struct GlobalTimerArgs {
 #[allow(clippy::unnecessary_wraps)]
 fn op_global_timer_start(
   state: &mut OpState,
-  args: GlobalTimerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let val = args.timeout;
-
-  let deadline = Instant::now() + Duration::from_millis(val);
+  timeout: u64,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  let deadline = Instant::now() + Duration::from_millis(timeout);
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.new_timeout(deadline);
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_global_timer(
   state: Rc<RefCell<OpState>>,
-  _args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
+  _args: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let maybe_timer_fut = {
     let mut s = state.borrow_mut();
     let global_timer = s.borrow_mut::<GlobalTimer>();
@@ -131,24 +119,19 @@ async fn op_global_timer(
   if let Some(timer_fut) = maybe_timer_fut {
     let _ = timer_fut.await;
   }
-  Ok(json!({}))
+  Ok(())
 }
 
 // Returns a milliseconds and nanoseconds subsec
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
+#[allow(clippy::unnecessary_wraps)]
 fn op_now(
   op_state: &mut OpState,
-  _argument: u32,
-  zero_copy: &mut [ZeroCopyBuf],
-) -> Result<u32, AnyError> {
-  match zero_copy.len() {
-    0 => return Err(type_error("no buffer specified")),
-    1 => {}
-    _ => return Err(type_error("Invalid number of arguments")),
-  }
-
+  _argument: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<f64, AnyError> {
   let start_time = op_state.borrow::<StartTime>();
   let seconds = start_time.elapsed().as_secs();
   let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
@@ -163,23 +146,16 @@ fn op_now(
 
   let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0);
 
-  (&mut zero_copy[0]).copy_from_slice(&result.to_be_bytes());
-
-  Ok(0)
-}
-
-#[derive(Deserialize)]
-pub struct SleepArgs {
-  millis: u64,
+  Ok(result)
 }
 
 #[allow(clippy::unnecessary_wraps)]
 fn op_sleep_sync(
   state: &mut OpState,
-  args: SleepArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  millis: u64,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.sleepSync");
-  sleep(Duration::from_millis(args.millis));
-  Ok(json!({}))
+  sleep(Duration::from_millis(millis));
+  Ok(())
 }

@@ -4,9 +4,6 @@ use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::futures::prelude::*;
 use deno_core::plugin_api;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
@@ -14,10 +11,10 @@ use deno_core::OpFn;
 use deno_core::OpId;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use log::debug;
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -29,18 +26,12 @@ pub fn init(rt: &mut JsRuntime) {
   super::reg_json_sync(rt, "op_open_plugin", op_open_plugin);
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenPluginArgs {
-  filename: String,
-}
-
 pub fn op_open_plugin(
   state: &mut OpState,
-  args: OpenPluginArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let filename = PathBuf::from(&args.filename);
+  filename: String,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ResourceId, AnyError> {
+  let filename = PathBuf::from(&filename);
 
   super::check_unstable(state, "Deno.openPlugin");
   let permissions = state.borrow::<Permissions>();
@@ -68,7 +59,7 @@ pub fn op_open_plugin(
   let mut interface = PluginInterface::new(state, &plugin_lib);
   deno_plugin_init(&mut interface);
 
-  Ok(json!(rid))
+  Ok(rid)
 }
 
 struct PluginResource {
@@ -111,16 +102,9 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
     let plugin_op_fn: Box<OpFn> = Box::new(move |state_rc, _payload, buf| {
-      // For sig compat map Option<ZeroCopyBuf> to BufVec
-      let mut bufs: BufVec = match buf {
-        Some(b) => vec![b],
-        None => vec![],
-      }
-      .into();
-
       let mut state = state_rc.borrow_mut();
       let mut interface = PluginInterface::new(&mut state, &plugin_lib);
-      let op = dispatch_op_fn(&mut interface, &mut bufs);
+      let op = dispatch_op_fn(&mut interface, buf);
       match op {
         sync_op @ Op::Sync(..) => sync_op,
         Op::Async(fut) => Op::Async(PluginOpAsyncFuture::new(&plugin_lib, fut)),

@@ -2841,6 +2841,11 @@ console.log("finish");
     output: "087_no_check_imports_not_used_as_values.ts.out",
   });
 
+  itest!(_088_dynamic_import_already_evaluating {
+    args: "run --allow-read 088_dynamic_import_already_evaluating.ts",
+    output: "088_dynamic_import_already_evaluating.ts.out",
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -3676,6 +3681,34 @@ console.log("finish");
   itest!(import_dynamic_data_url {
     args: "run --quiet --reload import_dynamic_data_url.ts",
     output: "import_dynamic_data_url.ts.out",
+  });
+
+  itest!(import_blob_url_error_stack {
+    args: "run --quiet --reload import_blob_url_error_stack.ts",
+    output: "import_blob_url_error_stack.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(import_blob_url_import_relative {
+    args: "run --quiet --reload import_blob_url_import_relative.ts",
+    output: "import_blob_url_import_relative.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(import_blob_url_imports {
+    args: "run --quiet --reload import_blob_url_imports.ts",
+    output: "import_blob_url_imports.ts.out",
+    http_server: true,
+  });
+
+  itest!(import_blob_url_jsx {
+    args: "run --quiet --reload import_blob_url_jsx.ts",
+    output: "import_blob_url_jsx.ts.out",
+  });
+
+  itest!(import_blob_url {
+    args: "run --quiet --reload import_blob_url.ts",
+    output: "import_blob_url.ts.out",
   });
 
   itest!(import_file_with_colon {
@@ -4684,7 +4717,9 @@ console.log("finish");
       /// Returns the next websocket message as a string ignoring
       /// Debugger.scriptParsed messages.
       async fn ws_read_msg(
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+        socket: &mut tokio_tungstenite::WebSocketStream<
+          tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
       ) -> String {
         use deno_core::futures::stream::StreamExt;
         while let Some(msg) = socket.next().await {

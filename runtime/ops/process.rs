@@ -8,17 +8,15 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -82,11 +80,22 @@ impl ChildResource {
   }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+// TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
+struct RunInfo {
+  rid: ResourceId,
+  pid: Option<u32>,
+  stdin_rid: Option<ResourceId>,
+  stdout_rid: Option<ResourceId>,
+  stderr_rid: Option<ResourceId>,
+}
+
 fn op_run(
   state: &mut OpState,
   run_args: RunArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<RunInfo, AnyError> {
   state.borrow::<Permissions>().run.check()?;
 
   let args = run_args.cmd;
@@ -167,28 +176,28 @@ fn op_run(
   };
   let child_rid = state.resource_table.add(child_resource);
 
-  Ok(json!({
-    "rid": child_rid,
-    "pid": pid,
-    "stdinRid": stdin_rid,
-    "stdoutRid": stdout_rid,
-    "stderrRid": stderr_rid,
-  }))
+  Ok(RunInfo {
+    rid: child_rid,
+    pid,
+    stdin_rid,
+    stdout_rid,
+    stderr_rid,
+  })
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RunStatusArgs {
-  rid: ResourceId,
+struct RunStatus {
+  got_signal: bool,
+  exit_code: i32,
+  exit_signal: i32,
 }
 
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
-  args: RunStatusArgs,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<RunStatus, AnyError> {
   {
     let s = state.borrow();
     s.borrow::<Permissions>().run.check()?;
@@ -213,11 +222,11 @@ async fn op_run_status(
     .expect("Should have either an exit code or a signal.");
   let got_signal = signal.is_some();
 
-  Ok(json!({
-     "gotSignal": got_signal,
-     "exitCode": code.unwrap_or(-1),
-     "exitSignal": signal.unwrap_or(-1),
-  }))
+  Ok(RunStatus {
+    got_signal,
+    exit_code: code.unwrap_or(-1),
+    exit_signal: signal.unwrap_or(-1),
+  })
 }
 
 #[cfg(unix)]
@@ -280,11 +289,11 @@ struct KillArgs {
 fn op_kill(
   state: &mut OpState,
   args: KillArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow::<Permissions>().run.check()?;
 
   kill(args.pid, args.signo)?;
-  Ok(json!({}))
+  Ok(())
 }
