@@ -170,7 +170,7 @@ jobs:
             ~/.cargo/git
             ~/.cargo/registry
             ./target
-          key: cache-1-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+          key: cache-${{ github.repository }}-${{ github.ref }}-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
 
       - name: test_format.js
         if: matrix.kind == 'lint'
