@@ -37,15 +37,17 @@ function close(rid) {
 }
 
 async function serve(rid) {
-  while (true) {
-    const nread = await read(rid, requestBuf);
-    if (nread <= 0) {
-      break;
+  try {
+    while (true) {
+      await read(rid, requestBuf);
+      await write(rid, responseBuf);
     }
-
-    const nwritten = await write(rid, responseBuf);
-    if (nwritten < 0) {
-      break;
+  } catch (e) {
+    if (
+      !e.message.includes("Broken pipe") &&
+      !e.message.includes("Connection reset by peer")
+    ) {
+      throw e;
     }
   }
   close(rid);
@@ -58,12 +60,8 @@ async function main() {
   const listenerRid = listen();
   Deno.core.print(`http_bench_json_ops listening on http://127.0.0.1:4544/\n`);
 
-  for (;;) {
+  while (true) {
     const rid = await accept(listenerRid);
-    if (rid < 0) {
-      Deno.core.print(`accept error ${rid}`);
-      return;
-    }
     serve(rid);
   }
 }
