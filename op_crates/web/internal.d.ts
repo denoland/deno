@@ -5,6 +5,25 @@
 
 declare namespace globalThis {
   declare namespace __bootstrap {
+    declare var infra: {
+      collectSequenceOfCodepoints(
+        input: string,
+        position: number,
+        condition: (char: string) => boolean,
+      ): {
+        result: string;
+        position: number;
+      };
+    };
+
+    declare var mimesniff: {
+      parseMimeType(input: string): {
+        type: string;
+        subtype: string;
+        parameters: Map<string, string>;
+      } | null;
+    };
+
     declare var eventTarget: {
       EventTarget: typeof EventTarget;
     };
