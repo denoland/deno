@@ -389,14 +389,6 @@
     toJSON() {
       return this.href;
     }
-
-    static createObjectURL() {
-      throw new Error("Not implemented");
-    }
-
-    static revokeObjectURL() {
-      throw new Error("Not implemented");
-    }
   }
 
   window.__bootstrap.url = {

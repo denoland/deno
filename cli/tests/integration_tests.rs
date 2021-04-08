@@ -3706,6 +3706,34 @@ console.log("finish");
     output: "import_dynamic_data_url.ts.out",
   });
 
+  itest!(import_blob_url_error_stack {
+    args: "run --quiet --reload import_blob_url_error_stack.ts",
+    output: "import_blob_url_error_stack.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(import_blob_url_import_relative {
+    args: "run --quiet --reload import_blob_url_import_relative.ts",
+    output: "import_blob_url_import_relative.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(import_blob_url_imports {
+    args: "run --quiet --reload import_blob_url_imports.ts",
+    output: "import_blob_url_imports.ts.out",
+    http_server: true,
+  });
+
+  itest!(import_blob_url_jsx {
+    args: "run --quiet --reload import_blob_url_jsx.ts",
+    output: "import_blob_url_jsx.ts.out",
+  });
+
+  itest!(import_blob_url {
+    args: "run --quiet --reload import_blob_url.ts",
+    output: "import_blob_url.ts.out",
+  });
+
   itest!(import_file_with_colon {
     args: "run --quiet --reload import_file_with_colon.ts",
     output: "import_file_with_colon.ts.out",

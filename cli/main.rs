@@ -130,6 +130,7 @@ fn create_web_worker_callback(
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      blob_url_store: program_state.blob_url_store.clone(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -207,6 +208,7 @@ pub fn create_main_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
     location: program_state.flags.location.clone(),
+    blob_url_store: program_state.blob_url_store.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);

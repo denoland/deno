@@ -587,6 +587,7 @@ impl Permissions {
         ))),
       },
       "data" => Ok(()),
+      "blob" => Ok(()),
       _ => self.net.check_url(specifier),
     }
   }
