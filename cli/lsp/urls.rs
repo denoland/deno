@@ -133,13 +133,14 @@ impl LspUrlMap {
   /// causing issues with string matching of URLs.
   pub fn normalize_url(&self, url: &Url) -> ModuleSpecifier {
     if let Some(specifier) = self.get_specifier(url) {
-      specifier.clone()
-    } else if url.scheme() == "file" {
-      let path = url.to_file_path().unwrap();
-      Url::from_file_path(path).unwrap()
-    } else {
-      url.clone()
+      return specifier.clone();
     }
+    if url.scheme() == "file" {
+      if let Ok(path) = url.to_file_path() {
+        return Url::from_file_path(path).unwrap();
+      }
+    }
+    url.clone()
   }
 }
 
