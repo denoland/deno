@@ -629,6 +629,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_file"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "uuid",
+]
+
+[[package]]
 name = "deno_lint"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -655,6 +663,7 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_file",
  "deno_url",
  "deno_web",
  "deno_webgpu",

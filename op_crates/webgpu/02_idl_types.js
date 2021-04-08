@@ -105,6 +105,22 @@
       "pipeline-statistics-query",
       "texture-compression-bc",
       "timestamp-query",
+      // extended from spec
+      "mappable-primary-buffers",
+      "sampled-texture-binding-array",
+      "sampled-texture-array-dynamic-indexing",
+      "sampled-texture-array-non-uniform-indexing",
+      "unsized-binding-array",
+      "multi-draw-indirect",
+      "multi-draw-indirect-count",
+      "push-constants",
+      "address-mode-clamp-to-border",
+      "non-fill-polygon-mode",
+      "texture-compression-etc2",
+      "texture-compression-astc-ldr",
+      "texture-adapter-specific-format-features",
+      "shader-float64",
+      "vertex-attribute-64bit",
     ],
   );
 

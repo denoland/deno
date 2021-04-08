@@ -4,14 +4,28 @@ use crate::file_fetcher::map_content_type;
 use crate::media_type::MediaType;
 
 use deno_core::error::AnyError;
+use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 
-/// This is a partial guess as how URLs get encoded from the LSP.  We want to
-/// encode URLs sent to the LSP in the same way that they would be encoded back
-/// so that we have the same return encoding.
-const LSP_ENCODING: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
+/// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
+/// the component percent encoding set.
+///
+/// See: https://url.spec.whatwg.org/#component-percent-encode-set
+///
+// TODO(@kitsonk) - refactor when #9934 is landed.
+const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
+  .add(b' ')
+  .add(b'"')
+  .add(b'#')
+  .add(b'<')
+  .add(b'>')
+  .add(b'?')
+  .add(b'`')
+  .add(b'{')
+  .add(b'}')
+  .add(b'/')
   .add(b':')
   .add(b';')
   .add(b'=')
@@ -20,7 +34,11 @@ const LSP_ENCODING: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'\\')
   .add(b']')
   .add(b'^')
-  .add(b'|');
+  .add(b'|')
+  .add(b'$')
+  .add(b'&')
+  .add(b'+')
+  .add(b',');
 
 fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
   let mut file_name_str = specifier.path().to_string();
@@ -90,8 +108,15 @@ impl LspUrlMap {
             extension
           )
         } else {
-          let path = specifier.as_str().replacen("://", "/", 1);
-          let path = percent_encoding::utf8_percent_encode(&path, LSP_ENCODING);
+          let mut path =
+            specifier[..Position::BeforePath].replacen("://", "/", 1);
+          let parts: Vec<String> = specifier[Position::BeforePath..]
+            .split('/')
+            .map(|p| {
+              percent_encoding::utf8_percent_encode(p, COMPONENT).to_string()
+            })
+            .collect();
+          path.push_str(&parts.join("/"));
           format!("deno:/{}", path)
         };
         let url = Url::parse(&specifier_str)?;
@@ -152,6 +177,21 @@ mod tests {
       .expect("could not handle specifier");
     let expected_url =
       Url::parse("deno:/https/deno.land/x/pkg%401.0.0/mod.ts").unwrap();
+    assert_eq!(actual_url, expected_url);
+
+    let actual_specifier = map.normalize_url(&actual_url);
+    assert_eq!(actual_specifier, fixture);
+  }
+
+  #[test]
+  fn test_lsp_url_map_complex_encoding() {
+    // Test fix for #9741 - not properly encoding certain URLs
+    let mut map = LspUrlMap::default();
+    let fixture = resolve_url("https://cdn.skypack.dev/-/postcss@v8.2.9-E4SktPp9c0AtxrJHp8iV/dist=es2020,mode=types/lib/postcss.d.ts").unwrap();
+    let actual_url = map
+      .normalize_specifier(&fixture)
+      .expect("could not handle specifier");
+    let expected_url = Url::parse("deno:/https/cdn.skypack.dev/-/postcss%40v8.2.9-E4SktPp9c0AtxrJHp8iV/dist%3Des2020%2Cmode%3Dtypes/lib/postcss.d.ts").unwrap();
     assert_eq!(actual_url, expected_url);
 
     let actual_specifier = map.normalize_url(&actual_url);
