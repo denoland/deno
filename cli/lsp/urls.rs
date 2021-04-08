@@ -134,13 +134,11 @@ impl LspUrlMap {
   pub fn normalize_url(&self, url: &Url) -> ModuleSpecifier {
     if let Some(specifier) = self.get_specifier(url) {
       specifier.clone()
+    } else if url.scheme() == "file" {
+      let path = url.to_file_path().unwrap();
+      Url::from_file_path(path).unwrap()
     } else {
-      if url.scheme() == "file" {
-        let path = url.to_file_path().unwrap();
-        Url::from_file_path(path).unwrap()
-      } else {
-        url.clone()
-      }
+      url.clone()
     }
   }
 }
