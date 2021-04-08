@@ -998,7 +998,7 @@ impl CallHierarchyItem {
 
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = if uri.scheme() == "file" {
-      Some(uri.to_file_path().unwrap())
+      uri.to_file_path().ok()
     } else {
       None
     };
