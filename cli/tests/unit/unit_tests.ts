@@ -16,7 +16,6 @@ import "./copy_file_test.ts";
 import "./custom_event_test.ts";
 import "./dir_test.ts";
 import "./dispatch_bin_test.ts";
-import "./dispatch_json_test.ts";
 import "./error_stack_test.ts";
 import "./event_test.ts";
 import "./event_target_test.ts";

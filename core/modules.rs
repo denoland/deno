@@ -21,7 +21,7 @@ use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
-lazy_static! {
+lazy_static::lazy_static! {
   pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
 }
 

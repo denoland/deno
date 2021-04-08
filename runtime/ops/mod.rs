@@ -2,6 +2,7 @@
 
 pub mod crypto;
 pub mod fetch;
+pub mod file;
 pub mod fs;
 pub mod fs_events;
 pub mod io;
@@ -18,6 +19,7 @@ pub mod timers;
 pub mod tls;
 pub mod tty;
 pub mod url;
+mod utils;
 pub mod web_worker;
 pub mod webgpu;
 pub mod websocket;
@@ -31,7 +33,6 @@ use deno_core::json_op_async;
 use deno_core::json_op_sync;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Serialize;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ValueOrVector;
@@ -45,26 +46,26 @@ pub fn reg_json_async<F, V, R, RV>(
   name: &'static str,
   op_fn: F,
 ) where
-  F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
+  F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: Serialize,
+  RV: Serialize + 'static,
 {
   rt.register_op(name, metrics_op(name, json_op_async(op_fn)));
 }
 
 pub fn reg_json_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
-  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
-  R: Serialize,
+  R: Serialize + 'static,
 {
   rt.register_op(name, metrics_op(name, json_op_sync(op_fn)));
 }
 
 pub fn reg_bin_async<F, R, RV>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
-  F: Fn(Rc<RefCell<OpState>>, u32, BufVec) -> R + 'static,
+  F: Fn(Rc<RefCell<OpState>>, u32, Option<ZeroCopyBuf>) -> R + 'static,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: ValueOrVector,
 {
@@ -73,7 +74,8 @@ where
 
 pub fn reg_bin_sync<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
-  F: Fn(&mut OpState, u32, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  F:
+    Fn(&mut OpState, u32, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   R: ValueOrVector,
 {
   rt.register_op(name, metrics_op(name, bin_op_sync(op_fn)));

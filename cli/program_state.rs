@@ -14,6 +14,7 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::inspector::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
@@ -25,6 +26,8 @@ use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use log::debug;
+use log::warn;
 use std::collections::HashMap;
 use std::env;
 use std::fs::read;
@@ -54,6 +57,7 @@ pub struct ProgramState {
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl ProgramState {
@@ -78,11 +82,14 @@ impl ProgramState {
       CacheSetting::Use
     };
 
+    let blob_url_store = BlobUrlStore::default();
+
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !flags.no_remote,
       ca_data.clone(),
+      blob_url_store.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
@@ -110,13 +117,9 @@ impl ProgramState {
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
-    let maybe_inspector_server = match maybe_inspect_host {
-      Some(host) => Some(Arc::new(InspectorServer::new(
-        host,
-        version::get_user_agent(),
-      ))),
-      None => None,
-    };
+    let maybe_inspector_server = maybe_inspect_host.map(|host| {
+      Arc::new(InspectorServer::new(host, version::get_user_agent()))
+    });
 
     let coverage_dir = flags
       .coverage_dir
@@ -133,6 +136,7 @@ impl ProgramState {
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
+      blob_url_store,
     };
     Ok(Arc::new(program_state))
   }
@@ -259,7 +263,7 @@ impl ProgramState {
     match url.scheme() {
       // we should only be looking for emits for schemes that denote external
       // modules, which the disk_cache supports
-      "wasm" | "file" | "http" | "https" | "data" => (),
+      "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => {
         return None;
       }

@@ -10,6 +10,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
+use log::error;
+use log::info;
+use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp::request::*;
@@ -39,6 +42,7 @@ use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::capabilities;
+use super::completions;
 use super::config::Config;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
@@ -54,7 +58,7 @@ use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
 
-lazy_static! {
+lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
   static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
 }
@@ -146,12 +150,16 @@ impl Inner {
     specifier: &ModuleSpecifier,
     source: &str,
   ) {
-    if let Some((mut deps, _)) = analysis::analyze_dependencies(
-      specifier,
-      source,
-      &MediaType::from(specifier),
-      &self.maybe_import_map,
-    ) {
+    let media_type = MediaType::from(specifier);
+    if let Ok(parsed_module) =
+      analysis::parse_module(specifier, source, &media_type)
+    {
+      let (mut deps, _) = analysis::analyze_dependencies(
+        specifier,
+        &media_type,
+        &parsed_module,
+        &self.maybe_import_map,
+      );
       for (_, dep) in deps.iter_mut() {
         if dep.maybe_type.is_none() {
           if let Some(ResolvedDependency::Resolved(resolved)) = &dep.maybe_code
@@ -218,6 +226,25 @@ impl Inner {
     };
     self.performance.measure(mark);
     maybe_line_index
+  }
+
+  // TODO(@kitsonk) we really should find a better way to just return the
+  // content as a `&str`, or be able to get the byte at a particular offset
+  // which is all that this API that is consuming it is trying to do at the
+  // moment
+  /// Searches already cached assets and documents and returns its text
+  /// content. If not found, `None` is returned.
+  fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if specifier.scheme() == "asset" {
+      self
+        .assets
+        .get(specifier)
+        .map(|o| o.clone().map(|a| a.text))?
+    } else if self.documents.contains_key(specifier) {
+      self.documents.content(specifier).unwrap()
+    } else {
+      self.sources.get_source(specifier)
+    }
   }
 
   async fn get_navigation_tree(
@@ -806,12 +833,17 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            match self.ts_server.request(self.snapshot(), req).await {
+              Ok(items) => items,
+              Err(err) => {
+                // sometimes tsc reports errors when retrieving code actions
+                // because they don't reflect the current state of the document
+                // so we will log them to the output, but we won't send an error
+                // message back to the client.
                 error!("Error getting actions from TypeScript: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+                Vec::new()
+              }
+            };
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, self)
@@ -1354,72 +1386,45 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
+    // Import specifiers are something wholly internal to Deno, so for
+    // completions, we will use internal logic and if there are completions
+    // for imports, we will return those and not send a message into tsc, where
+    // other completions come from.
+    let response = if let Some(response) = completions::get_import_completions(
+      &specifier,
+      &params.text_document_position.position,
+      &self.snapshot(),
+    ) {
+      Some(response)
+    } else {
+      let line_index =
+        if let Some(line_index) = self.get_line_index_sync(&specifier) {
+          line_index
+        } else {
+          return Err(LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          )));
+        };
+      let trigger_character = if let Some(context) = &params.context {
+        context.trigger_character.clone()
       } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
+        None
       };
-    let trigger_character = if let Some(context) = &params.context {
-      context.trigger_character.clone()
-    } else {
-      None
-    };
-    let position =
-      line_index.offset_tsc(params.text_document_position.position)?;
-    let req = tsc::RequestMethod::GetCompletions((
-      specifier.clone(),
-      position,
-      tsc::GetCompletionsAtPositionOptions {
-        user_preferences: tsc::UserPreferences {
-          include_completions_with_insert_text: Some(true),
-          ..Default::default()
-        },
-        trigger_character,
-      },
-    ));
-    let maybe_completion_info: Option<tsc::CompletionInfo> = self
-      .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get completion info from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
-
-    if let Some(completions) = maybe_completion_info {
-      let results = completions.as_completion_response(
-        &line_index,
-        &self.config.settings.suggest,
-        &specifier,
+      let position =
+        line_index.offset_tsc(params.text_document_position.position)?;
+      let req = tsc::RequestMethod::GetCompletions((
+        specifier.clone(),
         position,
-      );
-      self.performance.measure(mark);
-      Ok(Some(results))
-    } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
-  }
-
-  async fn completion_resolve(
-    &mut self,
-    params: CompletionItem,
-  ) -> LspResult<CompletionItem> {
-    let mark = self.performance.mark("completion_resolve");
-    if let Some(data) = &params.data {
-      let data: tsc::CompletionItemData = serde_json::from_value(data.clone())
-        .map_err(|err| {
-          error!("{}", err);
-          LspError::invalid_params(
-            "Could not decode data field of completion item.",
-          )
-        })?;
-      let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-      let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
+        tsc::GetCompletionsAtPositionOptions {
+          user_preferences: tsc::UserPreferences {
+            include_completions_with_insert_text: Some(true),
+            ..Default::default()
+          },
+          trigger_character,
+        },
+      ));
+      let maybe_completion_info: Option<tsc::CompletionInfo> = self
         .ts_server
         .request(self.snapshot(), req)
         .await
@@ -1427,23 +1432,61 @@ impl Inner {
           error!("Unable to get completion info from TypeScript: {}", err);
           LspError::internal_error()
         })?;
-      if let Some(completion_info) = maybe_completion_info {
-        let completion_item = completion_info.as_completion_item(&params);
-        self.performance.measure(mark);
-        Ok(completion_item)
-      } else {
-        error!(
-          "Received an undefined response from tsc for completion details."
+
+      if let Some(completions) = maybe_completion_info {
+        let results = completions.as_completion_response(
+          &line_index,
+          &self.config.settings.suggest,
+          &specifier,
+          position,
         );
-        self.performance.measure(mark);
-        Ok(params)
+        Some(results)
+      } else {
+        None
+      }
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
+  async fn completion_resolve(
+    &mut self,
+    params: CompletionItem,
+  ) -> LspResult<CompletionItem> {
+    let mark = self.performance.mark("completion_resolve");
+    let completion_item = if let Some(data) = &params.data {
+      let data: completions::CompletionItemData =
+        serde_json::from_value(data.clone()).map_err(|err| {
+          error!("{}", err);
+          LspError::invalid_params(
+            "Could not decode data field of completion item.",
+          )
+        })?;
+      if let Some(data) = data.tsc {
+        let req = tsc::RequestMethod::GetCompletionDetails(data.into());
+        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
+          self.ts_server.request(self.snapshot(), req).await.map_err(
+            |err| {
+              error!("Unable to get completion info from TypeScript: {}", err);
+              LspError::internal_error()
+            },
+          )?;
+        if let Some(completion_info) = maybe_completion_info {
+          completion_info.as_completion_item(&params)
+        } else {
+          error!(
+            "Received an undefined response from tsc for completion details."
+          );
+          params
+        }
+      } else {
+        params
       }
     } else {
-      self.performance.measure(mark);
-      Err(LspError::invalid_params(
-        "The completion item is missing the data field.",
-      ))
-    }
+      params
+    };
+    self.performance.measure(mark);
+    Ok(completion_item)
   }
 
   async fn goto_implementation(
@@ -1494,6 +1537,63 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(result)
+  }
+
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("folding_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+    let outlining_spans: Vec<tsc::OutliningSpan> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let response = if !outlining_spans.is_empty() {
+      let text_content =
+        self.get_text_content(&specifier).ok_or_else(|| {
+          LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          ))
+        })?;
+      Some(
+        outlining_spans
+          .iter()
+          .map(|span| {
+            span.to_folding_range(
+              &line_index,
+              text_content.as_str().as_bytes(),
+              self.config.client_capabilities.line_folding_only,
+            )
+          })
+          .collect::<Vec<FoldingRange>>(),
+      )
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
   }
 
   async fn rename(
@@ -1821,6 +1921,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.goto_implementation(params).await
   }
 
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    self.0.lock().await.folding_range(params).await
+  }
+
   async fn rename(
     &self,
     params: RenameParams,
@@ -1963,7 +2070,7 @@ impl Inner {
           if let Some(source) = self.sources.get_source(&specifier) {
             Some(source)
           } else {
-            error!("The cached sources was not found: {}", specifier);
+            error!("The cached source was not found: {}", specifier);
             None
           }
         }
@@ -2404,6 +2511,54 @@ mod tests {
       time.elapsed().as_millis() <= 10000,
       "the execution time exceeded 10000ms"
     );
+  }
+
+  #[tokio::test]
+  async fn test_folding_range() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "folding_range_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "folding_range_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "startLine": 0,
+              "endLine": 12,
+              "kind": "region"
+            },
+            {
+              "startLine": 1,
+              "endLine": 3,
+              "kind": "comment"
+            },
+            {
+              "startLine": 4,
+              "endLine": 10
+            },
+            {
+              "startLine": 5,
+              "endLine": 9
+            },
+            {
+              "startLine": 6,
+              "endLine": 7
+            }
+          ]),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
   }
 
   #[tokio::test]
@@ -2994,6 +3149,68 @@ mod tests {
             },
             "sortText": "1",
             "insertTextFormat": 1,
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completions_optional() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_optional.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_optional.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": "b?",
+                "kind": 5,
+                "sortText": "1",
+                "filterText": "b",
+                "insertText": "b",
+                "data": {
+                  "tsc": {
+                    "specifier": "file:///a/file.ts",
+                    "position": 79,
+                    "name": "b",
+                    "useCodeSnippet": false
+                  }
+                }
+              }
+            ]
+          }),
+        ),
+      ),
+      (
+        "completion_resolve_request_optional.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "b?",
+            "kind": 5,
+            "detail": "(property) A.b?: string | undefined",
+            "documentation": {
+              "kind": "markdown",
+              "value": ""
+            },
+            "sortText": "1",
+            "filterText": "b",
+            "insertText": "b"
           }),
         ),
       ),

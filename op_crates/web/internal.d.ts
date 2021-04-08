@@ -12,5 +12,11 @@ declare namespace globalThis {
     declare var location: {
       getLocationHref(): string | undefined;
     };
+
+    declare var base64: {
+      byteLength(b64: string): number;
+      toByteArray(b64: string): Uint8Array;
+      fromByteArray(uint8: Uint8Array): string;
+    };
   }
 }

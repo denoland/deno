@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
@@ -11,7 +12,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::JsRuntime;
@@ -82,28 +82,22 @@ impl Resource for WsStreamResource {
 
 impl WsStreamResource {}
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckPermissionArgs {
-  url: String,
-}
-
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
-  args: CheckPermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError>
+  url: String,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
   state
     .borrow::<WP>()
-    .check_net_url(&url::Url::parse(&args.url)?)?;
+    .check_net_url(&url::Url::parse(&url)?)?;
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -116,7 +110,7 @@ pub struct CreateArgs {
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -223,11 +217,11 @@ pub struct SendArgs {
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
-  bufs: BufVec,
-) -> Result<Value, AnyError> {
+  buf: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(bufs[0].to_vec()),
+    "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };
@@ -240,7 +234,7 @@ pub async fn op_ws_send(
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -254,8 +248,8 @@ pub struct CloseArgs {
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
-  _bufs: BufVec,
-) -> Result<Value, AnyError> {
+  _bufs: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
     code: CloseCode::from(c),
@@ -272,24 +266,18 @@ pub async fn op_ws_close(
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NextEventArgs {
-  rid: ResourceId,
+  Ok(())
 }
 
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
-  args: NextEventArgs,
-  _bufs: BufVec,
+  rid: ResourceId,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(args.rid)
+    .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut rx = RcRef::map(&resource, |r| &r.rx).borrow_mut().await;
@@ -325,7 +313,7 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Pong(_))) => json!({ "kind": "pong" }),
     Some(Err(_)) => json!({ "kind": "error" }),
     None => {
-      state.borrow_mut().resource_table.close(args.rid).unwrap();
+      state.borrow_mut().resource_table.close(rid).unwrap();
       json!({ "kind": "closed" })
     }
   };
