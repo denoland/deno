@@ -12,7 +12,7 @@
   }
 
   function opAcceptTLS(rid) {
-    return core.jsonOpAsync("op_accept_tls", { rid });
+    return core.jsonOpAsync("op_accept_tls", rid);
   }
 
   function opListenTls(args) {

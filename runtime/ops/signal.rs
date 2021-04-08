@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
-use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
@@ -9,8 +7,6 @@ use std::rc::Rc;
 
 #[cfg(unix)]
 use deno_core::error::bad_resource_id;
-#[cfg(unix)]
-use deno_core::serde_json::json;
 #[cfg(unix)]
 use deno_core::AsyncRefCell;
 #[cfg(unix)]
@@ -22,7 +18,7 @@ use deno_core::RcRef;
 #[cfg(unix)]
 use deno_core::Resource;
 #[cfg(unix)]
-use serde::Deserialize;
+use deno_core::ResourceId;
 #[cfg(unix)]
 use std::borrow::Cow;
 #[cfg(unix)]
@@ -54,45 +50,28 @@ impl Resource for SignalStreamResource {
 }
 
 #[cfg(unix)]
-#[derive(Deserialize)]
-pub struct BindSignalArgs {
-  signo: i32,
-}
-
-#[cfg(unix)]
-#[derive(Deserialize)]
-pub struct SignalArgs {
-  rid: u32,
-}
-
-#[cfg(unix)]
 #[allow(clippy::unnecessary_wraps)]
 fn op_signal_bind(
   state: &mut OpState,
-  args: BindSignalArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  signo: i32,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ResourceId, AnyError> {
   super::check_unstable(state, "Deno.signal");
   let resource = SignalStreamResource {
-    signal: AsyncRefCell::new(
-      signal(SignalKind::from_raw(args.signo)).expect(""),
-    ),
+    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo)).expect("")),
     cancel: Default::default(),
   };
   let rid = state.resource_table.add(resource);
-  Ok(json!({
-    "rid": rid,
-  }))
+  Ok(rid)
 }
 
 #[cfg(unix)]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
-  args: SignalArgs,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<bool, AnyError> {
   super::check_unstable2(&state, "Deno.signal");
-  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
@@ -103,49 +82,48 @@ async fn op_signal_poll(
   let mut signal = RcRef::map(&resource, |r| &r.signal).borrow_mut().await;
 
   match signal.recv().or_cancel(cancel).await {
-    Ok(result) => Ok(json!({ "done": result.is_none() })),
-    Err(_) => Ok(json!({ "done": true })),
+    Ok(result) => Ok(result.is_none()),
+    Err(_) => Ok(true),
   }
 }
 
 #[cfg(unix)]
 pub fn op_signal_unbind(
   state: &mut OpState,
-  args: SignalArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.signal");
-  let rid = args.rid;
   state
     .resource_table
     .close(rid)
     .ok_or_else(bad_resource_id)?;
-  Ok(json!({}))
+  Ok(())
 }
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _args: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _args: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 async fn op_signal_poll(
   _state: Rc<RefCell<OpState>>,
-  _args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
+  _args: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   unimplemented!();
 }

@@ -37,6 +37,9 @@
             ]
           }
         },
+        "foldingRange": {
+          "lineFoldingOnly": true
+        },
         "synchronization": {
           "dynamicRegistration": true,
           "willSave": true,

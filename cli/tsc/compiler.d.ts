@@ -58,6 +58,7 @@ declare global {
     | GetDocumentHighlightsRequest
     | GetImplementationRequest
     | GetNavigationTree
+    | GetOutliningSpans
     | GetQuickInfoRequest
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
@@ -148,6 +149,11 @@ declare global {
 
   interface GetNavigationTree extends BaseLanguageServerRequest {
     method: "getNavigationTree";
+    specifier: string;
+  }
+
+  interface GetOutliningSpans extends BaseLanguageServerRequest {
+    method: "getOutliningSpans";
     specifier: string;
   }
 

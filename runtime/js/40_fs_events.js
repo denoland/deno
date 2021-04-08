@@ -19,9 +19,10 @@
 
     async next() {
       try {
-        return await core.jsonOpAsync("op_fs_events_poll", {
-          rid: this.rid,
-        });
+        const value = await core.jsonOpAsync("op_fs_events_poll", this.rid);
+        return value
+          ? { value, done: false }
+          : { value: undefined, done: true };
       } catch (error) {
         if (error instanceof errors.BadResource) {
           return { value: undefined, done: true };

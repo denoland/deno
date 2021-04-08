@@ -1,11 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
-use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
+use crate::OpPayload;
+use crate::OpResponse;
 use crate::OpTable;
+use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use rusty_v8 as v8;
@@ -36,9 +38,6 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: eval_context.map_fn_to()
-      },
-      v8::ExternalReference {
-        getter: shared_getter.map_fn_to()
       },
       v8::ExternalReference {
         function: queue_microtask.map_fn_to()
@@ -141,9 +140,6 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
   set_func(scope, core_val, "heapStats", heap_stats);
-
-  let shared_key = v8::String::new(scope, "shared").unwrap();
-  core_val.set_accessor(scope, shared_key.into(), shared_getter);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -380,59 +376,86 @@ fn send<'s>(
   let mut state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as OpId)
     .map_err(AnyError::from)
-    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
   {
     Ok(op_id) => op_id,
     Err(err) => {
-      let msg = format!("invalid op id: {}", err);
-      let msg = v8::String::new(scope, &msg).unwrap();
-      let exc = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exc);
+      throw_type_error(scope, format!("invalid op id: {}", err));
       return;
     }
   };
 
-  let buf_iter = (1..args.length()).map(|idx| {
-    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
+  // send(0) returns obj of all ops, handle as special case
+  if op_id == 0 {
+    // TODO: Serialize as HashMap when serde_v8 supports maps ...
+    let ops = OpTable::op_entries(state.op_state.clone());
+    rv.set(to_v8(scope, ops).unwrap());
+    return;
+  }
+
+  // PromiseId
+  let arg1 = args.get(1);
+  let promise_id = if arg1.is_null_or_undefined() {
+    Ok(0) // Accept null or undefined as 0
+  } else {
+    // Otherwise expect int
+    v8::Local::<v8::Integer>::try_from(arg1)
+      .map(|l| l.value() as PromiseId)
+      .map_err(AnyError::from)
+  };
+  // Fail if promise id invalid (not null/undefined or int)
+  let promise_id: PromiseId = match promise_id {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
+
+  // Structured args
+  let v = args.get(2);
+
+  // Buf arg (optional)
+  let arg3 = args.get(3);
+  let buf: Option<ZeroCopyBuf> = if arg3.is_null_or_undefined() {
+    None
+  } else {
+    match v8::Local::<v8::ArrayBufferView>::try_from(arg3)
       .map(|view| ZeroCopyBuf::new(scope, view))
-      .map_err(|err| {
-        let msg = format!("Invalid argument at position {}: {}", idx, err);
-        let msg = v8::String::new(scope, &msg).unwrap();
-        v8::Exception::type_error(scope, msg)
-      })
-  });
-
-  let bufs = match buf_iter.collect::<Result<_, _>>() {
-    Ok(bufs) => bufs,
-    Err(exc) => {
-      scope.throw_exception(exc);
-      return;
+      .map_err(AnyError::from)
+    {
+      Ok(buf) => Some(buf),
+      Err(err) => {
+        throw_type_error(scope, format!("Err with buf arg: {}", err));
+        return;
+      }
     }
   };
 
-  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
-  assert_eq!(state.shared.size(), 0);
+  let payload = OpPayload::new(scope, v);
+  let op = OpTable::route_op(op_id, state.op_state.clone(), payload, buf);
   match op {
-    Op::Sync(buf) if !buf.is_empty() => {
-      rv.set(boxed_slice_to_uint8array(scope, buf).into());
-    }
-    Op::Sync(_) => {}
+    Op::Sync(resp) => match resp {
+      OpResponse::Value(v) => {
+        rv.set(v.to_v8(scope).unwrap());
+      }
+      OpResponse::Buffer(buf) => {
+        rv.set(boxed_slice_to_uint8array(scope, buf).into());
+      }
+    },
     Op::Async(fut) => {
-      let fut2 = fut.map(move |buf| (op_id, buf));
+      let fut2 = fut.map(move |resp| (promise_id, resp));
       state.pending_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      let fut2 = fut.map(move |buf| (op_id, buf));
+      let fut2 = fut.map(move |resp| (promise_id, resp));
       state.pending_unref_ops.push(fut2.boxed_local());
       state.have_unpolled_ops = true;
     }
     Op::NotFound => {
-      let msg = format!("Unknown op id: {}", op_id);
-      let msg = v8::String::new(scope, &msg).unwrap();
-      let exc = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exc);
+      throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
 }
@@ -709,33 +732,6 @@ fn queue_microtask(
       throw_type_error(scope, "Invalid argument");
     }
   };
-}
-
-fn shared_getter(
-  scope: &mut v8::HandleScope,
-  _name: v8::Local<v8::Name>,
-  _args: v8::PropertyCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-  let JsRuntimeState {
-    shared_ab, shared, ..
-  } = &mut *state;
-
-  // Lazily initialize the persistent external ArrayBuffer.
-  let shared_ab = match shared_ab {
-    Some(ref ab) => v8::Local::new(scope, ab),
-    slot @ None => {
-      let ab = v8::SharedArrayBuffer::with_backing_store(
-        scope,
-        shared.get_backing_store(),
-      );
-      slot.replace(v8::Global::new(scope, ab));
-      ab
-    }
-  };
-  rv.set(shared_ab.into())
 }
 
 // Called by V8 during `Isolate::mod_instantiate`.

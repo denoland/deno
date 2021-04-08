@@ -17,8 +17,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -54,7 +54,7 @@ struct EmitArgs {
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _data: BufVec,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let args: EmitArgs = serde_json::from_value(args)?;

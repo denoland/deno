@@ -228,6 +228,25 @@ impl Inner {
     maybe_line_index
   }
 
+  // TODO(@kitsonk) we really should find a better way to just return the
+  // content as a `&str`, or be able to get the byte at a particular offset
+  // which is all that this API that is consuming it is trying to do at the
+  // moment
+  /// Searches already cached assets and documents and returns its text
+  /// content. If not found, `None` is returned.
+  fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if specifier.scheme() == "asset" {
+      self
+        .assets
+        .get(specifier)
+        .map(|o| o.clone().map(|a| a.text))?
+    } else if self.documents.contains_key(specifier) {
+      self.documents.content(specifier).unwrap()
+    } else {
+      self.sources.get_source(specifier)
+    }
+  }
+
   async fn get_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -814,12 +833,17 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            match self.ts_server.request(self.snapshot(), req).await {
+              Ok(items) => items,
+              Err(err) => {
+                // sometimes tsc reports errors when retrieving code actions
+                // because they don't reflect the current state of the document
+                // so we will log them to the output, but we won't send an error
+                // message back to the client.
                 error!("Error getting actions from TypeScript: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+                Vec::new()
+              }
+            };
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, self)
@@ -1515,6 +1539,63 @@ impl Inner {
     Ok(result)
   }
 
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("folding_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+    let outlining_spans: Vec<tsc::OutliningSpan> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let response = if !outlining_spans.is_empty() {
+      let text_content =
+        self.get_text_content(&specifier).ok_or_else(|| {
+          LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          ))
+        })?;
+      Some(
+        outlining_spans
+          .iter()
+          .map(|span| {
+            span.to_folding_range(
+              &line_index,
+              text_content.as_str().as_bytes(),
+              self.config.client_capabilities.line_folding_only,
+            )
+          })
+          .collect::<Vec<FoldingRange>>(),
+      )
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn rename(
     &mut self,
     params: RenameParams,
@@ -1840,6 +1921,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.goto_implementation(params).await
   }
 
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    self.0.lock().await.folding_range(params).await
+  }
+
   async fn rename(
     &self,
     params: RenameParams,
@@ -1982,7 +2070,7 @@ impl Inner {
           if let Some(source) = self.sources.get_source(&specifier) {
             Some(source)
           } else {
-            error!("The cached sources was not found: {}", specifier);
+            error!("The cached source was not found: {}", specifier);
             None
           }
         }
@@ -2423,6 +2511,54 @@ mod tests {
       time.elapsed().as_millis() <= 10000,
       "the execution time exceeded 10000ms"
     );
+  }
+
+  #[tokio::test]
+  async fn test_folding_range() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "folding_range_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "folding_range_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "startLine": 0,
+              "endLine": 12,
+              "kind": "region"
+            },
+            {
+              "startLine": 1,
+              "endLine": 3,
+              "kind": "comment"
+            },
+            {
+              "startLine": 4,
+              "endLine": 10
+            },
+            {
+              "startLine": 5,
+              "endLine": 9
+            },
+            {
+              "startLine": 6,
+              "endLine": 7
+            }
+          ]),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
   }
 
   #[tokio::test]
@@ -3013,6 +3149,68 @@ mod tests {
             },
             "sortText": "1",
             "insertTextFormat": 1,
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completions_optional() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_optional.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_optional.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": "b?",
+                "kind": 5,
+                "sortText": "1",
+                "filterText": "b",
+                "insertText": "b",
+                "data": {
+                  "tsc": {
+                    "specifier": "file:///a/file.ts",
+                    "position": 79,
+                    "name": "b",
+                    "useCodeSnippet": false
+                  }
+                }
+              }
+            ]
+          }),
+        ),
+      ),
+      (
+        "completion_resolve_request_optional.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "b?",
+            "kind": 5,
+            "detail": "(property) A.b?: string | undefined",
+            "documentation": {
+              "kind": "markdown",
+              "value": ""
+            },
+            "sortText": "1",
+            "filterText": "b",
+            "insertText": "b"
           }),
         ),
       ),
