@@ -14,6 +14,8 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const { decode } = window.__bootstrap.encoding;
+  const { parseMimeType } = window.__bootstrap.mimesniff;
   const base64 = window.__bootstrap.base64;
 
   const state = Symbol("[[state]]");
@@ -33,9 +35,9 @@
 
     /** 
      * @param {Blob} blob
-     * @param {{kind: "ArrayBuffer" | "Text" | "DataUrl", encoding?: string}} readtype
+     * @param {{kind: "ArrayBuffer" | "Text" | "DataUrl" | "BinaryString", encoding?: string}} readtype
      */
-    #readOperation = async (blob, readtype) => {
+    #readOperation = (blob, readtype) => {
       // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
       if (this[state] === "loading") {
         throw new DOMException(
@@ -67,118 +69,155 @@
       let isFirstChunk = true;
 
       // 10 in parallel while true
-      while (!this[aborted]) {
-        // 1. Wait for chunkPromise to be fulfilled or rejected.
-        try {
-          const chunk = await chunkPromise;
-          if (this[aborted]) return;
+      (async () => {
+        while (!this[aborted]) {
+          // 1. Wait for chunkPromise to be fulfilled or rejected.
+          try {
+            const chunk = await chunkPromise;
+            if (this[aborted]) return;
 
-          // 2. If chunkPromise is fulfilled, and isFirstChunk is true, queue a task to fire a progress event called loadstart at fr.
-          if (isFirstChunk) {
-            queueMicrotask(() => {
-              // fire a progress event for loadstart
-              const ev = new ProgressEvent("loadstart", {});
-              this.dispatchEvent(ev);
-            });
-          }
-          // 3. Set isFirstChunk to false.
-          isFirstChunk = false;
-
-          // 4. If chunkPromise is fulfilled with an object whose done property is false
-          // and whose value property is a Uint8Array object, run these steps:
-          if (!chunk.done && chunk.value instanceof Uint8Array) {
-            chunks.push(chunk.value);
-
-            // TODO(bartlomieju): (only) If roughly 50ms have passed since last progress
-            {
-              const size = chunks.reduce((p, i) => p + i.byteLength, 0);
-              const ev = new ProgressEvent("progress", {
-                loaded: size,
+            // 2. If chunkPromise is fulfilled, and isFirstChunk is true, queue a task to fire a progress event called loadstart at fr.
+            if (isFirstChunk) {
+              // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
+              queueMicrotask(() => {
+                if (this[aborted]) return;
+                // fire a progress event for loadstart
+                const ev = new ProgressEvent("loadstart", {});
+                this.dispatchEvent(ev);
               });
-              this.dispatchEvent(ev);
             }
+            // 3. Set isFirstChunk to false.
+            isFirstChunk = false;
 
-            chunkPromise = reader.read();
-          } // 5 Otherwise, if chunkPromise is fulfilled with an object whose done property is true, queue a task to run the following steps and abort this algorithm:
-          else if (chunk.done === true) {
-            queueMicrotask(() => {
-              // 1. Set fr’s state to "done".
-              this[state] = "done";
-              // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
-              const size = chunks.reduce((p, i) => p + i.byteLength, 0);
-              const bytes = new Uint8Array(size);
-              let offs = 0;
-              for (const chunk of chunks) {
-                bytes.set(chunk, offs);
-                offs += chunk.byteLength;
-              }
-              switch (readtype.kind) {
-                case "ArrayBuffer": {
-                  this[result] = bytes.buffer;
-                  break;
-                }
-                case "Text": {
-                  const decoder = new TextDecoder(readtype.encoding);
-                  this[result] = decoder.decode(bytes.buffer);
-                  break;
-                }
-                case "DataUrl": {
-                  this[result] = "data:application/octet-stream;base64," +
-                    base64.fromByteArray(bytes);
-                  break;
-                }
-              }
-              // 4.2 Fire a progress event called load at the fr.
+            // 4. If chunkPromise is fulfilled with an object whose done property is false
+            // and whose value property is a Uint8Array object, run these steps:
+            if (!chunk.done && chunk.value instanceof Uint8Array) {
+              chunks.push(chunk.value);
+
+              // TODO(bartlomieju): (only) If roughly 50ms have passed since last progress
               {
-                const ev = new ProgressEvent("load", {
-                  lengthComputable: true,
+                const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+                const ev = new ProgressEvent("progress", {
                   loaded: size,
-                  total: size,
                 });
+                // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
+                queueMicrotask(() => {
+                  if (this[aborted]) return;
+                  this.dispatchEvent(ev);
+                });
+              }
+
+              chunkPromise = reader.read();
+            } // 5 Otherwise, if chunkPromise is fulfilled with an object whose done property is true, queue a task to run the following steps and abort this algorithm:
+            else if (chunk.done === true) {
+              // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
+              queueMicrotask(() => {
+                if (this[aborted]) return;
+                // 1. Set fr’s state to "done".
+                this[state] = "done";
+                // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
+                const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+                const bytes = new Uint8Array(size);
+                let offs = 0;
+                for (const chunk of chunks) {
+                  bytes.set(chunk, offs);
+                  offs += chunk.byteLength;
+                }
+                switch (readtype.kind) {
+                  case "ArrayBuffer": {
+                    this[result] = bytes.buffer;
+                    break;
+                  }
+                  case "BinaryString":
+                    this[result] = [...new Uint8Array(bytes.buffer)].map((v) =>
+                      String.fromCodePoint(v)
+                    ).join("");
+                    break;
+                  case "Text": {
+                    let decoder = undefined;
+                    if (readtype.encoding) {
+                      try {
+                        decoder = new TextDecoder(readtype.encoding);
+                      } catch {
+                        // don't care about the error
+                      }
+                    }
+                    if (decoder === undefined) {
+                      const mimeType = parseMimeType(blob.type);
+                      if (mimeType) {
+                        const charset = mimeType.parameters.get("charset");
+                        if (charset) {
+                          try {
+                            decoder = new TextDecoder(charset);
+                          } catch {
+                            // don't care about the error
+                          }
+                        }
+                      }
+                    }
+                    if (decoder === undefined) {
+                      decoder = new TextDecoder();
+                    }
+                    this[result] = decode(bytes, decoder.encoding);
+                    break;
+                  }
+                  case "DataUrl": {
+                    const mediaType = blob.type || "application/octet-stream";
+                    this[result] = `data:${mediaType};base64,${
+                      base64.fromByteArray(bytes)
+                    }`;
+                    break;
+                  }
+                }
+                // 4.2 Fire a progress event called load at the fr.
+                {
+                  const ev = new ProgressEvent("load", {
+                    lengthComputable: true,
+                    loaded: size,
+                    total: size,
+                  });
+                  this.dispatchEvent(ev);
+                }
+
+                // 5. If fr’s state is not "loading", fire a progress event called loadend at the fr.
+                //Note: Event handler for the load or error events could have started another load, if that happens the loadend event for this load is not fired.
+                if (this[state] !== "loading") {
+                  const ev = new ProgressEvent("loadend", {
+                    lengthComputable: true,
+                    loaded: size,
+                    total: size,
+                  });
+                  this.dispatchEvent(ev);
+                }
+              });
+              break;
+            }
+          } catch (err) {
+            // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
+            queueMicrotask(() => {
+              if (this[aborted]) return;
+
+              // chunkPromise rejected
+              this[state] = "done";
+              this[error] = err;
+
+              {
+                const ev = new ProgressEvent("error", {});
                 this.dispatchEvent(ev);
               }
 
-              // 5. If fr’s state is not "loading", fire a progress event called loadend at the fr.
-              //Note: Event handler for the load or error events could have started another load, if that happens the loadend event for this load is not fired.
+              //If fr’s state is not "loading", fire a progress event called loadend at fr.
+              //Note: Event handler for the error event could have started another load, if that happens the loadend event for this load is not fired.
               if (this[state] !== "loading") {
-                const ev = new ProgressEvent("loadend", {
-                  lengthComputable: true,
-                  loaded: size,
-                  total: size,
-                });
+                const ev = new ProgressEvent("loadend", {});
                 this.dispatchEvent(ev);
               }
             });
-
             break;
           }
-        } catch (err) {
-          if (this[aborted]) return;
-
-          // chunkPromise rejected
-          this[state] = "done";
-          this[error] = err;
-
-          {
-            const ev = new ProgressEvent("error", {});
-            this.dispatchEvent(ev);
-          }
-
-          //If fr’s state is not "loading", fire a progress event called loadend at fr.
-          //Note: Event handler for the error event could have started another load, if that happens the loadend event for this load is not fired.
-          if (this[state] !== "loading") {
-            const ev = new ProgressEvent("loadend", {});
-            this.dispatchEvent(ev);
-          }
-
-          break;
         }
-      }
+      })();
     };
-
-    static EMPTY = 0;
-    static LOADING = 1;
-    static DONE = 2;
 
     constructor() {
       super();
@@ -254,7 +293,7 @@
       const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // alias for readAsArrayBuffer
-      this.#readOperation(blob, { kind: "ArrayBuffer" });
+      this.#readOperation(blob, { kind: "BinaryString" });
     }
 
     /** @param {Blob} blob */
@@ -285,6 +324,43 @@
     }
   }
 
+  Object.defineProperty(FileReader, "EMPTY", {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    value: 0,
+  });
+  Object.defineProperty(FileReader, "LOADING", {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    value: 1,
+  });
+  Object.defineProperty(FileReader, "DONE", {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    value: 2,
+  });
+  Object.defineProperty(FileReader.prototype, "EMPTY", {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    value: 0,
+  });
+  Object.defineProperty(FileReader.prototype, "LOADING", {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    value: 1,
+  });
+  Object.defineProperty(FileReader.prototype, "DONE", {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    value: 2,
+  });
+
   const handlerSymbol = Symbol("eventHandlers");
 
   function makeWrappedHandler(handler) {
@@ -302,7 +378,7 @@
     // HTML specification section 8.1.5.1
     Object.defineProperty(emitter, `on${name}`, {
       get() {
-        return this[handlerSymbol]?.get(name)?.handler;
+        return this[handlerSymbol]?.get(name)?.handler ?? null;
       },
       set(value) {
         if (!this[handlerSymbol]) {

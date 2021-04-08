@@ -9,19 +9,14 @@ const responseBuf = new Uint8Array(
     .map((c) => c.charCodeAt(0)),
 );
 
-// This buffer exists purely to avoid trigerring the bin-op buf assert
-// in practice all deno bin ops accept buffers, this bench is an exception
-// TODO(@AaronO): remove once we drop variadic BufVec compat
-const nopBuffer = new Uint8Array();
-
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.binOpSync("listen", 0, nopBuffer);
+  return Deno.core.binOpSync("listen", 0);
 }
 
 /** Accepts a connection, returns rid. */
 function accept(rid) {
-  return Deno.core.binOpAsync("accept", rid, nopBuffer);
+  return Deno.core.binOpAsync("accept", rid);
 }
 
 /**
@@ -38,19 +33,21 @@ function write(rid, data) {
 }
 
 function close(rid) {
-  Deno.core.binOpSync("close", rid, nopBuffer);
+  Deno.core.binOpSync("close", rid);
 }
 
 async function serve(rid) {
-  while (true) {
-    const nread = await read(rid, requestBuf);
-    if (nread <= 0) {
-      break;
+  try {
+    while (true) {
+      await read(rid, requestBuf);
+      await write(rid, responseBuf);
     }
-
-    const nwritten = await write(rid, responseBuf);
-    if (nwritten < 0) {
-      break;
+  } catch (e) {
+    if (
+      !e.message.includes("Broken pipe") &&
+      !e.message.includes("Connection reset by peer")
+    ) {
+      throw e;
     }
   }
   close(rid);
@@ -65,12 +62,8 @@ async function main() {
     `http_bench_bin_ops listening on http://127.0.0.1:4544/\n`,
   );
 
-  for (;;) {
+  while (true) {
     const rid = await accept(listenerRid);
-    if (rid < 0) {
-      Deno.core.print(`accept error ${rid}`);
-      return;
-    }
     serve(rid);
   }
 }

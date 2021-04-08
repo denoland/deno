@@ -82,9 +82,6 @@
     }
 
     const nread = core.binOpSync("op_read_sync", rid, buffer);
-    if (nread < 0) {
-      throw new Error("read error");
-    }
 
     return nread === 0 ? null : nread;
   }
@@ -98,29 +95,16 @@
     }
 
     const nread = await core.binOpAsync("op_read_async", rid, buffer);
-    if (nread < 0) {
-      throw new Error("read error");
-    }
 
     return nread === 0 ? null : nread;
   }
 
   function writeSync(rid, data) {
-    const result = core.binOpSync("op_write_sync", rid, data);
-    if (result < 0) {
-      throw new Error("write error");
-    }
-
-    return result;
+    return core.binOpSync("op_write_sync", rid, data);
   }
 
   async function write(rid, data) {
-    const result = await core.binOpAsync("op_write_async", rid, data);
-    if (result < 0) {
-      throw new Error("write error");
-    }
-
-    return result;
+    return await core.binOpAsync("op_write_async", rid, data);
   }
 
   const READ_PER_ITER = 32 * 1024;
