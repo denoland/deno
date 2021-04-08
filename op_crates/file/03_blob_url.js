@@ -15,7 +15,7 @@
 
 ((window) => {
   const core = Deno.core;
-  // const webidl = window.__bootstrap.webidl;
+  const webidl = window.__bootstrap.webidl;
   const { _byteSequence } = window.__bootstrap.file;
   const { URL } = window.__bootstrap.url;
 
@@ -24,12 +24,12 @@
    * @returns {string}
    */
   function createObjectURL(blob) {
-    // const prefix = "Failed to execute 'createObjectURL' on 'URL'";
-    // webidl.requiredArguments(arguments.length, 1, { prefix });
-    // blob = webidl.converters["Blob"](blob, {
-    //   context: "Argument 1",
-    //   prefix,
-    // });
+    const prefix = "Failed to execute 'createObjectURL' on 'URL'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    blob = webidl.converters["Blob"](blob, {
+      context: "Argument 1",
+      prefix,
+    });
 
     const url = core.jsonOpSync(
       "op_file_create_object_url",
@@ -45,12 +45,12 @@
    * @returns {void}
    */
   function revokeObjectURL(url) {
-    // const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
-    // webidl.requiredArguments(arguments.length, 1, { prefix });
-    // url = webidl.converters["DOMString"](url, {
-    //   context: "Argument 1",
-    //   prefix,
-    // });
+    const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    url = webidl.converters["DOMString"](url, {
+      context: "Argument 1",
+      prefix,
+    });
 
     core.jsonOpSync(
       "op_file_revoke_object_url",
