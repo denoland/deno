@@ -1513,7 +1513,11 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("jobs")
         .min_values(0)
         .max_values(1)
-        .takes_value(true),
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<usize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("jobs should be a number".to_string()),
+        }),
     )
     .arg(
       Arg::with_name("files")
