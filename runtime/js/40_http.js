@@ -9,15 +9,6 @@
   const core = window.Deno.core;
   const { ReadableStream } = window.__bootstrap.streams;
 
-  function flatEntries(obj) {
-    const entries = [];
-    for (const key in obj) {
-      entries.push(key);
-      entries.push(obj[key]);
-    }
-    return entries;
-  }
-
   function serveHttp(conn) {
     const rid = Deno.core.jsonOpSync("op_http_start", conn.rid);
     return new HttpConn(rid);
@@ -104,12 +95,14 @@
     );
   }
 
-  function respond(responseSenderRid, resp, zeroCopyBuf) {
-    return Deno.core.jsonOpSync("op_http_response", [
-      responseSenderRid,
-      resp.status ?? 200,
-      flatEntries(resp.headers ?? {}),
-    ], zeroCopyBuf);
+  /** IMPORTANT: Equivalent to `Array.from(headers).flat()` but more performant.
+   * Please preserve. */
+  function flattenHeaders(headers) {
+    const array = [];
+    for (const pair of headers) {
+      array.push(pair[0], pair[1]);
+    }
+    return array;
   }
 
   function createRespondWith(responseSenderRid, connRid) {
@@ -136,11 +129,11 @@
         zeroCopyBuf = null;
       }
 
-      const responseBodyRid = respond(
+      const responseBodyRid = Deno.core.jsonOpSync("op_http_response", [
         responseSenderRid,
-        resp,
-        zeroCopyBuf,
-      );
+        resp.status ?? 200,
+        flattenHeaders(resp.headers),
+      ], zeroCopyBuf);
 
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
