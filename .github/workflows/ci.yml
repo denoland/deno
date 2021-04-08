@@ -163,6 +163,13 @@ jobs:
       - name: Restore timestamps
         run: python ./tools/restore_mtime.py
 
+      # Work around https://github.com/actions/cache/issues/403 by using GNU tar
+      # instead of BSD tar.
+      - name: Install GNU tar
+        if: matrix.os == 'macos-10.15'
+        run: |
+          brew install gnu-tar
+
       - name: Cache
         uses: actions/cache@v2
         with:
