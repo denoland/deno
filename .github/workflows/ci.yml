@@ -169,6 +169,7 @@ jobs:
         if: matrix.os == 'macos-10.15'
         run: |
           brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
 
       - name: Cache
         uses: actions/cache@v2
