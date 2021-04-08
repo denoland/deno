@@ -1205,7 +1205,7 @@ declare namespace Deno {
   export interface HttpConn extends AsyncIterable<RequestEvent> {
     readonly rid: number;
 
-    next(): Promise<RequestEvent | null>;
+    nextRequest(): Promise<RequestEvent | null>;
     close(): void;
   }
 

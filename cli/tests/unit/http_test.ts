@@ -42,7 +42,7 @@ unitTest(
       const listener = Deno.listen({ port: 4501 });
       const conn = await listener.accept();
       const httpConn = Deno.startHttp(conn);
-      const evt = await httpConn.next();
+      const evt = await httpConn.nextRequest();
       assert(evt);
       const { request, respondWith } = evt;
       assert(!request.body);
@@ -71,17 +71,17 @@ unitTest(
       const listener = Deno.listen({ port: 4501 });
       const conn = await listener.accept();
       const httpConn = Deno.startHttp(conn);
-      const evt = await httpConn.next();
+      const evt = await httpConn.nextRequest();
       assert(evt);
       const { request, respondWith } = evt;
       const reqBody = await request.text();
       assertEquals("hello world", reqBody);
       await respondWith(new Response(""));
 
-      // TODO(ry) If we don't call httpConn.next() here we get "error sending
+      // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
       // request for url (https://localhost:4501/): connection closed before
       // message completed".
-      assertEquals(await httpConn.next(), null);
+      assertEquals(await httpConn.nextRequest(), null);
 
       listener.close();
     })();
@@ -102,7 +102,7 @@ unitTest({ perms: { net: true } }, async function httpServerStreamDuplex() {
     const listener = Deno.listen({ port: 4501 });
     const conn = await listener.accept();
     const httpConn = Deno.startHttp(conn);
-    const evt = await httpConn.next();
+    const evt = await httpConn.nextRequest();
     assert(evt);
     const { request, respondWith } = evt;
     assert(request.body);
@@ -138,7 +138,7 @@ unitTest({ perms: { net: true } }, async function httpServerClose() {
   const client = await Deno.connect({ port: 4501 });
   const httpConn = Deno.startHttp(await listener.accept());
   client.close();
-  const evt = await httpConn.next();
+  const evt = await httpConn.nextRequest();
   assertEquals(evt, null);
   // Note httpConn is automatically closed when "done" is reached.
   listener.close();
@@ -151,7 +151,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
   await client.write(new Uint8Array([1, 2, 3]));
   await assertThrowsAsync(
     async () => {
-      await httpConn.next();
+      await httpConn.nextRequest();
     },
     Deno.errors.Http,
     "invalid HTTP method parsed",
@@ -176,15 +176,15 @@ unitTest(
       });
       const conn = await listener.accept();
       const httpConn = Deno.startHttp(conn);
-      const evt = await httpConn.next();
+      const evt = await httpConn.nextRequest();
       assert(evt);
       const { request, respondWith } = evt;
       await respondWith(new Response("Hello World"));
 
-      // TODO(ry) If we don't call httpConn.next() here we get "error sending
+      // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
       // request for url (https://localhost:4501/): connection closed before
       // message completed".
-      assertEquals(await httpConn.next(), null);
+      assertEquals(await httpConn.nextRequest(), null);
 
       listener.close();
     })();

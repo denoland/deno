@@ -36,7 +36,7 @@
     }
 
     /** @returns {Promise<ResponseEvent | null>} */
-    async next() {
+    async nextRequest() {
       let nextRequest;
       try {
         nextRequest = await Deno.core.jsonOpAsync(
@@ -88,7 +88,7 @@
       const httpConn = this;
       return {
         async next() {
-          const reqEvt = await httpConn.next();
+          const reqEvt = await httpConn.nextRequest();
           if (reqEvt === null) return { value: undefined, done: true };
           return { value: reqEvt, done: false };
         },
