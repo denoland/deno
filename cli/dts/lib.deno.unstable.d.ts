@@ -1202,9 +1202,11 @@ declare namespace Deno {
     respondWith(r: Response | Promise<Response>): void;
   }
 
-  export interface HttpConn extends AsyncIterableIterator<RequestEvent> {
-    close(): void;
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
     readonly rid: number;
+
+    next(): Promise<RequestEvent | null>;
+    close(): void;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.

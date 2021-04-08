@@ -123,8 +123,6 @@ impl Resource for ConnResource {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NextRequestResponse(
-  // connection_closed:
-  bool,
   // request_body_rid:
   Option<ResourceId>,
   // response_sender_rid:
@@ -141,7 +139,7 @@ async fn op_http_request_next(
   state: Rc<RefCell<OpState>>,
   conn_rid: ResourceId,
   _data: Option<ZeroCopyBuf>,
-) -> Result<NextRequestResponse, AnyError> {
+) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn_resource = state
     .borrow()
     .resource_table
@@ -218,23 +216,15 @@ async fn op_http_request_next(
           conn_rid,
         });
 
-      Poll::Ready(Ok(NextRequestResponse(
-        connection_closed,
+      Poll::Ready(Ok(Some(NextRequestResponse(
         maybe_request_body_rid,
         response_sender_rid,
         method,
         headers,
         url,
-      )))
+      ))))
     } else if connection_closed {
-      Poll::Ready(Ok(NextRequestResponse(
-        true,
-        None,
-        0,
-        "".to_string(),
-        Vec::default(),
-        "".to_string(),
-      )))
+      Poll::Ready(Ok(None))
     } else {
       Poll::Pending
     }

@@ -30,61 +30,69 @@
       this.#rid = rid;
     }
 
+    /** @returns {number} */
     get rid() {
       return this.#rid;
     }
 
+    /** @returns {Promise<ResponseEvent | null>} */
+    async next() {
+      let nextRequest;
+      try {
+        nextRequest = await Deno.core.jsonOpAsync(
+          "op_http_request_next",
+          this.#rid,
+        );
+      } catch (error) {
+        if (error instanceof errors.BadResource) {
+          return null;
+        } else if (error instanceof errors.Interrupted) {
+          return null;
+        }
+        throw error;
+      }
+      if (nextRequest === null) return null;
+
+      const [
+        requestBodyRid,
+        responseSenderRid,
+        method,
+        headersList,
+        url,
+      ] = nextRequest;
+
+      /** @type {ReadableStream<Uint8Array> | undefined} */
+      let body = undefined;
+      if (typeof requestBodyRid === "number") {
+        body = createRequestBodyStream(requestBodyRid);
+      }
+
+      const request = new Request(url, {
+        body,
+        method,
+        headers: new Headers(headersList),
+        [dontValidateUrl]: true,
+      });
+
+      const respondWith = createRespondWith(responseSenderRid, this.#rid);
+
+      return { request, respondWith };
+    }
+
+    /** @returns {void} */
     close() {
       core.close(this.#rid);
     }
 
-    async next() {
-      try {
-        const [
-          connectionClosed,
-          requestBodyRid,
-          responseSenderRid,
-          method,
-          headersList,
-          url,
-        ] = await Deno.core.jsonOpAsync("op_http_request_next", this.#rid);
-
-        if (connectionClosed) {
-          if (responseSenderRid === 0) {
-            return { done: true };
-          } else {
-            throw Error("unhandled");
-          }
-        }
-
-        /** @type {ReadableStream<Uint8Array> | undefined} */
-        let body = undefined;
-        if (typeof requestBodyRid === "number") {
-          body = createRequestBodyStream(requestBodyRid);
-        }
-
-        const request = new Request(url, {
-          body,
-          method,
-          headers: new Headers(headersList),
-          [dontValidateUrl]: true,
-        });
-
-        const respondWith = createRespondWith(responseSenderRid, this.#rid);
-        const value = { request, respondWith };
-        return { value, done: false };
-      } catch (error) {
-        if (error instanceof errors.BadResource) {
-          return { value: undefined, done: true };
-        } else if (error instanceof errors.Interrupted) {
-          return { value: undefined, done: true };
-        }
-        throw error;
-      }
-    }
-
     [Symbol.asyncIterator]() {
-      return this;
+      const httpConn = this;
+      return {
+        async next() {
+          const reqEvt = await httpConn.next();
+          if (reqEvt === null) return { value: undefined, done: true };
+          return { value: reqEvt, done: false };
+        },
+      };
     }
   }
 
