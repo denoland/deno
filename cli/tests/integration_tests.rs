@@ -4717,7 +4717,9 @@ console.log("finish");
       /// Returns the next websocket message as a string ignoring
       /// Debugger.scriptParsed messages.
       async fn ws_read_msg(
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+        socket: &mut tokio_tungstenite::WebSocketStream<
+          tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
       ) -> String {
         use deno_core::futures::stream::StreamExt;
         while let Some(msg) = socket.next().await {

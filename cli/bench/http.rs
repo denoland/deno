@@ -108,6 +108,8 @@ fn run(
   println!("{}", wrk_cmd.join(" "));
   let output = test_util::run_collect(wrk_cmd, None, None, None, true).0;
 
+  std::thread::sleep(Duration::from_secs(1)); // wait to capture failure. TODO racy.
+
   println!("{}", output);
   assert!(
     server.try_wait()?.map_or(true, |s| s.success()),
