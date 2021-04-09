@@ -504,18 +504,15 @@ impl ModuleRegistry {
                   if s.starts_with(path) {
                     let label = s.to_string();
                     let kind = Some(lsp::CompletionItemKind::Folder);
-                    let full_text = format!(
-                      "{}{}{}",
-                      &current_specifier[..offset],
-                      s.replacen(path, "", 1),
-                      &current_specifier[offset..]
-                    );
+                    let mut url = specifier.clone();
+                    url.set_path(s);
+                    let full_text = url.as_str();
                     let text_edit =
                       Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
                         range: *range,
-                        new_text: full_text.clone(),
+                        new_text: full_text.to_string(),
                       }));
-                    let filter_text = Some(full_text);
+                    let filter_text = Some(full_text.to_string());
                     completions.insert(
                       s.to_string(),
                       lsp::CompletionItem {
@@ -729,6 +726,31 @@ mod tests {
       .enable("http://localhost:4545/")
       .await
       .expect("could not enable");
+    let state_snapshot = setup(&[]);
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 41,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545", 21, &range, &state_snapshot)
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap();
+    assert_eq!(completions.len(), 1);
+    assert_eq!(completions[0].label, "/x");
+    assert_eq!(
+      completions[0].text_edit,
+      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+        range,
+        new_text: "http://localhost:4545/x".to_string()
+      }))
+    );
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -739,7 +761,6 @@ mod tests {
         character: 42,
       },
     };
-    let state_snapshot = setup(&[]);
     let completions = module_registry
       .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
       .await;
