@@ -23,7 +23,9 @@
         "names": true,
         "paths": true,
         "imports": {
-          "hosts": {}
+          "hosts": {
+            "http://localhost:4545/": true
+          }
         }
       },
       "unstable": false
