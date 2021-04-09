@@ -1,12 +1,4 @@
-import { assert, assertEquals, assertMatch, unreachable } from "./test_util.ts";
-
-const readErrorStackPattern = new RegExp(
-  `^.*
-    at processErr \\(.*core\\.js:.*\\)
-    at opAsyncHandler \\(.*core\\.js:.*\\)
-    at handleAsyncMsgFromRust \\(.*core\\.js:.*\\).*$`,
-  "ms",
-);
+import { assertStringIncludes, unreachable } from "./test_util.ts";
 
 Deno.test("sendAsyncStackTrace", async function (): Promise<void> {
   const buf = new Uint8Array(10);
@@ -15,7 +7,10 @@ Deno.test("sendAsyncStackTrace", async function (): Promise<void> {
     await Deno.read(rid, buf);
     unreachable();
   } catch (error) {
-    assertMatch(error.stack, readErrorStackPattern);
+    const s = error.stack.toString();
+    console.log(s);
+    assertStringIncludes(s, "dispatch_bin_test.ts");
+    assertStringIncludes(s, "read");
   }
 });
 
