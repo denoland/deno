@@ -27,7 +27,7 @@ declare global {
   }
 }
 
-unitTest(async function binOpsAsyncBadResource(): Promise<void> {
+Deno.test("binOpsAsyncBadResource", async function (): Promise<void> {
   try {
     const nonExistingRid = 9999;
     await Deno.core.binOpAsync(
@@ -42,7 +42,7 @@ unitTest(async function binOpsAsyncBadResource(): Promise<void> {
   }
 });
 
-unitTest(function binOpsSyncBadResource(): void {
+Deno.test("binOpsSyncBadResource", function (): void {
   try {
     const nonExistingRid = 9999;
     Deno.core.binOpSync("op_read_sync", nonExistingRid, new Uint8Array(0));

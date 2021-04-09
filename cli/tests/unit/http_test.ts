@@ -1,14 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertThrowsAsync } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 
-unitTest({ perms: { net: true } }, async function httpServerBasic() {
+Deno.test("httpServerBasic", async function () {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     for await (const conn of listener) {
@@ -29,8 +24,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   await promise;
 });
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
   async function httpServerStreamResponse() {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -58,46 +52,43 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { net: true } },
-  async function httpServerStreamRequest() {
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
-    writer.write(new TextEncoder().encode("hello "));
-    writer.write(new TextEncoder().encode("world"));
-    writer.close();
+Deno.test("httpServerStreamRequest", async function () {
+  const stream = new TransformStream();
+  const writer = stream.writable.getWriter();
+  writer.write(new TextEncoder().encode("hello "));
+  writer.write(new TextEncoder().encode("world"));
+  writer.close();
 
-    const promise = (async () => {
-      const listener = Deno.listen({ port: 4501 });
-      const conn = await listener.accept();
-      const httpConn = Deno.startHttp(conn);
-      const evt = await httpConn.nextRequest();
-      assert(evt);
-      const { request, respondWith } = evt;
-      const reqBody = await request.text();
-      assertEquals("hello world", reqBody);
-      await respondWith(new Response(""));
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    const conn = await listener.accept();
+    const httpConn = Deno.startHttp(conn);
+    const evt = await httpConn.nextRequest();
+    assert(evt);
+    const { request, respondWith } = evt;
+    const reqBody = await request.text();
+    assertEquals("hello world", reqBody);
+    await respondWith(new Response(""));
 
-      // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
-      // request for url (https://localhost:4501/): connection closed before
-      // message completed".
-      assertEquals(await httpConn.nextRequest(), null);
+    // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
+    // request for url (https://localhost:4501/): connection closed before
+    // message completed".
+    assertEquals(await httpConn.nextRequest(), null);
 
-      listener.close();
-    })();
+    listener.close();
+  })();
 
-    const resp = await fetch("http://127.0.0.1:4501/", {
-      body: stream.readable,
-      method: "POST",
-      headers: { "connection": "close" },
-    });
+  const resp = await fetch("http://127.0.0.1:4501/", {
+    body: stream.readable,
+    method: "POST",
+    headers: { "connection": "close" },
+  });
 
-    await resp.arrayBuffer();
-    await promise;
-  },
-);
+  await resp.arrayBuffer();
+  await promise;
+});
 
-unitTest({ perms: { net: true } }, async function httpServerStreamDuplex() {
+Deno.test("httpServerStreamDuplex", async function () {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     const conn = await listener.accept();
@@ -133,7 +124,7 @@ unitTest({ perms: { net: true } }, async function httpServerStreamDuplex() {
   await promise;
 });
 
-unitTest({ perms: { net: true } }, async function httpServerClose() {
+Deno.test("httpServerClose", async function () {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
   const httpConn = Deno.startHttp(await listener.accept());
@@ -144,7 +135,7 @@ unitTest({ perms: { net: true } }, async function httpServerClose() {
   listener.close();
 });
 
-unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
+Deno.test("httpServerInvalidMethod", async function httpServerInvalidMethod() {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
   const httpConn = Deno.startHttp(await listener.accept());
@@ -161,43 +152,40 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
   listener.close();
 });
 
-unitTest(
-  { perms: { read: true, net: true } },
-  async function httpServerWithTls(): Promise<void> {
-    const hostname = "localhost";
-    const port = 4501;
+Deno.test("httpServerWithTls", async function (): Promise<void> {
+  const hostname = "localhost";
+  const port = 4501;
 
-    const promise = (async () => {
-      const listener = Deno.listenTls({
-        hostname,
-        port,
-        certFile: "cli/tests/tls/localhost.crt",
-        keyFile: "cli/tests/tls/localhost.key",
-      });
-      const conn = await listener.accept();
-      const httpConn = Deno.startHttp(conn);
-      const evt = await httpConn.nextRequest();
-      assert(evt);
-      const { request, respondWith } = evt;
-      await respondWith(new Response("Hello World"));
-
-      // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
-      // request for url (https://localhost:4501/): connection closed before
-      // message completed".
-      assertEquals(await httpConn.nextRequest(), null);
-
-      listener.close();
-    })();
-
-    const caData = Deno.readTextFileSync("cli/tests/tls/RootCA.pem");
-    const client = Deno.createHttpClient({ caData });
-    const resp = await fetch(`https://${hostname}:${port}/`, {
-      client,
-      headers: { "connection": "close" },
+  const promise = (async () => {
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      certFile: "cli/tests/tls/localhost.crt",
+      keyFile: "cli/tests/tls/localhost.key",
     });
-    const respBody = await resp.text();
-    assertEquals("Hello World", respBody);
-    await promise;
-    client.close();
-  },
-);
+    const conn = await listener.accept();
+    const httpConn = Deno.startHttp(conn);
+    const evt = await httpConn.nextRequest();
+    assert(evt);
+    const { request, respondWith } = evt;
+    await respondWith(new Response("Hello World"));
+
+    // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
+    // request for url (https://localhost:4501/): connection closed before
+    // message completed".
+    assertEquals(await httpConn.nextRequest(), null);
+
+    listener.close();
+  })();
+
+  const caData = Deno.readTextFileSync("cli/tests/tls/RootCA.pem");
+  const client = Deno.createHttpClient({ caData });
+  const resp = await fetch(`https://${hostname}:${port}/`, {
+    client,
+    headers: { "connection": "close" },
+  });
+  const respBody = await resp.text();
+  assertEquals("Hello World", respBody);
+  await promise;
+  client.close();
+});
