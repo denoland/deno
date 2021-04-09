@@ -163,6 +163,12 @@ jobs:
       - name: Restore timestamps
         run: python ./tools/restore_mtime.py
 
+      # Touches build.rs files because cargo doesn't seem handling
+      # dependencies correctly which are created from build.rs.
+      - name: Touch build.rs
+        shell: bash
+        run: git ls-files | grep build\.rs\$ | xargs touch
+
       # Work around https://github.com/actions/cache/issues/403 by using GNU tar
       # instead of BSD tar.
       - name: Install GNU tar
