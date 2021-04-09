@@ -58,7 +58,7 @@ pub struct File {
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
 impl FileCache {
@@ -312,7 +312,7 @@ fn strip_shebang(mut value: String) -> String {
 }
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
