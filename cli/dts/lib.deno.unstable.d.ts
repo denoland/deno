@@ -1001,6 +1001,16 @@ declare namespace Deno {
     options?: StartTlsOptions,
   ): Promise<Conn>;
 
+  export interface ListenTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
   /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
    * enum.
    *
