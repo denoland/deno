@@ -5881,6 +5881,7 @@ async fn listen_tls_alpn() {
     .arg("--allow-net")
     .arg("--allow-read")
     .arg("./cli/tests/listen_tls_alpn.ts")
+    .arg("4504")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap();
@@ -5920,6 +5921,7 @@ async fn listen_tls_alpn_fail() {
     .arg("--allow-net")
     .arg("--allow-read")
     .arg("./cli/tests/listen_tls_alpn.ts")
+    .arg("4505")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap();
@@ -5938,7 +5940,7 @@ async fn listen_tls_alpn_fail() {
 
   let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
   let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
-  let stream = tokio::net::TcpStream::connect("localhost:4504")
+  let stream = tokio::net::TcpStream::connect("localhost:4505")
     .await
     .unwrap();
 
