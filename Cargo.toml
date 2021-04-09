@@ -20,6 +20,17 @@ exclude = [
   "std/hash/_wasm"
 ]
 
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 'z' # Optimize for size
+
+[profile.bench]
+codegen-units = 1
+lto = true
+opt-level = 'z' # Optimize for size
+
 # Optimize these packages for perf
 [profile.release.package.rand]
 opt-level = 3
