@@ -114,6 +114,8 @@ declare namespace Deno {
     sanitizeExit?: boolean;
   }
 
+  export type TestOptions = Omit<TestDefinition, "name" | "fn">;
+
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
    * `fn` can be async if required.
@@ -165,7 +167,11 @@ declare namespace Deno {
    * });
    * ```
    * */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+  export function test(
+    name: string,
+    fn: () => void | Promise<void>,
+    options?: TestOptions,
+  ): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.

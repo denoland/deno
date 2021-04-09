@@ -2401,6 +2401,12 @@ mod integration {
       output: "test/deno_test_only.ts.out",
     });
 
+    itest!(ignore {
+      args: "test test/ignore.ts",
+      exit_code: 0,
+      output: "test/ignore.out",
+    });
+
     itest!(no_check {
       args: "test --no-check test/test_runner_test.ts",
       exit_code: 1,

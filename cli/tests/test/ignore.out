@@ -1,0 +1,6 @@
+[WILDCARD]
+running 2 tests
+test ignore1 ... ignored [WILDCARD]
+test ignore2 ... ignored [WILDCARD]
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out [WILDCARD]

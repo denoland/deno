@@ -113,6 +113,7 @@ finishing test case.`;
   function test(
     t,
     fn,
+    options,
   ) {
     let testDef;
     const defaults = {
@@ -130,7 +131,7 @@ finishing test case.`;
       if (!t) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { fn: fn, name: t, ...defaults };
+      testDef = { fn: fn, name: t, ...defaults, ...options };
     } else {
       if (!t.fn) {
         throw new TypeError("Missing test function");
