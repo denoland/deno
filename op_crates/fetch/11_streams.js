@@ -15,8 +15,8 @@
   }
 
   /**
-   * @param {unknown} cond 
-   * @param {string=} msg 
+   * @param {unknown} cond
+   * @param {string=} msg
    * @returns {asserts cond}
    */
   function assert(cond, msg = "Assertion failed.") {
@@ -75,8 +75,8 @@
   }
 
   /**
-   * @param {(...args: any[]) => any} fn 
-   * @param {boolean} enforcePromise 
+   * @param {(...args: any[]) => any} fn
+   * @param {boolean} enforcePromise
    * @returns {(...args: any[]) => any}
    */
   function reflectApply(fn, enforcePromise) {
@@ -98,7 +98,7 @@
   /**
    * @template I
    * @template O
-   * @param {Transformer<I, O>} transformer 
+   * @param {Transformer<I, O>} transformer
    * @returns {Transformer<I, O>}
    */
   function convertTransformer(transformer) {
@@ -126,7 +126,7 @@
 
   /**
    * @template W
-   * @param {UnderlyingSink<W>} underlyingSink 
+   * @param {UnderlyingSink<W>} underlyingSink
    * @returns {UnderlyingSink<W>}
    */
   function convertUnderlyingSink(underlyingSink) {
@@ -154,7 +154,7 @@
 
   /**
    * @template R
-   * @param {UnderlyingSource<R>} underlyingSource 
+   * @param {UnderlyingSource<R>} underlyingSource
    * @returns {UnderlyingSource<R>}
    */
   function convertUnderlyingSource(underlyingSource) {
@@ -194,9 +194,9 @@
    * @template T
    * @template TResult1
    * @template TResult2
-   * @param {Promise<T>} promise 
-   * @param {(value: T) => TResult1 | PromiseLike<TResult1>} onFulfilled 
-   * @param {(reason: any) => TResult2 | PromiseLike<TResult2>=} onRejected 
+   * @param {Promise<T>} promise
+   * @param {(value: T) => TResult1 | PromiseLike<TResult1>} onFulfilled
+   * @param {(reason: any) => TResult2 | PromiseLike<TResult2>=} onRejected
    * @returns {Promise<TResult1 | TResult2>}
    */
   function performPromiseThen(promise, onFulfilled, onRejected) {
@@ -205,7 +205,7 @@
 
   /**
    * @template T
-   * @param {T | PromiseLike<T>} value 
+   * @param {T | PromiseLike<T>} value
    * @returns {Promise<T>}
    */
   function resolvePromiseWith(value) {
@@ -230,9 +230,9 @@
    * @template T
    * @template TResult1
    * @template TResult2
-   * @param {Promise<T>} promise 
-   * @param {(value: T) => TResult1 | PromiseLike<TResult1>} fulfillmentHandler 
-   * @param {(reason: any) => TResult2 | PromiseLike<TResult2>=} rejectionHandler 
+   * @param {Promise<T>} promise
+   * @param {(value: T) => TResult1 | PromiseLike<TResult1>} fulfillmentHandler
+   * @param {(reason: any) => TResult2 | PromiseLike<TResult2>=} rejectionHandler
    * @returns {Promise<TResult1 | TResult2>}
    */
   function transformPromiseWith(promise, fulfillmentHandler, rejectionHandler) {
@@ -242,8 +242,8 @@
   /**
    * @template T
    * @template TResult
-   * @param {Promise<T>} promise 
-   * @param {(value: T) => TResult | PromiseLike<TResult>} onFulfilled 
+   * @param {Promise<T>} promise
+   * @param {(value: T) => TResult | PromiseLike<TResult>} onFulfilled
    * @returns {void}
    */
   function uponFulfillment(promise, onFulfilled) {
@@ -253,8 +253,8 @@
   /**
    * @template T
    * @template TResult
-   * @param {Promise<T>} promise 
-   * @param {(value: T) => TResult | PromiseLike<TResult>} onRejected 
+   * @param {Promise<T>} promise
+   * @param {(value: T) => TResult | PromiseLike<TResult>} onRejected
    * @returns {void}
    */
   function uponRejection(promise, onRejected) {
@@ -265,9 +265,9 @@
    * @template T
    * @template TResult1
    * @template TResult2
-   * @param {Promise<T>} promise 
-   * @param {(value: T) => TResult1 | PromiseLike<TResult1>} onFulfilled 
-   * @param {(reason: any) => TResult2 | PromiseLike<TResult2>=} onRejected 
+   * @param {Promise<T>} promise
+   * @param {(value: T) => TResult1 | PromiseLike<TResult1>} onFulfilled
+   * @param {(reason: any) => TResult2 | PromiseLike<TResult2>=} onRejected
    * @returns {void}
    */
   function uponPromise(promise, onFulfilled, onRejected) {
@@ -289,7 +289,7 @@
   }
 
   /**
-   * @param {ArrayBufferLike} O 
+   * @param {ArrayBufferLike} O
    * @returns {ArrayBufferLike}
    */
   function transferArrayBuffer(O) {
@@ -351,7 +351,7 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
+   * @param {ReadableStream<R>} stream
    * @returns {ReadableStreamDefaultReader<R>}
    */
   function acquireReadableStreamDefaultReader(stream) {
@@ -360,7 +360,7 @@
 
   /**
    * @template W
-   * @param {WritableStream<W>} stream 
+   * @param {WritableStream<W>} stream
    * @returns {WritableStreamDefaultWriter<W>}
    */
   function acquireWritableStreamDefaultWriter(stream) {
@@ -369,11 +369,11 @@
 
   /**
    * @template R
-   * @param {() => void} startAlgorithm 
-   * @param {() => Promise<void>} pullAlgorithm 
-   * @param {(reason: any) => Promise<void>} cancelAlgorithm 
-   * @param {number=} highWaterMark 
-   * @param {((chunk: R) => number)=} sizeAlgorithm 
+   * @param {() => void} startAlgorithm
+   * @param {() => Promise<void>} pullAlgorithm
+   * @param {(reason: any) => Promise<void>} cancelAlgorithm
+   * @param {number=} highWaterMark
+   * @param {((chunk: R) => number)=} sizeAlgorithm
    * @returns {ReadableStream<R>}
    */
   function createReadableStream(
@@ -402,12 +402,12 @@
 
   /**
    * @template W
-   * @param {(controller: WritableStreamDefaultController<W>) => Promise<void>} startAlgorithm 
-   * @param {(chunk: W) => Promise<void>} writeAlgorithm 
-   * @param {() => Promise<void>} closeAlgorithm 
-   * @param {(reason: any) => Promise<void>} abortAlgorithm 
-   * @param {number} highWaterMark 
-   * @param {(chunk: W) => number} sizeAlgorithm 
+   * @param {(controller: WritableStreamDefaultController<W>) => Promise<void>} startAlgorithm
+   * @param {(chunk: W) => Promise<void>} writeAlgorithm
+   * @param {() => Promise<void>} closeAlgorithm
+   * @param {(reason: any) => Promise<void>} abortAlgorithm
+   * @param {number} highWaterMark
+   * @param {(chunk: W) => number} sizeAlgorithm
    * @returns {WritableStream<W>}
    */
   function createWritableStream(
@@ -471,8 +471,8 @@
   }
 
   /**
-   * @param {QueuingStrategy} strategy 
-   * @param {number} defaultHWM 
+   * @param {QueuingStrategy} strategy
+   * @param {number} defaultHWM
    */
   function extractHighWaterMark(strategy, defaultHWM) {
     if (!("highWaterMark" in strategy)) {
@@ -489,7 +489,7 @@
 
   /**
    * @template T
-   * @param {QueuingStrategy<T>} strategy 
+   * @param {QueuingStrategy<T>} strategy
    * @return {(chunk: T) => number}
    */
   function extractSizeAlgorithm(strategy) {
@@ -502,7 +502,7 @@
   }
 
   /**
-   * @param {ReadableStream} stream 
+   * @param {ReadableStream} stream
    * @returns {void}
    */
   function initializeReadableStream(stream) {
@@ -514,12 +514,12 @@
   /**
    * @template I
    * @template O
-   * @param {TransformStream<I, O>} stream 
-   * @param {Deferred<void>} startPromise 
-   * @param {number} writableHighWaterMark 
-   * @param {(chunk: I) => number} writableSizeAlgorithm 
-   * @param {number} readableHighWaterMark 
-   * @param {(chunk: O) => number} readableSizeAlgorithm 
+   * @param {TransformStream<I, O>} stream
+   * @param {Deferred<void>} startPromise
+   * @param {number} writableHighWaterMark
+   * @param {(chunk: I) => number} writableSizeAlgorithm
+   * @param {number} readableHighWaterMark
+   * @param {(chunk: O) => number} readableSizeAlgorithm
    */
   function initializeTransformStream(
     stream,
@@ -588,7 +588,7 @@
   }
 
   /**
-   * @param {unknown} v 
+   * @param {unknown} v
    * @returns {v is number}
    */
   function isNonNegativeNumber(v) {
@@ -605,7 +605,7 @@
   }
 
   /**
-   * @param {unknown} value 
+   * @param {unknown} value
    * @returns {value is ReadableStream}
    */
   function isReadableStream(value) {
@@ -625,7 +625,7 @@
   }
 
   /**
-   * @param {unknown} value 
+   * @param {unknown} value
    * @returns {value is ReadableStreamDefaultReader}
    */
   function isReadableStreamDefaultReader(value) {
@@ -634,7 +634,7 @@
   }
 
   /**
-   * @param {ReadableStream} stream 
+   * @param {ReadableStream} stream
    * @returns {boolean}
    */
   function isReadableStreamDisturbed(stream) {
@@ -643,7 +643,7 @@
   }
 
   /**
-   * @param {unknown} value 
+   * @param {unknown} value
    * @returns {value is WritableStream}
    */
   function isWritableStream(value) {
@@ -652,7 +652,7 @@
   }
 
   /**
-   * @param {WritableStream} stream 
+   * @param {WritableStream} stream
    * @returns {boolean}
    */
   function isWritableStreamLocked(stream) {
@@ -675,7 +675,7 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
+   * @param {ReadableByteStreamController} controller
    * @returns {void}
    */
   function readableByteStreamControllerCallPullIfNeeded(controller) {
@@ -708,7 +708,7 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
+   * @param {ReadableByteStreamController} controller
    * @returns {void}
    */
   function readableByteStreamControllerClearAlgorithms(controller) {
@@ -717,8 +717,8 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
-   * @param {any} e 
+   * @param {ReadableByteStreamController} controller
+   * @param {any} e
    */
   function readableByteStreamControllerError(controller, e) {
     /** @type {ReadableStream<ArrayBuffer>} */
@@ -733,7 +733,7 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
+   * @param {ReadableByteStreamController} controller
    * @returns {void}
    */
   function readableByteStreamControllerClose(controller) {
@@ -752,8 +752,8 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
-   * @param {ArrayBufferView} chunk 
+   * @param {ReadableByteStreamController} controller
+   * @param {ArrayBufferView} chunk
    */
   function readableByteStreamControllerEnqueue(controller, chunk) {
     /** @type {ReadableStream<ArrayBuffer>} */
@@ -798,10 +798,10 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
-   * @param {ArrayBufferLike} buffer 
-   * @param {number} byteOffset 
-   * @param {number} byteLength 
+   * @param {ReadableByteStreamController} controller
+   * @param {ArrayBufferLike} buffer
+   * @param {number} byteOffset
+   * @param {number} byteLength
    * @returns {void}
    */
   function readableByteStreamControllerEnqueueChunkToQueue(
@@ -815,7 +815,7 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
+   * @param {ReadableByteStreamController} controller
    * @returns {number | null}
    */
   function readableByteStreamControllerGetDesiredSize(controller) {
@@ -830,7 +830,7 @@
   }
 
   /**
-   * @param {{ [_queue]: any[], [_queueTotalSize]: number }} container 
+   * @param {{ [_queue]: any[], [_queueTotalSize]: number }} container
    * @returns {void}
    */
   function resetQueue(container) {
@@ -839,7 +839,7 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
+   * @param {ReadableByteStreamController} controller
    * @returns {void}
    */
   function readableByteStreamControllerHandleQueueDrain(controller) {
@@ -855,7 +855,7 @@
   }
 
   /**
-   * @param {ReadableByteStreamController} controller 
+   * @param {ReadableByteStreamController} controller
    * @returns {boolean}
    */
   function readableByteStreamControllerShouldCallPull(controller) {
@@ -883,7 +883,7 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
+   * @param {ReadableStream<R>} stream
    * @param {ReadRequest<R>} readRequest
    * @returns {void}
    */
@@ -895,8 +895,8 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
-   * @param {any=} reason 
+   * @param {ReadableStream<R>} stream
+   * @param {any=} reason
    * @returns {Promise<void>}
    */
   function readableStreamCancel(stream, reason) {
@@ -915,7 +915,7 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
+   * @param {ReadableStream<R>} stream
    * @returns {void}
    */
   function readableStreamClose(stream) {
@@ -967,7 +967,7 @@
   }
 
   /**
-   * @param {ReadableStreamDefaultController<any>} controller 
+   * @param {ReadableStreamDefaultController<any>} controller
    * @returns {boolean}
    */
   function readableStreamDefaultControllerCanCloseOrEnqueue(controller) {
@@ -1003,8 +1003,8 @@
 
   /**
    * @template R
-   * @param {ReadableStreamDefaultController<R>} controller 
-   * @param {R} chunk 
+   * @param {ReadableStreamDefaultController<R>} controller
+   * @param {R} chunk
    * @returns {void}
    */
   function readableStreamDefaultControllerEnqueue(controller, chunk) {
@@ -1039,8 +1039,8 @@
   }
 
   /**
-   * @param {ReadableStreamDefaultController<any>} controller 
-   * @param {any} e 
+   * @param {ReadableStreamDefaultController<any>} controller
+   * @param {any} e
    */
   function readableStreamDefaultControllerError(controller, e) {
     const stream = controller[_stream];
@@ -1053,7 +1053,7 @@
   }
 
   /**
-   * @param {ReadableStreamDefaultController<any>} controller 
+   * @param {ReadableStreamDefaultController<any>} controller
    * @returns {number | null}
    */
   function readableStreamDefaultControllerGetDesiredSize(controller) {
@@ -1077,7 +1077,7 @@
   }
 
   /**
-   * @param {ReadableStreamDefaultController<any>} controller 
+   * @param {ReadableStreamDefaultController<any>} controller
    * @returns {boolean}
    */
   function readableStreamDefaultcontrollerShouldCallPull(controller) {
@@ -1128,8 +1128,8 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
-   * @param {any} e 
+   * @param {ReadableStream<R>} stream
+   * @param {any} e
    */
   function readableStreamError(stream, e) {
     assert(stream[_state] === "readable");
@@ -1157,9 +1157,9 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
-   * @param {R} chunk 
-   * @param {boolean} done 
+   * @param {ReadableStream<R>} stream
+   * @param {R} chunk
+   * @param {boolean} done
    */
   function readableStreamFulfillReadRequest(stream, chunk, done) {
     assert(readableStreamHasDefaultReader(stream) === true);
@@ -1176,7 +1176,7 @@
   }
 
   /**
-   * @param {ReadableStream} stream 
+   * @param {ReadableStream} stream
    * @return {number}
    */
   function readableStreamGetNumReadRequests(stream) {
@@ -1201,12 +1201,12 @@
 
   /**
    * @template T
-   * @param {ReadableStream<T>} source 
-   * @param {WritableStream<T>} dest 
-   * @param {boolean} preventClose 
-   * @param {boolean} preventAbort 
-   * @param {boolean} preventCancel 
-   * @param {AbortSignal=} signal 
+   * @param {ReadableStream<T>} source
+   * @param {WritableStream<T>} dest
+   * @param {boolean} preventClose
+   * @param {boolean} preventAbort
+   * @param {boolean} preventCancel
+   * @param {AbortSignal=} signal
    * @returns {Promise<void>}
    */
   function readableStreamPipeTo(
@@ -1388,9 +1388,9 @@
     }
 
     /**
-     * @param {ReadableStream | WritableStream} stream 
-     * @param {Promise<any>} promise 
-     * @param {(e: any) => void} action 
+     * @param {ReadableStream | WritableStream} stream
+     * @param {Promise<any>} promise
+     * @param {(e: any) => void} action
      */
     function isOrBecomesErrored(stream, promise, action) {
       if (stream[_state] === "errored") {
@@ -1401,9 +1401,9 @@
     }
 
     /**
-     * @param {ReadableStream} stream 
-     * @param {Promise<any>} promise 
-     * @param {() => void} action 
+     * @param {ReadableStream} stream
+     * @param {Promise<any>} promise
+     * @param {() => void} action
      */
     function isOrBecomesClosed(stream, promise, action) {
       if (stream[_state] === "closed") {
@@ -1414,9 +1414,9 @@
     }
 
     /**
-     * @param {() => Promise<void[] | void>} action 
-     * @param {boolean=} originalIsError 
-     * @param {any=} originalError 
+     * @param {() => Promise<void[] | void>} action
+     * @param {boolean=} originalIsError
+     * @param {any=} originalError
      */
     function shutdownWithAction(action, originalIsError, originalError) {
       function doTheRest() {
@@ -1443,8 +1443,8 @@
     }
 
     /**
-     * @param {boolean=} isError 
-     * @param {any=} error 
+     * @param {boolean=} isError
+     * @param {any=} error
      */
     function shutdown(isError, error) {
       if (shuttingDown) {
@@ -1465,8 +1465,8 @@
     }
 
     /**
-     * @param {boolean=} isError 
-     * @param {any=} error 
+     * @param {boolean=} isError
+     * @param {any=} error
      */
     function finalize(isError, error) {
       writableStreamDefaultWriterRelease(writer);
@@ -1484,8 +1484,8 @@
   }
 
   /**
-   * @param {ReadableStreamGenericReader<any>} reader 
-   * @param {any} reason 
+   * @param {ReadableStreamGenericReader<any>} reader
+   * @param {any} reason
    * @returns {Promise<void>}
    */
   function readableStreamReaderGenericCancel(reader, reason) {
@@ -1496,8 +1496,8 @@
 
   /**
    * @template R
-   * @param {ReadableStreamDefaultReader<R>} reader 
-   * @param {ReadableStream<R>} stream 
+   * @param {ReadableStreamDefaultReader<R>} reader
+   * @param {ReadableStream<R>} stream
    */
   function readableStreamReaderGenericInitialize(reader, stream) {
     reader[_stream] = stream;
@@ -1517,7 +1517,7 @@
 
   /**
    * @template R
-   * @param {ReadableStreamGenericReader<R>} reader 
+   * @param {ReadableStreamGenericReader<R>} reader
    */
   function readableStreamReaderGenericRelease(reader) {
     assert(reader[_stream] !== undefined);
@@ -1543,8 +1543,8 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
-   * @param {boolean} cloneForBranch2 
+   * @param {ReadableStream<R>} stream
+   * @param {boolean} cloneForBranch2
    * @returns {[ReadableStream<R>, ReadableStream<R>]}
    */
   function readableStreamTee(stream, cloneForBranch2) {
@@ -1688,13 +1688,13 @@
   }
 
   /**
-   * @param {ReadableStream<ArrayBuffer>} stream 
-   * @param {ReadableByteStreamController} controller 
-   * @param {() => void} startAlgorithm 
-   * @param {() => Promise<void>} pullAlgorithm 
-   * @param {(reason: any) => Promise<void>} cancelAlgorithm 
-   * @param {number} highWaterMark 
-   * @param {number | undefined} autoAllocateChunkSize 
+   * @param {ReadableStream<ArrayBuffer>} stream
+   * @param {ReadableByteStreamController} controller
+   * @param {() => void} startAlgorithm
+   * @param {() => Promise<void>} pullAlgorithm
+   * @param {(reason: any) => Promise<void>} cancelAlgorithm
+   * @param {number} highWaterMark
+   * @param {number | undefined} autoAllocateChunkSize
    */
   function setUpReadableByteStreamController(
     stream,
@@ -1739,10 +1739,10 @@
   }
 
   /**
-   * @param {ReadableStream<ArrayBuffer>} stream 
-   * @param {UnderlyingSource<ArrayBuffer>} underlyingSource 
-   * @param {UnderlyingSource<ArrayBuffer>} underlyingSourceDict 
-   * @param {number} highWaterMark 
+   * @param {ReadableStream<ArrayBuffer>} stream
+   * @param {UnderlyingSource<ArrayBuffer>} underlyingSource
+   * @param {UnderlyingSource<ArrayBuffer>} underlyingSourceDict
+   * @param {number} highWaterMark
    */
   function setUpReadableByteStreamControllerFromUnderlyingSource(
     stream,
@@ -1785,13 +1785,13 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
-   * @param {ReadableStreamDefaultController<R>} controller 
-   * @param {(controller: ReadableStreamDefaultController<R>) => void | Promise<void>} startAlgorithm 
-   * @param {(controller: ReadableStreamDefaultController<R>) => Promise<void>} pullAlgorithm 
-   * @param {(reason: any) => Promise<void>} cancelAlgorithm 
-   * @param {number} highWaterMark 
-   * @param {(chunk: R) => number} sizeAlgorithm 
+   * @param {ReadableStream<R>} stream
+   * @param {ReadableStreamDefaultController<R>} controller
+   * @param {(controller: ReadableStreamDefaultController<R>) => void | Promise<void>} startAlgorithm
+   * @param {(controller: ReadableStreamDefaultController<R>) => Promise<void>} pullAlgorithm
+   * @param {(reason: any) => Promise<void>} cancelAlgorithm
+   * @param {number} highWaterMark
+   * @param {(chunk: R) => number} sizeAlgorithm
    */
   function setUpReadableStreamDefaultController(
     stream,
@@ -1826,11 +1826,11 @@
 
   /**
    * @template R
-   * @param {ReadableStream<R>} stream 
-   * @param {UnderlyingSource<R>} underlyingSource 
-   * @param {UnderlyingSource<R>} underlyingSourceDict 
-   * @param {number} highWaterMark 
-   * @param {(chunk: R) => number} sizeAlgorithm 
+   * @param {ReadableStream<R>} stream
+   * @param {UnderlyingSource<R>} underlyingSource
+   * @param {UnderlyingSource<R>} underlyingSourceDict
+   * @param {number} highWaterMark
+   * @param {(chunk: R) => number} sizeAlgorithm
    */
   function setUpReadableStreamDefaultControllerFromUnderlyingSource(
     stream,
@@ -1871,8 +1871,8 @@
 
   /**
    * @template R
-   * @param {ReadableStreamDefaultReader<R>} reader 
-   * @param {ReadableStream<R>} stream 
+   * @param {ReadableStreamDefaultReader<R>} reader
+   * @param {ReadableStream<R>} stream
    */
   function setUpReadableStreamDefaultReader(reader, stream) {
     if (isReadableStreamLocked(stream)) {
@@ -1884,10 +1884,10 @@
 
   /**
    * @template O
-   * @param {TransformStream<any, O>} stream 
-   * @param {TransformStreamDefaultController<O>} controller 
-   * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm 
-   * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm 
+   * @param {TransformStream<any, O>} stream
+   * @param {TransformStreamDefaultController<O>} controller
+   * @param {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} transformAlgorithm
+   * @param {(controller: TransformStreamDefaultController<O>) => Promise<void>} flushAlgorithm
    */
   function setUpTransformStreamDefaultController(
     stream,
@@ -1906,9 +1906,9 @@
   /**
    * @template I
    * @template O
-   * @param {TransformStream<I, O>} stream 
-   * @param {Transformer<I, O>} transformer 
-   * @param {Transformer<I, O>} transformerDict 
+   * @param {TransformStream<I, O>} stream
+   * @param {Transformer<I, O>} transformer
+   * @param {Transformer<I, O>} transformerDict
    */
   function setUpTransformStreamDefaultControllerFromTransformer(
     stream,
@@ -1946,14 +1946,14 @@
 
   /**
    * @template W
-   * @param {WritableStream<W>} stream 
-   * @param {WritableStreamDefaultController<W>} controller 
-   * @param {(controller: WritableStreamDefaultController<W>) => Promise<void>} startAlgorithm 
-   * @param {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} writeAlgorithm 
-   * @param {() => Promise<void>} closeAlgorithm 
-   * @param {(reason?: any) => Promise<void>} abortAlgorithm 
-   * @param {number} highWaterMark 
-   * @param {(chunk: W) => number} sizeAlgorithm 
+   * @param {WritableStream<W>} stream
+   * @param {WritableStreamDefaultController<W>} controller
+   * @param {(controller: WritableStreamDefaultController<W>) => Promise<void>} startAlgorithm
+   * @param {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} writeAlgorithm
+   * @param {() => Promise<void>} closeAlgorithm
+   * @param {(reason?: any) => Promise<void>} abortAlgorithm
+   * @param {number} highWaterMark
+   * @param {(chunk: W) => number} sizeAlgorithm
    */
   function setUpWritableStreamDefaultController(
     stream,
@@ -1995,11 +1995,11 @@
 
   /**
    * @template W
-   * @param {WritableStream<W>} stream 
-   * @param {UnderlyingSink<W>} underlyingSink 
-   * @param {UnderlyingSink<W>} underlyingSinkDict 
-   * @param {number} highWaterMark 
-   * @param {(chunk: W) => number} sizeAlgorithm 
+   * @param {WritableStream<W>} stream
+   * @param {UnderlyingSink<W>} underlyingSink
+   * @param {UnderlyingSink<W>} underlyingSinkDict
+   * @param {number} highWaterMark
+   * @param {(chunk: W) => number} sizeAlgorithm
    */
   function setUpWritableStreamDefaultControllerFromUnderlyingSink(
     stream,
@@ -2044,8 +2044,8 @@
 
   /**
    * @template W
-   * @param {WritableStreamDefaultWriter<W>} writer 
-   * @param {WritableStream<W>} stream 
+   * @param {WritableStreamDefaultWriter<W>} writer
+   * @param {WritableStream<W>} stream
    */
   function setUpWritableStreamDefaultWriter(writer, stream) {
     if (isWritableStreamLocked(stream) === true) {
@@ -2095,8 +2095,8 @@
 
   /**
    * @template O
-   * @param {TransformStreamDefaultController<O>} controller 
-   * @param {O} chunk 
+   * @param {TransformStreamDefaultController<O>} controller
+   * @param {O} chunk
    */
   function transformStreamDefaultControllerEnqueue(controller, chunk) {
     const stream = controller[_stream];
@@ -2127,8 +2127,8 @@
   }
 
   /**
-   * @param {TransformStreamDefaultController} controller 
-   * @param {any=} e 
+   * @param {TransformStreamDefaultController} controller
+   * @param {any=} e
    */
   function transformStreamDefaultControllerError(controller, e) {
     transformStreamError(controller[_stream], e);
@@ -2136,8 +2136,8 @@
 
   /**
    * @template O
-   * @param {TransformStreamDefaultController<O>} controller 
-   * @param {any} chunk 
+   * @param {TransformStreamDefaultController<O>} controller
+   * @param {any} chunk
    * @returns {Promise<void>}
    */
   function transformStreamDefaultControllerPerformTransform(controller, chunk) {
@@ -2160,8 +2160,8 @@
   }
 
   /**
-   * @param {TransformStream} stream 
-   * @param {any=} reason 
+   * @param {TransformStream} stream
+   * @param {any=} reason
    * @returns {Promise<void>}
    */
   function transformStreamDefaultSinkAbortAlgorithm(stream, reason) {
@@ -2172,7 +2172,7 @@
   /**
    * @template I
    * @template O
-   * @param {TransformStream<I, O>} stream 
+   * @param {TransformStream<I, O>} stream
    * @returns {Promise<void>}
    */
   function transformStreamDefaultSinkCloseAlgorithm(stream) {
@@ -2196,8 +2196,8 @@
   /**
    * @template I
    * @template O
-   * @param {TransformStream<I, O>} stream 
-   * @param {I} chunk 
+   * @param {TransformStream<I, O>} stream
+   * @param {I} chunk
    * @returns {Promise<void>}
    */
   function transformStreamDefaultSinkWriteAlgorithm(stream, chunk) {
@@ -2234,8 +2234,8 @@
   }
 
   /**
-   * @param {TransformStream} stream 
-   * @param {any=} e 
+   * @param {TransformStream} stream
+   * @param {any=} e
    */
   function transformStreamError(stream, e) {
     readableStreamDefaultControllerError(
@@ -2248,8 +2248,8 @@
   }
 
   /**
-   * @param {TransformStream} stream 
-   * @param {any=} e 
+   * @param {TransformStream} stream
+   * @param {any=} e
    */
   function transformStreamErrorWritableAndUnblockWrite(stream, e) {
     transformStreamDefaultControllerClearAlgorithms(stream[_controller]);
@@ -2263,8 +2263,8 @@
   }
 
   /**
-   * @param {TransformStream} stream 
-   * @param {boolean} backpressure 
+   * @param {TransformStream} stream
+   * @param {boolean} backpressure
    */
   function transformStreamSetBackpressure(stream, backpressure) {
     assert(stream[_backpressure] !== backpressure);
@@ -2276,8 +2276,8 @@
   }
 
   /**
-   * @param {WritableStream} stream 
-   * @param {any=} reason 
+   * @param {WritableStream} stream
+   * @param {any=} reason
    * @returns {Promise<void>}
    */
   function writableStreamAbort(stream, reason) {
@@ -2308,7 +2308,7 @@
   }
 
   /**
-   * @param {WritableStream} stream 
+   * @param {WritableStream} stream
    * @returns {Promise<void>}
    */
   function writableStreamAddWriteRequest(stream) {
@@ -2321,7 +2321,7 @@
   }
 
   /**
-   * @param {WritableStream} stream 
+   * @param {WritableStream} stream
    * @returns {Promise<void>}
    */
   function writableStreamClose(stream) {
@@ -2348,7 +2348,7 @@
   }
 
   /**
-   * @param {WritableStream} stream 
+   * @param {WritableStream} stream
    * @returns {boolean}
    */
   function writableStreamCloseQueuedOrInFlight(stream) {
@@ -2362,8 +2362,8 @@
   }
 
   /**
-   * @param {WritableStream} stream 
-   * @param {any=} error 
+   * @param {WritableStream} stream
+   * @param {any=} error
    */
   function writableStreamDealWithRejection(stream, error) {
     const state = stream[_state];
@@ -2375,7 +2375,7 @@
     writableStreamFinishErroring(stream);
   }
 
-  /** 
+  /**
    * @template W
    * @param {WritableStreamDefaultController<W>} controller
    */
@@ -2418,8 +2418,8 @@
   }
 
   /**
-   * @param {WritableStreamDefaultController} controller 
-   * @param {any} error 
+   * @param {WritableStreamDefaultController} controller
+   * @param {any} error
    */
   function writableStreamDefaultControllerError(controller, error) {
     const stream = controller[_stream];
@@ -2429,8 +2429,8 @@
   }
 
   /**
-   * @param {WritableStreamDefaultController} controller 
-   * @param {any} error 
+   * @param {WritableStreamDefaultController} controller
+   * @param {any} error
    */
   function writableStreamDefaultControllerErrorIfNeeded(controller, error) {
     if (controller[_stream][_state] === "writable") {
@@ -2451,8 +2451,8 @@
 
   /**
    * @template W
-   * @param {WritableStreamDefaultController<W>} controller 
-   * @param {W} chunk 
+   * @param {WritableStreamDefaultController<W>} controller
+   * @param {W} chunk
    * @returns {number}
    */
   function writableStreamDefaultControllerGetChunkSize(controller, chunk) {
@@ -2467,7 +2467,7 @@
   }
 
   /**
-   * @param {WritableStreamDefaultController} controller 
+   * @param {WritableStreamDefaultController} controller
    * @returns {number}
    */
   function writableStreamDefaultControllerGetDesiredSize(controller) {
@@ -2491,8 +2491,8 @@
 
   /**
    * @template W
-   * @param {WritableStreamDefaultController<W>} controller 
-   * @param {W} chunk 
+   * @param {WritableStreamDefaultController<W>} controller
+   * @param {W} chunk
    */
   function writableStreamDefaultControllerProcessWrite(controller, chunk) {
     const stream = controller[_stream];
@@ -2523,9 +2523,9 @@
 
   /**
    * @template W
-   * @param {WritableStreamDefaultController<W>} controller 
-   * @param {W} chunk 
-   * @param {number} chunkSize 
+   * @param {WritableStreamDefaultController<W>} controller
+   * @param {W} chunk
+   * @param {number} chunkSize
    */
   function writableStreamDefaultControllerWrite(controller, chunk, chunkSize) {
     try {
@@ -2548,8 +2548,8 @@
   }
 
   /**
-   * @param {WritableStreamDefaultWriter} writer 
-   * @param {any=} reason 
+   * @param {WritableStreamDefaultWriter} writer
+   * @param {any=} reason
    * @returns {Promise<void>}
    */
   function writableStreamDefaultWriterAbort(writer, reason) {
@@ -2559,7 +2559,7 @@
   }
 
   /**
-   * @param {WritableStreamDefaultWriter} writer 
+   * @param {WritableStreamDefaultWriter} writer
    * @returns {Promise<void>}
    */
   function writableStreamDefaultWriterClose(writer) {
@@ -2569,7 +2569,7 @@
   }
 
   /**
-   * @param {WritableStreamDefaultWriter} writer 
+   * @param {WritableStreamDefaultWriter} writer
    * @returns {Promise<void>}
    */
   function writableStreamDefaultWriterCloseWithErrorPropagation(writer) {
@@ -2589,8 +2589,8 @@
   }
 
   /**
-   * @param {WritableStreamDefaultWriter} writer 
-   * @param {any=} error 
+   * @param {WritableStreamDefaultWriter} writer
+   * @param {any=} error
    */
   function writableStreamDefaultWriterEnsureClosedPromiseRejected(
     writer,
@@ -2605,7 +2605,7 @@
     setPromiseIsHandledToTrue(writer[_closedPromise].promise);
   }
 
-  /** 
+  /**
    * @param {WritableStreamDefaultWriter} writer
    * @param {any=} error
    */
@@ -2623,7 +2623,7 @@
   }
 
   /**
-   * @param {WritableStreamDefaultWriter} writer 
+   * @param {WritableStreamDefaultWriter} writer
    * @returns {number | null}
    */
   function writableStreamDefaultWriterGetDesiredSize(writer) {
@@ -2660,8 +2660,8 @@
 
   /**
    * @template W
-   * @param {WritableStreamDefaultWriter<W>} writer 
-   * @param {W} chunk 
+   * @param {WritableStreamDefaultWriter<W>} writer
+   * @param {W} chunk
    * @returns {Promise<void>}
    */
   function writableStreamDefaultWriterWrite(writer, chunk) {
@@ -2751,8 +2751,8 @@
   }
 
   /**
-   * @param {WritableStream} stream 
-   * @param {any=} error 
+   * @param {WritableStream} stream
+   * @param {any=} error
    */
   function writableStreamFinishInFlightCloseWithError(stream, error) {
     assert(stream[_inFlightCloseRequest] !== undefined);
@@ -2774,8 +2774,8 @@
   }
 
   /**
-   * @param {WritableStream} stream 
-   * @param {any=} error 
+   * @param {WritableStream} stream
+   * @param {any=} error
    */
   function writableStreamFinishInFlightWriteWithError(stream, error) {
     assert(stream[_inFlightWriteRequest] !== undefined);
@@ -2834,8 +2834,8 @@
   }
 
   /**
-   * @param {WritableStream} stream 
-   * @param {any=} reason 
+   * @param {WritableStream} stream
+   * @param {any=} reason
    */
   function writableStreamStartErroring(stream, reason) {
     assert(stream[_storedError] === undefined);
@@ -2857,8 +2857,8 @@
   }
 
   /**
-   * @param {WritableStream} stream 
-   * @param {boolean} backpressure 
+   * @param {WritableStream} stream
+   * @param {boolean} backpressure
    */
   function writableStreamUpdateBackpressure(stream, backpressure) {
     assert(stream[_state] === "writable");
@@ -2877,8 +2877,8 @@
 
   /**
    * @template T
-   * @param {T} value 
-   * @param {boolean} done 
+   * @param {T} value
+   * @param {boolean} done
    * @returns {IteratorResult<T>}
    */
   function createIteratorResult(value, done) {
@@ -2933,7 +2933,7 @@
       return promise.promise;
     },
     /**
-     * @param {unknown} arg 
+     * @param {unknown} arg
      * @returns {Promise<IteratorResult<unknown>>}
      */
     async return(arg) {
@@ -3045,8 +3045,8 @@
     [_storedError];
 
     /**
-     * @param {UnderlyingSource<R>=} underlyingSource 
-     * @param {QueuingStrategy<R>=} strategy 
+     * @param {UnderlyingSource<R>=} underlyingSource
+     * @param {QueuingStrategy<R>=} strategy
      */
     constructor(underlyingSource, strategy = {}) {
       const underlyingSourceDict = convertUnderlyingSource(underlyingSource);
@@ -3085,7 +3085,7 @@
     }
 
     /**
-     * @param {any=} reason 
+     * @param {any=} reason
      * @returns {Promise<void>}
      */
     cancel(reason) {
@@ -3097,7 +3097,7 @@
 
     /**
      * @deprecated TODO(@kitsonk): Remove in Deno 1.8
-     * @param {ReadableStreamIteratorOptions=} options 
+     * @param {ReadableStreamIteratorOptions=} options
      * @returns {AsyncIterableIterator<R>}
      */
     getIterator(options = {}) {
@@ -3105,7 +3105,7 @@
     }
 
     /**
-     * @param {ReadableStreamGetReaderOptions=} options 
+     * @param {ReadableStreamGetReaderOptions=} options
      * @returns {ReadableStreamDefaultReader<R>}
      */
     getReader(options = {}) {
@@ -3130,8 +3130,8 @@
 
     /**
      * @template T
-     * @param {{ readable: ReadableStream<T>, writable: WritableStream<R> }} transform 
-     * @param {PipeOptions=} options 
+     * @param {{ readable: ReadableStream<T>, writable: WritableStream<R> }} transform
+     * @param {PipeOptions=} options
      * @returns {ReadableStream<T>}
      */
     pipeThrough(
@@ -3171,7 +3171,7 @@
     }
 
     /**
-     * @param {WritableStream<R>} destination 
+     * @param {WritableStream<R>} destination
      * @param {PipeOptions=} options
      * @returns {Promise<void>}
      */
@@ -3210,7 +3210,7 @@
     }
 
     /**
-     * @param {ReadableStreamIteratorOptions=} options 
+     * @param {ReadableStreamIteratorOptions=} options
      * @returns {AsyncIterableIterator<R>}
      */
     [Symbol.asyncIterator]({ preventCancel } = {}) {
@@ -3222,7 +3222,7 @@
       return iterator;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
   }
@@ -3304,7 +3304,7 @@
       readableStreamReaderGenericRelease(this);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
     }
   }
@@ -3358,7 +3358,7 @@
     }
 
     /**
-     * @param {ArrayBufferView} chunk 
+     * @param {ArrayBufferView} chunk
      * @returns {void}
      */
     enqueue(chunk) {
@@ -3382,7 +3382,7 @@
     }
 
     /**
-     * @param {any=} e 
+     * @param {any=} e
      * @returns {void}
      */
     error(e) {
@@ -3390,7 +3390,7 @@
     }
 
     /**
-     * @param {any} reason 
+     * @param {any} reason
      * @returns {Promise<void>}
      */
     [_cancelSteps](reason) {
@@ -3402,7 +3402,7 @@
     }
 
     /**
-     * @param {ReadRequest<ArrayBuffer>} readRequest 
+     * @param {ReadRequest<ArrayBuffer>} readRequest
      * @returns {void}
      */
     [_pullSteps](readRequest) {
@@ -3468,7 +3468,7 @@
     }
 
     /**
-     * @param {R} chunk 
+     * @param {R} chunk
      * @returns {void}
      */
     enqueue(chunk) {
@@ -3479,7 +3479,7 @@
     }
 
     /**
-     * @param {any=} e 
+     * @param {any=} e
      * @returns {void}
      */
     error(e) {
@@ -3487,7 +3487,7 @@
     }
 
     /**
-     * @param {any} reason 
+     * @param {any} reason
      * @returns {Promise<void>}
      */
     [_cancelSteps](reason) {
@@ -3498,7 +3498,7 @@
     }
 
     /**
-     * @param {ReadRequest<R>} readRequest 
+     * @param {ReadRequest<R>} readRequest
      * @returns {void}
      */
     [_pullSteps](readRequest) {
@@ -3538,10 +3538,10 @@
     [_writable];
 
     /**
-     * 
-     * @param {Transformer<I, O>} transformer 
-     * @param {QueuingStrategy<I>} writableStrategy 
-     * @param {QueuingStrategy<O>} readableStrategy 
+     *
+     * @param {Transformer<I, O>} transformer
+     * @param {QueuingStrategy<I>} writableStrategy
+     * @param {QueuingStrategy<O>} readableStrategy
      */
     constructor(
       transformer = null,
@@ -3593,7 +3593,7 @@
       return this[_writable];
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ readable: this.readable, writable: this.writable })
       }`;
@@ -3618,7 +3618,7 @@
     }
 
     /**
-     * @param {O} chunk 
+     * @param {O} chunk
      * @returns {void}
      */
     enqueue(chunk) {
@@ -3626,7 +3626,7 @@
     }
 
     /**
-     * @param {any=} reason 
+     * @param {any=} reason
      * @returns {void}
      */
     error(reason) {
@@ -3665,8 +3665,8 @@
     [_writeRequests];
 
     /**
-     * @param {UnderlyingSink<W>=} underlyingSink 
-     * @param {QueuingStrategy<W>=} strategy 
+     * @param {UnderlyingSink<W>=} underlyingSink
+     * @param {QueuingStrategy<W>=} strategy
      */
     constructor(underlyingSink = null, strategy = {}) {
       const underlyingSinkDict = convertUnderlyingSink(underlyingSink);
@@ -3693,7 +3693,7 @@
     }
 
     /**
-     * @param {any=} reason 
+     * @param {any=} reason
      * @returns {Promise<void>}
      */
     abort(reason) {
@@ -3729,7 +3729,7 @@
       return acquireWritableStreamDefaultWriter(this);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
   }
@@ -3770,7 +3770,7 @@
     }
 
     /**
-     * @param {any} reason 
+     * @param {any} reason
      * @returns {Promise<void>}
      */
     abort(reason) {
@@ -3809,7 +3809,7 @@
     }
 
     /**
-     * @param {W} chunk 
+     * @param {W} chunk
      * @returns {Promise<void>}
      */
     write(chunk) {
@@ -3856,7 +3856,7 @@
     }
 
     /**
-     * @param {any=} reason 
+     * @param {any=} reason
      * @returns {Promise<void>}
      */
     [_abortSteps](reason) {

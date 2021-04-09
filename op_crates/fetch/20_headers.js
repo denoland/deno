@@ -194,7 +194,7 @@
       }
     }
 
-    [Symbol.for("Deno.customInspect")]() {
+    [Symbol.for("Deno.privateCustomInspect")]() {
       let length = this[headersData].length;
       let output = "";
       for (const [key, value] of this[headersData]) {

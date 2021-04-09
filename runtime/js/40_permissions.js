@@ -27,7 +27,7 @@
   ];
 
   /**
-   * @param {Deno.PermissionDescriptor} desc 
+   * @param {Deno.PermissionDescriptor} desc
    * @returns {Deno.PermissionState}
    */
   function opQuery(desc) {
@@ -35,7 +35,7 @@
   }
 
   /**
-   * @param {Deno.PermissionDescriptor} desc 
+   * @param {Deno.PermissionDescriptor} desc
    * @returns {Deno.PermissionState}
    */
   function opRevoke(desc) {
@@ -43,7 +43,7 @@
   }
 
   /**
-   * @param {Deno.PermissionDescriptor} desc 
+   * @param {Deno.PermissionDescriptor} desc
    * @returns {Deno.PermissionState}
    */
   function opRequest(desc) {
@@ -63,8 +63,8 @@
     }
 
     /**
-     * @param {{ state: Deno.PermissionState }} state 
-     * @param {unknown} key 
+     * @param {{ state: Deno.PermissionState }} state
+     * @param {unknown} key
      */
     constructor(state = null, key = null) {
       if (key != illegalConstructorKey) {
@@ -75,7 +75,7 @@
     }
 
     /**
-     * @param {Event} event 
+     * @param {Event} event
      * @returns {boolean}
      */
     dispatchEvent(event) {
@@ -87,7 +87,7 @@
       return dispatched;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ state: this.state, onchange: this.onchange })
       }`;
@@ -98,9 +98,9 @@
   const statusCache = new Map();
 
   /**
-   * 
-   * @param {Deno.PermissionDescriptor} desc 
-   * @param {Deno.PermissionState} state 
+   *
+   * @param {Deno.PermissionDescriptor} desc
+   * @param {Deno.PermissionState} state
    * @returns {PermissionStatus}
    */
   function cache(desc, state) {
@@ -126,7 +126,7 @@
   }
 
   /**
-   * @param {unknown} desc 
+   * @param {unknown} desc
    * @returns {desc is Deno.PermissionDescriptor}
    */
   function isValidDescriptor(desc) {

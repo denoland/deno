@@ -17,7 +17,7 @@ import {
 } from "./test_util.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 
-const customInspect = Deno.customInspect;
+const customInspect = Symbol.for("Deno.customInspect");
 const {
   Console,
   cssToAnsi: cssToAnsi_,
@@ -869,6 +869,18 @@ unitTest(function consoleTestWithCustomInspector(): void {
   }
 
   assertEquals(stringify(new A()), "b");
+});
+
+unitTest(function consoleTestWithCustomInspectorUsingInspectFunc(): void {
+  class A {
+    [customInspect](
+      inspect: (v: unknown, opts?: Deno.InspectOptions) => string,
+    ): string {
+      return "b " + inspect({ c: 1 });
+    }
+  }
+
+  assertEquals(stringify(new A()), "b { c: 1 }");
 });
 
 unitTest(function consoleTestWithCustomInspectorError(): void {

@@ -143,7 +143,7 @@
       });
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return buildCustomInspectOutput(this, EVENT_PROPS, inspect);
     }
 
@@ -1052,7 +1052,7 @@
       return "ErrorEvent";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "message",
@@ -1106,7 +1106,7 @@
       this.#reason = reason;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "wasClean",
@@ -1129,7 +1129,7 @@
       this.lastEventId = eventInitDict?.lastEventId ?? "";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "data",
@@ -1159,7 +1159,7 @@
       return "CustomEvent";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "detail",
@@ -1182,7 +1182,7 @@
       this.total = eventInitDict?.total ?? 0;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return buildCustomInspectOutput(this, [
         ...EVENT_PROPS,
         "lengthComputable",
