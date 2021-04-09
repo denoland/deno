@@ -102,12 +102,12 @@
     return res;
   }
 
-  async function jsonOpAsync(opName, args = null, zeroCopy = null) {
+  function jsonOpAsync(opName, args = null, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapResponse(maybeError);
-    return unwrapResponse(await setPromise(promiseId));
+    return setPromise(promiseId).then(unwrapResponse);
   }
 
   function jsonOpSync(opName, args = null, zeroCopy = null) {
