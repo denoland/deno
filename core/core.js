@@ -87,7 +87,7 @@
     return errorMap[errorName] ?? [undefined, []];
   }
 
-  function unwrapResponse(res) {
+  function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
       const className = res.$err_class_name;
@@ -106,12 +106,12 @@
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
     // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapResponse(maybeError);
-    return setPromise(promiseId).then(unwrapResponse);
+    if (maybeError) return unwrapOpResult(maybeError);
+    return setPromise(promiseId).then(unwrapOpResult);
   }
 
   function jsonOpSync(opName, args = null, zeroCopy = null) {
-    return unwrapResponse(dispatch(opName, null, args, zeroCopy));
+    return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
   }
 
   function binOpSync(opName, args = null, zeroCopy = null) {
