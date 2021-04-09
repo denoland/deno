@@ -5899,7 +5899,7 @@ async fn listen_tls_alpn() {
 
   let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
   let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
-  let stream = tokio::net::TcpStream::connect("localhost:4503")
+  let stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
     .unwrap();
 
@@ -5938,7 +5938,7 @@ async fn listen_tls_alpn_fail() {
 
   let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
   let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
-  let stream = tokio::net::TcpStream::connect("localhost:4503")
+  let stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
     .unwrap();
 

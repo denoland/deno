@@ -1,5 +1,5 @@
 const listener = Deno.listenTls({
-  port: 4503,
+  port: 4504,
   certFile: "./cli/tests/tls/localhost.crt",
   keyFile: "./cli/tests/tls/localhost.key",
   alpnProtocols: ["h2", "http/1.1", "foobar"],
