@@ -626,6 +626,22 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         Ok(Response::new(Body::empty()))
       }
     }
+    (_, "/set_cookie") => {
+      let mut res = Response::new(Body::empty());
+      res
+        .headers_mut()
+        .append("Set-Cookie", HeaderValue::from_str("a=b").unwrap());
+      Ok(res)
+    }
+    (_, "/echo_cookies") => Ok(Response::new(Body::from(
+      req
+        .headers()
+        .get(hyper::header::COOKIE)
+        .unwrap_or(&HeaderValue::from_str("").unwrap())
+        .to_str()
+        .unwrap()
+        .to_string(),
+    ))),
     _ => {
       let mut file_path = root_path();
       file_path.push(&req.uri().path()[1..]);

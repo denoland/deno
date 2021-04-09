@@ -432,6 +432,7 @@ pub fn create_http_client(
   let mut builder = Client::builder()
     .redirect(Policy::none())
     .default_headers(headers)
+    .cookie_store(true)
     .use_rustls_tls();
 
   if let Some(ca_data) = ca_data {

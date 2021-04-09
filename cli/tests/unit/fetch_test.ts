@@ -1131,3 +1131,12 @@ unitTest(
     assertEquals(actual, expected);
   },
 );
+
+unitTest({ perms: { net: true } }, async function fetchCookie() {
+  await fetch("http://localhost:4545/set_cookie")
+    .then((res) => res.body?.cancel());
+  assertEquals(
+    await fetch("http://localhost:4545/echo_cookies").then((res) => res.text()),
+    "a=b",
+  );
+});
