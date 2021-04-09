@@ -518,6 +518,7 @@ dependencies = [
  "encoding_rs",
  "env_logger",
  "exec",
+ "fancy-regex",
  "filetime",
  "fwdansi",
  "http",
@@ -653,6 +654,7 @@ name = "deno_runtime"
 version = "0.10.1"
 dependencies = [
  "atty",
+ "bytes",
  "deno_console",
  "deno_core",
  "deno_crypto",
@@ -684,6 +686,7 @@ dependencies = [
  "test_util",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "trust-dns-proto",
  "trust-dns-resolver",
  "uuid",
@@ -952,6 +955,16 @@ checksum = "886b70328cba8871bfc025858e1de4be16b1d5088f2ba50b57816f4210672615"
 dependencies = [
  "errno 0.2.7",
  "libc",
+]
+
+[[package]]
+name = "fancy-regex"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe09872bd11351a75f22b24c3769fc863e8212d926d6db46b94ad710d14cc5cc"
+dependencies = [
+ "bit-set",
+ "regex",
 ]
 
 [[package]]

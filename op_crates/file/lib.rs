@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Blob {
   pub data: Vec<u8>,
   pub media_type: String,
@@ -20,7 +20,7 @@ pub struct Blob {
 
 pub struct Location(pub Url);
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct BlobUrlStore(Arc<Mutex<HashMap<Url, Blob>>>);
 
 impl BlobUrlStore {
