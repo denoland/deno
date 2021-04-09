@@ -4024,14 +4024,14 @@ console.log("finish");
 
     itest!(stdin {
       args: "lint --unstable -",
-      input: Some("let a: any;"),
+      input: Some("let _a: any;"),
       output: "lint/expected_from_stdin.out",
       exit_code: 1,
     });
 
     itest!(stdin_json {
       args: "lint --unstable --json -",
-      input: Some("let a: any;"),
+      input: Some("let _a: any;"),
       output: "lint/expected_from_stdin_json.out",
       exit_code: 1,
     });
