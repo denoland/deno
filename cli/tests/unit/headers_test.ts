@@ -24,7 +24,7 @@ unitTest(function newHeaderTest(): void {
   try {
     // deno-lint-ignore no-explicit-any
     new Headers(null as any);
-  } catch (_e) {
+  } catch (e) {
     assertEquals(
       e.message,
       "Failed to construct 'Headers'; The provided value was not valid",
