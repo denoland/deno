@@ -40,13 +40,13 @@
       "range": {
         "start": {
           "line": 3,
-          "col": 12,
-          "bytePos": 56
+          "col": 13,
+          "bytePos": 57
         },
         "end": {
           "line": 3,
-          "col": 14,
-          "bytePos": 58
+          "col": 15,
+          "bytePos": 59
         }
       },
       "filename": "[WILDCARD]file2.ts",
