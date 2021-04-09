@@ -1254,18 +1254,6 @@
       headerArray = Array.from(headers.entries());
     }
 
-    const sensitiveMethods = [
-      "DELETE",
-      "GET",
-      "HEAD",
-      "OPTIONS",
-      "POST",
-      "PUT",
-    ];
-    if (sensitiveMethods.includes(method.toUpperCase())) {
-      method = method.toUpperCase();
-    }
-
     const { requestRid, requestBodyRid } = opFetch(
       {
         method,

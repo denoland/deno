@@ -143,7 +143,15 @@ where
   };
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
+    Some(mut method_str) => {
+      if matches!(
+        method_str.to_uppercase().as_ref(),
+        "DELETE" | "GET" | "HEAD" | "OPTIONS" | "POST" | "PUT"
+      ) {
+        method_str = method_str.to_uppercase();
+      }
+      Method::from_bytes(method_str.as_bytes())?
+    }
     None => Method::GET,
   };
 
