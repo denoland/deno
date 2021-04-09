@@ -38,6 +38,12 @@ Using [Homebrew](https://formulae.brew.sh/formula/deno) (macOS):
 brew install deno
 ```
 
+Using [Nix](https://nixos.org/download.html) (macOS and Linux):
+
+```shell
+nix-shell -p deno
+```
+
 Build and install from source using [Cargo](https://crates.io/crates/deno):
 
 ```shell

@@ -32,10 +32,12 @@ pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
 pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
 pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
 pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
+pub static DENO_FILE_LIB: &str = include_str!(env!("DENO_FILE_LIB_PATH"));
 pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
 pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
+pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
@@ -54,7 +56,7 @@ macro_rules! inc {
   };
 }
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Contains static assets that are not preloaded in the compiler snapshot.
   pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
     ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),
@@ -108,6 +110,19 @@ fn hash_data_url(
   format!("data:///{}{}", hash, media_type.as_ts_extension())
 }
 
+fn hash_blob_url(
+  specifier: &ModuleSpecifier,
+  media_type: &MediaType,
+) -> String {
+  assert_eq!(
+    specifier.scheme(),
+    "blob",
+    "Specifier must be a blob: specifier."
+  );
+  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
+  format!("blob:///{}{}", hash, media_type.as_ts_extension())
+}
+
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
 /// and so we have to detect the apparent media type based on extensions it
 /// supports.
@@ -134,9 +149,9 @@ fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
         }
         MediaType::TypeScript
       }
-      Some("tsx") => MediaType::TSX,
+      Some("tsx") => MediaType::Tsx,
       Some("js") => MediaType::JavaScript,
-      Some("jsx") => MediaType::JSX,
+      Some("jsx") => MediaType::Jsx,
       _ => MediaType::Unknown,
     },
   }
@@ -376,15 +391,19 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               resolved_specifier
             )
           };
-          let resolved_specifier_str = if resolved_specifier.scheme() == "data"
-          {
-            let specifier_str = hash_data_url(&resolved_specifier, &media_type);
-            state
-              .data_url_map
-              .insert(specifier_str.clone(), resolved_specifier);
-            specifier_str
-          } else {
-            resolved_specifier.to_string()
+          let resolved_specifier_str = match resolved_specifier.scheme() {
+            "data" | "blob" => {
+              let specifier_str = if resolved_specifier.scheme() == "data" {
+                hash_data_url(&resolved_specifier, &media_type)
+              } else {
+                hash_blob_url(&resolved_specifier, &media_type)
+              };
+              state
+                .data_url_map
+                .insert(specifier_str.clone(), resolved_specifier);
+              specifier_str
+            }
+            _ => resolved_specifier.to_string(),
           };
           resolved.push((
             resolved_specifier_str,
@@ -437,12 +456,17 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let root_names: Vec<String> = request
     .root_names
     .iter()
-    .map(|(s, mt)| {
-      if s.scheme() == "data" {
-        let specifier_str = hash_data_url(s, mt);
+    .map(|(s, mt)| match s.scheme() {
+      "data" | "blob" => {
+        let specifier_str = if s.scheme() == "data" {
+          hash_data_url(&s, &mt)
+        } else {
+          hash_blob_url(&s, &mt)
+        };
         data_url_map.insert(specifier_str.clone(), s.clone());
         specifier_str
-      } else {
+      }
+      _ => {
         let ext_media_type = get_tsc_media_type(s);
         if mt != &ext_media_type {
           let new_specifier = format!("{}{}", s, mt.as_ts_extension());
@@ -634,10 +658,10 @@ mod tests {
   fn test_get_tsc_media_type() {
     let fixtures = vec![
       ("file:///a.ts", MediaType::TypeScript),
-      ("file:///a.tsx", MediaType::TSX),
+      ("file:///a.tsx", MediaType::Tsx),
       ("file:///a.d.ts", MediaType::Dts),
       ("file:///a.js", MediaType::JavaScript),
-      ("file:///a.jsx", MediaType::JSX),
+      ("file:///a.jsx", MediaType::Jsx),
       ("file:///a.cjs", MediaType::Unknown),
       ("file:///a.mjs", MediaType::Unknown),
       ("file:///a.json", MediaType::Unknown),

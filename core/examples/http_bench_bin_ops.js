@@ -11,7 +11,7 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.binOpSync("listen");
+  return Deno.core.binOpSync("listen", 0);
 }
 
 /** Accepts a connection, returns rid. */
@@ -37,15 +37,17 @@ function close(rid) {
 }
 
 async function serve(rid) {
-  while (true) {
-    const nread = await read(rid, requestBuf);
-    if (nread <= 0) {
-      break;
+  try {
+    while (true) {
+      await read(rid, requestBuf);
+      await write(rid, responseBuf);
     }
-
-    const nwritten = await write(rid, responseBuf);
-    if (nwritten < 0) {
-      break;
+  } catch (e) {
+    if (
+      !e.message.includes("Broken pipe") &&
+      !e.message.includes("Connection reset by peer")
+    ) {
+      throw e;
     }
   }
   close(rid);
@@ -60,12 +62,8 @@ async function main() {
     `http_bench_bin_ops listening on http://127.0.0.1:4544/\n`,
   );
 
-  for (;;) {
+  while (true) {
     const rid = await accept(listenerRid);
-    if (rid < 0) {
-      Deno.core.print(`accept error ${rid}`);
-      return;
-    }
     serve(rid);
   }
 }

@@ -10,6 +10,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use dprint_plugin_typescript as dprint;
+use log::error;
+use log::info;
+use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp::request::*;
@@ -39,11 +42,13 @@ use super::analysis::CodeLensData;
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::capabilities;
+use super::completions;
 use super::config::Config;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::performance::Performance;
+use super::registries;
 use super::sources;
 use super::sources::Sources;
 use super::text;
@@ -54,7 +59,10 @@ use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
 
-lazy_static! {
+pub const REGISTRIES_PATH: &str = "registries";
+const SOURCES_PATH: &str = "deps";
+
+lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
   static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
 }
@@ -67,6 +75,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: Config,
   pub documents: DocumentCache,
+  pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
 }
@@ -83,6 +92,10 @@ pub(crate) struct Inner {
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
+  /// Handles module registries, which allow discovery of modules
+  module_registries: registries::ModuleRegistry,
+  /// The path to the module registries cache
+  module_registries_location: PathBuf,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -115,8 +128,11 @@ impl Inner {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
-    let location = dir.root.join("deps");
-    let sources = Sources::new(&location);
+    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    let module_registries =
+      registries::ModuleRegistry::new(&module_registries_location);
+    let sources_location = dir.root.join(SOURCES_PATH);
+    let sources = Sources::new(&sources_location);
     let ts_server = Arc::new(TsServer::new());
     let performance = Performance::default();
     let diagnostics_server = diagnostics::DiagnosticsServer::new();
@@ -130,6 +146,8 @@ impl Inner {
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
+      module_registries,
+      module_registries_location,
       navigation_trees: Default::default(),
       performance,
       sources,
@@ -146,12 +164,16 @@ impl Inner {
     specifier: &ModuleSpecifier,
     source: &str,
   ) {
-    if let Some((mut deps, _)) = analysis::analyze_dependencies(
-      specifier,
-      source,
-      &MediaType::from(specifier),
-      &self.maybe_import_map,
-    ) {
+    let media_type = MediaType::from(specifier);
+    if let Ok(parsed_module) =
+      analysis::parse_module(specifier, source, &media_type)
+    {
+      let (mut deps, _) = analysis::analyze_dependencies(
+        specifier,
+        &media_type,
+        &parsed_module,
+        &self.maybe_import_map,
+      );
       for (_, dep) in deps.iter_mut() {
         if dep.maybe_type.is_none() {
           if let Some(ResolvedDependency::Resolved(resolved)) = &dep.maybe_code
@@ -220,6 +242,25 @@ impl Inner {
     maybe_line_index
   }
 
+  // TODO(@kitsonk) we really should find a better way to just return the
+  // content as a `&str`, or be able to get the byte at a particular offset
+  // which is all that this API that is consuming it is trying to do at the
+  // moment
+  /// Searches already cached assets and documents and returns its text
+  /// content. If not found, `None` is returned.
+  fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if specifier.scheme() == "asset" {
+      self
+        .assets
+        .get(specifier)
+        .map(|o| o.clone().map(|a| a.text))?
+    } else if self.documents.contains_key(specifier) {
+      self.documents.content(specifier).unwrap()
+    } else {
+      self.sources.get_source(specifier)
+    }
+  }
+
   async fn get_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -249,6 +290,7 @@ impl Inner {
       assets: self.assets.clone(),
       config: self.config.clone(),
       documents: self.documents.clone(),
+      module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
     }
@@ -296,6 +338,22 @@ impl Inner {
       self.maybe_import_map = Some(import_map);
     } else {
       self.maybe_import_map = None;
+    }
+    self.performance.measure(mark);
+    Ok(())
+  }
+
+  async fn update_registries(&mut self) -> Result<(), AnyError> {
+    let mark = self.performance.mark("update_registries");
+    for (registry, enabled) in self.config.settings.suggest.imports.hosts.iter()
+    {
+      if *enabled {
+        info!("Enabling auto complete registry for: {}", registry);
+        self.module_registries.enable(registry).await?;
+      } else {
+        info!("Disabling auto complete registry for: {}", registry);
+        self.module_registries.disable(registry).await?;
+      }
     }
     self.performance.measure(mark);
     Ok(())
@@ -468,6 +526,13 @@ impl Inner {
         .show_message(MessageType::Warning, err.to_string())
         .await;
     }
+    // Check to see if we need to setup any module registries
+    if let Err(err) = self.update_registries().await {
+      self
+        .client
+        .show_message(MessageType::Warning, err.to_string())
+        .await;
+    }
 
     if self
       .config
@@ -596,6 +661,12 @@ impl Inner {
         error!("failed to update settings: {}", err);
       }
       if let Err(err) = self.update_import_map().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.update_registries().await {
         self
           .client
           .show_message(MessageType::Warning, err.to_string())
@@ -806,12 +877,17 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            match self.ts_server.request(self.snapshot(), req).await {
+              Ok(items) => items,
+              Err(err) => {
+                // sometimes tsc reports errors when retrieving code actions
+                // because they don't reflect the current state of the document
+                // so we will log them to the output, but we won't send an error
+                // message back to the client.
                 error!("Error getting actions from TypeScript: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+                Vec::new()
+              }
+            };
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, self)
@@ -1354,72 +1430,47 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
+    // Import specifiers are something wholly internal to Deno, so for
+    // completions, we will use internal logic and if there are completions
+    // for imports, we will return those and not send a message into tsc, where
+    // other completions come from.
+    let response = if let Some(response) = completions::get_import_completions(
+      &specifier,
+      &params.text_document_position.position,
+      &self.snapshot(),
+    )
+    .await
+    {
+      Some(response)
+    } else {
+      let line_index =
+        if let Some(line_index) = self.get_line_index_sync(&specifier) {
+          line_index
+        } else {
+          return Err(LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          )));
+        };
+      let trigger_character = if let Some(context) = &params.context {
+        context.trigger_character.clone()
       } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
+        None
       };
-    let trigger_character = if let Some(context) = &params.context {
-      context.trigger_character.clone()
-    } else {
-      None
-    };
-    let position =
-      line_index.offset_tsc(params.text_document_position.position)?;
-    let req = tsc::RequestMethod::GetCompletions((
-      specifier.clone(),
-      position,
-      tsc::GetCompletionsAtPositionOptions {
-        user_preferences: tsc::UserPreferences {
-          include_completions_with_insert_text: Some(true),
-          ..Default::default()
-        },
-        trigger_character,
-      },
-    ));
-    let maybe_completion_info: Option<tsc::CompletionInfo> = self
-      .ts_server
-      .request(self.snapshot(), req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get completion info from TypeScript: {}", err);
-        LspError::internal_error()
-      })?;
-
-    if let Some(completions) = maybe_completion_info {
-      let results = completions.as_completion_response(
-        &line_index,
-        &self.config.settings.suggest,
-        &specifier,
+      let position =
+        line_index.offset_tsc(params.text_document_position.position)?;
+      let req = tsc::RequestMethod::GetCompletions((
+        specifier.clone(),
         position,
-      );
-      self.performance.measure(mark);
-      Ok(Some(results))
-    } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
-  }
-
-  async fn completion_resolve(
-    &mut self,
-    params: CompletionItem,
-  ) -> LspResult<CompletionItem> {
-    let mark = self.performance.mark("completion_resolve");
-    if let Some(data) = &params.data {
-      let data: tsc::CompletionItemData = serde_json::from_value(data.clone())
-        .map_err(|err| {
-          error!("{}", err);
-          LspError::invalid_params(
-            "Could not decode data field of completion item.",
-          )
-        })?;
-      let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-      let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
+        tsc::GetCompletionsAtPositionOptions {
+          user_preferences: tsc::UserPreferences {
+            include_completions_with_insert_text: Some(true),
+            ..Default::default()
+          },
+          trigger_character,
+        },
+      ));
+      let maybe_completion_info: Option<tsc::CompletionInfo> = self
         .ts_server
         .request(self.snapshot(), req)
         .await
@@ -1427,23 +1478,61 @@ impl Inner {
           error!("Unable to get completion info from TypeScript: {}", err);
           LspError::internal_error()
         })?;
-      if let Some(completion_info) = maybe_completion_info {
-        let completion_item = completion_info.as_completion_item(&params);
-        self.performance.measure(mark);
-        Ok(completion_item)
-      } else {
-        error!(
-          "Received an undefined response from tsc for completion details."
+
+      if let Some(completions) = maybe_completion_info {
+        let results = completions.as_completion_response(
+          &line_index,
+          &self.config.settings.suggest,
+          &specifier,
+          position,
         );
-        self.performance.measure(mark);
-        Ok(params)
+        Some(results)
+      } else {
+        None
+      }
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
+  async fn completion_resolve(
+    &mut self,
+    params: CompletionItem,
+  ) -> LspResult<CompletionItem> {
+    let mark = self.performance.mark("completion_resolve");
+    let completion_item = if let Some(data) = &params.data {
+      let data: completions::CompletionItemData =
+        serde_json::from_value(data.clone()).map_err(|err| {
+          error!("{}", err);
+          LspError::invalid_params(
+            "Could not decode data field of completion item.",
+          )
+        })?;
+      if let Some(data) = data.tsc {
+        let req = tsc::RequestMethod::GetCompletionDetails(data.into());
+        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
+          self.ts_server.request(self.snapshot(), req).await.map_err(
+            |err| {
+              error!("Unable to get completion info from TypeScript: {}", err);
+              LspError::internal_error()
+            },
+          )?;
+        if let Some(completion_info) = maybe_completion_info {
+          completion_info.as_completion_item(&params)
+        } else {
+          error!(
+            "Received an undefined response from tsc for completion details."
+          );
+          params
+        }
+      } else {
+        params
       }
     } else {
-      self.performance.measure(mark);
-      Err(LspError::invalid_params(
-        "The completion item is missing the data field.",
-      ))
-    }
+      params
+    };
+    self.performance.measure(mark);
+    Ok(completion_item)
   }
 
   async fn goto_implementation(
@@ -1494,6 +1583,63 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(result)
+  }
+
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("folding_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+    let outlining_spans: Vec<tsc::OutliningSpan> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let response = if !outlining_spans.is_empty() {
+      let text_content =
+        self.get_text_content(&specifier).ok_or_else(|| {
+          LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          ))
+        })?;
+      Some(
+        outlining_spans
+          .iter()
+          .map(|span| {
+            span.to_folding_range(
+              &line_index,
+              text_content.as_str().as_bytes(),
+              self.config.client_capabilities.line_folding_only,
+            )
+          })
+          .collect::<Vec<FoldingRange>>(),
+      )
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
   }
 
   async fn rename(
@@ -1559,16 +1705,12 @@ impl Inner {
   ) -> LspResult<Option<Value>> {
     match method {
       "deno/cache" => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => Ok(Some(
-          serde_json::to_value(self.cache(params).await?).map_err(|err| {
-            error!("Failed to serialize cache response: {}", err);
-            LspError::internal_error()
-          })?,
-        )),
+        Some(Ok(params)) => self.cache(params).await,
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
       "deno/performance" => Ok(Some(self.get_performance())),
+      "deno/reloadImportRegistries" => self.reload_import_registries().await,
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -1821,6 +1963,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.goto_implementation(params).await
   }
 
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    self.0.lock().await.folding_range(params).await
+  }
+
   async fn rename(
     &self,
     params: RenameParams,
@@ -1872,7 +2021,7 @@ struct VirtualTextDocumentParams {
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
-  async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
+  async fn cache(&mut self, params: CacheParams) -> LspResult<Option<Value>> {
     let mark = self.performance.mark("cache");
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !params.uris.is_empty() {
@@ -1913,12 +2062,28 @@ impl Inner {
       LspError::internal_error()
     })?;
     self.performance.measure(mark);
-    Ok(true)
+    Ok(Some(json!(true)))
   }
 
   fn get_performance(&self) -> Value {
     let averages = self.performance.averages();
     json!({ "averages": averages })
+  }
+
+  async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
+    fs::remove_dir_all(&self.module_registries_location)
+      .await
+      .map_err(|err| {
+        error!("Unable to remove registries cache: {}", err);
+        LspError::internal_error()
+      })?;
+    self.module_registries =
+      registries::ModuleRegistry::new(&self.module_registries_location);
+    self.update_registries().await.map_err(|err| {
+      error!("Unable to update registries: {}", err);
+      LspError::internal_error()
+    })?;
+    Ok(Some(json!(true)))
   }
 
   async fn virtual_text_document(
@@ -1963,7 +2128,7 @@ impl Inner {
           if let Some(source) = self.sources.get_source(&specifier) {
             Some(source)
           } else {
-            error!("The cached sources was not found: {}", specifier);
+            error!("The cached source was not found: {}", specifier);
             None
           }
         }
@@ -2404,6 +2569,54 @@ mod tests {
       time.elapsed().as_millis() <= 10000,
       "the execution time exceeded 10000ms"
     );
+  }
+
+  #[tokio::test]
+  async fn test_folding_range() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "folding_range_did_open_notification.json",
+        LspResponse::None,
+      ),
+      (
+        "folding_range_request.json",
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "startLine": 0,
+              "endLine": 12,
+              "kind": "region"
+            },
+            {
+              "startLine": 1,
+              "endLine": 3,
+              "kind": "comment"
+            },
+            {
+              "startLine": 4,
+              "endLine": 10
+            },
+            {
+              "startLine": 5,
+              "endLine": 9
+            },
+            {
+              "startLine": 6,
+              "endLine": 7
+            }
+          ]),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
   }
 
   #[tokio::test]
@@ -2994,6 +3207,189 @@ mod tests {
             },
             "sortText": "1",
             "insertTextFormat": 1,
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completions_optional() {
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_optional.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_optional.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": "b?",
+                "kind": 5,
+                "sortText": "1",
+                "filterText": "b",
+                "insertText": "b",
+                "data": {
+                  "tsc": {
+                    "specifier": "file:///a/file.ts",
+                    "position": 79,
+                    "name": "b",
+                    "useCodeSnippet": false
+                  }
+                }
+              }
+            ]
+          }),
+        ),
+      ),
+      (
+        "completion_resolve_request_optional.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "b?",
+            "kind": 5,
+            "detail": "(property) A.b?: string | undefined",
+            "documentation": {
+              "kind": "markdown",
+              "value": ""
+            },
+            "sortText": "1",
+            "filterText": "b",
+            "insertText": "b"
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completions_registry() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_registry.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_registry.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_registry.json",
+        LspResponse::RequestAssert(|value| {
+          let response: CompletionResult =
+            serde_json::from_value(value).unwrap();
+          let result = response.result.unwrap();
+          if let CompletionResponse::List(list) = result {
+            assert_eq!(list.items.len(), 3);
+          } else {
+            panic!("unexpected result");
+          }
+        }),
+      ),
+      (
+        "completion_resolve_request_registry.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "v2.0.0",
+            "kind": 19,
+            "detail": "(version)",
+            "sortText": "0000000003",
+            "filterText": "http://localhost:4545/x/a@v2.0.0",
+            "textEdit": {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 20
+                },
+                "end": {
+                  "line": 0,
+                  "character": 46
+                }
+              },
+              "newText": "http://localhost:4545/x/a@v2.0.0"
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completion_registry_empty_specifier() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_registry.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_registry_02.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_registry_02.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": ".",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": "."
+              },
+              {
+                "label": "..",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": ".."
+              },
+              {
+                "label": "http://localhost:4545",
+                "kind": 19,
+                "detail": "(registry)",
+                "sortText": "2",
+                "textEdit": {
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  },
+                  "newText": "http://localhost:4545"
+                }
+              }
+            ]
           }),
         ),
       ),

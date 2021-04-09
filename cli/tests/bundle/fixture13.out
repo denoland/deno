@@ -9,9 +9,11 @@ function d() {
     return Object.assign(promise, methods);
 }
 class A {
-    s = d();
     a() {
         this.s.resolve();
+    }
+    constructor(){
+        this.s = d();
     }
 }
 new A();

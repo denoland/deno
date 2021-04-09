@@ -10,7 +10,7 @@ use std::any::type_name;
 use std::any::Any;
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::iter::Iterator;
 use std::rc::Rc;
 
@@ -67,7 +67,7 @@ pub type ResourceId = u32;
 /// the key in the map.
 #[derive(Default)]
 pub struct ResourceTable {
-  index: HashMap<ResourceId, Rc<dyn Resource>>,
+  index: BTreeMap<ResourceId, Rc<dyn Resource>>,
   next_rid: ResourceId,
 }
 

@@ -131,6 +131,10 @@ fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
   "URIError"
 }
 
+fn get_hyper_error_class(_error: &hyper::Error) -> &'static str {
+  "Http"
+}
+
 #[cfg(unix)]
 fn get_nix_error_class(error: &nix::Error) -> &'static str {
   use nix::errno::Errno::*;
@@ -156,6 +160,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<dlopen::Error>()
         .map(get_dlopen_error_class)
     })
+    .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
     .or_else(|| {
       e.downcast_ref::<deno_core::Canceled>().map(|e| {
         let io_err: io::Error = e.to_owned().into();

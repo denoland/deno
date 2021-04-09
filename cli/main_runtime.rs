@@ -1,6 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-#[macro_use]
-extern crate lazy_static;
 
 mod colors;
 mod standalone;

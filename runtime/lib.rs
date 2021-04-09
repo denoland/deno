@@ -1,12 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
 
 pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;
+pub use deno_file;
 pub use deno_url;
 pub use deno_web;
 pub use deno_webgpu;

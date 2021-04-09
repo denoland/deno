@@ -120,6 +120,7 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
+    serveHttp: __bootstrap.http.serveHttp,
     startTls: __bootstrap.tls.startTls,
     fstatSync: __bootstrap.fs.fstatSync,
     fstat: __bootstrap.fs.fstat,
@@ -132,5 +133,6 @@
     utimeSync: __bootstrap.fs.utimeSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
+    http: __bootstrap.http,
   };
 })(this);

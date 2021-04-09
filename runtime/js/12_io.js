@@ -82,9 +82,6 @@
     }
 
     const nread = core.binOpSync("op_read_sync", rid, buffer);
-    if (nread < 0) {
-      throw new Error("read error");
-    }
 
     return nread === 0 ? null : nread;
   }
@@ -98,29 +95,76 @@
     }
 
     const nread = await core.binOpAsync("op_read_async", rid, buffer);
-    if (nread < 0) {
-      throw new Error("read error");
-    }
 
     return nread === 0 ? null : nread;
   }
 
   function writeSync(rid, data) {
-    const result = core.binOpSync("op_write_sync", rid, data);
-    if (result < 0) {
-      throw new Error("write error");
-    }
-
-    return result;
+    return core.binOpSync("op_write_sync", rid, data);
   }
 
   async function write(rid, data) {
-    const result = await core.binOpAsync("op_write_async", rid, data);
-    if (result < 0) {
-      throw new Error("write error");
+    return await core.binOpAsync("op_write_async", rid, data);
+  }
+
+  const READ_PER_ITER = 32 * 1024;
+
+  async function readAll(r) {
+    const buffers = [];
+
+    while (true) {
+      const buf = new Uint8Array(READ_PER_ITER);
+      const read = await r.read(buf);
+      if (typeof read == "number") {
+        buffers.push(new Uint8Array(buf.buffer, 0, read));
+      } else {
+        break;
+      }
     }
 
-    return result;
+    let totalLen = 0;
+    for (const buf of buffers) {
+      totalLen += buf.byteLength;
+    }
+
+    const contents = new Uint8Array(totalLen);
+
+    let n = 0;
+    for (const buf of buffers) {
+      contents.set(buf, n);
+      n += buf.byteLength;
+    }
+
+    return contents;
+  }
+
+  function readAllSync(r) {
+    const buffers = [];
+
+    while (true) {
+      const buf = new Uint8Array(READ_PER_ITER);
+      const read = r.readSync(buf);
+      if (typeof read == "number") {
+        buffers.push(new Uint8Array(buf.buffer, 0, read));
+      } else {
+        break;
+      }
+    }
+
+    let totalLen = 0;
+    for (const buf of buffers) {
+      totalLen += buf.byteLength;
+    }
+
+    const contents = new Uint8Array(totalLen);
+
+    let n = 0;
+    for (const buf of buffers) {
+      contents.set(buf, n);
+      n += buf.byteLength;
+    }
+
+    return contents;
   }
 
   window.__bootstrap.io = {
@@ -132,5 +176,7 @@
     readSync,
     write,
     writeSync,
+    readAll,
+    readAllSync,
   };
 })(this);

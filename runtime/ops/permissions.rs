@@ -4,8 +4,6 @@ use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -23,13 +21,14 @@ pub struct PermissionArgs {
   name: String,
   path: Option<String>,
   host: Option<String>,
+  command: Option<String>,
 }
 
 pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<String, AnyError> {
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -43,7 +42,7 @@ pub fn op_query_permission(
       .as_ref(),
     ),
     "env" => permissions.env.query(),
-    "run" => permissions.run.query(),
+    "run" => permissions.run.query(args.command.as_deref()),
     "plugin" => permissions.plugin.query(),
     "hrtime" => permissions.hrtime.query(),
     n => {
@@ -53,14 +52,14 @@ pub fn op_query_permission(
       ))
     }
   };
-  Ok(json!({ "state": perm.to_string() }))
+  Ok(perm.to_string())
 }
 
 pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -74,7 +73,7 @@ pub fn op_revoke_permission(
       .as_ref(),
     ),
     "env" => permissions.env.revoke(),
-    "run" => permissions.run.revoke(),
+    "run" => permissions.run.revoke(args.command.as_deref()),
     "plugin" => permissions.plugin.revoke(),
     "hrtime" => permissions.hrtime.revoke(),
     n => {
@@ -84,14 +83,14 @@ pub fn op_revoke_permission(
       ))
     }
   };
-  Ok(json!({ "state": perm.to_string() }))
+  Ok(perm.to_string())
 }
 
 pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -105,7 +104,7 @@ pub fn op_request_permission(
       .as_ref(),
     ),
     "env" => permissions.env.request(),
-    "run" => permissions.run.request(),
+    "run" => permissions.run.request(args.command.as_deref()),
     "plugin" => permissions.plugin.request(),
     "hrtime" => permissions.hrtime.request(),
     n => {
@@ -115,7 +114,7 @@ pub fn op_request_permission(
       ))
     }
   };
-  Ok(json!({ "state": perm.to_string() }))
+  Ok(perm.to_string())
 }
 
 fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {

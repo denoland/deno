@@ -1,8 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
 
 mod ast;
 mod auth_tokens;
@@ -67,6 +63,8 @@ use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use log::debug;
+use log::info;
 use log::Level;
 use log::LevelFilter;
 use std::env;
@@ -122,6 +120,7 @@ fn create_web_worker_callback(
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      blob_url_store: program_state.blob_url_store.clone(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -199,6 +198,7 @@ pub fn create_main_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
     location: program_state.flags.location.clone(),
+    blob_url_store: program_state.blob_url_store.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -250,11 +250,14 @@ fn print_cache_info(
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
+  let registry_cache =
+    &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
   if json {
     let output = json!({
         "denoDir": deno_dir,
         "modulesCache": modules_cache,
         "typescriptCache": typescript_cache,
+        "registryCache": registry_cache,
     });
     write_json_to_stdout(&output)
   } else {
@@ -266,8 +269,13 @@ fn print_cache_info(
     );
     println!(
       "{} {:?}",
-      colors::bold("TypeScript compiler cache:"),
+      colors::bold("Emitted modules cache:"),
       typescript_cache
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("Language server registries cache:"),
+      registry_cache,
     );
     Ok(())
   }
@@ -275,14 +283,16 @@ fn print_cache_info(
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
     crate::tsc::DENO_NS_LIB,
     crate::tsc::DENO_CONSOLE_LIB,
     crate::tsc::DENO_URL_LIB,
     crate::tsc::DENO_WEB_LIB,
+    crate::tsc::DENO_FILE_LIB,
     crate::tsc::DENO_FETCH_LIB,
     crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
+    crate::tsc::DENO_CRYPTO_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
   );
@@ -494,11 +504,11 @@ async fn eval_command(
     media_type: if ext.as_str() == "ts" {
       MediaType::TypeScript
     } else if ext.as_str() == "tsx" {
-      MediaType::TSX
+      MediaType::Tsx
     } else if ext.as_str() == "js" {
       MediaType::JavaScript
     } else {
-      MediaType::JSX
+      MediaType::Jsx
     },
     source: String::from_utf8(source_code)?,
     specifier: main_module.clone(),
