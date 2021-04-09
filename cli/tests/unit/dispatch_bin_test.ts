@@ -1,16 +1,14 @@
-import {
-  assert,
-  assertEquals,
-  assertMatch,
-  unitTest,
-  unreachable,
-} from "./test_util.ts";
+import { assertMatch, unitTest, unreachable } from "./test_util.ts";
 
+// IMPORTANT: This pattern ensures that async op stack traces are grounded in
+// user code and not the global async receiver. It may need to be adjusted for
+// file/function renames, but preserve the intention.
 const readErrorStackPattern = new RegExp(
   `^.*
-    at processErr \\(.*core\\.js:.*\\)
-    at opAsyncHandler \\(.*core\\.js:.*\\)
-    at handleAsyncMsgFromRust \\(.*core\\.js:.*\\).*$`,
+    at unwrapResponse \\(deno:core/core\\.js:.*\\)
+    at jsonOpAsync \\(deno:core/core\\.js:.*\\)
+    at async Object\\.read \\(deno:runtime/js/12_io\\.js:.*\\)
+    at async .*/dispatch_bin_test\\.ts:.*$`,
   "ms",
 );
 
