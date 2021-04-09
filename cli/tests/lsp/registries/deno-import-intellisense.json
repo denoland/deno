@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "registries": [
+    {
+      "schema": "/x/:module([a-z0-9_]*)@:version?/:path*",
+      "variables": [
+        {
+          "key": "module",
+          "url": "http://localhost:4545/cli/tests/lsp/registries/modules.json"
+        },
+        {
+          "key": "version",
+          "url": "http://localhost:4545/cli/tests/lsp/registries/${module}_versions.json"
+        },
+        {
+          "key": "path",
+          "url": "http://localhost:4545/cli/tests/lsp/registries/${module}_${{version}}.json"
+        }
+      ]
+    },
+    {
+      "schema": "/x/:module([a-z0-9_]*)/:path*",
+      "variables": [
+        {
+          "key": "module",
+          "url": "http://localhost:4545/cli/tests/lsp/registries/modules.json"
+        },
+        {
+          "key": "path",
+          "url": "http://localhost:4545/cli/tests/lsp/registries/${module}_latest.json"
+        }
+      ]
+    }
+  ]
+}

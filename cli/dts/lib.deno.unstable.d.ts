@@ -1196,6 +1196,35 @@ declare namespace Deno {
     bytesSentData: number;
     bytesReceived: number;
   }
+
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): void;
+  }
+
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
+
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Services HTTP requests given a TCP or TLS socket.
+   *
+   * ```ts
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
+   * }
+   * ```
+   *
+   * If `httpConn.nextRequest()` encounters an error or returns `null`
+   * then the underlying HttpConn resource is closed automatically.
+   */
+  export function serveHttp(conn: Conn): HttpConn;
 }
 
 declare function fetch(
