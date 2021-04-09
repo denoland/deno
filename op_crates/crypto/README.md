@@ -1,3 +1,5 @@
-# deno crypto
+# deno_crypto
 
-Op crate that implements crypto functions.
+This crate implements the Web Cryptography API.
+
+Spec: https://www.w3.org/TR/WebCryptoAPI/

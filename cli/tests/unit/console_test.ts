@@ -316,12 +316,12 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(console),
     `console {
   log: [Function: log],
-  debug: [Function: log],
-  info: [Function: log],
+  debug: [Function: debug],
+  info: [Function: info],
   dir: [Function: dir],
   dirxml: [Function: dir],
   warn: [Function: warn],
-  error: [Function: warn],
+  error: [Function: error],
   assert: [Function: assert],
   count: [Function: count],
   countReset: [Function: countReset],
@@ -853,7 +853,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
       rej(Error("Whoops"));
     });
     await rejectedPromise;
-  } catch (err) {
+  } catch (_err) {
     // pass
   }
   const strLines = stringify(rejectedPromise).split("\n");
@@ -1191,9 +1191,9 @@ function mockConsole(f: ConsoleExamineFunc): void {
   const err = new StringBuffer();
   const both = new StringBuffer();
   const csl = new Console(
-    (x: string, isErr: boolean, printsNewLine: boolean): void => {
+    (x: string, level: number, printsNewLine: boolean): void => {
       const content = x + (printsNewLine ? "\n" : "");
-      const buf = isErr ? err : out;
+      const buf = level > 1 ? err : out;
       buf.add(content);
       both.add(content);
     },
@@ -1478,7 +1478,7 @@ unitTest(function consoleLogShouldNotThrowError(): void {
     try {
       console.log(new Error("foo"));
       result = 1;
-    } catch (e) {
+    } catch (_e) {
       result = 2;
     }
     assertEquals(result, 1);

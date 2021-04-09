@@ -4,28 +4,25 @@
 ((window) => {
   const assert = window.__bootstrap.util.assert;
   const core = window.Deno.core;
-  const { sendSync } = window.__bootstrap.dispatchMinimal;
 
   function opStopGlobalTimer() {
     core.jsonOpSync("op_global_timer_stop");
   }
 
   function opStartGlobalTimer(timeout) {
-    return core.jsonOpSync("op_global_timer_start", { timeout });
+    return core.jsonOpSync("op_global_timer_start", timeout);
   }
 
   async function opWaitGlobalTimer() {
     await core.jsonOpAsync("op_global_timer");
   }
 
-  const nowBytes = new Uint8Array(8);
   function opNow() {
-    sendSync("op_now", 0, nowBytes);
-    return new DataView(nowBytes.buffer).getFloat64();
+    return core.jsonOpSync("op_now");
   }
 
   function sleepSync(millis = 0) {
-    return core.jsonOpSync("op_sleep_sync", { millis });
+    return core.jsonOpSync("op_sleep_sync", millis);
   }
 
   // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.

@@ -26,15 +26,26 @@ impl IndexValid {
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   line_index: Option<LineIndex>,
+  specifier: ModuleSpecifier,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
 }
 
 impl DocumentData {
+  pub fn new(specifier: ModuleSpecifier, version: i32, source: &str) -> Self {
+    Self {
+      bytes: Some(source.as_bytes().to_owned()),
+      line_index: Some(LineIndex::new(source)),
+      specifier,
+      dependencies: None,
+      version: Some(version),
+    }
+  }
+
   pub fn apply_content_changes(
     &mut self,
     content_changes: Vec<TextDocumentContentChangeEvent>,
@@ -143,7 +154,7 @@ impl DocumentCache {
   }
 
   pub fn len(&self) -> usize {
-    self.docs.iter().count()
+    self.docs.len()
   }
 
   pub fn line_index(&self, specifier: &ModuleSpecifier) -> Option<LineIndex> {
@@ -153,13 +164,8 @@ impl DocumentCache {
 
   pub fn open(&mut self, specifier: ModuleSpecifier, version: i32, text: &str) {
     self.docs.insert(
-      specifier,
-      DocumentData {
-        bytes: Some(text.as_bytes().to_owned()),
-        version: Some(version),
-        line_index: Some(LineIndex::new(&text)),
-        ..Default::default()
-      },
+      specifier.clone(),
+      DocumentData::new(specifier, version, text),
     );
   }
 
@@ -204,14 +210,14 @@ impl DocumentCache {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_url;
   use lspower::lsp;
 
   #[test]
   fn test_document_cache_contains() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
-    let missing_specifier =
-      ModuleSpecifier::resolve_url("file:///a/c.ts").unwrap();
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
+    let missing_specifier = resolve_url("file:///a/c.ts").unwrap();
     document_cache.open(specifier.clone(), 1, "console.log(\"Hello Deno\");\n");
     assert!(document_cache.contains_key(&specifier));
     assert!(!document_cache.contains_key(&missing_specifier));
@@ -220,7 +226,7 @@ mod tests {
   #[test]
   fn test_document_cache_change() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
     document_cache.open(specifier.clone(), 1, "console.log(\"Hello deno\");\n");
     document_cache
       .change(
@@ -251,7 +257,7 @@ mod tests {
   #[test]
   fn test_document_cache_change_utf16() {
     let mut document_cache = DocumentCache::default();
-    let specifier = ModuleSpecifier::resolve_url("file:///a/b.ts").unwrap();
+    let specifier = resolve_url("file:///a/b.ts").unwrap();
     document_cache.open(specifier.clone(), 1, "console.log(\"Hello 🦕\");\n");
     document_cache
       .change(

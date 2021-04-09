@@ -3,6 +3,8 @@
     at async Promise.all (index 1)
     at async [WILDCARD]tests/error_024_stack_promise_all.ts:[WILDCARD]
 error: Uncaught Error: Promise.all()
+    throw new Error("Promise.all()");
+          ^
     at [WILDCARD]tests/error_024_stack_promise_all.ts:[WILDCARD]
     at async Promise.all (index 1)
     at async [WILDCARD]tests/error_024_stack_promise_all.ts:[WILDCARD]

@@ -19,6 +19,8 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use log::debug;
+use log::info;
 use serde::Serialize;
 use std::fs;
 use std::io::{stdin, Read};
@@ -47,7 +49,14 @@ pub async fn lint_files(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return lint_stdin(json);
   }
-  let target_files = collect_files(&args, &ignore, is_supported_ext)?;
+  let target_files =
+    collect_files(&args, &ignore, is_supported_ext).and_then(|files| {
+      if files.is_empty() {
+        Err(generic_error("No target files found."))
+      } else {
+        Ok(files)
+      }
+    })?;
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 

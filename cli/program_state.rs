@@ -14,6 +14,7 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::inspector::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
@@ -21,9 +22,12 @@ use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use log::debug;
+use log::warn;
 use std::collections::HashMap;
 use std::env;
 use std::fs::read;
@@ -53,10 +57,11 @@ pub struct ProgramState {
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl ProgramState {
-  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+  pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -77,11 +82,14 @@ impl ProgramState {
       CacheSetting::Use
     };
 
+    let blob_url_store = BlobUrlStore::default();
+
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !flags.no_remote,
       ca_data.clone(),
+      blob_url_store.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
@@ -94,22 +102,24 @@ impl ProgramState {
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => {
-          if !flags.unstable {
-            exit_unstable("--import-map")
-          }
-          Some(ImportMap::load(file_path)?)
+        Some(import_map_url) => {
+          let import_map_specifier =
+            deno_core::resolve_url_or_path(&import_map_url).context(
+              format!("Bad URL (\"{}\") for import map.", import_map_url),
+            )?;
+          let file = file_fetcher
+            .fetch(&import_map_specifier, &Permissions::allow_all())
+            .await?;
+          let import_map =
+            ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
+          Some(import_map)
         }
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
-    let maybe_inspector_server = match maybe_inspect_host {
-      Some(host) => Some(Arc::new(InspectorServer::new(
-        host,
-        version::get_user_agent(),
-      ))),
-      None => None,
-    };
+    let maybe_inspector_server = maybe_inspect_host.map(|host| {
+      Arc::new(InspectorServer::new(host, version::get_user_agent()))
+    });
 
     let coverage_dir = flags
       .coverage_dir
@@ -126,6 +136,7 @@ impl ProgramState {
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
+      blob_url_store,
     };
     Ok(Arc::new(program_state))
   }
@@ -252,7 +263,7 @@ impl ProgramState {
     match url.scheme() {
       // we should only be looking for emits for schemes that denote external
       // modules, which the disk_cache supports
-      "wasm" | "file" | "http" | "https" | "data" => (),
+      "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => {
         return None;
       }
@@ -276,26 +287,14 @@ impl ProgramState {
       None
     }
   }
-
-  #[cfg(test)]
-  pub fn mock(
-    argv: Vec<String>,
-    maybe_flags: Option<flags::Flags>,
-  ) -> Arc<ProgramState> {
-    ProgramState::new(flags::Flags {
-      argv,
-      ..maybe_flags.unwrap_or_default()
-    })
-    .unwrap()
-  }
 }
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
 // else, like a refactored file_fetcher.
 impl SourceMapGetter for ProgramState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
-      if let Some((code, maybe_map)) = self.get_emit(&specifier.as_url()) {
+    if let Ok(specifier) = resolve_url(file_name) {
+      if let Some((code, maybe_map)) = self.get_emit(&specifier) {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None) {
@@ -313,7 +312,7 @@ impl SourceMapGetter for ProgramState {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
+    if let Ok(specifier) = resolve_url(file_name) {
       self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
@@ -344,16 +343,5 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
     }
   } else {
     None
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn thread_safe() {
-    fn f<S: Send + Sync>(_: S) {}
-    f(ProgramState::mock(vec![], None));
   }
 }

@@ -1,10 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::js;
-use crate::metrics::Metrics;
+use crate::metrics::RuntimeMetrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
@@ -24,6 +23,8 @@ use deno_core::JsRuntime;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_file::BlobUrlStore;
+use log::debug;
 use std::env;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -155,6 +156,7 @@ pub struct WebWorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl WebWorker {
@@ -209,15 +211,15 @@ impl WebWorker {
       {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
-        op_state.put::<Metrics>(Default::default());
+        op_state.put(RuntimeMetrics::default());
         op_state.put::<Permissions>(permissions);
-        op_state.put::<ops::UnstableChecker>(ops::UnstableChecker {
+        op_state.put(ops::UnstableChecker {
           unstable: options.unstable,
         });
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module);
+      ops::runtime::init(js_runtime, main_module.clone());
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
@@ -231,17 +233,20 @@ impl WebWorker {
       );
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::reg_json_sync(
+      ops::url::init(js_runtime);
+      ops::file::init(
         js_runtime,
-        "op_domain_to_ascii",
-        deno_web::op_domain_to_ascii,
+        options.blob_url_store.clone(),
+        Some(main_module),
       );
       ops::io::init(js_runtime);
+      ops::webgpu::init(js_runtime);
       ops::websocket::init(
         js_runtime,
         options.user_agent.clone(),
         options.ca_data.clone(),
       );
+      ops::crypto::init(js_runtime, options.seed);
 
       if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
@@ -251,7 +256,6 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::crypto::init(js_runtime, options.seed);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
@@ -318,7 +322,28 @@ impl WebWorker {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.js_runtime.load_module(module_specifier, None).await?;
-    self.js_runtime.mod_evaluate(id).await
+
+    let mut receiver = self.js_runtime.mod_evaluate(id);
+    tokio::select! {
+      maybe_result = receiver.next() => {
+        debug!("received worker module evaluate {:#?}", maybe_result);
+        // If `None` is returned it means that runtime was destroyed before
+        // evaluation was complete. This can happen in Web Worker when `self.close()`
+        // is called at top level.
+        let result = maybe_result.unwrap_or(Ok(()));
+        return result;
+      }
+
+      event_loop_result = self.run_event_loop() => {
+        if self.has_been_terminated() {
+          return Ok(());
+        }
+        event_loop_result?;
+        let maybe_result = receiver.next().await;
+        let result = maybe_result.unwrap_or(Ok(()));
+        return result;
+      }
+    }
   }
 
   /// Returns a way to communicate with the Worker from other threads.
@@ -377,6 +402,8 @@ impl WebWorker {
       let msg = String::from_utf8(msg.to_vec()).unwrap();
       let script = format!("workerMessageRecvCallback({})", msg);
 
+      // TODO(bartlomieju): set proper script name like "deno:runtime/web_worker.js"
+      // so it's dimmed in stack trace instead of using "__anonymous__"
       if let Err(e) = self.execute(&script) {
         // If execution was terminated during message callback then
         // just ignore it
@@ -476,8 +503,7 @@ mod tests {
   use deno_core::serde_json::json;
 
   fn create_test_web_worker() -> WebWorker {
-    let main_module =
-      ModuleSpecifier::resolve_url_or_path("./hello.js").unwrap();
+    let main_module = deno_core::resolve_url_or_path("./hello.js").unwrap();
     let module_loader = Rc::new(deno_core::NoopModuleLoader);
     let create_web_worker_cb = Arc::new(|_| unreachable!());
 
@@ -499,6 +525,7 @@ mod tests {
       ts_version: "x".to_string(),
       no_color: true,
       get_error_class_fn: None,
+      blob_url_store: BlobUrlStore::default(),
     };
 
     let mut worker = WebWorker::from_options(

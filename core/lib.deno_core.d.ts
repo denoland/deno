@@ -11,14 +11,14 @@ declare namespace Deno {
     function jsonOpSync(
       opName: string,
       args?: any,
-      ...zeroCopy: Uint8Array[]
+      zeroCopy?: Uint8Array,
     ): any;
 
     /** Send a JSON op to Rust, and asynchronously receive the result. */
     function jsonOpAsync(
       opName: string,
       args?: any,
-      ...zeroCopy: Uint8Array[]
+      zeroCopy?: Uint8Array,
     ): Promise<any>;
 
     /**
@@ -35,5 +35,8 @@ declare namespace Deno {
 
     /** Close the resource with the specified op id. */
     function close(rid: number): void;
+
+    /** Get heap stats for current isolate/worker */
+    function heapStats(): Record<string, number>;
   }
 }

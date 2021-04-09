@@ -7,15 +7,17 @@ use deno_core::url::Url;
 use lspower::jsonrpc::Error as LSPError;
 use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
   pub status_notification: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
+  pub line_folding_only: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -30,13 +32,68 @@ pub struct CodeLensSettings {
   pub references_all_functions: bool,
 }
 
-#[derive(Debug, Default, Deserialize)]
+impl Default for CodeLensSettings {
+  fn default() -> Self {
+    Self {
+      implementations: false,
+      references: false,
+      references_all_functions: false,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionSettings {
+  #[serde(default)]
+  pub complete_function_calls: bool,
+  #[serde(default)]
+  pub names: bool,
+  #[serde(default)]
+  pub paths: bool,
+  #[serde(default)]
+  pub auto_imports: bool,
+  #[serde(default)]
+  pub imports: ImportCompletionSettings,
+}
+
+impl Default for CompletionSettings {
+  fn default() -> Self {
+    Self {
+      complete_function_calls: false,
+      names: true,
+      paths: true,
+      auto_imports: true,
+      imports: ImportCompletionSettings::default(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCompletionSettings {
+  #[serde(default)]
+  pub hosts: HashMap<String, bool>,
+}
+
+impl Default for ImportCompletionSettings {
+  fn default() -> Self {
+    Self {
+      hosts: HashMap::default(),
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
-  pub code_lens: Option<CodeLensSettings>,
+  #[serde(default)]
+  pub code_lens: CodeLensSettings,
+  #[serde(default)]
+  pub suggest: CompletionSettings,
 
   #[serde(default)]
   pub lint: bool,
@@ -48,40 +105,11 @@ impl WorkspaceSettings {
   /// Determine if any code lenses are enabled at all.  This allows short
   /// circuiting when there are no code lenses enabled.
   pub fn enabled_code_lens(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      // This should contain all the "top level" code lens references
-      code_lens.implementations || code_lens.references
-    } else {
-      false
-    }
-  }
-
-  pub fn enabled_code_lens_implementations(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      code_lens.implementations
-    } else {
-      false
-    }
-  }
-
-  pub fn enabled_code_lens_references(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      code_lens.references
-    } else {
-      false
-    }
-  }
-
-  pub fn enabled_code_lens_references_all_functions(&self) -> bool {
-    if let Some(code_lens) = &self.code_lens {
-      code_lens.references_all_functions
-    } else {
-      false
-    }
+    self.code_lens.implementations || self.code_lens.references
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
@@ -115,6 +143,14 @@ impl Config {
       self.client_capabilities.workspace_did_change_watched_files = workspace
         .did_change_watched_files
         .and_then(|it| it.dynamic_registration)
+        .unwrap_or(false);
+    }
+
+    if let Some(text_document) = &capabilities.text_document {
+      self.client_capabilities.line_folding_only = text_document
+        .folding_range
+        .as_ref()
+        .and_then(|it| it.line_folding_only)
         .unwrap_or(false);
     }
   }

@@ -5,15 +5,18 @@ use lspower::Server;
 
 mod analysis;
 mod capabilities;
+mod completions;
 mod config;
 mod diagnostics;
 mod documents;
-mod language_server;
+pub(crate) mod language_server;
+mod path_to_regex;
 mod performance;
+mod registries;
 mod sources;
 mod text;
 mod tsc;
-mod utils;
+mod urls;
 
 pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();

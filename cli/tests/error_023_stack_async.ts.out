@@ -3,6 +3,8 @@
     at async [WILDCARD]tests/error_023_stack_async.ts:[WILDCARD]
     at async [WILDCARD]tests/error_023_stack_async.ts:[WILDCARD]
 error: Uncaught Error: async
+    throw new Error("async");
+          ^
     at [WILDCARD]tests/error_023_stack_async.ts:[WILDCARD]
     at async [WILDCARD]tests/error_023_stack_async.ts:[WILDCARD]
     at async [WILDCARD]tests/error_023_stack_async.ts:[WILDCARD]

@@ -14,7 +14,6 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_fetch::reqwest;
-use rustyline::error::ReadlineError;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -82,18 +81,6 @@ fn get_notify_error_class(error: &notify::Error) -> &'static str {
   }
 }
 
-fn get_readline_error_class(error: &ReadlineError) -> &'static str {
-  use ReadlineError::*;
-  match error {
-    Io(err) => get_io_error_class(err),
-    Eof => "UnexpectedEof",
-    Interrupted => "Interrupted",
-    #[cfg(unix)]
-    Errno(err) => get_nix_error_class(err),
-    _ => unimplemented!(),
-  }
-}
-
 fn get_regex_error_class(error: &regex::Error) -> &'static str {
   use regex::Error::*;
   match error {
@@ -144,6 +131,10 @@ fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
   "URIError"
 }
 
+fn get_hyper_error_class(_error: &hyper::Error) -> &'static str {
+  "Http"
+}
+
 #[cfg(unix)]
 fn get_nix_error_class(error: &nix::Error) -> &'static str {
   use nix::errno::Errno::*;
@@ -164,10 +155,12 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
   deno_core::error::get_custom_error_class(e)
+    .or_else(|| deno_webgpu::error::get_error_class_name(e))
     .or_else(|| {
       e.downcast_ref::<dlopen::Error>()
         .map(get_dlopen_error_class)
     })
+    .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
     .or_else(|| {
       e.downcast_ref::<deno_core::Canceled>().map(|e| {
         let io_err: io::Error = e.to_owned().into();
@@ -186,10 +179,6 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<notify::Error>()
         .map(get_notify_error_class)
-    })
-    .or_else(|| {
-      e.downcast_ref::<ReadlineError>()
-        .map(get_readline_error_class)
     })
     .or_else(|| {
       e.downcast_ref::<reqwest::Error>()

@@ -1,17 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-/// This module is meant to eventually implement HTTP cache
-/// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
-/// Currently it's a very simplified version to fulfill Deno needs
-/// at hand.
+//! This module is meant to eventually implement HTTP cache
+//! as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
+//! Currently it's a very simplified version to fulfill Deno needs
+//! at hand.
 use crate::fs_util;
 use crate::http_util::HeadersMap;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use serde::Deserialize;
-use serde::Serialize;
+use log::error;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -39,7 +39,7 @@ fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
       };
       out.push(host_port);
     }
-    "data" => (),
+    "data" | "blob" => (),
     scheme => {
       error!("Don't know how to create cache name for scheme: {}", scheme);
       return None;

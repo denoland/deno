@@ -37,7 +37,12 @@ declare global {
     jsonOpSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
-    registerErrorClass(name: string, Ctor: typeof Error): void;
+    registerErrorClass(
+      name: string,
+      Ctor: typeof Error,
+      // deno-lint-ignore no-explicit-any
+      ...args: any[]
+    ): void;
   }
 
   type LanguageServerRequest =
@@ -46,14 +51,18 @@ declare global {
     | GetAsset
     | GetCodeFixes
     | GetCombinedCodeFix
+    | GetCompletionDetails
     | GetCompletionsRequest
     | GetDefinitionRequest
     | GetDiagnosticsRequest
     | GetDocumentHighlightsRequest
     | GetImplementationRequest
     | GetNavigationTree
+    | GetOutliningSpans
     | GetQuickInfoRequest
     | GetReferencesRequest
+    | GetSignatureHelpItemsRequest
+    | GetSmartSelectionRange
     | GetSupportedCodeFixes;
 
   interface BaseLanguageServerRequest {
@@ -96,11 +105,22 @@ declare global {
     fixId: {};
   }
 
+  interface GetCompletionDetails extends BaseLanguageServerRequest {
+    method: "getCompletionDetails";
+    args: {
+      specifier: string;
+      position: number;
+      name: string;
+      source?: string;
+      data?: unknown;
+    };
+  }
+
   interface GetCompletionsRequest extends BaseLanguageServerRequest {
     method: "getCompletions";
     specifier: string;
     position: number;
-    preferences: ts.UserPreferences;
+    preferences: ts.GetCompletionsAtPositionOptions;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
@@ -132,6 +152,11 @@ declare global {
     specifier: string;
   }
 
+  interface GetOutliningSpans extends BaseLanguageServerRequest {
+    method: "getOutliningSpans";
+    specifier: string;
+  }
+
   interface GetQuickInfoRequest extends BaseLanguageServerRequest {
     method: "getQuickInfo";
     specifier: string;
@@ -140,6 +165,19 @@ declare global {
 
   interface GetReferencesRequest extends BaseLanguageServerRequest {
     method: "getReferences";
+    specifier: string;
+    position: number;
+  }
+
+  interface GetSignatureHelpItemsRequest extends BaseLanguageServerRequest {
+    method: "getSignatureHelpItems";
+    specifier: string;
+    position: number;
+    options: ts.SignatureHelpItemsOptions;
+  }
+
+  interface GetSmartSelectionRange extends BaseLanguageServerRequest {
+    method: "getSmartSelectionRange";
     specifier: string;
     position: number;
   }

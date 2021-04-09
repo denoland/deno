@@ -97,10 +97,14 @@ pub fn is_supported_ext(path: &Path) -> bool {
   }
 }
 
-/// This function is similar to is_supported_ext but also allows .md extension.
-pub fn is_supported_ext_md(path: &Path) -> bool {
+/// This function is similar to is_supported_ext but adds additional extensions
+/// supported by `deno fmt`.
+pub fn is_supported_ext_fmt(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
+    matches!(
+      ext.as_str(),
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "md" | "json" | "jsonc"
+    )
   } else {
     false
   }
@@ -221,26 +225,30 @@ mod tests {
   }
 
   #[test]
-  fn test_is_supported_ext_md() {
-    assert!(!is_supported_ext_md(Path::new("tests/subdir/redirects")));
-    assert!(is_supported_ext_md(Path::new("README.md")));
-    assert!(is_supported_ext_md(Path::new("readme.MD")));
-    assert!(is_supported_ext_md(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_md(Path::new("cli/tests/001_hello.js")));
-    assert!(is_supported_ext_md(Path::new("cli/tests/002_hello.ts")));
-    assert!(is_supported_ext_md(Path::new("foo.jsx")));
-    assert!(is_supported_ext_md(Path::new("foo.tsx")));
-    assert!(is_supported_ext_md(Path::new("foo.TS")));
-    assert!(is_supported_ext_md(Path::new("foo.TSX")));
-    assert!(is_supported_ext_md(Path::new("foo.JS")));
-    assert!(is_supported_ext_md(Path::new("foo.JSX")));
-    assert!(is_supported_ext_md(Path::new("foo.mjs")));
-    assert!(!is_supported_ext_md(Path::new("foo.mjsx")));
+  fn test_is_supported_ext_fmt() {
+    assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_ext_fmt(Path::new("README.md")));
+    assert!(is_supported_ext_fmt(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_ext_fmt(Path::new("cli/tests/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
+    assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
+    assert!(is_supported_ext_fmt(Path::new("foo.TS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.TSX")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JSX")));
+    assert!(is_supported_ext_fmt(Path::new("foo.mjs")));
+    assert!(!is_supported_ext_fmt(Path::new("foo.mjsx")));
+    assert!(is_supported_ext_fmt(Path::new("foo.jsonc")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
+    assert!(is_supported_ext_fmt(Path::new("foo.json")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
   }
 
   #[test]
   fn test_collect_files() {
-    fn create_files(dir_path: &PathBuf, files: &[&str]) {
+    fn create_files(dir_path: &Path, files: &[&str]) {
       std::fs::create_dir(dir_path).expect("Failed to create directory");
       for f in files {
         let path = dir_path.join(f);

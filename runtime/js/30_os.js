@@ -21,7 +21,19 @@
   }
 
   function systemCpuInfo() {
-    return core.jsonOpSync("op_system_cpu_info");
+    const { cores, speed } = core.jsonOpSync("op_system_cpu_info");
+    // Map nulls to undefined for compatibility
+    return {
+      cores: cores ?? undefined,
+      speed: speed ?? undefined,
+    };
+  }
+
+  // This is an internal only method used by the test harness to override the
+  // behavior of exit when the exit sanitizer is enabled.
+  let exitHandler = null;
+  function setExitHandler(fn) {
+    exitHandler = fn;
   }
 
   function exit(code = 0) {
@@ -31,7 +43,13 @@
       // ref: https://github.com/denoland/deno/issues/3603
       window.dispatchEvent(new Event("unload"));
     }
-    core.jsonOpSync("op_exit", { code });
+
+    if (exitHandler) {
+      exitHandler(code);
+      return;
+    }
+
+    core.jsonOpSync("op_exit", code);
     throw new Error("Code not reachable");
   }
 
@@ -40,11 +58,11 @@
   }
 
   function getEnv(key) {
-    return core.jsonOpSync("op_get_env", { key })[0];
+    return core.jsonOpSync("op_get_env", key) ?? undefined;
   }
 
   function deleteEnv(key) {
-    core.jsonOpSync("op_delete_env", { key });
+    core.jsonOpSync("op_delete_env", key);
   }
 
   const env = {
@@ -63,6 +81,7 @@
   window.__bootstrap.os = {
     env,
     execPath,
+    setExitHandler,
     exit,
     osRelease,
     systemMemoryInfo,

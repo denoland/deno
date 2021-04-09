@@ -8,17 +8,15 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -35,7 +33,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 fn clone_file(
   state: &mut OpState,
-  rid: u32,
+  rid: ResourceId,
 ) -> Result<std::fs::File, AnyError> {
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file.try_clone().map_err(AnyError::from),
@@ -54,16 +52,16 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RunArgs {
+pub struct RunArgs {
   cmd: Vec<String>,
   cwd: Option<String>,
   env: Vec<(String, String)>,
   stdin: String,
   stdout: String,
   stderr: String,
-  stdin_rid: u32,
-  stdout_rid: u32,
-  stderr_rid: u32,
+  stdin_rid: ResourceId,
+  stdout_rid: ResourceId,
+  stderr_rid: ResourceId,
 }
 
 struct ChildResource {
@@ -82,15 +80,24 @@ impl ChildResource {
   }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+// TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
+struct RunInfo {
+  rid: ResourceId,
+  pid: Option<u32>,
+  stdin_rid: Option<ResourceId>,
+  stdout_rid: Option<ResourceId>,
+  stderr_rid: Option<ResourceId>,
+}
+
 fn op_run(
   state: &mut OpState,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let run_args: RunArgs = serde_json::from_value(args)?;
-  state.borrow::<Permissions>().check_run()?;
-
+  run_args: RunArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
+  state.borrow::<Permissions>().run.check(&args[0])?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -168,34 +175,28 @@ fn op_run(
   };
   let child_rid = state.resource_table.add(child_resource);
 
-  Ok(json!({
-    "rid": child_rid,
-    "pid": pid,
-    "stdinRid": stdin_rid,
-    "stdoutRid": stdout_rid,
-    "stderrRid": stderr_rid,
-  }))
+  Ok(RunInfo {
+    rid: child_rid,
+    pid,
+    stdin_rid,
+    stdout_rid,
+    stderr_rid,
+  })
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunStatusArgs {
-  rid: i32,
+struct RunStatus {
+  got_signal: bool,
+  exit_code: i32,
+  exit_signal: i32,
 }
 
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let args: RunStatusArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
-
-  {
-    let s = state.borrow();
-    s.borrow::<Permissions>().check_run()?;
-  }
-
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<RunStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -215,11 +216,11 @@ async fn op_run_status(
     .expect("Should have either an exit code or a signal.");
   let got_signal = signal.is_some();
 
-  Ok(json!({
-     "gotSignal": got_signal,
-     "exitCode": code.unwrap_or(-1),
-     "exitSignal": signal.unwrap_or(-1),
-  }))
+  Ok(RunStatus {
+    got_signal,
+    exit_code: code.unwrap_or(-1),
+    exit_signal: signal.unwrap_or(-1),
+  })
 }
 
 #[cfg(unix)]
@@ -281,13 +282,12 @@ struct KillArgs {
 
 fn op_kill(
   state: &mut OpState,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  args: KillArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
-  state.borrow::<Permissions>().check_run()?;
+  state.borrow::<Permissions>().run.check_all()?;
 
-  let args: KillArgs = serde_json::from_value(args)?;
   kill(args.pid, args.signo)?;
-  Ok(json!({}))
+  Ok(())
 }

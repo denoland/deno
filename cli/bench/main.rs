@@ -1,18 +1,21 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::serde_json::{self, Value};
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::convert::From;
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 use std::time::SystemTime;
-use std::{
-  collections::HashMap,
-  convert::From,
-  env, fs,
-  path::PathBuf,
-  process::{Command, Stdio},
-};
 
 mod http;
+mod lsp;
 mod throughput;
 
 fn read_json(filename: &str) -> Result<Value> {
@@ -68,6 +71,15 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     None,
   ),
   (
+    "workers_large_message",
+    &[
+      "run",
+      "--allow-read",
+      "cli/tests/workers_large_message_bench.ts",
+    ],
+    None,
+  ),
+  (
     "text_decoder",
     &["run", "cli/tests/text_decoder_perf.js"],
     None,
@@ -115,8 +127,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
 const RESULT_KEYS: &[&str] =
   &["mean", "stddev", "user", "system", "min", "max"];
 fn run_exec_time(
-  deno_exe: &PathBuf,
-  target_dir: &PathBuf,
+  deno_exe: &Path,
+  target_dir: &Path,
 ) -> Result<HashMap<String, HashMap<String, f64>>> {
   let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
 
@@ -207,7 +219,7 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
 
 const BINARY_TARGET_FILES: &[&str] =
   &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
-fn get_binary_sizes(target_dir: &PathBuf) -> Result<HashMap<String, u64>> {
+fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   let mut sizes = HashMap::<String, u64>::new();
   let mut mtimes = HashMap::<String, SystemTime>::new();
 
@@ -265,7 +277,7 @@ const BUNDLES: &[(&str, &str)] = &[
   ("file_server", "./test_util/std/http/file_server.ts"),
   ("gist", "./test_util/std/examples/gist.ts"),
 ];
-fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
+fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
   let mut sizes = HashMap::<String, u64>::new();
 
   for (name, url) in BUNDLES {
@@ -293,7 +305,7 @@ fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
   Ok(sizes)
 }
 
-fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
+fn run_throughput(deno_exe: &Path) -> Result<HashMap<String, f64>> {
   let mut m = HashMap::<String, f64>::new();
 
   m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
@@ -304,7 +316,7 @@ fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
   Ok(m)
 }
 
-fn run_http(target_dir: &PathBuf, new_data: &mut BenchResult) -> Result<()> {
+fn run_http(target_dir: &Path, new_data: &mut BenchResult) -> Result<()> {
   let stats = http::benchmark(target_dir)?;
 
   new_data.req_per_sec = stats
@@ -321,7 +333,7 @@ fn run_http(target_dir: &PathBuf, new_data: &mut BenchResult) -> Result<()> {
 }
 
 fn run_strace_benchmarks(
-  deno_exe: &PathBuf,
+  deno_exe: &Path,
   new_data: &mut BenchResult,
 ) -> Result<()> {
   use std::io::Read;
@@ -361,7 +373,7 @@ fn run_strace_benchmarks(
   Ok(())
 }
 
-fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
+fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
   let mut results = HashMap::<String, u64>::new();
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {
@@ -399,42 +411,25 @@ fn cargo_deps() -> usize {
   count
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 struct BenchResult {
   created_at: String,
   sha1: String,
-  binary_size: HashMap<String, u64>,
-  bundle_size: HashMap<String, u64>,
-  cargo_deps: usize,
+
   // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
   // When this is changed, the historical data in gh-pages branch needs to be
   // changed too.
   benchmark: HashMap<String, HashMap<String, f64>>,
-  throughput: HashMap<String, f64>,
-  max_memory: HashMap<String, u64>,
-  req_per_sec: HashMap<String, u64>,
+  binary_size: HashMap<String, u64>,
+  bundle_size: HashMap<String, u64>,
+  cargo_deps: usize,
   max_latency: HashMap<String, f64>,
-  thread_count: HashMap<String, u64>,
+  max_memory: HashMap<String, u64>,
+  lsp_exec_time: HashMap<String, u64>,
+  req_per_sec: HashMap<String, u64>,
   syscall_count: HashMap<String, u64>,
-}
-
-impl BenchResult {
-  pub fn new() -> BenchResult {
-    BenchResult {
-      created_at: String::new(),
-      sha1: String::new(),
-      binary_size: HashMap::new(),
-      bundle_size: HashMap::new(),
-      cargo_deps: 0,
-      benchmark: HashMap::new(),
-      throughput: HashMap::new(),
-      max_memory: HashMap::new(),
-      req_per_sec: HashMap::new(),
-      max_latency: HashMap::new(),
-      thread_count: HashMap::new(),
-      syscall_count: HashMap::new(),
-    }
-  }
+  thread_count: HashMap<String, u64>,
+  throughput: HashMap<String, f64>,
 }
 
 /*
@@ -456,24 +451,26 @@ fn main() -> Result<()> {
 
   env::set_current_dir(&test_util::root_path())?;
 
-  let mut new_data = BenchResult::new();
-  new_data.created_at =
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-  new_data.sha1 = test_util::run_collect(
-    &["git", "rev-parse", "HEAD"],
-    None,
-    None,
-    None,
-    true,
-  )
-  .0
-  .trim()
-  .to_string();
-
-  new_data.binary_size = get_binary_sizes(&target_dir)?;
-  new_data.bundle_size = bundle_benchmark(&deno_exe)?;
-  new_data.cargo_deps = cargo_deps();
-  new_data.benchmark = run_exec_time(&deno_exe, &target_dir)?;
+  let mut new_data = BenchResult {
+    created_at: chrono::Utc::now()
+      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    sha1: test_util::run_collect(
+      &["git", "rev-parse", "HEAD"],
+      None,
+      None,
+      None,
+      true,
+    )
+    .0
+    .trim()
+    .to_string(),
+    benchmark: run_exec_time(&deno_exe, &target_dir)?,
+    binary_size: get_binary_sizes(&target_dir)?,
+    bundle_size: bundle_benchmark(&deno_exe)?,
+    cargo_deps: cargo_deps(),
+    lsp_exec_time: lsp::benchmarks(&deno_exe)?,
+    ..Default::default()
+  };
 
   // Cannot run throughput benchmark on windows because they don't have nc or
   // pipe.

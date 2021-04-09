@@ -3,6 +3,9 @@
 use super::io::TcpStreamResource;
 use super::io::TlsClientStreamResource;
 use super::io::TlsServerStreamResource;
+use super::net::IpAddr;
+use super::net::OpAddr;
+use super::net::OpConn;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -11,16 +14,13 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -79,7 +79,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ConnectTLSArgs {
+pub struct ConnectTlsArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -88,19 +88,18 @@ struct ConnectTLSArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartTLSArgs {
-  rid: u32,
+struct StartTlsArgs {
+  rid: ResourceId,
   cert_file: Option<String>,
   hostname: String,
 }
 
 async fn op_start_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let args: StartTLSArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
+  args: StartTlsArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
+  let rid = args.rid;
 
   let mut domain = args.hostname.as_str();
   if domain.is_empty() {
@@ -110,9 +109,9 @@ async fn op_start_tls(
     super::check_unstable2(&state, "Deno.startTls");
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
-    permissions.check_net(&(&domain, Some(0)))?;
+    permissions.net.check(&(&domain, Some(0)))?;
     if let Some(path) = &args.cert_file {
-      permissions.check_read(Path::new(&path))?;
+      permissions.read.check(Path::new(&path))?;
     }
   }
 
@@ -150,33 +149,32 @@ async fn op_start_tls(
       .resource_table
       .add(TlsClientStreamResource::from(tls_stream))
   };
-  Ok(json!({
-      "rid": rid,
-      "localAddr": {
-        "hostname": local_addr.ip().to_string(),
-        "port": local_addr.port(),
-        "transport": "tcp",
-      },
-      "remoteAddr": {
-        "hostname": remote_addr.ip().to_string(),
-        "port": remote_addr.port(),
-        "transport": "tcp",
-      }
-  }))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    })),
+  })
 }
 
 async fn op_connect_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let args: ConnectTLSArgs = serde_json::from_value(args)?;
+  args: ConnectTlsArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
+  assert_eq!(args.transport, "tcp");
+
   {
     let s = state.borrow();
     let permissions = s.borrow::<Permissions>();
-    permissions.check_net(&(&args.hostname, Some(args.port)))?;
+    permissions.net.check(&(&args.hostname, Some(args.port)))?;
     if let Some(path) = &args.cert_file {
-      permissions.check_read(Path::new(&path))?;
+      permissions.read.check(Path::new(&path))?;
     }
   }
   let mut domain = args.hostname.as_str();
@@ -211,19 +209,17 @@ async fn op_connect_tls(
       .resource_table
       .add(TlsClientStreamResource::from(tls_stream))
   };
-  Ok(json!({
-      "rid": rid,
-      "localAddr": {
-        "hostname": local_addr.ip().to_string(),
-        "port": local_addr.port(),
-        "transport": args.transport,
-      },
-      "remoteAddr": {
-        "hostname": remote_addr.ip().to_string(),
-        "port": remote_addr.port(),
-        "transport": args.transport,
-      }
-  }))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    })),
+  })
 }
 
 fn load_certs(path: &str) -> Result<Vec<Certificate>, AnyError> {
@@ -298,7 +294,7 @@ impl Resource for TlsListenerResource {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ListenTlsArgs {
+pub struct ListenTlsArgs {
   transport: String,
   hostname: String,
   port: u16,
@@ -308,19 +304,18 @@ struct ListenTlsArgs {
 
 fn op_listen_tls(
   state: &mut OpState,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let args: ListenTlsArgs = serde_json::from_value(args)?;
+  args: ListenTlsArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
   assert_eq!(args.transport, "tcp");
 
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
     let permissions = state.borrow::<Permissions>();
-    permissions.check_net(&(&args.hostname, Some(args.port)))?;
-    permissions.check_read(Path::new(&cert_file))?;
-    permissions.check_read(Path::new(&key_file))?;
+    permissions.net.check(&(&args.hostname, Some(args.port)))?;
+    permissions.read.check(Path::new(&cert_file))?;
+    permissions.read.check(Path::new(&key_file))?;
   }
   let mut config = ServerConfig::new(NoClientAuth::new());
   config
@@ -342,29 +337,21 @@ fn op_listen_tls(
 
   let rid = state.resource_table.add(tls_listener_resource);
 
-  Ok(json!({
-    "rid": rid,
-    "localAddr": {
-      "hostname": local_addr.ip().to_string(),
-      "port": local_addr.port(),
-      "transport": args.transport,
-    },
-  }))
-}
-
-#[derive(Deserialize)]
-struct AcceptTlsArgs {
-  rid: i32,
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: None,
+  })
 }
 
 async fn op_accept_tls(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let args: AcceptTlsArgs = serde_json::from_value(args)?;
-  let rid = args.rid as u32;
-
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -404,17 +391,15 @@ async fn op_accept_tls(
       .add(TlsServerStreamResource::from(tls_stream))
   };
 
-  Ok(json!({
-    "rid": rid,
-    "localAddr": {
-      "transport": "tcp",
-      "hostname": local_addr.ip().to_string(),
-      "port": local_addr.port()
-    },
-    "remoteAddr": {
-      "transport": "tcp",
-      "hostname": remote_addr.ip().to_string(),
-      "port": remote_addr.port()
-    }
-  }))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    })),
+  })
 }

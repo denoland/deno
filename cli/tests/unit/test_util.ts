@@ -17,6 +17,7 @@ export {
   assertThrows,
   assertThrowsAsync,
   fail,
+  unimplemented,
   unreachable,
 } from "../../../test_util/std/testing/asserts.ts";
 export { deferred } from "../../../test_util/std/async/deferred.ts";
@@ -227,6 +228,7 @@ export async function reportToConn(
 ): Promise<void> {
   const line = serializeTestMessage(message);
   const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
+  // deno-lint-ignore no-deprecated-deno-api
   await Deno.writeAll(conn, encodedMsg);
   if (message.end != null) {
     conn.closeWrite();

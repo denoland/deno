@@ -11,11 +11,14 @@ use lspower::lsp::CodeActionOptions;
 use lspower::lsp::CodeActionProviderCapability;
 use lspower::lsp::CodeLensOptions;
 use lspower::lsp::CompletionOptions;
+use lspower::lsp::FoldingRangeProviderCapability;
 use lspower::lsp::HoverProviderCapability;
 use lspower::lsp::ImplementationProviderCapability;
 use lspower::lsp::OneOf;
 use lspower::lsp::SaveOptions;
+use lspower::lsp::SelectionRangeProviderCapability;
 use lspower::lsp::ServerCapabilities;
+use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
@@ -54,6 +57,12 @@ pub fn server_capabilities(
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: Some(CompletionOptions {
+      all_commit_characters: Some(vec![
+        ".".to_string(),
+        ",".to_string(),
+        ";".to_string(),
+        "(".to_string(),
+      ]),
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
@@ -64,12 +73,22 @@ pub fn server_capabilities(
         "<".to_string(),
         "#".to_string(),
       ]),
-      resolve_provider: None,
+      resolve_provider: Some(true),
       work_done_progress_options: WorkDoneProgressOptions {
         work_done_progress: None,
       },
     }),
-    signature_help_provider: None,
+    signature_help_provider: Some(SignatureHelpOptions {
+      trigger_characters: Some(vec![
+        ",".to_string(),
+        "(".to_string(),
+        "<".to_string(),
+      ]),
+      retrigger_characters: Some(vec![")".to_string()]),
+      work_done_progress_options: WorkDoneProgressOptions {
+        work_done_progress: None,
+      },
+    }),
     declaration_provider: None,
     definition_provider: Some(OneOf::Left(true)),
     type_definition_provider: None,
@@ -87,8 +106,10 @@ pub fn server_capabilities(
     document_formatting_provider: Some(OneOf::Left(true)),
     document_range_formatting_provider: None,
     document_on_type_formatting_provider: None,
-    selection_range_provider: None,
-    folding_range_provider: None,
+    selection_range_provider: Some(SelectionRangeProviderCapability::Simple(
+      true,
+    )),
+    folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
     rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,

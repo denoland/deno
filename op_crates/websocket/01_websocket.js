@@ -25,6 +25,19 @@
     }
   }
 
+  /**
+   * Tries to close the resource (and ignores BadResource errors).
+   * @param {number} rid
+   */
+  function tryClose(rid) {
+    try {
+      core.close(rid);
+    } catch (err) {
+      // Ignore error if the socket has already been closed.
+      if (!(err instanceof Deno.errors.BadResource)) throw err;
+    }
+  }
+
   const handlerSymbol = Symbol("eventHandlers");
   function makeWrappedHandler(handler) {
     function wrappedHandler(...args) {
@@ -86,9 +99,7 @@
 
       this.#url = wsURL.href;
 
-      core.jsonOpSync("op_ws_check_permission", {
-        url: this.#url,
-      });
+      core.jsonOpSync("op_ws_check_permission", this.#url);
 
       if (protocols && typeof protocols === "string") {
         protocols = [protocols];
@@ -125,7 +136,7 @@
               const event = new CloseEvent("close");
               event.target = this;
               this.dispatchEvent(event);
-              core.close(this.#rid);
+              tryClose(this.#rid);
             });
           } else {
             this.#readyState = OPEN;
@@ -289,7 +300,7 @@
           });
           event.target = this;
           this.dispatchEvent(event);
-          core.close(this.#rid);
+          tryClose(this.#rid);
         });
       }
     }
@@ -298,7 +309,7 @@
       while (this.#readyState === OPEN) {
         const message = await core.jsonOpAsync(
           "op_ws_next_event",
-          { rid: this.#rid },
+          this.#rid,
         );
 
         switch (message.kind) {
@@ -350,6 +361,7 @@
             });
             event.target = this;
             this.dispatchEvent(event);
+            tryClose(this.#rid);
 
             break;
           }
@@ -364,6 +376,7 @@
             const closeEv = new CloseEvent("close");
             closeEv.target = this;
             this.dispatchEvent(closeEv);
+            tryClose(this.#rid);
 
             break;
           }

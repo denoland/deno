@@ -594,6 +594,22 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getCompletionDetails": {
+        debug("request", request);
+        return respond(
+          id,
+          languageService.getCompletionEntryDetails(
+            request.args.specifier,
+            request.args.position,
+            request.args.name,
+            undefined,
+            request.args.source,
+            undefined,
+            // @ts-expect-error this exists in 4.3 but not part of the d.ts
+            request.args.data,
+          ),
+        );
+      }
       case "getCompletions": {
         return respond(
           id,
@@ -659,6 +675,14 @@ delete Object.prototype.__proto__;
           languageService.getNavigationTree(request.specifier),
         );
       }
+      case "getOutliningSpans": {
+        return respond(
+          id,
+          languageService.getOutliningSpans(
+            request.specifier,
+          ),
+        );
+      }
       case "getQuickInfo": {
         return respond(
           id,
@@ -672,6 +696,25 @@ delete Object.prototype.__proto__;
         return respond(
           id,
           languageService.getReferencesAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "getSignatureHelpItems": {
+        return respond(
+          id,
+          languageService.getSignatureHelpItems(
+            request.specifier,
+            request.position,
+            request.options,
+          ),
+        );
+      }
+      case "getSmartSelectionRange": {
+        return respond(
+          id,
+          languageService.getSmartSelectionRange(
             request.specifier,
             request.position,
           ),

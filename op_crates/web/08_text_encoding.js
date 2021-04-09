@@ -26,6 +26,7 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
   const core = Deno.core;
 
   const CONTINUE = null;
@@ -124,13 +125,17 @@
   }
 
   function btoa(s) {
+    s = webidl.converters.DOMString(s, {
+      prefix: "Failed to execute 'btoa'",
+      context: "Argument 1",
+    });
     const byteArray = [];
     for (let i = 0; i < s.length; i++) {
       const charCode = s[i].charCodeAt(0);
       if (charCode > 0xff) {
-        throw new TypeError(
-          "The string to be encoded contains characters " +
-            "outside of the Latin1 range.",
+        throw new DOMException(
+          "The string to be encoded contains characters outside of the Latin1 range.",
+          "InvalidCharacterError",
         );
       }
       byteArray.push(charCode);
@@ -4540,10 +4545,38 @@
     fromByteArray,
   };
 
+  /**
+   * @param {Uint8Array} bytes 
+   */
+  function decode(bytes, encoding) {
+    const BOMEncoding = BOMSniff(bytes);
+    let start = 0;
+    if (BOMEncoding !== null) {
+      encoding = BOMEncoding;
+      if (BOMEncoding === "UTF-8") start = 3;
+      else start = 2;
+    }
+    return new TextDecoder(encoding).decode(bytes.slice(start));
+  }
+
+  /**
+   * @param {Uint8Array} bytes 
+   */
+  function BOMSniff(bytes) {
+    const BOM = bytes.subarray(0, 3);
+    if (BOM[0] === 0xEF && BOM[1] === 0xBB && BOM[2] === 0xBF) {
+      return "UTF-8";
+    }
+    if (BOM[0] === 0xFE && BOM[1] === 0xFF) return "UTF-16BE";
+    if (BOM[0] === 0xFF && BOM[1] === 0xFE) return "UTF-16LE";
+    return null;
+  }
+
   window.TextEncoder = TextEncoder;
   window.TextDecoder = TextDecoder;
   window.atob = atob;
   window.btoa = btoa;
   window.__bootstrap = window.__bootstrap || {};
+  window.__bootstrap.encoding = { decode };
   window.__bootstrap.base64 = base64;
 })(this);
