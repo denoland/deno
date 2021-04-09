@@ -96,9 +96,8 @@ fn op_run(
   run_args: RunArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<RunInfo, AnyError> {
-  state.borrow::<Permissions>().run.check()?;
-
   let args = run_args.cmd;
+  state.borrow::<Permissions>().run.check(&args[0])?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -198,11 +197,6 @@ async fn op_run_status(
   rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<RunStatus, AnyError> {
-  {
-    let s = state.borrow();
-    s.borrow::<Permissions>().run.check()?;
-  }
-
   let resource = state
     .borrow_mut()
     .resource_table
@@ -292,7 +286,7 @@ fn op_kill(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
-  state.borrow::<Permissions>().run.check()?;
+  state.borrow::<Permissions>().run.check_all()?;
 
   kill(args.pid, args.signo)?;
   Ok(())
