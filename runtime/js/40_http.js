@@ -18,7 +18,7 @@
     return entries;
   }
 
-  function startHttp(conn) {
+  function serveHttp(conn) {
     const rid = Deno.core.jsonOpSync("op_http_start", conn.rid);
     return new HttpConn(rid);
   }
@@ -205,6 +205,6 @@
   }
 
   window.__bootstrap.http = {
-    startHttp,
+    serveHttp,
   };
 })(this);
