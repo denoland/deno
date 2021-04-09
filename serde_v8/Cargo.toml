@@ -19,6 +19,9 @@ bencher = "0.1"
 [[example]]
 name = "basic"
 
+[profile.release]
+codegen-units = 1
+
 [[bench]]
 name = "de"
 harness = false
