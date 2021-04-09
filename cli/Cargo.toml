@@ -49,6 +49,7 @@ dprint-plugin-markdown = "0.6.2"
 dprint-plugin-typescript = "0.41.0"
 encoding_rs = "0.8.28"
 env_logger = "0.8.3"
+fancy-regex = "0.5.0"
 filetime = "0.2.14"
 http = "0.2.3"
 indexmap = { version = "1.6.2", features = ["serde"] }
