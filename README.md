@@ -80,10 +80,10 @@ for await (const req of s) {
 }
 ```
 
-You can find a more in depth introduction, examples, and environment setup
-guides in the [manual](https://deno.land/manual).
+You can find a deeper introduction, examples, and environment setup guides in
+the [manual](https://deno.land/manual).
 
-More in-depth info can be found in the runtime
+The complete API reference is available at the runtime
 [documentation](https://doc.deno.land).
 
 ### Contributing
