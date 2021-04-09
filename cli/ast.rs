@@ -254,20 +254,21 @@ impl From<tsc_config::TsConfig> for EmitOptions {
 fn strip_config_from_emit_options(
   options: &EmitOptions,
 ) -> typescript::strip::Config {
-  let mut config = typescript::strip::Config::default();
-  config.import_not_used_as_values = match options.imports_not_used_as_values {
-    ImportsNotUsedAsValues::Remove => {
-      typescript::strip::ImportsNotUsedAsValues::Remove
-    }
-    ImportsNotUsedAsValues::Preserve => {
-      typescript::strip::ImportsNotUsedAsValues::Preserve
-    }
-    // `Error` only affects the type-checking stage. Fall back to `Remove` here.
-    ImportsNotUsedAsValues::Error => {
-      typescript::strip::ImportsNotUsedAsValues::Remove
-    }
-  };
-  config
+  typescript::strip::Config {
+    import_not_used_as_values: match options.imports_not_used_as_values {
+      ImportsNotUsedAsValues::Remove => {
+        typescript::strip::ImportsNotUsedAsValues::Remove
+      }
+      ImportsNotUsedAsValues::Preserve => {
+        typescript::strip::ImportsNotUsedAsValues::Preserve
+      }
+      // `Error` only affects the type-checking stage. Fall back to `Remove` here.
+      ImportsNotUsedAsValues::Error => {
+        typescript::strip::ImportsNotUsedAsValues::Remove
+      }
+    },
+    ..Default::default()
+  }
 }
 
 /// A logical structure to hold the value of a parsed module for further
