@@ -257,14 +257,14 @@ fn strip_config_from_emit_options(
   let mut config = typescript::strip::Config::default();
   config.import_not_used_as_values = match options.imports_not_used_as_values {
     ImportsNotUsedAsValues::Remove => {
-      typescript::strip::ImportNotUsedAsValues::Remove
+      typescript::strip::ImportsNotUsedAsValues::Remove
     }
     ImportsNotUsedAsValues::Preserve => {
-      typescript::strip::ImportNotUsedAsValues::Preserve
+      typescript::strip::ImportsNotUsedAsValues::Preserve
     }
     // `Error` only affects the type-checking stage. Fall back to `Remove` here.
     ImportsNotUsedAsValues::Error => {
-      typescript::strip::ImportNotUsedAsValues::Remove
+      typescript::strip::ImportsNotUsedAsValues::Remove
     }
   };
   config
