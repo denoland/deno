@@ -1214,10 +1214,10 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
-   * const httpConn = await Deno.serveHttp(conn);
-   * const r = await httpConn.nextRequest();
-   * if (r) {
-   *   r.respondWith(new Response("Hello World"));
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
    * }
    * ```
    *
