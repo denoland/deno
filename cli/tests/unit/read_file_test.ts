@@ -80,3 +80,21 @@ Deno.test("readFilePerm", async function (): Promise<
     await Deno.readFile("cli/tests/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
+
+Deno.test("readFileSyncLoop()", function (): void {
+  for (let i = 0; i < 256; i++) {
+    Deno.readFileSync("cli/tests/fixture.json");
+  }
+});
+
+Deno.test("readFileDoesNotLeakResources", async function (): Promise<void> {
+  const resourcesBefore = Deno.resources();
+  await assertThrowsAsync(async () => await Deno.readFile("cli"));
+  assertEquals(resourcesBefore, Deno.resources());
+});
+
+Deno.test("readFileSyncDoesNotLeakResources", function (): void {
+  const resourcesBefore = Deno.resources();
+  assertThrows(() => Deno.readFileSync("cli"));
+  assertEquals(resourcesBefore, Deno.resources());
+});

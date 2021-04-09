@@ -1196,6 +1196,33 @@ declare namespace Deno {
     bytesSentData: number;
     bytesReceived: number;
   }
+
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): void;
+  }
+
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
+
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Parse HTTP requests from the given connection
+   *
+   * ```ts
+   * const httpConn = await Deno.startHttp(conn);
+   * const { request, respondWith } = await httpConn.next();
+   * respondWith(new Response("Hello World"));
+   * ```
+   *
+   * If `httpConn.next()` encounters an error or returns `done == true` then
+   * the underlying HttpConn resource is closed automatically.
+   */
+  export function startHttp(conn: Conn): HttpConn;
 }
 
 declare function fetch(

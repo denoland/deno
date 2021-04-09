@@ -69,3 +69,21 @@ Deno.test("readTextFileSyncPerm", async function (): Promise<void> {
     Deno.readTextFileSync("cli/tests/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
+
+unitTest(
+  { perms: { read: true } },
+  async function readTextFileDoesNotLeakResources(): Promise<void> {
+    const resourcesBefore = Deno.resources();
+    await assertThrowsAsync(async () => await Deno.readTextFile("cli"));
+    assertEquals(resourcesBefore, Deno.resources());
+  },
+);
+
+unitTest(
+  { perms: { read: true } },
+  function readTextFileSyncDoesNotLeakResources(): void {
+    const resourcesBefore = Deno.resources();
+    assertThrows(() => Deno.readTextFileSync("cli"));
+    assertEquals(resourcesBefore, Deno.resources());
+  },
+);

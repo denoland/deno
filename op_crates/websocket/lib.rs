@@ -32,12 +32,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
-use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
   protocol::CloseFrame, Message,
 };
+use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
@@ -61,10 +61,7 @@ impl WebSocketPermissions for NoWebSocketPermissions {
   }
 }
 
-type MaybeTlsStream =
-  StreamSwitcher<TcpStream, tokio_rustls::client::TlsStream<TcpStream>>;
-
-type WsStream = WebSocketStream<MaybeTlsStream>;
+type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 struct WsStreamResource {
   tx: AsyncRefCell<SplitSink<WsStream, Message>>,
   rx: AsyncRefCell<SplitStream<WsStream>>,
@@ -149,8 +146,8 @@ where
     Err(_) => return Ok(json!({ "success": false })),
   };
 
-  let socket: MaybeTlsStream = match uri.scheme_str() {
-    Some("ws") => StreamSwitcher::Plain(tcp_socket),
+  let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
+    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
     Some("wss") => {
       let mut config = ClientConfig::new();
       config
@@ -166,7 +163,7 @@ where
       let dnsname =
         DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      StreamSwitcher::Tls(tls_socket)
+      MaybeTlsStream::Rustls(tls_socket)
     }
     _ => unreachable!(),
   };

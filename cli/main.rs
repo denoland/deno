@@ -261,11 +261,14 @@ fn print_cache_info(
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
+  let registry_cache =
+    &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
   if json {
     let output = json!({
         "denoDir": deno_dir,
         "modulesCache": modules_cache,
         "typescriptCache": typescript_cache,
+        "registryCache": registry_cache,
     });
     write_json_to_stdout(&output)
   } else {
@@ -277,8 +280,13 @@ fn print_cache_info(
     );
     println!(
       "{} {:?}",
-      colors::bold("TypeScript compiler cache:"),
+      colors::bold("Emitted modules cache:"),
       typescript_cache
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("Language server registries cache:"),
+      registry_cache,
     );
     Ok(())
   }
