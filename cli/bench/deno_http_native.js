@@ -9,7 +9,7 @@ const body = Deno.core.encode("Hello World");
 
 for await (const conn of listener) {
   (async () => {
-    const requests = Deno.startHttp(conn);
+    const requests = Deno.serveHttp(conn);
     for await (const { respondWith } of requests) {
       respondWith(new Response(body));
     }
