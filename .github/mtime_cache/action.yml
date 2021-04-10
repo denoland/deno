@@ -1,0 +1,10 @@
+name: mtime cache
+description:
+  Preserve last-modified timestamps by storing them in the Github Actions cache
+inputs:
+  cache-path:
+    description: Path where the mtime cache database should be located
+    required: true
+runs:
+  main: action.js
+  using: node12
