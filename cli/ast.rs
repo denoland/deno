@@ -267,7 +267,7 @@ fn strip_config_from_emit_options(
         typescript::strip::ImportsNotUsedAsValues::Remove
       }
     },
-    ..Default::default()
+    use_define_for_class_fields: true,
   }
 }
 

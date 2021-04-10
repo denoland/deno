@@ -2,6 +2,7 @@
 
 #![deny(warnings)]
 
+use data_url::DataUrl;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
@@ -157,51 +158,75 @@ where
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
-  if scheme != "http" && scheme != "https" {
-    return Err(type_error(format!("scheme '{}' not supported", scheme)));
-  }
+  let (request_rid, request_body_rid) = match scheme {
+    "http" | "https" => {
+      let permissions = state.borrow_mut::<FP>();
+      permissions.check_net_url(&url)?;
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check_net_url(&url)?;
+      let mut request = client.request(method, url);
 
-  let mut request = client.request(method, url);
+      let request_body_rid = if args.has_body {
+        match data {
+          None => {
+            // If no body is passed, we return a writer for streaming the body.
+            let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>(1);
+            request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
 
-  let request_body_rid = if args.has_body {
-    match data {
-      None => {
-        // If no body is passed, we return a writer for streaming the body.
-        let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>(1);
-        request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
+            let request_body_rid =
+              state.resource_table.add(FetchRequestBodyResource {
+                body: AsyncRefCell::new(tx),
+                cancel: CancelHandle::default(),
+              });
 
-        let request_body_rid =
-          state.resource_table.add(FetchRequestBodyResource {
-            body: AsyncRefCell::new(tx),
-            cancel: CancelHandle::default(),
-          });
-
-        Some(request_body_rid)
-      }
-      Some(data) => {
-        // If a body is passed, we use it, and don't return a body for streaming.
-        request = request.body(Vec::from(&*data));
+            Some(request_body_rid)
+          }
+          Some(data) => {
+            // If a body is passed, we use it, and don't return a body for streaming.
+            request = request.body(Vec::from(&*data));
+            None
+          }
+        }
+      } else {
         None
+      };
+
+      for (key, value) in args.headers {
+        let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let v = HeaderValue::from_str(&value).unwrap();
+        request = request.header(name, v);
       }
+
+      let fut = request.send();
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, request_body_rid)
     }
-  } else {
-    None
+    "data" => {
+      let data_url = DataUrl::process(url.as_str())
+        .map_err(|e| type_error(format!("{:?}", e)))?;
+
+      let (body, _) = data_url
+        .decode_to_vec()
+        .map_err(|e| type_error(format!("{:?}", e)))?;
+
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
+        .body(reqwest::Body::from(body))?;
+
+      let fut = async move { Ok(Response::from(response)) };
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, None)
+    }
+    _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
   };
-
-  for (key, value) in args.headers {
-    let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-    let v = HeaderValue::from_str(&value).unwrap();
-    request = request.header(name, v);
-  }
-
-  let fut = request.send();
-
-  let request_rid = state
-    .resource_table
-    .add(FetchRequestResource(Box::pin(fut)));
 
   Ok(FetchReturn {
     request_rid,

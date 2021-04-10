@@ -300,6 +300,7 @@ pub struct ListenTlsArgs {
   port: u16,
   cert_file: String,
   key_file: String,
+  alpn_protocols: Option<Vec<String>>,
 }
 
 fn op_listen_tls(
@@ -318,6 +319,11 @@ fn op_listen_tls(
     permissions.read.check(Path::new(&key_file))?;
   }
   let mut config = ServerConfig::new(NoClientAuth::new());
+  if let Some(alpn_protocols) = args.alpn_protocols {
+    super::check_unstable(state, "Deno.listenTls#alpn_protocols");
+    config.alpn_protocols =
+      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
+  }
   config
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
