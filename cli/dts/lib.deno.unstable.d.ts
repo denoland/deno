@@ -1186,6 +1186,15 @@ declare namespace Deno {
     bytesSentData: number;
     bytesReceived: number;
   }
+
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  export function memoryUsage(): MemoryUsage;
 }
 
 declare function fetch(

@@ -2311,13 +2311,4 @@ declare namespace Deno {
     newpath: string,
     options?: SymlinkOptions,
   ): Promise<void>;
-
-  export interface MemoryUsage {
-    rss: number;
-    heapTotal: number;
-    heapUsed: number;
-    external: number;
-  }
-
-  export function memoryUsage(): MemoryUsage;
 }
