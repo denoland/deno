@@ -261,22 +261,26 @@ impl MainWorker {
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
     // We always poll the inspector if it exists.
-    let ipoll = self.inspector.as_mut()
-      .map(|i| 
-        i.poll_unpin(cx).map(|_| Ok(()))
-      )
+    let ipoll = self
+      .inspector
+      .as_mut()
+      .map(|i| i.poll_unpin(cx).map(|_| Ok(())))
       .unwrap_or(Poll::Ready(Ok(())));
-    
+
     // Poll JS runtime
     let jpoll = self.js_runtime.poll_event_loop(cx);
-    
+
     // Check if there's an active debugging session
-    let inspector_active = self.inspector.as_ref().map(|i| i.is_active()).unwrap_or(false);
-    
+    let inspector_active = self
+      .inspector
+      .as_ref()
+      .map(|i| i.is_active())
+      .unwrap_or(false);
+
     // Always return polled js event, unless it's finished then wait for inspector
     match jpoll {
       Poll::Ready(Ok(())) if inspector_active => ipoll,
-      _ => jpoll
+      _ => jpoll,
     }
   }
 
