@@ -268,7 +268,6 @@ fn strip_config_from_emit_options(
       }
     },
     use_define_for_class_fields: true,
-    ..Default::default()
   }
 }
 
