@@ -3417,7 +3417,7 @@ console.log("finish");
   });
 
   itest!(wasm_shared {
-    args: "run wasm_shared.js",
+    args: "run --quiet wasm_shared.ts",
     output: "wasm_shared.out",
   });
 
