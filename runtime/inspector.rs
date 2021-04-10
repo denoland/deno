@@ -414,6 +414,13 @@ pub struct DenoInspector {
   pub debugger_url: Option<String>,
 }
 
+impl DenoInspector {
+  pub fn is_active(&self) -> bool {
+    let sessions = self.sessions.borrow();
+    sessions.handshake.is_some() || sessions.established.len() > 0
+  }
+}
+
 impl Deref for DenoInspector {
   type Target = v8::inspector::V8Inspector;
   fn deref(&self) -> &Self::Target {
