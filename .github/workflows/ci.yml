@@ -44,7 +44,7 @@ jobs:
         'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
-      CARGO_INCREMENTAL: 1
+      CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
 
@@ -55,10 +55,10 @@ jobs:
       - name: Clone repository
         uses: actions/checkout@v2
         with:
-          # Disables shallow clone. We use full git history for restoring the mtime
-          # of each file to enable incremental build.
-          # See https://github.com/denoland/deno/pull/10053
-          fetch-depth: 0
+          # Use depth > 1, because sometimes we need to rebuild main and if
+          # other commits have landed it will become impossible to rebuild if
+          # the checkout is too shallow.
+          fetch-depth: 5
           submodules: true
 
       - name: Create source tarballs (release, linux)
@@ -160,9 +160,6 @@ jobs:
           cargo --version
           deno --version
 
-      - name: Restore timestamps
-        run: python ./tools/restore_mtime.py
-
       # Work around https://github.com/actions/cache/issues/403 by using GNU tar
       # instead of BSD tar.
       - name: Install GNU tar
@@ -170,15 +167,6 @@ jobs:
         run: |
           brew install gnu-tar
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
-
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            ./target
-          key: cache4-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
 
       - name: test_format.js
         if: matrix.kind == 'lint'
