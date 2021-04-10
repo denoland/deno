@@ -417,7 +417,7 @@ pub struct DenoInspector {
 impl DenoInspector {
   pub fn is_active(&self) -> bool {
     let sessions = self.sessions.borrow();
-    sessions.handshake.is_some() || sessions.established.len() > 0
+    !sessions.established.is_empty() || sessions.handshake.is_some()
   }
 }
 
