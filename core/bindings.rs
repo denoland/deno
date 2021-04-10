@@ -438,7 +438,7 @@ fn send<'s>(
   match op {
     Op::Sync(resp) => match resp {
       OpResponse::Value(v) => {
-        rv.set(to_v8(scope, v).unwrap());
+        rv.set(v.to_v8(scope).unwrap());
       }
       OpResponse::Buffer(buf) => {
         rv.set(boxed_slice_to_uint8array(scope, buf).into());

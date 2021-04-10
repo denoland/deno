@@ -30,6 +30,7 @@ import "./fs_events_test.ts";
 import "./get_random_values_test.ts";
 import "./globals_test.ts";
 import "./headers_test.ts";
+import "./http_test.ts";
 import "./internals_test.ts";
 import "./io_test.ts";
 import "./link_test.ts";

@@ -15,8 +15,17 @@
         "implementations": true,
         "references": true
       },
-      "lint": true,
       "importMap": null,
+      "lint": true,
+      "suggest": {
+        "autoImports": true,
+        "completeFunctionCalls": false,
+        "names": true,
+        "paths": true,
+        "imports": {
+          "hosts": {}
+        }
+      },
       "unstable": false
     },
     "capabilities": {

@@ -434,7 +434,12 @@ declare namespace Deno {
     scopes?: Record<string, Record<string, string>>;
   }
 
-  interface EmitOptions {
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The options for `Deno.emit()` API.
+   */
+  export interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
      * JavaScript bundle that is a single ES module (`"esm"`) or a single file
      * self contained script we executes in an immediately invoked function
@@ -467,7 +472,12 @@ declare namespace Deno {
     sources?: Record<string, string>;
   }
 
-  interface EmitResult {
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The result of `Deno.emit()` API.
+   */
+  export interface EmitResult {
     /** Diagnostic messages returned from the type checker (`tsc`). */
     diagnostics: Diagnostic[];
     /** Any emitted files.  If bundled, then the JavaScript will have the
@@ -1106,7 +1116,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    * The options used when creating a [HttpClient].
    */
-  interface CreateHttpClientOptions {
+  export interface CreateHttpClientOptions {
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;
@@ -1195,6 +1205,35 @@ declare namespace Deno {
   }
 
   export function memoryUsage(): MemoryUsage;
+
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): void;
+  }
+
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
+
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Services HTTP requests given a TCP or TLS socket.
+   *
+   * ```ts
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
+   * }
+   * ```
+   *
+   * If `httpConn.nextRequest()` encounters an error or returns `null`
+   * then the underlying HttpConn resource is closed automatically.
+   */
+  export function serveHttp(conn: Conn): HttpConn;
 }
 
 declare function fetch(

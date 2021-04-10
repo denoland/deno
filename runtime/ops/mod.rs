@@ -2,8 +2,10 @@
 
 pub mod crypto;
 pub mod fetch;
+pub mod file;
 pub mod fs;
 pub mod fs_events;
+pub mod http;
 pub mod io;
 pub mod net;
 #[cfg(unix)]
@@ -18,6 +20,7 @@ pub mod timers;
 pub mod tls;
 pub mod tty;
 pub mod url;
+mod utils;
 pub mod web_worker;
 pub mod webgpu;
 pub mod websocket;

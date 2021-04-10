@@ -21,7 +21,12 @@
   }
 
   function systemCpuInfo() {
-    return core.jsonOpSync("op_system_cpu_info");
+    const { cores, speed } = core.jsonOpSync("op_system_cpu_info");
+    // Map nulls to undefined for compatibility
+    return {
+      cores: cores ?? undefined,
+      speed: speed ?? undefined,
+    };
   }
 
   // This is an internal only method used by the test harness to override the
@@ -44,7 +49,7 @@
       return;
     }
 
-    core.jsonOpSync("op_exit", { code });
+    core.jsonOpSync("op_exit", code);
     throw new Error("Code not reachable");
   }
 
@@ -53,11 +58,11 @@
   }
 
   function getEnv(key) {
-    return core.jsonOpSync("op_get_env", { key })[0];
+    return core.jsonOpSync("op_get_env", key) ?? undefined;
   }
 
   function deleteEnv(key) {
-    core.jsonOpSync("op_delete_env", { key });
+    core.jsonOpSync("op_delete_env", key);
   }
 
   const env = {

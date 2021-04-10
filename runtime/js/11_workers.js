@@ -28,15 +28,15 @@
   }
 
   function hostTerminateWorker(id) {
-    core.jsonOpSync("op_host_terminate_worker", { id });
+    core.jsonOpSync("op_host_terminate_worker", id);
   }
 
   function hostPostMessage(id, data) {
-    core.jsonOpSync("op_host_post_message", { id }, data);
+    core.jsonOpSync("op_host_post_message", id, data);
   }
 
   function hostGetMessage(id) {
-    return core.jsonOpAsync("op_host_get_message", { id });
+    return core.jsonOpAsync("op_host_get_message", id);
   }
 
   const encoder = new TextEncoder();
@@ -197,7 +197,7 @@
         }
       }
 
-      const { id } = createWorker(
+      const id = createWorker(
         specifier,
         hasSourceCode,
         sourceCode,
@@ -270,7 +270,7 @@
             } else {
               core.jsonOpSync(
                 "op_host_unhandled_error",
-                { message: event.error.message },
+                event.error.message,
               );
             }
           }
@@ -289,7 +289,7 @@
             } else {
               core.jsonOpSync(
                 "op_host_unhandled_error",
-                { message: event.error.message },
+                event.error.message,
               );
             }
           }

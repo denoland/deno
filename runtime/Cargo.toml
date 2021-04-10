@@ -22,6 +22,7 @@ deno_core = { path = "../core", version = "0.83.0" }
 deno_console = { path = "../op_crates/console", version = "0.2.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.16.1" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.24.1" }
+deno_file = { path = "../op_crates/file", version = "0.1.0" }
 deno_web = { path = "../op_crates/web", version = "0.32.1" }
 deno_url = { path = "../op_crates/url", version = "0.2.1" }
 deno_webidl = { path = "../op_crates/webidl", version = "0.2.1" }
@@ -37,6 +38,7 @@ deno_core = { path = "../core", version = "0.83.0" }
 deno_console = { path = "../op_crates/console", version = "0.2.1" }
 deno_crypto = { path = "../op_crates/crypto", version = "0.16.1" }
 deno_fetch = { path = "../op_crates/fetch", version = "0.24.1" }
+deno_file = { path = "../op_crates/file", version = "0.1.0" }
 deno_web = { path = "../op_crates/web", version = "0.32.1" }
 deno_url = { path = "../op_crates/url", version = "0.2.1" }
 deno_webidl = { path = "../op_crates/webidl", version = "0.2.1" }
@@ -44,29 +46,31 @@ deno_websocket = { path = "../op_crates/websocket", version = "0.7.1" }
 deno_webgpu = { path = "../op_crates/webgpu", version = "0.3.1" }
 
 atty = "0.2.14"
+bytes = "1"
 dlopen = "0.1.8"
 encoding_rs = "0.8.28"
 filetime = "0.2.14"
 http = "0.2.3"
-hyper = { version = "0.14.4", features = ["server"] }
-indexmap = "1.6.1"
+hyper = { version = "0.14.5", features = ["server", "stream", "http1", "http2", "runtime"] }
+indexmap = "1.6.2"
 lazy_static = "1.4.0"
-libc = "0.2.86"
+libc = "0.2.93"
 log = "0.4.14"
-notify = "5.0.0-pre.4"
+notify = "5.0.0-pre.6"
 percent-encoding = "2.1.0"
 regex = "1.4.3"
 ring = "0.16.20"
-serde = { version = "1.0.123", features = ["derive"] }
+serde = { version = "1.0.125", features = ["derive"] }
 sys-info = "0.8.0"
 termcolor = "1.1.2"
 tokio = { version = "1.4.0", features = ["full"] }
+tokio-util = { version = "0.6", features = ["io"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"
-webpki-roots = "0.21.0"
-trust-dns-proto = "0.20.0"
-trust-dns-resolver = { version = "0.20.0", features = ["tokio-runtime", "serde-config"] }
+webpki-roots = "0.21.1"
+trust-dns-proto = "0.20.1"
+trust-dns-resolver = { version = "0.20.1", features = ["tokio-runtime", "serde-config"] }
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "1.1.0"

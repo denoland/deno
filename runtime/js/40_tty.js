@@ -5,11 +5,11 @@
   const core = window.Deno.core;
 
   function consoleSize(rid) {
-    return core.jsonOpSync("op_console_size", { rid });
+    return core.jsonOpSync("op_console_size", rid);
   }
 
   function isatty(rid) {
-    return core.jsonOpSync("op_isatty", { rid });
+    return core.jsonOpSync("op_isatty", rid);
   }
 
   const DEFAULT_SET_RAW_OPTIONS = {

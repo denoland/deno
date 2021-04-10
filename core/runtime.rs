@@ -784,15 +784,9 @@ impl JsRuntime {
       module.get_status()
     };
 
-    // Since the same module might be dynamically imported more than once,
-    // we short-circuit is it is already evaluated.
-    if status == v8::ModuleStatus::Evaluated {
-      self.dyn_import_done(load_id, id);
-      return Ok(());
-    }
-
-    if status != v8::ModuleStatus::Instantiated {
-      return Ok(());
+    match status {
+      v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated => {}
+      _ => return Ok(()),
     }
 
     // IMPORTANT: Top-level-await is enabled, which means that return value
@@ -1419,7 +1413,7 @@ impl JsRuntime {
       let (promise_id, resp) = overflown_response;
       args.push(v8::Integer::new(scope, promise_id as i32).into());
       args.push(match resp {
-        OpResponse::Value(value) => serde_v8::to_v8(scope, value).unwrap(),
+        OpResponse::Value(value) => value.to_v8(scope).unwrap(),
         OpResponse::Buffer(buf) => {
           bindings::boxed_slice_to_uint8array(scope, buf).into()
         }

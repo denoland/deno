@@ -14,11 +14,8 @@ use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
 use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
@@ -82,17 +79,12 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 #[allow(clippy::unnecessary_wraps)]
 fn op_global_timer_stop(
   state: &mut OpState,
-  _args: Value,
+  _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.cancel();
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-pub struct GlobalTimerArgs {
-  timeout: u64,
+  Ok(())
 }
 
 // Set up a timer that will be later awaited by JS promise.
@@ -105,22 +97,20 @@ pub struct GlobalTimerArgs {
 #[allow(clippy::unnecessary_wraps)]
 fn op_global_timer_start(
   state: &mut OpState,
-  args: GlobalTimerArgs,
+  timeout: u64,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let val = args.timeout;
-
-  let deadline = Instant::now() + Duration::from_millis(val);
+) -> Result<(), AnyError> {
+  let deadline = Instant::now() + Duration::from_millis(timeout);
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.new_timeout(deadline);
-  Ok(json!({}))
+  Ok(())
 }
 
 async fn op_global_timer(
   state: Rc<RefCell<OpState>>,
-  _args: Value,
+  _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   let maybe_timer_fut = {
     let mut s = state.borrow_mut();
     let global_timer = s.borrow_mut::<GlobalTimer>();
@@ -129,7 +119,7 @@ async fn op_global_timer(
   if let Some(timer_fut) = maybe_timer_fut {
     let _ = timer_fut.await;
   }
-  Ok(json!({}))
+  Ok(())
 }
 
 // Returns a milliseconds and nanoseconds subsec
@@ -159,18 +149,13 @@ fn op_now(
   Ok(result)
 }
 
-#[derive(Deserialize)]
-pub struct SleepArgs {
-  millis: u64,
-}
-
 #[allow(clippy::unnecessary_wraps)]
 fn op_sleep_sync(
   state: &mut OpState,
-  args: SleepArgs,
+  millis: u64,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.sleepSync");
-  sleep(Duration::from_millis(args.millis));
-  Ok(json!({}))
+  sleep(Duration::from_millis(millis));
+  Ok(())
 }
