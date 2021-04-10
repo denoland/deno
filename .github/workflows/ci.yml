@@ -163,6 +163,10 @@ jobs:
       - name: Restore timestamps
         run: python ./tools/restore_mtime.py
 
+      - name: Touch diff from main
+        shell: bash
+        run: git diff --name-only main HEAD | tee /dev/stderr | xargs touch
+
       # Work around https://github.com/actions/cache/issues/403 by using GNU tar
       # instead of BSD tar.
       - name: Install GNU tar
