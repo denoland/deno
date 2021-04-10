@@ -574,16 +574,22 @@ impl UnaryPermission<RunDescriptor> {
     self.query(cmd)
   }
 
-  pub fn check(&self, cmd: &str) -> Result<(), AnyError> {
+  pub fn check(&mut self, cmd: &str) -> Result<(), AnyError> {
     self.query(Some(cmd)).check(
       self.name,
       Some(&format!("\"{}\"", cmd)),
       self.prompt,
-    )
+    )?;
+    self.granted_list.insert(RunDescriptor(cmd.to_string()));
+    Ok(())
   }
 
-  pub fn check_all(&self) -> Result<(), AnyError> {
-    self.query(None).check(self.name, Some("all"), self.prompt)
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    self
+      .query(None)
+      .check(self.name, Some("all"), self.prompt)?;
+    self.global_state = PermissionState::Granted;
+    Ok(())
   }
 }
 
