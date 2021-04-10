@@ -38,6 +38,7 @@ path = "examples/http_bench_json_ops.rs"
 [dev-dependencies]
 tokio = { version = "1.4.0", features = ["full"] }
 bencher = "0.1"
+bench_util = { version = "0.0.0", path = "../bench_util" }
 
 [[bench]]
 name = "op_baseline"

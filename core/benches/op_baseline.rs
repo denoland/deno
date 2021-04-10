@@ -1,4 +1,5 @@
-use bencher::{benchmark_group, benchmark_main, Bencher};
+use bench_util::bencher::{benchmark_group, Bencher};
+use bench_util::{is_profiling, bench_or_profile};
 
 use deno_core::bin_op_sync;
 use deno_core::error::AnyError;
@@ -45,64 +46,88 @@ async fn op_pi_async(
   Ok(314159)
 }
 
-pub fn bench_runtime_js(b: &mut Bencher, src: &str) {
+fn loop_code(iters: u64, src: &str) -> String {
+  format!(
+    r#"for(let i=0; i < {}; i++) {{ {} }}"#,
+    iters,
+    src,
+  )
+}
+
+pub fn bench_js_sync(b: &mut Bencher, src: &str) {  
   let mut runtime = create_js_runtime();
   let context = runtime.global_context();
   let scope = &mut v8::HandleScope::with_context(runtime.v8_isolate(), context);
-  let code = v8::String::new(scope, src).unwrap();
+  
+  // Increase JS iterations if profiling for nicer flamegraphs
+  let inner_iters = 1000 * if is_profiling() { 10000 } else { 1 };
+  // Looped code
+  let looped_src = loop_code(inner_iters, src);
+  
+  let code = v8::String::new(scope, looped_src.as_ref()).unwrap();
   let script = v8::Script::compile(scope, code, None).unwrap();
-  b.iter(|| {
+  
+  // Run once if profiling, otherwise regular bench loop
+  if is_profiling() {
     script.run(scope).unwrap();
-  });
+  } else {  
+    b.iter(|| {
+      script.run(scope).unwrap();
+    });
+  }
 }
 
-pub fn bench_runtime_js_async(b: &mut Bencher, src: &str) {
+pub fn bench_js_async(b: &mut Bencher, src: &str) {
   let mut runtime = create_js_runtime();
   let tokio_runtime = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
     .unwrap();
+    
+  // Looped code
+  let looped = loop_code(1000, src);
+  let src = looped.as_ref();
 
-  b.iter(|| {
-    runtime.execute("inner_loop", src).unwrap();
-    let future = runtime.run_event_loop();
-    tokio_runtime.block_on(future).unwrap();
-  });
+  if is_profiling() {
+    for _ in 0..10000 {
+      runtime.execute("inner_loop", src).unwrap();
+      let future = runtime.run_event_loop();
+      tokio_runtime.block_on(future).unwrap();
+    }
+  } else {  
+    b.iter(|| {
+      runtime.execute("inner_loop", src).unwrap();
+      let future = runtime.run_event_loop();
+      tokio_runtime.block_on(future).unwrap();
+    });
+  }
 }
 
 fn bench_op_pi_bin(b: &mut Bencher) {
-  bench_runtime_js(
+  bench_js_sync(
     b,
-    r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.binOpSync("pi_bin", 0, null);
-    }"#,
+    r#"Deno.core.binOpSync("pi_bin");"#,
   );
 }
 
 fn bench_op_pi_json(b: &mut Bencher) {
-  bench_runtime_js(
+  bench_js_sync(
     b,
-    r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.jsonOpSync("pi_json", null);
-    }"#,
+    r#"Deno.core.jsonOpSync("pi_json");"#,
   );
 }
 
 fn bench_op_nop(b: &mut Bencher) {
-  bench_runtime_js(
+  bench_js_sync(
     b,
-    r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.dispatchByName("nop", null, null, null);
-    }"#,
+    r#"Deno.core.dispatchByName("nop", null, null, null);"#,
   );
 }
 
 fn bench_op_async(b: &mut Bencher) {
-  bench_runtime_js_async(
+  bench_js_async(
     b,
-    r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.jsonOpAsync("pi_async", null);
-    }"#,
+    r#"Deno.core.jsonOpAsync("pi_async");"#,
   );
 }
 
@@ -113,4 +138,4 @@ benchmark_group!(
   bench_op_nop,
   bench_op_async
 );
-benchmark_main!(benches);
+bench_or_profile!(benches);

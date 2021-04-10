@@ -195,6 +195,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "bench_util"
+version = "0.0.0"
+dependencies = [
+ "bencher",
+]
+
+[[package]]
 name = "bencher"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -580,6 +587,7 @@ name = "deno_core"
 version = "0.83.0"
 dependencies = [
  "anyhow",
+ "bench_util",
  "bencher",
  "futures",
  "indexmap",
