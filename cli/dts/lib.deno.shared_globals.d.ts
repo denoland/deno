@@ -89,7 +89,7 @@ declare namespace WebAssembly {
     constructor(descriptor: MemoryDescriptor);
 
     /** An accessor property that returns the buffer contained in the memory. */
-    readonly buffer: ArrayBuffer;
+    readonly buffer: ArrayBuffer | SharedArrayBuffer;
 
     /**
      * Increases the size of the memory instance by a specified number of WebAssembly
@@ -170,6 +170,7 @@ declare namespace WebAssembly {
   export interface MemoryDescriptor {
     initial: number;
     maximum?: number;
+    shared?: boolean;
   }
 
   /** A `ModuleExportDescriptor` is the description of a declared export in a `WebAssembly.Module`. */
