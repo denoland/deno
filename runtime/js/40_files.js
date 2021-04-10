@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
+  const { fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
 
   function seekSync(
@@ -101,6 +102,14 @@
 
     seekSync(offset, whence) {
       return seekSync(this.rid, offset, whence);
+    }
+
+    stat() {
+      return fstat(this.rid);
+    }
+
+    statSync() {
+      return fstatSync(this.rid);
     }
 
     close() {
