@@ -155,6 +155,7 @@ pub unsafe fn v8_init() {
     // PumpMessageLoop and RunMicrotasks setup correctly.
     // See https://github.com/denoland/deno/issues/2544
     "--no-wasm-async-compilation".to_string(),
+    "--experimental-wasm-threads".to_string(),
     "--harmony-top-level-await".to_string(),
     "--harmony-import-assertions".to_string(),
     "--no-validate-asm".to_string(),
