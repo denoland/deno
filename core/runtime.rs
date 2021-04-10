@@ -199,11 +199,14 @@ impl JsRuntime {
   pub fn new(mut options: RuntimeOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
-      // Include 10MB ICU data file.
-      #[repr(C, align(16))]
-      struct IcuData([u8; 10413584]);
-      static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-      v8::icu::set_common_data(&ICU_DATA.0).unwrap();
+      #[cfg(not(feature = "no_icu"))]
+      {
+        // Include 10MB ICU data file.
+        #[repr(C, align(16))]
+        struct IcuData([u8; 10413584]);
+        static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
+        v8::icu::set_common_data(&ICU_DATA.0).unwrap();
+      }
       unsafe { v8_init() };
     });
 

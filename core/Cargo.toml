@@ -12,6 +12,10 @@ repository = "https://github.com/denoland/deno"
 [lib]
 path = "lib.rs"
 
+[features]
+no_icu = []
+default = []
+
 [dependencies]
 anyhow = "1.0.40"
 futures = "0.3.13"
