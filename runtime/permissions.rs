@@ -1351,4 +1351,61 @@ mod tests {
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
+
+  #[test]
+  fn test_check() {
+    let mut perms = Permissions {
+      read: Permissions::new_read(&None, true),
+      write: Permissions::new_write(&None, true),
+      net: Permissions::new_net(&None, true),
+      env: Permissions::new_env(false, true),
+      run: Permissions::new_run(&None, true),
+      plugin: Permissions::new_plugin(false, true),
+      hrtime: Permissions::new_hrtime(false, true),
+    };
+
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+
+    set_prompt_result(false);
+    assert!(perms.read.check(&Path::new("/foo")).is_err());
+    set_prompt_result(true);
+    assert!(perms.read.check(&Path::new("/foo")).is_ok());
+    set_prompt_result(false);
+    assert!(perms.read.check(&Path::new("/foo")).is_ok());
+    assert!(perms.read.check(&Path::new("/bar")).is_err());
+
+    set_prompt_result(false);
+    assert!(perms.write.check(&Path::new("/foo")).is_err());
+    set_prompt_result(true);
+    assert!(perms.write.check(&Path::new("/foo")).is_ok());
+    set_prompt_result(false);
+    assert!(perms.write.check(&Path::new("/foo")).is_ok());
+    assert!(perms.write.check(&Path::new("/bar")).is_err());
+
+    set_prompt_result(false);
+    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
+    set_prompt_result(true);
+    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
+    set_prompt_result(false);
+    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
+    assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_err());
+    assert!(perms.net.check(&("127.0.0.1", None)).is_err());
+    assert!(perms.net.check(&("deno.land", Some(8000))).is_err());
+    assert!(perms.net.check(&("deno.land", None)).is_err());
+
+    set_prompt_result(false);
+    assert!(perms.run.check("cat").is_err());
+    set_prompt_result(true);
+    assert!(perms.run.check("cat").is_ok());
+    set_prompt_result(false);
+    assert!(perms.run.check("cat").is_ok());
+    assert!(perms.run.check("ls").is_err());
+
+    set_prompt_result(false);
+    assert!(perms.hrtime.check().is_err());
+    set_prompt_result(true);
+    assert!(perms.hrtime.check().is_ok());
+    set_prompt_result(false);
+    assert!(perms.hrtime.check().is_ok());
+  }
 }
