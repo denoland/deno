@@ -575,9 +575,11 @@ impl UnaryPermission<RunDescriptor> {
   }
 
   pub fn check(&self, cmd: &str) -> Result<(), AnyError> {
-    self
-      .query(Some(cmd))
-      .check(self.name, Some(&format!("\"{}\"", cmd)), self.prompt)
+    self.query(Some(cmd)).check(
+      self.name,
+      Some(&format!("\"{}\"", cmd)),
+      self.prompt,
+    )
   }
 
   pub fn check_all(&self) -> Result<(), AnyError> {
