@@ -3238,7 +3238,7 @@ console.log("finish");
   });
 
   itest!(heapstats {
-    args: "run --quiet --v8-flags=--expose-gc heapstats.js",
+    args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
     output: "heapstats.js.out",
   });
 
