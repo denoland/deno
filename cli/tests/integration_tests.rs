@@ -2846,6 +2846,21 @@ console.log("finish");
     output: "088_dynamic_import_already_evaluating.ts.out",
   });
 
+  itest!(_089_run_allow_list {
+    args: "run --allow-run=cat 089_run_allow_list.ts",
+    output: "089_run_allow_list.ts.out",
+  });
+
+  #[cfg(unix)]
+  #[test]
+  fn _090_run_permissions_request() {
+    let args = "run 090_run_permissions_request.ts";
+    let output = "090_run_permissions_request.ts.out";
+    let input = b"g\nd\n";
+
+    util::test_pty(args, output, input);
+  }
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -4024,14 +4039,14 @@ console.log("finish");
 
     itest!(stdin {
       args: "lint --unstable -",
-      input: Some("let a: any;"),
+      input: Some("let _a: any;"),
       output: "lint/expected_from_stdin.out",
       exit_code: 1,
     });
 
     itest!(stdin_json {
       args: "lint --unstable --json -",
-      input: Some("let a: any;"),
+      input: Some("let _a: any;"),
       output: "lint/expected_from_stdin_json.out",
       exit_code: 1,
     });

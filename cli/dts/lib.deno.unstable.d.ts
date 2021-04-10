@@ -1116,7 +1116,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    * The options used when creating a [HttpClient].
    */
-  interface CreateHttpClientOptions {
+  export interface CreateHttpClientOptions {
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;
@@ -1211,18 +1211,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Parse HTTP requests from the given connection
+   * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
-   * const httpConn = await Deno.startHttp(conn);
-   * const { request, respondWith } = await httpConn.next();
-   * respondWith(new Response("Hello World"));
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
+   * }
    * ```
    *
-   * If `httpConn.next()` encounters an error or returns `done == true` then
-   * the underlying HttpConn resource is closed automatically.
+   * If `httpConn.nextRequest()` encounters an error or returns `null`
+   * then the underlying HttpConn resource is closed automatically.
    */
-  export function startHttp(conn: Conn): HttpConn;
+  export function serveHttp(conn: Conn): HttpConn;
 }
 
 declare function fetch(

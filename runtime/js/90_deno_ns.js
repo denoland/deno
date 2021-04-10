@@ -122,7 +122,7 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    startHttp: __bootstrap.http.startHttp,
+    serveHttp: __bootstrap.http.serveHttp,
     startTls: __bootstrap.tls.startTls,
     ftruncateSync: __bootstrap.fs.ftruncateSync,
     ftruncate: __bootstrap.fs.ftruncate,

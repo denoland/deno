@@ -1967,10 +1967,10 @@ declare namespace Deno {
      *
      * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
      * manually before the process can exit.
-     * 
+     *
      * To run process to completion and collect output from both `stdout` and
      * `stderr` use:
-     * 
+     *
      * ```ts
      * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
@@ -2135,6 +2135,7 @@ declare namespace Deno {
 
   export interface RunPermissionDescriptor {
     name: "run";
+    command?: string;
   }
 
   export interface ReadPermissionDescriptor {
