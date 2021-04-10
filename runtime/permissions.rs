@@ -577,46 +577,11 @@ impl UnaryPermission<RunDescriptor> {
   pub fn check(&self, cmd: &str) -> Result<(), AnyError> {
     self
       .query(Some(cmd))
-      .check(self.name, Some(&format!("\"{}\"", cmd)))
+      .check(self.name, Some(&format!("\"{}\"", cmd)), self.prompt)
   }
 
   pub fn check_all(&self) -> Result<(), AnyError> {
-    self.query(None).check(self.name, Some("all"))
-  }
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct BooleanPermission {
-  pub name: &'static str,
-  pub description: &'static str,
-  pub state: PermissionState,
-}
-
-impl BooleanPermission {
-  pub fn query(&self) -> PermissionState {
-    self.state
-  }
-
-  pub fn request(&mut self) -> PermissionState {
-    if self.state == PermissionState::Prompt {
-      if permission_prompt(&format!("access to {}", self.description)) {
-        self.state = PermissionState::Granted;
-      } else {
-        self.state = PermissionState::Denied;
-      }
-    }
-    self.state
-  }
-
-  pub fn revoke(&mut self) -> PermissionState {
-    if self.state == PermissionState::Granted {
-      self.state = PermissionState::Prompt;
-    }
-    self.state
-  }
-
-  pub fn check(&self) -> Result<(), AnyError> {
-    self.state.check(self.name, None)
+    self.query(None).check(self.name, Some("all"), self.prompt)
   }
 }
 
@@ -753,18 +718,6 @@ impl Permissions {
       run: Permissions::new_run(&Some(vec![]), false),
       plugin: Permissions::new_plugin(true, false),
       hrtime: Permissions::new_hrtime(true, false),
-    }
-  }
-
-  pub fn prompt() -> Self {
-    Self {
-      read: Permissions::new_read(&None, true),
-      write: Permissions::new_write(&None, true),
-      net: Permissions::new_net(&None, true),
-      env: Permissions::new_env(false, true),
-      run: Permissions::new_run(&None, true),
-      plugin: Permissions::new_plugin(false, true),
-      hrtime: Permissions::new_hrtime(false, true),
     }
   }
 
@@ -1262,7 +1215,7 @@ mod tests {
       },
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_run(&Some(svec!["deno"]))
+        ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
       plugin: UnitPermission {
         state: PermissionState::Prompt,
@@ -1363,7 +1316,7 @@ mod tests {
       },
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_run(&Some(svec!["deno"]))
+        ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
       plugin: UnitPermission {
         state: PermissionState::Prompt,
