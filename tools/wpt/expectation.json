@@ -768,6 +768,13 @@
           "Check isHistoryNavigation attribute"
         ]
       }
+    },
+    "data-urls": {
+      "base64.any.js": true,
+      "processing.any.js": [
+        "\"data://test:test/,X\"",
+        "\"data:text/plain;a=\\\",\\\",X\""
+      ]
     }
   },
   "FileAPI": {
