@@ -2386,9 +2386,8 @@ declare namespace Deno {
    * ```
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
-}
 
-/** 
+  /** 
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
@@ -2397,9 +2396,9 @@ declare namespace Deno {
    * assert(fileInfo.isFile);
    * ```
    */
-export function fstatSync(rid: number): FileInfo;
+  export function fstatSync(rid: number): FileInfo;
 
-/**
+  /**
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
@@ -2408,4 +2407,5 @@ export function fstatSync(rid: number): FileInfo;
    * assert(fileInfo.isFile);
    * ```
    */
-export function fstat(rid: number): Promise<FileInfo>;
+  export function fstat(rid: number): Promise<FileInfo>;
+}
