@@ -163,6 +163,14 @@ jobs:
       - name: Restore timestamps
         run: python ./tools/restore_mtime.py
 
+      # Work around https://github.com/actions/cache/issues/403 by using GNU tar
+      # instead of BSD tar.
+      - name: Install GNU tar
+        if: matrix.os == 'macos-10.15'
+        run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+
       - name: Cache
         uses: actions/cache@v2
         with:
@@ -170,9 +178,7 @@ jobs:
             ~/.cargo/git
             ~/.cargo/registry
             ./target
-          key: cache-${{ github.ref }}-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            cache-refs/heads/main-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+          key: cache4-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
 
       - name: test_format.js
         if: matrix.kind == 'lint'
