@@ -5348,7 +5348,7 @@ console.log("finish");
       .arg("./test_util/std/examples/welcome.ts")
       .stdout(std::process::Stdio::piped())
       .spawn()
-      .unwrap()
+      .unwrap() 
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
