@@ -466,11 +466,11 @@
           "Setting (sloppy mode)"
         ],
         "constructor.any.js": true,
-        "grow.any.js": [
-          "Growing shared memory does not detach old buffer"
-        ],
+        "grow.any.js": true,
         "toString.any.js": true,
-        "type.tentative.any.js": false
+        "type.tentative.any.js": false,
+        "constructor-shared.tentative.any.js": true,
+        "constructor-types.tentative.any.js": false
       },
       "module": {
         "constructor.any.js": true,
@@ -487,7 +487,16 @@
         "length.any.js": [
           "Setting (sloppy mode)"
         ],
-        "toString.any.js": true
+        "toString.any.js": true,
+        "constructor-reftypes.tentative.any.js": [
+          "initialize externref table with default value",
+          "initialize anyfunc table with default value",
+          "initialize anyfunc table with a bad default value"
+        ],
+        "constructor-types.tentative.any.js": false,
+        "grow-reftypes.tentative.any.js": false,
+        "set-reftypes.tentative.any.js": false,
+        "type.tentative.any.js": false
       }
     },
     "serialization": {
