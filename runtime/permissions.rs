@@ -34,19 +34,19 @@ pub enum PermissionState {
 }
 
 impl PermissionState {
-  /// Check the permission state.
+  /// Check the permission state. bool is whether a prompt was issued.
   fn check(
     self,
     name: &str,
     info: Option<&str>,
     prompt: bool,
-  ) -> Result<(), AnyError> {
+  ) -> (Result<(), AnyError>, bool) {
     let access = format!(
       "{} access{}",
       name,
       info.map_or(String::new(), |info| { format!(" to {}", info) }),
     );
-    if self == PermissionState::Granted
+    let result = if self == PermissionState::Granted
       || (prompt
         && self == PermissionState::Prompt
         && permission_prompt(&access))
@@ -61,7 +61,8 @@ impl PermissionState {
           access, name
         ),
       ))
-    }
+    };
+    (result, prompt && self == PermissionState::Prompt)
   }
 }
 
@@ -113,9 +114,15 @@ impl UnitPermission {
   }
 
   pub fn check(&mut self) -> Result<(), AnyError> {
-    self.state.check(self.name, None, self.prompt)?;
-    self.state = PermissionState::Granted;
-    Ok(())
+    let (result, prompted) = self.state.check(self.name, None, self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.state = PermissionState::Granted;
+      } else {
+        self.state = PermissionState::Denied;
+      }
+    }
+    result
   }
 }
 
@@ -253,13 +260,19 @@ impl UnaryPermission<ReadDescriptor> {
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    self.query(Some(&resolved_path)).check(
+    let (result, prompted) = self.query(Some(&resolved_path)).check(
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
       self.prompt,
-    )?;
-    self.granted_list.insert(ReadDescriptor(resolved_path));
-    Ok(())
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(ReadDescriptor(resolved_path));
+      } else {
+        self.denied_list.insert(ReadDescriptor(resolved_path));
+      }
+    }
+    result
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -270,13 +283,19 @@ impl UnaryPermission<ReadDescriptor> {
     display: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
-    self.query(Some(&resolved_path)).check(
+    let (result, prompted) = self.query(Some(&resolved_path)).check(
       self.name,
       Some(&format!("<{}>", display)),
       self.prompt,
-    )?;
-    self.granted_list.insert(ReadDescriptor(resolved_path));
-    Ok(())
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(ReadDescriptor(resolved_path));
+      } else {
+        self.denied_list.insert(ReadDescriptor(resolved_path));
+      }
+    }
+    result
   }
 }
 
@@ -367,13 +386,19 @@ impl UnaryPermission<WriteDescriptor> {
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    self.query(Some(&resolved_path)).check(
+    let (result, prompted) = self.query(Some(&resolved_path)).check(
       self.name,
       Some(&format!("\"{}\"", display_path.display())),
       self.prompt,
-    )?;
-    self.granted_list.insert(WriteDescriptor(resolved_path));
-    Ok(())
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(WriteDescriptor(resolved_path));
+      } else {
+        self.denied_list.insert(WriteDescriptor(resolved_path));
+      }
+    }
+    result
   }
 }
 
@@ -478,13 +503,19 @@ impl UnaryPermission<NetDescriptor> {
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
     let new_host = NetDescriptor::new(&host);
-    self.query(Some(host)).check(
+    let (result, prompted) = self.query(Some(host)).check(
       self.name,
       Some(&format!("\"{}\"", new_host)),
       self.prompt,
-    )?;
-    self.granted_list.insert(new_host);
-    Ok(())
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(new_host);
+      } else {
+        self.denied_list.insert(new_host);
+      }
+    }
+    result
   }
 
   pub fn check_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
@@ -497,13 +528,19 @@ impl UnaryPermission<NetDescriptor> {
       Some(port) => format!("{}:{}", hostname, port),
     };
     let host = &(&hostname, url.port_or_known_default());
-    self.query(Some(host)).check(
+    let (result, prompted) = self.query(Some(host)).check(
       self.name,
       Some(&format!("\"{}\"", display_host)),
       self.prompt,
-    )?;
-    self.granted_list.insert(NetDescriptor::new(&host));
-    Ok(())
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(NetDescriptor::new(&host));
+      } else {
+        self.denied_list.insert(NetDescriptor::new(&host));
+      }
+    }
+    result
   }
 }
 
@@ -575,21 +612,32 @@ impl UnaryPermission<RunDescriptor> {
   }
 
   pub fn check(&mut self, cmd: &str) -> Result<(), AnyError> {
-    self.query(Some(cmd)).check(
+    let (result, prompted) = self.query(Some(cmd)).check(
       self.name,
       Some(&format!("\"{}\"", cmd)),
       self.prompt,
-    )?;
-    self.granted_list.insert(RunDescriptor(cmd.to_string()));
-    Ok(())
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(RunDescriptor(cmd.to_string()));
+      } else {
+        self.denied_list.insert(RunDescriptor(cmd.to_string()));
+      }
+    }
+    result
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
-    self
-      .query(None)
-      .check(self.name, Some("all"), self.prompt)?;
-    self.global_state = PermissionState::Granted;
-    Ok(())
+    let (result, prompted) =
+      self.query(None).check(self.name, Some("all"), self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.global_state = PermissionState::Granted;
+      } else {
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
   }
 }
 
@@ -1366,24 +1414,18 @@ mod tests {
 
     let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
 
-    set_prompt_result(false);
-    assert!(perms.read.check(&Path::new("/foo")).is_err());
     set_prompt_result(true);
     assert!(perms.read.check(&Path::new("/foo")).is_ok());
     set_prompt_result(false);
     assert!(perms.read.check(&Path::new("/foo")).is_ok());
     assert!(perms.read.check(&Path::new("/bar")).is_err());
 
-    set_prompt_result(false);
-    assert!(perms.write.check(&Path::new("/foo")).is_err());
     set_prompt_result(true);
     assert!(perms.write.check(&Path::new("/foo")).is_ok());
     set_prompt_result(false);
     assert!(perms.write.check(&Path::new("/foo")).is_ok());
     assert!(perms.write.check(&Path::new("/bar")).is_err());
 
-    set_prompt_result(false);
-    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
     set_prompt_result(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
     set_prompt_result(false);
@@ -1393,19 +1435,73 @@ mod tests {
     assert!(perms.net.check(&("deno.land", Some(8000))).is_err());
     assert!(perms.net.check(&("deno.land", None)).is_err());
 
-    set_prompt_result(false);
-    assert!(perms.run.check("cat").is_err());
     set_prompt_result(true);
     assert!(perms.run.check("cat").is_ok());
     set_prompt_result(false);
     assert!(perms.run.check("cat").is_ok());
     assert!(perms.run.check("ls").is_err());
 
-    set_prompt_result(false);
-    assert!(perms.hrtime.check().is_err());
     set_prompt_result(true);
     assert!(perms.hrtime.check().is_ok());
     set_prompt_result(false);
     assert!(perms.hrtime.check().is_ok());
+  }
+
+  #[test]
+  fn test_check_fail() {
+    let mut perms = Permissions {
+      read: Permissions::new_read(&None, true),
+      write: Permissions::new_write(&None, true),
+      net: Permissions::new_net(&None, true),
+      env: Permissions::new_env(false, true),
+      run: Permissions::new_run(&None, true),
+      plugin: Permissions::new_plugin(false, true),
+      hrtime: Permissions::new_hrtime(false, true),
+    };
+
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+
+    set_prompt_result(false);
+    assert!(perms.read.check(&Path::new("/foo")).is_err());
+    set_prompt_result(true);
+    assert!(perms.read.check(&Path::new("/foo")).is_err());
+    assert!(perms.read.check(&Path::new("/bar")).is_ok());
+    set_prompt_result(false);
+    assert!(perms.read.check(&Path::new("/bar")).is_ok());
+
+    set_prompt_result(false);
+    assert!(perms.write.check(&Path::new("/foo")).is_err());
+    set_prompt_result(true);
+    assert!(perms.write.check(&Path::new("/foo")).is_err());
+    assert!(perms.write.check(&Path::new("/bar")).is_ok());
+    set_prompt_result(false);
+    assert!(perms.write.check(&Path::new("/bar")).is_ok());
+
+    set_prompt_result(false);
+    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
+    set_prompt_result(true);
+    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
+    assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
+    assert!(perms.net.check(&("127.0.0.1", None)).is_ok());
+    assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
+    assert!(perms.net.check(&("deno.land", None)).is_ok());
+    set_prompt_result(false);
+    assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
+    assert!(perms.net.check(&("127.0.0.1", None)).is_ok());
+    assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
+    assert!(perms.net.check(&("deno.land", None)).is_ok());
+
+    set_prompt_result(false);
+    assert!(perms.run.check("cat").is_err());
+    set_prompt_result(true);
+    assert!(perms.run.check("cat").is_err());
+    assert!(perms.run.check("ls").is_ok());
+    set_prompt_result(false);
+    assert!(perms.run.check("ls").is_ok());
+
+    set_prompt_result(false);
+    assert!(perms.hrtime.check().is_err());
+    set_prompt_result(true);
+    assert!(perms.hrtime.check().is_err());
   }
 }
