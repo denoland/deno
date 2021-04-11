@@ -75,6 +75,8 @@
   };
 
   function execPath() {
+    // modified for ci testing
+    console.log(2)
     return core.jsonOpSync("op_exec_path");
   }
 
