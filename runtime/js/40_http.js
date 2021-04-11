@@ -199,6 +199,7 @@
         }
       },
       cancel() {
+        console.log(1);
         core.close(requestBodyRid);
       },
     });
