@@ -24,9 +24,10 @@ pub struct Location(pub Url);
 pub struct BlobUrlStore(Arc<Mutex<HashMap<Url, Blob>>>);
 
 impl BlobUrlStore {
-  pub fn get(&self, url: &ModuleSpecifier) -> Result<Option<Blob>, AnyError> {
+  pub fn get(&self, mut url: Url) -> Result<Option<Blob>, AnyError> {
     let blob_store = self.0.lock().unwrap();
-    Ok(blob_store.get(url).cloned())
+    url.set_fragment(None);
+    Ok(blob_store.get(&url).cloned())
   }
 
   pub fn insert(&self, blob: Blob, maybe_location: Option<Url>) -> Url {

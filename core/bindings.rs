@@ -9,7 +9,6 @@ use crate::OpResponse;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
-use futures::future::FutureExt;
 use rusty_v8 as v8;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -455,7 +454,7 @@ fn send<'s>(
     }
   };
 
-  let payload = OpPayload::new(scope, v);
+  let payload = OpPayload::new(scope, v, promise_id);
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload, buf);
   match op {
     Op::Sync(resp) => match resp {
@@ -467,13 +466,11 @@ fn send<'s>(
       }
     },
     Op::Async(fut) => {
-      let fut2 = fut.map(move |resp| (promise_id, resp));
-      state.pending_ops.push(fut2.boxed_local());
+      state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      let fut2 = fut.map(move |resp| (promise_id, resp));
-      state.pending_unref_ops.push(fut2.boxed_local());
+      state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::NotFound => {

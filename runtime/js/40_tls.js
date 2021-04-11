@@ -51,6 +51,7 @@
     keyFile,
     hostname = "0.0.0.0",
     transport = "tcp",
+    alpnProtocols,
   }) {
     const res = opListenTls({
       port,
@@ -58,6 +59,7 @@
       keyFile,
       hostname,
       transport,
+      alpnProtocols,
     });
     return new TLSListener(res.rid, res.localAddr);
   }

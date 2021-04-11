@@ -475,7 +475,7 @@ impl FileFetcher {
     }
 
     let blob_url_storage = self.blob_url_store.borrow();
-    let blob = blob_url_storage.get(specifier)?.ok_or_else(|| {
+    let blob = blob_url_storage.get(specifier.clone())?.ok_or_else(|| {
       custom_error(
         "NotFound",
         format!("Blob URL not found: \"{}\".", specifier),

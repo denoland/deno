@@ -132,11 +132,11 @@ where
           p: OpPayload,
           b: Option<ZeroCopyBuf>|
           -> Op {
+      let pid = p.promise_id;
       let min_arg: u32 = p.deserialize().unwrap();
       let fut = op_fn(state.clone(), min_arg, b)
-        .map(move |result| serialize_bin_result(result, state));
-      let temp = Box::pin(fut);
-      Op::Async(temp)
+        .map(move |result| (pid, serialize_bin_result(result, state)));
+      Op::Async(Box::pin(fut))
     },
   )
 }
