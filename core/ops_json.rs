@@ -85,12 +85,13 @@ where
                               p: OpPayload,
                               buf: Option<ZeroCopyBuf>|
         -> Result<Op, AnyError> {
+    let pid = p.promise_id;
     // Parse args
     let args = p.deserialize()?;
 
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), args, buf)
-      .map(move |result| serialize_op_result(result, state));
+      .map(move |result| (pid, serialize_op_result(result, state)));
     Ok(Op::Async(Box::pin(fut)))
   };
 

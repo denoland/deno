@@ -1507,7 +1507,7 @@ pub mod tests {
       Mode::Async => {
         let control: u8 = payload.deserialize().unwrap();
         assert_eq!(control, 42);
-        let resp = OpResponse::Value(Box::new(43));
+        let resp = (0, OpResponse::Value(Box::new(43)));
         Op::Async(Box::pin(futures::future::ready(resp)))
       }
       Mode::AsyncUnref => {
@@ -1516,7 +1516,7 @@ pub mod tests {
         let fut = async {
           // This future never finish.
           futures::future::pending::<()>().await;
-          OpResponse::Value(Box::new(43))
+          (0, OpResponse::Value(Box::new(43)))
         };
         Op::AsyncUnref(Box::pin(fut))
       }
@@ -1527,7 +1527,7 @@ pub mod tests {
         }
 
         let resp = OpResponse::Value(Box::new(43));
-        Op::Async(Box::pin(futures::future::ready(resp)))
+        Op::Async(Box::pin(futures::future::ready((0, resp))))
       }
     }
   }
@@ -1971,7 +1971,7 @@ pub mod tests {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       let control: u8 = payload.deserialize().unwrap();
       assert_eq!(control, 42);
-      let resp = OpResponse::Value(Box::new(43));
+      let resp = (0, OpResponse::Value(Box::new(43)));
       Op::Async(Box::pin(futures::future::ready(resp)))
     };
 
