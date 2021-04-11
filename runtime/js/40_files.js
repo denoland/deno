@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
+  const { ftruncate, ftruncateSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
 
   function seekSync(
@@ -85,6 +86,14 @@
 
     writeSync(p) {
       return writeSync(this.rid, p);
+    }
+
+    truncate(len) {
+      return ftruncate(this.rid, len);
+    }
+
+    truncateSync(len) {
+      return ftruncateSync(this.rid, len);
     }
 
     read(p) {
