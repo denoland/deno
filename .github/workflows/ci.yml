@@ -165,7 +165,13 @@ jobs:
 
       - name: Touch diff from main
         shell: bash
-        run: git diff --name-only main HEAD | tee /dev/stderr | xargs touch
+        run: |
+          if git diff --name-only origin/main HEAD --exit-code > diff.txt; then
+            echo No diff from main branch
+          else
+            cat diff.txt
+            cat diff.txt | xargs touch
+          fi
 
       # Work around https://github.com/actions/cache/issues/403 by using GNU tar
       # instead of BSD tar.
