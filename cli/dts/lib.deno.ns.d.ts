@@ -218,7 +218,7 @@ declare namespace Deno {
      * ```
      *
      * Requires `allow-env` permission. */
-    toObject(): { [index: string]: string };
+    toObject(): { [index: string]: string | undefined };
   };
 
   /**
