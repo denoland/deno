@@ -7,6 +7,7 @@ use deno_core::url::Url;
 use lspower::jsonrpc::Error as LSPError;
 use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
@@ -52,6 +53,8 @@ pub struct CompletionSettings {
   pub paths: bool,
   #[serde(default)]
   pub auto_imports: bool,
+  #[serde(default)]
+  pub imports: ImportCompletionSettings,
 }
 
 impl Default for CompletionSettings {
@@ -61,6 +64,22 @@ impl Default for CompletionSettings {
       names: true,
       paths: true,
       auto_imports: true,
+      imports: ImportCompletionSettings::default(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCompletionSettings {
+  #[serde(default)]
+  pub hosts: HashMap<String, bool>,
+}
+
+impl Default for ImportCompletionSettings {
+  fn default() -> Self {
+    Self {
+      hosts: HashMap::default(),
     }
   }
 }

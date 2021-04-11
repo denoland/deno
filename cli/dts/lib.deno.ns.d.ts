@@ -1967,10 +1967,10 @@ declare namespace Deno {
      *
      * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
      * manually before the process can exit.
-     * 
+     *
      * To run process to completion and collect output from both `stdout` and
      * `stderr` use:
-     * 
+     *
      * ```ts
      * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
@@ -2135,6 +2135,7 @@ declare namespace Deno {
 
   export interface RunPermissionDescriptor {
     name: "run";
+    command?: string;
   }
 
   export interface ReadPermissionDescriptor {
@@ -2334,4 +2335,55 @@ declare namespace Deno {
     newpath: string,
     options?: SymlinkOptions,
   ): Promise<void>;
+
+  /**
+   * Synchronously truncates or extends the specified file stream, to reach the
+   * specified `len`.
+   *
+   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
+   *
+   * if the file previously was larger than this new length, the extra  data  is  lost.
+   *
+   * if  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
+   * 
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * Deno.ftruncateSync(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * Deno.readSync(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncateSync(rid: number, len?: number): void;
+
+  /**
+   * Truncates or extends the specified file stream, to reach the specified `len`.
+   *
+   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
+   *
+   * If the file previously was larger than this new length, the extra  data  is  lost.
+   *
+   * If  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.ftruncate(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * await Deno.read(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncate(rid: number, len?: number): Promise<void>;
 }

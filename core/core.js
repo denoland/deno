@@ -9,10 +9,51 @@
   let opsCache = {};
   const errorMap = {};
   let nextPromiseId = 1;
-  const promiseTable = new Map();
+  const promiseMap = new Map();
+  const RING_SIZE = 4 * 1024;
+  const NO_PROMISE = null; // Alias to null is faster than plain nulls
+  const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
 
   function init() {
     recv(handleAsyncMsgFromRust);
+  }
+
+  function setPromise(promiseId) {
+    const idx = promiseId % RING_SIZE;
+    // Move old promise from ring to map
+    const oldPromise = promiseRing[idx];
+    if (oldPromise !== NO_PROMISE) {
+      const oldPromiseId = promiseId - RING_SIZE;
+      promiseMap.set(oldPromiseId, oldPromise);
+    }
+    // Set new promise
+    return promiseRing[idx] = newPromise();
+  }
+
+  function getPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
+      const promise = promiseMap.get(promiseId);
+      promiseMap.delete(promiseId);
+      return promise;
+    }
+    // Otherwise take from ring
+    const idx = promiseId % RING_SIZE;
+    const promise = promiseRing[idx];
+    promiseRing[idx] = NO_PROMISE;
+    return promise;
+  }
+
+  function newPromise() {
+    let resolve, reject;
+    const promise = new Promise((resolve_, reject_) => {
+      resolve = resolve_;
+      reject = reject_;
+    });
+    promise.resolve = resolve;
+    promise.reject = reject;
+    return promise;
   }
 
   function ops() {
@@ -24,7 +65,10 @@
 
   function handleAsyncMsgFromRust() {
     for (let i = 0; i < arguments.length; i += 2) {
-      opAsyncHandler(arguments[i], arguments[i + 1]);
+      const promiseId = arguments[i];
+      const res = arguments[i + 1];
+      const promise = getPromise(promiseId);
+      promise.resolve(res);
     }
   }
 
@@ -43,57 +87,31 @@
     return errorMap[errorName] ?? [undefined, []];
   }
 
-  function processResponse(res) {
-    if (!isErr(res)) {
-      return res;
+  function unwrapOpResult(res) {
+    // .$err_class_name is a special key that should only exist on errors
+    if (res?.$err_class_name) {
+      const className = res.$err_class_name;
+      const [ErrorClass, args] = getErrorClassAndArgs(className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw new ErrorClass(res.message, ...args);
     }
-    throw processErr(res);
-  }
-
-  // .$err_class_name is a special key that should only exist on errors
-  function isErr(res) {
-    return !!(res && res.$err_class_name);
-  }
-
-  function processErr(err) {
-    const className = err.$err_class_name;
-    const [ErrorClass, args] = getErrorClassAndArgs(className);
-    if (!ErrorClass) {
-      return new Error(
-        `Unregistered error class: "${className}"\n  ${err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-      );
-    }
-    return new ErrorClass(err.message, ...args);
+    return res;
   }
 
   function jsonOpAsync(opName, args = null, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
     // Handle sync error (e.g: error parsing args)
-    if (maybeError) processResponse(maybeError);
-    let resolve, reject;
-    const promise = new Promise((resolve_, reject_) => {
-      resolve = resolve_;
-      reject = reject_;
-    });
-    promise.resolve = resolve;
-    promise.reject = reject;
-    promiseTable.set(promiseId, promise);
-    return promise;
+    if (maybeError) return unwrapOpResult(maybeError);
+    return setPromise(promiseId).then(unwrapOpResult);
   }
 
   function jsonOpSync(opName, args = null, zeroCopy = null) {
-    return processResponse(dispatch(opName, null, args, zeroCopy));
-  }
-
-  function opAsyncHandler(promiseId, res) {
-    const promise = promiseTable.get(promiseId);
-    promiseTable.delete(promiseId);
-    if (!isErr(res)) {
-      promise.resolve(res);
-    } else {
-      promise.reject(processErr(res));
-    }
+    return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
   }
 
   function binOpSync(opName, args = null, zeroCopy = null) {

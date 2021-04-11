@@ -18,9 +18,11 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
 use log::info;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -32,7 +34,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 static DENO_AUTH_TOKENS: &str = "DENO_AUTH_TOKENS";
-pub const SUPPORTED_SCHEMES: [&str; 4] = ["data", "file", "http", "https"];
+pub const SUPPORTED_SCHEMES: [&str; 5] =
+  ["data", "blob", "file", "http", "https"];
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -55,7 +58,7 @@ pub struct File {
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
 impl FileCache {
@@ -309,7 +312,7 @@ fn strip_shebang(mut value: String) -> String {
 }
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
@@ -317,6 +320,7 @@ pub struct FileFetcher {
   cache_setting: CacheSetting,
   http_cache: HttpCache,
   http_client: reqwest::Client,
+  blob_url_store: BlobUrlStore,
 }
 
 impl FileFetcher {
@@ -325,6 +329,7 @@ impl FileFetcher {
     cache_setting: CacheSetting,
     allow_remote: bool,
     ca_data: Option<Vec<u8>>,
+    blob_url_store: BlobUrlStore,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
@@ -333,6 +338,7 @@ impl FileFetcher {
       cache_setting,
       http_cache,
       http_client: create_http_client(get_user_agent(), ca_data)?,
+      blob_url_store,
     })
   }
 
@@ -446,6 +452,62 @@ impl FileFetcher {
     })
   }
 
+  /// Get a blob URL.
+  fn fetch_blob_url(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<File, AnyError> {
+    debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
+    match self.fetch_cached(specifier, 0) {
+      Ok(Some(file)) => return Ok(file),
+      Ok(None) => {}
+      Err(err) => return Err(err),
+    }
+
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "Specifier not found in cache: \"{}\", --cached-only is specified.",
+          specifier
+        ),
+      ));
+    }
+
+    let blob_url_storage = self.blob_url_store.borrow();
+    let blob = blob_url_storage.get(specifier.clone())?.ok_or_else(|| {
+      custom_error(
+        "NotFound",
+        format!("Blob URL not found: \"{}\".", specifier),
+      )
+    })?;
+
+    let content_type = blob.media_type;
+
+    let (media_type, maybe_charset) =
+      map_content_type(specifier, Some(content_type.clone()));
+    let source =
+      strip_shebang(get_source_from_bytes(blob.data, maybe_charset)?);
+
+    let local =
+      self
+        .http_cache
+        .get_cache_filename(specifier)
+        .ok_or_else(|| {
+          generic_error("Cannot convert specifier to cached filename.")
+        })?;
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), content_type);
+    self.http_cache.set(specifier, headers, source.as_bytes())?;
+
+    Ok(File {
+      local,
+      maybe_types: None,
+      media_type,
+      source,
+      specifier: specifier.clone(),
+    })
+  }
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -555,6 +617,12 @@ impl FileFetcher {
         self.cache.insert(specifier.clone(), file.clone());
       }
       result
+    } else if scheme == "blob" {
+      let result = self.fetch_blob_url(specifier);
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
+      }
+      result
     } else if !self.allow_remote {
       Err(custom_error(
         "NoRemote",
@@ -604,6 +672,7 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
+  use deno_runtime::deno_file::Blob;
   use std::rc::Rc;
   use tempfile::TempDir;
 
@@ -611,14 +680,29 @@ mod tests {
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>) {
+    let (file_fetcher, temp_dir, _) =
+      setup_with_blob_url_store(cache_setting, maybe_temp_dir);
+    (file_fetcher, temp_dir)
+  }
+
+  fn setup_with_blob_url_store(
+    cache_setting: CacheSetting,
+    maybe_temp_dir: Option<Rc<TempDir>>,
+  ) -> (FileFetcher, Rc<TempDir>, BlobUrlStore) {
     let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
       Rc::new(TempDir::new().expect("failed to create temp directory"))
     });
     let location = temp_dir.path().join("deps");
-    let file_fetcher =
-      FileFetcher::new(HttpCache::new(&location), cache_setting, true, None)
-        .expect("setup failed");
-    (file_fetcher, temp_dir)
+    let blob_url_store = BlobUrlStore::default();
+    let file_fetcher = FileFetcher::new(
+      HttpCache::new(&location),
+      cache_setting,
+      true,
+      None,
+      blob_url_store.clone(),
+    )
+    .expect("setup failed");
+    (file_fetcher, temp_dir, blob_url_store)
   }
 
   macro_rules! file_url {
@@ -989,6 +1073,36 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_fetch_blob_url() {
+    let (file_fetcher, _, blob_url_store) =
+      setup_with_blob_url_store(CacheSetting::Use, None);
+
+    let specifier = blob_url_store.insert(
+      Blob {
+        data:
+          "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+            .as_bytes()
+            .to_vec(),
+        media_type: "application/typescript".to_string(),
+      },
+      None,
+    );
+
+    let result = file_fetcher
+      .fetch(&specifier, &Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    assert_eq!(
+      file.source,
+      "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+    );
+    assert_eq!(file.media_type, MediaType::TypeScript);
+    assert_eq!(file.maybe_types, None);
+    assert_eq!(file.specifier, specifier);
+  }
+
+  #[tokio::test]
   async fn test_fetch_complex() {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
@@ -1061,6 +1175,7 @@ mod tests {
       CacheSetting::ReloadAll,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("setup failed");
     let result = file_fetcher
@@ -1087,6 +1202,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1114,6 +1230,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1274,6 +1391,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1304,6 +1422,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1413,6 +1532,7 @@ mod tests {
       CacheSetting::Use,
       false,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1439,6 +1559,7 @@ mod tests {
       CacheSetting::Only,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1446,6 +1567,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =

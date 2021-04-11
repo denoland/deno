@@ -128,13 +128,19 @@ impl LspUrlMap {
   }
 
   /// Normalize URLs from the client, where "virtual" `deno:///` URLs are
-  /// converted into proper module specifiers.
+  /// converted into proper module specifiers, as well as handle situations
+  /// where the client encodes a file URL differently than Rust does by default
+  /// causing issues with string matching of URLs.
   pub fn normalize_url(&self, url: &Url) -> ModuleSpecifier {
     if let Some(specifier) = self.get_specifier(url) {
-      specifier.clone()
-    } else {
-      url.clone()
+      return specifier.clone();
     }
+    if url.scheme() == "file" {
+      if let Ok(path) = url.to_file_path() {
+        return Url::from_file_path(path).unwrap();
+      }
+    }
+    url.clone()
   }
 }
 
@@ -210,5 +216,35 @@ mod tests {
 
     let actual_specifier = map.normalize_url(&actual_url);
     assert_eq!(actual_specifier, fixture);
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn test_normalize_windows_path() {
+    let map = LspUrlMap::default();
+    let fixture = resolve_url(
+      "file:///c%3A/Users/deno/Desktop/file%20with%20spaces%20in%20name.txt",
+    )
+    .unwrap();
+    let actual = map.normalize_url(&fixture);
+    let expected =
+      Url::parse("file:///C:/Users/deno/Desktop/file with spaces in name.txt")
+        .unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn test_normalize_percent_encoded_path() {
+    let map = LspUrlMap::default();
+    let fixture = resolve_url(
+      "file:///Users/deno/Desktop/file%20with%20spaces%20in%20name.txt",
+    )
+    .unwrap();
+    let actual = map.normalize_url(&fixture);
+    let expected =
+      Url::parse("file:///Users/deno/Desktop/file with spaces in name.txt")
+        .unwrap();
+    assert_eq!(actual, expected);
   }
 }
