@@ -90,6 +90,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     None,
   ),
   (
+    "text_encoder_into",
+    &["run", "cli/tests/text_encoder_into_perf.js"],
+    None,
+  ),
+  (
     "check",
     &[
       "cache",
