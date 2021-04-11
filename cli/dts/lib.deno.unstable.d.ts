@@ -1042,47 +1042,6 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   * Synchronously truncates or extends the specified file stream, to reach the
-   * specified `len`.  If `len` is not specified then the entire file contents
-   * are truncated.
-   *
-   * ```ts
-   * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
-   * Deno.ftruncateSync(file.rid);
-   *
-   * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 7);
-   * const data = new Uint8Array(32);
-   * Deno.readSync(file.rid, data);
-   * console.log(new TextDecoder().decode(data)); // Hello W
-   * ```
-   */
-  export function ftruncateSync(rid: number, len?: number): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   * Truncates or extends the specified file stream, to reach the specified `len`. If
-   * `len` is not specified then the entire file contents are truncated.
-   *
-   * ```ts
-   * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.ftruncate(file.rid);
-   *
-   * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 7);
-   * const data = new Uint8Array(32);
-   * await Deno.read(file.rid, data);
-   * console.log(new TextDecoder().decode(data)); // Hello W
-   * ```
-   */
-  export function ftruncate(rid: number, len?: number): Promise<void>;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
    *
