@@ -270,6 +270,7 @@ impl UnaryPermission<ReadDescriptor> {
         self.granted_list.insert(ReadDescriptor(resolved_path));
       } else {
         self.denied_list.insert(ReadDescriptor(resolved_path));
+        self.global_state = PermissionState::Denied;
       }
     }
     result
@@ -293,6 +294,7 @@ impl UnaryPermission<ReadDescriptor> {
         self.granted_list.insert(ReadDescriptor(resolved_path));
       } else {
         self.denied_list.insert(ReadDescriptor(resolved_path));
+        self.global_state = PermissionState::Denied;
       }
     }
     result
@@ -396,6 +398,7 @@ impl UnaryPermission<WriteDescriptor> {
         self.granted_list.insert(WriteDescriptor(resolved_path));
       } else {
         self.denied_list.insert(WriteDescriptor(resolved_path));
+        self.global_state = PermissionState::Denied;
       }
     }
     result
@@ -513,6 +516,7 @@ impl UnaryPermission<NetDescriptor> {
         self.granted_list.insert(new_host);
       } else {
         self.denied_list.insert(new_host);
+        self.global_state = PermissionState::Denied;
       }
     }
     result
@@ -538,6 +542,7 @@ impl UnaryPermission<NetDescriptor> {
         self.granted_list.insert(NetDescriptor::new(&host));
       } else {
         self.denied_list.insert(NetDescriptor::new(&host));
+        self.global_state = PermissionState::Denied;
       }
     }
     result
@@ -622,6 +627,7 @@ impl UnaryPermission<RunDescriptor> {
         self.granted_list.insert(RunDescriptor(cmd.to_string()));
       } else {
         self.denied_list.insert(RunDescriptor(cmd.to_string()));
+        self.global_state = PermissionState::Denied;
       }
     }
     result
@@ -1482,14 +1488,10 @@ mod tests {
     set_prompt_result(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
-    assert!(perms.net.check(&("127.0.0.1", None)).is_ok());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
-    assert!(perms.net.check(&("deno.land", None)).is_ok());
     set_prompt_result(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
-    assert!(perms.net.check(&("127.0.0.1", None)).is_ok());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
-    assert!(perms.net.check(&("deno.land", None)).is_ok());
 
     set_prompt_result(false);
     assert!(perms.run.check("cat").is_err());
