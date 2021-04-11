@@ -50,8 +50,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "formatDiagnostics",
   "fstat",
   "fstatSync",
-  "ftruncate",
-  "ftruncateSync",
   "futime",
   "futimeSync",
   "hostname",

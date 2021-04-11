@@ -16,6 +16,7 @@ async function dlint() {
   const sourceFiles = await getSources(ROOT_PATH, [
     "*.js",
     "*.ts",
+    ":!:.github/mtime_cache/action.js",
     ":!:cli/tests/swc_syntax_error.ts",
     ":!:cli/tests/038_checkjs.js",
     ":!:cli/tests/error_008_checkjs.js",

@@ -2,7 +2,6 @@
 
 #![deny(warnings)]
 
-use data_url::DataUrl;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
@@ -23,6 +22,8 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
+use data_url::DataUrl;
+use deno_file::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -216,6 +217,34 @@ where
         .status(http::StatusCode::OK)
         .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
         .body(reqwest::Body::from(body))?;
+
+      let fut = async move { Ok(Response::from(response)) };
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, None)
+    }
+    "blob" => {
+      let blob_url_storage =
+        state.try_borrow::<BlobUrlStore>().ok_or_else(|| {
+          type_error("Blob URLs are not supported in this context.")
+        })?;
+
+      let blob = blob_url_storage
+        .get(url)?
+        .ok_or_else(|| type_error("Blob for the given URL not found."))?;
+
+      if method != "GET" {
+        return Err(type_error("Blob URL fetch only supports GET method."));
+      }
+
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_LENGTH, blob.data.len())
+        .header(http::header::CONTENT_TYPE, blob.media_type)
+        .body(reqwest::Body::from(blob.data))?;
 
       let fut = async move { Ok(Response::from(response)) };
 
