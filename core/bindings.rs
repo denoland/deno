@@ -9,7 +9,6 @@ use crate::OpResponse;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
-use futures::future::FutureExt;
 use rusty_v8 as v8;
 use serde::Serialize;
 use serde_v8::to_v8;

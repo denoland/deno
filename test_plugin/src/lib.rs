@@ -51,5 +51,5 @@ fn op_test_async(
     OpResponse::Buffer(result_box)
   };
 
-  Op::Async(fut.boxed())
+  Op::Async((0, fut.boxed()))
 }
