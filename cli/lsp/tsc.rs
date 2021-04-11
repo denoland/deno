@@ -31,13 +31,14 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
+use log::warn;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
+use std::{borrow::Cow, cmp};
 use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -166,11 +167,7 @@ pub async fn get_asset(
       .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
       .await?;
     let maybe_text: Option<String> = serde_json::from_value(res)?;
-    let maybe_asset = if let Some(text) = maybe_text {
-      Some(AssetDocument::new(text))
-    } else {
-      None
-    };
+    let maybe_asset = maybe_text.map(AssetDocument::new);
     Ok(maybe_asset)
   }
 }
@@ -183,7 +180,7 @@ fn display_parts_to_string(parts: &[SymbolDisplayPart]) -> String {
     .join("")
 }
 
-fn get_tag_body_text(tag: &JSDocTagInfo) -> Option<String> {
+fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
   tag.text.as_ref().map(|text| match tag.name.as_str() {
     "example" => {
       let caption_regex =
@@ -209,7 +206,7 @@ fn get_tag_body_text(tag: &JSDocTagInfo) -> Option<String> {
   })
 }
 
-fn get_tag_documentation(tag: &JSDocTagInfo) -> String {
+fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
       if let Some(text) = &tag.text {
@@ -439,7 +436,7 @@ pub struct SymbolDisplayPart {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JSDocTagInfo {
+pub struct JsDocTagInfo {
   name: String,
   text: Option<String>,
 }
@@ -452,7 +449,7 @@ pub struct QuickInfo {
   text_span: TextSpan,
   display_parts: Option<Vec<SymbolDisplayPart>>,
   documentation: Option<Vec<SymbolDisplayPart>>,
-  tags: Option<Vec<JSDocTagInfo>>,
+  tags: Option<Vec<JsDocTagInfo>>,
 }
 
 impl QuickInfo {
@@ -536,10 +533,11 @@ impl DocumentSpan {
     let origin_selection_range =
       if let Some(original_context_span) = &self.original_context_span {
         Some(original_context_span.to_range(line_index))
-      } else if let Some(original_text_span) = &self.original_text_span {
-        Some(original_text_span.to_range(line_index))
       } else {
-        None
+        self
+          .original_text_span
+          .as_ref()
+          .map(|original_text_span| original_text_span.to_range(line_index))
       };
     let link = lsp::LocationLink {
       origin_selection_range,
@@ -927,7 +925,7 @@ pub struct CompletionEntryDetails {
   kind_modifiers: String,
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
-  tags: Option<Vec<JSDocTagInfo>>,
+  tags: Option<Vec<JsDocTagInfo>>,
   code_actions: Option<Vec<CodeAction>>,
   source: Option<Vec<SymbolDisplayPart>>,
 }
@@ -1190,10 +1188,10 @@ impl CompletionEntry {
     }
 
     let text_edit =
-      if let (Some(text_span), Some(new_text)) = (range, insert_text) {
+      if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
         let range = text_span.to_range(line_index);
         let insert_replace_edit = lsp::InsertReplaceEdit {
-          new_text,
+          new_text: new_text.clone(),
           insert: range,
           replace: range,
         };
@@ -1202,7 +1200,7 @@ impl CompletionEntry {
         None
       };
 
-    let data = CompletionItemData {
+    let tsc = CompletionItemData {
       specifier: specifier.clone(),
       position,
       name: self.name.clone(),
@@ -1218,10 +1216,98 @@ impl CompletionEntry {
       preselect,
       text_edit,
       filter_text,
+      insert_text,
       detail,
       tags,
-      data: Some(serde_json::to_value(data).unwrap()),
+      data: Some(json!({
+        "tsc": tsc,
+      })),
       ..Default::default()
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+pub enum OutliningSpanKind {
+  #[serde(rename = "comment")]
+  Comment,
+  #[serde(rename = "region")]
+  Region,
+  #[serde(rename = "code")]
+  Code,
+  #[serde(rename = "imports")]
+  Imports,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutliningSpan {
+  text_span: TextSpan,
+  hint_span: TextSpan,
+  banner_text: String,
+  auto_collapse: bool,
+  kind: OutliningSpanKind,
+}
+
+const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
+
+impl OutliningSpan {
+  pub fn to_folding_range(
+    &self,
+    line_index: &LineIndex,
+    content: &[u8],
+    line_folding_only: bool,
+  ) -> lsp::FoldingRange {
+    let range = self.text_span.to_range(line_index);
+    lsp::FoldingRange {
+      start_line: range.start.line,
+      start_character: if line_folding_only {
+        None
+      } else {
+        Some(range.start.character)
+      },
+      end_line: self.adjust_folding_end_line(
+        &range,
+        line_index,
+        content,
+        line_folding_only,
+      ),
+      end_character: if line_folding_only {
+        None
+      } else {
+        Some(range.end.character)
+      },
+      kind: self.get_folding_range_kind(&self.kind),
+    }
+  }
+
+  fn adjust_folding_end_line(
+    &self,
+    range: &lsp::Range,
+    line_index: &LineIndex,
+    content: &[u8],
+    line_folding_only: bool,
+  ) -> u32 {
+    if line_folding_only && range.end.line > 0 && range.end.character > 0 {
+      let offset_end: usize = line_index.offset(range.end).unwrap().into();
+      let fold_end_char = content[offset_end - 1];
+      if FOLD_END_PAIR_CHARACTERS.contains(&fold_end_char) {
+        return cmp::max(range.end.line - 1, range.start.line);
+      }
+    }
+
+    range.end.line
+  }
+
+  fn get_folding_range_kind(
+    &self,
+    span_kind: &OutliningSpanKind,
+  ) -> Option<lsp::FoldingRangeKind> {
+    match span_kind {
+      OutliningSpanKind::Comment => Some(lsp::FoldingRangeKind::Comment),
+      OutliningSpanKind::Region => Some(lsp::FoldingRangeKind::Region),
+      OutliningSpanKind::Imports => Some(lsp::FoldingRangeKind::Imports),
+      _ => None,
     }
   }
 }
@@ -1259,7 +1345,7 @@ pub struct SignatureHelpItem {
   separator_display_parts: Vec<SymbolDisplayPart>,
   parameters: Vec<SignatureHelpParameter>,
   documentation: Vec<SymbolDisplayPart>,
-  tags: Vec<JSDocTagInfo>,
+  tags: Vec<JsDocTagInfo>,
 }
 
 impl SignatureHelpItem {
@@ -1326,12 +1412,9 @@ impl SelectionRange {
   ) -> lsp::SelectionRange {
     lsp::SelectionRange {
       range: self.text_span.to_range(line_index),
-      parent: match &self.parent {
-        Some(parent_selection) => {
-          Some(Box::new(parent_selection.to_selection_range(line_index)))
-        }
-        None => None,
-      },
+      parent: self.parent.as_ref().map(|parent_selection| {
+        Box::new(parent_selection.to_selection_range(line_index))
+      }),
     }
   }
 }
@@ -1343,7 +1426,6 @@ struct Response {
 }
 
 struct State<'a> {
-  asset: Option<String>,
   last_id: usize,
   response: Option<Response>,
   state_snapshot: StateSnapshot,
@@ -1353,7 +1435,6 @@ struct State<'a> {
 impl<'a> State<'a> {
   fn new(state_snapshot: StateSnapshot) -> Self {
     Self {
-      asset: None,
       last_id: 1,
       response: None,
       state_snapshot,
@@ -1392,11 +1473,12 @@ fn cache_snapshot(
   Ok(())
 }
 
+// buffer-less json_sync ops
 fn op<F, V, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
   V: de::DeserializeOwned,
-  R: Serialize,
+  R: Serialize + 'static,
 {
   json_op_sync(move |s, args, _bufs| {
     let state = s.borrow_mut::<State>();
@@ -1671,18 +1753,6 @@ fn script_version(
   Ok(None)
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SetAssetArgs {
-  text: Option<String>,
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn set_asset(state: &mut State, args: SetAssetArgs) -> Result<bool, AnyError> {
-  state.asset = args.text;
-  Ok(true)
-}
-
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
@@ -1706,7 +1776,6 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   runtime.register_op("op_respond", op(respond));
   runtime.register_op("op_script_names", op(script_names));
   runtime.register_op("op_script_version", op(script_version));
-  runtime.register_op("op_set_asset", op(set_asset));
 
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);
@@ -1875,6 +1944,8 @@ pub enum RequestMethod {
   GetImplementation((ModuleSpecifier, u32)),
   /// Get a "navigation tree" for a specifier.
   GetNavigationTree(ModuleSpecifier),
+  /// Get outlining spans for a specifier.
+  GetOutliningSpans(ModuleSpecifier),
   /// Return quick info at position (hover information).
   GetQuickInfo((ModuleSpecifier, u32)),
   /// Get document references for a specific position.
@@ -1983,6 +2054,11 @@ impl RequestMethod {
         "method": "getNavigationTree",
         "specifier": specifier,
       }),
+      RequestMethod::GetOutliningSpans(specifier) => json!({
+        "id": id,
+        "method": "getOutliningSpans",
+        "specifier": specifier,
+      }),
       RequestMethod::GetQuickInfo((specifier, position)) => json!({
         "id": id,
         "method": "getQuickInfo",
@@ -2075,12 +2151,16 @@ mod tests {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier.clone(), *version, source);
-      if let Some((deps, _)) = analysis::analyze_dependencies(
-        &specifier,
-        source,
-        &MediaType::from(&specifier),
-        &None,
-      ) {
+      let media_type = MediaType::from(&specifier);
+      if let Ok(parsed_module) =
+        analysis::parse_module(&specifier, source, &media_type)
+      {
+        let (deps, _) = analysis::analyze_dependencies(
+          &specifier,
+          &media_type,
+          &parsed_module,
+          &None,
+        );
         documents.set_dependencies(&specifier, Some(deps)).unwrap();
       }
     }

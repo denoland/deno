@@ -44,7 +44,6 @@ jobs:
         'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
-      CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
 
@@ -59,7 +58,7 @@ jobs:
           # other commits have landed it will become impossible to rebuild if
           # the checkout is too shallow.
           fetch-depth: 5
-          submodules: true
+          submodules: recursive
 
       - name: Create source tarballs (release, linux)
         if: |
@@ -74,7 +73,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.50.0
+          rust-version: 1.51.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -159,6 +158,31 @@ jobs:
           rustc --version
           cargo --version
           deno --version
+
+      # Work around https://github.com/actions/cache/issues/403 by using GNU tar
+      # instead of BSD tar.
+      - name: Install GNU tar
+        if: matrix.os == 'macos-10.15'
+        run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            ./target
+          key:
+            ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-${{ matrix.kind }}-
+
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        with:
+          cache-path: ./target
 
       - name: test_format.js
         if: matrix.kind == 'lint'

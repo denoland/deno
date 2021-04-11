@@ -12,7 +12,7 @@
   }
 
   function opAcceptTLS(rid) {
-    return core.jsonOpAsync("op_accept_tls", { rid });
+    return core.jsonOpAsync("op_accept_tls", rid);
   }
 
   function opListenTls(args) {
@@ -51,6 +51,7 @@
     keyFile,
     hostname = "0.0.0.0",
     transport = "tcp",
+    alpnProtocols,
   }) {
     const res = opListenTls({
       port,
@@ -58,6 +59,7 @@
       keyFile,
       hostname,
       transport,
+      alpnProtocols,
     });
     return new TLSListener(res.rid, res.localAddr);
   }

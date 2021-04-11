@@ -7,8 +7,16 @@ use std::path::PathBuf;
 pub fn init(isolate: &mut JsRuntime) {
   let files = vec![
     (
+      "deno:op_crates/web/00_infra.js",
+      include_str!("00_infra.js"),
+    ),
+    (
       "deno:op_crates/web/01_dom_exception.js",
       include_str!("01_dom_exception.js"),
+    ),
+    (
+      "deno:op_crates/web/01_mimesniff.js",
+      include_str!("01_mimesniff.js"),
     ),
     (
       "deno:op_crates/web/02_event.js",
@@ -29,10 +37,6 @@ pub fn init(isolate: &mut JsRuntime) {
     (
       "deno:op_crates/web/12_location.js",
       include_str!("12_location.js"),
-    ),
-    (
-      "deno:op_crates/web/21_filereader.js",
-      include_str!("21_filereader.js"),
     ),
   ];
   for (url, source_code) in files {

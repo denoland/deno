@@ -3,13 +3,14 @@
 // https://github.com/gotham-rs/gotham/blob/bcbbf8923789e341b7a0e62c59909428ca4e22e2/gotham/src/state/mod.rs
 // Copyright 2017 Gotham Project Developers. MIT license.
 
+use log::trace;
 use std::any::Any;
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub struct GothamState {
-  data: HashMap<TypeId, Box<dyn Any>>,
+  data: BTreeMap<TypeId, Box<dyn Any>>,
 }
 
 impl GothamState {

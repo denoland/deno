@@ -1,12 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-#[macro_use]
-extern crate log;
-
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
@@ -126,9 +122,9 @@ fn create_js_runtime() -> JsRuntime {
 fn op_listen(
   state: &mut OpState,
   _rid: ResourceId,
-  _bufs: &mut [ZeroCopyBuf],
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  debug!("listen");
+  log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   std_listener.set_nonblocking(true)?;
@@ -140,9 +136,9 @@ fn op_listen(
 fn op_close(
   state: &mut OpState,
   rid: ResourceId,
-  _bufs: &mut [ZeroCopyBuf],
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  debug!("close rid={}", rid);
+  log::debug!("close rid={}", rid);
   state
     .resource_table
     .close(rid)
@@ -153,9 +149,9 @@ fn op_close(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _bufs: BufVec,
+  _bufs: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  debug!("accept rid={}", rid);
+  log::debug!("accept rid={}", rid);
 
   let listener = state
     .borrow()
@@ -170,34 +166,34 @@ async fn op_accept(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  debug!("read rid={}", rid);
+  let mut buf = buf.ok_or_else(null_opbuf)?;
+  log::debug!("read rid={}", rid);
 
   let stream = state
     .borrow()
     .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
-  let nread = stream.read(&mut bufs[0]).await?;
+  let nread = stream.read(&mut buf).await?;
   Ok(nread as u32)
 }
 
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  bufs: BufVec,
+  buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-  debug!("write rid={}", rid);
+  let buf = buf.ok_or_else(null_opbuf)?;
+  log::debug!("write rid={}", rid);
 
   let stream = state
     .borrow()
     .resource_table
     .get::<TcpStream>(rid)
     .ok_or_else(bad_resource_id)?;
-  let nwritten = stream.write(&bufs[0]).await?;
+  let nwritten = stream.write(&buf).await?;
   Ok(nwritten as u32)
 }
 

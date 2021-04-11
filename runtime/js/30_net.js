@@ -7,7 +7,7 @@
   const { read, write } = window.__bootstrap.io;
 
   function shutdown(rid) {
-    return core.jsonOpAsync("op_shutdown", { rid });
+    return core.jsonOpAsync("op_shutdown", rid);
   }
 
   function opAccept(rid, transport) {

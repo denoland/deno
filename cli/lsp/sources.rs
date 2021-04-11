@@ -117,14 +117,16 @@ impl Metadata {
     media_type: &MediaType,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
-    let (dependencies, maybe_types) = if let Some((dependencies, maybe_types)) =
-      analysis::analyze_dependencies(
+    let (dependencies, maybe_types) = if let Ok(parsed_module) =
+      analysis::parse_module(specifier, source, media_type)
+    {
+      let (deps, maybe_types) = analysis::analyze_dependencies(
         specifier,
-        source,
         media_type,
+        &parsed_module,
         maybe_import_map,
-      ) {
-      (Some(dependencies), maybe_types)
+      );
+      (Some(deps), maybe_types)
     } else {
       (None, None)
     };
@@ -201,6 +203,17 @@ impl Sources {
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     self.0.lock().unwrap().resolve_import(specifier, referrer)
+  }
+
+  pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
+    self
+      .0
+      .lock()
+      .unwrap()
+      .metadata
+      .iter()
+      .map(|(s, _)| s.clone())
+      .collect()
   }
 }
 

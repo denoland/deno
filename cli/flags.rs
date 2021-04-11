@@ -10,10 +10,26 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_runtime::permissions::PermissionsOptions;
+use log::debug;
 use log::Level;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
+
+lazy_static::lazy_static! {
+  static ref LONG_VERSION: String = format!(
+    "{} ({}, {})\nv8 {}\ntypescript {}",
+    crate::version::deno(),
+    if crate::version::is_canary() {
+      "canary"
+    } else {
+      env!("PROFILE")
+    },
+    env!("TARGET"),
+    deno_core::v8_version(),
+    crate::version::TYPESCRIPT
+  );
+}
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
@@ -117,7 +133,7 @@ pub struct Flags {
   pub allow_net: Option<Vec<String>>,
   pub allow_plugin: bool,
   pub allow_read: Option<Vec<PathBuf>>,
-  pub allow_run: bool,
+  pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub location: Option<Url>,
   pub cache_blocklist: Vec<String>,
@@ -202,8 +218,15 @@ impl Flags {
       _ => {}
     }
 
-    if self.allow_run {
-      args.push("--allow-run".to_string());
+    match &self.allow_run {
+      Some(run_allowlist) if run_allowlist.is_empty() => {
+        args.push("--allow-run".to_string());
+      }
+      Some(run_allowlist) => {
+        let s = format!("--allow-run={}", run_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
     }
 
     if self.allow_plugin {
@@ -265,21 +288,6 @@ To execute a script:
 To evaluate code in the shell:
   deno eval \"console.log(30933 + 404)\"
 ";
-
-lazy_static! {
-  static ref LONG_VERSION: String = format!(
-    "{} ({}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
-    if crate::version::is_canary() {
-      "canary"
-    } else {
-      env!("PROFILE")
-    },
-    env!("TARGET"),
-    deno_core::v8_version(),
-    crate::version::TYPESCRIPT
-  );
-}
 
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
@@ -526,7 +534,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
-  flags.allow_run = true;
+  flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_plugin = true;
@@ -537,7 +545,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
-  flags.allow_run = true;
+  flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_plugin = true;
@@ -1417,6 +1425,10 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(
       Arg::with_name("allow-run")
         .long("allow-run")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
         .help("Allow running subprocesses"),
     )
     .arg(
@@ -1833,9 +1845,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("env allowlist: {:#?}", &flags.allow_env);
   }
 
-  if matches.is_present("allow-run") {
-    flags.allow_run = true;
+  if let Some(run_wl) = matches.values_of("allow-run") {
+    let run_allowlist: Vec<String> = run_wl.map(ToString::to_string).collect();
+    flags.allow_run = Some(run_allowlist);
+    debug!("run allowlist: {:#?}", &flags.allow_run);
   }
+
   if matches.is_present("allow-plugin") {
     flags.allow_plugin = true;
   }
@@ -1846,7 +1861,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_read = Some(vec![]);
     flags.allow_env = Some(vec![]);
     flags.allow_net = Some(vec![]);
-    flags.allow_run = true;
+    flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
     flags.allow_plugin = true;
     flags.allow_hrtime = true;
@@ -2053,7 +2068,7 @@ mod tests {
         },
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,
@@ -2425,7 +2440,7 @@ mod tests {
         },
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,
@@ -2448,7 +2463,7 @@ mod tests {
         },
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,
@@ -2472,7 +2487,7 @@ mod tests {
         },
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,
@@ -2509,7 +2524,7 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,
@@ -2539,7 +2554,7 @@ mod tests {
         argv: svec!["arg1", "arg2"],
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,
@@ -2559,7 +2574,7 @@ mod tests {
         subcommand: DenoSubcommand::Repl,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,
@@ -2593,7 +2608,7 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
-        allow_run: true,
+        allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_plugin: true,

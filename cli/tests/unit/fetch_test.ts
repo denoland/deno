@@ -2,12 +2,12 @@
 import {
   assert,
   assertEquals,
-  assertThrows,
   assertThrowsAsync,
   fail,
   unimplemented,
   unitTest,
 } from "./test_util.ts";
+import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
@@ -35,7 +35,7 @@ function findClosedPortInRange(
       const listener = Deno.listen({ port });
       listener.close();
       return port;
-    } catch (e) {
+    } catch (_e) {
       port++;
     }
   }
@@ -613,13 +613,13 @@ unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
 //     at Object.assertEquals (file:///C:/deno/js/testing/util.ts:29:11)
 //     at fetchPostBodyString (file
 
-function bufferServer(addr: string): Deno.Buffer {
+function bufferServer(addr: string): Buffer {
   const [hostname, port] = addr.split(":");
   const listener = Deno.listen({
     hostname,
     port: Number(port),
   }) as Deno.Listener;
-  const buf = new Deno.Buffer();
+  const buf = new Buffer();
   listener.accept().then(async (conn: Deno.Conn) => {
     const p1 = buf.readFrom(conn);
     const p2 = conn.write(
@@ -792,7 +792,7 @@ unitTest(
       fail(
         "Response.text() didn't throw on a filtered response without a body (type error)",
       );
-    } catch (e) {
+    } catch (_e) {
       return;
     }
   },

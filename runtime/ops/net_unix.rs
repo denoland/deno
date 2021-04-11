@@ -1,21 +1,25 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::utils::into_string;
 use crate::ops::io::UnixStreamResource;
 use crate::ops::net::AcceptArgs;
+use crate::ops::net::OpAddr;
+use crate::ops::net::OpConn;
+use crate::ops::net::OpPacket;
 use crate::ops::net::ReceiveArgs;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::remove_file;
@@ -55,6 +59,11 @@ impl Resource for UnixDatagramResource {
   }
 }
 
+#[derive(Serialize)]
+pub struct UnixAddr {
+  pub path: Option<String>,
+}
+
 #[derive(Deserialize)]
 pub struct UnixListenArgs {
   pub path: String,
@@ -63,8 +72,8 @@ pub struct UnixListenArgs {
 pub(crate) async fn accept_unix(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _bufs: BufVec,
-) -> Result<Value, AnyError> {
+  _bufs: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
   let rid = args.rid;
 
   let resource = state
@@ -84,28 +93,25 @@ pub(crate) async fn accept_unix(
   let resource = UnixStreamResource::new(unix_stream.into_split());
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(resource);
-  Ok(json!({
-    "rid": rid,
-    "localAddr": {
-      "path": local_addr.as_pathname(),
-      "transport": "unix",
-    },
-    "remoteAddr": {
-      "path": remote_addr.as_pathname(),
-      "transport": "unix",
-    }
-  }))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Unix(UnixAddr {
+      path: local_addr.as_pathname().and_then(pathstring),
+    })),
+    remote_addr: Some(OpAddr::Unix(UnixAddr {
+      path: remote_addr.as_pathname().and_then(pathstring),
+    })),
+  })
 }
 
 pub(crate) async fn receive_unix_packet(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  bufs: BufVec,
-) -> Result<Value, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  buf: Option<ZeroCopyBuf>,
+) -> Result<OpPacket, AnyError> {
+  let mut buf = buf.ok_or_else(null_opbuf)?;
 
   let rid = args.rid;
-  let mut buf = bufs.into_iter().next().unwrap();
 
   let resource = state
     .borrow()
@@ -118,13 +124,12 @@ pub(crate) async fn receive_unix_packet(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let (size, remote_addr) =
     socket.recv_from(&mut buf).try_or_cancel(cancel).await?;
-  Ok(json!({
-    "size": size,
-    "remoteAddr": {
-      "path": remote_addr.as_pathname(),
-      "transport": "unixpacket",
-    }
-  }))
+  Ok(OpPacket {
+    size,
+    remote_addr: OpAddr::UnixPacket(UnixAddr {
+      path: remote_addr.as_pathname().and_then(pathstring),
+    }),
+  })
 }
 
 pub fn listen_unix(
@@ -161,4 +166,8 @@ pub fn listen_unix_packet(
   let rid = state.resource_table.add(datagram_resource);
 
   Ok((rid, local_addr))
+}
+
+pub fn pathstring(pathname: &Path) -> Option<String> {
+  into_string(pathname.into()).ok()
 }

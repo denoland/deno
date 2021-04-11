@@ -6,9 +6,9 @@ Maybe. That is the best answer, we are afraid. For lots of reasons, Deno has
 chosen to have fully qualified module specifiers. In part this is because it
 treats TypeScript as a first class language. Also, Deno uses explicit module
 resolution, with no _magic_. This is effectively the same way browsers
-themselves work, thought they don't obviously support TypeScript directly. If
-the TypeScript modules use imports that don't have these design decisions in
-mind, they may not work under Deno.
+themselves work, though they don't obviously support TypeScript directly. If the
+TypeScript modules use imports that don't have these design decisions in mind,
+they may not work under Deno.
 
 Also, in recent versions of Deno (starting with 1.5), we have started to use a
 Rust library to do transformations of TypeScript to JavaScript in certain

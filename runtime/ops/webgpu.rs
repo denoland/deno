@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_webgpu::*;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {

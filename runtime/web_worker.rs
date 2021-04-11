@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
@@ -24,6 +23,8 @@ use deno_core::JsRuntime;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_file::BlobUrlStore;
+use log::debug;
 use std::env;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -155,6 +156,7 @@ pub struct WebWorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl WebWorker {
@@ -217,7 +219,7 @@ impl WebWorker {
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module);
+      ops::runtime::init(js_runtime, main_module.clone());
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
@@ -232,6 +234,11 @@ impl WebWorker {
       ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::url::init(js_runtime);
+      ops::file::init(
+        js_runtime,
+        options.blob_url_store.clone(),
+        Some(main_module),
+      );
       ops::io::init(js_runtime);
       ops::webgpu::init(js_runtime);
       ops::websocket::init(
@@ -518,6 +525,7 @@ mod tests {
       ts_version: "x".to_string(),
       no_color: true,
       get_error_class_fn: None,
+      blob_url_store: BlobUrlStore::default(),
     };
 
     let mut worker = WebWorker::from_options(
