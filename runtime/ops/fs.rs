@@ -1297,7 +1297,6 @@ fn op_ftruncate_sync(
   args: FtruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.ftruncate");
   let rid = args.rid;
   let len = args.len as u64;
   StdFileResource::with(state, rid, |r| match r {
@@ -1312,7 +1311,6 @@ async fn op_ftruncate_async(
   args: FtruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  super::check_unstable2(&state, "Deno.ftruncate");
   let rid = args.rid;
   let len = args.len as u64;
 

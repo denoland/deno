@@ -1469,6 +1469,39 @@ unitTest(function consoleTable(): void {
 `,
     );
   });
+  mockConsole((console, out) => {
+    console.table([{ a: 0 }, { a: 1, b: 1 }, { a: 2 }, { a: 3, b: 3 }]);
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┐
+│ (idx) │ a │ b │
+├───────┼───┼───┤
+│   0   │ 0 │   │
+│   1   │ 1 │ 1 │
+│   2   │ 2 │   │
+│   3   │ 3 │ 3 │
+└───────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      [{ a: 0 }, { a: 1, c: 1 }, { a: 2 }, { a: 3, c: 3 }],
+      ["a", "b", "c"],
+    );
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┬───┐
+│ (idx) │ a │ b │ c │
+├───────┼───┼───┼───┤
+│   0   │ 0 │   │   │
+│   1   │ 1 │   │ 1 │
+│   2   │ 2 │   │   │
+│   3   │ 3 │   │ 3 │
+└───────┴───┴───┴───┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test

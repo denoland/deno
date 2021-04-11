@@ -48,8 +48,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "createHttpClient",
   "emit",
   "formatDiagnostics",
-  "ftruncate",
-  "ftruncateSync",
   "futime",
   "futimeSync",
   "hostname",

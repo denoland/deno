@@ -626,6 +626,7 @@ dependencies = [
  "bytes",
  "data-url",
  "deno_core",
+ "deno_file",
  "http",
  "reqwest",
  "serde",
