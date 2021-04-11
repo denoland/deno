@@ -252,12 +252,11 @@ Deno.test("netUdpConcurrentSendReceive", async function (): Promise<void> {
   const sendLen = await socket.send(sendBuf, socket.addr);
   assertEquals(sendLen, 3);
 
-
-    const [recvBuf, _recvAddr] = await recvPromise;
-    assertEquals(recvBuf.length, 3);
-    assertEquals(1, recvBuf[0]);
-    assertEquals(2, recvBuf[1]);
-    assertEquals(3, recvBuf[2]);
+  const [recvBuf, _recvAddr] = await recvPromise;
+  assertEquals(recvBuf.length, 3);
+  assertEquals(1, recvBuf[0]);
+  assertEquals(2, recvBuf[1]);
+  assertEquals(3, recvBuf[2]);
 
   socket.close();
 });

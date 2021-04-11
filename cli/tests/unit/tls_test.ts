@@ -335,18 +335,6 @@ Deno.test("startTls", async function (): Promise<void> {
   conn.close();
 });
 
-Deno.test("connectTLSCertFileNoReadPerm", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "read" });
-
-  await assertThrowsAsync(async () => {
-    await Deno.connectTls({
-      hostname: "github.com",
-      port: 443,
-      certFile: "cli/tests/tls/RootCA.crt",
-    });
-  }, Deno.errors.PermissionDenied);
-});
-
 Deno.test("connectTLSNoPerm", async function (): Promise<void> {
   await Deno.permissions.revoke({ name: "net" });
 
@@ -364,6 +352,18 @@ Deno.test("listenTLSNoReadPerm", async function (): Promise<void> {
       port: 3500,
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key",
+    });
+  }, Deno.errors.PermissionDenied);
+});
+
+Deno.test("connectTLSCertFileNoReadPerm", async function (): Promise<void> {
+  await Deno.permissions.revoke({ name: "read" });
+
+  await assertThrowsAsync(async () => {
+    await Deno.connectTls({
+      hostname: "github.com",
+      port: 443,
+      certFile: "cli/tests/tls/RootCA.crt",
     });
   }, Deno.errors.PermissionDenied);
 });

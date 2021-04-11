@@ -671,23 +671,22 @@ Deno.test("fetchWithManualRedirection", async function (): Promise<void> {
 });
 
 Deno.test("fetchWithErrorRedirection", async function (): Promise<void> {
-    const response = await fetch("http://localhost:4546/", {
-      redirect: "error",
-    }); // will redirect to http://localhost:4545/
-    assertEquals(response.status, 0);
-    assertEquals(response.statusText, "");
-    assertEquals(response.url, "");
-    assertEquals(response.type, "error");
-    try {
-      await response.text();
-      fail(
-        "Response.text() didn't throw on a filtered response without a body (type error)",
-      );
-    } catch (_e) {
-      return;
-    }
-  },
-);
+  const response = await fetch("http://localhost:4546/", {
+    redirect: "error",
+  }); // will redirect to http://localhost:4545/
+  assertEquals(response.status, 0);
+  assertEquals(response.statusText, "");
+  assertEquals(response.url, "");
+  assertEquals(response.type, "error");
+  try {
+    await response.text();
+    fail(
+      "Response.text() didn't throw on a filtered response without a body (type error)",
+    );
+  } catch (_e) {
+    return;
+  }
+});
 
 Deno.test("responseRedirect", function (): void {
   const redir = Response.redirect("example.com/newLocation", 301);

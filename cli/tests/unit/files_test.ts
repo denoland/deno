@@ -393,7 +393,7 @@ Deno.test("openModeWrite", async function (): Promise<void> {
   try {
     const buf = new Uint8Array(20);
     await file.read(buf);
-  } catch (e) {
+  } catch (_e) {
     thrown = true;
   } finally {
     assert(thrown, "'w' mode shouldn't allow to read file");
