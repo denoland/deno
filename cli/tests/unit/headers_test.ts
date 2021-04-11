@@ -191,48 +191,48 @@ Deno.test("headerIllegalReject", function (): void {
   let errorCount = 0;
   try {
     new Headers({ "He y": "ok" });
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   try {
     new Headers({ "Hé-y": "ok" });
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   try {
     new Headers({ "He-y": "ăk" });
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   const headers = new Headers();
   try {
     headers.append("Hé-y", "ok");
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   try {
     headers.delete("Hé-y");
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   try {
     headers.get("Hé-y");
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   try {
     headers.has("Hé-y");
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   try {
     headers.set("Hé-y", "ok");
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   try {
     headers.set("", "ok");
-  } catch (e) {
+  } catch (_e) {
     errorCount++;
   }
   assertEquals(errorCount, 9);

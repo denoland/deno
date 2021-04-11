@@ -34,7 +34,7 @@ Deno.test("atobThrows", function (): void {
   let threw = false;
   try {
     atob("aGVsbG8gd29ybGQ==");
-  } catch (e) {
+  } catch (_e) {
     threw = true;
   }
   assert(threw);
@@ -44,7 +44,7 @@ Deno.test("atobThrows2", function (): void {
   let threw = false;
   try {
     atob("aGVsbG8gd29ybGQ===");
-  } catch (e) {
+  } catch (_e) {
     threw = true;
   }
   assert(threw);

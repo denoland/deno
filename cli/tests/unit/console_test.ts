@@ -850,7 +850,7 @@ Deno.test("consoleTestStringifyPromises", async function (): Promise<void> {
       rej(Error("Whoops"));
     });
     await rejectedPromise;
-  } catch (err) {
+  } catch (_err) {
     // pass
   }
   const strLines = stringify(rejectedPromise).split("\n");
@@ -1475,7 +1475,7 @@ Deno.test("consoleLogShouldNotThrowError", function (): void {
     try {
       console.log(new Error("foo"));
       result = 1;
-    } catch (e) {
+    } catch (_e) {
       result = 2;
     }
     assertEquals(result, 1);

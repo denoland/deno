@@ -15,7 +15,6 @@ Deno.test("sendAsyncStackTrace", async function (): Promise<void> {
 });
 
 declare global {
-  // deno-lint-ignore no-namespace
   namespace Deno {
     // deno-lint-ignore no-explicit-any
     var core: any; // eslint-disable-line no-var

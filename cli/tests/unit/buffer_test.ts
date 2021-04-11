@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-deprecated-deno-api
+
 // This code has been ported almost directly from Go's src/bytes/buffer_test.go
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE

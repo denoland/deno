@@ -1,4 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// deno-lint-ignore-file no-deprecated-deno-api
+
 import { assert, assertEquals, assertThrowsAsync } from "./test_util.ts";
 
 Deno.test("filesStdioFileDescriptors", function (): void {

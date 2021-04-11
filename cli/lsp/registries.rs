@@ -32,7 +32,6 @@ use log::error;
 use lspower::lsp;
 use regex::Regex;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::path::Path;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -154,7 +153,7 @@ fn get_completion_endpoint(
   resolve_url(&url_str).map_err(|err| err.into())
 }
 
-fn parse_replacement_variables<S: AsRef<str>>(s: S) -> HashSet<String> {
+fn parse_replacement_variables<S: AsRef<str>>(s: S) -> Vec<String> {
   REPLACEMENT_VARIABLE_RE
     .captures_iter(s.as_ref())
     .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
@@ -171,7 +170,7 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   }
   for registry in &config.registries {
     let (_, keys) = string_to_regex(&registry.schema, None)?;
-    let key_names: HashSet<String> = keys.map_or_else(HashSet::new, |keys| {
+    let key_names: Vec<String> = keys.map_or_else(Vec::new, |keys| {
       keys
         .iter()
         .filter_map(|k| {
@@ -183,21 +182,35 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
         })
         .collect()
     });
-    let mut variable_names = HashSet::<String>::new();
-    for variable in &registry.variables {
-      variable_names.insert(variable.key.clone());
-      if !key_names.contains(&variable.key) {
-        return Err(anyhow!("Invalid registry configuration. Variable \"{}\" is not present in the schema: \"{}\".", variable.key, registry.schema));
-      }
-      for url_var in &parse_replacement_variables(&variable.url) {
-        if !key_names.contains(url_var) {
-          return Err(anyhow!("Invalid registry configuration. Variable url \"{}\" is not present in the schema: \"{}\".", url_var, registry.schema));
-        }
-      }
-    }
+
+    let variable_names: Vec<String> = registry
+      .variables
+      .iter()
+      .map(|var| var.key.to_owned())
+      .collect();
+
     for key_name in &key_names {
       if !variable_names.contains(key_name) {
-        return Err(anyhow!("Invalid registry configuration. Schema contains key \"{}\" which does not have a defined variable.", key_name));
+        return Err(anyhow!("Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".", registry.schema, key_name));
+      }
+    }
+
+    for variable in &registry.variables {
+      let key_index = key_names.iter().position(|key| *key == variable.key);
+      let key_index = key_index.ok_or_else(||anyhow!("Invalid registry configuration. Registry with schema \"{}\" is missing a path parameter in schema for variable \"{}\".", registry.schema, variable.key))?;
+
+      let replacement_variables = parse_replacement_variables(&variable.url);
+      let limited_keys = key_names.get(0..key_index).unwrap();
+      for v in replacement_variables {
+        if variable.key == v {
+          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because that would be a self reference.", variable.url, variable.key, registry.schema, v));
+        }
+
+        let key_index = limited_keys.iter().position(|key| key == &v);
+
+        if key_index.is_none() {
+          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because the schema defines \"{}\" to the right of \"{}\".", variable.url, variable.key, registry.schema, v, v, variable.key));
+        }
       }
     }
   }
@@ -655,6 +668,103 @@ mod tests {
     mock_state_snapshot(sources, &location)
   }
 
+  #[test]
+  fn test_validate_registry_configuration() {
+    assert!(validate_config(&RegistryConfigurationJson {
+      version: 2,
+      registries: vec![],
+    })
+    .is_err());
+
+    let cfg = RegistryConfigurationJson {
+      version: 1,
+      registries: vec![RegistryConfiguration {
+        schema: "/:module@:version/:path*".to_string(),
+        variables: vec![
+          RegistryConfigurationVariable {
+            key: "module".to_string(),
+            url: "https://api.deno.land/modules?short".to_string(),
+          },
+          RegistryConfigurationVariable {
+            key: "version".to_string(),
+            url: "https://deno.land/_vsc1/module/${module}".to_string(),
+          },
+        ],
+      }],
+    };
+    assert!(validate_config(&cfg).is_err());
+
+    let cfg = RegistryConfigurationJson {
+      version: 1,
+      registries: vec![RegistryConfiguration {
+        schema: "/:module@:version/:path*".to_string(),
+        variables: vec![
+          RegistryConfigurationVariable {
+            key: "module".to_string(),
+            url: "https://api.deno.land/modules?short".to_string(),
+          },
+          RegistryConfigurationVariable {
+            key: "version".to_string(),
+            url: "https://deno.land/_vsc1/module/${module}/${path}".to_string(),
+          },
+          RegistryConfigurationVariable {
+            key: "path".to_string(),
+            url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
+              .to_string(),
+          },
+        ],
+      }],
+    };
+    assert!(validate_config(&cfg).is_err());
+
+    let cfg = RegistryConfigurationJson {
+      version: 1,
+      registries: vec![RegistryConfiguration {
+        schema: "/:module@:version/:path*".to_string(),
+        variables: vec![
+          RegistryConfigurationVariable {
+            key: "module".to_string(),
+            url: "https://api.deno.land/modules?short".to_string(),
+          },
+          RegistryConfigurationVariable {
+            key: "version".to_string(),
+            url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
+              .to_string(),
+          },
+          RegistryConfigurationVariable {
+            key: "path".to_string(),
+            url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
+              .to_string(),
+          },
+        ],
+      }],
+    };
+    assert!(validate_config(&cfg).is_err());
+
+    let cfg = RegistryConfigurationJson {
+      version: 1,
+      registries: vec![RegistryConfiguration {
+        schema: "/:module@:version/:path*".to_string(),
+        variables: vec![
+          RegistryConfigurationVariable {
+            key: "module".to_string(),
+            url: "https://api.deno.land/modules?short".to_string(),
+          },
+          RegistryConfigurationVariable {
+            key: "version".to_string(),
+            url: "https://deno.land/_vsc1/module/${module}".to_string(),
+          },
+          RegistryConfigurationVariable {
+            key: "path".to_string(),
+            url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
+              .to_string(),
+          },
+        ],
+      }],
+    };
+    validate_config(&cfg).unwrap();
+  }
+
   #[tokio::test]
   async fn test_registry_completions_origin_match() {
     let _g = test_util::http_server();
@@ -849,7 +959,7 @@ mod tests {
       "https://deno.land/_vsc1/modules/${module}/v/${{version}}",
     );
     assert_eq!(actual.iter().count(), 2);
-    assert!(actual.contains("module"));
-    assert!(actual.contains("version"));
+    assert!(actual.contains(&"module".to_owned()));
+    assert!(actual.contains(&"version".to_owned()));
   }
 }
