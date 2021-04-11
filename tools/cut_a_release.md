@@ -1,7 +1,8 @@
 # Cutting a Deno release
 
-**During this process `main` branch should be frozen and no commits should land
-until the release is cut.**
+**During this process `main` branch (or any other branch that you're creating
+release from) should be frozen and no commits should land until the release is
+cut.**
 
 1. Create a PR that bumps versions of all crates in `op_crates` and `runtime`
    directories.
@@ -22,6 +23,9 @@ the norm.
 2. Make sure CI pipeline passes.
 
 3. Publish all bumped crates to `crates.io`
+
+**Make sure that `cargo` is logged on with a user that has permissions to
+publish those crates.**
 
 This is done by running `cargo publish` in each crate, because of dependencies
 between the crates, it must be done in specific order:
