@@ -48,8 +48,8 @@ fn op_test_async(
     assert!(rx.await.is_ok());
     let result = b"test";
     let result_box: Box<[u8]> = Box::new(*result);
-    OpResponse::Buffer(result_box)
+    (0, OpResponse::Buffer(result_box))
   };
 
-  Op::Async((0, fut.boxed()))
+  Op::Async(fut.boxed())
 }
