@@ -32,7 +32,7 @@ fn op_exec_path(
 ) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .read
     .check_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
@@ -54,7 +54,7 @@ fn op_set_env(
   args: SetEnv,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   let invalid_key =
     args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
   let invalid_value = args.value.contains('\0');
@@ -70,7 +70,7 @@ fn op_env(
   _args: (),
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<HashMap<String, String>, AnyError> {
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   Ok(env::vars().collect())
 }
 
@@ -79,7 +79,7 @@ fn op_get_env(
   key: String,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Option<String>, AnyError> {
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -94,7 +94,7 @@ fn op_delete_env(
   key: String,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -116,7 +116,7 @@ fn op_loadavg(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(f64, f64, f64), AnyError> {
   super::check_unstable(state, "Deno.loadavg");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
     Err(_) => Ok((0.0, 0.0, 0.0)),
@@ -129,7 +129,7 @@ fn op_hostname(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(hostname)
 }
@@ -140,7 +140,7 @@ fn op_os_release(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(release)
 }
@@ -164,7 +164,7 @@ fn op_system_memory_info(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Option<MemInfo>, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(Some(MemInfo {
       total: info.total,
@@ -191,7 +191,7 @@ fn op_system_cpu_info(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<CpuInfo, AnyError> {
   super::check_unstable(state, "Deno.systemCpuInfo");
-  state.borrow::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check()?;
 
   let cores = sys_info::cpu_num().ok();
   let speed = sys_info::cpu_speed().ok();

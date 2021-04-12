@@ -71,7 +71,6 @@ unitTest(function webAssemblyExists(): void {
 });
 
 declare global {
-  // deno-lint-ignore no-namespace
   namespace Deno {
     // deno-lint-ignore no-explicit-any
     var core: any;

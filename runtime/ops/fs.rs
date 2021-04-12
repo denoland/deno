@@ -149,7 +149,7 @@ fn open_helper(
     let _ = mode; // avoid unused warning
   }
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   let options = args.options;
 
   if options.read {
@@ -338,7 +338,6 @@ fn op_fstat_sync(
   rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<FsStat, AnyError> {
-  super::check_unstable(state, "Deno.fstat");
   let metadata = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
@@ -351,7 +350,6 @@ async fn op_fstat_async(
   rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<FsStat, AnyError> {
-  super::check_unstable2(&state, "Deno.fstat");
   let resource = state
     .borrow_mut()
     .resource_table
@@ -409,7 +407,7 @@ fn op_chdir(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   let d = PathBuf::from(&directory);
-  state.borrow::<Permissions>().read.check(&d)?;
+  state.borrow_mut::<Permissions>().read.check(&d)?;
   set_current_dir(&d)?;
   Ok(())
 }
@@ -429,7 +427,7 @@ fn op_mkdir_sync(
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-  state.borrow::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(&path)?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
   builder.recursive(args.recursive);
@@ -451,8 +449,8 @@ async fn op_mkdir_async(
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().write.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().write.check(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -486,7 +484,7 @@ fn op_chmod_sync(
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
-  state.borrow::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(&path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
   #[cfg(unix)]
   {
@@ -513,8 +511,8 @@ async fn op_chmod_async(
   let mode = args.mode & 0o777;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().write.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().write.check(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -552,7 +550,7 @@ fn op_chown_sync(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
-  state.borrow::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(&path)?;
   debug!(
     "op_chown_sync {} {:?} {:?}",
     path.display(),
@@ -582,8 +580,8 @@ async fn op_chown_async(
   let path = Path::new(&args.path).to_path_buf();
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().write.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().write.check(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -624,7 +622,7 @@ fn op_remove_sync(
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
-  state.borrow::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(&path)?;
 
   #[cfg(not(unix))]
   use std::os::windows::prelude::MetadataExt;
@@ -667,8 +665,8 @@ async fn op_remove_async(
   let recursive = args.recursive;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().write.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().write.check(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -722,7 +720,7 @@ fn op_copy_file_sync(
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&from)?;
   permissions.write.check(&to)?;
 
@@ -748,8 +746,8 @@ async fn op_copy_file_async(
   let to = PathBuf::from(&args.to);
 
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.read.check(&from)?;
     permissions.write.check(&to)?;
   }
@@ -861,7 +859,7 @@ fn op_stat_sync(
 ) -> Result<FsStat, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
-  state.borrow::<Permissions>().read.check(&path)?;
+  state.borrow_mut::<Permissions>().read.check(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
     std::fs::symlink_metadata(&path)?
@@ -880,8 +878,8 @@ async fn op_stat_async(
   let lstat = args.lstat;
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().read.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -904,7 +902,7 @@ fn op_realpath_sync(
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&path)?;
   if path.is_relative() {
     permissions.read.check_blind(&current_dir()?, "CWD")?;
@@ -926,8 +924,8 @@ async fn op_realpath_async(
   let path = PathBuf::from(&path);
 
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.read.check(&path)?;
     if path.is_relative() {
       permissions.read.check_blind(&current_dir()?, "CWD")?;
@@ -962,7 +960,7 @@ fn op_read_dir_sync(
 ) -> Result<Vec<DirEntry>, AnyError> {
   let path = PathBuf::from(&path);
 
-  state.borrow::<Permissions>().read.check(&path)?;
+  state.borrow_mut::<Permissions>().read.check(&path)?;
 
   debug!("op_read_dir_sync {}", path.display());
   let entries: Vec<_> = std::fs::read_dir(path)?
@@ -998,8 +996,8 @@ async fn op_read_dir_async(
 ) -> Result<Vec<DirEntry>, AnyError> {
   let path = PathBuf::from(&path);
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().read.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_dir_async {}", path.display());
@@ -1047,7 +1045,7 @@ fn op_rename_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&oldpath)?;
   permissions.write.check(&oldpath)?;
   permissions.write.check(&newpath)?;
@@ -1064,8 +1062,8 @@ async fn op_rename_async(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.read.check(&oldpath)?;
     permissions.write.check(&oldpath)?;
     permissions.write.check(&newpath)?;
@@ -1098,7 +1096,7 @@ fn op_link_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&oldpath)?;
   permissions.write.check(&oldpath)?;
   permissions.read.check(&newpath)?;
@@ -1118,8 +1116,8 @@ async fn op_link_async(
   let newpath = PathBuf::from(&args.newpath);
 
   {
-    let state = state.borrow();
-    let permissions = state.borrow::<Permissions>();
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.read.check(&oldpath)?;
     permissions.write.check(&oldpath)?;
     permissions.read.check(&newpath)?;
@@ -1159,7 +1157,7 @@ fn op_symlink_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  state.borrow::<Permissions>().write.check(&newpath)?;
+  state.borrow_mut::<Permissions>().write.check(&newpath)?;
 
   debug!(
     "op_symlink_sync {} {}",
@@ -1209,8 +1207,8 @@ async fn op_symlink_async(
   let newpath = PathBuf::from(&args.newpath);
 
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().write.check(&newpath)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().write.check(&newpath)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -1259,7 +1257,7 @@ fn op_read_link_sync(
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
 
-  state.borrow::<Permissions>().read.check(&path)?;
+  state.borrow_mut::<Permissions>().read.check(&path)?;
 
   debug!("op_read_link_value {}", path.display());
   let target = std::fs::read_link(&path)?.into_os_string();
@@ -1274,8 +1272,8 @@ async fn op_read_link_async(
 ) -> Result<String, AnyError> {
   let path = PathBuf::from(&path);
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().read.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_link_async {}", path.display());
@@ -1299,7 +1297,6 @@ fn op_ftruncate_sync(
   args: FtruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.ftruncate");
   let rid = args.rid;
   let len = args.len as u64;
   StdFileResource::with(state, rid, |r| match r {
@@ -1314,7 +1311,6 @@ async fn op_ftruncate_async(
   args: FtruncateArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  super::check_unstable2(&state, "Deno.ftruncate");
   let rid = args.rid;
   let len = args.len as u64;
 
@@ -1351,7 +1347,7 @@ fn op_truncate_sync(
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
-  state.borrow::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(&path)?;
 
   debug!("op_truncate_sync {} {}", path.display(), len);
   let f = std::fs::OpenOptions::new().write(true).open(&path)?;
@@ -1367,8 +1363,8 @@ async fn op_truncate_async(
   let path = PathBuf::from(&args.path);
   let len = args.len;
   {
-    let state = state.borrow();
-    state.borrow::<Permissions>().write.check(&path)?;
+    let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().write.check(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_truncate_async {} {}", path.display(), len);
@@ -1443,7 +1439,7 @@ fn op_make_temp_dir_sync(
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .write
     .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
@@ -1471,9 +1467,9 @@ async fn op_make_temp_dir_async(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
-    let state = state.borrow();
+    let mut state = state.borrow_mut();
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .write
       .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
@@ -1506,7 +1502,7 @@ fn op_make_temp_file_sync(
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .write
     .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
@@ -1534,9 +1530,9 @@ async fn op_make_temp_file_async(
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
-    let state = state.borrow();
+    let mut state = state.borrow_mut();
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .write
       .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
@@ -1650,7 +1646,7 @@ fn op_utime_sync(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state.borrow::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<Permissions>().write.check(&path)?;
   filetime::set_file_times(path, atime, mtime)?;
   Ok(())
 }
@@ -1666,7 +1662,11 @@ async fn op_utime_async(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state.borrow().borrow::<Permissions>().write.check(&path)?;
+  state
+    .borrow_mut()
+    .borrow_mut::<Permissions>()
+    .write
+    .check(&path)?;
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_times(path, atime, mtime)?;
@@ -1683,7 +1683,7 @@ fn op_cwd(
 ) -> Result<String, AnyError> {
   let path = current_dir()?;
   state
-    .borrow::<Permissions>()
+    .borrow_mut::<Permissions>()
     .read
     .check_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;

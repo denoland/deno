@@ -1,4 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-deprecated-deno-api
+
 import {
   assert,
   assertEquals,
@@ -477,7 +480,7 @@ unitTest(
     try {
       const buf = new Uint8Array(20);
       await file.read(buf);
-    } catch (e) {
+    } catch (_e) {
       thrown = true;
     } finally {
       assert(thrown, "'w' mode shouldn't allow to read file");
