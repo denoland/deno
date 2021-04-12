@@ -10,21 +10,9 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     state.put(Unstable(unstable));
   }
 
-  super::reg_async(
-    rt,
-    "op_webgpu_request_adapter",
-    op_webgpu_request_adapter,
-  );
-  super::reg_async(
-    rt,
-    "op_webgpu_request_device",
-    op_webgpu_request_device,
-  );
-  super::reg_sync(
-    rt,
-    "op_webgpu_create_query_set",
-    op_webgpu_create_query_set,
-  );
+  super::reg_async(rt, "op_webgpu_request_adapter", op_webgpu_request_adapter);
+  super::reg_async(rt, "op_webgpu_request_device", op_webgpu_request_device);
+  super::reg_sync(rt, "op_webgpu_create_query_set", op_webgpu_create_query_set);
 
   {
     // buffer

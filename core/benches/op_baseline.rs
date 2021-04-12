@@ -95,10 +95,5 @@ fn bench_op_async(b: &mut Bencher) {
   );
 }
 
-benchmark_group!(
-  benches,
-  bench_op_pi_json,
-  bench_op_nop,
-  bench_op_async
-);
+benchmark_group!(benches, bench_op_pi_json, bench_op_nop, bench_op_async);
 benchmark_main!(benches);

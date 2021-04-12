@@ -40,11 +40,8 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 
-pub fn reg_async<F, V, R, RV>(
-  rt: &mut JsRuntime,
-  name: &'static str,
-  op_fn: F,
-) where
+pub fn reg_async<F, V, R, RV>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+where
   F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,

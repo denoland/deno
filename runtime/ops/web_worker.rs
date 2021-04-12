@@ -27,15 +27,11 @@ pub fn init(
   );
 
   // Notify host that guest worker closes.
-  super::reg_sync(
-    rt,
-    "op_worker_close",
-    move |_state, _args: (), _bufs| {
-      // Notify parent that we're finished
-      sender.clone().close_channel();
-      // Terminate execution of current worker
-      handle.terminate();
-      Ok(())
-    },
-  );
+  super::reg_sync(rt, "op_worker_close", move |_state, _args: (), _bufs| {
+    // Notify parent that we're finished
+    sender.clone().close_channel();
+    // Terminate execution of current worker
+    handle.terminate();
+    Ok(())
+  });
 }

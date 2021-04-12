@@ -81,11 +81,7 @@ pub fn init(
     state.put::<CreateWebWorkerCbHolder>(create_module_loader);
   }
   super::reg_sync(rt, "op_create_worker", op_create_worker);
-  super::reg_sync(
-    rt,
-    "op_host_terminate_worker",
-    op_host_terminate_worker,
-  );
+  super::reg_sync(rt, "op_host_terminate_worker", op_host_terminate_worker);
   super::reg_sync(rt, "op_host_post_message", op_host_post_message);
   super::reg_async(rt, "op_host_get_message", op_host_get_message);
   super::reg_sync(
