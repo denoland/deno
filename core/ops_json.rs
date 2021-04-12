@@ -25,7 +25,7 @@ use std::rc::Rc;
 /// When registering an op like this...
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
-/// runtime.register_op("hello", deno_core::json_op_sync(Self::hello_op));
+/// runtime.register_op("hello", deno_core::op_sync(Self::hello_op));
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
@@ -36,7 +36,7 @@ use std::rc::Rc;
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
+pub fn op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
@@ -63,7 +63,7 @@ where
 /// When registering an op like this...
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
-/// runtime.register_op("hello", deno_core::json_op_async(Self::hello_op));
+/// runtime.register_op("hello", deno_core::op_async(Self::hello_op));
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
@@ -74,7 +74,7 @@ where
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
+pub fn op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
   V: DeserializeOwned,
@@ -115,7 +115,7 @@ mod tests {
   use super::*;
 
   #[tokio::test]
-  async fn json_op_async_stack_trace() {
+  async fn op_async_stack_trace() {
     let mut runtime = crate::JsRuntime::new(Default::default());
 
     async fn op_throw(
@@ -128,7 +128,7 @@ mod tests {
       Err(crate::error::generic_error("foo"))
     }
 
-    runtime.register_op("op_throw", json_op_async(op_throw));
+    runtime.register_op("op_throw", op_async(op_throw));
     runtime
       .execute(
         "<init>",

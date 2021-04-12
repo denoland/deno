@@ -438,8 +438,8 @@ impl JsRuntime {
   ///
   /// This function provides byte-level bindings. To pass data via JSON, the
   /// following functions can be passed as an argument for `op_fn`:
-  /// * [json_op_sync()](fn.json_op_sync.html)
-  /// * [json_op_async()](fn.json_op_async.html)
+  /// * [op_sync()](fn.op_sync.html)
+  /// * [op_async()](fn.op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,

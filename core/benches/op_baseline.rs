@@ -1,8 +1,8 @@
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
 use deno_core::error::AnyError;
-use deno_core::json_op_async;
-use deno_core::json_op_sync;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::Op;
@@ -15,8 +15,8 @@ use std::rc::Rc;
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("pi_json", json_op_sync(|_, _: (), _| Ok(314159)));
-  runtime.register_op("pi_async", json_op_async(op_pi_async));
+  runtime.register_op("pi_json", op_sync(|_, _: (), _| Ok(314159)));
+  runtime.register_op("pi_async", op_async(op_pi_async));
   runtime
     .register_op("nop", |_, _, _| Op::Sync(OpResponse::Value(Box::new(9))));
 
