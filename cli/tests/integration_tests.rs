@@ -5,11 +5,17 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
+use rustls::Session;
 use std::fs;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::io::{BufRead, Read, Write};
 use std::process::Command;
+use std::sync::Arc;
 use tempfile::TempDir;
 use test_util as util;
+use tokio_rustls::rustls;
+use tokio_rustls::webpki;
 
 #[test]
 fn js_unit_tests_lint() {
@@ -2860,6 +2866,12 @@ console.log("finish");
 
     util::test_pty(args, output, input);
   }
+
+  itest!(_091_use_define_for_class_fields {
+    args: "run 091_use_define_for_class_fields.ts",
+    output: "091_use_define_for_class_fields.ts.out",
+    exit_code: 1,
+  });
 
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
@@ -5878,4 +5890,83 @@ console.log("finish");
 
     handle.abort();
   }
+}
+
+#[tokio::test]
+async fn listen_tls_alpn() {
+  let child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cli/tests/listen_tls_alpn.ts")
+    .arg("4504")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let mut stdout = child.stdout.unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let mut cfg = rustls::ClientConfig::new();
+  let reader =
+    &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
+  cfg.root_store.add_pem_file(reader).unwrap();
+  cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+
+  let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
+  let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+  let stream = tokio::net::TcpStream::connect("localhost:4504")
+    .await
+    .unwrap();
+
+  let tls_stream = tls_connector.connect(hostname, stream).await.unwrap();
+  let (_, session) = tls_stream.get_ref();
+
+  let alpn = session.get_alpn_protocol().unwrap();
+  assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+}
+
+#[tokio::test]
+async fn listen_tls_alpn_fail() {
+  let child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cli/tests/listen_tls_alpn.ts")
+    .arg("4505")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let mut stdout = child.stdout.unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let mut cfg = rustls::ClientConfig::new();
+  let reader =
+    &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
+  cfg.root_store.add_pem_file(reader).unwrap();
+  cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
+
+  let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
+  let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+  let stream = tokio::net::TcpStream::connect("localhost:4505")
+    .await
+    .unwrap();
+
+  let tls_stream = tls_connector.connect(hostname, stream).await.unwrap();
+  let (_, session) = tls_stream.get_ref();
+
+  assert!(session.get_alpn_protocol().is_none());
 }

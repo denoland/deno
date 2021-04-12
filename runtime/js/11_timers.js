@@ -442,7 +442,7 @@
     if ("function" === typeof callback) {
       callback();
     } else {
-      eval(callback);
+      (0, eval)(callback);
     }
   }
 
