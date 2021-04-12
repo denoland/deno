@@ -13,7 +13,6 @@ impl SerializablePkg {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, serde_v8::Error> {
-    
     match &*self {
       Self::MinValue(x) => serde_v8::to_v8(scope, x),
       Self::Serializable(x) => x.to_v8(scope),
@@ -44,27 +43,27 @@ impl serde::Serialize for MinValue {
   where
     S: serde::Serializer,
   {
-      match *self {
-        Self::Unit(_) => serializer.serialize_unit(),
-        Self::Bool(x) => serializer.serialize_bool(x),
-        Self::Int8(x) => serializer.serialize_i8(x),
-        Self::Int16(x) => serializer.serialize_i16(x),
-        Self::Int32(x) => serializer.serialize_i32(x),
-        Self::Int64(x) => serializer.serialize_i64(x),
-        Self::UInt8(x) => serializer.serialize_u8(x),
-        Self::UInt16(x) => serializer.serialize_u16(x),
-        Self::UInt32(x) => serializer.serialize_u32(x),
-        Self::UInt64(x) => serializer.serialize_u64(x),
-        Self::Float32(x) => serializer.serialize_f32(x),
-        Self::Float64(x) => serializer.serialize_f64(x),
-      }
+    match *self {
+      Self::Unit(_) => serializer.serialize_unit(),
+      Self::Bool(x) => serializer.serialize_bool(x),
+      Self::Int8(x) => serializer.serialize_i8(x),
+      Self::Int16(x) => serializer.serialize_i16(x),
+      Self::Int32(x) => serializer.serialize_i32(x),
+      Self::Int64(x) => serializer.serialize_i64(x),
+      Self::UInt8(x) => serializer.serialize_u8(x),
+      Self::UInt16(x) => serializer.serialize_u16(x),
+      Self::UInt32(x) => serializer.serialize_u32(x),
+      Self::UInt64(x) => serializer.serialize_u64(x),
+      Self::Float32(x) => serializer.serialize_f32(x),
+      Self::Float64(x) => serializer.serialize_f64(x),
+    }
   }
 }
 
 impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
   fn from(x: T) -> Self {
     let tid = TypeId::of::<T>();
-    
+
     if tid == TypeId::of::<()>() {
       Self::MinValue(MinValue::Unit(()))
     } else if tid == TypeId::of::<bool>() {

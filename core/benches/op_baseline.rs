@@ -3,8 +3,8 @@ use bencher::{benchmark_group, benchmark_main, Bencher};
 use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
-use deno_core::v8;
 use deno_core::serialize_op_result;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpState;
@@ -17,8 +17,9 @@ fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
   runtime.register_op("pi_json", op_sync(|_, _: (), _| Ok(314159)));
   runtime.register_op("pi_async", op_async(op_pi_async));
-  runtime
-    .register_op("nop", |state, _, _| Op::Sync(serialize_op_result(Ok(9), state)));
+  runtime.register_op("nop", |state, _, _| {
+    Op::Sync(serialize_op_result(Ok(9), state))
+  });
 
   // Init ops
   runtime
