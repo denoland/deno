@@ -194,6 +194,15 @@ pub struct RuntimeOptions {
   pub create_params: Option<v8::CreateParams>,
 }
 
+/// Status of pending tasks in the event loop
+#[derive(Debug, PartialEq, Eq)]
+pub enum PendingState {
+  Active,
+  Idle,
+  BlockedModule,
+  BlockedDynModule,
+}
+
 impl JsRuntime {
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
@@ -488,6 +497,34 @@ impl JsRuntime {
     }
   }
 
+  pub fn is_active(&mut self) -> bool {
+    self.pending_state() == PendingState::Active
+  }
+
+  pub fn pending_state(&mut self) -> PendingState {
+    let state_rc = Self::state(self.v8_isolate());
+
+    let state = state_rc.borrow();
+    let ops = !state.pending_ops.is_empty();
+    let dyn_imports = !{
+      state.preparing_dyn_imports.is_empty()
+        && state.pending_dyn_imports.is_empty()
+    };
+    let dyn_mod_eval = !state.pending_dyn_mod_evaluate.is_empty();
+    let mod_eval = state.pending_mod_evaluate.is_some();
+
+    // Detect blocked modules
+    if !(ops || dyn_imports || dyn_mod_eval || mod_eval) {
+      PendingState::Idle
+    } else if mod_eval && !(ops || dyn_imports || dyn_mod_eval) {
+      PendingState::BlockedModule
+    } else if dyn_mod_eval && !(ops || dyn_imports) {
+      PendingState::BlockedDynModule
+    } else {
+      PendingState::Active
+    }
+  }
+
   /// Runs event loop to completion
   ///
   /// This future resolves when:
@@ -532,53 +569,27 @@ impl JsRuntime {
     // Top level module
     self.evaluate_pending_module();
 
-    let state = state_rc.borrow();
-    let has_pending_ops = !state.pending_ops.is_empty();
-
-    let has_pending_dyn_imports = !{
-      state.preparing_dyn_imports.is_empty()
-        && state.pending_dyn_imports.is_empty()
-    };
-    let has_pending_dyn_module_evaluation =
-      !state.pending_dyn_mod_evaluate.is_empty();
-    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-
-    if !has_pending_ops
-      && !has_pending_dyn_imports
-      && !has_pending_dyn_module_evaluation
-      && !has_pending_module_evaluation
-    {
-      return Poll::Ready(Ok(()));
-    }
-
     // Check if more async ops have been dispatched
     // during this turn of event loop.
+    let state = state_rc.borrow();
     if state.have_unpolled_ops {
       state.waker.wake();
     }
 
-    if has_pending_module_evaluation {
-      if has_pending_ops
-        || has_pending_dyn_imports
-        || has_pending_dyn_module_evaluation
-      {
-        // pass, will be polled again
-      } else {
+    match self.pending_state() {
+      PendingState::Idle => Poll::Ready(Ok(())),
+      PendingState::Active => Poll::Pending,
+
+      // Return errors if modules are blocked
+      PendingState::BlockedModule => {
         let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
-        return Poll::Ready(Err(generic_error(msg)));
+        Poll::Ready(Err(generic_error(msg)))
       }
-    }
-
-    if has_pending_dyn_module_evaluation {
-      if has_pending_ops || has_pending_dyn_imports {
-        // pass, will be polled again
-      } else {
+      PendingState::BlockedDynModule => {
         let msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.";
-        return Poll::Ready(Err(generic_error(msg)));
+        Poll::Ready(Err(generic_error(msg)))
       }
     }
-
-    Poll::Pending
   }
 }
 
