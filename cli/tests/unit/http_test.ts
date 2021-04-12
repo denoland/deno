@@ -25,7 +25,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const text = await resp.text();
   assertEquals(text, "Hello World");
   assertEquals(resp.headers.get("foo"), "bar");
-  assert(resp.headers.get("date").endsWith(" GMT"));
+  assert(resp.headers.get("date")!.endsWith(" GMT"));
   await promise;
 });
 
