@@ -1,4 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-deprecated-deno-api
+
 import {
   assert,
   assertEquals,
@@ -1129,5 +1132,38 @@ unitTest(
       "0\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchMethodUppercase(): Promise<void> {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "127.0.0.1", port: 3500 });
+      for await (const conn of listener) {
+        let requestString = "";
+        try {
+          for await (const chunk of Deno.iter(conn)) {
+            requestString += new TextDecoder().decode(chunk);
+            if (requestString.includes("GET")) {
+              break;
+            } else if (requestString.includes("get")) {
+              throw new Error("The request method wasn't upper cased.");
+            }
+          }
+        } finally {
+          conn.close();
+          listener.close();
+        }
+      }
+    })();
+    await assertThrowsAsync(
+      async () => {
+        await fetch("http://127.0.0.1:3500/", { method: "get" });
+      },
+      TypeError,
+      "connection closed",
+    );
+    await promise;
   },
 );
