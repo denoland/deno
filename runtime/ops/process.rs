@@ -97,7 +97,7 @@ fn op_run(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
-  state.borrow::<Permissions>().run.check(&args[0])?;
+  state.borrow_mut::<Permissions>().run.check(&args[0])?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -286,7 +286,7 @@ fn op_kill(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
-  state.borrow::<Permissions>().run.check_all()?;
+  state.borrow_mut::<Permissions>().run.check_all()?;
 
   kill(args.pid, args.signo)?;
   Ok(())
