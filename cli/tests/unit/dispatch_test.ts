@@ -9,7 +9,7 @@ unitTest(async function sendAsyncStackTrace() {
   } catch (error) {
     const s = error.stack.toString();
     console.log(s);
-    assertStringIncludes(s, "dispatch_bin_test.ts");
+    assertStringIncludes(s, "dispatch_test.ts");
     assertStringIncludes(s, "read");
   }
 });
