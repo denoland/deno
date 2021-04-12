@@ -1,6 +1,8 @@
 use rusty_v8 as v8;
 use std::any::TypeId;
 
+/// SerializablePkg exists to provide a fast path for op returns,
+/// allowing them to avoid boxing primtives (ints/floats/bool/unit/...)
 pub enum SerializablePkg {
   MinValue(MinValue),
   Serializable(Box<dyn serde_v8::Serializable>),
