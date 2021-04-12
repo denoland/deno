@@ -338,7 +338,6 @@ fn op_fstat_sync(
   rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<FsStat, AnyError> {
-  super::check_unstable(state, "Deno.fstat");
   let metadata = StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => std_file.metadata().map_err(AnyError::from),
     Err(_) => Err(type_error("cannot stat this type of resource".to_string())),
@@ -351,7 +350,6 @@ async fn op_fstat_async(
   rid: ResourceId,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<FsStat, AnyError> {
-  super::check_unstable2(&state, "Deno.fstat");
   let resource = state
     .borrow_mut()
     .resource_table
