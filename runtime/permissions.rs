@@ -1685,10 +1685,10 @@ mod tests {
     set_prompt_result(false);
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("hOmE").is_ok());
-  }
 
-  assert_eq!(
-    perms.env.revoke(Some(&"HomE".to_string())),
-    PermissionState::Prompt
-  );
+    assert_eq!(
+      perms.env.revoke(Some(&"HomE".to_string())),
+      PermissionState::Prompt
+    );
+  }
 }
