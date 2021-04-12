@@ -1680,15 +1680,15 @@ mod tests {
       ..Permissions::new_env(&Some(svec!["HOME"]), false)
     };
 
-    assert_eq!(
-      perms.env.revoke(Some(&"HomE".to_string())),
-      PermissionState::Prompt
-    );
-
     set_prompt_result(true);
     assert!(perms.env.check("HOME").is_ok());
     set_prompt_result(false);
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("hOmE").is_ok());
   }
+
+  assert_eq!(
+    perms.env.revoke(Some(&"HomE".to_string())),
+    PermissionState::Prompt
+  );
 }
