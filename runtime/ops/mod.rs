@@ -34,7 +34,6 @@ use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Serialize;
 use deno_core::JsRuntime;
 use deno_core::OpState;
-use deno_core::ValueOrVector;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::future::Future;
