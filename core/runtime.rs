@@ -155,19 +155,18 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
   v8::V8::initialize_platform(v8_platform);
   v8::V8::initialize();
 
-  let argv = vec![
-    "".to_string(),
-    "--wasm-test-streaming".to_string(),
+  let flags = concat!(
+    "--wasm-test-streaming",
     // TODO(ry) This makes WASM compile synchronously. Eventually we should
     // remove this to make it work asynchronously too. But that requires getting
     // PumpMessageLoop and RunMicrotasks setup correctly.
     // See https://github.com/denoland/deno/issues/2544
-    "--no-wasm-async-compilation".to_string(),
-    "--harmony-top-level-await".to_string(),
-    "--harmony-import-assertions".to_string(),
-    "--no-validate-asm".to_string(),
-  ];
-  v8::V8::set_flags_from_command_line(argv);
+    " --no-wasm-async-compilation",
+    " --harmony-top-level-await",
+    " --harmony-import-assertions",
+    " --no-validate-asm",
+  );
+  v8::V8::set_flags_from_string(flags);
 }
 
 #[derive(Default)]
