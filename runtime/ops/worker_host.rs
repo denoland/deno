@@ -403,7 +403,11 @@ where
 
   Ok(Some(UnaryPermission::<EnvDescriptor> {
     global_state: value.global_state,
-    granted_list: value.paths.into_iter().map(EnvDescriptor).collect(),
+    granted_list: value
+      .paths
+      .into_iter()
+      .map(|env| EnvDescriptor(env.to_uppercase()))
+      .collect(),
     ..Default::default()
   }))
 }

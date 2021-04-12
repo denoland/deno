@@ -1846,7 +1846,15 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   if let Some(env_wl) = matches.values_of("allow-env") {
-    let env_allowlist: Vec<String> = env_wl.map(ToString::to_string).collect();
+    let env_allowlist: Vec<String> = env_wl
+      .map(|env: &str| {
+        if cfg!(windows) {
+          env.to_uppercase()
+        } else {
+          env.to_string()
+        }
+      })
+      .collect();
     flags.allow_env = Some(env_allowlist);
     debug!("env allowlist: {:#?}", &flags.allow_env);
   }

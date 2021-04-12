@@ -579,24 +579,19 @@ impl UnaryPermission<NetDescriptor> {
 
 impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
-    let check_list = |env_: &EnvDescriptor, env: &str| {
-      if cfg!(windows) {
-        env_.0.to_uppercase() == env.to_uppercase()
-      } else {
-        env_.0 == env
-      }
-    };
+    #[cfg(windows)]
+    let env = env.map(|env| env.to_uppercase());
     if self.global_state == PermissionState::Denied
       && match env {
         None => true,
-        Some(env) => self.denied_list.iter().any(|env_| check_list(env_, env)),
+        Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match env {
         None => false,
-        Some(env) => self.granted_list.iter().any(|env_| check_list(env_, env)),
+        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
       }
     {
       PermissionState::Granted
@@ -607,26 +602,16 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
+      #[cfg(windows)]
+      let env = env.to_uppercase();
       let state = self.query(Some(&env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
-          self.granted_list.retain(|env_| {
-            if cfg!(windows) {
-              env_.0.to_uppercase() != env.to_uppercase()
-            } else {
-              env_.0 != env
-            }
-          });
+          self.granted_list.retain(|env_| env_.0 != env);
           self.granted_list.insert(EnvDescriptor(env.to_string()));
           PermissionState::Granted
         } else {
-          self.denied_list.retain(|env_| {
-            if cfg!(windows) {
-              env_.0.to_uppercase() != env.to_uppercase()
-            } else {
-              env_.0 != env
-            }
-          });
+          self.denied_list.retain(|env_| env_.0 != env);
           self.denied_list.insert(EnvDescriptor(env.to_string()));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
@@ -653,13 +638,9 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      self.granted_list.retain(|env_| {
-        if cfg!(windows) {
-          env_.0.to_uppercase() != env.to_uppercase()
-        } else {
-          env_.0 != env
-        }
-      });
+      #[cfg(windows)]
+      let env = env.to_uppercase();
+      self.granted_list.retain(|env_| env_.0 != env);
     } else {
       self.granted_list.clear();
       if self.global_state == PermissionState::Granted {
@@ -670,6 +651,8 @@ impl UnaryPermission<EnvDescriptor> {
   }
 
   pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
+    #[cfg(windows)]
+    let env = env.to_uppercase();
     let (result, prompted) = self.query(Some(env)).check(
       self.name,
       Some(&format!("\"{}\"", env)),
@@ -881,7 +864,17 @@ impl Permissions {
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| v.iter().map(|x| EnvDescriptor(x.clone())).collect())
+        .map(|v| {
+          v.iter()
+            .map(|x| {
+              EnvDescriptor(if cfg!(windows) {
+                x.to_uppercase()
+              } else {
+                x.clone()
+              })
+            })
+            .collect()
+        })
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
       prompt,
