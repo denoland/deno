@@ -71,10 +71,10 @@ impl StoresClientSessions for ClientSessionMemoryCache {
 }
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_start_tls", op_start_tls);
-  super::reg_json_async(rt, "op_connect_tls", op_connect_tls);
-  super::reg_json_sync(rt, "op_listen_tls", op_listen_tls);
-  super::reg_json_async(rt, "op_accept_tls", op_accept_tls);
+  super::reg_async(rt, "op_start_tls", op_start_tls);
+  super::reg_async(rt, "op_connect_tls", op_connect_tls);
+  super::reg_sync(rt, "op_listen_tls", op_listen_tls);
+  super::reg_async(rt, "op_accept_tls", op_accept_tls);
 }
 
 #[derive(Deserialize)]

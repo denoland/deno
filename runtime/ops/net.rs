@@ -43,12 +43,12 @@ use crate::ops::io::UnixStreamResource;
 use std::path::Path;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_accept", op_accept);
-  super::reg_json_async(rt, "op_connect", op_connect);
-  super::reg_json_sync(rt, "op_listen", op_listen);
-  super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
-  super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
-  super::reg_json_async(rt, "op_dns_resolve", op_dns_resolve);
+  super::reg_async(rt, "op_accept", op_accept);
+  super::reg_async(rt, "op_connect", op_connect);
+  super::reg_sync(rt, "op_listen", op_listen);
+  super::reg_async(rt, "op_datagram_receive", op_datagram_receive);
+  super::reg_async(rt, "op_datagram_send", op_datagram_send);
+  super::reg_async(rt, "op_dns_resolve", op_dns_resolve);
 }
 
 #[derive(Serialize)]

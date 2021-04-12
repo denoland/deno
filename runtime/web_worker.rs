@@ -231,8 +231,8 @@ impl WebWorker {
         Some(sender),
         options.create_web_worker_cb.clone(),
       );
-      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::url::init(js_runtime);
       ops::file::init(
         js_runtime,

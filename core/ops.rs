@@ -188,7 +188,7 @@ impl Default for OpTable {
 /// Return map of resources with id as key
 /// and string representation as value.
 ///
-/// This op must be wrapped in `json_op_sync`.
+/// This op must be wrapped in `op_sync`.
 pub fn op_resources(
   state: &mut OpState,
   _args: (),
@@ -204,7 +204,7 @@ pub fn op_resources(
 
 /// Remove a resource from the resource table.
 ///
-/// This op must be wrapped in `json_op_sync`.
+/// This op must be wrapped in `op_sync`.
 pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,

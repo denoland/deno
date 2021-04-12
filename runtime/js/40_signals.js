@@ -7,15 +7,15 @@
   const { errors } = window.__bootstrap.errors;
 
   function bindSignal(signo) {
-    return core.jsonOpSync("op_signal_bind", signo);
+    return core.opSync("op_signal_bind", signo);
   }
 
   function pollSignal(rid) {
-    return core.jsonOpAsync("op_signal_poll", rid);
+    return core.opAsync("op_signal_poll", rid);
   }
 
   function unbindSignal(rid) {
-    core.jsonOpSync("op_signal_unbind", rid);
+    core.opSync("op_signal_unbind", rid);
   }
 
   // From `kill -l`
