@@ -72,7 +72,7 @@ fn bench_op_pi_json(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.jsonOpSync("pi_json", null);
+      Deno.core.opSync("pi_json", null);
     }"#,
   );
 }
@@ -90,7 +90,7 @@ fn bench_op_async(b: &mut Bencher) {
   bench_runtime_js_async(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.jsonOpAsync("pi_async", null);
+      Deno.core.opAsync("pi_async", null);
     }"#,
   );
 }

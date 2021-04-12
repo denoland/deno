@@ -91,11 +91,11 @@ const arr = [1, 2, 3];
 print("The sum of");
 print(arr);
 print("is");
-print(Deno.core.jsonOpSync('op_sum', arr));
+print(Deno.core.opSync('op_sum', arr));
 
 // And incorrect usage
 try {
-  print(Deno.core.jsonOpSync('op_sum', 0));
+  print(Deno.core.opSync('op_sum', 0));
 } catch(e) {
   print('Exception:');
   print(e);
