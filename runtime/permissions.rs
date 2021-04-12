@@ -856,11 +856,11 @@ impl Permissions {
   }
 
   pub fn new_plugin(state: bool, prompt: bool) -> UnitPermission {
-    boolean_permission_from_flag_bool(state, "plugin", "open a plugin", prompt)
+    unit_permission_from_flag_bool(state, "plugin", "open a plugin", prompt)
   }
 
   pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {
-    boolean_permission_from_flag_bool(
+    unit_permission_from_flag_bool(
       state,
       "hrtime",
       "high precision time",
@@ -936,7 +936,7 @@ fn log_perm_access(message: &str) {
   );
 }
 
-fn boolean_permission_from_flag_bool(
+fn unit_permission_from_flag_bool(
   flag: bool,
   name: &'static str,
   description: &'static str,
