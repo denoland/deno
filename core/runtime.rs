@@ -1501,18 +1501,19 @@ pub mod tests {
   }
 
   fn dispatch(
-    op_state: Rc<RefCell<OpState>>,
+    rc_op_state: Rc<RefCell<OpState>>,
     payload: OpPayload,
     buf: Option<ZeroCopyBuf>,
   ) -> Op {
-    let op_state_ = op_state.borrow();
+    let rc_op_state2 = rc_op_state.clone();
+    let op_state_ = rc_op_state2.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
     match test_state.mode {
       Mode::Async => {
         let control: u8 = payload.deserialize().unwrap();
         assert_eq!(control, 42);
-        let resp = (0, OpResponse::Value(Box::new(43)));
+        let resp = (0, serialize_op_result(Ok(43), rc_op_state));
         Op::Async(Box::pin(futures::future::ready(resp)))
       }
       Mode::AsyncUnref => {
@@ -1521,7 +1522,7 @@ pub mod tests {
         let fut = async {
           // This future never finish.
           futures::future::pending::<()>().await;
-          (0, OpResponse::Value(Box::new(43)))
+          (0, serialize_op_result(Ok(43), rc_op_state))
         };
         Op::AsyncUnref(Box::pin(fut))
       }
@@ -1531,7 +1532,7 @@ pub mod tests {
           assert_eq!(buf.len(), 1);
         }
 
-        let resp = OpResponse::Value(Box::new(43));
+        let resp = serialize_op_result(Ok(43), rc_op_state);
         Op::Async(Box::pin(futures::future::ready((0, resp))))
       }
     }
@@ -1972,11 +1973,11 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |_state, payload: OpPayload, _buf| -> Op {
+    let dispatcher = move |state, payload: OpPayload, _buf| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       let control: u8 = payload.deserialize().unwrap();
       assert_eq!(control, 42);
-      let resp = (0, OpResponse::Value(Box::new(43)));
+      let resp = (0, serialize_op_result(Ok(43), state));
       Op::Async(Box::pin(futures::future::ready(resp)))
     };
 
