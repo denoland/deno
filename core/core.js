@@ -102,7 +102,7 @@
     return res;
   }
 
-  function jsonOpAsync(opName, args = null, zeroCopy = null) {
+  function opAsync(opName, args = null, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
     // Handle sync error (e.g: error parsing args)
@@ -110,21 +110,21 @@
     return setPromise(promiseId).then(unwrapOpResult);
   }
 
-  function jsonOpSync(opName, args = null, zeroCopy = null) {
+  function opSync(opName, args = null, zeroCopy = null) {
     return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
   }
 
   function resources() {
-    return Object.fromEntries(jsonOpSync("op_resources"));
+    return Object.fromEntries(opSync("op_resources"));
   }
 
   function close(rid) {
-    jsonOpSync("op_close", rid);
+    opSync("op_close", rid);
   }
 
   Object.assign(window.Deno.core, {
-    jsonOpAsync,
-    jsonOpSync,
+    opAsync,
+    opSync,
     dispatch: send,
     dispatchByName: dispatch,
     ops,
