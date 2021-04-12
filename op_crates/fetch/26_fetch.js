@@ -913,13 +913,18 @@
   const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
   /**
-   * @param {string} s
-   * @returns {string}
+   * @param {string} m
+   * @returns {boolean}
    */
-  function byteUpperCase(s) {
-    return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
-      return c.toUpperCase();
-    });
+  function isKnownMethod(m) {
+    return (
+      m === "DELETE" ||
+      m === "GET" ||
+      m === "HEAD" ||
+      m === "OPTIONS" ||
+      m === "POST" ||
+      m === "PUT"
+    );
   }
 
   /**
@@ -927,17 +932,16 @@
    * @returns {string}
    */
   function normalizeMethod(m) {
-    const u = byteUpperCase(m);
-    if (
-      u === "DELETE" ||
-      u === "GET" ||
-      u === "HEAD" ||
-      u === "OPTIONS" ||
-      u === "POST" ||
-      u === "PUT"
-    ) {
+    // Fast path for already valid methods
+    if (isKnownMethod(m)) {
+      return m;
+    }
+    // Normalize lower case
+    const u = m.toUpperCase();
+    if (isKnownMethod(u)) {
       return u;
     }
+    // Otherwise passthrough
     return m;
   }
 
