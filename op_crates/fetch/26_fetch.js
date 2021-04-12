@@ -917,10 +917,11 @@
    * @returns {string}
    */
   function byteUpperCase(s) {
-  return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
-    return c.toUpperCase();
-  };
-  
+    return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
+      return c.toUpperCase();
+    });
+  }
+
   /**
    * @param {string} m
    * @returns {boolean}
