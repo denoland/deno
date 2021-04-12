@@ -912,35 +912,6 @@
   const NULL_BODY_STATUS = [101, 204, 205, 304];
   const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
-  /**
-   * @param {string} s
-   * @returns {string}
-   */
-  function byteUpperCase(s) {
-    return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
-      return c.toUpperCase();
-    });
-  }
-
-  /**
-   * @param {string} m
-   * @returns {string}
-   */
-  function normalizeMethod(m) {
-    const u = byteUpperCase(m);
-    if (
-      u === "DELETE" ||
-      u === "GET" ||
-      u === "HEAD" ||
-      u === "OPTIONS" ||
-      u === "POST" ||
-      u === "PUT"
-    ) {
-      return u;
-    }
-    return m;
-  }
-
   class Request extends Body {
     /** @type {string} */
     #method = "GET";
@@ -1020,7 +991,7 @@
       }
 
       if (init && "method" in init && init.method) {
-        this.#method = normalizeMethod(init.method);
+        this.#method = init.method;
       }
 
       if (
