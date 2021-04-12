@@ -161,9 +161,6 @@ impl NetDescriptor {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct EnvDescriptor(pub String);
-
 impl fmt::Display for NetDescriptor {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.write_str(&match self.1 {
@@ -172,6 +169,9 @@ impl fmt::Display for NetDescriptor {
     })
   }
 }
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct EnvDescriptor(pub String);
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct RunDescriptor(pub String);
