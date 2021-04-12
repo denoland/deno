@@ -5,14 +5,12 @@ import {
   assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 
 unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     for await (const conn of listener) {
-      const httpConn = Deno.startHttp(conn);
+      const httpConn = Deno.serveHttp(conn);
       for await (const { request, respondWith } of httpConn) {
         assertEquals(await request.text(), "");
         respondWith(new Response("Hello World"));
@@ -41,7 +39,7 @@ unitTest(
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
       const conn = await listener.accept();
-      const httpConn = Deno.startHttp(conn);
+      const httpConn = Deno.serveHttp(conn);
       const evt = await httpConn.nextRequest();
       assert(evt);
       const { request, respondWith } = evt;
@@ -70,7 +68,7 @@ unitTest(
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
       const conn = await listener.accept();
-      const httpConn = Deno.startHttp(conn);
+      const httpConn = Deno.serveHttp(conn);
       const evt = await httpConn.nextRequest();
       assert(evt);
       const { request, respondWith } = evt;
@@ -101,7 +99,7 @@ unitTest({ perms: { net: true } }, async function httpServerStreamDuplex() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     const conn = await listener.accept();
-    const httpConn = Deno.startHttp(conn);
+    const httpConn = Deno.serveHttp(conn);
     const evt = await httpConn.nextRequest();
     assert(evt);
     const { request, respondWith } = evt;
@@ -136,7 +134,7 @@ unitTest({ perms: { net: true } }, async function httpServerStreamDuplex() {
 unitTest({ perms: { net: true } }, async function httpServerClose() {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
-  const httpConn = Deno.startHttp(await listener.accept());
+  const httpConn = Deno.serveHttp(await listener.accept());
   client.close();
   const evt = await httpConn.nextRequest();
   assertEquals(evt, null);
@@ -147,7 +145,7 @@ unitTest({ perms: { net: true } }, async function httpServerClose() {
 unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
-  const httpConn = Deno.startHttp(await listener.accept());
+  const httpConn = Deno.serveHttp(await listener.accept());
   await client.write(new Uint8Array([1, 2, 3]));
   await assertThrowsAsync(
     async () => {
@@ -175,10 +173,10 @@ unitTest(
         keyFile: "cli/tests/tls/localhost.key",
       });
       const conn = await listener.accept();
-      const httpConn = Deno.startHttp(conn);
+      const httpConn = Deno.serveHttp(conn);
       const evt = await httpConn.nextRequest();
       assert(evt);
-      const { request, respondWith } = evt;
+      const { respondWith } = evt;
       await respondWith(new Response("Hello World"));
 
       // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending

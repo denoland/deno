@@ -60,7 +60,7 @@ async fn op_emit(
   let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
-  let runtime_permissions = {
+  let mut runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
@@ -86,7 +86,7 @@ async fn op_emit(
     } else {
       let file = program_state
         .file_fetcher
-        .fetch(&import_map_specifier, &runtime_permissions)
+        .fetch(&import_map_specifier, &mut runtime_permissions)
         .await?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };

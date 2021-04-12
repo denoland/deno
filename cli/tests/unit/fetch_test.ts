@@ -35,7 +35,7 @@ function findClosedPortInRange(
       const listener = Deno.listen({ port });
       listener.close();
       return port;
-    } catch (e) {
+    } catch (_e) {
       port++;
     }
   }
@@ -792,7 +792,7 @@ unitTest(
       fail(
         "Response.text() didn't throw on a filtered response without a body (type error)",
       );
-    } catch (e) {
+    } catch (_e) {
       return;
     }
   },

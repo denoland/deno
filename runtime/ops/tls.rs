@@ -107,8 +107,8 @@ async fn op_start_tls(
   }
   {
     super::check_unstable2(&state, "Deno.startTls");
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
     permissions.net.check(&(&domain, Some(0)))?;
     if let Some(path) = &args.cert_file {
       permissions.read.check(Path::new(&path))?;
@@ -170,8 +170,8 @@ async fn op_connect_tls(
   assert_eq!(args.transport, "tcp");
 
   {
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
     permissions.net.check(&(&args.hostname, Some(args.port)))?;
     if let Some(path) = &args.cert_file {
       permissions.read.check(Path::new(&path))?;
@@ -300,6 +300,7 @@ pub struct ListenTlsArgs {
   port: u16,
   cert_file: String,
   key_file: String,
+  alpn_protocols: Option<Vec<String>>,
 }
 
 fn op_listen_tls(
@@ -312,12 +313,17 @@ fn op_listen_tls(
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
-    let permissions = state.borrow::<Permissions>();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.net.check(&(&args.hostname, Some(args.port)))?;
     permissions.read.check(Path::new(&cert_file))?;
     permissions.read.check(Path::new(&key_file))?;
   }
   let mut config = ServerConfig::new(NoClientAuth::new());
+  if let Some(alpn_protocols) = args.alpn_protocols {
+    super::check_unstable(state, "Deno.listenTls#alpn_protocols");
+    config.alpn_protocols =
+      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
+  }
   config
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
