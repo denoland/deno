@@ -781,10 +781,14 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
+    truncate(len?: number): void;
+    truncateSync(len?: number): Promise<void>;
     read(p: Uint8Array): Promise<number | null>;
     readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
+    stat(): Promise<FileInfo>;
+    statSync(): FileInfo;
     close(): void;
   }
 
@@ -2386,4 +2390,26 @@ declare namespace Deno {
    * ```
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /** 
+   * Synchronously returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstatSync(rid: number): FileInfo;
+
+  /**
+   * Returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { read: true });
+   * const fileInfo = await Deno.fstat(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstat(rid: number): Promise<FileInfo>;
 }

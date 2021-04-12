@@ -13,7 +13,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
       const httpConn = Deno.serveHttp(conn);
       for await (const { request, respondWith } of httpConn) {
         assertEquals(await request.text(), "");
-        respondWith(new Response("Hello World"));
+        respondWith(new Response("Hello World", { headers: { "foo": "bar" } }));
       }
       break;
     }
@@ -24,6 +24,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   });
   const text = await resp.text();
   assertEquals(text, "Hello World");
+  assertEquals(resp.headers.get("foo"), "bar");
   await promise;
 });
 

@@ -28,8 +28,8 @@ use std::rc::Rc;
 use tokio::sync::mpsc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_fs_events_open", op_fs_events_open);
-  super::reg_json_async(rt, "op_fs_events_poll", op_fs_events_poll);
+  super::reg_sync(rt, "op_fs_events_open", op_fs_events_open);
+  super::reg_async(rt, "op_fs_events_poll", op_fs_events_poll);
 }
 
 struct FsEventsResource {
