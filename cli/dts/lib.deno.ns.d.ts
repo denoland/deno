@@ -781,10 +781,14 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
+    truncate(len?: number): void;
+    truncateSync(len?: number): Promise<void>;
     read(p: Uint8Array): Promise<number | null>;
     readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
+    stat(): Promise<FileInfo>;
+    statSync(): FileInfo;
     close(): void;
   }
 

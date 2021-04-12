@@ -34,6 +34,37 @@ pub enum PermissionState {
 }
 
 impl PermissionState {
+  #[inline(always)]
+  fn log_perm_access(name: &str, info: Option<&str>) {
+    debug!(
+      "{}",
+      colors::bold(&format!(
+        "{}️  Granted {}",
+        PERMISSION_EMOJI,
+        Self::fmt_access(name, info)
+      ))
+    );
+  }
+
+  fn fmt_access(name: &str, info: Option<&str>) -> String {
+    format!(
+      "{} access{}",
+      name,
+      info.map_or(String::new(), |info| { format!(" to {}", info) }),
+    )
+  }
+
+  fn error(name: &str, info: Option<&str>) -> AnyError {
+    custom_error(
+      "PermissionDenied",
+      format!(
+        "Requires {}, run again with the --allow-{} flag",
+        Self::fmt_access(name, info),
+        name
+      ),
+    )
+  }
+
   /// Check the permission state. bool is whether a prompt was issued.
   fn check(
     self,
@@ -41,28 +72,22 @@ impl PermissionState {
     info: Option<&str>,
     prompt: bool,
   ) -> (Result<(), AnyError>, bool) {
-    let access = format!(
-      "{} access{}",
-      name,
-      info.map_or(String::new(), |info| { format!(" to {}", info) }),
-    );
-    let result = if self == PermissionState::Granted
-      || (prompt
-        && self == PermissionState::Prompt
-        && permission_prompt(&access))
-    {
-      log_perm_access(&access);
-      Ok(())
-    } else {
-      Err(custom_error(
-        "PermissionDenied",
-        format!(
-          "Requires {}, run again with the --allow-{} flag",
-          access, name
-        ),
-      ))
-    };
-    (result, prompt && self == PermissionState::Prompt)
+    match self {
+      PermissionState::Granted => {
+        Self::log_perm_access(name, info);
+        (Ok(()), false)
+      }
+      PermissionState::Prompt if prompt => {
+        let msg = Self::fmt_access(name, info);
+        if permission_prompt(&msg) {
+          Self::log_perm_access(name, info);
+          (Ok(()), true)
+        } else {
+          (Err(Self::error(name, info)), true)
+        }
+      }
+      _ => (Err(Self::error(name, info)), false),
+    }
   }
 }
 
@@ -927,13 +952,6 @@ impl deno_websocket::WebSocketPermissions for Permissions {
   fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     self.net.check_url(url)
   }
-}
-
-fn log_perm_access(message: &str) {
-  debug!(
-    "{}",
-    colors::bold(&format!("{}️  Granted {}", PERMISSION_EMOJI, message))
-  );
 }
 
 fn unit_permission_from_flag_bool(
