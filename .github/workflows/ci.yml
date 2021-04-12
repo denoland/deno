@@ -175,9 +175,9 @@ jobs:
             ~/.cargo/registry
             ./target
           key:
-            ${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+            a-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.os }}-${{ matrix.kind }}-
+            a-${{ matrix.os }}-${{ matrix.kind }}-
 
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
