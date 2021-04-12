@@ -149,7 +149,7 @@ pub struct Flags {
   pub lock_write: bool,
   pub log_level: Option<Level>,
   pub no_check: bool,
-  pub no_prompts: bool,
+  pub prompt: bool,
   pub no_remote: bool,
   pub reload: bool,
   pub repl: bool,
@@ -251,6 +251,7 @@ impl From<Flags> for PermissionsOptions {
       allow_read: flags.allow_read,
       allow_run: flags.allow_run,
       allow_write: flags.allow_write,
+      prompt: flags.prompt,
     }
   }
 }
@@ -1447,6 +1448,11 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .long("allow-all")
         .help("Allow all permissions"),
     )
+    .arg(
+      Arg::with_name("prompt")
+        .long("prompt")
+        .help("Fallback to prompt if required permission wasn't passed"),
+    )
 }
 
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1865,6 +1871,9 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_write = Some(vec![]);
     flags.allow_plugin = true;
     flags.allow_hrtime = true;
+  }
+  if matches.is_present("prompt") {
+    flags.prompt = true;
   }
 }
 
