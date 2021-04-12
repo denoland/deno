@@ -5,8 +5,6 @@ use crate::metrics::RuntimeMetrics;
 use crate::ops::UnstableChecker;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -41,7 +39,7 @@ fn op_main_module(
 #[derive(serde::Serialize)]
 struct MetricsReturn {
   combined: OpMetrics,
-  ops: Value,
+  ops: Option<Vec<OpMetrics>>,
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -54,13 +52,13 @@ fn op_metrics(
   let combined = m.combined_metrics();
   let unstable_checker = state.borrow::<UnstableChecker>();
   let maybe_ops = if unstable_checker.unstable {
-    Some(&m.ops)
+    Some(m.ops.clone())
   } else {
     None
   };
   Ok(MetricsReturn {
     combined,
-    ops: json!(maybe_ops),
+    ops: maybe_ops,
   })
 }
 

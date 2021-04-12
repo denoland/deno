@@ -128,6 +128,7 @@
     dispatch: send,
     dispatchByName: dispatch,
     ops,
+    opsCache,
     close,
     resources,
     registerErrorClass,
