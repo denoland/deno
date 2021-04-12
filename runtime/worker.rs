@@ -274,7 +274,7 @@ impl MainWorker {
     let inspector_active = self
       .inspector
       .as_ref()
-      .map(|i| i.is_active())
+      .map(|i| i.has_active_sessions())
       .unwrap_or(false);
 
     // Always return polled js event, unless it's finished then wait for inspector
