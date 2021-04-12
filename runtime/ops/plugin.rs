@@ -34,7 +34,7 @@ pub fn op_open_plugin(
   let filename = PathBuf::from(&filename);
 
   super::check_unstable(state, "Deno.openPlugin");
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.plugin.check()?;
 
   debug!("Loading Plugin: {:#?}", filename);

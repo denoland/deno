@@ -1144,6 +1144,15 @@ declare namespace Deno {
     bytesReceived: number;
   }
 
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  export function memoryUsage(): MemoryUsage;
+
   export interface RequestEvent {
     readonly request: Request;
     respondWith(r: Response | Promise<Response>): void;
