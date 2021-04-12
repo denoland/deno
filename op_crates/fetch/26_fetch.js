@@ -919,7 +919,7 @@
   function byteUpperCase(s) {
   return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
     return c.toUpperCase();
-  });
+  };
   
   /**
    * @param {string} m
