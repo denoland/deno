@@ -859,7 +859,7 @@
    * @returns {HttpClient}
    */
   function createHttpClient(options) {
-    return new HttpClient(core.jsonOpSync("op_create_http_client", options));
+    return new HttpClient(core.opSync("op_create_http_client", options));
   }
 
   class HttpClient {
@@ -884,7 +884,7 @@
     if (body != null) {
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
     }
-    return core.jsonOpSync("op_fetch", args, zeroCopy);
+    return core.opSync("op_fetch", args, zeroCopy);
   }
 
   /**
@@ -892,7 +892,7 @@
    * @returns {Promise<{status: number, statusText: string, headers: Record<string,string[]>, url: string, responseRid: number}>}
    */
   function opFetchSend(rid) {
-    return core.jsonOpAsync("op_fetch_send", rid);
+    return core.opAsync("op_fetch_send", rid);
   }
 
   /**
@@ -906,7 +906,7 @@
       body.byteOffset,
       body.byteLength,
     );
-    return core.jsonOpAsync("op_fetch_request_write", rid, zeroCopy);
+    return core.opAsync("op_fetch_request_write", rid, zeroCopy);
   }
 
   const NULL_BODY_STATUS = [101, 204, 205, 304];
@@ -1400,7 +1400,7 @@
           async pull(controller) {
             try {
               const chunk = new Uint8Array(16 * 1024 + 256);
-              const read = await core.jsonOpAsync(
+              const read = await core.opAsync(
                 "op_fetch_response_read",
                 rid,
                 chunk,

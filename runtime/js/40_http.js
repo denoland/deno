@@ -19,7 +19,7 @@
   }
 
   function serveHttp(conn) {
-    const rid = Deno.core.jsonOpSync("op_http_start", conn.rid);
+    const rid = Deno.core.opSync("op_http_start", conn.rid);
     return new HttpConn(rid);
   }
 
@@ -39,7 +39,7 @@
     async nextRequest() {
       let nextRequest;
       try {
-        nextRequest = await Deno.core.jsonOpAsync(
+        nextRequest = await Deno.core.opAsync(
           "op_http_request_next",
           this.#rid,
         );
@@ -97,7 +97,7 @@
   }
 
   function readRequest(requestRid, zeroCopyBuf) {
-    return Deno.core.jsonOpAsync(
+    return Deno.core.opAsync(
       "op_http_request_read",
       requestRid,
       zeroCopyBuf,
@@ -105,7 +105,7 @@
   }
 
   function respond(responseSenderRid, resp, zeroCopyBuf) {
-    return Deno.core.jsonOpSync("op_http_response", [
+    return Deno.core.opSync("op_http_response", [
       responseSenderRid,
       resp.status ?? 200,
       flatEntries(resp.headers ?? {}),
@@ -156,7 +156,7 @@
             chunk.byteOffset,
             chunk.byteLength,
           );
-          await Deno.core.jsonOpAsync(
+          await Deno.core.opAsync(
             "op_http_response_write",
             responseBodyRid,
             data,
@@ -165,7 +165,7 @@
 
         // Once all chunks are sent, and the request body is closed, we can close
         // the response body.
-        await Deno.core.jsonOpAsync("op_http_response_close", responseBodyRid);
+        await Deno.core.opAsync("op_http_response_close", responseBodyRid);
       }
     };
   }
