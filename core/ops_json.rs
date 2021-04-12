@@ -31,7 +31,7 @@ use std::rc::Rc;
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
 /// Deno.core.ops();
-/// let result = Deno.core.jsonOpSync("function_name", args);
+/// let result = Deno.core.opSync("function_name", args);
 /// ```
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
@@ -69,7 +69,7 @@ where
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
 /// Deno.core.ops();
-/// let future = Deno.core.jsonOpAsync("function_name", args);
+/// let future = Deno.core.opAsync("function_name", args);
 /// ```
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
@@ -139,7 +139,7 @@ mod tests {
     Deno.core.registerErrorClass('Error', Error);
 
     async function f1() {
-      await Deno.core.jsonOpAsync('op_throw', 'hello');
+      await Deno.core.opAsync('op_throw', 'hello');
     }
 
     async function f2() {
