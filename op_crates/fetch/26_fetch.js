@@ -913,6 +913,15 @@
   const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
   /**
+   * @param {string} s
+   * @returns {string}
+   */
+  function byteUpperCase(s) {
+  return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
+    return c.toUpperCase();
+  });
+  
+  /**
    * @param {string} m
    * @returns {boolean}
    */
@@ -936,8 +945,8 @@
     if (isKnownMethod(m)) {
       return m;
     }
-    // Normalize lower case
-    const u = m.toUpperCase();
+    // Normalize lower case (slowpath and should be avoided ...)
+    const u = byteUpperCase(m);
     if (isKnownMethod(u)) {
       return u;
     }
