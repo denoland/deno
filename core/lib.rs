@@ -9,7 +9,6 @@ mod module_specifier;
 mod modules;
 mod normalize_path;
 mod ops;
-mod ops_bin;
 mod ops_json;
 pub mod plugin_api;
 mod resources;
