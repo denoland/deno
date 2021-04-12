@@ -18,12 +18,12 @@ pub fn init(
       op_state.put(Location(location));
     }
   }
-  super::reg_json_sync(
+  super::reg_sync(
     rt,
     "op_file_create_object_url",
     op_file_create_object_url,
   );
-  super::reg_json_sync(
+  super::reg_sync(
     rt,
     "op_file_revoke_object_url",
     op_file_revoke_object_url,

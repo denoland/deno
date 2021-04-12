@@ -26,9 +26,9 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_run", op_run);
-  super::reg_json_async(rt, "op_run_status", op_run_status);
-  super::reg_json_sync(rt, "op_kill", op_kill);
+  super::reg_sync(rt, "op_run", op_run);
+  super::reg_async(rt, "op_run_status", op_run_status);
+  super::reg_sync(rt, "op_kill", op_kill);
 }
 
 fn clone_file(

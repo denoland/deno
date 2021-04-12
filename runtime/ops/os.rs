@@ -12,17 +12,17 @@ use std::collections::HashMap;
 use std::env;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_exit", op_exit);
-  super::reg_json_sync(rt, "op_env", op_env);
-  super::reg_json_sync(rt, "op_exec_path", op_exec_path);
-  super::reg_json_sync(rt, "op_set_env", op_set_env);
-  super::reg_json_sync(rt, "op_get_env", op_get_env);
-  super::reg_json_sync(rt, "op_delete_env", op_delete_env);
-  super::reg_json_sync(rt, "op_hostname", op_hostname);
-  super::reg_json_sync(rt, "op_loadavg", op_loadavg);
-  super::reg_json_sync(rt, "op_os_release", op_os_release);
-  super::reg_json_sync(rt, "op_system_memory_info", op_system_memory_info);
-  super::reg_json_sync(rt, "op_system_cpu_info", op_system_cpu_info);
+  super::reg_sync(rt, "op_exit", op_exit);
+  super::reg_sync(rt, "op_env", op_env);
+  super::reg_sync(rt, "op_exec_path", op_exec_path);
+  super::reg_sync(rt, "op_set_env", op_set_env);
+  super::reg_sync(rt, "op_get_env", op_get_env);
+  super::reg_sync(rt, "op_delete_env", op_delete_env);
+  super::reg_sync(rt, "op_hostname", op_hostname);
+  super::reg_sync(rt, "op_loadavg", op_loadavg);
+  super::reg_sync(rt, "op_os_release", op_os_release);
+  super::reg_sync(rt, "op_system_memory_info", op_system_memory_info);
+  super::reg_sync(rt, "op_system_cpu_info", op_system_cpu_info);
 }
 
 fn op_exec_path(

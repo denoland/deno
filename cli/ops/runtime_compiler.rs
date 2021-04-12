@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_emit", op_emit);
+  super::reg_async(rt, "op_emit", op_emit);
 }
 
 #[derive(Debug, Deserialize)]

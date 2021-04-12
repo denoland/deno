@@ -23,7 +23,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub fn init(rt: &mut JsRuntime) {
-  super::reg_json_sync(rt, "op_open_plugin", op_open_plugin);
+  super::reg_sync(rt, "op_open_plugin", op_open_plugin);
 }
 
 pub fn op_open_plugin(

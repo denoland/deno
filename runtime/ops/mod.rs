@@ -40,7 +40,7 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 
-pub fn reg_json_async<F, V, R, RV>(
+pub fn reg_async<F, V, R, RV>(
   rt: &mut JsRuntime,
   name: &'static str,
   op_fn: F,
@@ -53,7 +53,7 @@ pub fn reg_json_async<F, V, R, RV>(
   rt.register_op(name, metrics_op(name, json_op_async(op_fn)));
 }
 
-pub fn reg_json_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+pub fn reg_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
   F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
