@@ -580,7 +580,7 @@ impl UnaryPermission<NetDescriptor> {
 impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     #[cfg(windows)]
-    let env = env.map(|env| env.to_uppercase()).as_ref();
+    let env = env.map(|env| env.to_uppercase()).as_deref();
     if self.global_state == PermissionState::Denied
       && match env {
         None => true,
