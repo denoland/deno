@@ -27,8 +27,6 @@ pub mod websocket;
 pub mod worker_host;
 
 use crate::metrics::metrics_op;
-use deno_core::bin_op_async;
-use deno_core::bin_op_sync;
 use deno_core::error::AnyError;
 use deno_core::json_op_async;
 use deno_core::json_op_sync;
@@ -62,24 +60,6 @@ where
   R: Serialize + 'static,
 {
   rt.register_op(name, metrics_op(name, json_op_sync(op_fn)));
-}
-
-pub fn reg_bin_async<F, R, RV>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
-where
-  F: Fn(Rc<RefCell<OpState>>, u32, Option<ZeroCopyBuf>) -> R + 'static,
-  R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: ValueOrVector,
-{
-  rt.register_op(name, metrics_op(name, bin_op_async(op_fn)));
-}
-
-pub fn reg_bin_sync<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
-where
-  F:
-    Fn(&mut OpState, u32, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
-  R: ValueOrVector,
-{
-  rt.register_op(name, metrics_op(name, bin_op_sync(op_fn)));
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;

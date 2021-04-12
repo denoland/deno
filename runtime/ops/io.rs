@@ -96,11 +96,11 @@ lazy_static::lazy_static! {
 }
 
 pub fn init(rt: &mut JsRuntime) {
-  super::reg_bin_async(rt, "op_read_async", op_read_async);
-  super::reg_bin_async(rt, "op_write_async", op_write_async);
+  super::reg_json_async(rt, "op_read_async", op_read_async);
+  super::reg_json_async(rt, "op_write_async", op_write_async);
 
-  super::reg_bin_sync(rt, "op_read_sync", op_read_sync);
-  super::reg_bin_sync(rt, "op_write_sync", op_write_sync);
+  super::reg_json_sync(rt, "op_read_sync", op_read_sync);
+  super::reg_json_sync(rt, "op_write_sync", op_write_sync);
 
   super::reg_json_async(rt, "op_shutdown", op_shutdown);
 }
