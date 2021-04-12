@@ -114,14 +114,6 @@
     return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
   }
 
-  function binOpSync(opName, args = null, zeroCopy = null) {
-    return jsonOpSync(opName, args, zeroCopy);
-  }
-
-  function binOpAsync(opName, args = null, zeroCopy = null) {
-    return jsonOpAsync(opName, args, zeroCopy);
-  }
-
   function resources() {
     return Object.fromEntries(jsonOpSync("op_resources"));
   }
@@ -131,8 +123,6 @@
   }
 
   Object.assign(window.Deno.core, {
-    binOpAsync,
-    binOpSync,
     jsonOpAsync,
     jsonOpSync,
     dispatch: send,
