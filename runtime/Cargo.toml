@@ -51,6 +51,7 @@ dlopen = "0.1.8"
 encoding_rs = "0.8.28"
 filetime = "0.2.14"
 http = "0.2.3"
+httpdate = "1"
 hyper = { version = "0.14.5", features = ["server", "stream", "http1", "http2", "runtime"] }
 indexmap = "1.6.2"
 lazy_static = "1.4.0"

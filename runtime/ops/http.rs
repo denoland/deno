@@ -334,6 +334,14 @@ fn op_http_response(
   debug_assert_eq!(headers.len() % 2, 0);
   let headers_count = headers.len() / 2;
   builder.headers_mut().unwrap().reserve(headers_count);
+
+  // TODO(ry) Do not call gettimeofday for every request. Cache now and invalidate after the
+  // second.
+  builder = builder.header(
+    hyper::header::DATE,
+    httpdate::fmt_http_date(std::time::SystemTime::now()),
+  );
+
   for i in 0..headers_count {
     builder = builder.header(&headers[2 * i], &headers[2 * i + 1]);
   }
