@@ -27,8 +27,8 @@ serde_v8 = { version = "0.1.0", path = "../serde_v8" }
 url = { version = "2.2.1", features = ["serde"] }
 
 [[example]]
-name = "http_bench_ops"
-path = "examples/http_bench_ops.rs"
+name = "http_bench_json_ops"
+path = "examples/http_bench_json_ops.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
