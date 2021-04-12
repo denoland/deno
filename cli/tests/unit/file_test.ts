@@ -103,3 +103,35 @@ unitTest(function fileUsingNumberFileName(): void {
 unitTest(function fileUsingEmptyStringFileName(): void {
   testSecondArgument("", "");
 });
+
+unitTest({ perms: { read: true } }, function fileStatSyncSuccess(): void {
+  const file = Deno.openSync("README.md");
+  const fileInfo = file.statSync();
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
+
+  file.close();
+});
+
+unitTest({ perms: { read: true } }, async function fileStatSuccess(): Promise<
+  void
+> {
+  const file = await Deno.open("README.md");
+  const fileInfo = await file.stat();
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  // The `birthtime` field is not available on Linux before kernel version 4.11.
+  assert(fileInfo.birthtime || Deno.build.os === "linux");
+
+  file.close();
+});
