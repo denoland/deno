@@ -217,10 +217,7 @@ fn main() {
 
   let future = async move {
     js_runtime
-      .execute(
-        "http_bench_ops.js",
-        include_str!("http_bench_ops.js"),
-      )
+      .execute("http_bench_ops.js", include_str!("http_bench_ops.js"))
       .unwrap();
     js_runtime.run_event_loop().await
   };
