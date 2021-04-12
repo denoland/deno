@@ -43,14 +43,14 @@ use tokio_rustls::server::TlsStream;
 use tokio_util::io::StreamReader;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_http_start", op_http_start);
+  super::reg_sync(rt, "op_http_start", op_http_start);
 
-  super::reg_json_async(rt, "op_http_request_next", op_http_request_next);
-  super::reg_json_async(rt, "op_http_request_read", op_http_request_read);
+  super::reg_async(rt, "op_http_request_next", op_http_request_next);
+  super::reg_async(rt, "op_http_request_read", op_http_request_read);
 
-  super::reg_json_sync(rt, "op_http_response", op_http_response);
-  super::reg_json_async(rt, "op_http_response_write", op_http_response_write);
-  super::reg_json_async(rt, "op_http_response_close", op_http_response_close);
+  super::reg_sync(rt, "op_http_response", op_http_response);
+  super::reg_async(rt, "op_http_response_write", op_http_response_write);
+  super::reg_async(rt, "op_http_response_close", op_http_response_close);
 }
 
 struct ServiceInner {

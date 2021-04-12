@@ -11,9 +11,9 @@ use serde::Deserialize;
 use std::path::Path;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_query_permission", op_query_permission);
-  super::reg_json_sync(rt, "op_revoke_permission", op_revoke_permission);
-  super::reg_json_sync(rt, "op_request_permission", op_request_permission);
+  super::reg_sync(rt, "op_query_permission", op_query_permission);
+  super::reg_sync(rt, "op_revoke_permission", op_revoke_permission);
+  super::reg_sync(rt, "op_request_permission", op_request_permission);
 }
 
 #[derive(Deserialize)]
@@ -21,6 +21,7 @@ pub struct PermissionArgs {
   name: String,
   path: Option<String>,
   host: Option<String>,
+  command: Option<String>,
 }
 
 pub fn op_query_permission(
@@ -41,7 +42,7 @@ pub fn op_query_permission(
       .as_ref(),
     ),
     "env" => permissions.env.query(),
-    "run" => permissions.run.query(),
+    "run" => permissions.run.query(args.command.as_deref()),
     "plugin" => permissions.plugin.query(),
     "hrtime" => permissions.hrtime.query(),
     n => {
@@ -72,7 +73,7 @@ pub fn op_revoke_permission(
       .as_ref(),
     ),
     "env" => permissions.env.revoke(),
-    "run" => permissions.run.revoke(),
+    "run" => permissions.run.revoke(args.command.as_deref()),
     "plugin" => permissions.plugin.revoke(),
     "hrtime" => permissions.hrtime.revoke(),
     n => {
@@ -103,7 +104,7 @@ pub fn op_request_permission(
       .as_ref(),
     ),
     "env" => permissions.env.request(),
-    "run" => permissions.run.request(),
+    "run" => permissions.run.request(args.command.as_deref()),
     "plugin" => permissions.plugin.request(),
     "hrtime" => permissions.hrtime.request(),
     n => {

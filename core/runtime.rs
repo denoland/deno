@@ -142,24 +142,31 @@ impl Drop for JsRuntime {
   }
 }
 
-#[allow(clippy::missing_safety_doc)]
-pub unsafe fn v8_init() {
-  let platform = v8::new_default_platform().unwrap();
-  v8::V8::initialize_platform(platform);
+fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
+  // Include 10MB ICU data file.
+  #[repr(C, align(16))]
+  struct IcuData([u8; 10413584]);
+  static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
+  v8::icu::set_common_data(&ICU_DATA.0).unwrap();
+
+  let v8_platform = v8_platform
+    .unwrap_or_else(v8::new_default_platform)
+    .unwrap();
+  v8::V8::initialize_platform(v8_platform);
   v8::V8::initialize();
-  let argv = vec![
-    "".to_string(),
-    "--wasm-test-streaming".to_string(),
+
+  let flags = concat!(
+    "--wasm-test-streaming",
     // TODO(ry) This makes WASM compile synchronously. Eventually we should
     // remove this to make it work asynchronously too. But that requires getting
     // PumpMessageLoop and RunMicrotasks setup correctly.
     // See https://github.com/denoland/deno/issues/2544
-    "--no-wasm-async-compilation".to_string(),
-    "--harmony-top-level-await".to_string(),
-    "--harmony-import-assertions".to_string(),
-    "--no-validate-asm".to_string(),
-  ];
-  v8::V8::set_flags_from_command_line(argv);
+    " --no-wasm-async-compilation",
+    " --harmony-top-level-await",
+    " --harmony-import-assertions",
+    " --no-validate-asm",
+  );
+  v8::V8::set_flags_from_string(flags);
 }
 
 #[derive(Default)]
@@ -192,20 +199,19 @@ pub struct RuntimeOptions {
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
+
+  /// V8 platform instance to use. Used when Deno initializes V8
+  /// (which it only does once), otherwise it's silenty dropped.
+  pub v8_platform: Option<v8::UniquePtr<v8::Platform>>,
 }
 
 impl JsRuntime {
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
+    let v8_platform = options.v8_platform.take();
+
     static DENO_INIT: Once = Once::new();
-    DENO_INIT.call_once(|| {
-      // Include 10MB ICU data file.
-      #[repr(C, align(16))]
-      struct IcuData([u8; 10413584]);
-      static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-      v8::icu::set_common_data(&ICU_DATA.0).unwrap();
-      unsafe { v8_init() };
-    });
+    DENO_INIT.call_once(move || v8_init(v8_platform));
 
     let has_startup_snapshot = options.startup_snapshot.is_some();
 
@@ -447,8 +453,8 @@ impl JsRuntime {
   ///
   /// This function provides byte-level bindings. To pass data via JSON, the
   /// following functions can be passed as an argument for `op_fn`:
-  /// * [json_op_sync()](fn.json_op_sync.html)
-  /// * [json_op_async()](fn.json_op_async.html)
+  /// * [op_sync()](fn.op_sync.html)
+  /// * [op_async()](fn.op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
     F: Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,
@@ -1515,7 +1521,7 @@ pub mod tests {
       Mode::Async => {
         let control: u8 = payload.deserialize().unwrap();
         assert_eq!(control, 42);
-        let resp = OpResponse::Value(Box::new(43));
+        let resp = (0, OpResponse::Value(Box::new(43)));
         Op::Async(Box::pin(futures::future::ready(resp)))
       }
       Mode::AsyncUnref => {
@@ -1524,7 +1530,7 @@ pub mod tests {
         let fut = async {
           // This future never finish.
           futures::future::pending::<()>().await;
-          OpResponse::Value(Box::new(43))
+          (0, OpResponse::Value(Box::new(43)))
         };
         Op::AsyncUnref(Box::pin(fut))
       }
@@ -1535,7 +1541,7 @@ pub mod tests {
         }
 
         let resp = OpResponse::Value(Box::new(43));
-        Op::Async(Box::pin(futures::future::ready(resp)))
+        Op::Async(Box::pin(futures::future::ready((0, resp))))
       }
     }
   }
@@ -1979,7 +1985,7 @@ pub mod tests {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       let control: u8 = payload.deserialize().unwrap();
       assert_eq!(control, 42);
-      let resp = OpResponse::Value(Box::new(43));
+      let resp = (0, OpResponse::Value(Box::new(43)));
       Op::Async(Box::pin(futures::future::ready(resp)))
     };
 
@@ -2389,5 +2395,15 @@ main();
     let error_string = error.to_string();
     // Test that the script specifier is a URL: `deno:<repo-relative path>`.
     assert!(error_string.contains("deno:core/core.js"));
+  }
+
+  #[test]
+  fn test_v8_platform() {
+    let options = RuntimeOptions {
+      v8_platform: Some(v8::new_default_platform()),
+      ..Default::default()
+    };
+    let mut runtime = JsRuntime::new(options);
+    runtime.execute("<none>", "").unwrap();
   }
 }

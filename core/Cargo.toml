@@ -27,10 +27,6 @@ serde_v8 = { version = "0.1.0", path = "../serde_v8" }
 url = { version = "2.2.1", features = ["serde"] }
 
 [[example]]
-name = "http_bench_bin_ops"
-path = "examples/http_bench_bin_ops.rs"
-
-[[example]]
 name = "http_bench_json_ops"
 path = "examples/http_bench_json_ops.rs"
 

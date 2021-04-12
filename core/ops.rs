@@ -21,7 +21,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type PromiseId = u64;
-pub type OpAsyncFuture = Pin<Box<dyn Future<Output = OpResponse>>>;
+pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResponse)>>>;
 pub type OpFn =
   dyn Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
 pub type OpId = usize;
@@ -29,16 +29,19 @@ pub type OpId = usize;
 pub struct OpPayload<'a, 'b, 'c> {
   pub(crate) scope: Option<&'a mut v8::HandleScope<'b>>,
   pub(crate) value: Option<v8::Local<'c, v8::Value>>,
+  pub(crate) promise_id: PromiseId,
 }
 
 impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
   pub fn new(
     scope: &'a mut v8::HandleScope<'b>,
     value: v8::Local<'c, v8::Value>,
+    promise_id: PromiseId,
   ) -> Self {
     Self {
       scope: Some(scope),
       value: Some(value),
+      promise_id,
     }
   }
 
@@ -46,6 +49,7 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
     Self {
       scope: None,
       value: None,
+      promise_id: 0,
     }
   }
 
@@ -188,7 +192,7 @@ impl Default for OpTable {
 /// Return map of resources with id as key
 /// and string representation as value.
 ///
-/// This op must be wrapped in `json_op_sync`.
+/// This op must be wrapped in `op_sync`.
 pub fn op_resources(
   state: &mut OpState,
   _args: (),
@@ -204,7 +208,7 @@ pub fn op_resources(
 
 /// Remove a resource from the resource table.
 ///
-/// This op must be wrapped in `json_op_sync`.
+/// This op must be wrapped in `op_sync`.
 pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,

@@ -9,23 +9,22 @@ unitTest(async function sendAsyncStackTrace() {
   } catch (error) {
     const s = error.stack.toString();
     console.log(s);
-    assertStringIncludes(s, "dispatch_bin_test.ts");
+    assertStringIncludes(s, "dispatch_test.ts");
     assertStringIncludes(s, "read");
   }
 });
 
 declare global {
-  // deno-lint-ignore no-namespace
   namespace Deno {
     // deno-lint-ignore no-explicit-any
     var core: any; // eslint-disable-line no-var
   }
 }
 
-unitTest(async function binOpsAsyncBadResource(): Promise<void> {
+unitTest(async function opsAsyncBadResource(): Promise<void> {
   try {
     const nonExistingRid = 9999;
-    await Deno.core.binOpAsync(
+    await Deno.core.opAsync(
       "op_read_async",
       nonExistingRid,
       new Uint8Array(0),
@@ -37,10 +36,10 @@ unitTest(async function binOpsAsyncBadResource(): Promise<void> {
   }
 });
 
-unitTest(function binOpsSyncBadResource(): void {
+unitTest(function opsSyncBadResource(): void {
   try {
     const nonExistingRid = 9999;
-    Deno.core.binOpSync("op_read_sync", nonExistingRid, new Uint8Array(0));
+    Deno.core.opSync("op_read_sync", nonExistingRid, new Uint8Array(0));
   } catch (e) {
     if (!(e instanceof Deno.errors.BadResource)) {
       throw e;

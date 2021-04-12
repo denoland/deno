@@ -27,63 +27,37 @@ pub mod websocket;
 pub mod worker_host;
 
 use crate::metrics::metrics_op;
-use deno_core::bin_op_async;
-use deno_core::bin_op_sync;
 use deno_core::error::AnyError;
-use deno_core::json_op_async;
-use deno_core::json_op_sync;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Serialize;
 use deno_core::JsRuntime;
 use deno_core::OpState;
-use deno_core::ValueOrVector;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 
-pub fn reg_json_async<F, V, R, RV>(
-  rt: &mut JsRuntime,
-  name: &'static str,
-  op_fn: F,
-) where
+pub fn reg_async<F, V, R, RV>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+where
   F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
   let op_id = rt.next_op_id();
-  rt.register_op(name, metrics_op(op_id, json_op_async(op_fn)));
+  rt.register_op(name, metrics_op(op_id, op_async(op_fn)));
 }
 
-pub fn reg_json_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+pub fn reg_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
   F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
   R: Serialize + 'static,
 {
   let op_id = rt.next_op_id();
-  rt.register_op(name, metrics_op(op_id, json_op_sync(op_fn)));
-}
-
-pub fn reg_bin_async<F, R, RV>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
-where
-  F: Fn(Rc<RefCell<OpState>>, u32, Option<ZeroCopyBuf>) -> R + 'static,
-  R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: ValueOrVector,
-{
-  let op_id = rt.next_op_id();
-  rt.register_op(name, metrics_op(op_id, bin_op_async(op_fn)));
-}
-
-pub fn reg_bin_sync<F, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
-where
-  F:
-    Fn(&mut OpState, u32, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
-  R: ValueOrVector,
-{
-  let op_id = rt.next_op_id();
-  rt.register_op(name, metrics_op(op_id, bin_op_sync(op_fn)));
+  rt.register_op(name, metrics_op(op_id, op_sync(op_fn)));
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;

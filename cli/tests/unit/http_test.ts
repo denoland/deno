@@ -5,8 +5,6 @@ import {
   assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 
 unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const promise = (async () => {
@@ -15,7 +13,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
       const httpConn = Deno.serveHttp(conn);
       for await (const { request, respondWith } of httpConn) {
         assertEquals(await request.text(), "");
-        respondWith(new Response("Hello World"));
+        respondWith(new Response("Hello World", { headers: { "foo": "bar" } }));
       }
       break;
     }
@@ -26,6 +24,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   });
   const text = await resp.text();
   assertEquals(text, "Hello World");
+  assertEquals(resp.headers.get("foo"), "bar");
   await promise;
 });
 
@@ -178,7 +177,7 @@ unitTest(
       const httpConn = Deno.serveHttp(conn);
       const evt = await httpConn.nextRequest();
       assert(evt);
-      const { request, respondWith } = evt;
+      const { respondWith } = evt;
       await respondWith(new Response("Hello World"));
 
       // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
