@@ -603,7 +603,7 @@ impl UnaryPermission<EnvDescriptor> {
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
       #[cfg(windows)]
-      let env = env.to_uppercase();
+      let env = &env.to_uppercase();
       let state = self.query(Some(&env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
@@ -639,7 +639,7 @@ impl UnaryPermission<EnvDescriptor> {
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
       #[cfg(windows)]
-      let env = env.to_uppercase();
+      let env = &env.to_uppercase();
       self.granted_list.retain(|env_| env_.0 != env);
     } else {
       self.granted_list.clear();
@@ -652,7 +652,7 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
     #[cfg(windows)]
-    let env = env.to_uppercase();
+    let env = &env.to_uppercase();
     let (result, prompted) = self.query(Some(env)).check(
       self.name,
       Some(&format!("\"{}\"", env)),
