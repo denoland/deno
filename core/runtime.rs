@@ -210,8 +210,8 @@ pub struct RuntimeOptions {
 pub enum PendingState {
   Active,
   Idle,
-  BlockedModule,
-  BlockedDynModule,
+  UnresolvedModule,
+  UnresolvedDynModule,
 }
 
 impl JsRuntime {
@@ -523,9 +523,9 @@ impl JsRuntime {
     if !(ops || dyn_imports || dyn_mod_eval || mod_eval) {
       PendingState::Idle
     } else if mod_eval && !(ops || dyn_imports || dyn_mod_eval) {
-      PendingState::BlockedModule
+      PendingState::UnresolvedModule
     } else if dyn_mod_eval && !(ops || dyn_imports) {
-      PendingState::BlockedDynModule
+      PendingState::UnresolvedDynModule
     } else {
       PendingState::Active
     }
@@ -587,11 +587,11 @@ impl JsRuntime {
       PendingState::Active => Poll::Pending,
 
       // Return errors if modules are blocked
-      PendingState::BlockedModule => {
+      PendingState::UnresolvedModule => {
         let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
         Poll::Ready(Err(generic_error(msg)))
       }
-      PendingState::BlockedDynModule => {
+      PendingState::UnresolvedDynModule => {
         let msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.";
         Poll::Ready(Err(generic_error(msg)))
       }
