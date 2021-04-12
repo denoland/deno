@@ -2,8 +2,9 @@
 const http = require("http");
 const port = process.argv[2] || "4544";
 console.log("port", port);
+const body = "Hello World";
 http
   .Server((req, res) => {
-    res.end("Hello World");
+    res.end(body);
   })
   .listen(port);
