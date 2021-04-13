@@ -161,7 +161,7 @@ impl OpTable {
   }
 
   pub fn next_op_id(&mut self) -> OpId {
-    self.0.len() + 1
+    self.0.len()
   }
 
   pub fn op_entries(state: Rc<RefCell<OpState>>) -> Vec<(String, OpId)> {
