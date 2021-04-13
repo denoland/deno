@@ -924,20 +924,34 @@
 
   /**
    * @param {string} m
+   * @returns {boolean}
+   */
+  function isKnownMethod(m) {
+    return (
+      m === "DELETE" ||
+      m === "GET" ||
+      m === "HEAD" ||
+      m === "OPTIONS" ||
+      m === "POST" ||
+      m === "PUT"
+    );
+  }
+
+  /**
+   * @param {string} m
    * @returns {string}
    */
   function normalizeMethod(m) {
+    // Fast path for already valid methods
+    if (isKnownMethod(m)) {
+      return m;
+    }
+    // Normalize lower case (slowpath and should be avoided ...)
     const u = byteUpperCase(m);
-    if (
-      u === "DELETE" ||
-      u === "GET" ||
-      u === "HEAD" ||
-      u === "OPTIONS" ||
-      u === "POST" ||
-      u === "PUT"
-    ) {
+    if (isKnownMethod(u)) {
       return u;
     }
+    // Otherwise passthrough
     return m;
   }
 
