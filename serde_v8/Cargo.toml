@@ -10,7 +10,7 @@ repository = "https://github.com/denoland/deno"
 
 [dependencies]
 serde = { version = "1.0.125", features = ["derive"] }
-rusty_v8 = "0.22.0"
+rusty_v8 = "0.22.1"
 
 [dev-dependencies]
 serde_json = "1.0.64"
