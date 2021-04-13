@@ -686,6 +686,7 @@
   // fastBody and dontValidateUrl allow users to opt out of certain behaviors
   const fastBody = Symbol("Body#fast");
   const dontValidateUrl = Symbol("dontValidateUrl");
+  const lazyHeaders = Symbol("lazyHeaders");
 
   class Body {
     #contentType = "";
@@ -924,20 +925,34 @@
 
   /**
    * @param {string} m
+   * @returns {boolean}
+   */
+  function isKnownMethod(m) {
+    return (
+      m === "DELETE" ||
+      m === "GET" ||
+      m === "HEAD" ||
+      m === "OPTIONS" ||
+      m === "POST" ||
+      m === "PUT"
+    );
+  }
+
+  /**
+   * @param {string} m
    * @returns {string}
    */
   function normalizeMethod(m) {
+    // Fast path for already valid methods
+    if (isKnownMethod(m)) {
+      return m;
+    }
+    // Normalize lower case (slowpath and should be avoided ...)
     const u = byteUpperCase(m);
-    if (
-      u === "DELETE" ||
-      u === "GET" ||
-      u === "HEAD" ||
-      u === "OPTIONS" ||
-      u === "POST" ||
-      u === "PUT"
-    ) {
+    if (isKnownMethod(u)) {
       return u;
     }
+    // Otherwise passthrough
     return m;
   }
 
@@ -946,7 +961,7 @@
     #method = "GET";
     /** @type {string} */
     #url = "";
-    /** @type {Headers} */
+    /** @type {Headers | string[][]} */
     #headers;
     /** @type {"include" | "omit" | "same-origin" | undefined} */
     #credentials = "omit";
@@ -985,16 +1000,32 @@
       }
 
       let headers;
+      let contentType = "";
       // prefer headers from init
       if (init.headers) {
-        headers = new Headers(init.headers);
+        if (init[lazyHeaders] && Array.isArray(init.headers)) {
+          // Trust the headers are valid, and only put them into the `Headers`
+          // strucutre when the user accesses the property. We also assume that
+          // all passed headers are lower-case (as is the case when they come
+          // from hyper in Rust), and that headers are of type
+          // `[string, string][]`.
+          headers = init.headers;
+          for (const tuple of headers) {
+            if (tuple[0] === "content-type") {
+              contentType = tuple[1];
+            }
+          }
+        } else {
+          headers = new Headers(init.headers);
+          contentType = headers.get("content-type") || "";
+        }
       } else if (input instanceof Request) {
         headers = input.headers;
+        contentType = headers.get("content-type") || "";
       } else {
         headers = new Headers();
       }
 
-      const contentType = headers.get("content-type") || "";
       super(b, { contentType });
       this.#headers = headers;
 
@@ -1002,9 +1033,9 @@
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
         }
+        // headers are already set above. no reason to do it again
         this.#method = input.method;
         this.#url = input.url;
-        this.#headers = new Headers(input.headers);
         this.#credentials = input.credentials;
       } else {
         // Constructing a URL just for validation is known to be expensive.
@@ -1071,6 +1102,9 @@
     }
 
     get headers() {
+      if (!(this.#headers instanceof Headers)) {
+        this.#headers = new Headers(this.#headers);
+      }
       return this.#headers;
     }
 
@@ -1501,5 +1535,6 @@
     createHttpClient,
     fastBody,
     dontValidateUrl,
+    lazyHeaders,
   };
 })(this);
