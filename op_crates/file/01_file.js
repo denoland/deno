@@ -3,6 +3,7 @@
 // @ts-check
 /// <reference no-default-lib="true" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
@@ -11,6 +12,8 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
+
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
   // host os.
   const isWindows = false;
@@ -143,62 +146,39 @@
     [_byteSequence];
 
     /**
-     * @param {BlobPart[]} [blobParts]
-     * @param {BlobPropertyBag} [options]
+     * @param {BlobPart[]} blobParts
+     * @param {BlobPropertyBag} options
      */
-    constructor(blobParts, options) {
-      if (blobParts === undefined) {
-        blobParts = [];
-      }
-      if (typeof blobParts !== "object") {
-        throw new TypeError(
-          `Failed to construct 'Blob'. blobParts cannot be converted to a sequence.`,
-        );
-      }
+    constructor(blobParts = [], options = {}) {
+      const prefix = "Failed to construct 'Blob'";
+      blobParts = webidl.converters["sequence<BlobPart>"](blobParts, {
+        context: "Argument 1",
+        prefix,
+      });
+      options = webidl.converters["BlobPropertyBag"](options, {
+        context: "Argument 2",
+        prefix,
+      });
 
-      const parts = [];
-      const iterator = blobParts[Symbol.iterator]?.();
-      if (iterator === undefined) {
-        throw new TypeError(
-          "Failed to construct 'Blob'. The provided value cannot be converted to a sequence",
-        );
-      }
-      while (true) {
-        const { value: element, done } = iterator.next();
-        if (done) break;
-        if (
-          ArrayBuffer.isView(element) || element instanceof ArrayBuffer ||
-          element instanceof Blob
-        ) {
-          parts.push(element);
-        } else {
-          parts.push(String(element));
-        }
-      }
-
-      if (!options || typeof options === "function") {
-        options = {};
-      }
-      if (typeof options !== "object") {
-        throw new TypeError(
-          `Failed to construct 'Blob'. options is not an object.`,
-        );
-      }
-      const endings = options.endings?.toString() ?? "transparent";
-      const type = options.type?.toString() ?? "";
+      this[webidl.brand] = webidl.brand;
 
       /** @type {Uint8Array} */
-      this[_byteSequence] = processBlobParts(parts, endings);
-      this.#type = normalizeType(type);
+      this[_byteSequence] = processBlobParts(
+        blobParts,
+        options.endings,
+      );
+      this.#type = normalizeType(options.type);
     }
 
     /** @returns {number} */
     get size() {
+      webidl.assertBranded(this, Blob);
       return this[_byteSequence].byteLength;
     }
 
     /** @returns {string} */
     get type() {
+      webidl.assertBranded(this, Blob);
       return this.#type;
     }
 
@@ -209,13 +189,35 @@
      * @returns {Blob}
      */
     slice(start, end, contentType) {
+      webidl.assertBranded(this, Blob);
+      const prefix = "Failed to execute 'slice' on 'Blob'";
+      if (start !== undefined) {
+        start = webidl.converters["long long"](start, {
+          clamp: true,
+          context: "Argument 1",
+          prefix,
+        });
+      }
+      if (end !== undefined) {
+        end = webidl.converters["long long"](end, {
+          clamp: true,
+          context: "Argument 2",
+          prefix,
+        });
+      }
+      if (contentType !== undefined) {
+        contentType = webidl.converters["DOMString"](contentType, {
+          context: "Argument 3",
+          prefix,
+        });
+      }
+
       const O = this;
       /** @type {number} */
       let relativeStart;
       if (start === undefined) {
         relativeStart = 0;
       } else {
-        start = Number(start);
         if (start < 0) {
           relativeStart = Math.max(O.size + start, 0);
         } else {
@@ -227,7 +229,6 @@
       if (end === undefined) {
         relativeEnd = O.size;
       } else {
-        end = Number(end);
         if (end < 0) {
           relativeEnd = Math.max(O.size + end, 0);
         } else {
@@ -239,7 +240,7 @@
       if (contentType === undefined) {
         relativeContentType = "";
       } else {
-        relativeContentType = normalizeType(String(contentType));
+        relativeContentType = normalizeType(contentType);
       }
       return new Blob([
         O[_byteSequence].buffer.slice(relativeStart, relativeEnd),
@@ -250,6 +251,7 @@
      * @returns {ReadableStream<Uint8Array>}
      */
     stream() {
+      webidl.assertBranded(this, Blob);
       const bytes = this[_byteSequence];
       const stream = new ReadableStream({
         type: "bytes",
@@ -267,6 +269,7 @@
      * @returns {Promise<string>}
      */
     async text() {
+      webidl.assertBranded(this, Blob);
       const buffer = await this.arrayBuffer();
       return utf8Decoder.decode(buffer);
     }
@@ -275,6 +278,7 @@
      * @returns {Promise<ArrayBuffer>}
      */
     async arrayBuffer() {
+      webidl.assertBranded(this, Blob);
       const stream = this.stream();
       let bytes = new Uint8Array();
       for await (const chunk of stream) {
@@ -288,6 +292,46 @@
     }
   }
 
+  webidl.converters["Blob"] = webidl.createInterfaceConverter("Blob", Blob);
+  webidl.converters["BlobPart"] = (V, opts) => {
+    // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
+    if (typeof V == "object") {
+      if (V instanceof Blob) {
+        return webidl.converters["Blob"](V, opts);
+      }
+      if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
+        return webidl.converters["ArrayBuffer"](V, opts);
+      }
+      if (ArrayBuffer.isView(V)) {
+        return webidl.converters["ArrayBufferView"](V, opts);
+      }
+    }
+    return webidl.converters["USVString"](V, opts);
+  };
+  webidl.converters["sequence<BlobPart>"] = webidl.createSequenceConverter(
+    webidl.converters["BlobPart"],
+  );
+  webidl.converters["EndingType"] = webidl.createEnumConverter("EndingType", [
+    "transparent",
+    "native",
+  ]);
+  const blobPropertyBagDictionary = [
+    {
+      key: "type",
+      converter: webidl.converters["DOMString"],
+      defaultValue: "",
+    },
+    {
+      key: "endings",
+      converter: webidl.converters["EndingType"],
+      defaultValue: "transparent",
+    },
+  ];
+  webidl.converters["BlobPropertyBag"] = webidl.createDictionaryConverter(
+    "BlobPropertyBag",
+    blobPropertyBagDictionary,
+  );
+
   const _Name = Symbol("[[Name]]");
   const _LastModfied = Symbol("[[LastModified]]");
 
@@ -300,41 +344,61 @@
     /**
      * @param {BlobPart[]} fileBits 
      * @param {string} fileName 
-     * @param {FilePropertyBag} [options] 
+     * @param {FilePropertyBag} options 
      */
-    constructor(fileBits, fileName, options) {
-      if (fileBits === undefined) {
-        throw new TypeError(
-          "Failed to construct 'File'. 2 arguments required, but first not specified.",
-        );
-      }
-      if (fileName === undefined) {
-        throw new TypeError(
-          "Failed to construct 'File'. 2 arguments required, but second not specified.",
-        );
-      }
-      super(fileBits, { endings: options?.endings, type: options?.type });
+    constructor(fileBits, fileName, options = {}) {
+      const prefix = "Failed to construct 'File'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+
+      fileBits = webidl.converters["sequence<BlobPart>"](fileBits, {
+        context: "Argument 1",
+        prefix,
+      });
+      fileName = webidl.converters["USVString"](fileName, {
+        context: "Argument 2",
+        prefix,
+      });
+      options = webidl.converters["FilePropertyBag"](options, {
+        context: "Argument 3",
+        prefix,
+      });
+
+      super(fileBits, options);
+
       /** @type {string} */
-      this[_Name] = String(fileName).replaceAll("/", ":");
-      if (options?.lastModified === undefined) {
+      this[_Name] = fileName.replaceAll("/", ":");
+      if (options.lastModified === undefined) {
         /** @type {number} */
         this[_LastModfied] = new Date().getTime();
       } else {
         /** @type {number} */
-        this[_LastModfied] = Number(options.lastModified);
+        this[_LastModfied] = options.lastModified;
       }
     }
 
     /** @returns {string} */
     get name() {
+      webidl.assertBranded(this, File);
       return this[_Name];
     }
 
     /** @returns {number} */
     get lastModified() {
+      webidl.assertBranded(this, File);
       return this[_LastModfied];
     }
   }
+
+  webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(
+    "FilePropertyBag",
+    blobPropertyBagDictionary,
+    [
+      {
+        key: "lastModified",
+        converter: webidl.converters["long long"],
+      },
+    ],
+  );
 
   window.__bootstrap.file = {
     Blob,

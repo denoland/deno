@@ -11,12 +11,12 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.jsonOpSync("listen");
+  return Deno.core.opSync("listen");
 }
 
 /** Accepts a connection, returns rid. */
 function accept(serverRid) {
-  return Deno.core.jsonOpAsync("accept", serverRid);
+  return Deno.core.opAsync("accept", serverRid);
 }
 
 /**
@@ -24,28 +24,30 @@ function accept(serverRid) {
  * Returns bytes read.
  */
 function read(rid, data) {
-  return Deno.core.jsonOpAsync("read", rid, data);
+  return Deno.core.opAsync("read", rid, data);
 }
 
 /** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
 function write(rid, data) {
-  return Deno.core.jsonOpAsync("write", rid, data);
+  return Deno.core.opAsync("write", rid, data);
 }
 
 function close(rid) {
-  Deno.core.jsonOpSync("close", rid);
+  Deno.core.opSync("close", rid);
 }
 
 async function serve(rid) {
-  while (true) {
-    const nread = await read(rid, requestBuf);
-    if (nread <= 0) {
-      break;
+  try {
+    while (true) {
+      await read(rid, requestBuf);
+      await write(rid, responseBuf);
     }
-
-    const nwritten = await write(rid, responseBuf);
-    if (nwritten < 0) {
-      break;
+  } catch (e) {
+    if (
+      !e.message.includes("Broken pipe") &&
+      !e.message.includes("Connection reset by peer")
+    ) {
+      throw e;
     }
   }
   close(rid);
@@ -56,14 +58,10 @@ async function main() {
   Deno.core.registerErrorClass("Error", Error);
 
   const listenerRid = listen();
-  Deno.core.print(`http_bench_json_ops listening on http://127.0.0.1:4544/\n`);
+  Deno.core.print(`http_bench_ops listening on http://127.0.0.1:4544/\n`);
 
-  for (;;) {
+  while (true) {
     const rid = await accept(listenerRid);
-    if (rid < 0) {
-      Deno.core.print(`accept error ${rid}`);
-      return;
-    }
     serve(rid);
   }
 }

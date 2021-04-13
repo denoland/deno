@@ -128,6 +128,7 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "traceResolution",
   "tsBuildInfoFile",
   "typeRoots",
+  "useDefineForClassFields",
   "version",
   "watch",
 ];

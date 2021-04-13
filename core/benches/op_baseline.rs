@@ -1,13 +1,12 @@
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
-use deno_core::bin_op_sync;
 use deno_core::error::AnyError;
-use deno_core::json_op_async;
-use deno_core::json_op_sync;
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::serialize_op_result;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::Op;
-use deno_core::OpResponse;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 
@@ -16,11 +15,11 @@ use std::rc::Rc;
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("pi_bin", bin_op_sync(|_, _, _| Ok(314159)));
-  runtime.register_op("pi_json", json_op_sync(|_, _: (), _| Ok(314159)));
-  runtime.register_op("pi_async", json_op_async(op_pi_async));
-  runtime
-    .register_op("nop", |_, _, _| Op::Sync(OpResponse::Value(Box::new(9))));
+  runtime.register_op("pi_json", op_sync(|_, _: (), _| Ok(314159)));
+  runtime.register_op("pi_async", op_async(op_pi_async));
+  runtime.register_op("nop", |state, _, _| {
+    Op::Sync(serialize_op_result(Ok(9), state))
+  });
 
   // Init ops
   runtime
@@ -70,20 +69,11 @@ pub fn bench_runtime_js_async(b: &mut Bencher, src: &str) {
   });
 }
 
-fn bench_op_pi_bin(b: &mut Bencher) {
-  bench_runtime_js(
-    b,
-    r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.binOpSync("pi_bin", 0, null);
-    }"#,
-  );
-}
-
 fn bench_op_pi_json(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.jsonOpSync("pi_json", null);
+      Deno.core.opSync("pi_json", null);
     }"#,
   );
 }
@@ -101,16 +91,10 @@ fn bench_op_async(b: &mut Bencher) {
   bench_runtime_js_async(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.jsonOpAsync("pi_async", null);
+      Deno.core.opAsync("pi_async", null);
     }"#,
   );
 }
 
-benchmark_group!(
-  benches,
-  bench_op_pi_bin,
-  bench_op_pi_json,
-  bench_op_nop,
-  bench_op_async
-);
+benchmark_group!(benches, bench_op_pi_json, bench_op_nop, bench_op_async);
 benchmark_main!(benches);

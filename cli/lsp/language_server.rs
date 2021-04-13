@@ -48,6 +48,7 @@ use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::performance::Performance;
+use super::registries;
 use super::sources;
 use super::sources::Sources;
 use super::text;
@@ -57,6 +58,9 @@ use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
+
+pub const REGISTRIES_PATH: &str = "registries";
+const SOURCES_PATH: &str = "deps";
 
 lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -71,6 +75,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: Config,
   pub documents: DocumentCache,
+  pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
 }
@@ -87,6 +92,10 @@ pub(crate) struct Inner {
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
+  /// Handles module registries, which allow discovery of modules
+  module_registries: registries::ModuleRegistry,
+  /// The path to the module registries cache
+  module_registries_location: PathBuf,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -119,8 +128,11 @@ impl Inner {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
-    let location = dir.root.join("deps");
-    let sources = Sources::new(&location);
+    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    let module_registries =
+      registries::ModuleRegistry::new(&module_registries_location);
+    let sources_location = dir.root.join(SOURCES_PATH);
+    let sources = Sources::new(&sources_location);
     let ts_server = Arc::new(TsServer::new());
     let performance = Performance::default();
     let diagnostics_server = diagnostics::DiagnosticsServer::new();
@@ -134,6 +146,8 @@ impl Inner {
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
+      module_registries,
+      module_registries_location,
       navigation_trees: Default::default(),
       performance,
       sources,
@@ -276,6 +290,7 @@ impl Inner {
       assets: self.assets.clone(),
       config: self.config.clone(),
       documents: self.documents.clone(),
+      module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
     }
@@ -328,6 +343,22 @@ impl Inner {
     Ok(())
   }
 
+  async fn update_registries(&mut self) -> Result<(), AnyError> {
+    let mark = self.performance.mark("update_registries");
+    for (registry, enabled) in self.config.settings.suggest.imports.hosts.iter()
+    {
+      if *enabled {
+        info!("Enabling auto complete registry for: {}", registry);
+        self.module_registries.enable(registry).await?;
+      } else {
+        info!("Disabling auto complete registry for: {}", registry);
+        self.module_registries.disable(registry).await?;
+      }
+    }
+    self.performance.measure(mark);
+    Ok(())
+  }
+
   async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_tsconfig");
     let mut tsconfig = TsConfig::new(json!({
@@ -341,6 +372,7 @@ impl Inner {
       "noEmit": true,
       "strict": true,
       "target": "esnext",
+      "useDefineForClassFields": true,
     }));
     let (maybe_config, maybe_root_uri) = {
       let config = &self.config;
@@ -495,6 +527,13 @@ impl Inner {
         .show_message(MessageType::Warning, err.to_string())
         .await;
     }
+    // Check to see if we need to setup any module registries
+    if let Err(err) = self.update_registries().await {
+      self
+        .client
+        .show_message(MessageType::Warning, err.to_string())
+        .await;
+    }
 
     if self
       .config
@@ -623,6 +662,12 @@ impl Inner {
         error!("failed to update settings: {}", err);
       }
       if let Err(err) = self.update_import_map().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.update_registries().await {
         self
           .client
           .show_message(MessageType::Warning, err.to_string())
@@ -833,12 +878,17 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            match self.ts_server.request(self.snapshot(), req).await {
+              Ok(items) => items,
+              Err(err) => {
+                // sometimes tsc reports errors when retrieving code actions
+                // because they don't reflect the current state of the document
+                // so we will log them to the output, but we won't send an error
+                // message back to the client.
                 error!("Error getting actions from TypeScript: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+                Vec::new()
+              }
+            };
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, self)
@@ -1389,7 +1439,9 @@ impl Inner {
       &specifier,
       &params.text_document_position.position,
       &self.snapshot(),
-    ) {
+    )
+    .await
+    {
       Some(response)
     } else {
       let line_index =
@@ -1654,16 +1706,12 @@ impl Inner {
   ) -> LspResult<Option<Value>> {
     match method {
       "deno/cache" => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => Ok(Some(
-          serde_json::to_value(self.cache(params).await?).map_err(|err| {
-            error!("Failed to serialize cache response: {}", err);
-            LspError::internal_error()
-          })?,
-        )),
+        Some(Ok(params)) => self.cache(params).await,
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
       "deno/performance" => Ok(Some(self.get_performance())),
+      "deno/reloadImportRegistries" => self.reload_import_registries().await,
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -1974,7 +2022,7 @@ struct VirtualTextDocumentParams {
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
-  async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
+  async fn cache(&mut self, params: CacheParams) -> LspResult<Option<Value>> {
     let mark = self.performance.mark("cache");
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !params.uris.is_empty() {
@@ -2015,12 +2063,28 @@ impl Inner {
       LspError::internal_error()
     })?;
     self.performance.measure(mark);
-    Ok(true)
+    Ok(Some(json!(true)))
   }
 
   fn get_performance(&self) -> Value {
     let averages = self.performance.averages();
     json!({ "averages": averages })
+  }
+
+  async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
+    fs::remove_dir_all(&self.module_registries_location)
+      .await
+      .map_err(|err| {
+        error!("Unable to remove registries cache: {}", err);
+        LspError::internal_error()
+      })?;
+    self.module_registries =
+      registries::ModuleRegistry::new(&self.module_registries_location);
+    self.update_registries().await.map_err(|err| {
+      error!("Unable to update registries: {}", err);
+      LspError::internal_error()
+    })?;
+    Ok(Some(json!(true)))
   }
 
   async fn virtual_text_document(
@@ -3206,6 +3270,127 @@ mod tests {
             "sortText": "1",
             "filterText": "b",
             "insertText": "b"
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completions_registry() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_registry.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_registry.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_registry.json",
+        LspResponse::RequestAssert(|value| {
+          let response: CompletionResult =
+            serde_json::from_value(value).unwrap();
+          let result = response.result.unwrap();
+          if let CompletionResponse::List(list) = result {
+            assert_eq!(list.items.len(), 3);
+          } else {
+            panic!("unexpected result");
+          }
+        }),
+      ),
+      (
+        "completion_resolve_request_registry.json",
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "v2.0.0",
+            "kind": 19,
+            "detail": "(version)",
+            "sortText": "0000000003",
+            "filterText": "http://localhost:4545/x/a@v2.0.0",
+            "textEdit": {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 20
+                },
+                "end": {
+                  "line": 0,
+                  "character": 46
+                }
+              },
+              "newText": "http://localhost:4545/x/a@v2.0.0"
+            }
+          }),
+        ),
+      ),
+      (
+        "shutdown_request.json",
+        LspResponse::Request(3, json!(null)),
+      ),
+      ("exit_notification.json", LspResponse::None),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completion_registry_empty_specifier() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      ("initialize_request_registry.json", LspResponse::RequestAny),
+      ("initialized_notification.json", LspResponse::None),
+      (
+        "did_open_notification_completion_registry_02.json",
+        LspResponse::None,
+      ),
+      (
+        "completion_request_registry_02.json",
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": ".",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": "."
+              },
+              {
+                "label": "..",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": ".."
+              },
+              {
+                "label": "http://localhost:4545",
+                "kind": 19,
+                "detail": "(registry)",
+                "sortText": "2",
+                "textEdit": {
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  },
+                  "newText": "http://localhost:4545"
+                }
+              }
+            ]
           }),
         ),
       ),

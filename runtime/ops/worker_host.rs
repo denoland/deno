@@ -5,6 +5,7 @@ use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
 use crate::permissions::ReadDescriptor;
+use crate::permissions::RunDescriptor;
 use crate::permissions::UnaryPermission;
 use crate::permissions::UnitPermission;
 use crate::permissions::WriteDescriptor;
@@ -79,15 +80,11 @@ pub fn init(
     let create_module_loader = CreateWebWorkerCbHolder(create_web_worker_cb);
     state.put::<CreateWebWorkerCbHolder>(create_module_loader);
   }
-  super::reg_json_sync(rt, "op_create_worker", op_create_worker);
-  super::reg_json_sync(
-    rt,
-    "op_host_terminate_worker",
-    op_host_terminate_worker,
-  );
-  super::reg_json_sync(rt, "op_host_post_message", op_host_post_message);
-  super::reg_json_async(rt, "op_host_get_message", op_host_get_message);
-  super::reg_json_sync(
+  super::reg_sync(rt, "op_create_worker", op_create_worker);
+  super::reg_sync(rt, "op_host_terminate_worker", op_host_terminate_worker);
+  super::reg_sync(rt, "op_host_post_message", op_host_post_message);
+  super::reg_async(rt, "op_host_get_message", op_host_get_message);
+  super::reg_sync(
     rt,
     "op_host_unhandled_error",
     move |_state, message: String, _zero_copy| {
@@ -189,6 +186,26 @@ fn merge_write_permission(
   Ok(main)
 }
 
+fn merge_run_permission(
+  mut main: UnaryPermission<RunDescriptor>,
+  worker: Option<UnaryPermission<RunDescriptor>>,
+) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
 fn create_worker_permissions(
   main_perms: Permissions,
   worker_perms: PermissionsArg,
@@ -199,7 +216,7 @@ fn create_worker_permissions(
     net: merge_net_permission(main_perms.net, worker_perms.net)?,
     plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
-    run: merge_boolean_permission(main_perms.run, worker_perms.run)?,
+    run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
   })
 }
@@ -216,8 +233,8 @@ struct PermissionsArg {
   plugin: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadDescriptor>>,
-  #[serde(default, deserialize_with = "as_permission_state")]
-  run: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_run_permission")]
+  run: Option<UnaryPermission<RunDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_write_permission")]
   write: Option<UnaryPermission<WriteDescriptor>>,
 }
@@ -345,6 +362,22 @@ where
   Ok(Some(UnaryPermission::<WriteDescriptor> {
     global_state: value.global_state,
     granted_list: resolve_write_allowlist(&Some(paths)),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_run_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<RunDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<RunDescriptor> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(RunDescriptor).collect(),
     ..Default::default()
   }))
 }

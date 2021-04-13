@@ -9,11 +9,11 @@ readme = "README.md"
 repository = "https://github.com/denoland/deno"
 
 [dependencies]
-serde = { version = "1.0.123", features = ["derive"] }
-rusty_v8 = "0.21.0"
+serde = { version = "1.0.125", features = ["derive"] }
+rusty_v8 = "0.22.0"
 
 [dev-dependencies]
-serde_json = "1.0.62"
+serde_json = "1.0.64"
 bencher = "0.1"
 
 [[example]]
