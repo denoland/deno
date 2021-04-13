@@ -62,6 +62,10 @@
     opsCache = Object.freeze(newOpsCache);
     return opsCache;
   }
+  
+  function getOpsCache() {
+    return opsCache;
+  }
 
   function handleAsyncMsgFromRust() {
     for (let i = 0; i < arguments.length; i += 2) {
@@ -128,7 +132,7 @@
     dispatch: send,
     dispatchByName: dispatch,
     ops,
-    opsCache,
+    getOpsCache,
     close,
     resources,
     registerErrorClass,

@@ -8,7 +8,7 @@
     const { combined, ops } = core.opSync("op_metrics");
     if (ops) {
       // Re-map array of op metrics to be keyed by name
-      const opPairs = Object.entries(core.opsCache);
+      const opPairs = Object.entries(core.getOpsCache());
       combined.ops = opPairs.reduce((accu, [name, id]) => {
         accu[name] = ops[id];
         return accu;
