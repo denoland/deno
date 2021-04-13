@@ -21,9 +21,6 @@ pub(crate) fn benchmark(
   let hyper_hello_exe = target_path.join("test_server");
   let hyper_hello_exe = hyper_hello_exe.to_str().unwrap();
 
-  let core_http_bin_ops_exe = target_path.join("examples/http_bench_bin_ops");
-  let core_http_bin_ops_exe = core_http_bin_ops_exe.to_str().unwrap();
-
   let core_http_json_ops_exe = target_path.join("examples/http_bench_json_ops");
   let core_http_json_ops_exe = core_http_json_ops_exe.to_str().unwrap();
 
@@ -40,12 +37,8 @@ pub(crate) fn benchmark(
     "deno_proxy_tcp".to_string(),
     deno_tcp_proxy(deno_exe, hyper_hello_exe)?,
   );
-  // "core_http_bin_ops" was once called "deno_core_single"
-  // "core_http_bin_ops" was once called "deno_core_http_bench"
-  res.insert(
-    "core_http_bin_ops".to_string(),
-    core_http_bin_ops(core_http_bin_ops_exe)?,
-  );
+  // "core_http_json_ops" previously had a "bin op" counterpart called "core_http_bin_ops",
+  // which was previously also called "deno_core_http_bench", "deno_core_single"
   res.insert(
     "core_http_json_ops".to_string(),
     core_http_json_ops(core_http_json_ops_exe)?,
@@ -244,11 +237,6 @@ fn deno_http_proxy(
     None,
     Some(&[hyper_exe, &origin_port.to_string()]),
   )
-}
-
-fn core_http_bin_ops(exe: &str) -> Result<HttpBenchmarkResult> {
-  println!("http_benchmark testing CORE http_bench_bin_ops");
-  run(&[exe], 4544, None, None)
 }
 
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {

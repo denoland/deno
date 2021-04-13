@@ -25,9 +25,9 @@ use std::borrow::Cow;
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_signal_bind", op_signal_bind);
-  super::reg_json_sync(rt, "op_signal_unbind", op_signal_unbind);
-  super::reg_json_async(rt, "op_signal_poll", op_signal_poll);
+  super::reg_sync(rt, "op_signal_bind", op_signal_bind);
+  super::reg_sync(rt, "op_signal_unbind", op_signal_unbind);
+  super::reg_async(rt, "op_signal_poll", op_signal_poll);
 }
 
 #[cfg(unix)]

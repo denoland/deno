@@ -12,7 +12,7 @@ pub fn init(
 ) {
   // Post message to host as guest worker.
   let sender_ = sender.clone();
-  super::reg_json_sync(
+  super::reg_sync(
     rt,
     "op_worker_post_message",
     move |_state, _args: (), buf| {
@@ -27,15 +27,11 @@ pub fn init(
   );
 
   // Notify host that guest worker closes.
-  super::reg_json_sync(
-    rt,
-    "op_worker_close",
-    move |_state, _args: (), _bufs| {
-      // Notify parent that we're finished
-      sender.clone().close_channel();
-      // Terminate execution of current worker
-      handle.terminate();
-      Ok(())
-    },
-  );
+  super::reg_sync(rt, "op_worker_close", move |_state, _args: (), _bufs| {
+    // Notify parent that we're finished
+    sender.clone().close_channel();
+    // Terminate execution of current worker
+    handle.terminate();
+    Ok(())
+  });
 }

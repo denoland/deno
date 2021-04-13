@@ -802,7 +802,10 @@
     },
     "fileReader.any.js": true,
     "url": {
-      "url-format.any.js": true
+      "url-format.any.js": true,
+      "url-with-fetch.any.js": [
+        "Revoke blob URL after creating Request, will fetch"
+      ]
     },
     "reading-data-section": {
       "Determining-Encoding.any.js": true,

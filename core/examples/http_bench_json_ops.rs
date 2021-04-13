@@ -111,11 +111,11 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("listen", deno_core::json_op_sync(op_listen));
-  runtime.register_op("close", deno_core::json_op_sync(op_close));
-  runtime.register_op("accept", deno_core::json_op_async(op_accept));
-  runtime.register_op("read", deno_core::json_op_async(op_read));
-  runtime.register_op("write", deno_core::json_op_async(op_write));
+  runtime.register_op("listen", deno_core::op_sync(op_listen));
+  runtime.register_op("close", deno_core::op_sync(op_close));
+  runtime.register_op("accept", deno_core::op_async(op_accept));
+  runtime.register_op("read", deno_core::op_async(op_read));
+  runtime.register_op("write", deno_core::op_async(op_write));
   runtime
 }
 
