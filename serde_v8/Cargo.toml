@@ -1,6 +1,6 @@
 [package]
 name = "serde_v8"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["the Deno authors"]
 edition = "2018"
 description = "Rust to V8 serialization and deserialization"
