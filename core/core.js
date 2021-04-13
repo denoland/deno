@@ -62,7 +62,7 @@
     opsCache = Object.freeze(newOpsCache);
     return opsCache;
   }
-  
+
   function getOpsCache() {
     return opsCache;
   }
