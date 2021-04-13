@@ -4,6 +4,9 @@
 /// <reference lib="esnext" />
 
 declare namespace globalThis {
+  declare var TextEncoder: typeof TextEncoder;
+  declare var TextDecoder: typeof TextDecoder;
+
   declare namespace __bootstrap {
     declare var infra: {
       collectSequenceOfCodepoints(

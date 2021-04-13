@@ -753,5 +753,17 @@
         "queue-microtask.any.js": true
       }
     }
+  },
+  "xhr": {
+    "formdata": {
+      "append.any.js": true,
+      "constructor.any.js": true,
+      "delete.any.js": true,
+      "foreach.any.js": true,
+      "get.any.js": true,
+      "has.any.js": true,
+      "set-blob.any.js": true,
+      "set.any.js": true
+    }
   }
 }
