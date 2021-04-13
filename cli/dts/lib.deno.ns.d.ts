@@ -2164,6 +2164,7 @@ declare namespace Deno {
 
   export interface EnvPermissionDescriptor {
     name: "env";
+    variable?: string;
   }
 
   export interface PluginPermissionDescriptor {
