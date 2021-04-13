@@ -6,11 +6,11 @@
 use log::trace;
 use std::any::Any;
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub struct GothamState {
-  data: HashMap<TypeId, Box<dyn Any>>,
+  data: BTreeMap<TypeId, Box<dyn Any>>,
 }
 
 impl GothamState {

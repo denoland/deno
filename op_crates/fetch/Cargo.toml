@@ -15,7 +15,10 @@ path = "lib.rs"
 
 [dependencies]
 bytes = "1.0.1"
+data-url = "0.1.0"
 deno_core = { version = "0.83.0", path = "../../core" }
+deno_file = { version = "0.1.0", path = "../file" }
+http = "0.2.3"
 reqwest = { version = "0.11.2", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "cookies"] }
 serde = { version = "1.0.125", features = ["derive"] }
 tokio = { version = "1.4.0", features = ["full"] }

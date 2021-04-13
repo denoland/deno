@@ -129,15 +129,15 @@ delete Object.prototype.__proto__;
   }
 
   function opPostMessage(data) {
-    core.jsonOpSync("op_worker_post_message", null, data);
+    core.opSync("op_worker_post_message", null, data);
   }
 
   function opCloseWorker() {
-    core.jsonOpSync("op_worker_close");
+    core.opSync("op_worker_close");
   }
 
   function opMainModule() {
-    return core.jsonOpSync("op_main_module");
+    return core.opSync("op_main_module");
   }
 
   function runtimeStart(runtimeOptions, source) {
@@ -433,6 +433,7 @@ delete Object.prototype.__proto__;
       [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
+      memoryUsage: core.memoryUsage,
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {

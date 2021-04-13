@@ -23,7 +23,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub fn init(rt: &mut JsRuntime) {
-  super::reg_json_sync(rt, "op_open_plugin", op_open_plugin);
+  super::reg_sync(rt, "op_open_plugin", op_open_plugin);
 }
 
 pub fn op_open_plugin(
@@ -34,7 +34,7 @@ pub fn op_open_plugin(
   let filename = PathBuf::from(&filename);
 
   super::check_unstable(state, "Deno.openPlugin");
-  let permissions = state.borrow::<Permissions>();
+  let permissions = state.borrow_mut::<Permissions>();
   permissions.plugin.check()?;
 
   debug!("Loading Plugin: {:#?}", filename);
