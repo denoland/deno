@@ -347,7 +347,7 @@ impl ModuleRegistry {
     let specifier = origin_url.join(CONFIG_PATH)?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
@@ -609,7 +609,7 @@ impl ModuleRegistry {
       .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await
       .map_err(|err| {
         error!(

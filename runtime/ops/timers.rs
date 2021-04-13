@@ -69,11 +69,11 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     state.put::<GlobalTimer>(GlobalTimer::default());
     state.put::<StartTime>(StartTime::now());
   }
-  super::reg_json_sync(rt, "op_global_timer_stop", op_global_timer_stop);
-  super::reg_json_sync(rt, "op_global_timer_start", op_global_timer_start);
-  super::reg_json_async(rt, "op_global_timer", op_global_timer);
-  super::reg_json_sync(rt, "op_now", op_now);
-  super::reg_json_sync(rt, "op_sleep_sync", op_sleep_sync);
+  super::reg_sync(rt, "op_global_timer_stop", op_global_timer_stop);
+  super::reg_sync(rt, "op_global_timer_start", op_global_timer_start);
+  super::reg_async(rt, "op_global_timer", op_global_timer);
+  super::reg_sync(rt, "op_now", op_now);
+  super::reg_sync(rt, "op_sleep_sync", op_sleep_sync);
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -140,7 +140,7 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if op_state.borrow::<Permissions>().hrtime.check().is_err() {
+  if op_state.borrow_mut::<Permissions>().hrtime.check().is_err() {
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 

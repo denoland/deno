@@ -26,9 +26,9 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_run", op_run);
-  super::reg_json_async(rt, "op_run_status", op_run_status);
-  super::reg_json_sync(rt, "op_kill", op_kill);
+  super::reg_sync(rt, "op_run", op_run);
+  super::reg_async(rt, "op_run_status", op_run_status);
+  super::reg_sync(rt, "op_kill", op_kill);
 }
 
 fn clone_file(
@@ -97,7 +97,7 @@ fn op_run(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
-  state.borrow::<Permissions>().run.check(&args[0])?;
+  state.borrow_mut::<Permissions>().run.check(&args[0])?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -286,7 +286,7 @@ fn op_kill(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
-  state.borrow::<Permissions>().run.check_all()?;
+  state.borrow_mut::<Permissions>().run.check_all()?;
 
   kill(args.pid, args.signo)?;
   Ok(())
