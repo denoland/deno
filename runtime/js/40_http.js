@@ -81,6 +81,7 @@
       return {
         async next() {
           const reqEvt = await httpConn.nextRequest();
+          // Change with caution, current form avoids a v8 deopt
           return { value: reqEvt, done: reqEvt === null };
         },
       };
