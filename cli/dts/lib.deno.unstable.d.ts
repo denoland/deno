@@ -1158,7 +1158,7 @@ declare namespace Deno {
 
   export interface RequestEvent {
     readonly request: Request;
-    respondWith(r: Response | Promise<Response>): void;
+    respondWith(r: Response | Promise<Response>): Promise<void>;
   }
 
   export interface HttpConn extends AsyncIterable<RequestEvent> {
