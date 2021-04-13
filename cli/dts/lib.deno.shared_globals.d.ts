@@ -192,7 +192,7 @@ declare namespace WebAssembly {
     maximum?: number;
   }
 
-  /** The value returned from `WebAssembly.instantiate` and `WebAssembly.instantiateStreaming`. */
+  /** The value returned from `WebAssembly.instantiate`. */
   export interface WebAssemblyInstantiatedSource {
     /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
     instance: Instance;
@@ -224,18 +224,6 @@ declare namespace WebAssembly {
   export function compile(bytes: BufferSource): Promise<Module>;
 
   /**
-   * The `WebAssembly.compileStreaming()` function compiles a `WebAssembly.Module`
-   * directly from a streamed underlying source.  This function is useful if it
-   * is necessary to a compile a module before it can be instantiated (otherwise,
-   * the `WebAssembly.instantiateStreaming()` function should be used).
-   *
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compileStreaming)
-   */
-  export function compileStreaming(
-    source: Response | Promise<Response>,
-  ): Promise<Module>;
-
-  /**
    * The WebAssembly.instantiate() function allows you to compile and instantiate
    * WebAssembly code.
    *
@@ -265,18 +253,6 @@ declare namespace WebAssembly {
     moduleObject: Module,
     importObject?: Imports,
   ): Promise<Instance>;
-
-  /**
-   * The `WebAssembly.instantiateStreaming()` function compiles and instantiates a
-   * WebAssembly module directly from a streamed underlying source. This is the most
-   * efficient, optimized way to load WebAssembly code.
-   *
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiateStreaming)
-   */
-  export function instantiateStreaming(
-    response: Response | PromiseLike<Response>,
-    importObject?: Imports,
-  ): Promise<WebAssemblyInstantiatedSource>;
 
   /**
    * The `WebAssembly.validate()` function validates a given typed array of
