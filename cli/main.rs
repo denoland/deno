@@ -36,6 +36,7 @@ mod tokio_util;
 mod tools;
 mod tsc;
 mod tsc_config;
+mod unix_util;
 mod version;
 
 use crate::file_fetcher::File;
@@ -1176,6 +1177,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
+  unix_util::raise_fd_limit();
 
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
