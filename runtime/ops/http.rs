@@ -181,7 +181,7 @@ async fn op_http_request_next(
     {
       let tx = request_resource.response_tx;
       let req = request_resource.request;
-      let method = req.method().to_string();
+      let method = req.method().to_string().to_uppercase();
 
       let mut headers = Vec::with_capacity(req.headers().len());
       for (name, value) in req.headers().iter() {

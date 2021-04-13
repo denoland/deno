@@ -145,7 +145,9 @@ where
   };
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
+    Some(method_str) => {
+      Method::from_bytes(method_str.to_uppercase().as_bytes())?
+    }
     None => Method::GET,
   };
 
