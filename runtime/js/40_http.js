@@ -81,8 +81,7 @@
       return {
         async next() {
           const reqEvt = await httpConn.nextRequest();
-          if (reqEvt === null) return { value: undefined, done: true };
-          return { value: reqEvt, done: false };
+          return { value: reqEvt, done: reqEvt === null };
         },
       };
     }
