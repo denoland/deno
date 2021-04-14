@@ -106,8 +106,8 @@
     return array;
   }
 
-  function createRespondWith(responseSenderRid, connRid) {
-    return async function (resp) {
+  function createRespondWith(responseSenderRid) {
+    return async function respondWith(resp) {
       if (resp instanceof Promise) {
         resp = await resp;
       }

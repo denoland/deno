@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.10.1"
+version = "0.11.0"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -18,32 +18,32 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.83.0" }
-deno_console = { path = "../op_crates/console", version = "0.2.1" }
-deno_crypto = { path = "../op_crates/crypto", version = "0.16.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.24.1" }
-deno_file = { path = "../op_crates/file", version = "0.1.0" }
-deno_web = { path = "../op_crates/web", version = "0.32.1" }
-deno_url = { path = "../op_crates/url", version = "0.2.1" }
-deno_webidl = { path = "../op_crates/webidl", version = "0.2.1" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.7.1" }
-deno_webgpu = { path = "../op_crates/webgpu", version = "0.3.1" }
+deno_core = { path = "../core", version = "0.84.0" }
+deno_console = { path = "../op_crates/console", version = "0.3.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.17.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.25.0" }
+deno_file = { path = "../op_crates/file", version = "0.2.0" }
+deno_web = { path = "../op_crates/web", version = "0.33.0" }
+deno_url = { path = "../op_crates/url", version = "0.3.0" }
+deno_webidl = { path = "../op_crates/webidl", version = "0.3.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.8.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.4.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.83.0" }
-deno_console = { path = "../op_crates/console", version = "0.2.1" }
-deno_crypto = { path = "../op_crates/crypto", version = "0.16.1" }
-deno_fetch = { path = "../op_crates/fetch", version = "0.24.1" }
-deno_file = { path = "../op_crates/file", version = "0.1.0" }
-deno_web = { path = "../op_crates/web", version = "0.32.1" }
-deno_url = { path = "../op_crates/url", version = "0.2.1" }
-deno_webidl = { path = "../op_crates/webidl", version = "0.2.1" }
-deno_websocket = { path = "../op_crates/websocket", version = "0.7.1" }
-deno_webgpu = { path = "../op_crates/webgpu", version = "0.3.1" }
+deno_core = { path = "../core", version = "0.84.0" }
+deno_console = { path = "../op_crates/console", version = "0.3.0" }
+deno_crypto = { path = "../op_crates/crypto", version = "0.17.0" }
+deno_fetch = { path = "../op_crates/fetch", version = "0.25.0" }
+deno_file = { path = "../op_crates/file", version = "0.2.0" }
+deno_web = { path = "../op_crates/web", version = "0.33.0" }
+deno_url = { path = "../op_crates/url", version = "0.3.0" }
+deno_webidl = { path = "../op_crates/webidl", version = "0.3.0" }
+deno_websocket = { path = "../op_crates/websocket", version = "0.8.0" }
+deno_webgpu = { path = "../op_crates/webgpu", version = "0.4.0" }
 
 atty = "0.2.14"
 bytes = "1"

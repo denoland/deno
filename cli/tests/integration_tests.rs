@@ -3438,11 +3438,6 @@ console.log("finish");
     output: "wasm_async.out",
   });
 
-  itest!(wasm_streaming {
-    args: "run wasm_streaming.js",
-    output: "wasm_streaming.out",
-  });
-
   itest!(wasm_unreachable {
     args: "run wasm_unreachable.js",
     output: "wasm_unreachable.out",

@@ -21,6 +21,7 @@ pub struct PermissionArgs {
   name: String,
   path: Option<String>,
   host: Option<String>,
+  variable: Option<String>,
   command: Option<String>,
 }
 
@@ -41,7 +42,7 @@ pub fn op_query_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.query(),
+    "env" => permissions.env.query(args.variable.as_deref()),
     "run" => permissions.run.query(args.command.as_deref()),
     "plugin" => permissions.plugin.query(),
     "hrtime" => permissions.hrtime.query(),
@@ -72,7 +73,7 @@ pub fn op_revoke_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.revoke(),
+    "env" => permissions.env.revoke(args.variable.as_deref()),
     "run" => permissions.run.revoke(args.command.as_deref()),
     "plugin" => permissions.plugin.revoke(),
     "hrtime" => permissions.hrtime.revoke(),
@@ -103,7 +104,7 @@ pub fn op_request_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.request(),
+    "env" => permissions.env.request(args.variable.as_deref()),
     "run" => permissions.run.request(args.command.as_deref()),
     "plugin" => permissions.plugin.request(),
     "hrtime" => permissions.hrtime.request(),

@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.8.3"
+version = "1.9.0"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -570,14 +570,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.83.0"
+version = "0.84.0"
 dependencies = [
  "anyhow",
  "bencher",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.16.1"
+version = "0.17.0"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.24.1"
+version = "0.25.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "deno_file"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "deno_core",
  "uuid",
@@ -665,7 +665,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "atty",
  "bytes",
@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "deno_core",
  "idna",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.32.1"
+version = "0.33.0"
 dependencies = [
  "deno_core",
  "futures",
@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -740,14 +740,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "deno_core",
  "http",
@@ -2602,9 +2602,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.22.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d22dda4980406128043b56aab93f5811278c185f384be52a0171f49c5bf74215"
+checksum = "9e39f106a3e39e8d18bc7dcbd4d59ece79cd27f888c6d82e0c93aa56d4708fdd"
 dependencies = [
  "bitflags",
  "fslock",
@@ -2763,7 +2763,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bencher",
  "rusty_v8",
