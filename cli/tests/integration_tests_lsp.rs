@@ -1723,6 +1723,58 @@ fn format_json() {
       }
     ]))
   );
+  shutdown(&mut client);
+}
 
+#[test]
+fn format_markdown() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.md",
+        "languageId": "markdown",
+        "version": 1,
+        "text": "#   Hello World"
+      }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 1 },
+          "end": { "line": 0, "character": 3 }
+        },
+        "newText": ""
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 15 },
+          "end": { "line": 0, "character": 15 }
+        },
+        "newText": "\n"
+      }
+    ]))
+  );
   shutdown(&mut client);
 }
