@@ -227,7 +227,7 @@ finishing test case.`;
     }
   }
 
-  function requestTestPermissions(permissions) {
+  function pledgeTestPermissions(permissions) {
     if (permissions.read === true) {
       permissions.read = [];
     } else if (permissions.read === false) {
@@ -258,7 +258,7 @@ finishing test case.`;
       permissions.run = null;
     }
 
-    core.opSync("op_request_test_permissions", permissions);
+    core.opSync("op_pledge_test_permissions", permissions);
   }
 
   function restoreTestPermissions() {

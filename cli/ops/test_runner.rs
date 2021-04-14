@@ -17,8 +17,8 @@ use std::path::PathBuf;
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(
     rt,
-    "op_request_test_permissions",
-    op_request_test_permissions,
+    "op_pledge_test_permissions",
+    op_pledge_test_permissions,
   );
   super::reg_sync(
     rt,
@@ -46,7 +46,7 @@ struct RestoreTestPermissions(Permissions);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RequestTestPermissionsArgs {
+struct PledgeTestPermissionsArgs {
   read: Option<Vec<String>>,
   write: Option<Vec<String>>,
   net: Option<Vec<String>>,
@@ -56,12 +56,12 @@ struct RequestTestPermissionsArgs {
   plugin: Option<bool>,
 }
 
-pub fn op_request_test_permissions(
+pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: RequestTestPermissionsArgs = serde_json::from_value(args)?;
+  let args: PledgeTestPermissionsArgs = serde_json::from_value(args)?;
 
   let mut permissions = state.borrow::<Permissions>().clone();
   state
