@@ -4,9 +4,10 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
+  unitTest,
 } from "./test_util.ts";
 
-Deno.test("envSuccess", function (): void {
+unitTest({ perms: { env: true } }, function envSuccess(): void {
   Deno.env.set("TEST_VAR", "A");
   const env = Deno.env.toObject();
   Deno.env.set("TEST_VAR", "B");
@@ -14,19 +15,19 @@ Deno.test("envSuccess", function (): void {
   assertNotEquals(Deno.env.get("TEST_VAR"), env["TEST_VAR"]);
 });
 
-Deno.test("envNotFound", function (): void {
+unitTest({ perms: { env: true } }, function envNotFound(): void {
   const r = Deno.env.get("env_var_does_not_exist!");
   assertEquals(r, undefined);
 });
 
-Deno.test("deleteEnv", function (): void {
+unitTest({ perms: { env: true } }, function deleteEnv(): void {
   Deno.env.set("TEST_VAR", "A");
   assertEquals(Deno.env.get("TEST_VAR"), "A");
   assertEquals(Deno.env.delete("TEST_VAR"), undefined);
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
 });
 
-Deno.test("avoidEmptyNamedEnv", function (): void {
+unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
   assertThrows(() => Deno.env.set("", "v"), TypeError);
   assertThrows(() => Deno.env.set("a=a", "v"), TypeError);
   assertThrows(() => Deno.env.set("a\0a", "v"), TypeError);
@@ -41,13 +42,27 @@ Deno.test("avoidEmptyNamedEnv", function (): void {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
+unitTest(function envPermissionDenied1(): void {
+  assertThrows(() => {
+    Deno.env.toObject();
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest(function envPermissionDenied2(): void {
+  assertThrows(() => {
+    Deno.env.get("PATH");
+  }, Deno.errors.PermissionDenied);
+});
+
 // This test verifies that on Windows, environment variables are
 // case-insensitive. Case normalization needs be done using the collation
 // that Windows uses, rather than naively using String.toLowerCase().
-Deno.test({
-  name: "envCaseInsensitive",
-  ignore: Deno.build.os !== "windows",
-  async fn() {
+unitTest(
+  {
+    ignore: Deno.build.os !== "windows",
+    perms: { read: true, env: true, run: true },
+  },
+  async function envCaseInsensitive() {
     // Utility function that runs a Deno subprocess with the environment
     // specified in `inputEnv`. The subprocess reads the environment variables
     // which are in the keys of `expectedEnv` and writes them to stdout as JSON.
@@ -105,51 +120,80 @@ Deno.test({
       { [c2]: "Dz", [uc2]: "DZ", [lc2]: "DZ" },
     );
   },
-});
+);
 
-Deno.test("osPid", function (): void {
+unitTest(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
-Deno.test("osPpid", function (): void {
+unitTest(function osPpid(): void {
   assert(Deno.ppid > 0);
 });
 
-Deno.test("osPpidIsEqualToPidOfParentProcess", async function (): Promise<
-  void
-> {
-  const decoder = new TextDecoder();
-  const process = Deno.run({
-    cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
-    stdout: "piped",
-    env: { NO_COLOR: "true" },
-  });
-  const output = await process.output();
-  process.close();
+unitTest(
+  { perms: { run: true, read: true } },
+  async function osPpidIsEqualToPidOfParentProcess(): Promise<void> {
+    const decoder = new TextDecoder();
+    const process = Deno.run({
+      cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
+      stdout: "piped",
+      env: { NO_COLOR: "true" },
+    });
+    const output = await process.output();
+    process.close();
 
-  const expected = Deno.pid;
-  const actual = parseInt(decoder.decode(output));
-  assertEquals(actual, expected);
-});
+    const expected = Deno.pid;
+    const actual = parseInt(decoder.decode(output));
+    assertEquals(actual, expected);
+  },
+);
 
-Deno.test("execPath", function (): void {
+unitTest({ perms: { read: true } }, function execPath(): void {
   assertNotEquals(Deno.execPath(), "");
 });
 
-Deno.test("loadavgSuccess", function (): void {
+unitTest({ perms: { read: false } }, function execPathPerm(): void {
+  assertThrows(
+    () => {
+      Deno.execPath();
+    },
+    Deno.errors.PermissionDenied,
+    "Requires read access to <exec_path>, run again with the --allow-read flag",
+  );
+});
+
+unitTest({ perms: { env: true } }, function loadavgSuccess(): void {
   const load = Deno.loadavg();
   assertEquals(load.length, 3);
 });
 
-Deno.test("hostnameDir", function (): void {
+unitTest({ perms: { env: false } }, function loadavgPerm(): void {
+  assertThrows(() => {
+    Deno.loadavg();
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest({ perms: { env: true } }, function hostnameDir(): void {
   assertNotEquals(Deno.hostname(), "");
 });
 
-Deno.test("releaseDir", function (): void {
+unitTest({ perms: { env: false } }, function hostnamePerm(): void {
+  assertThrows(() => {
+    Deno.hostname();
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest({ perms: { env: true } }, function releaseDir(): void {
   assertNotEquals(Deno.osRelease(), "");
 });
 
-Deno.test("systemMemoryInfo", function (): void {
+unitTest({ perms: { env: false } }, function releasePerm(): void {
+  assertThrows(() => {
+    Deno.osRelease();
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
   const info = Deno.systemMemoryInfo();
   assert(info.total >= 0);
   assert(info.free >= 0);
@@ -160,60 +204,8 @@ Deno.test("systemMemoryInfo", function (): void {
   assert(info.swapFree >= 0);
 });
 
-Deno.test("systemCpuInfo", function (): void {
+unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
   const { cores, speed } = Deno.systemCpuInfo();
   assert(cores === undefined || cores > 0);
   assert(speed === undefined || speed > 0);
-});
-
-Deno.test("envPermissionDenied1", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "env" });
-
-  assertThrows(() => {
-    Deno.env.toObject();
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test("envPermissionDenied2", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "env" });
-
-  assertThrows(() => {
-    Deno.env.get("PATH");
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test("releasePerm", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "env" });
-
-  assertThrows(() => {
-    Deno.osRelease();
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test("loadavgPerm", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "env" });
-
-  assertThrows(() => {
-    Deno.loadavg();
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test("hostnamePerm", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "env" });
-
-  assertThrows(() => {
-    Deno.hostname();
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test("execPathPerm", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "read" });
-
-  assertThrows(
-    () => {
-      Deno.execPath();
-    },
-    Deno.errors.PermissionDenied,
-    "Requires read access to <exec_path>, run again with the --allow-read flag",
-  );
 });

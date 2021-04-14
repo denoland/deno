@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertMatch } from "./test_util.ts";
+import { assert, assertEquals, assertMatch, unitTest } from "./test_util.ts";
 
-Deno.test("errorStackMessageLine", function (): void {
+unitTest(function errorStackMessageLine(): void {
   const e1 = new Error();
   e1.name = "Foo";
   e1.message = "bar";
@@ -41,7 +41,7 @@ Deno.test("errorStackMessageLine", function (): void {
   assertMatch(e6.stack!, /^null: null\n/);
 });
 
-Deno.test("captureStackTrace", function (): void {
+unitTest(function captureStackTrace(): void {
   function foo(): void {
     const error = new Error();
     const stack1 = error.stack!;
@@ -55,18 +55,14 @@ Deno.test("captureStackTrace", function (): void {
 
 // FIXME(bartlomieju): no longer works after migrating
 // to JavaScript runtime code
-Deno.test({
-  name: "applySourceMap",
-  ignore: true,
-  fn(): void {
-    const result = Deno.applySourceMap({
-      fileName: "CLI_SNAPSHOT.js",
-      lineNumber: 23,
-      columnNumber: 0,
-    });
-    Deno.core.print(`result: ${result}`, true);
-    assert(result.fileName.endsWith(".ts"));
-    assert(result.lineNumber != null);
-    assert(result.columnNumber != null);
-  },
+unitTest({ ignore: true }, function applySourceMap(): void {
+  const result = Deno.applySourceMap({
+    fileName: "CLI_SNAPSHOT.js",
+    lineNumber: 23,
+    columnNumber: 0,
+  });
+  Deno.core.print(`result: ${result}`, true);
+  assert(result.fileName.endsWith(".ts"));
+  assert(result.lineNumber != null);
+  assert(result.columnNumber != null);
 });

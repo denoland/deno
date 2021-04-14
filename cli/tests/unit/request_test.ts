@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "./test_util.ts";
+import { assertEquals, unitTest } from "./test_util.ts";
 
-Deno.test("fromInit", async function (): Promise<void> {
+unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
     body: "ahoyhoy",
     method: "POST",
@@ -15,7 +15,7 @@ Deno.test("fromInit", async function (): Promise<void> {
   assertEquals(req.headers.get("test-header"), "value");
 });
 
-Deno.test("fromRequest", async function (): Promise<void> {
+unitTest(async function fromRequest(): Promise<void> {
   const r = new Request("http://foo/", { body: "ahoyhoy" });
   r.headers.set("test-header", "value");
 
@@ -26,7 +26,7 @@ Deno.test("fromRequest", async function (): Promise<void> {
   assertEquals(req.headers.get("test-header"), r.headers.get("test-header"));
 });
 
-Deno.test("requestNonString", function (): void {
+unitTest(function requestNonString(): void {
   const nonString = {
     toString() {
       return "http://foo/";
@@ -37,18 +37,18 @@ Deno.test("requestNonString", function (): void {
   assertEquals(new Request(nonString).url, "http://foo/");
 });
 
-Deno.test("methodNonString", function (): void {
+unitTest(function methodNonString(): void {
   assertEquals(new Request("http://foo/", { method: undefined }).method, "GET");
 });
 
-Deno.test("requestRelativeUrl", function (): void {
+unitTest(function requestRelativeUrl(): void {
   assertEquals(
     new Request("relative-url").url,
     "http://js-unit-tests/foo/relative-url",
   );
 });
 
-Deno.test("cloneRequestBodyStream", async function (): Promise<void> {
+unitTest(async function cloneRequestBodyStream(): Promise<void> {
   // hack to get a stream
   const stream = new Request("http://foo/", { body: "a test body" }).body;
   const r1 = new Request("http://foo/", {

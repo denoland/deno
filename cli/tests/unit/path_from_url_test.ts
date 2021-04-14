@@ -1,12 +1,11 @@
-import { assertEquals, assertThrows } from "./test_util.ts";
+import { assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { pathFromURL } = Deno[Deno.internal];
 
-Deno.test({
-  name: "pathFromURLPosix",
-  ignore: Deno.build.os === "windows",
-  fn(): void {
+unitTest(
+  { ignore: Deno.build.os === "windows" },
+  function pathFromURLPosix(): void {
     assertEquals(
       pathFromURL(new URL("file:///test/directory")),
       "/test/directory",
@@ -14,12 +13,11 @@ Deno.test({
     assertEquals(pathFromURL(new URL("file:///space_ .txt")), "/space_ .txt");
     assertThrows(() => pathFromURL(new URL("https://deno.land/welcome.ts")));
   },
-});
+);
 
-Deno.test({
-  name: "pathFromUrlWin32",
-  ignore: Deno.build.os !== "windows",
-  fn(): void {
+unitTest(
+  { ignore: Deno.build.os !== "windows" },
+  function pathFromURLWin32(): void {
     assertEquals(
       pathFromURL(new URL("file:///c:/windows/test")),
       "c:\\windows\\test",
@@ -38,4 +36,4 @@ Deno.test({
      * swapped_surrogate_pair_��.txt  file:///D:/weird_names/swapped_surrogate_pair_%EF%BF%BD%EF%BF%BD.txt
      */
   },
-});
+);

@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "./test_util.ts";
+import { assertEquals, unitTest } from "./test_util.ts";
 
-Deno.test("symlinkSyncPerm", async function () {
+unitTest(async function symlinkSyncPerm() {
   const rs = new ReadableStream<string>({
     start(controller) {
       controller.enqueue("hello ");

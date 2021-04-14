@@ -5,10 +5,11 @@ import {
   assertThrowsAsync,
   fail,
   unimplemented,
+  unitTest,
 } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
-Deno.test("fetchProtocolError", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
 > {
   await assertThrowsAsync(
@@ -44,37 +45,46 @@ function findClosedPortInRange(
   );
 }
 
-Deno.test("fetchConnectionError", async function (): Promise<void> {
-  const port = findClosedPortInRange(4000, 9999);
-  await assertThrowsAsync(
-    async (): Promise<void> => {
-      await fetch(`http://localhost:${port}`);
-    },
-    TypeError,
-    "error trying to connect",
-  );
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchConnectionError(): Promise<void> {
+    const port = findClosedPortInRange(4000, 9999);
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch(`http://localhost:${port}`);
+      },
+      TypeError,
+      "error trying to connect",
+    );
+  },
+);
 
-Deno.test("fetchDnsError", async function (): Promise<void> {
-  await assertThrowsAsync(
-    async (): Promise<void> => {
-      await fetch("http://nil/");
-    },
-    TypeError,
-    "error trying to connect",
-  );
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchDnsError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://nil/");
+      },
+      TypeError,
+      "error trying to connect",
+    );
+  },
+);
 
-Deno.test("fetchInvalidUriError", async function (): Promise<void> {
-  await assertThrowsAsync(
-    async (): Promise<void> => {
-      await fetch("http://<invalid>/");
-    },
-    URIError,
-  );
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchInvalidUriError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://<invalid>/");
+      },
+      URIError,
+    );
+  },
+);
 
-Deno.test("fetchJsonSuccess", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchJsonSuccess(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -82,13 +92,19 @@ Deno.test("fetchJsonSuccess", async function (): Promise<
   assertEquals(json.name, "deno");
 });
 
-Deno.test("fetchUrl", async function (): Promise<void> {
+unitTest(async function fetchPerm(): Promise<void> {
+  await assertThrowsAsync(async () => {
+    await fetch("http://localhost:4545/cli/tests/fixture.json");
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest({ perms: { net: true } }, async function fetchUrl(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
   const _json = await response.json();
 });
 
-Deno.test("fetchURL", async function (): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchURL(): Promise<void> {
   const response = await fetch(
     new URL("http://localhost:4545/cli/tests/fixture.json"),
   );
@@ -96,7 +112,7 @@ Deno.test("fetchURL", async function (): Promise<void> {
   const _json = await response.json();
 });
 
-Deno.test("fetchHeaders", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -105,7 +121,7 @@ Deno.test("fetchHeaders", async function (): Promise<
   const _json = await response.json();
 });
 
-Deno.test("fetchBlob", async function (): Promise<void> {
+unitTest({ perms: { net: true } }, async function fetchBlob(): Promise<void> {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   const blob = await response.blob();
@@ -113,7 +129,7 @@ Deno.test("fetchBlob", async function (): Promise<void> {
   assertEquals(blob.size, Number(headers.get("Content-Length")));
 });
 
-Deno.test("fetchBodyUsed", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -125,34 +141,40 @@ Deno.test("fetchBodyUsed", async function (): Promise<
   assertEquals(response.bodyUsed, true);
 });
 
-Deno.test("fetchBodyUsedReader", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/fixture.json",
-  );
-  assert(response.body !== null);
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyUsedReader(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json",
+    );
+    assert(response.body !== null);
 
-  const reader = response.body.getReader();
-  // Getting a reader should lock the stream but does not consume the body
-  // so bodyUsed should not be true
-  assertEquals(response.bodyUsed, false);
-  reader.releaseLock();
-  await response.json();
-  assertEquals(response.bodyUsed, true);
-});
+    const reader = response.body.getReader();
+    // Getting a reader should lock the stream but does not consume the body
+    // so bodyUsed should not be true
+    assertEquals(response.bodyUsed, false);
+    reader.releaseLock();
+    await response.json();
+    assertEquals(response.bodyUsed, true);
+  },
+);
 
-Deno.test("fetchBodyUsedCancelStream", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/fixture.json",
-  );
-  assert(response.body !== null);
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyUsedCancelStream(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json",
+    );
+    assert(response.body !== null);
 
-  assertEquals(response.bodyUsed, false);
-  const promise = response.body.cancel();
-  assertEquals(response.bodyUsed, true);
-  await promise;
-});
+    assertEquals(response.bodyUsed, false);
+    const promise = response.body.cancel();
+    assertEquals(response.bodyUsed, true);
+    await promise;
+  },
+);
 
-Deno.test("fetchAsyncIterator", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -168,7 +190,7 @@ Deno.test("fetchAsyncIterator", async function (): Promise<
   assertEquals(total, Number(headers.get("Content-Length")));
 });
 
-Deno.test("fetchBodyReader", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -187,26 +209,29 @@ Deno.test("fetchBodyReader", async function (): Promise<
   assertEquals(total, Number(headers.get("Content-Length")));
 });
 
-Deno.test("fetchBodyReaderBigBody", async function (): Promise<void> {
-  const data = "a".repeat(10 << 10); // 10mb
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: data,
-  });
-  assert(response.body !== null);
-  const reader = await response.body.getReader();
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    assert(value);
-    total += value.length;
-  }
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderBigBody(): Promise<void> {
+    const data = "a".repeat(10 << 10); // 10mb
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
 
-  assertEquals(total, data.length);
-});
+    assertEquals(total, data.length);
+  },
+);
 
-Deno.test("responseClone", async function (): Promise<
+unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -221,217 +246,265 @@ Deno.test("responseClone", async function (): Promise<
   }
 });
 
-Deno.test("fetchMultipartFormDataSuccess", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/multipart_form_data.txt",
-  );
-  const formData = await response.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
-  assert(formData.has("field_2"));
-  const file = formData.get("field_2") as File;
-  assertEquals(file.name, "file.js");
-
-  assertEquals(await file.text(), `console.log("Hi")`);
-});
-
-Deno.test("fetchMultipartFormBadContentType", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/multipart_form_bad_content_type",
-  );
-  assert(response.body !== null);
-
-  await assertThrowsAsync(
-    async (): Promise<void> => {
-      await response.formData();
-    },
-    TypeError,
-    "Invalid form data",
-  );
-  await response.body.cancel();
-});
-
-Deno.test("fetchURLEncodedFormDataSuccess", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
-  );
-  const formData = await response.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "Hi");
-  assert(formData.has("field_2"));
-  assertEquals(formData.get("field_2")!.toString(), "<Deno>");
-});
-
-Deno.test("fetchInitFormDataBinaryFileBody", async function (): Promise<void> {
-  // Some random bytes
-  // deno-fmt-ignore
-  const binaryFile = new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]);
-  const response = await fetch("http://localhost:4545/echo_multipart_file", {
-    method: "POST",
-    body: binaryFile,
-  });
-  const resultForm = await response.formData();
-  const resultFile = resultForm.get("file") as File;
-
-  assertEquals(resultFile.type, "application/octet-stream");
-  assertEquals(resultFile.name, "file.bin");
-  assertEquals(new Uint8Array(await resultFile.arrayBuffer()), binaryFile);
-});
-
-Deno.test("fetchInitFormDataMultipleFilesBody", async function (): Promise<
-  void
-> {
-  const files = [
-    {
-      // deno-fmt-ignore
-      content: new Uint8Array([137,80,78,71,13,10,26,10, 137, 1, 25]),
-      type: "image/png",
-      name: "image",
-      fileName: "some-image.png",
-    },
-    {
-      // deno-fmt-ignore
-      content: new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]),
-      name: "file",
-      fileName: "file.bin",
-      expectedType: "application/octet-stream",
-    },
-    {
-      content: new TextEncoder().encode("deno land"),
-      type: "text/plain",
-      name: "text",
-      fileName: "deno.txt",
-    },
-  ];
-  const form = new FormData();
-  form.append("field", "value");
-  for (const file of files) {
-    form.append(
-      file.name,
-      new Blob([file.content], { type: file.type }),
-      file.fileName,
+unitTest(
+  { perms: { net: true } },
+  async function fetchMultipartFormDataSuccess(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/multipart_form_data.txt",
     );
-  }
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: form,
-  });
-  const resultForm = await response.formData();
-  assertEquals(form.get("field"), resultForm.get("field"));
-  for (const file of files) {
-    const inputFile = form.get(file.name) as File;
-    const resultFile = resultForm.get(file.name) as File;
-    assertEquals(inputFile.size, resultFile.size);
-    assertEquals(inputFile.name, resultFile.name);
-    assertEquals(file.expectedType || file.type, resultFile.type);
-    assertEquals(
-      new Uint8Array(await resultFile.arrayBuffer()),
-      file.content,
+    const formData = await response.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
+    assert(formData.has("field_2"));
+    const file = formData.get("field_2") as File;
+    assertEquals(file.name, "file.js");
+
+    assertEquals(await file.text(), `console.log("Hi")`);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchMultipartFormBadContentType(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/multipart_form_bad_content_type",
     );
-  }
-});
+    assert(response.body !== null);
 
-Deno.test("fetchWithRedirection", async function (): Promise<void> {
-  const response = await fetch("http://localhost:4546/README.md");
-  assertEquals(response.status, 200);
-  assertEquals(response.statusText, "OK");
-  assertEquals(response.url, "http://localhost:4545/README.md");
-  const body = await response.text();
-  assert(body.includes("Deno"));
-});
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await response.formData();
+      },
+      TypeError,
+      "Invalid form data",
+    );
+    await response.body.cancel();
+  },
+);
 
-Deno.test("fetchWithRelativeRedirection", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/001_hello.js",
-  );
-  assertEquals(response.status, 200);
-  assertEquals(response.statusText, "OK");
-  const body = await response.text();
-  assert(body.includes("Hello"));
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchURLEncodedFormDataSuccess(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
+    );
+    const formData = await response.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1")!.toString(), "Hi");
+    assert(formData.has("field_2"));
+    assertEquals(formData.get("field_2")!.toString(), "<Deno>");
+  },
+);
 
-Deno.test("fetchWithRelativeRedirectionUrl", async function (): Promise<void> {
-  const cases = [
-    ["end", "http://localhost:4550/a/b/end"],
-    ["/end", "http://localhost:4550/end"],
-  ];
-  for (const [loc, redUrl] of cases) {
-    const response = await fetch("http://localhost:4550/a/b/c", {
-      headers: new Headers([["x-location", loc]]),
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBinaryFileBody(): Promise<void> {
+    // Some random bytes
+    // deno-fmt-ignore
+    const binaryFile = new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]);
+    const response = await fetch("http://localhost:4545/echo_multipart_file", {
+      method: "POST",
+      body: binaryFile,
     });
-    assertEquals(response.url, redUrl);
-    assertEquals(response.redirected, true);
-    assertEquals(response.status, 404);
-    assertEquals(await response.text(), "");
-  }
-});
+    const resultForm = await response.formData();
+    const resultFile = resultForm.get("file") as File;
 
-Deno.test("fetchWithInfRedirection", async function (): Promise<void> {
-  const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
-  assertEquals(response.status, 0); // network error
-  assertEquals(response.type, "error");
-  assertEquals(response.ok, false);
-});
+    assertEquals(resultFile.type, "application/octet-stream");
+    assertEquals(resultFile.name, "file.bin");
+    assertEquals(new Uint8Array(await resultFile.arrayBuffer()), binaryFile);
+  },
+);
 
-Deno.test("fetchInitStringBody", async function (): Promise<void> {
-  const data = "Hello World";
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: data,
-  });
-  const text = await response.text();
-  assertEquals(text, data);
-  assert(response.headers.get("content-type")!.startsWith("text/plain"));
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataMultipleFilesBody(): Promise<void> {
+    const files = [
+      {
+        // deno-fmt-ignore
+        content: new Uint8Array([137,80,78,71,13,10,26,10, 137, 1, 25]),
+        type: "image/png",
+        name: "image",
+        fileName: "some-image.png",
+      },
+      {
+        // deno-fmt-ignore
+        content: new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]),
+        name: "file",
+        fileName: "file.bin",
+        expectedType: "application/octet-stream",
+      },
+      {
+        content: new TextEncoder().encode("deno land"),
+        type: "text/plain",
+        name: "text",
+        fileName: "deno.txt",
+      },
+    ];
+    const form = new FormData();
+    form.append("field", "value");
+    for (const file of files) {
+      form.append(
+        file.name,
+        new Blob([file.content], { type: file.type }),
+        file.fileName,
+      );
+    }
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    for (const file of files) {
+      const inputFile = form.get(file.name) as File;
+      const resultFile = resultForm.get(file.name) as File;
+      assertEquals(inputFile.size, resultFile.size);
+      assertEquals(inputFile.name, resultFile.name);
+      assertEquals(file.expectedType || file.type, resultFile.type);
+      assertEquals(
+        new Uint8Array(await resultFile.arrayBuffer()),
+        file.content,
+      );
+    }
+  },
+);
 
-Deno.test("fetchRequestInitStringBody", async function (): Promise<void> {
-  const data = "Hello World";
-  const req = new Request("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: data,
-  });
-  const response = await fetch(req);
-  const text = await response.text();
-  assertEquals(text, data);
-});
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchWithRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4546/README.md");
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/README.md");
+    const body = await response.text();
+    assert(body.includes("Deno"));
+  },
+);
 
-Deno.test("fetchInitTypedArrayBody", async function (): Promise<void> {
-  const data = "Hello World";
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: new TextEncoder().encode(data),
-  });
-  const text = await response.text();
-  assertEquals(text, data);
-});
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchWithRelativeRedirection(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/001_hello.js",
+    );
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    const body = await response.text();
+    assert(body.includes("Hello"));
+  },
+);
 
-Deno.test("fetchInitArrayBufferBody", async function (): Promise<void> {
-  const data = "Hello World";
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: new TextEncoder().encode(data).buffer,
-  });
-  const text = await response.text();
-  assertEquals(text, data);
-});
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchWithRelativeRedirectionUrl(): Promise<void> {
+    const cases = [
+      ["end", "http://localhost:4550/a/b/end"],
+      ["/end", "http://localhost:4550/end"],
+    ];
+    for (const [loc, redUrl] of cases) {
+      const response = await fetch("http://localhost:4550/a/b/c", {
+        headers: new Headers([["x-location", loc]]),
+      });
+      assertEquals(response.url, redUrl);
+      assertEquals(response.redirected, true);
+      assertEquals(response.status, 404);
+      assertEquals(await response.text(), "");
+    }
+  },
+);
 
-Deno.test("fetchInitURLSearchParamsBody", async function (): Promise<void> {
-  const data = "param1=value1&param2=value2";
-  const params = new URLSearchParams(data);
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: params,
-  });
-  const text = await response.text();
-  assertEquals(text, data);
-  assert(
-    response.headers
-      .get("content-type")!
-      .startsWith("application/x-www-form-urlencoded"),
-  );
-});
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchWithInfRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
+    assertEquals(response.status, 0); // network error
+    assertEquals(response.type, "error");
+    assertEquals(response.ok, false);
+  },
+);
 
-Deno.test("fetchInitBlobBody", async function (): Promise<
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitStringBody(): Promise<void> {
+    const data = "Hello World";
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+    assert(response.headers.get("content-type")!.startsWith("text/plain"));
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchRequestInitStringBody(): Promise<void> {
+    const data = "Hello World";
+    const req = new Request("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
+    const response = await fetch(req);
+    const text = await response.text();
+    assertEquals(text, data);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitTypedArrayBody(): Promise<void> {
+    const data = "Hello World";
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: new TextEncoder().encode(data),
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitArrayBufferBody(): Promise<void> {
+    const data = "Hello World";
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: new TextEncoder().encode(data).buffer,
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitURLSearchParamsBody(): Promise<void> {
+    const data = "param1=value1&param2=value2";
+    const params = new URLSearchParams(data);
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: params,
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+    assert(
+      response.headers
+        .get("content-type")!
+        .startsWith("application/x-www-form-urlencoded"),
+    );
+  },
+);
+
+unitTest({ perms: { net: true } }, async function fetchInitBlobBody(): Promise<
   void
 > {
   const data = "const a = 1";
@@ -447,62 +520,69 @@ Deno.test("fetchInitBlobBody", async function (): Promise<
   assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
 
-Deno.test("fetchInitFormDataBody", async function (): Promise<void> {
-  const form = new FormData();
-  form.append("field", "value");
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: form,
-  });
-  const resultForm = await response.formData();
-  assertEquals(form.get("field"), resultForm.get("field"));
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+  },
+);
 
-Deno.test("fetchInitFormDataBlobFilenameBody", async function (): Promise<
-  void
-> {
-  const form = new FormData();
-  form.append("field", "value");
-  form.append("file", new Blob([new TextEncoder().encode("deno")]));
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: form,
-  });
-  const resultForm = await response.formData();
-  assertEquals(form.get("field"), resultForm.get("field"));
-  const file = resultForm.get("file");
-  assert(file instanceof File);
-  assertEquals(file.name, "blob");
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBlobFilenameBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    form.append("file", new Blob([new TextEncoder().encode("deno")]));
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    const file = resultForm.get("file");
+    assert(file instanceof File);
+    assertEquals(file.name, "blob");
+  },
+);
 
-Deno.test("fetchInitFormDataTextFileBody", async function (): Promise<void> {
-  const fileContent = "deno land";
-  const form = new FormData();
-  form.append("field", "value");
-  form.append(
-    "file",
-    new Blob([new TextEncoder().encode(fileContent)], {
-      type: "text/plain",
-    }),
-    "deno.txt",
-  );
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: form,
-  });
-  const resultForm = await response.formData();
-  assertEquals(form.get("field"), resultForm.get("field"));
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataTextFileBody(): Promise<void> {
+    const fileContent = "deno land";
+    const form = new FormData();
+    form.append("field", "value");
+    form.append(
+      "file",
+      new Blob([new TextEncoder().encode(fileContent)], {
+        type: "text/plain",
+      }),
+      "deno.txt",
+    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
 
-  const file = form.get("file") as File;
-  const resultFile = resultForm.get("file") as File;
+    const file = form.get("file") as File;
+    const resultFile = resultForm.get("file") as File;
 
-  assertEquals(file.size, resultFile.size);
-  assertEquals(file.name, resultFile.name);
-  assertEquals(file.type, resultFile.type);
-  assertEquals(await file.text(), await resultFile.text());
-});
+    assertEquals(file.size, resultFile.size);
+    assertEquals(file.name, resultFile.name);
+    assertEquals(file.type, resultFile.type);
+    assertEquals(await file.text(), await resultFile.text());
+  },
+);
 
-Deno.test("fetchUserAgent", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
   void
 > {
   const data = "Hello World";
@@ -517,7 +597,7 @@ Deno.test("fetchUserAgent", async function (): Promise<
 // TODO(ry) The following tests work but are flaky. There's a race condition
 // somewhere. Here is what one of these flaky failures looks like:
 //
-// fetchPostBodyString_permW0N1E0R0
+// unitTest fetchPostBodyString_permW0N1E0R0
 // assertEquals failed. actual =   expected = POST /blah HTTP/1.1
 // hello: World
 // foo: Bar
@@ -560,135 +640,165 @@ function bufferServer(addr: string): Buffer {
   return buf;
 }
 
-Deno.test("fetchRequest", async function (): Promise<void> {
-  const addr = "127.0.0.1:4501";
-  const buf = bufferServer(addr);
-  const response = await fetch(`http://${addr}/blah`, {
-    method: "POST",
-    headers: [
-      ["Hello", "World"],
-      ["Foo", "Bar"],
-    ],
-  });
-  await response.arrayBuffer();
-  assertEquals(response.status, 404);
-  assertEquals(response.headers.get("Content-Length"), "2");
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchRequest(): Promise<void> {
+    const addr = "127.0.0.1:4501";
+    const buf = bufferServer(addr);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
 
-  const actual = new TextDecoder().decode(buf.bytes());
-  const expected = [
-    "POST /blah HTTP/1.1\r\n",
-    "hello: World\r\n",
-    "foo: Bar\r\n",
-    "accept: */*\r\n",
-    `user-agent: Deno/${Deno.version.deno}\r\n`,
-    "accept-encoding: gzip, br\r\n",
-    `host: ${addr}\r\n\r\n`,
-  ].join("");
-  assertEquals(actual, expected);
-});
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n\r\n`,
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
 
-Deno.test("fetchPostBodyString", async function (): Promise<void> {
-  const addr = "127.0.0.1:4502";
-  const buf = bufferServer(addr);
-  const body = "hello world";
-  const response = await fetch(`http://${addr}/blah`, {
-    method: "POST",
-    headers: [
-      ["Hello", "World"],
-      ["Foo", "Bar"],
-    ],
-    body,
-  });
-  await response.arrayBuffer();
-  assertEquals(response.status, 404);
-  assertEquals(response.headers.get("Content-Length"), "2");
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyString(): Promise<void> {
+    const addr = "127.0.0.1:4502";
+    const buf = bufferServer(addr);
+    const body = "hello world";
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
 
-  const actual = new TextDecoder().decode(buf.bytes());
-  const expected = [
-    "POST /blah HTTP/1.1\r\n",
-    "hello: World\r\n",
-    "foo: Bar\r\n",
-    "content-type: text/plain;charset=UTF-8\r\n",
-    "accept: */*\r\n",
-    `user-agent: Deno/${Deno.version.deno}\r\n`,
-    "accept-encoding: gzip, br\r\n",
-    `host: ${addr}\r\n`,
-    `content-length: ${body.length}\r\n\r\n`,
-    body,
-  ].join("");
-  assertEquals(actual, expected);
-});
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "content-type: text/plain;charset=UTF-8\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n`,
+      `content-length: ${body.length}\r\n\r\n`,
+      body,
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
 
-Deno.test("fetchPostBodyTypedArray", async function (): Promise<void> {
-  const addr = "127.0.0.1:4503";
-  const buf = bufferServer(addr);
-  const bodyStr = "hello world";
-  const body = new TextEncoder().encode(bodyStr);
-  const response = await fetch(`http://${addr}/blah`, {
-    method: "POST",
-    headers: [
-      ["Hello", "World"],
-      ["Foo", "Bar"],
-    ],
-    body,
-  });
-  await response.arrayBuffer();
-  assertEquals(response.status, 404);
-  assertEquals(response.headers.get("Content-Length"), "2");
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyTypedArray(): Promise<void> {
+    const addr = "127.0.0.1:4503";
+    const buf = bufferServer(addr);
+    const bodyStr = "hello world";
+    const body = new TextEncoder().encode(bodyStr);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
 
-  const actual = new TextDecoder().decode(buf.bytes());
-  const expected = [
-    "POST /blah HTTP/1.1\r\n",
-    "hello: World\r\n",
-    "foo: Bar\r\n",
-    "accept: */*\r\n",
-    `user-agent: Deno/${Deno.version.deno}\r\n`,
-    "accept-encoding: gzip, br\r\n",
-    `host: ${addr}\r\n`,
-    `content-length: ${body.byteLength}\r\n\r\n`,
-    bodyStr,
-  ].join("");
-  assertEquals(actual, expected);
-});
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n`,
+      `content-length: ${body.byteLength}\r\n\r\n`,
+      bodyStr,
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
 
-Deno.test("fetchWithNonAsciiRedirection", async function (): Promise<void> {
-  const response = await fetch("http://localhost:4545/non_ascii_redirect", {
-    redirect: "manual",
-  });
-  assertEquals(response.status, 301);
-  assertEquals(response.headers.get("location"), "/redirect®");
-  await response.text();
-});
-
-Deno.test("fetchWithManualRedirection", async function (): Promise<void> {
-  const response = await fetch("http://localhost:4546/", {
-    redirect: "manual",
-  }); // will redirect to http://localhost:4545/
-  assertEquals(response.status, 301);
-  assertEquals(response.url, "http://localhost:4546/");
-  assertEquals(response.type, "default");
-  assertEquals(response.headers.get("Location"), "http://localhost:4545/");
-});
-
-Deno.test("fetchWithErrorRedirection", async function (): Promise<void> {
-  const response = await fetch("http://localhost:4546/", {
-    redirect: "error",
-  }); // will redirect to http://localhost:4545/
-  assertEquals(response.status, 0);
-  assertEquals(response.statusText, "");
-  assertEquals(response.url, "");
-  assertEquals(response.type, "error");
-  try {
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchWithNonAsciiRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4545/non_ascii_redirect", {
+      redirect: "manual",
+    });
+    assertEquals(response.status, 301);
+    assertEquals(response.headers.get("location"), "/redirect®");
     await response.text();
-    fail(
-      "Response.text() didn't throw on a filtered response without a body (type error)",
-    );
-  } catch (_e) {
-    return;
-  }
-});
+  },
+);
 
-Deno.test("responseRedirect", function (): void {
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchWithManualRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4546/", {
+      redirect: "manual",
+    }); // will redirect to http://localhost:4545/
+    assertEquals(response.status, 301);
+    assertEquals(response.url, "http://localhost:4546/");
+    assertEquals(response.type, "default");
+    assertEquals(response.headers.get("Location"), "http://localhost:4545/");
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchWithErrorRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4546/", {
+      redirect: "error",
+    }); // will redirect to http://localhost:4545/
+    assertEquals(response.status, 0);
+    assertEquals(response.statusText, "");
+    assertEquals(response.url, "");
+    assertEquals(response.type, "error");
+    try {
+      await response.text();
+      fail(
+        "Response.text() didn't throw on a filtered response without a body (type error)",
+      );
+    } catch (_e) {
+      return;
+    }
+  },
+);
+
+unitTest(function responseRedirect(): void {
   const redir = Response.redirect("example.com/newLocation", 301);
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
@@ -697,7 +807,7 @@ Deno.test("responseRedirect", function (): void {
   assertEquals(redir.type, "default");
 });
 
-Deno.test("responseWithoutBody", async function (): Promise<void> {
+unitTest(async function responseWithoutBody(): Promise<void> {
   const response = new Response();
   assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
   assertEquals(await response.blob(), new Blob([]));
@@ -707,7 +817,7 @@ Deno.test("responseWithoutBody", async function (): Promise<void> {
   });
 });
 
-Deno.test("fetchBodyReadTwice", async function (): Promise<
+unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
@@ -730,92 +840,98 @@ Deno.test("fetchBodyReadTwice", async function (): Promise<
   }
 });
 
-Deno.test("fetchBodyReaderAfterRead", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/fixture.json",
-  );
-  assert(response.body !== null);
-  const reader = await response.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    assert(value);
-  }
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderAfterRead(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json",
+    );
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+    }
 
-  try {
-    response.body.getReader();
-    fail("The stream should've been locked.");
-  } catch {
-    // pass
-  }
-});
+    try {
+      response.body.getReader();
+      fail("The stream should've been locked.");
+    } catch {
+      // pass
+    }
+  },
+);
 
-Deno.test("fetchBodyReaderWithCancelAndNewReader", async function (): Promise<
-  void
-> {
-  const data = "a".repeat(1 << 10);
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: data,
-  });
-  assert(response.body !== null);
-  const firstReader = await response.body.getReader();
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
 
-  // Acquire reader without reading & release
-  await firstReader.releaseLock();
+    // Acquire reader without reading & release
+    await firstReader.releaseLock();
 
-  const reader = await response.body.getReader();
+    const reader = await response.body.getReader();
 
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    assert(value);
-    total += value.length;
-  }
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
 
-  assertEquals(total, data.length);
-});
+    assertEquals(total, data.length);
+  },
+);
 
-Deno.test("fetchBodyReaderWithReadCancelAndNewReader", async function (): Promise<
-  void
-> {
-  const data = "a".repeat(1 << 10);
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
 
-  const response = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body: data,
-  });
-  assert(response.body !== null);
-  const firstReader = await response.body.getReader();
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
 
-  // Do one single read with first reader
-  const { value: firstValue } = await firstReader.read();
-  assert(firstValue);
-  await firstReader.releaseLock();
+    // Do one single read with first reader
+    const { value: firstValue } = await firstReader.read();
+    assert(firstValue);
+    await firstReader.releaseLock();
 
-  // Continue read with second reader
-  const reader = await response.body.getReader();
-  let total = firstValue.length || 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    assert(value);
-    total += value.length;
-  }
-  assertEquals(total, data.length);
-});
+    // Continue read with second reader
+    const reader = await response.body.getReader();
+    let total = firstValue.length || 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+    assertEquals(total, data.length);
+  },
+);
 
-Deno.test("fetchResourceCloseAfterStreamCancel", async function (): Promise<
-  void
-> {
-  const res = await fetch("http://localhost:4545/cli/tests/fixture.json");
-  assert(res.body !== null);
+unitTest(
+  { perms: { net: true } },
+  async function fetchResourceCloseAfterStreamCancel(): Promise<void> {
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json");
+    assert(res.body !== null);
 
-  // After ReadableStream.cancel is called, resource handle must be closed
-  // The test should not fail with: Test case is leaking resources
-  await res.body.cancel();
-});
+    // After ReadableStream.cancel is called, resource handle must be closed
+    // The test should not fail with: Test case is leaking resources
+    await res.body.cancel();
+  },
+);
 
 // FIXME(bartlomieju): for reasons unknown after working for
 // a few months without a problem; this test started failing
@@ -823,44 +939,44 @@ Deno.test("fetchResourceCloseAfterStreamCancel", async function (): Promise<
 // TypeError: error sending request for url (http://localhost:4545/echo_server):
 // connection error: An established connection was aborted by
 // the software in your host machine. (os error 10053)
-Deno.test(
-  {
-    name: "fetchNullBodyStatus",
-    ignore: Deno.build.os == "windows",
-    async fn(): Promise<void> {
-      const nullBodyStatus = [101, 204, 205, 304];
+unitTest(
+  { perms: { net: true }, ignore: Deno.build.os == "windows" },
+  async function fetchNullBodyStatus(): Promise<void> {
+    const nullBodyStatus = [101, 204, 205, 304];
 
-      for (const status of nullBodyStatus) {
-        const headers = new Headers([["x-status", String(status)]]);
-        const res = await fetch("http://localhost:4545/echo_server", {
-          body: "deno",
-          method: "POST",
-          headers,
-        });
-        assertEquals(res.body, null);
-        assertEquals(res.status, status);
-      }
-    },
+    for (const status of nullBodyStatus) {
+      const headers = new Headers([["x-status", String(status)]]);
+      const res = await fetch("http://localhost:4545/echo_server", {
+        body: "deno",
+        method: "POST",
+        headers,
+      });
+      assertEquals(res.body, null);
+      assertEquals(res.status, status);
+    }
   },
 );
 
-Deno.test("fetchResponseContentLength", async function (): Promise<void> {
-  const body = new Uint8Array(2 ** 16);
-  const headers = new Headers([["content-type", "application/octet-stream"]]);
-  const res = await fetch("http://localhost:4545/echo_server", {
-    body: body,
-    method: "POST",
-    headers,
-  });
-  assertEquals(Number(res.headers.get("content-length")), body.byteLength);
+unitTest(
+  { perms: { net: true } },
+  async function fetchResponseContentLength(): Promise<void> {
+    const body = new Uint8Array(2 ** 16);
+    const headers = new Headers([["content-type", "application/octet-stream"]]);
+    const res = await fetch("http://localhost:4545/echo_server", {
+      body: body,
+      method: "POST",
+      headers,
+    });
+    assertEquals(Number(res.headers.get("content-length")), body.byteLength);
 
-  const blob = await res.blob();
-  // Make sure Body content-type is correctly set
-  assertEquals(blob.type, "application/octet-stream");
-  assertEquals(blob.size, body.byteLength);
-});
+    const blob = await res.blob();
+    // Make sure Body content-type is correctly set
+    assertEquals(blob.type, "application/octet-stream");
+    assertEquals(blob.size, body.byteLength);
+  },
+);
 
-Deno.test("fetchResponseConstructorNullBody", function (): void {
+unitTest(function fetchResponseConstructorNullBody(): void {
   const nullBodyStatus = [204, 205, 304];
 
   for (const status of nullBodyStatus) {
@@ -877,7 +993,7 @@ Deno.test("fetchResponseConstructorNullBody", function (): void {
   }
 });
 
-Deno.test("fetchResponseConstructorInvalidStatus", function (): void {
+unitTest(function fetchResponseConstructorInvalidStatus(): void {
   const invalidStatus = [101, 600, 199, null, "", NaN];
 
   for (const status of invalidStatus) {
@@ -896,7 +1012,7 @@ Deno.test("fetchResponseConstructorInvalidStatus", function (): void {
   }
 });
 
-Deno.test("fetchResponseEmptyConstructor", function (): void {
+unitTest(function fetchResponseEmptyConstructor(): void {
   const response = new Response();
   assertEquals(response.status, 200);
   assertEquals(response.body, null);
@@ -908,12 +1024,14 @@ Deno.test("fetchResponseEmptyConstructor", function (): void {
   assertEquals([...response.headers], []);
 });
 
-Deno.test("fetchCustomHttpClientParamCertificateSuccess", async function (): Promise<
-  void
-> {
-  const client = Deno.createHttpClient(
-    {
-      caData: `-----BEGIN CERTIFICATE-----
+unitTest(
+  { perms: { net: true } },
+  async function fetchCustomHttpClientParamCertificateSuccess(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient(
+      {
+        caData: `-----BEGIN CERTIFICATE-----
 MIIDIzCCAgugAwIBAgIJAMKPPW4tsOymMA0GCSqGSIb3DQEBCwUAMCcxCzAJBgNV
 BAYTAlVTMRgwFgYDVQQDDA9FeGFtcGxlLVJvb3QtQ0EwIBcNMTkxMDIxMTYyODIy
 WhgPMjExODA5MjcxNjI4MjJaMCcxCzAJBgNVBAYTAlVTMRgwFgYDVQQDDA9FeGFt
@@ -933,82 +1051,83 @@ kyIWJwk2zJReKcJMgi1aIinDM9ao/dca1G99PHOw8dnr4oyoTiv8ao6PWiSRHHMi
 MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
 -----END CERTIFICATE-----
 `,
-    },
-  );
-  const response = await fetch(
-    "https://localhost:5545/cli/tests/fixture.json",
-    { client },
-  );
-  const json = await response.json();
-  assertEquals(json.name, "deno");
-  client.close();
-});
+      },
+    );
+    const response = await fetch(
+      "https://localhost:5545/cli/tests/fixture.json",
+      { client },
+    );
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    client.close();
+  },
+);
 
-Deno.test("fetchCustomClientUserAgent", async function (): Promise<
-  void
-> {
-  const data = "Hello World";
-  const client = Deno.createHttpClient({});
-  const response = await fetch("http://localhost:4545/echo_server", {
-    client,
-    method: "POST",
-    body: new TextEncoder().encode(data),
-  });
-  assertEquals(
-    response.headers.get("user-agent"),
-    `Deno/${Deno.version.deno}`,
-  );
-  await response.text();
-  client.close();
-});
+unitTest(
+  { perms: { net: true } },
+  async function fetchCustomClientUserAgent(): Promise<
+    void
+  > {
+    const data = "Hello World";
+    const client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/echo_server", {
+      client,
+      method: "POST",
+      body: new TextEncoder().encode(data),
+    });
+    assertEquals(
+      response.headers.get("user-agent"),
+      `Deno/${Deno.version.deno}`,
+    );
+    await response.text();
+    client.close();
+  },
+);
 
-Deno.test("fetchPostBodyReadableStream", async function (): Promise<void> {
-  const addr = "127.0.0.1:4502";
-  const buf = bufferServer(addr);
-  const stream = new TransformStream();
-  const writer = stream.writable.getWriter();
-  // transformer writes don't resolve until they are read, so awaiting these
-  // will cause the transformer to hang, as the suspend the transformer, it
-  // is also illogical to await for the reads, as that is the whole point of
-  // streams is to have a "queue" which gets drained...
-  writer.write(new TextEncoder().encode("hello "));
-  writer.write(new TextEncoder().encode("world"));
-  writer.close();
-  const response = await fetch(`http://${addr}/blah`, {
-    method: "POST",
-    headers: [
-      ["Hello", "World"],
-      ["Foo", "Bar"],
-    ],
-    body: stream.readable,
-  });
-  await response.arrayBuffer();
-  assertEquals(response.status, 404);
-  assertEquals(response.headers.get("Content-Length"), "2");
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyReadableStream(): Promise<void> {
+    const addr = "127.0.0.1:4502";
+    const buf = bufferServer(addr);
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    // transformer writes don't resolve until they are read, so awaiting these
+    // will cause the transformer to hang, as the suspend the transformer, it
+    // is also illogical to await for the reads, as that is the whole point of
+    // streams is to have a "queue" which gets drained...
+    writer.write(new TextEncoder().encode("hello "));
+    writer.write(new TextEncoder().encode("world"));
+    writer.close();
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body: stream.readable,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
 
-  const actual = new TextDecoder().decode(buf.bytes());
-  const expected = [
-    "POST /blah HTTP/1.1\r\n",
-    "hello: World\r\n",
-    "foo: Bar\r\n",
-    "accept: */*\r\n",
-    `user-agent: Deno/${Deno.version.deno}\r\n`,
-    "accept-encoding: gzip, br\r\n",
-    `host: ${addr}\r\n`,
-    `transfer-encoding: chunked\r\n\r\n`,
-    "6\r\n",
-    "hello \r\n",
-    "5\r\n",
-    "world\r\n",
-    "0\r\n\r\n",
-  ].join("");
-  assertEquals(actual, expected);
-});
-
-Deno.test("fetchPerm", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "net" });
-
-  await assertThrowsAsync(async () => {
-    await fetch("http://localhost:4545/cli/tests/fixture.json");
-  }, Deno.errors.PermissionDenied);
-});
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n`,
+      `transfer-encoding: chunked\r\n\r\n`,
+      "6\r\n",
+      "hello \r\n",
+      "5\r\n",
+      "world\r\n",
+      "0\r\n\r\n",
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);

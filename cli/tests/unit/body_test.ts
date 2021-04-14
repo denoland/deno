@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 // just a hack to get a body object
 // deno-lint-ignore no-explicit-any
@@ -22,8 +22,7 @@ const intArrays = [
   Float32Array,
   Float64Array,
 ];
-
-Deno.test("arrayBufferFromByteArrays", async function (): Promise<void> {
+unitTest(async function arrayBufferFromByteArrays(): Promise<void> {
   const buffer = new TextEncoder().encode("ahoyhoy8").buffer;
 
   for (const type of intArrays) {
@@ -34,47 +33,53 @@ Deno.test("arrayBufferFromByteArrays", async function (): Promise<void> {
 });
 
 //FormData
-Deno.test("bodyMultipartFormData", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/multipart_form_data.txt",
-  );
-  assert(response.body instanceof ReadableStream);
+unitTest(
+  { perms: { net: true } },
+  async function bodyMultipartFormData(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/multipart_form_data.txt",
+    );
+    assert(response.body instanceof ReadableStream);
 
-  const text = await response.text();
+    const text = await response.text();
 
-  const body = buildBody(text, response.headers);
+    const body = buildBody(text, response.headers);
 
-  const formData = await body.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
-  assert(formData.has("field_2"));
-});
+    const formData = await body.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
+    assert(formData.has("field_2"));
+  },
+);
 
-Deno.test("bodyURLEncodedFormData", async function (): Promise<void> {
-  const response = await fetch(
-    "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
-  );
-  assert(response.body instanceof ReadableStream);
+unitTest(
+  { perms: { net: true } },
+  async function bodyURLEncodedFormData(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
+    );
+    assert(response.body instanceof ReadableStream);
 
-  const text = await response.text();
+    const text = await response.text();
 
-  const body = buildBody(text, response.headers);
+    const body = buildBody(text, response.headers);
 
-  const formData = await body.formData();
-  assert(formData.has("field_1"));
-  assertEquals(formData.get("field_1")!.toString(), "Hi");
-  assert(formData.has("field_2"));
-  assertEquals(formData.get("field_2")!.toString(), "<Deno>");
-});
+    const formData = await body.formData();
+    assert(formData.has("field_1"));
+    assertEquals(formData.get("field_1")!.toString(), "Hi");
+    assert(formData.has("field_2"));
+    assertEquals(formData.get("field_2")!.toString(), "<Deno>");
+  },
+);
 
-Deno.test("bodyURLSearchParams", async function (): Promise<void> {
+unitTest({ perms: {} }, async function bodyURLSearchParams(): Promise<void> {
   const body = buildBody(new URLSearchParams({ hello: "world" }));
 
   const text = await body.text();
   assertEquals(text, "hello=world");
 });
 
-Deno.test("bodyArrayBufferMultipleParts", async function (): Promise<void> {
+unitTest(async function bodyArrayBufferMultipleParts(): Promise<void> {
   const parts: Uint8Array[] = [];
   let size = 0;
   for (let i = 0; i <= 150000; i++) {

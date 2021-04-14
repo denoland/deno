@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
-Deno.test("eventInitializedWithType", function (): void {
+unitTest(function eventInitializedWithType(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -13,7 +13,7 @@ Deno.test("eventInitializedWithType", function (): void {
   assertEquals(event.cancelable, false);
 });
 
-Deno.test("eventInitializedWithTypeAndDict", function (): void {
+unitTest(function eventInitializedWithTypeAndDict(): void {
   const init = "submit";
   const eventInit = { bubbles: true, cancelable: true } as EventInit;
   const event = new Event(init, eventInit);
@@ -26,7 +26,7 @@ Deno.test("eventInitializedWithTypeAndDict", function (): void {
   assertEquals(event.cancelable, true);
 });
 
-Deno.test("eventComposedPathSuccess", function (): void {
+unitTest(function eventComposedPathSuccess(): void {
   const type = "click";
   const event = new Event(type);
   const composedPath = event.composedPath();
@@ -34,7 +34,7 @@ Deno.test("eventComposedPathSuccess", function (): void {
   assertEquals(composedPath, []);
 });
 
-Deno.test("eventStopPropagationSuccess", function (): void {
+unitTest(function eventStopPropagationSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -43,7 +43,7 @@ Deno.test("eventStopPropagationSuccess", function (): void {
   assertEquals(event.cancelBubble, true);
 });
 
-Deno.test("eventStopImmediatePropagationSuccess", function (): void {
+unitTest(function eventStopImmediatePropagationSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -52,7 +52,7 @@ Deno.test("eventStopImmediatePropagationSuccess", function (): void {
   assertEquals(event.cancelBubble, true);
 });
 
-Deno.test("eventPreventDefaultSuccess", function (): void {
+unitTest(function eventPreventDefaultSuccess(): void {
   const type = "click";
   const event = new Event(type);
 
@@ -67,7 +67,7 @@ Deno.test("eventPreventDefaultSuccess", function (): void {
   assertEquals(cancelableEvent.defaultPrevented, true);
 });
 
-Deno.test("eventInitializedWithNonStringType", function (): void {
+unitTest(function eventInitializedWithNonStringType(): void {
   // deno-lint-ignore no-explicit-any
   const type: any = undefined;
   const event = new Event(type);
@@ -81,7 +81,7 @@ Deno.test("eventInitializedWithNonStringType", function (): void {
 });
 
 // ref https://github.com/web-platform-tests/wpt/blob/master/dom/events/Event-isTrusted.any.js
-Deno.test("eventIsTrusted", function (): void {
+unitTest(function eventIsTrusted(): void {
   const desc1 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
   assert(desc1);
   assertEquals(typeof desc1.get, "function");
@@ -93,7 +93,7 @@ Deno.test("eventIsTrusted", function (): void {
   assertEquals(desc1!.get, desc2!.get);
 });
 
-Deno.test("eventInspectOutput", function (): void {
+unitTest(function eventInspectOutput(): void {
   // deno-lint-ignore no-explicit-any
   const cases: Array<[any, (event: any) => string]> = [
     [

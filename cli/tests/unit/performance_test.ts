@@ -1,7 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, deferred } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  deferred,
+  unitTest,
+} from "./test_util.ts";
 
-Deno.test("performanceNow", async function (): Promise<
+unitTest({ perms: { hrtime: false } }, async function performanceNow(): Promise<
   void
 > {
   const resolvable = deferred();
@@ -14,7 +20,7 @@ Deno.test("performanceNow", async function (): Promise<
   await resolvable;
 });
 
-Deno.test("performanceMark", function () {
+unitTest(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);
   assertEquals(mark.detail, null);
@@ -28,7 +34,7 @@ Deno.test("performanceMark", function () {
   assert(markEntries[markEntries.length - 1] === mark);
 });
 
-Deno.test("performanceMeasure", function () {
+unitTest(function performanceMeasure() {
   const markName1 = "mark1";
   const measureName1 = "measure1";
   const measureName2 = "measure2";
@@ -75,17 +81,17 @@ Deno.test("performanceMeasure", function () {
   });
 });
 
-Deno.test("performanceIllegalConstructor", function () {
+unitTest(function performanceIllegalConstructor() {
   assertThrows(() => new Performance(), TypeError, "Illegal constructor.");
   assertEquals(Performance.length, 0);
 });
 
-Deno.test("performanceEntryIllegalConstructor", function () {
+unitTest(function performanceEntryIllegalConstructor() {
   assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor.");
   assertEquals(PerformanceEntry.length, 0);
 });
 
-Deno.test("performanceMeasureIllegalConstructor", function () {
+unitTest(function performanceMeasureIllegalConstructor() {
   assertThrows(
     () => new PerformanceMeasure(),
     TypeError,

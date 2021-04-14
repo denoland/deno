@@ -1,5 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, deferred } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  deferred,
+  unitTest,
+} from "./test_util.ts";
 
 function defer(n: number): Promise<void> {
   return new Promise((resolve: () => void, _) => {
@@ -7,10 +13,9 @@ function defer(n: number): Promise<void> {
   });
 }
 
-Deno.test({
-  name: "signalsNotImplemented",
-  ignore: Deno.build.os !== "windows",
-  fn(): void {
+unitTest(
+  { ignore: Deno.build.os !== "windows" },
+  function signalsNotImplemented(): void {
     assertThrows(
       () => {
         Deno.signal(1);
@@ -96,12 +101,11 @@ Deno.test({
       "not implemented",
     );
   },
-});
+);
 
-Deno.test({
-  name: "signalStreamTest",
-  ignore: Deno.build.os === "windows",
-  async fn(): Promise<void> {
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { run: true, net: true } },
+  async function signalStreamTest(): Promise<void> {
     const resolvable = deferred();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
@@ -128,12 +132,11 @@ Deno.test({
     clearInterval(t);
     await resolvable;
   },
-});
+);
 
-Deno.test({
-  name: "signalPromiseTest",
-  ignore: Deno.build.os === "windows",
-  async fn(): Promise<void> {
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { run: true } },
+  async function signalPromiseTest(): Promise<void> {
     const resolvable = deferred();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
@@ -149,12 +152,11 @@ Deno.test({
     clearInterval(t);
     await resolvable;
   },
-});
+);
 
-Deno.test({
-  name: "signalShorthandsTest",
-  ignore: Deno.build.os === "windows",
-  fn(): void {
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { run: true } },
+  function signalShorthandsTest(): void {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM
     assert(s instanceof Deno.SignalStream);
@@ -190,4 +192,4 @@ Deno.test({
     assert(s instanceof Deno.SignalStream);
     s.dispose();
   },
-});
+);

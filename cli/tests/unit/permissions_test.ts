@@ -4,22 +4,23 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
+  unitTest,
 } from "./test_util.ts";
 
-Deno.test("permissionInvalidName", async function (): Promise<void> {
+unitTest(async function permissionInvalidName(): Promise<void> {
   await assertThrowsAsync(async () => {
     // deno-lint-ignore no-explicit-any
     await Deno.permissions.query({ name: "foo" as any });
   }, TypeError);
 });
 
-Deno.test("permissionNetInvalidHost", async function (): Promise<void> {
+unitTest(async function permissionNetInvalidHost(): Promise<void> {
   await assertThrowsAsync(async () => {
     await Deno.permissions.query({ name: "net", host: ":" });
   }, URIError);
 });
 
-Deno.test("permissionQueryReturnsEventTarget", async function () {
+unitTest(async function permissionQueryReturnsEventTarget() {
   const status = await Deno.permissions.query({ name: "hrtime" });
   assert(["granted", "denied", "prompt"].includes(status.state));
   let called = false;
@@ -31,7 +32,7 @@ Deno.test("permissionQueryReturnsEventTarget", async function () {
   assert(status === (await Deno.permissions.query({ name: "hrtime" })));
 });
 
-Deno.test("permissionQueryForReadReturnsSameStatus", async function () {
+unitTest(async function permissionQueryForReadReturnsSameStatus() {
   const status1 = await Deno.permissions.query({
     name: "read",
     path: ".",
@@ -43,12 +44,12 @@ Deno.test("permissionQueryForReadReturnsSameStatus", async function () {
   assert(status1 === status2);
 });
 
-Deno.test("permissionsIllegalConstructor", function () {
+unitTest(function permissionsIllegalConstructor() {
   assertThrows(() => new Deno.Permissions(), TypeError, "Illegal constructor.");
   assertEquals(Deno.Permissions.length, 0);
 });
 
-Deno.test("permissionStatusIllegalConstructor", function () {
+unitTest(function permissionStatusIllegalConstructor() {
   assertThrows(
     () => new Deno.PermissionStatus(),
     TypeError,

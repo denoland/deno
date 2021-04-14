@@ -4,9 +4,10 @@ import {
   assertMatch,
   assertThrows,
   assertThrowsAsync,
+  unitTest,
 } from "./test_util.ts";
 
-Deno.test("realPathSyncSuccess", function (): void {
+unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
   const relative = "cli/tests/fixture.json";
   const realPath = Deno.realPathSync(relative);
   if (Deno.build.os !== "windows") {
@@ -18,29 +19,40 @@ Deno.test("realPathSyncSuccess", function (): void {
   }
 });
 
-Deno.test("realPathSyncSymlink", function (): void {
-  const testDir = Deno.makeTempDirSync();
-  const target = testDir + "/target";
-  const symlink = testDir + "/symln";
-  Deno.mkdirSync(target);
-  Deno.symlinkSync(target, symlink);
-  const realPath = Deno.realPathSync(symlink);
-  if (Deno.build.os !== "windows") {
-    assert(realPath.startsWith("/"));
-    assert(realPath.endsWith("/target"));
-  } else {
-    assertMatch(realPath, /^[A-Z]:\\/);
-    assert(realPath.endsWith("\\target"));
-  }
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  function realPathSyncSymlink(): void {
+    const testDir = Deno.makeTempDirSync();
+    const target = testDir + "/target";
+    const symlink = testDir + "/symln";
+    Deno.mkdirSync(target);
+    Deno.symlinkSync(target, symlink);
+    const realPath = Deno.realPathSync(symlink);
+    if (Deno.build.os !== "windows") {
+      assert(realPath.startsWith("/"));
+      assert(realPath.endsWith("/target"));
+    } else {
+      assertMatch(realPath, /^[A-Z]:\\/);
+      assert(realPath.endsWith("\\target"));
+    }
+  },
+);
+
+unitTest({ perms: { read: false } }, function realPathSyncPerm(): void {
+  assertThrows(() => {
+    Deno.realPathSync("some_file");
+  }, Deno.errors.PermissionDenied);
 });
 
-Deno.test("realPathSyncNotFound", function (): void {
+unitTest({ perms: { read: true } }, function realPathSyncNotFound(): void {
   assertThrows(() => {
     Deno.realPathSync("bad_filename");
   }, Deno.errors.NotFound);
 });
 
-Deno.test("realPathSuccess", async function (): Promise<
+unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
   void
 > {
   const relativePath = "cli/tests/fixture.json";
@@ -54,44 +66,39 @@ Deno.test("realPathSuccess", async function (): Promise<
   }
 });
 
-Deno.test("realPathSymlink", async function (): Promise<void> {
-  const testDir = Deno.makeTempDirSync();
-  const target = testDir + "/target";
-  const symlink = testDir + "/symln";
-  Deno.mkdirSync(target);
-  Deno.symlinkSync(target, symlink);
-  const realPath = await Deno.realPath(symlink);
-  if (Deno.build.os !== "windows") {
-    assert(realPath.startsWith("/"));
-    assert(realPath.endsWith("/target"));
-  } else {
-    assertMatch(realPath, /^[A-Z]:\\/);
-    assert(realPath.endsWith("\\target"));
-  }
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  async function realPathSymlink(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const target = testDir + "/target";
+    const symlink = testDir + "/symln";
+    Deno.mkdirSync(target);
+    Deno.symlinkSync(target, symlink);
+    const realPath = await Deno.realPath(symlink);
+    if (Deno.build.os !== "windows") {
+      assert(realPath.startsWith("/"));
+      assert(realPath.endsWith("/target"));
+    } else {
+      assertMatch(realPath, /^[A-Z]:\\/);
+      assert(realPath.endsWith("\\target"));
+    }
+  },
+);
+
+unitTest({ perms: { read: false } }, async function realPathPerm(): Promise<
+  void
+> {
+  await assertThrowsAsync(async () => {
+    await Deno.realPath("some_file");
+  }, Deno.errors.PermissionDenied);
 });
 
-Deno.test("realPathNotFound", async function (): Promise<
+unitTest({ perms: { read: true } }, async function realPathNotFound(): Promise<
   void
 > {
   await assertThrowsAsync(async () => {
     await Deno.realPath("bad_filename");
   }, Deno.errors.NotFound);
-});
-
-Deno.test("realPathSyncPerm", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "read" });
-
-  assertThrows(() => {
-    Deno.realPathSync("some_file");
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test("realPathPerm", async function (): Promise<
-  void
-> {
-  await Deno.permissions.revoke({ name: "read" });
-
-  await assertThrowsAsync(async () => {
-    await Deno.realPath("some_file");
-  }, Deno.errors.PermissionDenied);
 });

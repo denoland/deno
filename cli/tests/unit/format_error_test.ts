@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./test_util.ts";
+import { assert, unitTest } from "./test_util.ts";
 
-Deno.test("formatDiagnosticBasic", function () {
+unitTest(function formatDiagnosticBasic() {
   const fixture: Deno.Diagnostic[] = [
     {
       start: {
@@ -25,7 +25,7 @@ Deno.test("formatDiagnosticBasic", function () {
   assert(out.includes("test.ts"));
 });
 
-Deno.test("formatDiagnosticError", function () {
+unitTest(function formatDiagnosticError() {
   let thrown = false;
   // deno-lint-ignore no-explicit-any
   const bad = ([{ hello: 123 }] as any) as Deno.Diagnostic[];

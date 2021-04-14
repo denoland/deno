@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "./test_util.ts";
+import { assertEquals, unitTest } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
 const DEFAULT_BUF_SIZE = 32 * 1024;
@@ -28,7 +28,7 @@ function spyRead(obj: Buffer): Spy {
   return spy;
 }
 
-Deno.test("copyWithDefaultBufferSize", async function () {
+unitTest(async function copyWithDefaultBufferSize() {
   const xBytes = repeat("b", DEFAULT_BUF_SIZE);
   const reader = new Buffer(xBytes.buffer as ArrayBuffer);
   const write = new Buffer();
@@ -42,7 +42,7 @@ Deno.test("copyWithDefaultBufferSize", async function () {
   assertEquals(readSpy.calls, 2); // read with DEFAULT_BUF_SIZE bytes + read with 0 bytes
 });
 
-Deno.test("copyWithCustomBufferSize", async function () {
+unitTest(async function copyWithCustomBufferSize() {
   const bufSize = 1024;
   const xBytes = repeat("b", DEFAULT_BUF_SIZE);
   const reader = new Buffer(xBytes.buffer as ArrayBuffer);
@@ -57,7 +57,7 @@ Deno.test("copyWithCustomBufferSize", async function () {
   assertEquals(readSpy.calls, DEFAULT_BUF_SIZE / bufSize + 1);
 });
 
-Deno.test("copyBufferToFile", async function () {
+unitTest({ perms: { write: true } }, async function copyBufferToFile() {
   const filePath = "test-file.txt";
   // bigger than max File possible buffer 16kb
   const bufSize = 32 * 1024;

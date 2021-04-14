@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertThrows } from "./test_util.ts";
+import { assert, assertThrows, unitTest } from "./test_util.ts";
 
 // Note tests for Deno.setRaw is in integration tests.
 
-Deno.test("consoleSizeFile", function (): void {
+unitTest({ perms: { read: true } }, function consoleSizeFile(): void {
   const file = Deno.openSync("cli/tests/hello.txt");
   assertThrows(() => {
     Deno.consoleSize(file.rid);
@@ -11,21 +11,21 @@ Deno.test("consoleSizeFile", function (): void {
   file.close();
 });
 
-Deno.test("consoleSizeError", function (): void {
+unitTest(function consoleSizeError(): void {
   assertThrows(() => {
     // Absurdly large rid.
     Deno.consoleSize(0x7fffffff);
   }, Deno.errors.BadResource);
 });
 
-Deno.test("isatty", function (): void {
+unitTest({ perms: { read: true } }, function isatty(): void {
   // CI not under TTY, so cannot test stdin/stdout/stderr.
   const f = Deno.openSync("cli/tests/hello.txt");
   assert(!Deno.isatty(f.rid));
   f.close();
 });
 
-Deno.test("isattyError", function (): void {
+unitTest(function isattyError(): void {
   let caught = false;
   try {
     // Absurdly large rid.

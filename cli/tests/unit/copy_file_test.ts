@@ -1,5 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, assertThrowsAsync } from "./test_util.ts";
+import {
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+  unitTest,
+} from "./test_util.ts";
 
 function readFileString(filename: string | URL): string {
   const dataRead = Deno.readFileSync(filename);
@@ -22,154 +27,182 @@ function assertSameContent(
   assertEquals(data1, data2);
 }
 
-Deno.test("copyFileSyncSuccess", function (): void {
-  const tempDir = Deno.makeTempDirSync();
-  const fromFilename = tempDir + "/from.txt";
-  const toFilename = tempDir + "/to.txt";
-  writeFileString(fromFilename, "Hello world!");
-  Deno.copyFileSync(fromFilename, toFilename);
-  // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
-  // Original == Dest
-  assertSameContent(fromFilename, toFilename);
-
-  Deno.removeSync(tempDir, { recursive: true });
-});
-
-Deno.test("copyFileSyncByUrl", function (): void {
-  const tempDir = Deno.makeTempDirSync();
-  const fromUrl = new URL(
-    `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
-  );
-  const toUrl = new URL(
-    `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`,
-  );
-  writeFileString(fromUrl, "Hello world!");
-  Deno.copyFileSync(fromUrl, toUrl);
-  // No change to original file
-  assertEquals(readFileString(fromUrl), "Hello world!");
-  // Original == Dest
-  assertSameContent(fromUrl, toUrl);
-
-  Deno.removeSync(tempDir, { recursive: true });
-});
-
-Deno.test("copyFileSyncFailure", function (): void {
-  const tempDir = Deno.makeTempDirSync();
-  const fromFilename = tempDir + "/from.txt";
-  const toFilename = tempDir + "/to.txt";
-  // We skip initial writing here, from.txt does not exist
-  assertThrows(() => {
+unitTest(
+  { perms: { read: true, write: true } },
+  function copyFileSyncSuccess(): void {
+    const tempDir = Deno.makeTempDirSync();
+    const fromFilename = tempDir + "/from.txt";
+    const toFilename = tempDir + "/to.txt";
+    writeFileString(fromFilename, "Hello world!");
     Deno.copyFileSync(fromFilename, toFilename);
-  }, Deno.errors.NotFound);
+    // No change to original file
+    assertEquals(readFileString(fromFilename), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromFilename, toFilename);
 
-  Deno.removeSync(tempDir, { recursive: true });
-});
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
 
-Deno.test("copyFileSyncOverwrite", function (): void {
-  const tempDir = Deno.makeTempDirSync();
-  const fromFilename = tempDir + "/from.txt";
-  const toFilename = tempDir + "/to.txt";
-  writeFileString(fromFilename, "Hello world!");
-  // Make Dest exist and have different content
-  writeFileString(toFilename, "Goodbye!");
-  Deno.copyFileSync(fromFilename, toFilename);
-  // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
-  // Original == Dest
-  assertSameContent(fromFilename, toFilename);
+unitTest(
+  { perms: { read: true, write: true } },
+  function copyFileSyncByUrl(): void {
+    const tempDir = Deno.makeTempDirSync();
+    const fromUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
+    );
+    const toUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`,
+    );
+    writeFileString(fromUrl, "Hello world!");
+    Deno.copyFileSync(fromUrl, toUrl);
+    // No change to original file
+    assertEquals(readFileString(fromUrl), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromUrl, toUrl);
 
-  Deno.removeSync(tempDir, { recursive: true });
-});
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
 
-Deno.test("copyFileSuccess", async function (): Promise<void> {
-  const tempDir = Deno.makeTempDirSync();
-  const fromFilename = tempDir + "/from.txt";
-  const toFilename = tempDir + "/to.txt";
-  writeFileString(fromFilename, "Hello world!");
-  await Deno.copyFile(fromFilename, toFilename);
-  // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
-  // Original == Dest
-  assertSameContent(fromFilename, toFilename);
+unitTest(
+  { perms: { write: true, read: true } },
+  function copyFileSyncFailure(): void {
+    const tempDir = Deno.makeTempDirSync();
+    const fromFilename = tempDir + "/from.txt";
+    const toFilename = tempDir + "/to.txt";
+    // We skip initial writing here, from.txt does not exist
+    assertThrows(() => {
+      Deno.copyFileSync(fromFilename, toFilename);
+    }, Deno.errors.NotFound);
 
-  Deno.removeSync(tempDir, { recursive: true });
-});
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
 
-Deno.test("copyFileByUrl", async function (): Promise<void> {
-  const tempDir = Deno.makeTempDirSync();
-  const fromUrl = new URL(
-    `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
-  );
-  const toUrl = new URL(
-    `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`,
-  );
-  writeFileString(fromUrl, "Hello world!");
-  await Deno.copyFile(fromUrl, toUrl);
-  // No change to original file
-  assertEquals(readFileString(fromUrl), "Hello world!");
-  // Original == Dest
-  assertSameContent(fromUrl, toUrl);
+unitTest(
+  { perms: { write: true, read: false } },
+  function copyFileSyncPerm1(): void {
+    assertThrows(() => {
+      Deno.copyFileSync("/from.txt", "/to.txt");
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-  Deno.removeSync(tempDir, { recursive: true });
-});
+unitTest(
+  { perms: { write: false, read: true } },
+  function copyFileSyncPerm2(): void {
+    assertThrows(() => {
+      Deno.copyFileSync("/from.txt", "/to.txt");
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-Deno.test("copyFileFailure", async function (): Promise<void> {
-  const tempDir = Deno.makeTempDirSync();
-  const fromFilename = tempDir + "/from.txt";
-  const toFilename = tempDir + "/to.txt";
-  // We skip initial writing here, from.txt does not exist
-  await assertThrowsAsync(async () => {
+unitTest(
+  { perms: { read: true, write: true } },
+  function copyFileSyncOverwrite(): void {
+    const tempDir = Deno.makeTempDirSync();
+    const fromFilename = tempDir + "/from.txt";
+    const toFilename = tempDir + "/to.txt";
+    writeFileString(fromFilename, "Hello world!");
+    // Make Dest exist and have different content
+    writeFileString(toFilename, "Goodbye!");
+    Deno.copyFileSync(fromFilename, toFilename);
+    // No change to original file
+    assertEquals(readFileString(fromFilename), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromFilename, toFilename);
+
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileSuccess(): Promise<void> {
+    const tempDir = Deno.makeTempDirSync();
+    const fromFilename = tempDir + "/from.txt";
+    const toFilename = tempDir + "/to.txt";
+    writeFileString(fromFilename, "Hello world!");
     await Deno.copyFile(fromFilename, toFilename);
-  }, Deno.errors.NotFound);
+    // No change to original file
+    assertEquals(readFileString(fromFilename), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromFilename, toFilename);
 
-  Deno.removeSync(tempDir, { recursive: true });
-});
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
 
-Deno.test("copyFileOverwrite", async function (): Promise<void> {
-  const tempDir = Deno.makeTempDirSync();
-  const fromFilename = tempDir + "/from.txt";
-  const toFilename = tempDir + "/to.txt";
-  writeFileString(fromFilename, "Hello world!");
-  // Make Dest exist and have different content
-  writeFileString(toFilename, "Goodbye!");
-  await Deno.copyFile(fromFilename, toFilename);
-  // No change to original file
-  assertEquals(readFileString(fromFilename), "Hello world!");
-  // Original == Dest
-  assertSameContent(fromFilename, toFilename);
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileByUrl(): Promise<void> {
+    const tempDir = Deno.makeTempDirSync();
+    const fromUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
+    );
+    const toUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`,
+    );
+    writeFileString(fromUrl, "Hello world!");
+    await Deno.copyFile(fromUrl, toUrl);
+    // No change to original file
+    assertEquals(readFileString(fromUrl), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromUrl, toUrl);
 
-  Deno.removeSync(tempDir, { recursive: true });
-});
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
 
-Deno.test("copyFilePerm1", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "read" });
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileFailure(): Promise<void> {
+    const tempDir = Deno.makeTempDirSync();
+    const fromFilename = tempDir + "/from.txt";
+    const toFilename = tempDir + "/to.txt";
+    // We skip initial writing here, from.txt does not exist
+    await assertThrowsAsync(async () => {
+      await Deno.copyFile(fromFilename, toFilename);
+    }, Deno.errors.NotFound);
 
-  await assertThrowsAsync(async () => {
-    await Deno.copyFile("/from.txt", "/to.txt");
-  }, Deno.errors.PermissionDenied);
-});
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
 
-Deno.test("copyFileSyncPerm1", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "read" });
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileOverwrite(): Promise<void> {
+    const tempDir = Deno.makeTempDirSync();
+    const fromFilename = tempDir + "/from.txt";
+    const toFilename = tempDir + "/to.txt";
+    writeFileString(fromFilename, "Hello world!");
+    // Make Dest exist and have different content
+    writeFileString(toFilename, "Goodbye!");
+    await Deno.copyFile(fromFilename, toFilename);
+    // No change to original file
+    assertEquals(readFileString(fromFilename), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromFilename, toFilename);
 
-  assertThrows(() => {
-    Deno.copyFileSync("/from.txt", "/to.txt");
-  }, Deno.errors.PermissionDenied);
-});
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
 
-Deno.test("copyFilePerm2", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "write" });
+unitTest(
+  { perms: { read: false, write: true } },
+  async function copyFilePerm1(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.copyFile("/from.txt", "/to.txt");
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-  await assertThrowsAsync(async () => {
-    await Deno.copyFile("/from.txt", "/to.txt");
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test("copyFileSyncPerm2", async function (): Promise<void> {
-  await Deno.permissions.revoke({ name: "write" });
-
-  assertThrows(() => {
-    Deno.copyFileSync("/from.txt", "/to.txt");
-  }, Deno.errors.PermissionDenied);
-});
+unitTest(
+  { perms: { read: true, write: false } },
+  async function copyFilePerm2(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.copyFile("/from.txt", "/to.txt");
+    }, Deno.errors.PermissionDenied);
+  },
+);
