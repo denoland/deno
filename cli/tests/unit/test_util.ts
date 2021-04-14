@@ -77,7 +77,15 @@ export function unitTest(
     fn,
     ignore: !!options.ignore,
     only: !!options.only,
-    permissions: options.perms,
+    permissions: options.perms ?? {
+      read: false,
+      write: false,
+      net: false,
+      env: false,
+      run: false,
+      plugin: false,
+      hrtime: false,
+    },
   };
 
   Deno.test(testDefinition);
