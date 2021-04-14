@@ -1,5 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertThrows,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
@@ -98,13 +104,13 @@ unitTest(function castsInitializerToDictionary(): void {
     assertEquals(request.url, url);
     // TODO(#9498) add more asserts to generally make sure nothing weird went wrong
   };
-  
+
   const goodInitializers = [
     {},
     [],
     () => {},
     null,
-    undefined
+    undefined,
   ];
 
   goodInitializers.map(acceptsInitializer);
@@ -118,14 +124,25 @@ unitTest(function castsInitializerToDictionary(): void {
       },
     );
   };
-  
+
   const badInitializers = [
     0,
     0n,
     "",
     false,
-    Symbol()
+    Symbol(),
   ];
 
   badInitializers.map(deniesInitializer);
+});
+
+unitTest(function acceptsRequestObjects() {
+  const requestObject = new Request("http://foo/");
+  const copiedRequest = new Request(requestObject);
+
+  assert(requestObject !== copiedRequest);
+  assertEquals(requestObject.url, copiedRequest.url);
+  assertEquals(requestObject.method, copiedRequest.method);
+  assertEquals(requestObject.bodyUsed, copiedRequest.bodyUsed);
+  assertEquals(requestObject.redirect, copiedRequest.redirect);
 });
