@@ -59,11 +59,15 @@ unitTest(function castsInitializerToDictionary(): void {
     new Response(undefined, responseInit);
   };
 
-  acceptsInitializer({});
-  acceptsInitializer([]);
-  acceptsInitializer(() => {});
-  acceptsInitializer(null);
-  acceptsInitializer(undefined);
+  const goodInitializers = [
+    {},
+    [],
+    () => {},
+    null,
+    undefined
+  ];
+  
+  goodInitializers.map(acceptsInitializer);
 
   const deniesInitializer = (responseInit: unknown) => {
     assertThrows(
@@ -75,9 +79,13 @@ unitTest(function castsInitializerToDictionary(): void {
     );
   };
 
-  deniesInitializer(0);
-  deniesInitializer(0n);
-  deniesInitializer("");
-  deniesInitializer(false);
-  deniesInitializer(Symbol());
+  const badInitializers = [
+    0,
+    0n,
+    "",
+    false,
+    Symbol()
+  ];
+
+  badInitializers.map(deniesInitializer);
 });
