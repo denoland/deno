@@ -81,8 +81,8 @@
       return {
         async next() {
           const reqEvt = await httpConn.nextRequest();
-          if (reqEvt === null) return { value: undefined, done: true };
-          return { value: reqEvt, done: false };
+          // Change with caution, current form avoids a v8 deopt
+          return { value: reqEvt, done: reqEvt === null };
         },
       };
     }
