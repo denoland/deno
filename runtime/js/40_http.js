@@ -2,24 +2,15 @@
 "use strict";
 
 ((window) => {
-  const { Request, dontValidateUrl, fastBody, Response } =
+  const { Request, dontValidateUrl, lazyHeaders, fastBody, Response } =
     window.__bootstrap.fetch;
   const { Headers } = window.__bootstrap.headers;
   const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
   const { ReadableStream } = window.__bootstrap.streams;
 
-  function flatEntries(obj) {
-    const entries = [];
-    for (const key in obj) {
-      entries.push(key);
-      entries.push(obj[key]);
-    }
-    return entries;
-  }
-
   function serveHttp(conn) {
-    const rid = Deno.core.jsonOpSync("op_http_start", conn.rid);
+    const rid = Deno.core.opSync("op_http_start", conn.rid);
     return new HttpConn(rid);
   }
 
@@ -39,7 +30,7 @@
     async nextRequest() {
       let nextRequest;
       try {
-        nextRequest = await Deno.core.jsonOpAsync(
+        nextRequest = await Deno.core.opAsync(
           "op_http_request_next",
           this.#rid,
         );
@@ -70,8 +61,9 @@
       const request = new Request(url, {
         body,
         method,
-        headers: new Headers(headersList),
+        headers: headersList,
         [dontValidateUrl]: true,
+        [lazyHeaders]: true,
       });
 
       const respondWith = createRespondWith(responseSenderRid, this.#rid);
@@ -97,23 +89,25 @@
   }
 
   function readRequest(requestRid, zeroCopyBuf) {
-    return Deno.core.jsonOpAsync(
+    return Deno.core.opAsync(
       "op_http_request_read",
       requestRid,
       zeroCopyBuf,
     );
   }
 
-  function respond(responseSenderRid, resp, zeroCopyBuf) {
-    return Deno.core.jsonOpSync("op_http_response", [
-      responseSenderRid,
-      resp.status ?? 200,
-      flatEntries(resp.headers ?? {}),
-    ], zeroCopyBuf);
+  /** IMPORTANT: Equivalent to `Array.from(headers).flat()` but more performant.
+   * Please preserve. */
+  function flattenHeaders(headers) {
+    const array = [];
+    for (const pair of headers) {
+      array.push(pair[0], pair[1]);
+    }
+    return array;
   }
 
-  function createRespondWith(responseSenderRid, connRid) {
-    return async function (resp) {
+  function createRespondWith(responseSenderRid) {
+    return async function respondWith(resp) {
       if (resp instanceof Promise) {
         resp = await resp;
       }
@@ -136,11 +130,11 @@
         zeroCopyBuf = null;
       }
 
-      const responseBodyRid = respond(
+      const responseBodyRid = Deno.core.opSync("op_http_response", [
         responseSenderRid,
-        resp,
-        zeroCopyBuf,
-      );
+        resp.status ?? 200,
+        flattenHeaders(resp.headers),
+      ], zeroCopyBuf);
 
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
@@ -156,7 +150,7 @@
             chunk.byteOffset,
             chunk.byteLength,
           );
-          await Deno.core.jsonOpAsync(
+          await Deno.core.opAsync(
             "op_http_response_write",
             responseBodyRid,
             data,
@@ -165,7 +159,7 @@
 
         // Once all chunks are sent, and the request body is closed, we can close
         // the response body.
-        await Deno.core.jsonOpAsync("op_http_response_close", responseBodyRid);
+        await Deno.core.opAsync("op_http_response_close", responseBodyRid);
       }
     };
   }

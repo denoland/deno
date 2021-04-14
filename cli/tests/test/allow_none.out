@@ -1,0 +1,18 @@
+[WILDCARD]
+running 1 tests
+test permissionDenied ... FAILED [WILDCARD]
+
+failures:
+
+permissionDenied
+PermissionDenied: Requires read access, run test again with the --allow-read flag
+[WILDCARD]
+
+failures:
+
+	permissionDenied
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+
+
+

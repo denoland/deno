@@ -5,7 +5,7 @@
   const core = window.Deno.core;
 
   function metrics() {
-    const { combined, ops } = core.jsonOpSync("op_metrics");
+    const { combined, ops } = core.opSync("op_metrics");
     if (ops) {
       combined.ops = ops;
     }

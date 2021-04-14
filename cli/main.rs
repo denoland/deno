@@ -37,6 +37,7 @@ mod tokio_util;
 mod tools;
 mod tsc;
 mod tsc_config;
+mod unix_util;
 mod version;
 
 use crate::file_fetcher::File;
@@ -226,6 +227,7 @@ pub fn create_main_worker(
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
     ops::test_dispatcher::init(js_runtime);
+    ops::test_runner::init(js_runtime);
   }
   worker.bootstrap(&options);
 
@@ -1372,6 +1374,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
+  unix_util::raise_fd_limit();
 
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {

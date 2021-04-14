@@ -105,6 +105,7 @@ finishing test case.`;
       sanitizeOps: true,
       sanitizeResources: true,
       sanitizeExit: true,
+      permissions: null,
     };
 
     if (typeof t === "string") {
@@ -141,7 +142,7 @@ finishing test case.`;
   }
 
   function sendTestMessage(kind, data) {
-    return core.jsonOpSync("op_send_test_message", { message: { kind, data } });
+    return core.opSync("op_send_test_message", { message: { kind, data } });
   }
 
   function createTestFilter(filter) {
@@ -159,7 +160,45 @@ finishing test case.`;
     };
   }
 
-  async function runTest({ name, ignore, fn }) {
+  function requestTestPermissions(permissions) {
+    if (permissions.read === true) {
+      permissions.read = [];
+    } else if (permissions.read === false) {
+      permissions.read = null;
+    }
+
+    if (permissions.write === true) {
+      permissions.write = [];
+    } else if (permissions.write === false) {
+      permissions.write = null;
+    }
+
+    if (permissions.net === true) {
+      permissions.net = [];
+    } else if (permissions.net === false) {
+      permissions.net = null;
+    }
+
+    if (permissions.env === true) {
+      permissions.env = [];
+    } else if (permissions.env === false) {
+      permissions.env = null;
+    }
+
+    if (permissions.run === true) {
+      permissions.run = [];
+    } else if (permissions.run === false) {
+      permissions.run = null;
+    }
+
+    core.opSync("op_request_test_permissions", permissions);
+  }
+
+  function restoreTestPermissions() {
+    core.opSync("op_restore_test_permissions");
+  }
+
+  async function runTest({ name, ignore, fn, permissions }) {
     const time = Date.now();
 
     try {
@@ -176,6 +215,10 @@ finishing test case.`;
         });
 
         return;
+      }
+
+      if (permissions) {
+        requestTestPermissions(permissions);
       }
 
       await fn();
@@ -196,6 +239,10 @@ finishing test case.`;
           "failed": inspectArgs([error]),
         },
       });
+    } finally {
+      if (permissions) {
+        restoreTestPermissions();
+      }
     }
   }
 

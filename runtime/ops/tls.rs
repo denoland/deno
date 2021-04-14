@@ -71,10 +71,10 @@ impl StoresClientSessions for ClientSessionMemoryCache {
 }
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_start_tls", op_start_tls);
-  super::reg_json_async(rt, "op_connect_tls", op_connect_tls);
-  super::reg_json_sync(rt, "op_listen_tls", op_listen_tls);
-  super::reg_json_async(rt, "op_accept_tls", op_accept_tls);
+  super::reg_async(rt, "op_start_tls", op_start_tls);
+  super::reg_async(rt, "op_connect_tls", op_connect_tls);
+  super::reg_sync(rt, "op_listen_tls", op_listen_tls);
+  super::reg_async(rt, "op_accept_tls", op_accept_tls);
 }
 
 #[derive(Deserialize)]
@@ -107,8 +107,8 @@ async fn op_start_tls(
   }
   {
     super::check_unstable2(&state, "Deno.startTls");
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
     permissions.net.check(&(&domain, Some(0)))?;
     if let Some(path) = &args.cert_file {
       permissions.read.check(Path::new(&path))?;
@@ -170,8 +170,8 @@ async fn op_connect_tls(
   assert_eq!(args.transport, "tcp");
 
   {
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
     permissions.net.check(&(&args.hostname, Some(args.port)))?;
     if let Some(path) = &args.cert_file {
       permissions.read.check(Path::new(&path))?;
@@ -313,7 +313,7 @@ fn op_listen_tls(
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
-    let permissions = state.borrow::<Permissions>();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.net.check(&(&args.hostname, Some(args.port)))?;
     permissions.read.check(Path::new(&cert_file))?;
     permissions.read.check(Path::new(&key_file))?;

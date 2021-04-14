@@ -2,7 +2,6 @@
 
 #![deny(warnings)]
 
-use data_url::DataUrl;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
@@ -23,6 +22,8 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
+use data_url::DataUrl;
+use deno_file::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -85,19 +86,19 @@ pub struct HttpClientDefaults {
 }
 
 pub trait FetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError>;
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
 /// For use with `op_fetch` when the user does not want permissions.
 pub struct NoFetchPermissions;
 
 impl FetchPermissions for NoFetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError> {
     Ok(())
   }
 
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -160,7 +161,7 @@ where
   let scheme = url.scheme();
   let (request_rid, request_body_rid) = match scheme {
     "http" | "https" => {
-      let permissions = state.borrow::<FP>();
+      let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url)?;
 
       let mut request = client.request(method, url);
@@ -216,6 +217,34 @@ where
         .status(http::StatusCode::OK)
         .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
         .body(reqwest::Body::from(body))?;
+
+      let fut = async move { Ok(Response::from(response)) };
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, None)
+    }
+    "blob" => {
+      let blob_url_storage =
+        state.try_borrow::<BlobUrlStore>().ok_or_else(|| {
+          type_error("Blob URLs are not supported in this context.")
+        })?;
+
+      let blob = blob_url_storage
+        .get(url)?
+        .ok_or_else(|| type_error("Blob for the given URL not found."))?;
+
+      if method != "GET" {
+        return Err(type_error("Blob URL fetch only supports GET method."));
+      }
+
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_LENGTH, blob.data.len())
+        .header(http::header::CONTENT_TYPE, blob.media_type)
+        .body(reqwest::Body::from(blob.data))?;
 
       let fut = async move { Ok(Response::from(response)) };
 
@@ -413,7 +442,7 @@ where
   FP: FetchPermissions + 'static,
 {
   if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow::<FP>();
+    let permissions = state.borrow_mut::<FP>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 

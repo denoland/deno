@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::sync::mpsc::Sender;
 
 pub fn init(rt: &mut JsRuntime) {
-  super::reg_json_sync(rt, "op_send_test_message", op_send_test_message);
+  super::reg_sync(rt, "op_send_test_message", op_send_test_message);
 }
 
 #[derive(Debug, Deserialize)]
