@@ -226,9 +226,9 @@ pub fn op_restore_test_permissions(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let restore_test_permissions =
+  let permissions =
     state.borrow::<RestoreTestPermissions>().clone().0.clone();
-  state.put::<Permissions>(restore_test_permissions);
+  state.put::<Permissions>(permissions);
 
   Ok(json!({}))
 }
