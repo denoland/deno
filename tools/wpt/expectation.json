@@ -37,30 +37,6 @@
     "api-replacement-encodings.any.js": true,
     "api-surrogates-utf8.any.js": true,
     "encodeInto.any.js": [
-      "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 0",
-      "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 4, filler 0",
-      "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 128",
-      "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 4, filler 128",
-      "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 4, filler random",
-      "encodeInto() into SharedArrayBuffer with A and destination length 10, offset 0, filler 0",
-      "encodeInto() into SharedArrayBuffer with A and destination length 10, offset 4, filler 0",
-      "encodeInto() into SharedArrayBuffer with A and destination length 10, offset 0, filler 128",
-      "encodeInto() into SharedArrayBuffer with A and destination length 10, offset 4, filler 128",
-      "encodeInto() into SharedArrayBuffer with A and destination length 10, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with A and destination length 10, offset 4, filler random",
-      "encodeInto() into SharedArrayBuffer with 𝌆 and destination length 4, offset 0, filler 0",
-      "encodeInto() into SharedArrayBuffer with 𝌆 and destination length 4, offset 4, filler 0",
-      "encodeInto() into SharedArrayBuffer with 𝌆 and destination length 4, offset 0, filler 128",
-      "encodeInto() into SharedArrayBuffer with 𝌆 and destination length 4, offset 4, filler 128",
-      "encodeInto() into SharedArrayBuffer with 𝌆 and destination length 4, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with 𝌆 and destination length 4, offset 4, filler random",
-      "encodeInto() into SharedArrayBuffer with 𝌆A and destination length 3, offset 0, filler 0",
-      "encodeInto() into SharedArrayBuffer with 𝌆A and destination length 3, offset 4, filler 0",
-      "encodeInto() into SharedArrayBuffer with 𝌆A and destination length 3, offset 0, filler 128",
-      "encodeInto() into SharedArrayBuffer with 𝌆A and destination length 3, offset 4, filler 128",
-      "encodeInto() into SharedArrayBuffer with 𝌆A and destination length 3, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with 𝌆A and destination length 3, offset 4, filler random",
       "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler 0",
       "encodeInto() into SharedArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler 0",
       "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 4, filler 0",
@@ -85,23 +61,7 @@
       "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 0, filler random",
       "encodeInto() into ArrayBuffer with A\udf06 and destination length 4, offset 4, filler random",
       "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 4, filler random",
-      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 0, filler 0",
-      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler 0",
-      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 0, filler 128",
-      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler 128",
-      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler random",
-      "encodeInto() and a detached output buffer",
-      "Invalid encodeInto() destination: DataView, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Int8Array, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Int16Array, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Int32Array, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Uint16Array, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Uint32Array, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Uint8ClampedArray, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Float32Array, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: Float64Array, backed by: SharedArrayBuffer",
-      "Invalid encodeInto() destination: SharedArrayBuffer"
+      "encodeInto() and a detached output buffer"
     ],
     "idlharness.any.js": false,
     "iso-2022-jp-decoder.any.js": false,
@@ -129,10 +89,7 @@
       "realms.window.js": false
     },
     "textdecoder-byte-order-marks.any.js": true,
-    "textdecoder-copy.any.js": [
-      "Modify buffer after passing it in (ArrayBuffer)",
-      "Modify buffer after passing it in (SharedArrayBuffer)"
-    ],
+    "textdecoder-copy.any.js": false,
     "textdecoder-fatal-single-byte.any.js": true,
     "textdecoder-fatal-streaming.any.js": [
       "Fatal flag, streaming cases"
@@ -175,7 +132,8 @@
       "Encoding argument supported for decode: x-user-defined"
     ],
     "textencoder-utf16-surrogates.any.js": true,
-    "unsupported-encodings.any.js": false
+    "unsupported-encodings.any.js": false,
+    "textdecoder-arguments.any.js": false
   },
   "hr-time": {
     "monotonic-clock.any.js": true,
