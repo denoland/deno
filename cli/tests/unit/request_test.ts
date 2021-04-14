@@ -96,14 +96,18 @@ unitTest(function castsInitializerToDictionary(): void {
     const request = new Request(url, requestInit);
 
     assertEquals(request.url, url);
-    // add more asserts to generally make sure nothing weird went wrong
+    // TODO(#9498) add more asserts to generally make sure nothing weird went wrong
   };
+  
+  const goodInitializers = [
+    {},
+    [],
+    () => {},
+    null,
+    undefined
+  ];
 
-  acceptsInitializer({});
-  acceptsInitializer([]);
-  acceptsInitializer(() => {});
-  acceptsInitializer(null);
-  acceptsInitializer(undefined);
+  goodInitializers.map(acceptsInitializer);
 
   const deniesInitializer: initializerPasser = (requestInit) => {
     assertThrows(
@@ -114,10 +118,14 @@ unitTest(function castsInitializerToDictionary(): void {
       },
     );
   };
+  
+  const badInitializers = [
+    0,
+    0n,
+    "",
+    false,
+    Symbol()
+  ];
 
-  deniesInitializer(0);
-  deniesInitializer(0n);
-  deniesInitializer("");
-  deniesInitializer(false);
-  deniesInitializer(Symbol());
+  badInitializers.map(deniesInitializer);
 });
