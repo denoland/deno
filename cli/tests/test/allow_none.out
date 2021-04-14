@@ -1,18 +1,46 @@
 [WILDCARD]
-running 1 tests
-test permissionDenied ... FAILED [WILDCARD]
+running 7 tests
+test read ... FAILED [WILDCARD]
+test write ... FAILED [WILDCARD]
+test net ... FAILED [WILDCARD]
+test env ... FAILED [WILDCARD]
+test run ... FAILED [WILDCARD]
+test plugin ... FAILED [WILDCARD]
+test hrtime ... FAILED [WILDCARD]
 
 failures:
 
-permissionDenied
+read
 PermissionDenied: Requires read access, run test again with the --allow-read flag
+[WILDCARD]
+
+write
+PermissionDenied: Requires write access, run test again with the --allow-write flag
+[WILDCARD]
+
+net
+PermissionDenied: Requires net access, run test again with the --allow-net flag
+[WILDCARD]
+
+env
+PermissionDenied: Requires env access, run test again with the --allow-env flag
+[WILDCARD]
+
+run
+PermissionDenied: Requires run access, run test again with the --allow-run flag
+[WILDCARD]
+
+plugin
+PermissionDenied: Requires hrtime access, run test again with the --allow-hrtime flag
 [WILDCARD]
 
 failures:
 
-	permissionDenied
+	read
+	write
+	net
+	env
+	run
+	plugin
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
-
-
-
+test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]

@@ -1,15 +1,27 @@
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
-const status = await Deno.permissions.query({ name: "read" });
-assertEquals(status.state, "prompt");
+const permissions: Deno.PermissionName[] = [
+  "read",
+  "write",
+  "net",
+  "env",
+  "run",
+  "plugin",
+  "hrtime",
+];
+
+for (const name of permissions) {
+  const status = await Deno.permissions.query({ name });
+  assertEquals(status.state, "prompt");
 
 Deno.test({
-  name: `permissionDenied`,
+  name,
   permissions: {
-    read: true,
+    [name]: true,
   },
   async fn() {
-    const status = await Deno.permissions.query({ name: "read" });
-    assertEquals(status.state, "granted");
+    const status = await Deno.permissions.query({ name });
+    assertEquals(status.state, "prompt");
   },
 });
+}
