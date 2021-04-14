@@ -1659,3 +1659,70 @@ fn lsp_performance() {
   }
   shutdown(&mut client);
 }
+
+#[test]
+fn format_json() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+        "textDocument": {
+          "uri": "file:///a/file.json",
+          "languageId": "json",
+          "version": 1,
+          "text": "{\"key\":\"value\"}"
+        }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/formatting",
+      json!({
+          "textDocument": {
+            "uri": "file:///a/file.json"
+          },
+          "options": {
+            "tabSize": 2,
+            "insertSpaces": true
+          }
+      }),
+    )
+    .unwrap();
+
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 1
+          },
+          "end": {
+            "line": 0,
+            "character": 1
+          }
+        },
+        "newText": " "
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 7 }
+        },
+        "newText": " "
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 14 },
+          "end": { "line": 0, "character": 15 }
+        },
+        "newText": " }\n"
+      }
+    ]))
+  );
+
+  shutdown(&mut client);
+}
