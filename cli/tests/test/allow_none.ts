@@ -1,15 +1,23 @@
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import { unreachable } from "../../../test_util/std/testing/asserts.ts";
 
-const status = await Deno.permissions.query({ name: "read" });
-assertEquals(status.state, "prompt");
+const permissions: Deno.PermissionName[] = [
+  "read",
+  "write",
+  "net",
+  "env",
+  "run",
+  "plugin",
+  "hrtime",
+];
 
-Deno.test({
-  name: `permissionDenied`,
-  permissions: {
-    read: true,
-  },
-  async fn() {
-    const status = await Deno.permissions.query({ name: "read" });
-    assertEquals(status.state, "granted");
-  },
-});
+for (const name of permissions) {
+  Deno.test({
+    name,
+    permissions: {
+      [name]: true,
+    },
+    async fn() {
+      unreachable();
+    },
+  });
+}
