@@ -47,6 +47,10 @@
    */
 
   class FormData {
+    get [Symbol.toStringTag]() {
+      return "FormData";
+    }
+
     /** @type {FormDataEntry[]} */
     [entryList] = [];
 
