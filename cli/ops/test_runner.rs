@@ -185,7 +185,7 @@ pub fn op_request_test_permissions(
     None
   };
 
-  let allow_hrtime = if args.plugin.unwrap_or(false) {
+  let allow_hrtime = if args.hrtime.unwrap_or(false) {
     if permissions.hrtime.request() != PermissionState::Granted {
       return Err(test_permission_error("hrtime", None));
     }
