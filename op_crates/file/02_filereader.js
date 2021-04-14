@@ -24,6 +24,10 @@
   const aborted = Symbol("[[aborted]]");
 
   class FileReader extends EventTarget {
+    get [Symbol.toStringTag]() {
+      return "FileReader";
+    }
+
     /** @type {"empty" | "loading" | "done"} */
     [state] = "empty";
     /** @type {null | string | ArrayBuffer} */

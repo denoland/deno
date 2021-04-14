@@ -578,6 +578,10 @@
       "Parsing: <file://example.net/C:/> against <about:blank>",
       "Parsing: <file://1.2.3.4/C:/> against <about:blank>",
       "Parsing: <file://[1::8]/C:/> against <about:blank>",
+      "Parsing: <C|/> against <file://host/>",
+      "Parsing: </C:/> against <file://host/>",
+      "Parsing: <file:C:/> against <file://host/>",
+      "Parsing: <file:/C:/> against <file://host/>",
       "Parsing: <file://localhost//a//../..//foo> against <about:blank>",
       "Parsing: <file://localhost////foo> against <about:blank>",
       "Parsing: <file:////foo> against <about:blank>",
@@ -752,6 +756,18 @@
         "queue-microtask-exceptions.any.js": true,
         "queue-microtask.any.js": true
       }
+    }
+  },
+  "xhr": {
+    "formdata": {
+      "append.any.js": true,
+      "constructor.any.js": true,
+      "delete.any.js": true,
+      "foreach.any.js": true,
+      "get.any.js": true,
+      "has.any.js": true,
+      "set-blob.any.js": true,
+      "set.any.js": true
     }
   }
 }
