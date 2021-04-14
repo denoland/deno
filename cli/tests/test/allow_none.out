@@ -31,6 +31,10 @@ PermissionDenied: Requires run access, run test again with the --allow-run flag
 [WILDCARD]
 
 plugin
+PermissionDenied: Requires plugin access, run test again with the --allow-plugin flag
+[WILDCARD]
+
+hrtime
 PermissionDenied: Requires hrtime access, run test again with the --allow-hrtime flag
 [WILDCARD]
 
@@ -42,5 +46,6 @@ failures:
 	env
 	run
 	plugin
+	hrtime
 
 test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
