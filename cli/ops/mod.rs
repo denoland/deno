@@ -2,6 +2,7 @@
 
 pub mod errors;
 pub mod runtime_compiler;
+pub mod test_runner;
 
 use deno_core::error::AnyError;
 use deno_core::op_async;

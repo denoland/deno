@@ -121,6 +121,7 @@ finishing test case.`;
       sanitizeOps: true,
       sanitizeResources: true,
       sanitizeExit: true,
+      permissions: null,
     };
 
     if (typeof t === "string") {
@@ -226,6 +227,44 @@ finishing test case.`;
     }
   }
 
+  function requestTestPermissions(permissions) {
+    if (permissions.read === true) {
+      permissions.read = [];
+    } else if (permissions.read === false) {
+      permissions.read = null;
+    }
+
+    if (permissions.write === true) {
+      permissions.write = [];
+    } else if (permissions.write === false) {
+      permissions.write = null;
+    }
+
+    if (permissions.net === true) {
+      permissions.net = [];
+    } else if (permissions.net === false) {
+      permissions.net = null;
+    }
+
+    if (permissions.env === true) {
+      permissions.env = [];
+    } else if (permissions.env === false) {
+      permissions.env = null;
+    }
+
+    if (permissions.run === true) {
+      permissions.run = [];
+    } else if (permissions.run === false) {
+      permissions.run = null;
+    }
+
+    core.opSync("op_request_test_permissions", permissions);
+  }
+
+  function restoreTestPermissions() {
+    core.opSync("op_restore_test_permissions");
+  }
+
   // TODO(bartlomieju): already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
   // TODO(bartlomieju): implements PromiseLike<RunTestsEndResult>
   class TestRunner {
@@ -269,14 +308,26 @@ finishing test case.`;
         } else {
           const start = +new Date();
           try {
+            if (test.permissions) {
+              requestTestPermissions(test.permissions);
+            }
+
             await test.fn();
+
             endMessage.status = "passed";
             this.stats.passed++;
           } catch (err) {
             endMessage.status = "failed";
             endMessage.error = err;
             this.stats.failed++;
+          } finally {
+            // Permissions must always be restored, otherwise the sandbox can be altered in
+            // ways that we do not allow outside of tests.
+            if (test.permissions) {
+              restoreTestPermissions();
+            }
           }
+
           endMessage.duration = +new Date() - start;
         }
         results.push(endMessage);

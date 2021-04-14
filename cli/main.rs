@@ -218,6 +218,7 @@ pub fn create_main_worker(
     // above
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
+    ops::test_runner::init(js_runtime);
   }
   worker.bootstrap(&options);
 

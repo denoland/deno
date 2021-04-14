@@ -94,6 +94,16 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
+  export interface TestPermissions {
+    read?: string[] | boolean;
+    write?: string[] | boolean;
+    net?: string[] | boolean;
+    env?: string[] | boolean;
+    run?: string[] | boolean;
+    plugin?: boolean;
+    hrtime?: boolean;
+  }
+
   export interface TestDefinition {
     fn: () => void | Promise<void>;
     name: string;
@@ -112,6 +122,10 @@ declare namespace Deno {
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+
+    /** Ensure the test runs with the given permission set.
+     * These permissions can not escalate beyond the currently active permissions. */
+    permissions?: TestPermissions;
   }
 
   /** Register a test which will be run when `deno test` is used on the command

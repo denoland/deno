@@ -1,0 +1,8 @@
+[WILDCARD]
+running 4 tests
+test readGranted ... ok [WILDCARD]
+test readRevoked ... ok [WILDCARD]
+test readGrantedAgain ... ok [WILDCARD]
+test readRevokedAgain ... ok [WILDCARD]
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
