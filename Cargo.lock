@@ -674,6 +674,7 @@ dependencies = [
  "deno_crypto",
  "deno_fetch",
  "deno_file",
+ "deno_timers",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -708,6 +709,14 @@ dependencies = [
  "webpki-roots",
  "winapi 0.3.9",
  "winres",
+]
+
+[[package]]
+name = "deno_timers"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "tokio",
 ]
 
 [[package]]
