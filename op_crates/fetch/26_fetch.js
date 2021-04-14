@@ -400,7 +400,7 @@
       const formData = new FormData();
       const mimeType = parseMimeType(this.#contentType);
       if (mimeType) {
-        if (mimeType.type === "multipart" && mimeType.subtype === "formdata") {
+        if (mimeType.type === "multipart" && mimeType.subtype === "form-data") {
           // ref: https://tools.ietf.org/html/rfc2046#section-5.1
           const boundary = mimeType.parameters.get("boundary");
           const body = new Uint8Array(await this.arrayBuffer());

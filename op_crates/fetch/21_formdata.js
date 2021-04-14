@@ -250,7 +250,7 @@
       this.entryList = formData[entryList];
       this.boundary = this.#createBoundary();
       /** @type {Uint8Array[]} */
-      this.parts = [];
+      this.chunks = [];
     }
 
     /** 
@@ -270,17 +270,17 @@
         } else this.#writeField(name, value);
       }
 
-      this.parts.push(encoder.encode(`\r\n--${this.boundary}--`));
+      this.chunks.push(encoder.encode(`\r\n--${this.boundary}--`));
 
       let totalLength = 0;
-      for (const chunk of this.parts) {
+      for (const chunk of this.chunks) {
         totalLength += chunk.byteLength;
       }
 
       const finalBuffer = new Uint8Array(totalLength);
       let i = 0;
-      for (const chunk of this.parts) {
-        finalBuffer.set(finalBuffer, i);
+      for (const chunk of this.chunks) {
+        finalBuffer.set(chunk, i);
         i += chunk.byteLength;
       }
 
@@ -301,7 +301,7 @@
      * @returns {void}
      */
     #writeHeaders = (headers) => {
-      let buf = (this.parts.length === 0) ? "" : "\r\n";
+      let buf = (this.chunks.length === 0) ? "" : "\r\n";
 
       buf += `--${this.boundary}\r\n`;
       for (const [key, value] of headers) {
@@ -309,7 +309,7 @@
       }
       buf += `\r\n`;
 
-      this.parts.push(encoder.encode(buf));
+      this.chunks.push(encoder.encode(buf));
     };
 
     /** 
@@ -351,7 +351,7 @@
      */
     #writeField = (field, value) => {
       this.#writeFieldHeaders(field);
-      this.parts.push(encoder.encode(value));
+      this.chunks.push(encoder.encode(value));
     };
 
     /**
@@ -361,7 +361,7 @@
      */
     #writeFile = (field, value) => {
       this.#writeFileHeaders(field, value.name, value.type);
-      this.parts.push(value[_byteSequence]);
+      this.chunks.push(value[_byteSequence]);
     };
   }
 
