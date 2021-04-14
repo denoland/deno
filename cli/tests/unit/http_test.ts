@@ -96,6 +96,49 @@ unitTest(
   },
 );
 
+unitTest(
+  { perms: { net: true } },
+  async function httpServerAsyncReturnBodyRead() {
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    writer.write(new TextEncoder().encode("hello "));
+    writer.write(new TextEncoder().encode("world"));
+    writer.close();
+
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+      let resolve: (response: Response) => void;
+      const p = new Promise<Response>((r) => resolve = r);
+      const r = respondWith(p);
+
+      const reqBody = await request.text();
+      assertEquals("hello world", reqBody);
+      resolve!(new Response(""));
+      await r;
+
+      // TODO(kitsonk) uncommenting these causes the test to pass, as it is the
+      // test will hang as the request is never sent to the client
+      // assertEquals(await httpConn.nextRequest(), null);
+
+      listener.close();
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      body: stream.readable,
+      method: "POST",
+      headers: { "connection": "close" },
+    });
+
+    await resp.arrayBuffer();
+    await promise;
+  },
+);
+
 unitTest({ perms: { net: true } }, async function httpServerStreamDuplex() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
