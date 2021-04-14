@@ -5,7 +5,7 @@ import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 Deno.test({
   name: `readGranted`,
   async fn() {
-    let status = await Deno.permissions.query({ name: "read" });
+    const status = await Deno.permissions.query({ name: "read" });
     assertEquals(status.state, "granted");
   },
 });
@@ -16,7 +16,7 @@ Deno.test({
     read: false,
   },
   async fn() {
-    let status = await Deno.permissions.query({ name: "read" });
+    const status = await Deno.permissions.query({ name: "read" });
     assertEquals(status.state, "prompt");
   },
 });
@@ -27,7 +27,7 @@ Deno.test({
     read: [],
   },
   async fn() {
-    let status = await Deno.permissions.query({ name: "read" });
+    const status = await Deno.permissions.query({ name: "read" });
     assertEquals(status.state, "granted");
   },
 });
@@ -38,7 +38,7 @@ Deno.test({
     read: false,
   },
   async fn() {
-    let status = await Deno.permissions.query({ name: "read" });
+    const status = await Deno.permissions.query({ name: "read" });
     assertEquals(status.state, "prompt");
   },
 });
