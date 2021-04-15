@@ -21,6 +21,15 @@
     window.__bootstrap.formData;
   const { parseMimeType } = window.__bootstrap.mimesniff;
 
+  const {
+    createDictionaryConverter,
+    createEnumConverter,
+    createNullableConverter,
+    converters,
+  } = window.__bootstrap.webidl;
+
+  const { requiredArguments } = window.__bootstrap.fetchUtil;
+
   const { ReadableStream, isReadableStreamDisturbed } =
     window.__bootstrap.streams;
   const { Headers } = window.__bootstrap.headers;
@@ -569,6 +578,171 @@
     return m;
   }
 
+  // "referrer", "referrerPolicy", "mode", "cache", "signal", and "cancelable" are all un-used in current implementation; the converters are commented until then
+
+  // https://fetch.spec.whatwg.org/#requestinfo
+  // typedef (Request or USVString) RequestInfo;
+  function requestInfoConverter(v) {
+    if (v instanceof Request) {
+      return v;
+    } else {
+      // default behavior
+      converters.USVString(v);
+    }
+  }
+
+  // https://fetch.spec.whatwg.org/#typedefdef-headersinit
+  // typedef (sequence<sequence<ByteString>> or record<ByteString, ByteString>) HeadersInit;
+  // Headers should be able to convert values to HeadersInit,
+  // internally work with Headers directly
+  function headersInitConverter(v) {
+    return new Headers(v);
+  }
+
+  // https://heycam.github.io/webidl/#BufferSource
+  // typedef (ArrayBufferView or ArrayBuffer) BufferSource;
+  function isBufferSource(v) {
+    return ArrayBuffer.isView(v) || v instanceof ArrayBuffer;
+  }
+
+  // https://fetch.spec.whatwg.org/#typedefdef-xmlhttprequestbodyinit
+  // typedef (Blob or BufferSource or FormData or URLSearchParams or USVString) XMLHttpRequestBodyInit;
+  const XMLHttpRequestBodyInitConverter = (v) => {
+    if (
+      v instanceof Blob ||
+      isBufferSource(v) ||
+      v instanceof FormData ||
+      v instanceof URLSearchParams
+    ) {
+      return v;
+    } else {
+      // default behavior
+      return converters.USVString(v);
+    }
+  };
+
+  // https://fetch.spec.whatwg.org/#bodyinit
+  // typedef (ReadableStream or XMLHttpRequestBodyInit) BodyInit;
+  function bodyInitConverter(v) {
+    if (v instanceof ReadableStream) {
+      return v;
+    } else {
+      // default behavior
+      return XMLHttpRequestBodyInitConverter(v);
+    }
+  }
+
+  // https://w3c.github.io/webappsec-referrer-policy/#enumdef-referrerpolicy
+  // function referrerPolicyConverter() {};
+
+  // https://fetch.spec.whatwg.org/#requestmode
+  const requestModeConverter = createEnumConverter(
+    "RequestMode",
+    ["navigate", "same-origin", "no-cors", "cors"],
+  );
+
+  // https://fetch.spec.whatwg.org/#requestcredentials
+  const requestCredentialsConverter = createEnumConverter(
+    "RequestCredentials",
+    ["omit", "same-origin", "include"],
+  );
+
+  // https://fetch.spec.whatwg.org/#requestcache
+  const requestCacheConverter = createEnumConverter(
+    "RequestCache",
+    [
+      "default",
+      "no-store",
+      "reload",
+      "no-cache",
+      "force-cache",
+      "only-if-cached",
+    ],
+  );
+
+  // https://fetch.spec.whatwg.org/#requestredirect
+  const requestRedirectConverter = createEnumConverter(
+    "RequestRedirect",
+    [
+      "follow",
+      "error",
+      "manual",
+    ],
+  );
+
+  // https://dom.spec.whatwg.org/#abortsignal
+  // function abortSignalConverter() {};
+
+  // https://fetch.spec.whatwg.org/#requestinit
+  const requestInitConverter = createDictionaryConverter("RequestInit", [
+    {
+      converter: converters.ByteString,
+      key: "method",
+    },
+    {
+      converter: headersInitConverter,
+      key: "headers",
+    },
+    {
+      converter: createNullableConverter(bodyInitConverter),
+      key: "body",
+    },
+    /*{
+      converter: converters.USVString,
+      key: "referrer",
+    }*/
+    /*{
+      converter: referrerPolicyConverter,
+      key: "referrerPolicy",
+    }*/
+    /*{
+      converter: requestModeConverter,
+      key: "mode",
+    }*/
+    {
+      converter: requestCredentialsConverter,
+      key: "credentials",
+    },
+    /*{
+      converter: requestCacheConverter,
+      key: "cache",
+    }*/
+    {
+      converter: requestRedirectConverter,
+      key: "redirect",
+    },
+    /*{
+      converter: converters.DOMString,
+      key: "integrity",
+    }*/
+    /*{
+      converter: converters.boolean,
+      key: "keepalive",
+    }*/
+    /*{
+      converter: createNullableConverter(abortSignalConverter),
+      key: "signal",
+	}*/
+  ]);
+
+  // https://fetch.spec.whatwg.org/#responseinit
+  const responseInitConverter = createDictionaryConverter("ResponseInit", [
+    {
+      key: "status",
+      defaultValue: 200,
+      converter: converters["unsigned short"],
+    },
+    /*{
+      key: "cancelable",
+      defaultValue: "",
+      converter: converters.ByteString,
+    }*/
+    {
+      key: "headers",
+      converter: headersInitConverter,
+    },
+  ]);
+
   class Request extends Body {
     /** @type {string} */
     #method = "GET";
@@ -584,14 +758,12 @@
      * @param {RequestInit} init 
      */
     // @ts-expect-error because the use of super in this constructor is valid.
-    constructor(input, init) {
-      if (arguments.length < 1) {
-        throw TypeError("Not enough arguments");
-      }
-
-      if (!init) {
-        init = {};
-      }
+    constructor(input, init = {}) {
+      requiredArguments("Request", arguments.length, 1);
+      input = requestInfoConverter(input);
+      init = requestInitConverter(init, {
+        prefix: "Failed to construct 'Request'",
+      });
 
       let b;
 
@@ -670,8 +842,7 @@
       if (
         init &&
         "credentials" in init &&
-        init.credentials &&
-        ["omit", "same-origin", "include"].indexOf(init.credentials) !== -1
+        init.credentials
       ) {
         this.credentials = init.credentials;
       }
@@ -740,14 +911,13 @@
      * @param {BodyInit | null} body 
      * @param {ResponseInit} [init]
      */
-    constructor(body = null, init) {
-      init = init ?? {};
-
-      if (typeof init !== "object") {
-        throw new TypeError(`'init' is not an object`);
-      }
-
+    constructor(body = null, init = {}) {
       const extraInit = responseData.get(init) || {};
+
+      init = responseInitConverter(init, {
+        prefix: "Failed to construct 'Response'",
+      });
+
       let { type = "default", url = "" } = extraInit;
 
       let status = init.status === undefined ? 200 : Number(init.status || 0);
