@@ -16,7 +16,7 @@ for (const name of permissions) {
     permissions: {
       [name]: true,
     },
-    async fn() {
+    fn() {
       unreachable();
     },
   });
