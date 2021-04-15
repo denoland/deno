@@ -228,7 +228,7 @@ fn merge_run_permission(
   Ok(main)
 }
 
-fn create_worker_permissions(
+pub fn create_worker_permissions(
   main_perms: Permissions,
   worker_perms: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
@@ -244,7 +244,7 @@ fn create_worker_permissions(
 }
 
 #[derive(Debug, Deserialize)]
-struct PermissionsArg {
+pub struct PermissionsArg {
   #[serde(default, deserialize_with = "as_unary_env_permission")]
   env: Option<UnaryPermission<EnvDescriptor>>,
   #[serde(default, deserialize_with = "as_permission_state")]

@@ -1,4 +1,4 @@
-import { unreachable } from "../../../test_util/std/testing/asserts.ts";
+import { assertEquals, unreachable } from "../../../test_util/std/testing/asserts.ts";
 
 const permissions: Deno.PermissionName[] = [
   "read",

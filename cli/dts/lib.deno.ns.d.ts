@@ -94,15 +94,6 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-  export interface TestPermissions {
-    read?: string[] | boolean;
-    write?: string[] | boolean;
-    net?: string[] | boolean;
-    env?: string[] | boolean;
-    run?: string[] | boolean;
-    plugin?: boolean;
-    hrtime?: boolean;
-  }
 
   export interface TestDefinition {
     fn: () => void | Promise<void>;
@@ -123,9 +114,23 @@ declare namespace Deno {
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
 
-    /** Ensure the test runs with the given permission set.
-     * These permissions can not escalate beyond the currently active permissions. */
-    permissions?: TestPermissions;
+    /** Set to `"none"` to disable all the permissions in the test. */
+    permissions?: "inherit" | "none" | {
+      env?: "inherit" | boolean;
+      hrtime?: "inherit" | boolean;
+      /** The format of the net access list must be `hostname[:port]`
+       * in order to be resolved.
+       *
+       * ```
+       * net: ["https://deno.land", "localhost:8080"],
+       * ```
+       * */
+      net?: "inherit" | boolean | string[];
+      plugin?: "inherit" | boolean;
+      read?: "inherit" | boolean | Array<string | URL>;
+      run?: "inherit" | boolean;
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
   }
 
   /** Register a test which will be run when `deno test` is used on the command

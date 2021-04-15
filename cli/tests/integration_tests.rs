@@ -2402,7 +2402,7 @@ mod integration {
     });
 
     itest!(allow_none {
-      args: "test test/allow_none.ts",
+      args: "test --unstable test/allow_none.ts",
       exit_code: 1,
       output: "test/allow_none.out",
     });
