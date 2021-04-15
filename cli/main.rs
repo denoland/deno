@@ -221,7 +221,7 @@ pub fn create_main_worker(
     ops::runtime_compiler::init(js_runtime);
 
     if enable_testing {
-        ops::test_runner::init(js_runtime);
+      ops::test_runner::init(js_runtime);
     }
   }
   worker.bootstrap(&options);
@@ -823,8 +823,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     async move {
       let main_module = main_module.clone();
       let program_state = ProgramState::build(flags).await?;
-      let mut worker =
-        create_main_worker(&program_state, main_module.clone(), permissions, false);
+      let mut worker = create_main_worker(
+        &program_state,
+        main_module.clone(),
+        permissions,
+        false,
+      );
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;

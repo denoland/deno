@@ -15,11 +15,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(
-    rt,
-    "op_pledge_test_permissions",
-    op_pledge_test_permissions,
-  );
+  super::reg_sync(rt, "op_pledge_test_permissions", op_pledge_test_permissions);
   super::reg_sync(
     rt,
     "op_restore_test_permissions",
@@ -226,8 +222,7 @@ pub fn op_restore_test_permissions(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let permissions =
-    state.borrow::<RestoreTestPermissions>().clone().0.clone();
+  let permissions = state.borrow::<RestoreTestPermissions>().clone().0.clone();
   state.put::<Permissions>(permissions);
 
   Ok(json!({}))
