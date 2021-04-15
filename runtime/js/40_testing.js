@@ -309,7 +309,7 @@ finishing test case.`;
           const start = +new Date();
           try {
             if (test.permissions) {
-              requestTestPermissions(test.permissions);
+              pledgeTestPermissions(test.permissions);
             }
 
             await test.fn();
