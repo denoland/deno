@@ -2,7 +2,7 @@
 "use strict";
 
 ((window) => {
-  const { Request, dontValidateUrl, fastBody, Response } =
+  const { Request, dontValidateUrl, lazyHeaders, fastBody, Response } =
     window.__bootstrap.fetch;
   const { Headers } = window.__bootstrap.headers;
   const errors = window.__bootstrap.errors.errors;
@@ -61,8 +61,9 @@
       const request = new Request(url, {
         body,
         method,
-        headers: new Headers(headersList),
+        headers: headersList,
         [dontValidateUrl]: true,
+        [lazyHeaders]: true,
       });
 
       const respondWith = createRespondWith(responseSenderRid, this.#rid);
@@ -80,8 +81,8 @@
       return {
         async next() {
           const reqEvt = await httpConn.nextRequest();
-          if (reqEvt === null) return { value: undefined, done: true };
-          return { value: reqEvt, done: false };
+          // Change with caution, current form avoids a v8 deopt
+          return { value: reqEvt, done: reqEvt === null };
         },
       };
     }
@@ -105,8 +106,8 @@
     return array;
   }
 
-  function createRespondWith(responseSenderRid, connRid) {
-    return async function (resp) {
+  function createRespondWith(responseSenderRid) {
+    return async function respondWith(resp) {
       if (resp instanceof Promise) {
         resp = await resp;
       }

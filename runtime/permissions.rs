@@ -9,6 +9,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use log::debug;
 use std::collections::HashSet;
 use std::fmt;
@@ -194,6 +195,9 @@ impl fmt::Display for NetDescriptor {
     })
   }
 }
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct EnvDescriptor(pub String);
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct RunDescriptor(pub String);
@@ -574,6 +578,114 @@ impl UnaryPermission<NetDescriptor> {
   }
 }
 
+impl UnaryPermission<EnvDescriptor> {
+  pub fn query(&self, env: Option<&str>) -> PermissionState {
+    #[cfg(windows)]
+    let env = env.map(|env| env.to_uppercase());
+    #[cfg(windows)]
+    let env = env.as_deref();
+    if self.global_state == PermissionState::Denied
+      && match env {
+        None => true,
+        Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
+      }
+    {
+      PermissionState::Denied
+    } else if self.global_state == PermissionState::Granted
+      || match env {
+        None => false,
+        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
+      }
+    {
+      PermissionState::Granted
+    } else {
+      PermissionState::Prompt
+    }
+  }
+
+  pub fn request(&mut self, env: Option<&str>) -> PermissionState {
+    if let Some(env) = env {
+      #[cfg(windows)]
+      let env = env.to_uppercase();
+      let state = self.query(Some(&env));
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!("env access to \"{}\"", env)) {
+          self.granted_list.retain(|env_| env_.0 != env);
+          self.granted_list.insert(EnvDescriptor(env.to_string()));
+          PermissionState::Granted
+        } else {
+          self.denied_list.retain(|env_| env_.0 != env);
+          self.denied_list.insert(EnvDescriptor(env.to_string()));
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    } else {
+      let state = self.query(None);
+      if state == PermissionState::Prompt {
+        if permission_prompt("env access") {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        } else {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    }
+  }
+
+  pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
+    if let Some(env) = env {
+      #[cfg(windows)]
+      let env = env.to_uppercase();
+      self.granted_list.retain(|env_| env_.0 != env);
+    } else {
+      self.granted_list.clear();
+      if self.global_state == PermissionState::Granted {
+        self.global_state = PermissionState::Prompt;
+      }
+    }
+    self.query(env)
+  }
+
+  pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
+    #[cfg(windows)]
+    let env = &env.to_uppercase();
+    let (result, prompted) = self.query(Some(env)).check(
+      self.name,
+      Some(&format!("\"{}\"", env)),
+      self.prompt,
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(EnvDescriptor(env.to_string()));
+      } else {
+        self.denied_list.insert(EnvDescriptor(env.to_string()));
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    let (result, prompted) =
+      self.query(None).check(self.name, Some("all"), self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.global_state = PermissionState::Granted;
+      } else {
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+}
+
 impl UnaryPermission<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
@@ -677,7 +789,7 @@ pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
   pub write: UnaryPermission<WriteDescriptor>,
   pub net: UnaryPermission<NetDescriptor>,
-  pub env: UnitPermission,
+  pub env: UnaryPermission<EnvDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
   pub plugin: UnitPermission,
   pub hrtime: UnitPermission,
@@ -685,7 +797,7 @@ pub struct Permissions {
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct PermissionsOptions {
-  pub allow_env: bool,
+  pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
   pub allow_plugin: bool,
@@ -745,13 +857,31 @@ impl Permissions {
     }
   }
 
-  pub fn new_env(state: bool, prompt: bool) -> UnitPermission {
-    boolean_permission_from_flag_bool(
-      state,
-      "env",
-      "environment variables",
+  pub fn new_env(
+    state: &Option<Vec<String>>,
+    prompt: bool,
+  ) -> UnaryPermission<EnvDescriptor> {
+    UnaryPermission::<EnvDescriptor> {
+      name: "env",
+      description: "environment variables",
+      global_state: global_state_from_option(state),
+      granted_list: state
+        .as_ref()
+        .map(|v| {
+          v.iter()
+            .map(|x| {
+              EnvDescriptor(if cfg!(windows) {
+                x.to_uppercase()
+              } else {
+                x.clone()
+              })
+            })
+            .collect()
+        })
+        .unwrap_or_else(HashSet::new),
+      denied_list: Default::default(),
       prompt,
-    )
+    }
   }
 
   pub fn new_run(
@@ -772,11 +902,11 @@ impl Permissions {
   }
 
   pub fn new_plugin(state: bool, prompt: bool) -> UnitPermission {
-    boolean_permission_from_flag_bool(state, "plugin", "open a plugin", prompt)
+    unit_permission_from_flag_bool(state, "plugin", "open a plugin", prompt)
   }
 
   pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {
-    boolean_permission_from_flag_bool(
+    unit_permission_from_flag_bool(
       state,
       "hrtime",
       "high precision time",
@@ -789,7 +919,7 @@ impl Permissions {
       read: Permissions::new_read(&opts.allow_read, opts.prompt),
       write: Permissions::new_write(&opts.allow_write, opts.prompt),
       net: Permissions::new_net(&opts.allow_net, opts.prompt),
-      env: Permissions::new_env(opts.allow_env, opts.prompt),
+      env: Permissions::new_env(&opts.allow_env, opts.prompt),
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
       plugin: Permissions::new_plugin(opts.allow_plugin, opts.prompt),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
@@ -801,7 +931,7 @@ impl Permissions {
       read: Permissions::new_read(&Some(vec![]), false),
       write: Permissions::new_write(&Some(vec![]), false),
       net: Permissions::new_net(&Some(vec![]), false),
-      env: Permissions::new_env(true, false),
+      env: Permissions::new_env(&Some(vec![]), false),
       run: Permissions::new_run(&Some(vec![]), false),
       plugin: Permissions::new_plugin(true, false),
       hrtime: Permissions::new_hrtime(true, false),
@@ -839,13 +969,23 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
+impl deno_timers::TimersPermission for Permissions {
+  fn allow_hrtime(&mut self) -> bool {
+    self.hrtime.check().is_ok()
+  }
+
+  fn check_unstable(&self, state: &OpState, api_name: &'static str) {
+    crate::ops::check_unstable(state, api_name);
+  }
+}
+
 impl deno_websocket::WebSocketPermissions for Permissions {
   fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     self.net.check_url(url)
   }
 }
 
-fn boolean_permission_from_flag_bool(
+fn unit_permission_from_flag_bool(
   flag: bool,
   name: &'static str,
   description: &'static str,
@@ -1289,9 +1429,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]), false)
       },
-      env: UnitPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
+      env: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_env(&Some(svec!["HOME"]), false)
       },
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -1322,8 +1462,10 @@ mod tests {
       assert_eq!(perms1.net.query(Some(&("127.0.0.1", None))), PermissionState::Granted);
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
       assert_eq!(perms2.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      assert_eq!(perms1.env.query(), PermissionState::Granted);
-      assert_eq!(perms2.env.query(), PermissionState::Prompt);
+      assert_eq!(perms1.env.query(None), PermissionState::Granted);
+      assert_eq!(perms1.env.query(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.env.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.env.query(Some(&"HOME".to_string())), PermissionState::Granted);
       assert_eq!(perms1.run.query(None), PermissionState::Granted);
       assert_eq!(perms1.run.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
@@ -1356,9 +1498,10 @@ mod tests {
       set_prompt_result(false);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       set_prompt_result(true);
-      assert_eq!(perms.env.request(), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
+      assert_eq!(perms.env.query(None), PermissionState::Prompt);
       set_prompt_result(false);
-      assert_eq!(perms.env.request(), PermissionState::Granted);
+      assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
       set_prompt_result(true);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
@@ -1390,9 +1533,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_net(&Some(svec!["127.0.0.1"]), false)
       },
-      env: UnitPermission {
-        state: PermissionState::Granted,
-        ..Default::default()
+      env: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_env(&Some(svec!["HOME"]), false)
       },
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -1417,7 +1560,7 @@ mod tests {
       assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
-      assert_eq!(perms.env.revoke(), PermissionState::Prompt);
+      assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
       assert_eq!(perms.plugin.revoke(), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
@@ -1430,7 +1573,7 @@ mod tests {
       read: Permissions::new_read(&None, true),
       write: Permissions::new_write(&None, true),
       net: Permissions::new_net(&None, true),
-      env: Permissions::new_env(false, true),
+      env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       plugin: Permissions::new_plugin(false, true),
       hrtime: Permissions::new_hrtime(false, true),
@@ -1466,6 +1609,12 @@ mod tests {
     assert!(perms.run.check("ls").is_err());
 
     set_prompt_result(true);
+    assert!(perms.env.check("HOME").is_ok());
+    set_prompt_result(false);
+    assert!(perms.env.check("HOME").is_ok());
+    assert!(perms.env.check("PATH").is_err());
+
+    set_prompt_result(true);
     assert!(perms.hrtime.check().is_ok());
     set_prompt_result(false);
     assert!(perms.hrtime.check().is_ok());
@@ -1477,7 +1626,7 @@ mod tests {
       read: Permissions::new_read(&None, true),
       write: Permissions::new_write(&None, true),
       net: Permissions::new_net(&None, true),
-      env: Permissions::new_env(false, true),
+      env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       plugin: Permissions::new_plugin(false, true),
       hrtime: Permissions::new_hrtime(false, true),
@@ -1520,8 +1669,37 @@ mod tests {
     assert!(perms.run.check("ls").is_ok());
 
     set_prompt_result(false);
+    assert!(perms.env.check("HOME").is_err());
+    set_prompt_result(true);
+    assert!(perms.env.check("HOME").is_err());
+    assert!(perms.env.check("PATH").is_ok());
+    set_prompt_result(false);
+    assert!(perms.env.check("PATH").is_ok());
+
+    set_prompt_result(false);
     assert!(perms.hrtime.check().is_err());
     set_prompt_result(true);
     assert!(perms.hrtime.check().is_err());
+  }
+
+  #[test]
+  #[cfg(windows)]
+  fn test_env_windows() {
+    let mut perms = Permissions::allow_all();
+    perms.env = UnaryPermission {
+      global_state: PermissionState::Prompt,
+      ..Permissions::new_env(&Some(svec!["HOME"]), false)
+    };
+
+    set_prompt_result(true);
+    assert!(perms.env.check("HOME").is_ok());
+    set_prompt_result(false);
+    assert!(perms.env.check("HOME").is_ok());
+    assert!(perms.env.check("hOmE").is_ok());
+
+    assert_eq!(
+      perms.env.revoke(Some(&"HomE".to_string())),
+      PermissionState::Prompt
+    );
   }
 }

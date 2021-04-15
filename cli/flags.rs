@@ -128,7 +128,7 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
-  pub allow_env: bool,
+  pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
   pub allow_plugin: bool,
@@ -207,8 +207,15 @@ impl Flags {
       _ => {}
     }
 
-    if self.allow_env {
-      args.push("--allow-env".to_string());
+    match &self.allow_env {
+      Some(env_allowlist) if env_allowlist.is_empty() => {
+        args.push("--allow-env".to_string());
+      }
+      Some(env_allowlist) => {
+        let s = format!("--allow-env={}", env_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
     }
 
     match &self.allow_run {
@@ -527,7 +534,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl;
   flags.allow_net = Some(vec![]);
-  flags.allow_env = true;
+  flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
@@ -538,7 +545,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   flags.allow_net = Some(vec![]);
-  flags.allow_env = true;
+  flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
@@ -1402,7 +1409,19 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(
       Arg::with_name("allow-env")
         .long("allow-env")
-        .help("Allow environment access"),
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow environment access")
+        .validator(|keys| {
+          for key in keys.split(',') {
+            if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+              return Err(format!("invalid key \"{}\"", key));
+            }
+          }
+          Ok(())
+        }),
     )
     .arg(
       Arg::with_name("allow-run")
@@ -1826,15 +1845,26 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("net allowlist: {:#?}", &flags.allow_net);
   }
 
+  if let Some(env_wl) = matches.values_of("allow-env") {
+    let env_allowlist: Vec<String> = env_wl
+      .map(|env: &str| {
+        if cfg!(windows) {
+          env.to_uppercase()
+        } else {
+          env.to_string()
+        }
+      })
+      .collect();
+    flags.allow_env = Some(env_allowlist);
+    debug!("env allowlist: {:#?}", &flags.allow_env);
+  }
+
   if let Some(run_wl) = matches.values_of("allow-run") {
     let run_allowlist: Vec<String> = run_wl.map(ToString::to_string).collect();
     flags.allow_run = Some(run_allowlist);
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
-  if matches.is_present("allow-env") {
-    flags.allow_env = true;
-  }
   if matches.is_present("allow-plugin") {
     flags.allow_plugin = true;
   }
@@ -1843,7 +1873,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
   if matches.is_present("allow-all") {
     flags.allow_read = Some(vec![]);
-    flags.allow_env = true;
+    flags.allow_env = Some(vec![]);
     flags.allow_net = Some(vec![]);
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
@@ -2054,7 +2084,7 @@ mod tests {
           script: "gist.ts".to_string(),
         },
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2426,7 +2456,7 @@ mod tests {
           ext: "js".to_string(),
         },
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2449,7 +2479,7 @@ mod tests {
           ext: "js".to_string(),
         },
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2473,7 +2503,7 @@ mod tests {
           ext: "ts".to_string(),
         },
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2510,7 +2540,7 @@ mod tests {
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2540,7 +2570,7 @@ mod tests {
         },
         argv: svec!["arg1", "arg2"],
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2560,7 +2590,7 @@ mod tests {
         repl: true,
         subcommand: DenoSubcommand::Repl,
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2594,7 +2624,7 @@ mod tests {
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: Some(vec![]),
-        allow_env: true,
+        allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
@@ -2669,6 +2699,55 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn allow_env_allowlist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=HOME", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        allow_env: Some(svec!["HOME"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_env_allowlist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-env=HOME,PATH",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        allow_env: Some(svec!["HOME", "PATH"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_env_allowlist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=HOME", "script.ts"]);
+    assert!(r.is_ok());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=H=ME", "script.ts"]);
+    assert!(r.is_err());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
+    assert!(r.is_err());
   }
 
   #[test]
