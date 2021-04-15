@@ -9,6 +9,7 @@ use deno_core::ZeroCopyBuf;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;
 use deno_runtime::permissions::Permissions;
+use uuid::Uuid;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_pledge_test_permissions", op_pledge_test_permissions);
@@ -19,32 +20,39 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   );
 }
 
-struct PermissionsHolder(Permissions);
+#[derive(Clone)]
+struct PermissionsHolder(Uuid, Permissions);
 
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  let token = Uuid::new_v4();
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = {
     let permissions: PermissionsArg = serde_json::from_value(args)?;
     create_worker_permissions(parent_permissions.clone(), permissions)?
   };
 
-  state.put::<PermissionsHolder>(PermissionsHolder(parent_permissions));
+  state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
   state.put::<Permissions>(worker_permissions);
 
-  Ok(json!({}))
+  Ok(json!(token))
 }
 
 pub fn op_restore_test_permissions(
   state: &mut OpState,
-  _args: Value,
+  args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  if let Some(permissions_holder) = state.try_borrow::<PermissionsHolder>() {
-    let permissions = permissions_holder.0.clone();
+  if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
+    let token: Uuid = serde_json::from_value(args)?;
+    if token != permissions_holder.0 {
+      panic!("restore test permissions token does not match the stored token");
+    }
+
+    let permissions = permissions_holder.1.clone();
     state.put::<Permissions>(permissions);
   }
 

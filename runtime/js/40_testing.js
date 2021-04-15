@@ -229,11 +229,14 @@ finishing test case.`;
   }
 
   function pledgeTestPermissions(permissions) {
-    core.opSync("op_pledge_test_permissions", parsePermissions(permissions));
+    return core.opSync(
+      "op_pledge_test_permissions",
+      parsePermissions(permissions),
+    );
   }
 
-  function restoreTestPermissions() {
-    core.opSync("op_restore_test_permissions");
+  function restoreTestPermissions(token) {
+    core.opSync("op_restore_test_permissions", token);
   }
 
   // TODO(bartlomieju): already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
@@ -267,6 +270,7 @@ finishing test case.`;
 
       const results = [];
       const suiteStart = +new Date();
+
       for (const test of this.testsToRun) {
         const endMessage = {
           name: test.name,
@@ -278,9 +282,11 @@ finishing test case.`;
           this.stats.ignored++;
         } else {
           const start = +new Date();
+
+          let token;
           try {
             if (test.permissions) {
-              pledgeTestPermissions(test.permissions);
+              token = pledgeTestPermissions(test.permissions);
             }
 
             await test.fn();
@@ -294,8 +300,8 @@ finishing test case.`;
           } finally {
             // Permissions must always be restored, otherwise the sandbox can be altered in
             // ways that we do not allow outside of tests.
-            if (test.permissions) {
-              restoreTestPermissions();
+            if (token) {
+              restoreTestPermissions(token);
             }
           }
 

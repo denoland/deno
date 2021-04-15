@@ -77,7 +77,7 @@ termcolor = "1.1.2"
 text-size = "1.1.0"
 tokio = { version = "1.4.0", features = ["full"] }
 tokio-rustls = "0.22.0"
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { version = "0.8.2", features = ["v4", "serde"] }
 walkdir = "2.3.2"
 
 [target.'cfg(windows)'.dependencies]
