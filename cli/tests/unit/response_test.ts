@@ -65,9 +65,9 @@ unitTest(function castsInitializerToDictionary(): void {
     [],
     () => {},
     null,
-    undefined
+    undefined,
   ];
-  
+
   goodInitializers.map(acceptsInitializer);
 
   const deniesInitializer = (responseInit: unknown) => {
@@ -85,7 +85,7 @@ unitTest(function castsInitializerToDictionary(): void {
     0n,
     "",
     false,
-    Symbol()
+    Symbol(),
   ];
 
   badInitializers.map(deniesInitializer);
