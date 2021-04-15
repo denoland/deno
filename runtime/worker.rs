@@ -21,6 +21,8 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_file::BlobUrlStore;
+use log::debug;
 use std::env;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -65,6 +67,7 @@ pub struct WorkerOptions {
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl MainWorker {
@@ -125,11 +128,17 @@ impl MainWorker {
         options.create_web_worker_cb.clone(),
       );
       ops::crypto::init(js_runtime, options.seed);
-      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::url::init(js_runtime);
+      ops::file::init(
+        js_runtime,
+        options.blob_url_store.clone(),
+        options.location.clone(),
+      );
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
+      ops::http::init(js_runtime);
       ops::io::init(js_runtime);
       ops::net::init(js_runtime);
       ops::os::init(js_runtime);
@@ -297,6 +306,7 @@ mod tests {
       no_color: true,
       get_error_class_fn: None,
       location: None,
+      blob_url_store: BlobUrlStore::default(),
     };
 
     MainWorker::from_options(main_module, permissions, &options)

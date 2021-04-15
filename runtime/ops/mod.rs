@@ -1,12 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-mod dispatch_minimal;
-pub use dispatch_minimal::MinimalOp;
-
 pub mod crypto;
 pub mod fetch;
+pub mod file;
 pub mod fs;
 pub mod fs_events;
+pub mod http;
 pub mod io;
 pub mod net;
 #[cfg(unix)]
@@ -21,6 +20,7 @@ pub mod timers;
 pub mod tls;
 pub mod tty;
 pub mod url;
+mod utils;
 pub mod web_worker;
 pub mod webgpu;
 pub mod websocket;
@@ -28,11 +28,10 @@ pub mod worker_host;
 
 use crate::metrics::metrics_op;
 use deno_core::error::AnyError;
-use deno_core::json_op_async;
-use deno_core::json_op_sync;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Serialize;
-use deno_core::BufVec;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -40,26 +39,23 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 
-pub fn reg_json_async<F, V, R, RV>(
-  rt: &mut JsRuntime,
-  name: &'static str,
-  op_fn: F,
-) where
-  F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
+pub fn reg_async<F, V, R, RV>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+where
+  F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: Serialize,
+  RV: Serialize + 'static,
 {
-  rt.register_op(name, metrics_op(name, json_op_async(op_fn)));
+  rt.register_op(name, metrics_op(name, op_async(op_fn)));
 }
 
-pub fn reg_json_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
+pub fn reg_sync<F, V, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
 where
-  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
+  F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
-  R: Serialize,
+  R: Serialize + 'static,
 {
-  rt.register_op(name, metrics_op(name, json_op_sync(op_fn)));
+  rt.register_op(name, metrics_op(name, op_sync(op_fn)));
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;

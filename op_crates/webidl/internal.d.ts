@@ -286,6 +286,18 @@ declare namespace globalThis {
         v: Record<K, V>,
         opts: ValueConverterOpts,
       ) => any;
+
+      /**
+       * Mix in the iterable declarations defined in WebIDL.
+       * https://heycam.github.io/webidl/#es-iterable
+       */
+      declare function mixinPairIterable(
+        name: string,
+        prototype: any,
+        dataSymbol: symbol,
+        keyKey: string | number | symbol,
+        valueKey: string | number | symbol,
+      ): void;
     }
   }
 }

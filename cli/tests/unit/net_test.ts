@@ -18,6 +18,12 @@ unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
   listener.close();
 });
 
+unitTest({ perms: { net: true } }, function netListenPortType(): void {
+  const listener = Deno.listen({ port: 0, transport: "tcp" });
+  listener.addr.port;
+  listener.close();
+});
+
 unitTest(
   {
     perms: { net: true },
@@ -298,7 +304,7 @@ unitTest(
     const sendLen = await socket.send(sendBuf, socket.addr);
     assertEquals(sendLen, 3);
 
-    const [recvBuf, recvAddr] = await recvPromise;
+    const [recvBuf, _recvAddr] = await recvPromise;
     assertEquals(recvBuf.length, 3);
     assertEquals(1, recvBuf[0]);
     assertEquals(2, recvBuf[1]);
@@ -375,7 +381,7 @@ unitTest(
     const sendLen = await socket.send(sendBuf, socket.addr);
     assertEquals(sendLen, 3);
 
-    const [recvBuf, recvAddr] = await recvPromise;
+    const [recvBuf, _recvAddr] = await recvPromise;
     assertEquals(recvBuf.length, 3);
     assertEquals(1, recvBuf[0]);
     assertEquals(2, recvBuf[1]);

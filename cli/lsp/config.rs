@@ -7,12 +7,14 @@ use deno_core::url::Url;
 use lspower::jsonrpc::Error as LSPError;
 use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
   pub status_notification: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
+  pub line_folding_only: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -51,6 +53,8 @@ pub struct CompletionSettings {
   pub paths: bool,
   #[serde(default)]
   pub auto_imports: bool,
+  #[serde(default)]
+  pub imports: ImportCompletionSettings,
 }
 
 impl Default for CompletionSettings {
@@ -60,6 +64,22 @@ impl Default for CompletionSettings {
       names: true,
       paths: true,
       auto_imports: true,
+      imports: ImportCompletionSettings::default(),
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCompletionSettings {
+  #[serde(default)]
+  pub hosts: HashMap<String, bool>,
+}
+
+impl Default for ImportCompletionSettings {
+  fn default() -> Self {
+    Self {
+      hosts: HashMap::default(),
     }
   }
 }
@@ -123,6 +143,14 @@ impl Config {
       self.client_capabilities.workspace_did_change_watched_files = workspace
         .did_change_watched_files
         .and_then(|it| it.dynamic_registration)
+        .unwrap_or(false);
+    }
+
+    if let Some(text_document) = &capabilities.text_document {
+      self.client_capabilities.line_folding_only = text_document
+        .folding_range
+        .as_ref()
+        .and_then(|it| it.line_folding_only)
         .unwrap_or(false);
     }
   }

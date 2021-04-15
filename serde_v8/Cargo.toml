@@ -1,0 +1,28 @@
+[package]
+name = "serde_v8"
+version = "0.2.0"
+authors = ["the Deno authors"]
+edition = "2018"
+description = "Rust to V8 serialization and deserialization"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[dependencies]
+serde = { version = "1.0.125", features = ["derive"] }
+rusty_v8 = "0.22.1"
+
+[dev-dependencies]
+serde_json = "1.0.64"
+bencher = "0.1"
+
+[[example]]
+name = "basic"
+
+[[bench]]
+name = "de"
+harness = false
+
+[[bench]]
+name = "ser"
+harness = false

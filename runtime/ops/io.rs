@@ -1,30 +1,21 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::dispatch_minimal::minimal_op;
-use super::dispatch_minimal::MinimalOp;
-use crate::metrics::metrics_op;
+use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
-use deno_core::futures::future::FutureExt;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::convert::TryInto;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
@@ -48,7 +39,7 @@ use tokio::net::unix;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
 
-lazy_static! {
+lazy_static::lazy_static! {
   /// Due to portability issues on Windows handle to stdout is created from raw
   /// file descriptor.  The caveat of that approach is fact that when this
   /// handle is dropped underlying file descriptor is closed - that is highly
@@ -105,9 +96,13 @@ lazy_static! {
 }
 
 pub fn init(rt: &mut JsRuntime) {
-  rt.register_op("op_read", metrics_op("op_read", minimal_op(op_read)));
-  rt.register_op("op_write", metrics_op("op_write", minimal_op(op_write)));
-  super::reg_json_async(rt, "op_shutdown", op_shutdown);
+  super::reg_async(rt, "op_read_async", op_read_async);
+  super::reg_async(rt, "op_write_async", op_write_async);
+
+  super::reg_sync(rt, "op_read_sync", op_read_sync);
+  super::reg_sync(rt, "op_write_sync", op_write_sync);
+
+  super::reg_async(rt, "op_shutdown", op_shutdown);
 }
 
 pub fn get_stdio() -> (
@@ -138,22 +133,18 @@ fn get_stdio_stream(
   }
 }
 
-fn no_buffer_specified() -> AnyError {
-  type_error("no buffer specified")
-}
-
 #[cfg(unix)]
 use nix::sys::termios;
 
 #[derive(Default)]
-pub struct TTYMetadata {
+pub struct TtyMetadata {
   #[cfg(unix)]
   pub mode: Option<termios::Termios>,
 }
 
 #[derive(Default)]
 pub struct FileMetadata {
-  pub tty: TTYMetadata,
+  pub tty: TtyMetadata,
 }
 
 #[derive(Debug)]
@@ -466,7 +457,7 @@ impl StdFileResource {
 
   pub fn with<F, R>(
     state: &mut OpState,
-    rid: u32,
+    rid: ResourceId,
     mut f: F,
   ) -> Result<R, AnyError>
   where
@@ -526,36 +517,16 @@ impl Resource for StdFileResource {
   }
 }
 
-pub fn op_read(
-  state: Rc<RefCell<OpState>>,
-  is_sync: bool,
-  rid: i32,
-  bufs: BufVec,
-) -> MinimalOp {
-  match bufs.len() {
-    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
-    1 => {}
-    _ => panic!("Invalid number of arguments"),
-  };
-  let buf = bufs.into_iter().next().unwrap();
-
-  if is_sync {
-    MinimalOp::Sync(op_read_sync(state, rid, buf))
-  } else {
-    MinimalOp::Async(op_read_async(state, rid, buf).boxed_local())
-  }
-}
-
 fn op_read_sync(
-  state: Rc<RefCell<OpState>>,
-  rid: i32,
-  mut buf: ZeroCopyBuf,
-) -> Result<i32, AnyError> {
-  let rid = rid.try_into().map_err(|_| bad_resource_id())?;
-  StdFileResource::with(&mut state.borrow_mut(), rid, move |r| match r {
+  state: &mut OpState,
+  rid: ResourceId,
+  buf: Option<ZeroCopyBuf>,
+) -> Result<u32, AnyError> {
+  let mut buf = buf.ok_or_else(null_opbuf)?;
+  StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .read(&mut buf)
-      .map(|n: usize| n as i32)
+      .map(|n: usize| n as u32)
       .map_err(AnyError::from),
     Err(_) => Err(not_supported()),
   })
@@ -563,65 +534,45 @@ fn op_read_sync(
 
 async fn op_read_async(
   state: Rc<RefCell<OpState>>,
-  rid: i32,
-  mut buf: ZeroCopyBuf,
-) -> Result<i32, AnyError> {
-  let rid = rid.try_into().map_err(|_| bad_resource_id())?;
+  rid: ResourceId,
+  buf: Option<ZeroCopyBuf>,
+) -> Result<u32, AnyError> {
+  let buf = &mut buf.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
   let nread = if let Some(s) = resource.downcast_rc::<ChildStdoutResource>() {
-    s.read(&mut buf).await?
+    s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<ChildStderrResource>() {
-    s.read(&mut buf).await?
+    s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.read(&mut buf).await?
+    s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsClientStreamResource>() {
-    s.read(&mut buf).await?
+    s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsServerStreamResource>() {
-    s.read(&mut buf).await?
+    s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.read(&mut buf).await?
+    s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
-    s.read(&mut buf).await?
+    s.read(buf).await?
   } else {
     return Err(not_supported());
   };
-  Ok(nread as i32)
-}
-
-pub fn op_write(
-  state: Rc<RefCell<OpState>>,
-  is_sync: bool,
-  rid: i32,
-  bufs: BufVec,
-) -> MinimalOp {
-  match bufs.len() {
-    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
-    1 => {}
-    _ => panic!("Invalid number of arguments"),
-  };
-  let buf = bufs.into_iter().next().unwrap();
-
-  if is_sync {
-    MinimalOp::Sync(op_write_sync(state, rid, buf))
-  } else {
-    MinimalOp::Async(op_write_async(state, rid, buf).boxed_local())
-  }
+  Ok(nread as u32)
 }
 
 fn op_write_sync(
-  state: Rc<RefCell<OpState>>,
-  rid: i32,
-  buf: ZeroCopyBuf,
-) -> Result<i32, AnyError> {
-  let rid = rid.try_into().map_err(|_| bad_resource_id())?;
-  StdFileResource::with(&mut state.borrow_mut(), rid, move |r| match r {
+  state: &mut OpState,
+  rid: ResourceId,
+  buf: Option<ZeroCopyBuf>,
+) -> Result<u32, AnyError> {
+  let buf = buf.ok_or_else(null_opbuf)?;
+  StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .write(&buf)
-      .map(|nwritten: usize| nwritten as i32)
+      .map(|nwritten: usize| nwritten as u32)
       .map_err(AnyError::from),
     Err(_) => Err(not_supported()),
   })
@@ -629,47 +580,38 @@ fn op_write_sync(
 
 async fn op_write_async(
   state: Rc<RefCell<OpState>>,
-  rid: i32,
-  buf: ZeroCopyBuf,
-) -> Result<i32, AnyError> {
-  let rid = rid.try_into().map_err(|_| bad_resource_id())?;
+  rid: ResourceId,
+  buf: Option<ZeroCopyBuf>,
+) -> Result<u32, AnyError> {
+  let buf = &buf.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
   let nwritten = if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
-    s.write(&buf).await?
+    s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.write(&buf).await?
+    s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsClientStreamResource>() {
-    s.write(&buf).await?
+    s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsServerStreamResource>() {
-    s.write(&buf).await?
+    s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.write(&buf).await?
+    s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
-    s.write(&buf).await?
+    s.write(buf).await?
   } else {
     return Err(not_supported());
   };
-  Ok(nwritten as i32)
-}
-
-#[derive(Deserialize)]
-struct ShutdownArgs {
-  rid: i32,
+  Ok(nwritten as u32)
 }
 
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let rid = serde_json::from_value::<ShutdownArgs>(args)?
-    .rid
-    .try_into()
-    .map_err(|_| bad_resource_id())?;
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -688,5 +630,5 @@ async fn op_shutdown(
   } else {
     return Err(not_supported());
   }
-  Ok(json!({}))
+  Ok(())
 }

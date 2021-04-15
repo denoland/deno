@@ -7,23 +7,23 @@
   const { read, write } = window.__bootstrap.io;
 
   function shutdown(rid) {
-    return core.jsonOpAsync("op_shutdown", { rid });
+    return core.opAsync("op_shutdown", rid);
   }
 
   function opAccept(rid, transport) {
-    return core.jsonOpAsync("op_accept", { rid, transport });
+    return core.opAsync("op_accept", { rid, transport });
   }
 
   function opListen(args) {
-    return core.jsonOpSync("op_listen", args);
+    return core.opSync("op_listen", args);
   }
 
   function opConnect(args) {
-    return core.jsonOpAsync("op_connect", args);
+    return core.opAsync("op_connect", args);
   }
 
   function opReceive(rid, transport, zeroCopy) {
-    return core.jsonOpAsync(
+    return core.opAsync(
       "op_datagram_receive",
       { rid, transport },
       zeroCopy,
@@ -31,11 +31,11 @@
   }
 
   function opSend(args, zeroCopy) {
-    return core.jsonOpAsync("op_datagram_send", args, zeroCopy);
+    return core.opAsync("op_datagram_send", args, zeroCopy);
   }
 
   function resolveDns(query, recordType, options) {
-    return core.jsonOpAsync("op_dns_resolve", { query, recordType, options });
+    return core.opAsync("op_dns_resolve", { query, recordType, options });
   }
 
   class Conn {

@@ -17,6 +17,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use log::debug;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
@@ -256,7 +257,7 @@ impl SpecifierHandler for FetchHandler {
     // When the module graph fetches dynamic modules, the set of dynamic
     // permissions need to be applied.  Other static imports have all
     // permissions.
-    let permissions = if is_dynamic {
+    let mut permissions = if is_dynamic {
       self.runtime_permissions.clone()
     } else {
       Permissions::allow_all()
@@ -266,7 +267,7 @@ impl SpecifierHandler for FetchHandler {
 
     async move {
       let source_file = file_fetcher
-        .fetch(&requested_specifier, &permissions)
+        .fetch(&requested_specifier, &mut permissions)
         .await
         .map_err(|err| {
           let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {
@@ -305,7 +306,9 @@ impl SpecifierHandler for FetchHandler {
           }
         })?;
       let url = &source_file.specifier;
-      let is_remote = !(url.scheme() == "file" || url.scheme() == "data");
+      let is_remote = !(url.scheme() == "file"
+        || url.scheme() == "data"
+        || url.scheme() == "blob");
       let filename = disk_cache.get_cache_filename_with_extension(url, "meta");
       let maybe_version = if let Some(filename) = filename {
         if let Ok(bytes) = disk_cache.get(&filename) {
@@ -568,6 +571,7 @@ pub mod tests {
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
+  use deno_runtime::deno_file::BlobUrlStore;
   use tempfile::TempDir;
 
   macro_rules! map (
@@ -592,6 +596,7 @@ pub mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not setup");
     let disk_cache = deno_dir.gen_cache;

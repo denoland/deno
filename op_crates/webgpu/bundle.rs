@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
@@ -11,20 +11,20 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::error::WebGPUError;
+use super::error::WebGpuResult;
 use super::texture::serialize_texture_format;
 
-struct WebGPURenderBundleEncoder(
+struct WebGpuRenderBundleEncoder(
   RefCell<wgpu_core::command::RenderBundleEncoder>,
 );
-impl Resource for WebGPURenderBundleEncoder {
+impl Resource for WebGpuRenderBundleEncoder {
   fn name(&self) -> Cow<str> {
     "webGPURenderBundleEncoder".into()
   }
 }
 
-pub(crate) struct WebGPURenderBundle(pub(crate) wgpu_core::id::RenderBundleId);
-impl Resource for WebGPURenderBundle {
+pub(crate) struct WebGpuRenderBundle(pub(crate) wgpu_core::id::RenderBundleId);
+impl Resource for WebGpuRenderBundle {
   fn name(&self) -> Cow<str> {
     "webGPURenderBundle".into()
   }
@@ -33,7 +33,7 @@ impl Resource for WebGPURenderBundle {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRenderBundleEncoderArgs {
-  device_rid: u32,
+  device_rid: ResourceId,
   label: Option<String>,
   color_formats: Vec<String>,
   depth_stencil_format: Option<String>,
@@ -43,11 +43,11 @@ pub struct CreateRenderBundleEncoderArgs {
 pub fn op_webgpu_create_render_bundle_encoder(
   state: &mut OpState,
   args: CreateRenderBundleEncoderArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
 
@@ -79,31 +79,28 @@ pub fn op_webgpu_create_render_bundle_encoder(
 
   let rid = state
     .resource_table
-    .add(WebGPURenderBundleEncoder(RefCell::new(
+    .add(WebGpuRenderBundleEncoder(RefCell::new(
       render_bundle_encoder,
     )));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGPUError::from),
-  }))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderFinishArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   label: Option<String>,
 }
 
 pub fn op_webgpu_render_bundle_encoder_finish(
   state: &mut OpState,
   args: RenderBundleEncoderFinishArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
-    .take::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .take::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder = Rc::try_unwrap(render_bundle_encoder_resource)
     .ok()
@@ -120,18 +117,15 @@ pub fn op_webgpu_render_bundle_encoder_finish(
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGPURenderBundle(render_bundle));
+  let rid = state.resource_table.add(WebGpuRenderBundle(render_bundle));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGPUError::from)
-  }))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetBindGroupArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   index: u32,
   bind_group: u32,
   dynamic_offsets_data: Option<Vec<u32>>,
@@ -142,15 +136,17 @@ pub struct RenderBundleEncoderSetBindGroupArgs {
 pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   state: &mut OpState,
   args: RenderBundleEncoderSetBindGroupArgs,
-  zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+
   let bind_group_resource = state
     .resource_table
-    .get::<super::binding::WebGPUBindGroup>(args.bind_group)
+    .get::<super::binding::WebGpuBindGroup>(args.bind_group)
     .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   // I know this might look like it can be easily deduplicated, but it can not
@@ -169,7 +165,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
       );
     },
     None => {
-      let (prefix, data, suffix) = unsafe { zero_copy[0].align_to::<u32>() };
+      let (prefix, data, suffix) = unsafe { zero_copy.align_to::<u32>() };
       assert!(prefix.is_empty());
       assert!(suffix.is_empty());
       unsafe {
@@ -184,24 +180,24 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
     }
   };
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderPushDebugGroupArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   group_label: String,
 }
 
 pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   state: &mut OpState,
   args: RenderBundleEncoderPushDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -212,23 +208,23 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
     );
   }
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderPopDebugGroupArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
 }
 
 pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   state: &mut OpState,
   args: RenderBundleEncoderPopDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -237,24 +233,24 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
     );
   }
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderInsertDebugMarkerArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   marker_label: String,
 }
 
 pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   state: &mut OpState,
   args: RenderBundleEncoderInsertDebugMarkerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   unsafe {
@@ -265,28 +261,28 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
     );
   }
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetPipelineArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   pipeline: u32,
 }
 
 pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   state: &mut OpState,
   args: RenderBundleEncoderSetPipelineArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pipeline_resource = state
     .resource_table
-    .get::<super::pipeline::WebGPURenderPipeline>(args.pipeline)
+    .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)
     .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_pipeline(
@@ -294,13 +290,13 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
     render_pipeline_resource.0,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetIndexBufferArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   buffer: u32,
   index_format: String,
   offset: u64,
@@ -310,15 +306,15 @@ pub struct RenderBundleEncoderSetIndexBufferArgs {
 pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
   state: &mut OpState,
   args: RenderBundleEncoderSetIndexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)
     .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   render_bundle_encoder_resource
@@ -331,13 +327,13 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
       std::num::NonZeroU64::new(args.size),
     );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderSetVertexBufferArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   slot: u32,
   buffer: u32,
   offset: u64,
@@ -347,15 +343,15 @@ pub struct RenderBundleEncoderSetVertexBufferArgs {
 pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   state: &mut OpState,
   args: RenderBundleEncoderSetVertexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)
     .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_vertex_buffer(
@@ -366,13 +362,13 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
     std::num::NonZeroU64::new(args.size),
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderDrawArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   vertex_count: u32,
   instance_count: u32,
   first_vertex: u32,
@@ -382,11 +378,11 @@ pub struct RenderBundleEncoderDrawArgs {
 pub fn op_webgpu_render_bundle_encoder_draw(
   state: &mut OpState,
   args: RenderBundleEncoderDrawArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw(
@@ -397,13 +393,13 @@ pub fn op_webgpu_render_bundle_encoder_draw(
     args.first_instance,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderDrawIndexedArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   index_count: u32,
   instance_count: u32,
   first_index: u32,
@@ -414,11 +410,11 @@ pub struct RenderBundleEncoderDrawIndexedArgs {
 pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   state: &mut OpState,
   args: RenderBundleEncoderDrawIndexedArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw_indexed(
@@ -430,13 +426,13 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
     args.first_instance,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderBundleEncoderDrawIndirectArgs {
-  render_bundle_encoder_rid: u32,
+  render_bundle_encoder_rid: ResourceId,
   indirect_buffer: u32,
   indirect_offset: u64,
 }
@@ -444,15 +440,15 @@ pub struct RenderBundleEncoderDrawIndirectArgs {
 pub fn op_webgpu_render_bundle_encoder_draw_indirect(
   state: &mut OpState,
   args: RenderBundleEncoderDrawIndirectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGPUBuffer>(args.indirect_buffer)
+    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
     .ok_or_else(bad_resource_id)?;
   let render_bundle_encoder_resource = state
     .resource_table
-    .get::<WebGPURenderBundleEncoder>(args.render_bundle_encoder_rid)
+    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
     .ok_or_else(bad_resource_id)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw_indirect(
@@ -461,5 +457,5 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
     args.indirect_offset,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }

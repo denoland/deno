@@ -34,7 +34,7 @@ declare global {
 
   interface DenoCore {
     // deno-lint-ignore no-explicit-any
-    jsonOpSync<T>(name: string, params: T): any;
+    opSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
     registerErrorClass(
@@ -58,9 +58,11 @@ declare global {
     | GetDocumentHighlightsRequest
     | GetImplementationRequest
     | GetNavigationTree
+    | GetOutliningSpans
     | GetQuickInfoRequest
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
+    | GetSmartSelectionRange
     | GetSupportedCodeFixes;
 
   interface BaseLanguageServerRequest {
@@ -150,6 +152,11 @@ declare global {
     specifier: string;
   }
 
+  interface GetOutliningSpans extends BaseLanguageServerRequest {
+    method: "getOutliningSpans";
+    specifier: string;
+  }
+
   interface GetQuickInfoRequest extends BaseLanguageServerRequest {
     method: "getQuickInfo";
     specifier: string;
@@ -167,6 +174,12 @@ declare global {
     specifier: string;
     position: number;
     options: ts.SignatureHelpItemsOptions;
+  }
+
+  interface GetSmartSelectionRange extends BaseLanguageServerRequest {
+    method: "getSmartSelectionRange";
+    specifier: string;
+    position: number;
   }
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {

@@ -31,7 +31,7 @@
    * @returns {Deno.PermissionState}
    */
   function opQuery(desc) {
-    return core.jsonOpSync("op_query_permission", desc).state;
+    return core.opSync("op_query_permission", desc);
   }
 
   /**
@@ -39,7 +39,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRevoke(desc) {
-    return core.jsonOpSync("op_revoke_permission", desc).state;
+    return core.opSync("op_revoke_permission", desc);
   }
 
   /**
@@ -47,7 +47,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRequest(desc) {
-    return core.jsonOpSync("op_request_permission", desc).state;
+    return core.opSync("op_request_permission", desc);
   }
 
   class PermissionStatus extends EventTarget {

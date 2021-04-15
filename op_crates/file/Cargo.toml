@@ -1,0 +1,18 @@
+# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_file"
+version = "0.2.0"
+edition = "2018"
+description = "File API implementation for Deno"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { version = "0.84.0", path = "../../core" }
+uuid = { version = "0.8.2", features = ["v4"] }
