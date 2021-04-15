@@ -948,26 +948,62 @@
     return m;
   }
 
-  // "referrer", "referrerPolicy", "mode", "cache", "signal", and "cancelable" are all un-used in current implementation; the converters are dead code until then
-
-  const todo = () => {
-    throw new Error("todo!");
-  };
+  // "referrer", "referrerPolicy", "mode", "cache", "signal", and "cancelable" are all un-used in current implementation; the converters are commented until then
 
   // https://fetch.spec.whatwg.org/#requestinfo
   // typedef (Request or USVString) RequestInfo;
-  // const requestInfoConverter = webidl.union([ Request, USVString ]);
-  const requestInfoConverter = todo;
+  function requestInfoConverter(v) {
+    if (v instanceof Request) {
+      return v;
+    } else {
+      // default behavior
+      converters.USVString(v);
+    }
+  }
 
+  // https://fetch.spec.whatwg.org/#typedefdef-headersinit
+  // typedef (sequence<sequence<ByteString>> or record<ByteString, ByteString>) HeadersInit;
   // Headers should be able to convert values to HeadersInit,
   // internally work with Headers directly
-  const headersInitConverter = (v) => new Headers(v);
+  function headersInitConverter(v) {
+    return new Headers(v);
+  }
+
+  // https://heycam.github.io/webidl/#BufferSource
+  // typedef (ArrayBufferView or ArrayBuffer) BufferSource;
+  function isBufferSource(v) {
+    return ArrayBuffer.isView(v) || v instanceof ArrayBuffer;
+  }
+
+  // https://fetch.spec.whatwg.org/#typedefdef-xmlhttprequestbodyinit
+  // typedef (Blob or BufferSource or FormData or URLSearchParams or USVString) XMLHttpRequestBodyInit;
+  const XMLHttpRequestBodyInitConverter = (v) => {
+    if (
+      v instanceof Blob ||
+      isBufferSource(v) ||
+      v instanceof FormData ||
+      v instanceof URLSearchParams
+    ) {
+      return v;
+    } else {
+      // default behavior
+      return converters.USVString(v);
+    }
+  };
 
   // https://fetch.spec.whatwg.org/#bodyinit
-  const bodyInitConverter = todo;
+  // typedef (ReadableStream or XMLHttpRequestBodyInit) BodyInit;
+  function bodyInitConverter(v) {
+    if (v instanceof ReadableStream) {
+      return v;
+    } else {
+      // default behavior
+      return XMLHttpRequestBodyInitConverter(v);
+    }
+  }
 
   // https://w3c.github.io/webappsec-referrer-policy/#enumdef-referrerpolicy
-  const referrerPolicyConverter = todo;
+  // function referrerPolicyConverter() {};
 
   // https://fetch.spec.whatwg.org/#requestmode
   const requestModeConverter = createEnumConverter(
@@ -1005,7 +1041,7 @@
   );
 
   // https://dom.spec.whatwg.org/#abortsignal
-  const abortSignalConverter = todo;
+  // function abortSignalConverter() {};
 
   // https://fetch.spec.whatwg.org/#requestinit
   const requestInitConverter = createDictionaryConverter("RequestInit", [
