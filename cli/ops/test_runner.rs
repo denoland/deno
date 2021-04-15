@@ -32,7 +32,7 @@ pub fn op_pledge_test_permissions(
     create_worker_permissions(parent_permissions.clone(), permissions)?
   };
 
-  state.put::<PermissionsHolder>(PermissionsHolder(parent_permissions.clone()));
+  state.put::<PermissionsHolder>(PermissionsHolder(parent_permissions));
   state.put::<Permissions>(worker_permissions);
 
   Ok(json!({}))
