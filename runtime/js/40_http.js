@@ -130,7 +130,7 @@
         zeroCopyBuf = null;
       }
 
-      const responseBodyRid = Deno.core.opSync("op_http_response", [
+      const responseBodyRid = await Deno.core.opAsync("op_http_response", [
         responseSenderRid,
         resp.status ?? 200,
         flattenHeaders(resp.headers),
