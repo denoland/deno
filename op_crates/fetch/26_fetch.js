@@ -1130,7 +1130,7 @@
     // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init = {}) {
       requiredArguments("Request", arguments.length, 1);
-      // input = requestInfoConverter(input);
+      input = requestInfoConverter(input);
       init = requestInitConverter(init, {
         prefix: "Failed to construct 'Request'",
       });
@@ -1466,7 +1466,7 @@
    */
   async function fetch(input, init = {}) {
     requiredArguments("fetch", arguments.length, 1);
-    // input = requestInfoConverter(input);
+    input = requestInfoConverter(input);
     init = requestInitConverter(init, { prefix: "Failed to execute 'fetch'" });
 
     let url;
