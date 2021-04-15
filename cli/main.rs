@@ -167,6 +167,7 @@ pub fn create_main_worker(
   program_state: &Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
+  enable_testing: bool,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(program_state.clone());
 
@@ -226,8 +227,11 @@ pub fn create_main_worker(
     // above
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
-    ops::test_dispatcher::init(js_runtime);
-    ops::test_runner::init(js_runtime);
+
+    if enable_testing {
+      ops::test_dispatcher::init(js_runtime);
+      ops::test_runner::init(js_runtime);
+    }
   }
   worker.bootstrap(&options);
 
@@ -435,7 +439,7 @@ async fn install_command(
   let program_state = ProgramState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&module_url)?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions, false);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
@@ -502,7 +506,7 @@ async fn eval_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions, false);
   // Create a dummy source file.
   let source_code = if print {
     format!("console.log({})", code)
@@ -736,7 +740,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions, false);
   worker.run_event_loop().await?;
 
   tools::repl::run(&program_state, worker).await
@@ -750,6 +754,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     &program_state.clone(),
     main_module.clone(),
     permissions,
+    false,
   );
 
   let mut source = Vec::new();
@@ -827,8 +832,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     async move {
       let main_module = main_module.clone();
       let program_state = ProgramState::build(flags).await?;
-      let mut worker =
-        create_main_worker(&program_state, main_module.clone(), permissions);
+      let mut worker = create_main_worker(
+        &program_state,
+        main_module.clone(),
+        permissions,
+        false,
+      );
       debug!("main_module {}", main_module);
       worker.execute_module(&main_module).await?;
       worker.execute("window.dispatchEvent(new Event('load'))")?;
@@ -861,7 +870,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions, false);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
@@ -927,7 +936,7 @@ async fn run_test(
   filter: Option<String>,
 ) -> Result<(), AnyError> {
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions);
+    create_main_worker(&program_state, main_module.clone(), permissions, true);
 
   {
     let js_runtime = &mut worker.js_runtime;

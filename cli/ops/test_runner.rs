@@ -17,21 +17,7 @@ use std::path::PathBuf;
 struct RestoreTestPermissions(Permissions);
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  {
-    let op_state = rt.op_state();
-    let mut state = op_state.borrow_mut();
-
-    let permissions = state.borrow::<Permissions>().clone();
-    state.put::<RestoreTestPermissions>(RestoreTestPermissions(
-      permissions.clone(),
-    ));
-  }
-
-  super::reg_sync(
-    rt,
-    "op_request_test_permissions",
-    op_request_test_permissions,
-  );
+  super::reg_sync(rt, "op_pledge_test_permissions", op_pledge_test_permissions);
   super::reg_sync(
     rt,
     "op_restore_test_permissions",
@@ -56,7 +42,7 @@ fn test_permission_error(name: &str, info: Option<&str>) -> AnyError {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RequestTestPermissionsArgs {
+struct PledgeTestPermissionsArgs {
   read: Option<Vec<String>>,
   write: Option<Vec<String>>,
   net: Option<Vec<String>>,
@@ -66,12 +52,12 @@ struct RequestTestPermissionsArgs {
   plugin: Option<bool>,
 }
 
-pub fn op_request_test_permissions(
+pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: RequestTestPermissionsArgs = serde_json::from_value(args)?;
+  let args: PledgeTestPermissionsArgs = serde_json::from_value(args)?;
 
   let mut permissions = state.borrow::<Permissions>().clone();
   state
@@ -237,7 +223,6 @@ pub fn op_restore_test_permissions(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let permissions = state.borrow::<RestoreTestPermissions>().clone().0.clone();
-
   state.put::<Permissions>(permissions);
 
   Ok(json!({}))
