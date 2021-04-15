@@ -6,9 +6,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use deno_runtime::permissions::Permissions;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;
+use deno_runtime::permissions::Permissions;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_pledge_test_permissions", op_pledge_test_permissions);
@@ -28,7 +28,7 @@ pub fn op_pledge_test_permissions(
 ) -> Result<Value, AnyError> {
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = {
-    let permissions : PermissionsArg = serde_json::from_value(args)?;
+    let permissions: PermissionsArg = serde_json::from_value(args)?;
     create_worker_permissions(parent_permissions.clone(), permissions)?
   };
 
@@ -44,8 +44,8 @@ pub fn op_restore_test_permissions(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   if let Some(permissions_holder) = state.try_borrow::<PermissionsHolder>() {
-      let permissions = permissions_holder.0.clone();
-      state.put::<Permissions>(permissions);
+    let permissions = permissions_holder.0.clone();
+    state.put::<Permissions>(permissions);
   }
 
   Ok(json!({}))

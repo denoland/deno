@@ -94,7 +94,6 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-
   export interface TestDefinition {
     fn: () => void | Promise<void>;
     name: string;
