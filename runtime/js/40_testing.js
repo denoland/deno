@@ -206,6 +206,10 @@ finishing test case.`;
         name,
       });
 
+      if (permissions) {
+        pledgeTestPermissions(permissions);
+      }
+
       if (ignore) {
         const duration = Date.now() - time;
         sendTestMessage("result", {
@@ -215,10 +219,6 @@ finishing test case.`;
         });
 
         return;
-      }
-
-      if (permissions) {
-        pledgeTestPermissions(permissions);
       }
 
       await fn();
