@@ -762,9 +762,13 @@
       requiredArguments("Request", arguments.length, 1);
 
       // grabs all hacky internal symbols from `input` before performing WebIDL conversion algorithms
+      const _symbols = init ?? {
+        [dontValidateUrl]: false,
+        [lazyHeaders]: false,
+      };
       const symbols = {
-        dontValidateUrl: init[dontValidateUrl],
-        lazyHeaders: init[lazyHeaders],
+        dontValidateUrl: Boolean(_symbols[dontValidateUrl]),
+        lazyHeaders: Boolean(_symbols[lazyHeaders]),
       };
 
       input = requestInfoConverter(input);
