@@ -261,6 +261,7 @@ impl WebWorker {
         ops::fs::init(js_runtime);
         ops::net::init(js_runtime);
         ops::os::init(js_runtime);
+        ops::http::init(js_runtime);
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
