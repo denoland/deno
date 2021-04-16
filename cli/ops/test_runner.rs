@@ -28,6 +28,8 @@ pub fn op_pledge_test_permissions(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
+
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = {
@@ -46,6 +48,8 @@ pub fn op_restore_test_permissions(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
+  deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
+
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     let token: Uuid = serde_json::from_value(args)?;
     if token != permissions_holder.0 {
