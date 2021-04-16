@@ -760,6 +760,13 @@
     // @ts-expect-error because the use of super in this constructor is valid.
     constructor(input, init = {}) {
       requiredArguments("Request", arguments.length, 1);
+
+      // grabs all hacky internal symbols from `input` before performing WebIDL conversion algorithms
+      const symbols = {
+        dontValidateUrl: init[dontValidateUrl],
+        lazyHeaders: init[lazyHeaders],
+      };
+
       input = requestInfoConverter(input);
       init = requestInitConverter(init, {
         prefix: "Failed to construct 'Request'",
@@ -788,9 +795,9 @@
       let contentType = "";
       // prefer headers from init
       if (init.headers) {
-        if (init[lazyHeaders] && Array.isArray(init.headers)) {
+        if (symbols.lazyHeaders && Array.isArray(init.headers)) {
           // Trust the headers are valid, and only put them into the `Headers`
-          // strucutre when the user accesses the property. We also assume that
+          // strucuture when the user accesses the property. We also assume that
           // all passed headers are lower-case (as is the case when they come
           // from hyper in Rust), and that headers are of type
           // `[string, string][]`.
@@ -825,7 +832,7 @@
       } else {
         // Constructing a URL just for validation is known to be expensive.
         // dontValidateUrl allows one to opt out.
-        if (init[dontValidateUrl]) {
+        if (symbols.dontValidateUrl) {
           this.#url = input;
         } else {
           const baseUrl = getLocationHref();
