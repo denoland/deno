@@ -1000,7 +1000,7 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function startTls(
-    conn: Conn<NetAddr>,
+    conn: Conn,
     options?: StartTlsOptions,
   ): Promise<Conn<NetAddr>>;
 
