@@ -81,8 +81,8 @@
       return {
         async next() {
           const reqEvt = await httpConn.nextRequest();
-          if (reqEvt === null) return { value: undefined, done: true };
-          return { value: reqEvt, done: false };
+          // Change with caution, current form avoids a v8 deopt
+          return { value: reqEvt, done: reqEvt === null };
         },
       };
     }
@@ -130,7 +130,7 @@
         zeroCopyBuf = null;
       }
 
-      const responseBodyRid = Deno.core.opSync("op_http_response", [
+      const responseBodyRid = await Deno.core.opAsync("op_http_response", [
         responseSenderRid,
         resp.status ?? 200,
         flattenHeaders(resp.headers),

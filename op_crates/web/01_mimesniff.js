@@ -10,6 +10,25 @@
 ((window) => {
   const { collectSequenceOfCodepoints } = window.__bootstrap.infra;
 
+  /**
+   * @param {string[]} chars 
+   * @returns {string}
+   */
+  function regexMatcher(chars) {
+    const matchers = chars.map((char) => {
+      if (char.length === 1) {
+        return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
+      } else if (char.length === 3 && char[1] === "-") {
+        return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}-\\u${
+          char.charCodeAt(2).toString(16).padStart(4, "0")
+        }`;
+      } else {
+        throw TypeError("unreachable");
+      }
+    });
+    return matchers.join("");
+  }
+
   const HTTP_TAB_OR_SPACE = ["\u0009", "\u0020"];
   const HTTP_WHITESPACE = ["\u000A", "\u000D", ...HTTP_TAB_OR_SPACE];
 
@@ -35,14 +54,25 @@
     "\u007E",
     ...ASCII_ALPHANUMERIC,
   ];
-  const HTTP_TOKEN_CODE_POINT_RE = new RegExp(`^[${HTTP_TOKEN_CODE_POINT}]+$`);
+  const HTTP_TOKEN_CODE_POINT_RE = new RegExp(
+    `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`,
+  );
   const HTTP_QUOTED_STRING_TOKEN_POINT = [
     "\u0009",
     "\u0020-\u007E",
     "\u0080-\u00FF",
   ];
   const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new RegExp(
-    `^[${HTTP_QUOTED_STRING_TOKEN_POINT}]+$`,
+    `^[${regexMatcher(HTTP_QUOTED_STRING_TOKEN_POINT)}]+$`,
+  );
+  const HTTP_WHITESPACE_MATCHER = regexMatcher(HTTP_WHITESPACE);
+  const HTTP_WHITESPACE_PREFIX_RE = new RegExp(
+    `^[${HTTP_WHITESPACE_MATCHER}]+`,
+    "g",
+  );
+  const HTTP_WHITESPACE_SUFFIX_RE = new RegExp(
+    `[${HTTP_WHITESPACE_MATCHER}]+$`,
+    "g",
   );
 
   /**
@@ -106,8 +136,8 @@
    */
   function parseMimeType(input) {
     // 1.
-    input = input.replaceAll(new RegExp(`^[${HTTP_WHITESPACE}]+`, "g"), "");
-    input = input.replaceAll(new RegExp(`[${HTTP_WHITESPACE}]+$`, "g"), "");
+    input = input.replaceAll(HTTP_WHITESPACE_PREFIX_RE, "");
+    input = input.replaceAll(HTTP_WHITESPACE_SUFFIX_RE, "");
 
     // 2.
     let position = 0;
@@ -123,9 +153,7 @@
     position = res1.position;
 
     // 4.
-    if (type === "" || !HTTP_TOKEN_CODE_POINT_RE.test(type)) {
-      return null;
-    }
+    if (type === "" || !HTTP_TOKEN_CODE_POINT_RE.test(type)) return null;
 
     // 5.
     if (position >= endOfInput) return null;
@@ -143,12 +171,10 @@
     position = res2.position;
 
     // 8.
-    subtype = subtype.replaceAll(new RegExp(`[${HTTP_WHITESPACE}]+$`, "g"), "");
+    subtype = subtype.replaceAll(HTTP_WHITESPACE_SUFFIX_RE, "");
 
     // 9.
-    if (subtype === "" || !HTTP_TOKEN_CODE_POINT_RE.test(subtype)) {
-      return null;
-    }
+    if (subtype === "" || !HTTP_TOKEN_CODE_POINT_RE.test(subtype)) return null;
 
     // 10.
     const mimeType = {
@@ -216,7 +242,7 @@
 
         // 11.9.2.
         parameterValue = parameterValue.replaceAll(
-          new RegExp(`[${HTTP_WHITESPACE}]+$`, "g"),
+          HTTP_WHITESPACE_SUFFIX_RE,
           "",
         );
 
@@ -224,7 +250,7 @@
         if (parameterValue === "") continue;
       }
 
-      // 11.9.
+      // 11.10.
       if (
         parameterName !== "" && HTTP_TOKEN_CODE_POINT_RE.test(parameterName) &&
         HTTP_QUOTED_STRING_TOKEN_POINT_RE.test(parameterValue) &&

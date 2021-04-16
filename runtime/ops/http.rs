@@ -48,7 +48,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_async(rt, "op_http_request_next", op_http_request_next);
   super::reg_async(rt, "op_http_request_read", op_http_request_read);
 
-  super::reg_sync(rt, "op_http_response", op_http_response);
+  super::reg_async(rt, "op_http_response", op_http_response);
   super::reg_async(rt, "op_http_response_write", op_http_response_write);
   super::reg_async(rt, "op_http_response_close", op_http_response_close);
 }
@@ -312,22 +312,27 @@ struct RespondArgs(
   Vec<String>,
 );
 
-fn op_http_response(
-  state: &mut OpState,
+async fn op_http_response(
+  state: Rc<RefCell<OpState>>,
   args: RespondArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<Option<ResourceId>, AnyError> {
-  let rid = args.0;
-  let status = args.1;
-  let headers = args.2;
+  let RespondArgs(rid, status, headers) = args;
 
   let response_sender = state
+    .borrow_mut()
     .resource_table
     .take::<ResponseSenderResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let response_sender = Rc::try_unwrap(response_sender)
     .ok()
     .expect("multiple op_http_respond ongoing");
+
+  let conn_resource = state
+    .borrow()
+    .resource_table
+    .get::<ConnResource>(response_sender.conn_rid)
+    .ok_or_else(bad_resource_id)?;
 
   let mut builder = Response::builder().status(status);
 
@@ -348,11 +353,12 @@ fn op_http_response(
     let (sender, body) = Body::channel();
     res = builder.body(body)?;
 
-    let response_body_rid = state.resource_table.add(ResponseBodyResource {
-      body: AsyncRefCell::new(sender),
-      cancel: CancelHandle::default(),
-      conn_rid: response_sender.conn_rid,
-    });
+    let response_body_rid =
+      state.borrow_mut().resource_table.add(ResponseBodyResource {
+        body: AsyncRefCell::new(sender),
+        cancel: CancelHandle::default(),
+        conn_rid: response_sender.conn_rid,
+      });
 
     Some(response_body_rid)
   };
@@ -363,6 +369,12 @@ fn op_http_response(
   if response_sender.sender.send(res).is_err() {
     return Err(type_error("internal communication error"));
   }
+
+  poll_fn(|cx| match conn_resource.poll(cx) {
+    Poll::Ready(x) => Poll::Ready(x),
+    Poll::Pending => Poll::Ready(Ok(())),
+  })
+  .await?;
 
   Ok(maybe_response_body_rid)
 }
