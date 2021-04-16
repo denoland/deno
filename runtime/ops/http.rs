@@ -41,6 +41,11 @@ use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio_rustls::server::TlsStream;
 use tokio_util::io::StreamReader;
+use deno_websocket::tokio_tungstenite::tungstenite::Message;
+use deno_websocket::tokio_tungstenite::WebSocketStream;
+use deno_core::futures::stream::SplitStream;
+use hyper::upgrade::Upgraded;
+use deno_websocket::WsStreamResource;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_http_start", op_http_start);
@@ -480,6 +485,66 @@ async fn op_http_response_write(
   .unwrap(); // panic on send_data error
 
   Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpUpgradeWebsocketResponse {
+  rid: ResourceId,
+  key: String,
+}
+
+const GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+async fn op_http_upgrade_websocket(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<HttpUpgradeWebsocketResponse, AnyError> {
+  let conn_resource = state
+    .borrow()
+    .resource_table
+    .get::<ConnResource>(rid)
+    .ok_or_else(bad_resource_id)?;
+
+  let service = conn_resource.deno_service.inner.borrow_mut().ok_or("")?; // TODO
+
+  let key = service.request.headers().get(http::header::SEC_WEBSOCKET_KEY).ok_or("failed to read ws key from headers")?; // TODO
+  let key = key.to_str()?.to_string();
+  /* TODO:
+   For this header field, the server has to take the value (as present
+   in the header field, e.g., the base64-encoded [RFC4648] version minus
+   any leading and trailing whitespace) and concatenate this with the
+   Globally Unique Identifier (GUID, [RFC4122]) "258EAFA5-E914-47DA-
+   95CA-C5AB0DC85B11" in string form, which is unlikely to be used by
+   network endpoints that do not understand the WebSocket Protocol.  A
+   SHA-1 hash (160 bits) [FIPS.180-3], base64-encoded (see Section 4 of
+   [RFC4648]), of this concatenation is then returned in the server's
+   handshake.
+  */
+
+  let upgraded = service.request.on_upgrade().await?;
+  let stream = deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
+    upgraded,
+    deno_websocket::tokio_tungstenite::tungstenite::protocol::Role::Server,
+    None,
+  ).await;
+
+  let (ws_tx, ws_rx) = stream.split();
+
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(WsStreamResource {
+      rx: AsyncRefCell::new(ws_rx),
+      tx: AsyncRefCell::new(ws_tx),
+      cancel: Default::default(),
+    });
+
+  Ok(HttpUpgradeWebsocketResponse {
+    key,
+    rid,
+  })
 }
 
 type BytesStream =

@@ -40,6 +40,8 @@ use tokio_tungstenite::tungstenite::{
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
@@ -61,23 +63,21 @@ impl WebSocketPermissions for NoWebSocketPermissions {
   }
 }
 
-type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
-struct WsStreamResource {
-  tx: AsyncRefCell<SplitSink<WsStream, Message>>,
-  rx: AsyncRefCell<SplitStream<WsStream>>,
+pub type WsStream = MaybeTlsStream<TcpStream>;
+pub struct WsStreamResource<T: AsyncRead + AsyncWrite> {
+  pub tx: AsyncRefCell<SplitSink<WebSocketStream<T>, Message>>,
+  pub rx: AsyncRefCell<SplitStream<WebSocketStream<T>>>,
   // When a `WsStreamResource` resource is closed, all pending 'read' ops are
   // canceled, while 'write' ops are allowed to complete. Therefore only
   // 'read' futures are attached to this cancel handle.
-  cancel: CancelHandle,
+  pub cancel: CancelHandle,
 }
 
-impl Resource for WsStreamResource {
+impl<T: AsyncRead + AsyncWrite> Resource for WsStreamResource<T> {
   fn name(&self) -> Cow<str> {
     "webSocketStream".into()
   }
 }
-
-impl WsStreamResource {}
 
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
@@ -168,7 +168,7 @@ where
     _ => unreachable!(),
   };
 
-  let (stream, response): (WsStream, Response) =
+  let (stream, response): (WebSocketStream<WsStream>, Response) =
     client_async(request, socket).await.map_err(|err| {
       type_error(format!(
         "failed to connect to WebSocket: {}",
@@ -211,7 +211,7 @@ pub struct SendArgs {
   text: Option<String>,
 }
 
-pub async fn op_ws_send(
+pub async fn op_ws_send<T: AsyncRead + AsyncWrite>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
   buf: Option<ZeroCopyBuf>,
@@ -220,6 +220,7 @@ pub async fn op_ws_send(
     "text" => Message::Text(args.text.unwrap()),
     "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
     "pong" => Message::Pong(vec![]),
+    "ping" => Message::Ping(vec![]),
     _ => unreachable!(),
   };
   let rid = args.rid;
@@ -227,7 +228,7 @@ pub async fn op_ws_send(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)
+    .get::<WsStreamResource<T>>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
@@ -242,7 +243,7 @@ pub struct CloseArgs {
   reason: Option<String>,
 }
 
-pub async fn op_ws_close(
+pub async fn op_ws_close<T: AsyncRead + AsyncWrite>(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
   _bufs: Option<ZeroCopyBuf>,
@@ -259,14 +260,14 @@ pub async fn op_ws_close(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)
+    .get::<WsStreamResource<T>>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
   Ok(())
 }
 
-pub async fn op_ws_next_event(
+pub async fn op_ws_next_event<T: AsyncRead + AsyncWrite>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _bufs: Option<ZeroCopyBuf>,
@@ -274,7 +275,7 @@ pub async fn op_ws_next_event(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)
+    .get::<WsStreamResource<T>>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut rx = RcRef::map(&resource, |r| &r.rx).borrow_mut().await;
@@ -306,8 +307,8 @@ pub async fn op_ws_next_event(
         "reason": ""
       }
     }),
-    Some(Ok(Message::Ping(_))) => json!({ "kind": "ping" }),
-    Some(Ok(Message::Pong(_))) => json!({ "kind": "pong" }),
+    Some(Ok(Message::Ping(v))) => json!({ "kind": "ping", "data": v }),
+    Some(Ok(Message::Pong(v))) => json!({ "kind": "pong", "data": v }),
     Some(Err(_)) => json!({ "kind": "error" }),
     None => {
       state.borrow_mut().resource_table.close(rid).unwrap();

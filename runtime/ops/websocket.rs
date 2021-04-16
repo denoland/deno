@@ -7,6 +7,7 @@ use deno_websocket::op_ws_next_event;
 use deno_websocket::op_ws_send;
 use deno_websocket::WsCaData;
 use deno_websocket::WsUserAgent;
+use deno_websocket::WsStream;
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,
@@ -27,7 +28,7 @@ pub fn init(
     op_ws_check_permission::<Permissions>,
   );
   super::reg_async(rt, "op_ws_create", op_ws_create::<Permissions>);
-  super::reg_async(rt, "op_ws_send", op_ws_send);
-  super::reg_async(rt, "op_ws_close", op_ws_close);
-  super::reg_async(rt, "op_ws_next_event", op_ws_next_event);
+  super::reg_async(rt, "op_ws_send", op_ws_send::<WsStream>);
+  super::reg_async(rt, "op_ws_close", op_ws_close::<WsStream>);
+  super::reg_async(rt, "op_ws_next_event", op_ws_next_event::<WsStream>);
 }

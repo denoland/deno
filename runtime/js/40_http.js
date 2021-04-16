@@ -67,8 +67,9 @@
       });
 
       const respondWith = createRespondWith(responseSenderRid, this.#rid);
+      const upgradeWebsocket = createUpgradeWebsocket(requestBodyRid);
 
-      return { request, respondWith };
+      return { request, respondWith, upgradeWebsocket };
     }
 
     /** @returns {void} */
@@ -196,6 +197,26 @@
         core.close(requestBodyRid);
       },
     });
+  }
+
+  function createUpgradeWebsocket(rid) {
+    return async function upgradeWebsocket() {
+      const { key, rid } = await Deno.core.opAsync(
+        "op_http_upgrade_websocket",
+        rid,
+      );
+
+      const response = new Response(undefined, {
+        status: 101,
+        headers: {
+          "Upgrade": "websocket",
+          "Connection": "Upgrade",
+          "Sec-WebSocket-Accept": key,
+        },
+      });
+
+      return { response };
+    };
   }
 
   window.__bootstrap.http = {
