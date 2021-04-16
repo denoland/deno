@@ -1017,6 +1017,7 @@ unitTest(
   async function fetchRequiresOneArgument(): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
+        // @ts-expect-error call signature arity mismatch
         await fetch();
       },
     );
@@ -1032,12 +1033,11 @@ unitTest(
       const fetchWithInitializer = async (
         initializer: unknown,
       ): Promise<void> => {
-        // deno-lint-ignore ban-ts-comment
-        // @ts-expect-error
+        // @ts-expect-error call signature type mismatch
         await fetch(url, initializer);
       };
 
-      const goodInitializers = [
+      const allowedInitializers: unknown[] = [
         {},
         [],
         () => {},
@@ -1045,20 +1045,19 @@ unitTest(
         undefined,
       ];
 
-      await Promise.all(goodInitializers.map(fetchWithInitializer));
+      await Promise.all(allowedInitializers.map(fetchWithInitializer));
     }
     {
       const deniesInitializer = async (initializer: unknown): Promise<void> => {
         await assertThrowsAsync(
           async () => {
-            // deno-lint-ignore ban-ts-comment
-            // @ts-expect-error
+            // @ts-expect-error call signature mismatch
             await fetch(url, initializer);
           },
         );
       };
 
-      const badInitializers = [
+      const disallowedInitializers: unknown[] = [
         0,
         0n,
         "",
@@ -1066,7 +1065,7 @@ unitTest(
         Symbol(),
       ];
 
-      await Promise.all(badInitializers.map(deniesInitializer));
+      await Promise.all(disallowedInitializers.map(deniesInitializer));
     }
   },
 );
