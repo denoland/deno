@@ -52,7 +52,7 @@ pub fn op_restore_test_permissions(
       panic!("restore test permissions token does not match the stored token");
     }
 
-    let permissions = permissions_holder.1.clone();
+    let permissions = permissions_holder.1;
     state.put::<Permissions>(permissions);
   }
 
