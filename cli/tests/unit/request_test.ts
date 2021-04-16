@@ -2,7 +2,6 @@
 import {
   assert,
   assertEquals,
-  assertNotEquals,
   assertThrows,
   unitTest,
 } from "./test_util.ts";
