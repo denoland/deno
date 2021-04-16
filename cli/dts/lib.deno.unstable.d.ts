@@ -1185,7 +1185,14 @@ declare namespace Deno {
    */
   export function serveHttp(conn: Conn): HttpConn;
 
-  /** **UNSTABLE**: permissions are yet to be vetted.
+  /** **UNSTABLE**: New option, permissions are yet to be vetted.
+   *
+   * Use the peermissions options to change the level of access the test will
+   * have. By default it will inherit the permissions of its parent thread. The permissions
+   * of a test can't be extended beyond its parent's permissions reach.
+   * - "inherit" will take the permissions of the thread the test is created in
+   * - You can disable/enable permissions all together by passing a boolean
+   * - You can provide a list permissions to narrow the permissions a test has.
   */
   export interface TestDefinition {
     /** Set to `"none"` to disable all the permissions in the test. */
