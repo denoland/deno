@@ -1180,6 +1180,34 @@ fn runtime_args<'a, 'b>(
     .arg(seed_arg())
 }
 
+fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
+  app
+    .arg(
+      Arg::with_name("inspect")
+        .long("inspect")
+        .value_name("HOST:PORT")
+        .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true)
+        .validator(inspect_arg_validate),
+    )
+    .arg(
+      Arg::with_name("inspect-brk")
+        .long("inspect-brk")
+        .value_name("HOST:PORT")
+        .help(
+          "Activate inspector on host:port and break at start of user script",
+        )
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true)
+        .validator(inspect_arg_validate),
+    )
+}
+
 fn import_map_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("import-map")
     .long("import-map")
@@ -1270,34 +1298,6 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
       Ok(_) => Ok(()),
       Err(_) => Err("Seed should be a number".to_string()),
     })
-}
-
-fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
-  app
-    .arg(
-      Arg::with_name("inspect")
-        .long("inspect")
-        .value_name("HOST:PORT")
-        .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
-        .min_values(0)
-        .max_values(1)
-        .require_equals(true)
-        .takes_value(true)
-        .validator(inspect_arg_validate),
-    )
-    .arg(
-      Arg::with_name("inspect-brk")
-        .long("inspect-brk")
-        .value_name("HOST:PORT")
-        .help(
-          "Activate inspector on host:port and break at start of user script",
-        )
-        .min_values(0)
-        .max_values(1)
-        .require_equals(true)
-        .takes_value(true)
-        .validator(inspect_arg_validate),
-    )
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1780,6 +1780,28 @@ fn runtime_args_parse(
   inspect_arg_parse(flags, matches);
 }
 
+fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
+  flags.inspect = if matches.is_present("inspect") {
+    if let Some(host) = matches.value_of("inspect") {
+      Some(host.parse().unwrap())
+    } else {
+      Some(default())
+    }
+  } else {
+    None
+  };
+  flags.inspect_brk = if matches.is_present("inspect-brk") {
+    if let Some(host) = matches.value_of("inspect-brk") {
+      Some(host.parse().unwrap())
+    } else {
+      Some(default())
+    }
+  } else {
+    None
+  };
+}
+
 fn import_map_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.import_map_path = matches.value_of("import-map").map(ToOwned::to_owned);
 }
@@ -1828,28 +1850,6 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 
     flags.v8_flags.push(format!("--random-seed={}", seed));
   }
-}
-
-fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
-  flags.inspect = if matches.is_present("inspect") {
-    if let Some(host) = matches.value_of("inspect") {
-      Some(host.parse().unwrap())
-    } else {
-      Some(default())
-    }
-  } else {
-    None
-  };
-  flags.inspect_brk = if matches.is_present("inspect-brk") {
-    if let Some(host) = matches.value_of("inspect-brk") {
-      Some(host.parse().unwrap())
-    } else {
-      Some(default())
-    }
-  } else {
-    None
-  };
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
