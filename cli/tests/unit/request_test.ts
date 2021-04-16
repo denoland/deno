@@ -71,21 +71,23 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
 
 unitTest(function requiresOneArgument() {
   assertThrows(() => {
-    // deno-lint-ignore ban-ts-comment
-    // @ts-expect-error
+    // @ts-expect-error construct signature arity mismatch
     new Request();
   });
 });
 
 unitTest(function acceptsStringObjects() {
+  // note: similar to `requestNonString`, yet `String` objects broke past JS, reaching Rust, causing errors
   const url = "http://foo/";
   {
+    // @ts-expect-error construct signature type mismatch
     const request = new Request(new String(url));
     assertEquals(request.url, url);
   }
 
   {
-    const objectURL = new URL(url, location.href);
+    const objectURL = new URL(url);
+    // @ts-expect-error construct signature type mismatch
     const request = new Request(objectURL);
     assertEquals(request.url, url);
   }
@@ -97,15 +99,14 @@ unitTest(function castsInitializerToDictionary(): void {
   type initializerPasser = (_: unknown) => void;
 
   const acceptsInitializer: initializerPasser = (requestInit) => {
-    // deno-lint-ignore ban-ts-comment
-    // @ts-expect-error
+    // @ts-expect-error construct signature mismatch
     const request = new Request(url, requestInit);
 
     assertEquals(request.url, url);
     // TODO(#9498) add more asserts to generally make sure nothing weird went wrong
   };
 
-  const goodInitializers = [
+  const allowedInitializers: unknown[] = [
     {},
     [],
     () => {},
@@ -113,19 +114,18 @@ unitTest(function castsInitializerToDictionary(): void {
     undefined,
   ];
 
-  goodInitializers.map(acceptsInitializer);
+  allowedInitializers.map(acceptsInitializer);
 
   const deniesInitializer: initializerPasser = (requestInit) => {
     assertThrows(
       () => {
-        // deno-lint-ignore ban-ts-comment
-        // @ts-expect-error
+        // @ts-expect-error construct signature type mismatch
         new Request(url, requestInit);
       },
     );
   };
 
-  const badInitializers = [
+  const disallowedInitializers = [
     0,
     0n,
     "",
@@ -133,7 +133,7 @@ unitTest(function castsInitializerToDictionary(): void {
     Symbol(),
   ];
 
-  badInitializers.map(deniesInitializer);
+  disallowedInitializers.map(deniesInitializer);
 });
 
 unitTest(function acceptsRequestObjects() {
