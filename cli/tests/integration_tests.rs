@@ -3250,7 +3250,7 @@ console.log("finish");
   });
 
   itest!(heapstats {
-    args: "run --quiet --v8-flags=--expose-gc heapstats.js",
+    args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
     output: "heapstats.js.out",
   });
 
@@ -3431,11 +3431,6 @@ console.log("finish");
   itest!(wasm_async {
     args: "run wasm_async.js",
     output: "wasm_async.out",
-  });
-
-  itest!(wasm_streaming {
-    args: "run wasm_streaming.js",
-    output: "wasm_streaming.out",
   });
 
   itest!(wasm_unreachable {

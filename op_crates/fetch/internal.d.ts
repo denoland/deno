@@ -19,6 +19,15 @@ declare namespace globalThis {
       Headers: typeof Headers;
     };
 
+    declare var formData: {
+      FormData: typeof FormData;
+      encodeFormData(formdata: FormData): {
+        body: Uint8Array;
+        contentType: string;
+      };
+      parseFormData(body: Uint8Array, boundary: string | undefined): FormData;
+    };
+
     declare var streams: {
       ReadableStream: typeof ReadableStream;
       isReadableStreamDisturbed(stream: ReadableStream): boolean;

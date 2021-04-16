@@ -802,6 +802,50 @@
     throw new TypeError("Illegal constructor");
   }
 
+  function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
+    const methods = {
+      *entries() {
+        assertBranded(this, prototype);
+        for (const entry of this[dataSymbol]) {
+          yield [entry[keyKey], entry[valueKey]];
+        }
+      },
+      [Symbol.iterator]() {
+        assertBranded(this, prototype);
+        return this.entries();
+      },
+      *keys() {
+        assertBranded(this, prototype);
+        for (const entry of this[dataSymbol]) {
+          yield entry[keyKey];
+        }
+      },
+      *values() {
+        assertBranded(this, prototype);
+        for (const entry of this[dataSymbol]) {
+          yield entry[valueKey];
+        }
+      },
+      forEach(idlCallback, thisArg) {
+        assertBranded(this, prototype);
+        const prefix = `Failed to execute 'forEach' on '${name}'`;
+        requiredArguments(arguments.length, 1, { prefix });
+        idlCallback = converters["Function"](idlCallback, {
+          prefix,
+          context: "Argument 1",
+        });
+        idlCallback = idlCallback.bind(thisArg ?? globalThis);
+        const pairs = this[dataSymbol];
+        for (let i = 0; i < pairs.length; i++) {
+          const entry = pairs[i];
+          idlCallback(entry[valueKey], entry[keyKey], this);
+        }
+      },
+    };
+
+    return Object.assign(prototype.prototype, methods);
+  }
+
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     makeException,
@@ -817,5 +861,6 @@
     createBranded,
     assertBranded,
     illegalConstructor,
+    mixinPairIterable,
   };
 })(this);
