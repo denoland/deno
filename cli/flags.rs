@@ -1078,50 +1078,6 @@ fn compile_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(ca_file_arg())
 }
 
-fn import_map_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("import-map")
-    .long("import-map")
-    .alias("importmap")
-    .value_name("FILE")
-    .help("Load import map file")
-    .long_help(
-      "Load import map file from local file or remote URL.
-Docs: https://deno.land/manual/linking_to_external_code/import_maps
-Specification: https://wicg.github.io/import-maps/
-Examples: https://github.com/WICG/import-maps#the-import-map",
-    )
-    .takes_value(true)
-}
-
-fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("reload")
-    .short("r")
-    .min_values(0)
-    .takes_value(true)
-    .use_delimiter(true)
-    .require_equals(true)
-    .long("reload")
-    .help("Reload source code cache (recompile TypeScript)")
-    .value_name("CACHE_BLOCKLIST")
-    .long_help(
-      "Reload source code cache (recompile TypeScript)
---reload
-  Reload everything
---reload=https://deno.land/std
-  Reload only standard modules
---reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
-  Reloads specific modules",
-    )
-}
-
-fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("cert")
-    .long("cert")
-    .value_name("FILE")
-    .help("Load certificate authority from PEM encoded file")
-    .takes_value(true)
-}
-
 fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
@@ -1222,6 +1178,50 @@ fn runtime_args<'a, 'b>(
     .arg(location_arg())
     .arg(v8_flags_arg())
     .arg(seed_arg())
+}
+
+fn import_map_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("import-map")
+    .long("import-map")
+    .alias("importmap")
+    .value_name("FILE")
+    .help("Load import map file")
+    .long_help(
+      "Load import map file from local file or remote URL.
+Docs: https://deno.land/manual/linking_to_external_code/import_maps
+Specification: https://wicg.github.io/import-maps/
+Examples: https://github.com/WICG/import-maps#the-import-map",
+    )
+    .takes_value(true)
+}
+
+fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("reload")
+    .short("r")
+    .min_values(0)
+    .takes_value(true)
+    .use_delimiter(true)
+    .require_equals(true)
+    .long("reload")
+    .help("Reload source code cache (recompile TypeScript)")
+    .value_name("CACHE_BLOCKLIST")
+    .long_help(
+      "Reload source code cache (recompile TypeScript)
+--reload
+  Reload everything
+--reload=https://deno.land/std
+  Reload only standard modules
+--reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
+  Reloads specific modules",
+    )
+}
+
+fn ca_file_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("cert")
+    .long("cert")
+    .value_name("FILE")
+    .help("Load certificate authority from PEM encoded file")
+    .takes_value(true)
 }
 
 fn cached_only_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1701,28 +1701,6 @@ fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
 }
 
-fn import_map_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.import_map_path = matches.value_of("import-map").map(ToOwned::to_owned);
-}
-
-fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if let Some(cache_bl) = matches.values_of("reload") {
-    let raw_cache_blocklist: Vec<String> =
-      cache_bl.map(ToString::to_string).collect();
-    if raw_cache_blocklist.is_empty() {
-      flags.reload = true;
-    } else {
-      flags.cache_blocklist = resolve_urls(raw_cache_blocklist);
-      debug!("cache blocklist: {:#?}", &flags.cache_blocklist);
-      flags.reload = false;
-    }
-  }
-}
-
-fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
-}
-
 fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(read_wl) = matches.values_of("allow-read") {
     let read_allowlist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
@@ -1800,6 +1778,28 @@ fn runtime_args_parse(
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+}
+
+fn import_map_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.import_map_path = matches.value_of("import-map").map(ToOwned::to_owned);
+}
+
+fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
+  if let Some(cache_bl) = matches.values_of("reload") {
+    let raw_cache_blocklist: Vec<String> =
+      cache_bl.map(ToString::to_string).collect();
+    if raw_cache_blocklist.is_empty() {
+      flags.reload = true;
+    } else {
+      flags.cache_blocklist = resolve_urls(raw_cache_blocklist);
+      debug!("cache blocklist: {:#?}", &flags.cache_blocklist);
+      flags.reload = false;
+    }
+  }
+}
+
+fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
 }
 
 fn cached_only_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
