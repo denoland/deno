@@ -281,12 +281,15 @@ Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
 To start the REPL:
+
   deno
 
 To execute a script:
+
   deno run https://deno.land/std/examples/welcome.ts
 
 To evaluate code in the shell:
+
   deno eval \"console.log(30933 + 404)\"
 ";
 
@@ -429,9 +432,11 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
+
   deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
 
 If no output file is given, the output is written to standard output:
+
   deno bundle https://deno.land/std/examples/colors.ts",
     )
 }
@@ -450,6 +455,7 @@ fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
 
 Download and compile a module with all of its static dependencies and save them
 in the local cache, without running any code:
+
   deno cache https://deno.land/std/http/file_server.ts
 
 Future runs of this module will trigger no downloads or compilation unless
@@ -485,6 +491,7 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Compile the script into a self contained executable")
     .long_about(
       "Compiles the given script into a self contained executable.
+
   deno compile --unstable -A https://deno.land/std/http/file_server.ts
   deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
   deno compile --unstable --lite --target x86_64-unknown-linux-gnu -A https://deno.land/std/http/file_server.ts
@@ -522,6 +529,7 @@ fn completions_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Generate shell completions")
     .long_about(
       "Output shell completion script to standard output.
+
   deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
   source /usr/local/etc/bash_completion.d/deno.bash",
     )
@@ -534,25 +542,32 @@ fn coverage_subcommand<'a, 'b>() -> App<'a, 'b> {
       "Print coverage reports from coverage profiles.
 
 Collect a coverage profile with deno test:
+
   deno test --coverage=cov_profile
 
 Print a report to stdout:
+
   deno coverage cov_profile
 
 Include urls that start with the file schema:
+
   deno coverage --include=\"^file:\" cov_profile
 
 Exclude urls ending with test.ts and test.js:
+
   deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
 Include urls that start with the file schema and exclude files ending with test.ts and test.js, for
 an url to match it must match the include pattern and not match the exclude pattern:
+
   deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
 
 Write a report using the lcov format:
+
   deno coverage --lcov cov_profile > cov.lcov
 
 Generate html reports from lcov:
+
   genhtml -o html_cov cov.lcov
 ",
     )
@@ -605,18 +620,23 @@ fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
       "Show documentation for a module.
 
 Output documentation to standard output:
+
     deno doc ./path/to/module.ts
 
 Output private documentation to standard output:
+
     deno doc --private ./path/to/module.ts
 
 Output documentation in JSON format:
+
     deno doc --json ./path/to/module.ts
 
 Target a specific symbol:
+
     deno doc ./path/to/module.ts MyClass.someField
 
 Show documentation for runtime built-ins:
+
     deno doc
     deno doc --builtin Deno.Listener",
     )
@@ -655,9 +675,11 @@ fn eval_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Eval script")
     .long_about(
       "Evaluate JavaScript from the command line.
+
   deno eval \"console.log('hello world')\"
 
 To evaluate as TypeScript:
+
   deno eval --ext=ts \"const v: string = 'hello'; console.log(v)\"
 
 This command has implicit access to all permissions (--allow-all).",
@@ -702,17 +724,21 @@ fn fmt_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Format source files")
     .long_about(
       "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
+
   deno fmt
   deno fmt myfile1.ts myfile2.ts
   deno fmt --check
 
 Format stdin and write to stdout:
+
   cat file.ts | deno fmt -
 
 Ignore formatting code by preceding it with an ignore comment:
+
   // deno-fmt-ignore
 
 Ignore formatting a file by adding an ignore comment at the top of the file:
+
   // deno-fmt-ignore-file",
     )
     .arg(
@@ -753,6 +779,7 @@ fn info_subcommand<'a, 'b>() -> App<'a, 'b> {
       "Information about a module or the cache directories.
 
 Get information about a module:
+
   deno info https://deno.land/std/http/file_server.ts
 
 The following information is shown:
@@ -813,10 +840,12 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Install script as an executable")
     .long_about(
       "Installs a script as an executable in the installation root's bin directory.
+
   deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
   deno install https://deno.land/std/examples/colors.ts
 
 To change the executable name, use -n/--name:
+
   deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
 
 The executable name is inferred by default:
@@ -828,6 +857,7 @@ The executable name is inferred by default:
   - If the resulting name has an '@...' suffix, strip it.
 
 To change the installation root, use --root:
+
   deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
 
 The installation root is determined, in order of precedence:
@@ -856,28 +886,33 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Lint source files")
     .long_about(
       "Lint JavaScript/TypeScript source code.
+
   deno lint --unstable
   deno lint --unstable myfile1.ts myfile2.js
 
 Print result as JSON:
+
   deno lint --unstable --json
 
 Read from stdin:
+
   cat file.ts | deno lint --unstable -
   cat file.ts | deno lint --unstable --json -
 
 List available rules:
+
   deno lint --unstable --rules
 
 Ignore diagnostics on the next line by preceding it with an ignore comment and
 rule name:
-  // deno-lint-ignore no-explicit-any
 
+  // deno-lint-ignore no-explicit-any
   // deno-lint-ignore require-await no-empty
 
 Names of rules to ignore must be specified after ignore comment.
 
 Ignore linting a file by adding an ignore comment at the top of the file:
+
   // deno-lint-ignore-file
 ",
     )
@@ -919,31 +954,33 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       watch_arg()
         .conflicts_with("inspect")
-        .conflicts_with("inspect-brk")
+        .conflicts_with("inspect-brk"),
     )
     .setting(AppSettings::TrailingVarArg)
-    .arg(
-      script_arg()
-        .required(true)
-    )
-    .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
+    .arg(script_arg().required(true))
+    .about("Run a JavaScript or TypeScript program")
     .long_about(
-      "Run a program given a filename or url to the module.
+      "Run a JavaScript or TypeScript program
 
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
+
   deno run https://deno.land/std/examples/welcome.ts
 
 Grant all permissions:
+
   deno run -A https://deno.land/std/http/file_server.ts
 
 Grant permission to read from disk and listen to network:
+
   deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
 
 Grant permission to read allow-listed files from disk:
+
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
 
 Deno allows specifying the filename '-' to read the file from stdin.
+
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
     )
 }
@@ -1001,10 +1038,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
 
 Evaluate the given modules, run all tests declared with 'Deno.test()' and
 report results to standard output:
+
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
 {*_,*.,}test.{js,mjs,ts,jsx,tsx}:
+
   deno test src/",
     )
 }
@@ -1014,6 +1053,7 @@ fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
+
   deno types > lib.deno.d.ts
 
 The declaration file could be saved and used for typing information.",
@@ -1033,6 +1073,7 @@ and is used to replace the current executable.
 
 If you want to not replace the current Deno executable but instead download an
 update to a different location, use the --output flag
+
   deno upgrade --output $HOME/my_deno",
     )
     .arg(
