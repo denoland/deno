@@ -1184,6 +1184,28 @@ declare namespace Deno {
    * then the underlying HttpConn resource is closed automatically.
    */
   export function serveHttp(conn: Conn): HttpConn;
+
+  /** **UNSTABLE**: permissions are yet to be vetted.
+  */
+  export interface TestDefinition {
+    /** Set to `"none"` to disable all the permissions in the test. */
+    permissions?: "inherit" | "none" | {
+      env?: "inherit" | boolean;
+      hrtime?: "inherit" | boolean;
+      /** The format of the net access list must be `hostname[:port]`
+       * in order to be resolved.
+       *
+       * ```
+       * net: ["https://deno.land", "localhost:8080"],
+       * ```
+       * */
+      net?: "inherit" | boolean | string[];
+      plugin?: "inherit" | boolean;
+      read?: "inherit" | boolean | Array<string | URL>;
+      run?: "inherit" | boolean;
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
+  }
 }
 
 declare function fetch(

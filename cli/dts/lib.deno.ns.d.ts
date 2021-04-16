@@ -112,24 +112,6 @@ declare namespace Deno {
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
-
-    /** Set to `"none"` to disable all the permissions in the test. */
-    permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean;
-      hrtime?: "inherit" | boolean;
-      /** The format of the net access list must be `hostname[:port]`
-       * in order to be resolved.
-       *
-       * ```
-       * net: ["https://deno.land", "localhost:8080"],
-       * ```
-       * */
-      net?: "inherit" | boolean | string[];
-      plugin?: "inherit" | boolean;
-      read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean;
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
   }
 
   /** Register a test which will be run when `deno test` is used on the command
