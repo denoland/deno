@@ -259,6 +259,7 @@ impl WebWorker {
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
+        ops::http::init(js_runtime);
 
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
