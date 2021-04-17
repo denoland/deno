@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use rusty_v8 as v8;
 use serde::ser;
-use serde::ser::{Impossible, Serialize};
+use serde::ser::Serialize;
 
 use std::cell::RefCell;
 
@@ -198,12 +198,11 @@ impl<'a, 'b, 'c> ser::SerializeStruct for ObjectSerializer<'a, 'b, 'c> {
   }
 }
 
-pub struct MagicSerializer<'a, 'b, 'c> {
-  scope: ScopePtr<'a, 'b, 'c>,
+pub struct MagicSerializer<'a> {
   v8_value: Option<v8::Local<'a, v8::Value>>,
 }
 
-impl<'a, 'b, 'c> ser::SerializeStruct for MagicSerializer<'a, 'b, 'c> {
+impl<'a> ser::SerializeStruct for MagicSerializer<'a> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
@@ -215,8 +214,9 @@ impl<'a, 'b, 'c> ser::SerializeStruct for MagicSerializer<'a, 'b, 'c> {
     if key != magic::FIELD {
       unreachable!();
     }
-    let v8_value = value.serialize(MagicTransmuter { _scope: self.scope })?;
-    self.v8_value = Some(v8_value);
+    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    let mv: magic::Value<'a> = unsafe { std::mem::transmute(transmuted) };
+    self.v8_value = Some(mv.v8_value);
     Ok(())
   }
 
@@ -227,7 +227,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for MagicSerializer<'a, 'b, 'c> {
 
 // Dispatches between magic and regular struct serializers
 pub enum StructSerializers<'a, 'b, 'c> {
-  Magic(MagicSerializer<'a, 'b, 'c>),
+  Magic(MagicSerializer<'a>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -465,10 +465,7 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     _len: usize,
   ) -> Result<Self::SerializeStruct> {
     if name == magic::NAME {
-      let m = MagicSerializer {
-        scope: self.scope,
-        v8_value: None,
-      };
+      let m: MagicSerializer<'a> = MagicSerializer { v8_value: None };
       return Ok(StructSerializers::Magic(m));
     }
     let o = ObjectSerializer::new(self.scope);
@@ -485,147 +482,5 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     let scope = self.scope;
     let x = self.serialize_struct(variant, len)?;
     Ok(VariantSerializer::new(scope, variant, x))
-  }
-}
-
-macro_rules! not_reachable {
-    ($($name:ident($ty:ty, $lt:lifetime);)*) => {
-        $(fn $name(self, _v: $ty) -> JsResult<$lt> {
-            unreachable!();
-        })*
-    };
-}
-
-/// A VERY hackish serde::Serializer
-/// that exists solely to transmute a u64 to a serde_v8::Value
-struct MagicTransmuter<'a, 'b, 'c> {
-  _scope: ScopePtr<'a, 'b, 'c>,
-}
-
-impl<'a, 'b, 'c> ser::Serializer for MagicTransmuter<'a, 'b, 'c> {
-  type Ok = v8::Local<'a, v8::Value>;
-  type Error = Error;
-
-  type SerializeSeq = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeTuple = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeTupleStruct = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeTupleVariant = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeMap = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeStruct = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeStructVariant = Impossible<v8::Local<'a, v8::Value>, Error>;
-
-  // The only serialize method for this hackish struct
-  fn serialize_u64(self, v: u64) -> JsResult<'a> {
-    let mv: magic::Value = unsafe { std::mem::transmute(v) };
-    Ok(mv.v8_value)
-  }
-
-  not_reachable! {
-      serialize_i8(i8, 'a);
-      serialize_i16(i16, 'a);
-      serialize_i32(i32, 'a);
-      serialize_i64(i64, 'a);
-      serialize_u8(u8, 'a);
-      serialize_u16(u16, 'a);
-      serialize_u32(u32, 'a);
-      // serialize_u64(u64, 'a); the chosen one
-      serialize_f32(f32, 'a);
-      serialize_f64(f64, 'a);
-      serialize_bool(bool, 'a);
-      serialize_char(char, 'a);
-      serialize_str(&str, 'a);
-      serialize_bytes(&[u8], 'a);
-  }
-
-  fn serialize_none(self) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_some<T: ?Sized + Serialize>(self, _value: &T) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_unit(self) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_unit_struct(self, _name: &'static str) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  /// For compatibility with serde-json, serialises unit variants as "Variant" strings.
-  fn serialize_unit_variant(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-  ) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_newtype_struct<T: ?Sized + Serialize>(
-    self,
-    _name: &'static str,
-    _value: &T,
-  ) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_newtype_variant<T: ?Sized + Serialize>(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-    _value: &T,
-  ) -> JsResult<'a> {
-    unreachable!();
-  }
-  fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-    unreachable!();
-  }
-
-  fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
-    unreachable!();
-  }
-
-  fn serialize_tuple_struct(
-    self,
-    _name: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeTupleStruct> {
-    unreachable!();
-  }
-
-  fn serialize_tuple_variant(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeTupleVariant> {
-    unreachable!();
-  }
-
-  fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-    unreachable!();
-  }
-
-  /// Serialises Rust typed structs into plain JS objects.
-  fn serialize_struct(
-    self,
-    _name: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeStruct> {
-    unreachable!();
-  }
-
-  fn serialize_struct_variant(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeStructVariant> {
-    unreachable!();
   }
 }
