@@ -17,12 +17,16 @@ use lspower::lsp::ImplementationProviderCapability;
 use lspower::lsp::OneOf;
 use lspower::lsp::SaveOptions;
 use lspower::lsp::SelectionRangeProviderCapability;
+use lspower::lsp::SemanticTokensFullOptions;
+use lspower::lsp::SemanticTokensOptions;
+use lspower::lsp::SemanticTokensServerCapabilities;
 use lspower::lsp::ServerCapabilities;
 use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
 use lspower::lsp::WorkDoneProgressOptions;
+use super::semantic_tokens::get_legend;
 
 fn code_action_capabilities(
   client_capabilities: &ClientCapabilities,
@@ -115,7 +119,16 @@ pub fn server_capabilities(
     color_provider: None,
     execute_command_provider: None,
     call_hierarchy_provider: None,
-    semantic_tokens_provider: None,
+    semantic_tokens_provider: Some(
+      SemanticTokensServerCapabilities::SemanticTokensOptions(
+        SemanticTokensOptions {
+          legend: get_legend(),
+          range: Some(true),
+          full: Some(SemanticTokensFullOptions::Bool(true)),
+          ..Default::default()
+        },
+      ),
+    ),
     workspace: None,
     experimental: None,
     linked_editing_range_provider: None,

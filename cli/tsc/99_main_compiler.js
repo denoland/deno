@@ -660,6 +660,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getEncodedSemanticClassifications": {
+        return respond(
+          id,
+          languageService.getEncodedSemanticClassifications(
+            request.specifier,
+            request.span,
+            ts.SemanticClassificationFormat.TwentyTwenty
+          ),
+        );
+      }
       case "getImplementation": {
         return respond(
           id,

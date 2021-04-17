@@ -109,6 +109,9 @@ impl LineIndex {
       curr_col += c_len;
     }
 
+    utf8_offsets.push(curr_row);
+    utf16_offsets.push(curr_offset_u16);
+
     if !utf16_chars.is_empty() {
       utf16_lines.insert(line, utf16_chars);
     }
@@ -183,6 +186,20 @@ impl LineIndex {
       line: line as u32,
       character: col.into(),
     }
+  }
+
+  pub fn line_length_utf16(&self, line: u32) -> Result<TextSize, AnyError> {
+    let line_offset = self.utf16_offsets.get(line as usize);
+    let next_line_offset = self.utf16_offsets.get((line + 1) as usize);
+    if line_offset.is_none() || next_line_offset.is_none() {
+      return Err(custom_error("OutOfRange", "The line is out of range."));
+    }
+
+    Ok(next_line_offset.unwrap() - line_offset.unwrap())
+  }
+
+  pub fn text_content_length_utf16(&self) -> TextSize {
+    self.utf16_offsets.last().unwrap().clone()
   }
 
   fn utf16_to_utf8_col(&self, line: u32, mut col: u32) -> TextSize {

@@ -1775,6 +1775,99 @@ impl Inner {
     Ok(Some(selection_ranges))
   }
 
+  async fn semantic_tokens_full(
+    &self,
+    params: SemanticTokensParams,
+  ) -> LspResult<Option<SemanticTokensResult>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("semantic_tokens_full");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
+      specifier.clone(),
+      tsc::TextSpan {
+        start: 0,
+        length: line_index.text_content_length_utf16().into(),
+      },
+    ));
+    let semantic_classification: tsc::Classifications = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let semantic_tokens: SemanticTokens =
+      semantic_classification.to_semantic_tokens(&line_index);
+    let response = if !semantic_tokens.data.is_empty() {
+      Some(SemanticTokensResult::Tokens(semantic_tokens))
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
+  async fn semantic_tokens_range(
+    &self,
+    params: SemanticTokensRangeParams,
+  ) -> LspResult<Option<SemanticTokensRangeResult>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("semantic_tokens_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let start = line_index.offset_tsc(params.range.start)?;
+    let length = line_index.offset_tsc(params.range.end)? - start;
+    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
+      specifier.clone(),
+      tsc::TextSpan { start, length },
+    ));
+    let semantic_classification: tsc::Classifications = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let semantic_tokens: SemanticTokens =
+      semantic_classification.to_semantic_tokens(&line_index);
+    let response = if !semantic_tokens.data.is_empty() {
+      Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
@@ -1991,6 +2084,20 @@ impl lspower::LanguageServer for LanguageServer {
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     self.0.lock().await.selection_range(params).await
+  }
+
+  async fn semantic_tokens_full(
+    &self,
+    params: SemanticTokensParams,
+  ) -> LspResult<Option<SemanticTokensResult>> {
+    self.0.lock().await.semantic_tokens_full(params).await
+  }
+
+  async fn semantic_tokens_range(
+    &self,
+    params: SemanticTokensRangeParams,
+  ) -> LspResult<Option<SemanticTokensRangeResult>> {
+    self.0.lock().await.semantic_tokens_range(params).await
   }
 
   async fn signature_help(

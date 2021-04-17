@@ -13,6 +13,7 @@ pub(crate) mod language_server;
 mod path_to_regex;
 mod performance;
 mod registries;
+mod semantic_tokens;
 mod sources;
 mod text;
 mod tsc;
