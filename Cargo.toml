@@ -7,7 +7,6 @@ members = [
   "runtime",
   "serde_v8",
   "test_plugin",
-  "bench_util",
   "test_util",
   "op_crates/crypto",
   "op_crates/fetch",
