@@ -99,7 +99,7 @@ async function main() {
     `RUSTFLAGS='-C force-frame-pointers=y' cargo build --release --bench ${benchName}`,
   );
 
-  // Get the refreshly built bench binary
+  // Get the freshly built bench binary
   const benchBin = await latestBenchBin(benchName);
 
   // Run flamegraph
@@ -111,4 +111,5 @@ async function main() {
     await bashThrough(`open ${outputFile}`);
   }
 }
+// Run
 await main();
