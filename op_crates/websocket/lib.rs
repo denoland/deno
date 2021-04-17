@@ -8,8 +8,6 @@ use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -23,6 +21,7 @@ use deno_core::ZeroCopyBuf;
 
 use http::{Method, Request, Uri};
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io::BufReader;
@@ -104,11 +103,20 @@ pub struct CreateArgs {
   protocols: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateResponse {
+  success: bool,
+  rid: Option<ResourceId>,
+  protocol: Option<String>,
+  extensions: Option<String>,
+}
+
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError>
+) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
@@ -143,7 +151,14 @@ where
   let try_socket = TcpStream::connect(addr).await;
   let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
     Ok(socket) => socket,
-    Err(_) => return Ok(json!({ "success": false })),
+    Err(_) => {
+      return Ok(CreateResponse {
+        success: false,
+        rid: None,
+        protocol: None,
+        extensions: None,
+      })
+    }
   };
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
@@ -195,12 +210,12 @@ where
     .iter()
     .map(|header| header.to_str().unwrap())
     .collect::<String>();
-  Ok(json!({
-    "success": true,
-    "rid": rid,
-    "protocol": protocol,
-    "extensions": extensions
-  }))
+  Ok(CreateResponse {
+    success: true,
+    rid: Some(rid),
+    protocol: Some(protocol.to_string()),
+    extensions: Some(extensions),
+  })
 }
 
 #[derive(Deserialize)]
@@ -266,11 +281,25 @@ pub async fn op_ws_close(
   Ok(())
 }
 
+#[derive(Serialize)]
+enum NextEventResponseData {
+  String(String),
+  Binary(Vec<u8>),
+  Close { code: u16, reason: String },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NextEventResponse {
+  kind: String,
+  data: Option<NextEventResponseData>,
+}
+
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _bufs: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -281,37 +310,49 @@ pub async fn op_ws_next_event(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let val = rx.next().or_cancel(cancel).await?;
   let res = match val {
-    Some(Ok(Message::Text(text))) => json!({
-      "kind": "string",
-      "data": text
-    }),
+    Some(Ok(Message::Text(text))) => NextEventResponse {
+      kind: "string".to_string(),
+      data: Some(NextEventResponseData::String(text)),
+    },
     Some(Ok(Message::Binary(data))) => {
       // TODO(ry): don't use json to send binary data.
-      json!({
-        "kind": "binary",
-        "data": data
-      })
+      NextEventResponse {
+        kind: "binary".to_string(),
+        data: Some(NextEventResponseData::Binary(data)),
+      }
     }
-    Some(Ok(Message::Close(Some(frame)))) => json!({
-      "kind": "close",
-      "data": {
-        "code": u16::from(frame.code),
-        "reason": frame.reason.as_ref()
-      }
-    }),
-    Some(Ok(Message::Close(None))) => json!({
-      "kind": "close",
-      "data": {
-        "code": 1005,
-        "reason": ""
-      }
-    }),
-    Some(Ok(Message::Ping(_))) => json!({ "kind": "ping" }),
-    Some(Ok(Message::Pong(_))) => json!({ "kind": "pong" }),
-    Some(Err(_)) => json!({ "kind": "error" }),
+    Some(Ok(Message::Close(Some(frame)))) => NextEventResponse {
+      kind: "close".to_string(),
+      data: Some(NextEventResponseData::Close {
+        code: u16::from(frame.code),
+        reason: frame.reason.to_string(),
+      }),
+    },
+    Some(Ok(Message::Close(None))) => NextEventResponse {
+      kind: "close".to_string(),
+      data: Some(NextEventResponseData::Close {
+        code: 1005,
+        reason: String::new(),
+      }),
+    },
+    Some(Ok(Message::Ping(_))) => NextEventResponse {
+      kind: "ping".to_string(),
+      data: None,
+    },
+    Some(Ok(Message::Pong(_))) => NextEventResponse {
+      kind: "pong".to_string(),
+      data: None,
+    },
+    Some(Err(_)) => NextEventResponse {
+      kind: "error".to_string(),
+      data: None,
+    },
     None => {
       state.borrow_mut().resource_table.close(rid).unwrap();
-      json!({ "kind": "closed" })
+      NextEventResponse {
+        kind: "closed".to_string(),
+        data: None,
+      }
     }
   };
   Ok(res)
