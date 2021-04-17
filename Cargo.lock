@@ -592,7 +592,6 @@ version = "0.84.0"
 dependencies = [
  "anyhow",
  "bench_util",
- "bencher",
  "futures",
  "indexmap",
  "lazy_static",
