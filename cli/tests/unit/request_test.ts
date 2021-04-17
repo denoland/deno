@@ -1,10 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, , unitTest } from "./test_util.ts";
 
 unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
