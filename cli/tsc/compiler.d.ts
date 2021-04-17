@@ -34,7 +34,7 @@ declare global {
 
   interface DenoCore {
     // deno-lint-ignore no-explicit-any
-    jsonOpSync<T>(name: string, params: T): any;
+    opSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
     registerErrorClass(
@@ -51,15 +51,18 @@ declare global {
     | GetAsset
     | GetCodeFixes
     | GetCombinedCodeFix
+    | GetCompletionDetails
     | GetCompletionsRequest
     | GetDefinitionRequest
     | GetDiagnosticsRequest
     | GetDocumentHighlightsRequest
     | GetImplementationRequest
     | GetNavigationTree
+    | GetOutliningSpans
     | GetQuickInfoRequest
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
+    | GetSmartSelectionRange
     | GetSupportedCodeFixes;
 
   interface BaseLanguageServerRequest {
@@ -102,11 +105,22 @@ declare global {
     fixId: {};
   }
 
+  interface GetCompletionDetails extends BaseLanguageServerRequest {
+    method: "getCompletionDetails";
+    args: {
+      specifier: string;
+      position: number;
+      name: string;
+      source?: string;
+      data?: unknown;
+    };
+  }
+
   interface GetCompletionsRequest extends BaseLanguageServerRequest {
     method: "getCompletions";
     specifier: string;
     position: number;
-    preferences: ts.UserPreferences;
+    preferences: ts.GetCompletionsAtPositionOptions;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
@@ -138,6 +152,11 @@ declare global {
     specifier: string;
   }
 
+  interface GetOutliningSpans extends BaseLanguageServerRequest {
+    method: "getOutliningSpans";
+    specifier: string;
+  }
+
   interface GetQuickInfoRequest extends BaseLanguageServerRequest {
     method: "getQuickInfo";
     specifier: string;
@@ -155,6 +174,12 @@ declare global {
     specifier: string;
     position: number;
     options: ts.SignatureHelpItemsOptions;
+  }
+
+  interface GetSmartSelectionRange extends BaseLanguageServerRequest {
+    method: "getSmartSelectionRange";
+    specifier: string;
+    position: number;
   }
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {

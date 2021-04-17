@@ -1,24 +1,19 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
-
 mod async_cancel;
 mod async_cell;
 mod bindings;
 pub mod error;
 mod flags;
 mod gotham_state;
+mod minvalue;
 mod module_specifier;
 mod modules;
 mod normalize_path;
 mod ops;
+mod ops_json;
 pub mod plugin_api;
 mod resources;
 mod runtime;
-mod shared_queue;
 mod zero_copy_buf;
 
 // Re-exports
@@ -58,16 +53,20 @@ pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
-pub use crate::ops::json_op_async;
-pub use crate::ops::json_op_sync;
 pub use crate::ops::op_close;
 pub use crate::ops::op_resources;
+pub use crate::ops::serialize_op_result;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
+pub use crate::ops::OpPayload;
+pub use crate::ops::OpResponse;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
+pub use crate::ops::PromiseId;
+pub use crate::ops_json::op_async;
+pub use crate::ops_json::op_sync;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;
@@ -76,7 +75,6 @@ pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
-pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 
 pub fn v8_version() -> &'static str {

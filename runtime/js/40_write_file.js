@@ -3,7 +3,6 @@
 ((window) => {
   const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
   const { open, openSync } = window.__bootstrap.files;
-  const { writeAll, writeAllSync } = window.__bootstrap.buffer;
   const { build } = window.__bootstrap.build;
 
   function writeFileSync(
@@ -32,7 +31,11 @@
       chmodSync(path, options.mode);
     }
 
-    writeAllSync(file, data);
+    let nwritten = 0;
+    while (nwritten < data.length) {
+      nwritten += file.writeSync(data.subarray(nwritten));
+    }
+
     file.close();
   }
 
@@ -62,7 +65,11 @@
       await chmod(path, options.mode);
     }
 
-    await writeAll(file, data);
+    let nwritten = 0;
+    while (nwritten < data.length) {
+      nwritten += await file.write(data.subarray(nwritten));
+    }
+
     file.close();
   }
 

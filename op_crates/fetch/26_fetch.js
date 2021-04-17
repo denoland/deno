@@ -3,6 +3,7 @@
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
+/// <reference path="../url/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./11_streams_types.d.ts" />
 /// <reference path="./internal.d.ts" />
@@ -16,11 +17,12 @@
   // provided by "deno_web"
   const { URLSearchParams } = window.__bootstrap.url;
   const { getLocationHref } = window.__bootstrap.location;
+  const { FormData, parseFormData, encodeFormData } =
+    window.__bootstrap.formData;
+  const { parseMimeType } = window.__bootstrap.mimesniff;
 
-  const { requiredArguments } = window.__bootstrap.fetchUtil;
   const { ReadableStream, isReadableStreamDisturbed } =
     window.__bootstrap.streams;
-  const { DomIterableMixin } = window.__bootstrap.domIterable;
   const { Headers } = window.__bootstrap.headers;
   const { Blob, _byteSequence, File } = window.__bootstrap.file;
 
@@ -203,395 +205,6 @@
   }
 
   /**
-   * @param {string} value
-   * @returns {Map<string, string>}
-   */
-  function getHeaderValueParams(value) {
-    /** @type {Map<string, string>} */
-    const params = new Map();
-    // Forced to do so for some Map constructor param mismatch
-    value
-      .split(";")
-      .slice(1)
-      .map((s) => s.trim().split("="))
-      .filter((arr) => arr.length > 1)
-      .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
-      .forEach(([k, v]) => params.set(k, v));
-    return params;
-  }
-
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  const CR = "\r".charCodeAt(0);
-  const LF = "\n".charCodeAt(0);
-
-  const dataSymbol = Symbol("data");
-
-  /**
-   * @param {Blob | string} value 
-   * @param {string | undefined} filename
-   * @returns {FormDataEntryValue}
-   */
-  function parseFormDataValue(value, filename) {
-    if (value instanceof File) {
-      return new File([value], filename || value.name, {
-        type: value.type,
-        lastModified: value.lastModified,
-      });
-    } else if (value instanceof Blob) {
-      return new File([value], filename || "blob", {
-        type: value.type,
-      });
-    } else {
-      return String(value);
-    }
-  }
-
-  class FormDataBase {
-    /** @type {[name: string, entry: FormDataEntryValue][]} */
-    [dataSymbol] = [];
-
-    /**
-     * @param {string} name 
-     * @param {string | Blob} value 
-     * @param {string} [filename] 
-     * @returns {void}
-     */
-    append(name, value, filename) {
-      requiredArguments("FormData.append", arguments.length, 2);
-      name = String(name);
-      this[dataSymbol].push([name, parseFormDataValue(value, filename)]);
-    }
-
-    /**
-     * @param {string} name 
-     * @returns {void}
-     */
-    delete(name) {
-      requiredArguments("FormData.delete", arguments.length, 1);
-      name = String(name);
-      let i = 0;
-      while (i < this[dataSymbol].length) {
-        if (this[dataSymbol][i][0] === name) {
-          this[dataSymbol].splice(i, 1);
-        } else {
-          i++;
-        }
-      }
-    }
-
-    /**
-     * @param {string} name 
-     * @returns {FormDataEntryValue[]}
-     */
-    getAll(name) {
-      requiredArguments("FormData.getAll", arguments.length, 1);
-      name = String(name);
-      const values = [];
-      for (const entry of this[dataSymbol]) {
-        if (entry[0] === name) {
-          values.push(entry[1]);
-        }
-      }
-
-      return values;
-    }
-
-    /**
-     * @param {string} name 
-     * @returns {FormDataEntryValue | null}
-     */
-    get(name) {
-      requiredArguments("FormData.get", arguments.length, 1);
-      name = String(name);
-      for (const entry of this[dataSymbol]) {
-        if (entry[0] === name) {
-          return entry[1];
-        }
-      }
-
-      return null;
-    }
-
-    /**
-     * @param {string} name 
-     * @returns {boolean}
-     */
-    has(name) {
-      requiredArguments("FormData.has", arguments.length, 1);
-      name = String(name);
-      return this[dataSymbol].some((entry) => entry[0] === name);
-    }
-
-    /**
-     * @param {string} name 
-     * @param {string | Blob} value 
-     * @param {string} [filename] 
-     * @returns {void}
-     */
-    set(name, value, filename) {
-      requiredArguments("FormData.set", arguments.length, 2);
-      name = String(name);
-
-      // If there are any entries in the context object’s entry list whose name
-      // is name, replace the first such entry with entry and remove the others
-      let found = false;
-      let i = 0;
-      while (i < this[dataSymbol].length) {
-        if (this[dataSymbol][i][0] === name) {
-          if (!found) {
-            this[dataSymbol][i][1] = parseFormDataValue(value, filename);
-            found = true;
-          } else {
-            this[dataSymbol].splice(i, 1);
-            continue;
-          }
-        }
-        i++;
-      }
-
-      // Otherwise, append entry to the context object’s entry list.
-      if (!found) {
-        this[dataSymbol].push([name, parseFormDataValue(value, filename)]);
-      }
-    }
-
-    get [Symbol.toStringTag]() {
-      return "FormData";
-    }
-  }
-
-  class FormData extends DomIterableMixin(FormDataBase, dataSymbol) {}
-
-  class MultipartBuilder {
-    /**
-     * @param {FormData} formData 
-     * @param {string} [boundary] 
-     */
-    constructor(formData, boundary) {
-      this.formData = formData;
-      this.boundary = boundary ?? this.#createBoundary();
-      this.writer = new Buffer();
-    }
-
-    /** 
-     * @returns {string}
-     */
-    getContentType() {
-      return `multipart/form-data; boundary=${this.boundary}`;
-    }
-
-    /** 
-     * @returns {Uint8Array}
-     */
-    getBody() {
-      for (const [fieldName, fieldValue] of this.formData.entries()) {
-        if (fieldValue instanceof File) {
-          this.#writeFile(fieldName, fieldValue);
-        } else this.#writeField(fieldName, fieldValue);
-      }
-
-      this.writer.writeSync(encoder.encode(`\r\n--${this.boundary}--`));
-
-      return this.writer.bytes();
-    }
-
-    #createBoundary = () => {
-      return (
-        "----------" +
-        Array.from(Array(32))
-          .map(() => Math.random().toString(36)[2] || 0)
-          .join("")
-      );
-    };
-
-    /** 
-     * @param {[string, string][]} headers
-     * @returns {void}
-     */
-    #writeHeaders = (headers) => {
-      let buf = this.writer.empty() ? "" : "\r\n";
-
-      buf += `--${this.boundary}\r\n`;
-      for (const [key, value] of headers) {
-        buf += `${key}: ${value}\r\n`;
-      }
-      buf += `\r\n`;
-
-      this.writer.writeSync(encoder.encode(buf));
-    };
-
-    /** 
-     * @param {string} field
-     * @param {string} filename
-     * @param {string} [type]
-     * @returns {void}
-     */
-    #writeFileHeaders = (
-      field,
-      filename,
-      type,
-    ) => {
-      /** @type {[string, string][]} */
-      const headers = [
-        [
-          "Content-Disposition",
-          `form-data; name="${field}"; filename="${filename}"`,
-        ],
-        ["Content-Type", type || "application/octet-stream"],
-      ];
-      return this.#writeHeaders(headers);
-    };
-
-    /**
-     * @param {string} field
-     * @returns {void}
-     */
-    #writeFieldHeaders = (field) => {
-      /** @type {[string, string][]} */
-      const headers = [["Content-Disposition", `form-data; name="${field}"`]];
-      return this.#writeHeaders(headers);
-    };
-
-    /**
-     * @param {string} field
-     * @param {string} value
-     * @returns {void}
-     */
-    #writeField = (field, value) => {
-      this.#writeFieldHeaders(field);
-      this.writer.writeSync(encoder.encode(value));
-    };
-
-    /**
-     * @param {string} field
-     * @param {File} value
-     * @returns {void}
-     */
-    #writeFile = (field, value) => {
-      this.#writeFileHeaders(field, value.name, value.type);
-      this.writer.writeSync(value[_byteSequence]);
-    };
-  }
-
-  class MultipartParser {
-    /**
-     * @param {Uint8Array} body 
-     * @param {string | undefined} boundary 
-     */
-    constructor(body, boundary) {
-      if (!boundary) {
-        throw new TypeError("multipart/form-data must provide a boundary");
-      }
-
-      this.boundary = `--${boundary}`;
-      this.body = body;
-      this.boundaryChars = encoder.encode(this.boundary);
-    }
-
-    /**
-     * @param {string} headersText
-     * @returns {{ headers: Headers, disposition: Map<string, string> }}
-     */
-    #parseHeaders = (headersText) => {
-      const headers = new Headers();
-      const rawHeaders = headersText.split("\r\n");
-      for (const rawHeader of rawHeaders) {
-        const sepIndex = rawHeader.indexOf(":");
-        if (sepIndex < 0) {
-          continue; // Skip this header
-        }
-        const key = rawHeader.slice(0, sepIndex);
-        const value = rawHeader.slice(sepIndex + 1);
-        headers.set(key, value);
-      }
-
-      return {
-        headers,
-        disposition: getHeaderValueParams(
-          headers.get("Content-Disposition") ?? "",
-        ),
-      };
-    };
-
-    /**
-     * @returns {FormData}
-     */
-    parse() {
-      const formData = new FormData();
-      let headerText = "";
-      let boundaryIndex = 0;
-      let state = 0;
-      let fileStart = 0;
-
-      for (let i = 0; i < this.body.length; i++) {
-        const byte = this.body[i];
-        const prevByte = this.body[i - 1];
-        const isNewLine = byte === LF && prevByte === CR;
-
-        if (state === 1 || state === 2 || state == 3) {
-          headerText += String.fromCharCode(byte);
-        }
-        if (state === 0 && isNewLine) {
-          state = 1;
-        } else if (state === 1 && isNewLine) {
-          state = 2;
-          const headersDone = this.body[i + 1] === CR &&
-            this.body[i + 2] === LF;
-
-          if (headersDone) {
-            state = 3;
-          }
-        } else if (state === 2 && isNewLine) {
-          state = 3;
-        } else if (state === 3 && isNewLine) {
-          state = 4;
-          fileStart = i + 1;
-        } else if (state === 4) {
-          if (this.boundaryChars[boundaryIndex] !== byte) {
-            boundaryIndex = 0;
-          } else {
-            boundaryIndex++;
-          }
-
-          if (boundaryIndex >= this.boundary.length) {
-            const { headers, disposition } = this.#parseHeaders(headerText);
-            const content = this.body.subarray(
-              fileStart,
-              i - boundaryIndex - 1,
-            );
-            // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
-            const filename = disposition.get("filename");
-            const name = disposition.get("name");
-
-            state = 5;
-            // Reset
-            boundaryIndex = 0;
-            headerText = "";
-
-            if (!name) {
-              continue; // Skip, unknown name
-            }
-
-            if (filename) {
-              const blob = new Blob([content], {
-                type: headers.get("Content-Type") || "application/octet-stream",
-              });
-              formData.append(name, blob, filename);
-            } else {
-              formData.append(name, decoder.decode(content));
-            }
-          }
-        } else if (state === 5 && isNewLine) {
-          state = 1;
-        }
-      }
-
-      return formData;
-    }
-  }
-
-  /**
    * @param {string} name 
    * @param {BodyInit | null} bodySource 
    */
@@ -686,6 +299,7 @@
   // fastBody and dontValidateUrl allow users to opt out of certain behaviors
   const fastBody = Symbol("Body#fast");
   const dontValidateUrl = Symbol("dontValidateUrl");
+  const lazyHeaders = Symbol("lazyHeaders");
 
   class Body {
     #contentType = "";
@@ -784,46 +398,46 @@
     /** @returns {Promise<FormData>} */
     async formData() {
       const formData = new FormData();
-      if (hasHeaderValueOf(this.#contentType, "multipart/form-data")) {
-        const params = getHeaderValueParams(this.#contentType);
-
-        // ref: https://tools.ietf.org/html/rfc2046#section-5.1
-        const boundary = params.get("boundary");
-        const body = new Uint8Array(await this.arrayBuffer());
-        const multipartParser = new MultipartParser(body, boundary);
-
-        return multipartParser.parse();
-      } else if (
-        hasHeaderValueOf(this.#contentType, "application/x-www-form-urlencoded")
-      ) {
-        // From https://github.com/github/fetch/blob/master/fetch.js
-        // Copyright (c) 2014-2016 GitHub, Inc. MIT License
-        const body = await this.text();
-        try {
-          body
-            .trim()
-            .split("&")
-            .forEach((bytes) => {
-              if (bytes) {
-                const split = bytes.split("=");
-                if (split.length >= 2) {
-                  // @ts-expect-error this is safe because of the above check
-                  const name = split.shift().replace(/\+/g, " ");
-                  const value = split.join("=").replace(/\+/g, " ");
-                  formData.append(
-                    decodeURIComponent(name),
-                    decodeURIComponent(value),
-                  );
+      const mimeType = parseMimeType(this.#contentType);
+      if (mimeType) {
+        if (mimeType.type === "multipart" && mimeType.subtype === "form-data") {
+          // ref: https://tools.ietf.org/html/rfc2046#section-5.1
+          const boundary = mimeType.parameters.get("boundary");
+          const body = new Uint8Array(await this.arrayBuffer());
+          return parseFormData(body, boundary);
+        } else if (
+          mimeType.type === "application" &&
+          mimeType.subtype === "x-www-form-urlencoded"
+        ) {
+          // From https://github.com/github/fetch/blob/master/fetch.js
+          // Copyright (c) 2014-2016 GitHub, Inc. MIT License
+          const body = await this.text();
+          try {
+            body
+              .trim()
+              .split("&")
+              .forEach((bytes) => {
+                if (bytes) {
+                  const split = bytes.split("=");
+                  if (split.length >= 2) {
+                    // @ts-expect-error this is safe because of the above check
+                    const name = split.shift().replace(/\+/g, " ");
+                    const value = split.join("=").replace(/\+/g, " ");
+                    formData.append(
+                      decodeURIComponent(name),
+                      decodeURIComponent(value),
+                    );
+                  }
                 }
-              }
-            });
-        } catch (e) {
-          throw new TypeError("Invalid form urlencoded format");
+              });
+          } catch (e) {
+            throw new TypeError("Invalid form urlencoded format");
+          }
+          return formData;
         }
-        return formData;
-      } else {
-        throw new TypeError("Invalid form data");
       }
+
+      throw new TypeError("Invalid form data");
     }
 
     /** @returns {Promise<string>} */
@@ -859,7 +473,7 @@
    * @returns {HttpClient}
    */
   function createHttpClient(options) {
-    return new HttpClient(core.jsonOpSync("op_create_http_client", options));
+    return new HttpClient(core.opSync("op_create_http_client", options));
   }
 
   class HttpClient {
@@ -884,29 +498,29 @@
     if (body != null) {
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
     }
-    return core.jsonOpSync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+    return core.opSync("op_fetch", args, zeroCopy);
   }
 
   /**
-   * @param {{rid: number}} args
+   * @param {number} rid
    * @returns {Promise<{status: number, statusText: string, headers: Record<string,string[]>, url: string, responseRid: number}>}
    */
-  function opFetchSend(args) {
-    return core.jsonOpAsync("op_fetch_send", args);
+  function opFetchSend(rid) {
+    return core.opAsync("op_fetch_send", rid);
   }
 
   /**
-   * @param {{rid: number}} args 
+   * @param {number} rid 
    * @param {Uint8Array} body 
    * @returns {Promise<void>}
    */
-  function opFetchRequestWrite(args, body) {
+  function opFetchRequestWrite(rid, body) {
     const zeroCopy = new Uint8Array(
       body.buffer,
       body.byteOffset,
       body.byteLength,
     );
-    return core.jsonOpAsync("op_fetch_request_write", args, zeroCopy);
+    return core.opAsync("op_fetch_request_write", rid, zeroCopy);
   }
 
   const NULL_BODY_STATUS = [101, 204, 205, 304];
@@ -924,20 +538,34 @@
 
   /**
    * @param {string} m
+   * @returns {boolean}
+   */
+  function isKnownMethod(m) {
+    return (
+      m === "DELETE" ||
+      m === "GET" ||
+      m === "HEAD" ||
+      m === "OPTIONS" ||
+      m === "POST" ||
+      m === "PUT"
+    );
+  }
+
+  /**
+   * @param {string} m
    * @returns {string}
    */
   function normalizeMethod(m) {
+    // Fast path for already valid methods
+    if (isKnownMethod(m)) {
+      return m;
+    }
+    // Normalize lower case (slowpath and should be avoided ...)
     const u = byteUpperCase(m);
-    if (
-      u === "DELETE" ||
-      u === "GET" ||
-      u === "HEAD" ||
-      u === "OPTIONS" ||
-      u === "POST" ||
-      u === "PUT"
-    ) {
+    if (isKnownMethod(u)) {
       return u;
     }
+    // Otherwise passthrough
     return m;
   }
 
@@ -946,7 +574,7 @@
     #method = "GET";
     /** @type {string} */
     #url = "";
-    /** @type {Headers} */
+    /** @type {Headers | string[][]} */
     #headers;
     /** @type {"include" | "omit" | "same-origin" | undefined} */
     #credentials = "omit";
@@ -985,16 +613,32 @@
       }
 
       let headers;
+      let contentType = "";
       // prefer headers from init
       if (init.headers) {
-        headers = new Headers(init.headers);
+        if (init[lazyHeaders] && Array.isArray(init.headers)) {
+          // Trust the headers are valid, and only put them into the `Headers`
+          // strucutre when the user accesses the property. We also assume that
+          // all passed headers are lower-case (as is the case when they come
+          // from hyper in Rust), and that headers are of type
+          // `[string, string][]`.
+          headers = init.headers;
+          for (const tuple of headers) {
+            if (tuple[0] === "content-type") {
+              contentType = tuple[1];
+            }
+          }
+        } else {
+          headers = new Headers(init.headers);
+          contentType = headers.get("content-type") || "";
+        }
       } else if (input instanceof Request) {
         headers = input.headers;
+        contentType = headers.get("content-type") || "";
       } else {
         headers = new Headers();
       }
 
-      const contentType = headers.get("content-type") || "";
       super(b, { contentType });
       this.#headers = headers;
 
@@ -1002,9 +646,9 @@
         if (input.bodyUsed) {
           throw TypeError(BodyUsedError);
         }
+        // headers are already set above. no reason to do it again
         this.#method = input.method;
         this.#url = input.url;
-        this.#headers = new Headers(input.headers);
         this.#credentials = input.credentials;
       } else {
         // Constructing a URL just for validation is known to be expensive.
@@ -1071,6 +715,9 @@
     }
 
     get headers() {
+      if (!(this.#headers instanceof Headers)) {
+        this.#headers = new Headers(this.#headers);
+      }
       return this.#headers;
     }
 
@@ -1276,7 +923,7 @@
          */
         async write(chunk, controller) {
           try {
-            await opFetchRequestWrite({ rid: requestBodyRid }, chunk);
+            await opFetchRequestWrite(requestBodyRid, chunk);
           } catch (err) {
             controller.error(err);
           }
@@ -1288,7 +935,7 @@
       body.pipeTo(writer);
     }
 
-    return await opFetchSend({ rid: requestRid });
+    return await opFetchSend(requestRid);
   }
 
   /**
@@ -1340,17 +987,9 @@
             body = init.body[_byteSequence];
             contentType = init.body.type;
           } else if (init.body instanceof FormData) {
-            let boundary;
-            if (headers.has("content-type")) {
-              const params = getHeaderValueParams("content-type");
-              boundary = params.get("boundary");
-            }
-            const multipartBuilder = new MultipartBuilder(
-              init.body,
-              boundary,
-            );
-            body = multipartBuilder.getBody();
-            contentType = multipartBuilder.getContentType();
+            const res = encodeFormData(init.body);
+            body = res.body;
+            contentType = res.contentType;
           } else if (init.body instanceof ReadableStream) {
             body = init.body;
           }
@@ -1400,9 +1039,9 @@
           async pull(controller) {
             try {
               const chunk = new Uint8Array(16 * 1024 + 256);
-              const { read } = await core.jsonOpAsync(
+              const read = await core.opAsync(
                 "op_fetch_response_read",
-                { rid },
+                rid,
                 chunk,
               );
               if (read != 0) {
@@ -1501,5 +1140,6 @@
     createHttpClient,
     fastBody,
     dontValidateUrl,
+    lazyHeaders,
   };
 })(this);

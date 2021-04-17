@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
@@ -24,6 +23,8 @@ use deno_core::JsRuntime;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_file::BlobUrlStore;
+use log::debug;
 use std::env;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -155,6 +156,7 @@ pub struct WebWorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl WebWorker {
@@ -217,7 +219,7 @@ impl WebWorker {
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module);
+      ops::runtime::init(js_runtime, main_module.clone());
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
@@ -229,18 +231,13 @@ impl WebWorker {
         Some(sender),
         options.create_web_worker_cb.clone(),
       );
-      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::reg_json_sync(js_runtime, "op_parse_url", deno_web::op_parse_url);
-      ops::reg_json_sync(
+      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::url::init(js_runtime);
+      ops::file::init(
         js_runtime,
-        "op_parse_url_search_params",
-        deno_web::op_parse_url_search_params,
-      );
-      ops::reg_json_sync(
-        js_runtime,
-        "op_stringify_url_search_params",
-        deno_web::op_stringify_url_search_params,
+        options.blob_url_store.clone(),
+        Some(main_module),
       );
       ops::io::init(js_runtime);
       ops::webgpu::init(js_runtime);
@@ -249,6 +246,7 @@ impl WebWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       );
+      ops::crypto::init(js_runtime, options.seed);
 
       if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
@@ -258,7 +256,6 @@ impl WebWorker {
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
-        ops::crypto::init(js_runtime, options.seed);
         ops::signal::init(js_runtime);
         ops::tls::init(js_runtime);
         ops::tty::init(js_runtime);
@@ -528,6 +525,7 @@ mod tests {
       ts_version: "x".to_string(),
       no_color: true,
       get_error_class_fn: None,
+      blob_url_store: BlobUrlStore::default(),
     };
 
     let mut worker = WebWorker::from_options(

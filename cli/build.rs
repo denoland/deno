@@ -1,15 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
+use deno_runtime::deno_console;
 use deno_runtime::deno_crypto;
 use deno_runtime::deno_fetch;
+use deno_runtime::deno_file;
+use deno_runtime::deno_url;
 use deno_runtime::deno_web;
 use deno_runtime::deno_webgpu;
 use deno_runtime::deno_websocket;
@@ -61,7 +64,10 @@ fn create_compiler_snapshot(
 ) {
   // libs that are being provided by op crates.
   let mut op_crate_libs = HashMap::new();
+  op_crate_libs.insert("deno.console", deno_console::get_declaration());
+  op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
+  op_crate_libs.insert("deno.file", deno_file::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
   op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
@@ -150,7 +156,7 @@ fn create_compiler_snapshot(
   });
   js_runtime.register_op(
     "op_build_info",
-    json_op_sync(move |_state, _args: Value, _bufs| {
+    op_sync(move |_state, _args: Value, _bufs| {
       Ok(json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
@@ -161,7 +167,7 @@ fn create_compiler_snapshot(
   // files, but a slightly different implementation at build time.
   js_runtime.register_op(
     "op_load",
-    json_op_sync(move |_state, args, _bufs| {
+    op_sync(move |_state, args, _bufs| {
       let v: LoadArgs = serde_json::from_value(args)?;
       // we need a basic file to send to tsc to warm it up.
       if v.specifier == build_specifier {
@@ -255,8 +261,20 @@ fn main() {
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
   println!(
+    "cargo:rustc-env=DENO_CONSOLE_LIB_PATH={}",
+    deno_console::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_URL_LIB_PATH={}",
+    deno_url::get_declaration().display()
+  );
+  println!(
     "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
     deno_web::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_FILE_LIB_PATH={}",
+    deno_file::get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",

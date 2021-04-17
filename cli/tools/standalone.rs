@@ -220,7 +220,7 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     log_level: flags.log_level,
     no_check: false,
-    no_prompts: flags.no_prompts,
+    prompt: flags.prompt,
     no_remote: false,
     reload: false,
     repl: false,

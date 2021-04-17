@@ -17,7 +17,7 @@
     permissions,
     name,
   ) {
-    return core.jsonOpSync("op_create_worker", {
+    return core.opSync("op_create_worker", {
       hasSourceCode,
       name,
       permissions,
@@ -28,15 +28,15 @@
   }
 
   function hostTerminateWorker(id) {
-    core.jsonOpSync("op_host_terminate_worker", { id });
+    core.opSync("op_host_terminate_worker", id);
   }
 
   function hostPostMessage(id, data) {
-    core.jsonOpSync("op_host_post_message", { id }, data);
+    core.opSync("op_host_post_message", id, data);
   }
 
   function hostGetMessage(id) {
-    return core.jsonOpAsync("op_host_get_message", { id });
+    return core.opAsync("op_host_get_message", id);
   }
 
   const encoder = new TextEncoder();
@@ -63,7 +63,7 @@
    * @param {string} permission
    * @return {boolean}
    */
-  function parseBooleanPermission(
+  function parseUnitPermission(
     value,
     permission,
   ) {
@@ -119,12 +119,12 @@
     write = "inherit",
   }) {
     return {
-      env: parseBooleanPermission(env, "env"),
-      hrtime: parseBooleanPermission(hrtime, "hrtime"),
+      env: parseUnitPermission(env, "env"),
+      hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
-      plugin: parseBooleanPermission(plugin, "plugin"),
+      plugin: parseUnitPermission(plugin, "plugin"),
       read: parseArrayPermission(read, "read"),
-      run: parseBooleanPermission(run, "run"),
+      run: parseUnitPermission(run, "run"),
       write: parseArrayPermission(write, "write"),
     };
   }
@@ -197,7 +197,7 @@
         }
       }
 
-      const { id } = createWorker(
+      const id = createWorker(
         specifier,
         hasSourceCode,
         sourceCode,
@@ -268,9 +268,9 @@
             if (globalThis instanceof Window) {
               throw new Error("Unhandled error event reached main worker.");
             } else {
-              core.jsonOpSync(
+              core.opSync(
                 "op_host_unhandled_error",
-                { message: event.error.message },
+                event.error.message,
               );
             }
           }
@@ -287,9 +287,9 @@
             if (globalThis instanceof Window) {
               throw new Error("Unhandled error event reached main worker.");
             } else {
-              core.jsonOpSync(
+              core.opSync(
                 "op_host_unhandled_error",
-                { message: event.error.message },
+                event.error.message,
               );
             }
           }

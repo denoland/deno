@@ -19,14 +19,13 @@ declare namespace globalThis {
       Headers: typeof Headers;
     };
 
-    declare var file: {
-      Blob: typeof Blob & {
-        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
+    declare var formData: {
+      FormData: typeof FormData;
+      encodeFormData(formdata: FormData): {
+        body: Uint8Array;
+        contentType: string;
       };
-      _byteSequence: unique symbol;
-      File: typeof File & {
-        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
-      };
+      parseFormData(body: Uint8Array, boundary: string | undefined): FormData;
     };
 
     declare var streams: {

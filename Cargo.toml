@@ -5,11 +5,17 @@ members = [
   "cli",
   "core",
   "runtime",
+  "serde_v8",
   "test_plugin",
   "test_util",
+  "op_crates/crypto",
   "op_crates/fetch",
+  "op_crates/timers",
+  "op_crates/url",
   "op_crates/web",
-  "op_crates/crypto"
+  "op_crates/webgpu",
+  "op_crates/webidl",
+  "op_crates/websocket",
 ]
 exclude = [
   "std/hash/_wasm"
@@ -18,11 +24,13 @@ exclude = [
 
 [profile.release]
 codegen-units = 1
+incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
 [profile.bench]
 codegen-units = 1
+incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
@@ -38,4 +46,14 @@ opt-level = 3
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.brotli-decompressor]
+opt-level = 3
+[profile.release.package.deno_core]
+opt-level = 3
+[profile.release.package.deno_runtime]
+opt-level = 3
+[profile.release.package.rusty_v8]
+opt-level = 3
+[profile.release.package.serde_v8]
+opt-level = 3
+[profile.release.package.serde]
 opt-level = 3

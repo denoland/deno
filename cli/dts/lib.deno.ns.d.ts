@@ -312,7 +312,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use Deno.iter() to turn a Reader into an AsyncIterator.
+     * Use iter() from https://deno.land/std/io/util.ts to turn a Reader into an
+     * AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | null>;
   }
@@ -336,7 +337,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use Deno.iterSync() to turn a ReaderSync into an Iterator.
+     * Use iterSync() from https://deno.land/std/io/util.ts to turn a ReaderSync
+     * into an Iterator.
      */
     readSync(p: Uint8Array): number | null;
   }
@@ -405,9 +407,9 @@ declare namespace Deno {
    *
    * ```ts
    * const source = await Deno.open("my_file.txt");
-   * const buffer = new Deno.Buffer()
    * const bytesCopied1 = await Deno.copy(source, Deno.stdout);
-   * const bytesCopied2 = await Deno.copy(source, buffer);
+   * const destination = await Deno.create("my_file_2.txt");
+   * const bytesCopied2 = await Deno.copy(source, destination);
    * ```
    *
    * @param src The source to copy from
@@ -422,7 +424,10 @@ declare namespace Deno {
     },
   ): Promise<number>;
 
-  /** Turns a Reader, `r`, into an async iterator.
+  /**
+   * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
+   * 
+   * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
    * let f = await Deno.open("/etc/passwd");
@@ -458,7 +463,10 @@ declare namespace Deno {
     },
   ): AsyncIterableIterator<Uint8Array>;
 
-  /** Turns a ReaderSync, `r`, into an iterator.
+  /**
+   * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
+   * 
+   * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
    * let f = Deno.openSync("/etc/passwd");
@@ -773,10 +781,14 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
+    truncate(len?: number): void;
+    truncateSync(len?: number): Promise<void>;
     read(p: Uint8Array): Promise<number | null>;
     readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
+    stat(): Promise<FileInfo>;
+    statSync(): FileInfo;
     close(): void;
   }
 
@@ -837,7 +849,10 @@ declare namespace Deno {
    */
   export function isatty(rid: number): boolean;
 
-  /** A variable-sized buffer of bytes with `read()` and `write()` methods.
+  /**
+   * @deprecated Use Buffer from https://deno.land/std/io/buffer.ts instead. Deno.Buffer will be removed in Deno 2.0.
+   * 
+   * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Deno.Buffer is almost always used with some I/O like files and sockets. It
    * allows one to buffer up a download from a socket. Buffer grows and shrinks
@@ -917,7 +932,10 @@ declare namespace Deno {
     readFromSync(r: ReaderSync): number;
   }
 
-  /** Read Reader `r` until EOF (`null`) and resolve to the content as
+  /**
+   * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * 
+   * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
    * ```ts
@@ -938,7 +956,10 @@ declare namespace Deno {
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
-  /** Synchronously reads Reader `r` until EOF (`null`) and returns the content
+  /**
+   * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
+   * 
+   * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
    * ```ts
@@ -959,7 +980,10 @@ declare namespace Deno {
    */
   export function readAllSync(r: ReaderSync): Uint8Array;
 
-  /** Write all the content of the array buffer (`arr`) to the writer (`w`).
+  /**
+   * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * 
+   * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
    * // Example writing to stdout
@@ -981,7 +1005,10 @@ declare namespace Deno {
    */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
-  /** Synchronously write all the content of the array buffer (`arr`) to the
+  /**
+   * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
+   * 
+   * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
    * ```ts
@@ -1699,40 +1726,44 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface NetAddr {
+  export interface Addr {
+    transport: string;
+  }
+
+  export interface NetAddr extends Addr {
     transport: "tcp" | "udp";
     hostname: string;
     port: number;
   }
 
-  export interface UnixAddr {
+  export interface UnixAddr extends Addr {
     transport: "unix" | "unixpacket";
     path: string;
   }
 
-  export type Addr = NetAddr | UnixAddr;
-
   /** A generic network listener for stream-oriented protocols. */
-  export interface Listener extends AsyncIterable<Conn> {
+  export interface Listener<Address extends Addr = Addr>
+    extends AsyncIterable<Conn<Address>> {
     /** Waits for and resolves to the next connection to the `Listener`. */
-    accept(): Promise<Conn>;
+    accept(): Promise<Conn<Address>>;
     /** Close closes the listener. Any pending accept promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `Listener`. */
-    readonly addr: Addr;
+    readonly addr: Address;
 
     /** Return the rid of the `Listener`. */
     readonly rid: number;
 
-    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<Conn<Address>>;
   }
 
-  export interface Conn extends Reader, Writer, Closer {
+  export interface Conn<Address extends Addr = Addr>
+    extends Reader, Writer, Closer {
     /** The local address of the connection. */
-    readonly localAddr: Addr;
+    readonly localAddr: Address;
     /** The remote address of the connection. */
-    readonly remoteAddr: Addr;
+    readonly remoteAddr: Address;
     /** The resource ID of the connection. */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
@@ -1760,7 +1791,7 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport?: "tcp" },
-  ): Listener;
+  ): Listener<NetAddr>;
 
   export interface ListenTlsOptions extends ListenOptions {
     /** Server certificate file. */
@@ -1779,7 +1810,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission. */
-  export function listenTls(options: ListenTlsOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): Listener<NetAddr>;
 
   export interface ConnectOptions {
     /** The port to connect to. */
@@ -1802,7 +1833,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission for "tcp". */
-  export function connect(options: ConnectOptions): Promise<Conn>;
+  export function connect(options: ConnectOptions): Promise<Conn<NetAddr>>;
 
   export interface ConnectTlsOptions {
     /** The port to connect to. */
@@ -1828,7 +1859,9 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(
+    options: ConnectTlsOptions,
+  ): Promise<Conn<NetAddr>>;
 
   /** Shutdown socket send operations.
    *
@@ -1944,10 +1977,10 @@ declare namespace Deno {
      *
      * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
      * manually before the process can exit.
-     * 
+     *
      * To run process to completion and collect output from both `stdout` and
      * `stderr` use:
-     * 
+     *
      * ```ts
      * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
@@ -2112,6 +2145,7 @@ declare namespace Deno {
 
   export interface RunPermissionDescriptor {
     name: "run";
+    command?: string;
   }
 
   export interface ReadPermissionDescriptor {
@@ -2136,6 +2170,7 @@ declare namespace Deno {
 
   export interface EnvPermissionDescriptor {
     name: "env";
+    variable?: string;
   }
 
   export interface PluginPermissionDescriptor {
@@ -2311,4 +2346,77 @@ declare namespace Deno {
     newpath: string,
     options?: SymlinkOptions,
   ): Promise<void>;
+
+  /**
+   * Synchronously truncates or extends the specified file stream, to reach the
+   * specified `len`.
+   *
+   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
+   *
+   * if the file previously was larger than this new length, the extra  data  is  lost.
+   *
+   * if  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
+   * 
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * Deno.ftruncateSync(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * Deno.readSync(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncateSync(rid: number, len?: number): void;
+
+  /**
+   * Truncates or extends the specified file stream, to reach the specified `len`.
+   *
+   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
+   *
+   * If the file previously was larger than this new length, the extra  data  is  lost.
+   *
+   * If  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.ftruncate(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * await Deno.read(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /** 
+   * Synchronously returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstatSync(rid: number): FileInfo;
+
+  /**
+   * Returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { read: true });
+   * const fileInfo = await Deno.fstat(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstat(rid: number): Promise<FileInfo>;
 }

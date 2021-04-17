@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "textDocument/foldingRange",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    }
+  }
+}

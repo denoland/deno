@@ -17,8 +17,8 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::BufVec;
 use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_emit", op_emit);
+  super::reg_async(rt, "op_emit", op_emit);
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,13 +54,13 @@ struct EmitArgs {
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _data: BufVec,
+  _data: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
-  let runtime_permissions = {
+  let mut runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
@@ -86,7 +86,7 @@ async fn op_emit(
     } else {
       let file = program_state
         .file_fetcher
-        .fetch(&import_map_specifier, &runtime_permissions)
+        .fetch(&import_map_specifier, &mut runtime_permissions)
         .await?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };

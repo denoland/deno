@@ -87,45 +87,44 @@ declare class Event {
    */
 declare class EventTarget {
   /** Appends an event listener for events whose type attribute value is type.
-     * The callback argument sets the callback that will be invoked when the event
-     * is dispatched.
-     *
-     * The options argument sets listener-specific options. For compatibility this
-     * can be a boolean, in which case the method behaves exactly as if the value
-     * was specified as options's capture.
-     *
-     * When set to true, options's capture prevents callback from being invoked
-     * when the event's eventPhase attribute value is BUBBLING_PHASE. When false
-     * (or not present), callback will not be invoked when event's eventPhase
-     * attribute value is CAPTURING_PHASE. Either way, callback will be invoked if
-     * event's eventPhase attribute value is AT_TARGET.
-     *
-     * When set to true, options's passive indicates that the callback will not
-     * cancel the event by invoking preventDefault(). This is used to enable
-     * performance optimizations described in § 2.8 Observing event listeners.
-     *
-     * When set to true, options's once indicates that the callback will only be
-     * invoked once after which the event listener will be removed.
-     *
-     * The event listener is appended to target's event listener list and is not
-     * appended if it has the same type, callback, and capture. */
+   * The callback argument sets the callback that will be invoked when the event
+   * is dispatched.
+   *
+   * The options argument sets listener-specific options. For compatibility this
+   * can be a boolean, in which case the method behaves exactly as if the value
+   * was specified as options's capture.
+   *
+   * When set to true, options's capture prevents callback from being invoked
+   * when the event's eventPhase attribute value is BUBBLING_PHASE. When false
+   * (or not present), callback will not be invoked when event's eventPhase
+   * attribute value is CAPTURING_PHASE. Either way, callback will be invoked if
+   * event's eventPhase attribute value is AT_TARGET.
+   *
+   * When set to true, options's passive indicates that the callback will not
+   * cancel the event by invoking preventDefault(). This is used to enable
+   * performance optimizations described in § 2.8 Observing event listeners.
+   *
+   * When set to true, options's once indicates that the callback will only be
+   * invoked once after which the event listener will be removed.
+   *
+   * The event listener is appended to target's event listener list and is not
+   * appended if it has the same type, callback, and capture. */
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions,
   ): void;
   /** Dispatches a synthetic event event to target and returns true if either
-     * event's cancelable attribute value is false or its preventDefault() method
-     * was not invoked, and false otherwise. */
+   * event's cancelable attribute value is false or its preventDefault() method
+   * was not invoked, and false otherwise. */
   dispatchEvent(event: Event): boolean;
   /** Removes the event listener in target's event listener list with the same
-     * type, callback, and options. */
+   * type, callback, and options. */
   removeEventListener(
     type: string,
     callback: EventListenerOrEventListenerObject | null,
     options?: EventListenerOptions | boolean,
   ): void;
-  [Symbol.toStringTag]: string;
 }
 
 interface EventListener {
@@ -313,172 +312,3 @@ declare var FileReader: {
   readonly EMPTY: number;
   readonly LOADING: number;
 };
-
-declare class URLSearchParams {
-  constructor(
-    init?: string[][] | Record<string, string> | string | URLSearchParams,
-  );
-  static toString(): string;
-
-  /** Appends a specified key/value pair as a new search parameter.
-   *
-   * ```ts
-   * let searchParams = new URLSearchParams();
-   * searchParams.append('name', 'first');
-   * searchParams.append('name', 'second');
-   * ```
-   */
-  append(name: string, value: string): void;
-
-  /** Deletes the given search parameter and its associated value,
-   * from the list of all search parameters.
-   *
-   * ```ts
-   * let searchParams = new URLSearchParams([['name', 'value']]);
-   * searchParams.delete('name');
-   * ```
-   */
-  delete(name: string): void;
-
-  /** Returns all the values associated with a given search parameter
-   * as an array.
-   *
-   * ```ts
-   * searchParams.getAll('name');
-   * ```
-   */
-  getAll(name: string): string[];
-
-  /** Returns the first value associated to the given search parameter.
-   *
-   * ```ts
-   * searchParams.get('name');
-   * ```
-   */
-  get(name: string): string | null;
-
-  /** Returns a Boolean that indicates whether a parameter with the
-   * specified name exists.
-   *
-   * ```ts
-   * searchParams.has('name');
-   * ```
-   */
-  has(name: string): boolean;
-
-  /** Sets the value associated with a given search parameter to the
-   * given value. If there were several matching values, this method
-   * deletes the others. If the search parameter doesn't exist, this
-   * method creates it.
-   *
-   * ```ts
-   * searchParams.set('name', 'value');
-   * ```
-   */
-  set(name: string, value: string): void;
-
-  /** Sort all key/value pairs contained in this object in place and
-   * return undefined. The sort order is according to Unicode code
-   * points of the keys.
-   *
-   * ```ts
-   * searchParams.sort();
-   * ```
-   */
-  sort(): void;
-
-  /** Calls a function for each element contained in this object in
-   * place and return undefined. Optionally accepts an object to use
-   * as this when executing callback as second argument.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * params.forEach((value, key, parent) => {
-   *   console.log(value, key, parent);
-   * });
-   * ```
-   *
-   */
-  forEach(
-    callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any,
-  ): void;
-
-  /** Returns an iterator allowing to go through all keys contained
-   * in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const key of params.keys()) {
-   *   console.log(key);
-   * }
-   * ```
-   */
-  keys(): IterableIterator<string>;
-
-  /** Returns an iterator allowing to go through all values contained
-   * in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const value of params.values()) {
-   *   console.log(value);
-   * }
-   * ```
-   */
-  values(): IterableIterator<string>;
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const [key, value] of params.entries()) {
-   *   console.log(key, value);
-   * }
-   * ```
-   */
-  entries(): IterableIterator<[string, string]>;
-
-  /** Returns an iterator allowing to go through all key/value
-   * pairs contained in this object.
-   *
-   * ```ts
-   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   * for (const [key, value] of params) {
-   *   console.log(key, value);
-   * }
-   * ```
-   */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-
-  /** Returns a query string suitable for use in a URL.
-   *
-   * ```ts
-   * searchParams.toString();
-   * ```
-   */
-  toString(): string;
-}
-
-/** The URL interface represents an object providing static methods used for creating object URLs. */
-declare class URL {
-  constructor(url: string, base?: string | URL);
-  createObjectURL(object: any): string;
-  revokeObjectURL(url: string): void;
-
-  hash: string;
-  host: string;
-  hostname: string;
-  href: string;
-  toString(): string;
-  readonly origin: string;
-  password: string;
-  pathname: string;
-  port: string;
-  protocol: string;
-  search: string;
-  readonly searchParams: URLSearchParams;
-  username: string;
-  toJSON(): string;
-}

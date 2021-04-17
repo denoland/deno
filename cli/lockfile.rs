@@ -2,6 +2,7 @@
 
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use log::debug;
 use std::collections::BTreeMap;
 use std::io::Result;
 use std::path::PathBuf;
