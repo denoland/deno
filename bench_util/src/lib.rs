@@ -1,5 +1,5 @@
 pub use bencher;
-use bencher::{TestDescAndFn, TestOpts, StaticBenchFn, DynBenchFn};
+use bencher::{DynBenchFn, StaticBenchFn, TestDescAndFn, TestOpts};
 
 pub fn is_profiling() -> bool {
   std::env::var("PROFILING").is_ok()
@@ -21,7 +21,7 @@ macro_rules! bench_or_profile {
           $(
               benches.extend($group_name());
           )+
-          
+
           if $crate::is_profiling() {
             // Run profling
             $crate::run_profiles(&test_opts, benches);
@@ -59,19 +59,20 @@ fn run_profile(test: TestDescAndFn) {
   };
 }
 
-
 // Copied from https://github.com/bluss/bencher/blob/master/lib.rs
-fn filter_tests(opts: &TestOpts, tests: Vec<TestDescAndFn>) -> Vec<TestDescAndFn> {
+fn filter_tests(
+  opts: &TestOpts,
+  tests: Vec<TestDescAndFn>,
+) -> Vec<TestDescAndFn> {
   let mut filtered = tests;
 
   // Remove tests that don't match the test filter
   filtered = match opts.filter {
-      None => filtered,
-      Some(ref filter) => {
-          filtered.into_iter()
-                  .filter(|test| test.desc.name.contains(&filter[..]))
-                  .collect()
-      }
+    None => filtered,
+    Some(ref filter) => filtered
+      .into_iter()
+      .filter(|test| test.desc.name.contains(&filter[..]))
+      .collect(),
   };
 
   // Sort the tests alphabetically
