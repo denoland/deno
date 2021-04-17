@@ -5,7 +5,6 @@ mod bindings;
 pub mod error;
 mod flags;
 mod gotham_state;
-mod minvalue;
 mod module_specifier;
 mod modules;
 mod normalize_path;
