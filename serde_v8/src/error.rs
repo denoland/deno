@@ -17,8 +17,6 @@ pub enum Error {
   ExpectedMap,
   ExpectedEnum,
 
-  ExpectedUtf8,
-
   LengthMismatch,
 }
 
