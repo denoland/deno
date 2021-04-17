@@ -283,7 +283,7 @@ pub async fn op_ws_close(
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-enum NextEventResponse {
+pub enum NextEventResponse {
   String(String),
   Binary(Vec<u8>),
   Close { code: u16, reason: String },
