@@ -312,74 +312,55 @@
           this.#rid,
         );
 
-        switch (message.kind) {
-          case "string": {
-            const event = new MessageEvent("message", {
-              data: message.data.string,
-              origin: this.#url,
-            });
-            event.target = this;
-            this.dispatchEvent(event);
+        if ("string" in message) {
+          const event = new MessageEvent("message", {
+            data: message.string,
+            origin: this.#url,
+          });
+          event.target = this;
+          this.dispatchEvent(event);
+        } else if ("binary" in message) {
+          let data;
 
-            break;
+          if (this.binaryType === "blob") {
+            data = new Blob([new Uint8Array(message.binary)]);
+          } else {
+            data = new Uint8Array(message.binary).buffer;
           }
 
-          case "binary": {
-            let data;
+          const event = new MessageEvent("message", {
+            data,
+            origin: this.#url,
+          });
+          event.target = this;
+          this.dispatchEvent(event);
+        } else if ("ping" in message) {
+          core.opAsync("op_ws_send", {
+            rid: this.#rid,
+            kind: "pong",
+          });
+        } else if ("close" in message) {
+          this.#readyState = CLOSED;
 
-            if (this.binaryType === "blob") {
-              data = new Blob([new Uint8Array(message.data.binary)]);
-            } else {
-              data = new Uint8Array(message.data.binary).buffer;
-            }
+          const event = new CloseEvent("close", {
+            wasClean: true,
+            code: message.close.code,
+            reason: message.close.reason,
+          });
+          event.target = this;
+          this.dispatchEvent(event);
+          tryClose(this.#rid);
+        } else if ("error" in message) {
+          this.#readyState = CLOSED;
 
-            const event = new MessageEvent("message", {
-              data,
-              origin: this.#url,
-            });
-            event.target = this;
-            this.dispatchEvent(event);
+          const errorEv = new ErrorEvent("error");
+          errorEv.target = this;
+          this.dispatchEvent(errorEv);
 
-            break;
-          }
-
-          case "ping":
-            core.opAsync("op_ws_send", {
-              rid: this.#rid,
-              kind: "pong",
-            });
-
-            break;
-
-          case "close": {
-            this.#readyState = CLOSED;
-
-            const event = new CloseEvent("close", {
-              wasClean: true,
-              code: message.data.close.code,
-              reason: message.data.close.reason,
-            });
-            event.target = this;
-            this.dispatchEvent(event);
-            tryClose(this.#rid);
-
-            break;
-          }
-
-          case "error": {
-            this.#readyState = CLOSED;
-
-            const errorEv = new ErrorEvent("error");
-            errorEv.target = this;
-            this.dispatchEvent(errorEv);
-
-            const closeEv = new CloseEvent("close");
-            closeEv.target = this;
-            this.dispatchEvent(closeEv);
-            tryClose(this.#rid);
-
-            break;
-          }
+          const closeEv = new CloseEvent("close");
+          closeEv.target = this;
+          this.dispatchEvent(closeEv);
+          tryClose(this.#rid);
         }
       }
     }

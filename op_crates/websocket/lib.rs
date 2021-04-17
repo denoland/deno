@@ -283,17 +283,14 @@ pub async fn op_ws_close(
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-enum NextEventResponseData {
+enum NextEventResponse {
   String(String),
   Binary(Vec<u8>),
   Close { code: u16, reason: String },
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NextEventResponse {
-  kind: String,
-  data: Option<NextEventResponseData>,
+  Ping,
+  Pong,
+  Error,
+  Closed,
 }
 
 pub async fn op_ws_next_event(
@@ -311,49 +308,25 @@ pub async fn op_ws_next_event(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let val = rx.next().or_cancel(cancel).await?;
   let res = match val {
-    Some(Ok(Message::Text(text))) => NextEventResponse {
-      kind: "string".to_string(),
-      data: Some(NextEventResponseData::String(text)),
-    },
+    Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
     Some(Ok(Message::Binary(data))) => {
       // TODO(ry): don't use json to send binary data.
-      NextEventResponse {
-        kind: "binary".to_string(),
-        data: Some(NextEventResponseData::Binary(data)),
-      }
+      NextEventResponse::Binary(data)
     }
-    Some(Ok(Message::Close(Some(frame)))) => NextEventResponse {
-      kind: "close".to_string(),
-      data: Some(NextEventResponseData::Close {
-        code: frame.code.into(),
-        reason: frame.reason.to_string(),
-      }),
+    Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
+      code: frame.code.into(),
+      reason: frame.reason.to_string(),
     },
-    Some(Ok(Message::Close(None))) => NextEventResponse {
-      kind: "close".to_string(),
-      data: Some(NextEventResponseData::Close {
-        code: 1005,
-        reason: String::new(),
-      }),
+    Some(Ok(Message::Close(None))) => NextEventResponse::Close {
+      code: 1005,
+      reason: String::new(),
     },
-    Some(Ok(Message::Ping(_))) => NextEventResponse {
-      kind: "ping".to_string(),
-      data: None,
-    },
-    Some(Ok(Message::Pong(_))) => NextEventResponse {
-      kind: "pong".to_string(),
-      data: None,
-    },
-    Some(Err(_)) => NextEventResponse {
-      kind: "error".to_string(),
-      data: None,
-    },
+    Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
+    Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
+    Some(Err(_)) => NextEventResponse::Error,
     None => {
       state.borrow_mut().resource_table.close(rid).unwrap();
-      NextEventResponse {
-        kind: "closed".to_string(),
-        data: None,
-      }
+      NextEventResponse::Closed
     }
   };
   Ok(res)
