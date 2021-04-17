@@ -315,7 +315,7 @@
         switch (message.kind) {
           case "string": {
             const event = new MessageEvent("message", {
-              data: message.data,
+              data: message.data.string,
               origin: this.#url,
             });
             event.target = this;
@@ -328,9 +328,9 @@
             let data;
 
             if (this.binaryType === "blob") {
-              data = new Blob([new Uint8Array(message.data)]);
+              data = new Blob([new Uint8Array(message.data.binary)]);
             } else {
-              data = new Uint8Array(message.data).buffer;
+              data = new Uint8Array(message.data.binary).buffer;
             }
 
             const event = new MessageEvent("message", {
@@ -356,8 +356,8 @@
 
             const event = new CloseEvent("close", {
               wasClean: true,
-              code: message.data.code,
-              reason: message.data.reason,
+              code: message.data.close.code,
+              reason: message.data.close.reason,
             });
             event.target = this;
             this.dispatchEvent(event);

@@ -282,6 +282,7 @@ pub async fn op_ws_close(
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 enum NextEventResponseData {
   String(String),
   Binary(Vec<u8>),
@@ -324,7 +325,7 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Close(Some(frame)))) => NextEventResponse {
       kind: "close".to_string(),
       data: Some(NextEventResponseData::Close {
-        code: u16::from(frame.code),
+        code: frame.code.into(),
         reason: frame.reason.to_string(),
       }),
     },
