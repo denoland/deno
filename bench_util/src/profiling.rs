@@ -9,8 +9,8 @@ pub fn is_profiling() -> bool {
 macro_rules! bench_or_profile {
   ($($group_name:path),+) => {
     fn main() {
-      use bencher::TestOpts;
-      use bencher::run_tests_console;
+      use $crate::bencher::TestOpts;
+      use $crate::bencher::run_tests_console;
       let mut test_opts = TestOpts::default();
       // check to see if we should filter:
       if let Some(arg) = ::std::env::args().skip(1).find(|arg| *arg != "--bench") {
