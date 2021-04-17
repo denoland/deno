@@ -12,3 +12,5 @@ repository = "https://github.com/denoland/deno"
 
 [dependencies]
 bencher = "0.1"
+deno_core = { version = "0.84.0", path = "../core" }
+tokio = { version = "1.4.0", features = ["full"] }

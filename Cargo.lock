@@ -201,6 +201,8 @@ name = "bench_util"
 version = "0.0.0"
 dependencies = [
  "bencher",
+ "deno_core",
+ "tokio",
 ]
 
 [[package]]
