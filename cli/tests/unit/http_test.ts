@@ -228,3 +228,47 @@ unitTest(
     await promise;
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerCancelBodyOnResponseFailure() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const event = await httpConn.nextRequest();
+      assert(event);
+      const { respondWith } = event;
+      let cancelReason = null;
+      const responseError = await assertThrowsAsync(
+        async () => {
+          let interval = 0;
+          await respondWith(
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  interval = setInterval(() => {
+                    const message = `data: ${Date.now()}\n\n`;
+                    controller.enqueue(new TextEncoder().encode(message));
+                  }, 200);
+                },
+                cancel(reason) {
+                  cancelReason = reason;
+                  clearInterval(interval);
+                },
+              }),
+            ),
+          );
+        },
+        Deno.errors.Http,
+      );
+      assertEquals(cancelReason, responseError);
+      httpConn.close();
+      listener.close();
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/");
+    await resp.body!.cancel();
+    await promise;
+  },
+);
