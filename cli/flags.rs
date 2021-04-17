@@ -294,7 +294,10 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
   let app = clap_root(&version);
   let matches = app.clone().try_get_matches_from(args).map_err(|e| {
-    clap::Error::with_description(e.to_string().trim_start_matches("error: ").to_string(), e.kind)
+    clap::Error::with_description(
+      e.to_string().trim_start_matches("error: ").to_string(),
+      e.kind,
+    )
   })?;
 
   let mut flags = Flags::default();
@@ -354,7 +357,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   Ok(flags)
 }
 
-fn clap_root<'a >(version: &'a str) -> App {
+fn clap_root<'a>(version: &'a str) -> App {
   clap::App::new("deno")
     .bin_name("deno")
     .global_setting(AppSettings::UnifiedHelpMessage)
@@ -415,11 +418,7 @@ If the flag is set, restrict these messages to errors.",
 
 fn bundle_subcommand<'a>() -> App<'a> {
   compile_args(App::new("bundle"))
-    .arg(
-      Arg::new("source_file")
-        .takes_value(true)
-        .required(true),
-    )
+    .arg(Arg::new("source_file").takes_value(true).required(true))
     .arg(Arg::new("out_file").takes_value(true).required(false))
     .arg(watch_arg())
     .about("Bundle module and dependencies into single file")
@@ -731,7 +730,9 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .about("Ignore formatting particular source files. Use with --unstable"),
+        .about(
+          "Ignore formatting particular source files. Use with --unstable",
+        ),
     )
     .arg(
       Arg::new("files")
@@ -906,8 +907,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 }
 
 fn repl_subcommand<'a>() -> App<'a> {
-  runtime_args(App::new("repl"), false, true)
-    .about("Read Eval Print Loop")
+  runtime_args(App::new("repl"), false, true).about("Read Eval Print Loop")
 }
 
 fn run_subcommand<'a>() -> App<'a> {
