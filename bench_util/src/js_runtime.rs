@@ -5,23 +5,26 @@ use deno_core::JsRuntime;
 use crate::profiling::is_profiling;
 
 pub fn create_js_runtime(setup: impl FnOnce(&mut JsRuntime)) -> JsRuntime {
-  let mut runtime = JsRuntime::new(Default::default());
+  let mut rt = JsRuntime::new(Default::default());
+
+  // Setup bootstrap namespace
+  rt.execute("bootstrap", "globalThis.__bootstrap = {};")
+    .unwrap();
 
   // Caller provided setup
-  setup(&mut runtime);
+  setup(&mut rt);
 
   // Init ops
-  runtime
-    .execute(
-      "init",
-      r#"
+  rt.execute(
+    "init",
+    r#"
       Deno.core.ops();
       Deno.core.registerErrorClass('Error', Error);
     "#,
-    )
-    .unwrap();
+  )
+  .unwrap();
 
-  runtime
+  rt
 }
 
 fn loop_code(iters: u64, src: &str) -> String {
