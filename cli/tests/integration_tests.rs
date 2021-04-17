@@ -2939,6 +2939,12 @@ console.log("finish");
     output: "async_error.ts.out",
   });
 
+  itest!(non_utf8_in_exception_msg {
+    exit_code: 1,
+    args: "run non_utf8_in_exception_msg.ts",
+    output: "non_utf8_in_exception_msg.ts.out",
+  });
+
   itest!(bundle {
     args: "bundle subdir/mod1.ts",
     output: "bundle.test.out",

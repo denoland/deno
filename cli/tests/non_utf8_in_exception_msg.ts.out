@@ -1,0 +1,4 @@
+[WILDCARD]error: Uncaught Error: �
+throw new Error(new TextDecoder().decode(new Uint8Array([255])));
+      ^
+    at [WILDCARD]non_utf8_in_exception_msg.ts:1:7
