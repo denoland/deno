@@ -661,8 +661,8 @@ unitTest(
     const actual = new TextDecoder().decode(buf.bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
-      "hello: World\r\n",
       "foo: Bar\r\n",
+      "hello: World\r\n",
       "accept: */*\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
@@ -695,9 +695,9 @@ unitTest(
     const actual = new TextDecoder().decode(buf.bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
-      "hello: World\r\n",
-      "foo: Bar\r\n",
       "content-type: text/plain;charset=UTF-8\r\n",
+      "foo: Bar\r\n",
+      "hello: World\r\n",
       "accept: */*\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
@@ -733,8 +733,8 @@ unitTest(
     const actual = new TextDecoder().decode(buf.bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
-      "hello: World\r\n",
       "foo: Bar\r\n",
+      "hello: World\r\n",
       "accept: */*\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
@@ -1115,8 +1115,8 @@ unitTest(
     const actual = new TextDecoder().decode(buf.bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
-      "hello: World\r\n",
       "foo: Bar\r\n",
+      "hello: World\r\n",
       "accept: */*\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",

@@ -25,6 +25,9 @@ export async function runWithTestUtil<T>(
     }
     const passedTime = performance.now() - start;
     if (passedTime > 15000) {
+      proc.kill(2);
+      await proc.status();
+      proc.close();
       throw new Error("Timed out while trying to start wpt test util.");
     }
   }
