@@ -6,6 +6,45 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.9.0 / 2021.04.13
+
+- feat: blob URL support (#10045)
+- feat: blob URL support in fetch (#10120)
+- feat: data URL support in fetch (#10054)
+- feat: native HTTP bindings (#9935)
+- feat: raise file descriptor limit on startup (#10162)
+- feat: set useDefineForClassFields to true (#10119)
+- feat: stabilize Deno.ftruncate and Deno.ftruncateSync (#10126)
+- feat: stricter typings for Listener & Conn (#10012)
+- feat(lsp): add import completions (#9821)
+- feat(lsp): add registry import auto-complete (#9934)
+- feat(lsp): implement textDocument/foldingRange (#9900)
+- feat(lsp): implement textDocument/selectionRange (#9845)
+- feat(permissions): allow env permission to take values (#9825)
+- feat(permissions): allow run permission to take values (#9833)
+- feat(runtime): add stat and statSync methods to Deno.File (#10107)
+- feat(runtime): add truncate and truncateSync methods to Deno.File (#10130)
+- feat(runtime): stabilize Deno.fstat and Deno.fstatSync (#10108)
+- feat(runtime/permissions): prompt fallback (#9376)
+- feat(unstable): Add Deno.memoryUsage() (#9986)
+- feat(unstable): ALPN config in listenTls (#10065)
+- fix: include deno.crypto in "deno types" (#9863)
+- fix: Properly await already evaluating dynamic imports (#9984)
+- fix(lsp): don't error on tsc debug failures for code actions (#10047)
+- fix(lsp): ensure insert_text is passed back on completions (#9951)
+- fix(lsp): folding range adjustment panic (#10030)
+- fix(lsp): normalize windows file URLs properly (#10034)
+- fix(lsp): properly handle encoding URLs from lsp client (#10033)
+- fix(op_crates/console): console.table value misalignment with varying keys
+  (#10127)
+- fix(permissions): don't panic when no input is given (#9894)
+- fix(runtime/js/timers): Use (0, eval) instead of eval() (#10103)
+- fix(runtime/readFile*): close resources on error during read (#10059)
+- fix(websocket): ignore resource close error (#9755)
+
+Release notes for std version 0.93.0:
+https://github.com/denoland/deno_std/releases/tag/0.93.0
+
 ### 1.8.3 / 2021.04.02
 
 - feat(lsp): add import completions (#9821)

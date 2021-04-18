@@ -20,7 +20,7 @@ use crate::tsc_config::TsConfig;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::resolve_url;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -1589,7 +1589,7 @@ where
   V: de::DeserializeOwned,
   R: Serialize + 'static,
 {
-  json_op_sync(move |s, args, _bufs| {
+  op_sync(move |s, args, _bufs| {
     let state = s.borrow_mut::<State>();
     op_fn(state, args)
   })

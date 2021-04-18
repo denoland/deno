@@ -470,7 +470,9 @@
           "Growing shared memory does not detach old buffer"
         ],
         "toString.any.js": true,
-        "type.tentative.any.js": false
+        "type.tentative.any.js": false,
+        "constructor-shared.tentative.any.js": false,
+        "constructor-types.tentative.any.js": false
       },
       "module": {
         "constructor.any.js": true,
@@ -487,7 +489,16 @@
         "length.any.js": [
           "Setting (sloppy mode)"
         ],
-        "toString.any.js": true
+        "toString.any.js": true,
+        "constructor-reftypes.tentative.any.js": [
+          "initialize externref table with default value",
+          "initialize anyfunc table with default value",
+          "initialize anyfunc table with a bad default value"
+        ],
+        "constructor-types.tentative.any.js": false,
+        "grow-reftypes.tentative.any.js": false,
+        "set-reftypes.tentative.any.js": false,
+        "type.tentative.any.js": false
       }
     },
     "serialization": {
@@ -502,117 +513,19 @@
     },
     "webapi": {
       "abort.any.js": false,
-      "body.any.js": true,
-      "contenttype.any.js": [
-        "Response with Content-Type \"application/wasm\": compileStreaming",
-        "Response with Content-Type \"application/wasm\": instantiateStreaming",
-        "Response with Content-Type \"APPLICATION/wasm\": compileStreaming",
-        "Response with Content-Type \"APPLICATION/wasm\": instantiateStreaming",
-        "Response with Content-Type \"APPLICATION/WASM\": compileStreaming",
-        "Response with Content-Type \"APPLICATION/WASM\": instantiateStreaming"
-      ],
+      "body.any.js": false,
+      "contenttype.any.js": false,
       "empty-body.any.js": false,
       "historical.any.js": false,
       "idlharness.any.js": false,
-      "instantiateStreaming-bad-imports.any.js": [
-        "Importing a function with an incorrectly-typed value: undefined",
-        "Importing a function with an incorrectly-typed value: null",
-        "Importing a function with an incorrectly-typed value: true",
-        "Importing a function with an incorrectly-typed value: \"\"",
-        "Importing a function with an incorrectly-typed value: symbol \"Symbol()\"",
-        "Importing a function with an incorrectly-typed value: 1",
-        "Importing a function with an incorrectly-typed value: 0.1",
-        "Importing a function with an incorrectly-typed value: NaN",
-        "Importing a function with an incorrectly-typed value: object \"[object Object]\"",
-        "Importing an i32 global with an incorrectly-typed value: undefined",
-        "Importing an i32 global with an incorrectly-typed value: null",
-        "Importing an i32 global with an incorrectly-typed value: true",
-        "Importing an i32 global with an incorrectly-typed value: \"\"",
-        "Importing an i32 global with an incorrectly-typed value: symbol \"Symbol()\"",
-        "Importing an i32 global with an incorrectly-typed value: plain object",
-        "Importing an i32 global with an incorrectly-typed value: WebAssembly.Global",
-        "Importing an i32 global with an incorrectly-typed value: WebAssembly.Global.prototype",
-        "Importing an i32 global with an incorrectly-typed value: Object.create(WebAssembly.Global.prototype)",
-        "Importing an i32 global with an incorrectly-typed value: BigInt",
-        "Importing an i32 global with an incorrectly-typed value: WebAssembly.Global object (wrong value type)",
-        "Importing an i64 global with an incorrectly-typed value: undefined",
-        "Importing an i64 global with an incorrectly-typed value: null",
-        "Importing an i64 global with an incorrectly-typed value: true",
-        "Importing an i64 global with an incorrectly-typed value: \"\"",
-        "Importing an i64 global with an incorrectly-typed value: symbol \"Symbol()\"",
-        "Importing an i64 global with an incorrectly-typed value: plain object",
-        "Importing an i64 global with an incorrectly-typed value: WebAssembly.Global",
-        "Importing an i64 global with an incorrectly-typed value: WebAssembly.Global.prototype",
-        "Importing an i64 global with an incorrectly-typed value: Object.create(WebAssembly.Global.prototype)",
-        "Importing an i64 global with an incorrectly-typed value: Number",
-        "Importing an i64 global with an incorrectly-typed value: WebAssembly.Global object (wrong value type)",
-        "Importing an f32 global with an incorrectly-typed value: undefined",
-        "Importing an f32 global with an incorrectly-typed value: null",
-        "Importing an f32 global with an incorrectly-typed value: true",
-        "Importing an f32 global with an incorrectly-typed value: \"\"",
-        "Importing an f32 global with an incorrectly-typed value: symbol \"Symbol()\"",
-        "Importing an f32 global with an incorrectly-typed value: plain object",
-        "Importing an f32 global with an incorrectly-typed value: WebAssembly.Global",
-        "Importing an f32 global with an incorrectly-typed value: WebAssembly.Global.prototype",
-        "Importing an f32 global with an incorrectly-typed value: Object.create(WebAssembly.Global.prototype)",
-        "Importing an f32 global with an incorrectly-typed value: BigInt",
-        "Importing an f32 global with an incorrectly-typed value: WebAssembly.Global object (wrong value type)",
-        "Importing an f64 global with an incorrectly-typed value: undefined",
-        "Importing an f64 global with an incorrectly-typed value: null",
-        "Importing an f64 global with an incorrectly-typed value: true",
-        "Importing an f64 global with an incorrectly-typed value: \"\"",
-        "Importing an f64 global with an incorrectly-typed value: symbol \"Symbol()\"",
-        "Importing an f64 global with an incorrectly-typed value: plain object",
-        "Importing an f64 global with an incorrectly-typed value: WebAssembly.Global",
-        "Importing an f64 global with an incorrectly-typed value: WebAssembly.Global.prototype",
-        "Importing an f64 global with an incorrectly-typed value: Object.create(WebAssembly.Global.prototype)",
-        "Importing an f64 global with an incorrectly-typed value: BigInt",
-        "Importing an f64 global with an incorrectly-typed value: WebAssembly.Global object (wrong value type)",
-        "Importing an i32 mutable global with a primitive value",
-        "Importing an i32 mutable global with an immutable Global object",
-        "Importing an i64 mutable global with a primitive value",
-        "Importing an i64 mutable global with an immutable Global object",
-        "Importing an f32 mutable global with a primitive value",
-        "Importing an f32 mutable global with an immutable Global object",
-        "Importing an f64 mutable global with a primitive value",
-        "Importing an f64 mutable global with an immutable Global object",
-        "Importing memory with an incorrectly-typed value: undefined",
-        "Importing memory with an incorrectly-typed value: null",
-        "Importing memory with an incorrectly-typed value: true",
-        "Importing memory with an incorrectly-typed value: \"\"",
-        "Importing memory with an incorrectly-typed value: symbol \"Symbol()\"",
-        "Importing memory with an incorrectly-typed value: 1",
-        "Importing memory with an incorrectly-typed value: 0.1",
-        "Importing memory with an incorrectly-typed value: NaN",
-        "Importing memory with an incorrectly-typed value: plain object",
-        "Importing memory with an incorrectly-typed value: WebAssembly.Memory",
-        "Importing memory with an incorrectly-typed value: WebAssembly.Memory.prototype",
-        "Importing memory with an incorrectly-typed value: Object.create(WebAssembly.Memory.prototype)",
-        "Importing memory with an incorrectly-typed value: WebAssembly.Memory object (too large)",
-        "Importing table with an incorrectly-typed value: undefined",
-        "Importing table with an incorrectly-typed value: null",
-        "Importing table with an incorrectly-typed value: true",
-        "Importing table with an incorrectly-typed value: \"\"",
-        "Importing table with an incorrectly-typed value: symbol \"Symbol()\"",
-        "Importing table with an incorrectly-typed value: 1",
-        "Importing table with an incorrectly-typed value: 0.1",
-        "Importing table with an incorrectly-typed value: NaN",
-        "Importing table with an incorrectly-typed value: plain object",
-        "Importing table with an incorrectly-typed value: WebAssembly.Table",
-        "Importing table with an incorrectly-typed value: WebAssembly.Table.prototype",
-        "Importing table with an incorrectly-typed value: Object.create(WebAssembly.Table.prototype)",
-        "Importing table with an incorrectly-typed value: WebAssembly.Table object (too large)"
-      ],
+      "instantiateStreaming-bad-imports.any.js": false,
       "instantiateStreaming.any.js": false,
-      "invalid-args.any.js": true,
+      "invalid-args.any.js": false,
       "invalid-code.any.js": false,
-      "modified-contenttype.any.js": [
-        "compileStreaming with Content-Type set late",
-        "instantiateStreaming with Content-Type set late"
-      ],
-      "origin.sub.any.js": true,
-      "rejected-arg.any.js": true,
-      "status.any.js": true
+      "modified-contenttype.any.js": false,
+      "origin.sub.any.js": false,
+      "rejected-arg.any.js": false,
+      "status.any.js": false
     }
   },
   "WebIDL": {
@@ -665,6 +578,10 @@
       "Parsing: <file://example.net/C:/> against <about:blank>",
       "Parsing: <file://1.2.3.4/C:/> against <about:blank>",
       "Parsing: <file://[1::8]/C:/> against <about:blank>",
+      "Parsing: <C|/> against <file://host/>",
+      "Parsing: </C:/> against <file://host/>",
+      "Parsing: <file:C:/> against <file://host/>",
+      "Parsing: <file:/C:/> against <file://host/>",
       "Parsing: <file://localhost//a//../..//foo> against <about:blank>",
       "Parsing: <file://localhost////foo> against <about:blank>",
       "Parsing: <file:////foo> against <about:blank>",
@@ -768,6 +685,13 @@
           "Check isHistoryNavigation attribute"
         ]
       }
+    },
+    "data-urls": {
+      "base64.any.js": true,
+      "processing.any.js": [
+        "\"data://test:test/,X\"",
+        "\"data:text/plain;a=\\\",\\\",X\""
+      ]
     }
   },
   "FileAPI": {
@@ -776,7 +700,6 @@
       "Blob-stream.any.js": true,
       "Blob-text.any.js": true,
       "Blob-constructor.any.js": [
-        "Blob interface object",
         "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
       ],
       "Blob-slice-overflow.any.js": true,
@@ -785,7 +708,36 @@
     "file": {
       "File-constructor.any.js": true
     },
-    "fileReader.any.js": true
+    "fileReader.any.js": true,
+    "url": {
+      "url-format.any.js": true,
+      "url-with-fetch.any.js": [
+        "Revoke blob URL after creating Request, will fetch"
+      ]
+    },
+    "reading-data-section": {
+      "Determining-Encoding.any.js": true,
+      "FileReader-event-handler-attributes.any.js": true,
+      "FileReader-multiple-reads.any.js": true,
+      "filereader_abort.any.js": true,
+      "filereader_error.any.js": true,
+      "filereader_events.any.js": false,
+      "filereader_readAsArrayBuffer.any.js": true,
+      "filereader_readAsBinaryString.any.js": true,
+      "filereader_readAsDataURL.any.js": true,
+      "filereader_readAsText.any.js": true,
+      "filereader_readystate.any.js": true,
+      "filereader_result.any.js": [
+        "result is null during \"loadstart\" event for readAsText",
+        "result is null during \"loadstart\" event for readAsDataURL",
+        "result is null during \"loadstart\" event for readAsArrayBuffer",
+        "result is null during \"loadstart\" event for readAsBinaryString",
+        "result is null during \"progress\" event for readAsText",
+        "result is null during \"progress\" event for readAsDataURL",
+        "result is null during \"progress\" event for readAsArrayBuffer",
+        "result is null during \"progress\" event for readAsBinaryString"
+      ]
+    }
   },
   "html": {
     "webappapis": {
@@ -804,6 +756,18 @@
         "queue-microtask-exceptions.any.js": true,
         "queue-microtask.any.js": true
       }
+    }
+  },
+  "xhr": {
+    "formdata": {
+      "append.any.js": true,
+      "constructor.any.js": true,
+      "delete.any.js": true,
+      "foreach.any.js": true,
+      "get.any.js": true,
+      "has.any.js": true,
+      "set-blob.any.js": true,
+      "set.any.js": true
     }
   }
 }

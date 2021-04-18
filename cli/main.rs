@@ -36,6 +36,7 @@ mod tokio_util;
 mod tools;
 mod tsc;
 mod tsc_config;
+mod unix_util;
 mod version;
 
 use crate::file_fetcher::File;
@@ -122,6 +123,7 @@ fn create_web_worker_callback(
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      blob_url_store: program_state.blob_url_store.clone(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -199,6 +201,7 @@ pub fn create_main_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
     location: program_state.flags.location.clone(),
+    blob_url_store: program_state.blob_url_store.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -250,11 +253,14 @@ fn print_cache_info(
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
+  let registry_cache =
+    &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
   if json {
     let output = json!({
         "denoDir": deno_dir,
         "modulesCache": modules_cache,
         "typescriptCache": typescript_cache,
+        "registryCache": registry_cache,
     });
     write_json_to_stdout(&output)
   } else {
@@ -266,8 +272,13 @@ fn print_cache_info(
     );
     println!(
       "{} {:?}",
-      colors::bold("TypeScript compiler cache:"),
+      colors::bold("Emitted modules cache:"),
       typescript_cache
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("Language server registries cache:"),
+      registry_cache,
     );
     Ok(())
   }
@@ -1166,6 +1177,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
+  unix_util::raise_fd_limit();
 
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
