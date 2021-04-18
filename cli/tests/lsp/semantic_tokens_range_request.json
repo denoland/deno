@@ -1,0 +1,20 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "textDocument/semanticTokens/range",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 6,
+        "character": 0
+      }
+    }
+  }
+}
