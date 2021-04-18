@@ -923,8 +923,10 @@
      * @param {ResponseInit} [init]
      */
     constructor(body = null, init = {}) {
+      // grab `extraInit` from user-provided object reference before WebIDL conversions
       const extraInit = responseData.get(init) || {};
 
+      body = bodyInitConverter(body);
       init = responseInitConverter(init, {
         prefix: "Failed to construct 'Response'",
       });
