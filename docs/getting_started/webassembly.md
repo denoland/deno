@@ -20,3 +20,19 @@ const wasmInstance = new WebAssembly.Instance(wasmModule);
 const main = wasmInstance.exports.main as CallableFunction
 console.log(main().toString());
 ```
+
+And for files:
+
+<!-- deno-fmt-ignore -->
+
+```ts
+import { readAll } from "https://deno.land/std@0.93.0/io/util.ts";
+
+const file = await Deno.open("main.wasm");
+const wasmCode = await readAll(file);
+Deno.close(file.rid);
+const wasmModule = new WebAssembly.Module(wasmCode);
+const wasmInstance = new WebAssembly.Instance(wasmModule);
+const main = wasmInstance.exports.main as CallableFunction
+console.log(main().toString());
+```
