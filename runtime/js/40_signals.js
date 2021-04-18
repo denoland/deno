@@ -161,7 +161,7 @@
   }
 
   function signal(signo) {
-    if (build.os === "windows") {
+    if (build.os === "windows" && signo !== Signal.SIGINT) {
       throw new Error("not implemented!");
     }
     return new SignalStream(signo);
