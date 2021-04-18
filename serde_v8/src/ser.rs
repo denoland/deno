@@ -27,9 +27,9 @@ where
 /// Wraps other serializers into an enum tagged variant form.
 /// Uses {"Variant": ...payload...} for compatibility with serde-json.
 pub struct VariantSerializer<'a, 'b, 'c, S> {
-  variant: &'static str,
   inner: S,
   scope: ScopePtr<'a, 'b, 'c>,
+  variant: &'static str,
 }
 
 impl<'a, 'b, 'c, S> VariantSerializer<'a, 'b, 'c, S> {
@@ -39,9 +39,9 @@ impl<'a, 'b, 'c, S> VariantSerializer<'a, 'b, 'c, S> {
     inner: S,
   ) -> Self {
     Self {
+      inner,
       scope,
       variant,
-      inner,
     }
   }
 
@@ -97,7 +97,6 @@ where
 }
 
 pub struct ArraySerializer<'a, 'b, 'c> {
-  // serializer: Serializer<'a, 'b, 'c>,
   pending: Vec<JsValue<'a>>,
   scope: ScopePtr<'a, 'b, 'c>,
 }
@@ -108,7 +107,7 @@ impl<'a, 'b, 'c> ArraySerializer<'a, 'b, 'c> {
       Some(len) => Vec::with_capacity(len),
       None => vec![],
     };
-    Self { scope, pending }
+    Self { pending, scope }
   }
 }
 
