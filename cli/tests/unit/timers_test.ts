@@ -3,6 +3,7 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
+  Deferred,
   deferred,
   unitTest,
 } from "./test_util.ts";
@@ -64,6 +65,27 @@ unitTest(async function timeoutSuccess(): Promise<void> {
   assertEquals(count, 1);
 });
 
+unitTest(async function timeoutEvalNoScopeLeak(): Promise<void> {
+  // eval can only access global scope
+  const global = globalThis as unknown as {
+    globalPromise: Deferred<Error>;
+  };
+  global.globalPromise = deferred();
+  setTimeout(
+    `
+    try {
+      console.log(core);
+      globalThis.globalPromise.reject(new Error("Didn't throw."));
+    } catch (error) {
+      globalThis.globalPromise.resolve(error);
+    }` as unknown as () => void,
+    0,
+  );
+  const error = await global.globalPromise;
+  assertEquals(error.name, "ReferenceError");
+  Reflect.deleteProperty(global, "globalPromise");
+});
+
 unitTest(async function timeoutArgs(): Promise<void> {
   const promise = deferred();
   const arg = 1;
@@ -122,6 +144,7 @@ unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
   // Expect no panic
   const promise = deferred();
   let count = 0;
+  // deno-lint-ignore no-unused-vars
   const id = setTimeout((): void => {
     count++;
     // Should have no effect

@@ -38,6 +38,10 @@ with Deno:
   internal instrumentation of Deno.
 
   It does not expect any parameters.
+- `deno/reloadImportRegistries` - Reloads any cached responses from import
+  registries.
+
+  It does not expect any parameters.
 - `deno/virtualTextDocument` - Requests a virtual text document from the LSP,
   which is a read only document that can be displayed in the client. This allows
   clients to access documents in the Deno cache, like remote modules and

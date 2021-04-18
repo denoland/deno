@@ -615,6 +615,19 @@
   }
 
   function createDictionaryConverter(name, ...dictionaries) {
+    const allMembers = [];
+    for (const members of dictionaries) {
+      for (const member of members) {
+        allMembers.push(member);
+      }
+    }
+    allMembers.sort((a, b) => {
+      if (a.key == b.key) {
+        return 0;
+      }
+      return a.key < b.key ? -1 : 1;
+    });
+
     return function (V, opts = {}) {
       const typeV = type(V);
       switch (typeV) {
@@ -633,39 +646,37 @@
 
       const idlDict = {};
 
-      for (const members of dictionaries) {
-        for (const member of members) {
-          const key = member.key;
+      for (const member of allMembers) {
+        const key = member.key;
 
-          let esMemberValue;
-          if (typeV === "Undefined" || typeV === "Null") {
-            esMemberValue = undefined;
-          } else {
-            esMemberValue = esDict[key];
-          }
+        let esMemberValue;
+        if (typeV === "Undefined" || typeV === "Null") {
+          esMemberValue = undefined;
+        } else {
+          esMemberValue = esDict[key];
+        }
 
-          const context = `'${key}' of '${name}'${
-            opts.context ? ` (${opts.context})` : ""
-          }`;
+        const context = `'${key}' of '${name}'${
+          opts.context ? ` (${opts.context})` : ""
+        }`;
 
-          if (esMemberValue !== undefined) {
-            const converter = member.converter;
-            const idlMemberValue = converter(esMemberValue, {
-              ...opts,
-              context,
-            });
-            idlDict[key] = idlMemberValue;
-          } else if ("defaultValue" in member) {
-            const defaultValue = member.defaultValue;
-            const idlMemberValue = defaultValue;
-            idlDict[key] = idlMemberValue;
-          } else if (member.required) {
-            throw makeException(
-              TypeError,
-              `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-              { ...opts },
-            );
-          }
+        if (esMemberValue !== undefined) {
+          const converter = member.converter;
+          const idlMemberValue = converter(esMemberValue, {
+            ...opts,
+            context,
+          });
+          idlDict[key] = idlMemberValue;
+        } else if ("defaultValue" in member) {
+          const defaultValue = member.defaultValue;
+          const idlMemberValue = defaultValue;
+          idlDict[key] = idlMemberValue;
+        } else if (member.required) {
+          throw makeException(
+            TypeError,
+            `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
+            { ...opts },
+          );
         }
       }
 
@@ -791,6 +802,50 @@
     throw new TypeError("Illegal constructor");
   }
 
+  function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
+    const methods = {
+      *entries() {
+        assertBranded(this, prototype);
+        for (const entry of this[dataSymbol]) {
+          yield [entry[keyKey], entry[valueKey]];
+        }
+      },
+      [Symbol.iterator]() {
+        assertBranded(this, prototype);
+        return this.entries();
+      },
+      *keys() {
+        assertBranded(this, prototype);
+        for (const entry of this[dataSymbol]) {
+          yield entry[keyKey];
+        }
+      },
+      *values() {
+        assertBranded(this, prototype);
+        for (const entry of this[dataSymbol]) {
+          yield entry[valueKey];
+        }
+      },
+      forEach(idlCallback, thisArg) {
+        assertBranded(this, prototype);
+        const prefix = `Failed to execute 'forEach' on '${name}'`;
+        requiredArguments(arguments.length, 1, { prefix });
+        idlCallback = converters["Function"](idlCallback, {
+          prefix,
+          context: "Argument 1",
+        });
+        idlCallback = idlCallback.bind(thisArg ?? globalThis);
+        const pairs = this[dataSymbol];
+        for (let i = 0; i < pairs.length; i++) {
+          const entry = pairs[i];
+          idlCallback(entry[valueKey], entry[keyKey], this);
+        }
+      },
+    };
+
+    return Object.assign(prototype.prototype, methods);
+  }
+
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     makeException,
@@ -806,5 +861,6 @@
     createBranded,
     assertBranded,
     illegalConstructor,
+    mixinPairIterable,
   };
 })(this);

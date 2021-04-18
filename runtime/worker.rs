@@ -129,8 +129,8 @@ impl MainWorker {
         options.create_web_worker_cb.clone(),
       );
       ops::crypto::init(js_runtime, options.seed);
-      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::url::init(js_runtime);
       ops::file::init(
         js_runtime,
@@ -139,6 +139,7 @@ impl MainWorker {
       );
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
+      ops::http::init(js_runtime);
       ops::io::init(js_runtime);
       ops::net::init(js_runtime);
       ops::os::init(js_runtime);

@@ -65,7 +65,10 @@
 
   function handleAsyncMsgFromRust() {
     for (let i = 0; i < arguments.length; i += 2) {
-      opAsyncHandler(arguments[i], arguments[i + 1]);
+      const promiseId = arguments[i];
+      const res = arguments[i + 1];
+      const promise = getPromise(promiseId);
+      promise.resolve(res);
     }
   }
 
@@ -84,71 +87,44 @@
     return errorMap[errorName] ?? [undefined, []];
   }
 
-  function processResponse(res) {
-    if (!isErr(res)) {
-      return res;
+  function unwrapOpResult(res) {
+    // .$err_class_name is a special key that should only exist on errors
+    if (res?.$err_class_name) {
+      const className = res.$err_class_name;
+      const [ErrorClass, args] = getErrorClassAndArgs(className);
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw new ErrorClass(res.message, ...args);
     }
-    throw processErr(res);
+    return res;
   }
 
-  // .$err_class_name is a special key that should only exist on errors
-  function isErr(res) {
-    return !!(res && res.$err_class_name);
-  }
-
-  function processErr(err) {
-    const className = err.$err_class_name;
-    const [ErrorClass, args] = getErrorClassAndArgs(className);
-    if (!ErrorClass) {
-      return new Error(
-        `Unregistered error class: "${className}"\n  ${err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-      );
-    }
-    return new ErrorClass(err.message, ...args);
-  }
-
-  function jsonOpAsync(opName, args = null, zeroCopy = null) {
+  function opAsync(opName, args = null, zeroCopy = null) {
     const promiseId = nextPromiseId++;
     const maybeError = dispatch(opName, promiseId, args, zeroCopy);
     // Handle sync error (e.g: error parsing args)
-    if (maybeError) processResponse(maybeError);
-    return setPromise(promiseId);
+    if (maybeError) return unwrapOpResult(maybeError);
+    return setPromise(promiseId).then(unwrapOpResult);
   }
 
-  function jsonOpSync(opName, args = null, zeroCopy = null) {
-    return processResponse(dispatch(opName, null, args, zeroCopy));
-  }
-
-  function opAsyncHandler(promiseId, res) {
-    const promise = getPromise(promiseId);
-    if (!isErr(res)) {
-      promise.resolve(res);
-    } else {
-      promise.reject(processErr(res));
-    }
-  }
-
-  function binOpSync(opName, args = null, zeroCopy = null) {
-    return jsonOpSync(opName, args, zeroCopy);
-  }
-
-  function binOpAsync(opName, args = null, zeroCopy = null) {
-    return jsonOpAsync(opName, args, zeroCopy);
+  function opSync(opName, args = null, zeroCopy = null) {
+    return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
   }
 
   function resources() {
-    return Object.fromEntries(jsonOpSync("op_resources"));
+    return Object.fromEntries(opSync("op_resources"));
   }
 
   function close(rid) {
-    jsonOpSync("op_close", rid);
+    opSync("op_close", rid);
   }
 
   Object.assign(window.Deno.core, {
-    binOpAsync,
-    binOpSync,
-    jsonOpAsync,
-    jsonOpSync,
+    opAsync,
+    opSync,
     dispatch: send,
     dispatchByName: dispatch,
     ops,

@@ -15,8 +15,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_apply_source_map", op_apply_source_map);
-  super::reg_json_sync(rt, "op_format_diagnostic", op_format_diagnostic);
+  super::reg_sync(rt, "op_apply_source_map", op_apply_source_map);
+  super::reg_sync(rt, "op_format_diagnostic", op_format_diagnostic);
 }
 
 #[derive(Deserialize)]
