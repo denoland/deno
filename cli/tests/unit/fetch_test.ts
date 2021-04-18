@@ -1004,10 +1004,6 @@ unitTest(function fetchResponseConstructorInvalidStatus(): void {
       fail(`Invalid status: ${status}`);
     } catch (e) {
       assert(e instanceof RangeError);
-      assertEquals(
-        e.message,
-        `The status provided (${status}) is outside the range [200, 599]`,
-      );
     }
   }
 });
