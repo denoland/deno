@@ -22,6 +22,8 @@ exclude = [
   "std/hash/_wasm"
 ]
 
+[profile.dev]
+split-debuginfo = "unpacked"
 
 [profile.release]
 codegen-units = 1
