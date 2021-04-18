@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::error::{Error, Result};
 use serde::ser::{Impossible, Serialize, Serializer};
 
