@@ -26,6 +26,7 @@ use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
 use lspower::lsp::WorkDoneProgressOptions;
+
 use super::semantic_tokens::get_legend;
 
 fn code_action_capabilities(

@@ -666,7 +666,7 @@ delete Object.prototype.__proto__;
           languageService.getEncodedSemanticClassifications(
             request.specifier,
             request.span,
-            ts.SemanticClassificationFormat.TwentyTwenty
+            ts.SemanticClassificationFormat.TwentyTwenty,
           ),
         );
       }

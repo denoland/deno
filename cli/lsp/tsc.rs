@@ -6,10 +6,10 @@ use super::analysis::ResolvedDependencyErr;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
-use super::text;
-use super::text::LineIndex;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::semantic_tokens::TsTokenEncodingConsts;
+use super::text;
+use super::text::LineIndex;
 
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;

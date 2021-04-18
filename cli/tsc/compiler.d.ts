@@ -142,7 +142,8 @@ declare global {
     filesToSearch: string[];
   }
 
-  interface GetEncodedSemanticClassifications extends BaseLanguageServerRequest {
+  interface GetEncodedSemanticClassifications
+    extends BaseLanguageServerRequest {
     method: "getEncodedSemanticClassifications";
     specifier: string;
     span: ts.TextSpan;
