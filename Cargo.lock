@@ -734,6 +734,7 @@ dependencies = [
 name = "deno_url"
 version = "0.3.0"
 dependencies = [
+ "bench_util",
  "deno_core",
  "idna",
  "serde",
