@@ -634,14 +634,14 @@ impl NavigationTree {
       let range = TextRange::at(span.start.into(), span.length.into());
       let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
       for child in children.iter() {
-        if child
+        let should_traverse_child = child
           .spans
           .iter()
           .map(|child_span| {
             TextRange::at(child_span.start.into(), child_span.length.into())
           })
-          .any(|child_range| range.intersect(child_range).is_some())
-        {
+          .any(|child_range| range.intersect(child_range).is_some());
+        if should_traverse_child {
           let included_child =
             child.collect_document_symbols(line_index, &mut symbol_children);
           should_include = should_include || included_child;
