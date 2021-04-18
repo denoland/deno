@@ -192,6 +192,10 @@ jobs:
         if: matrix.kind == 'lint'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
+      - name: check_license.js
+        if: matrix.kind == 'lint'
+        run: deno run --unstable --allow-read ./tools/check_license.js
+
       - name: Build release
         if: |
           matrix.kind == 'test_release' ||
