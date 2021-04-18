@@ -199,7 +199,7 @@ impl LineIndex {
   }
 
   pub fn text_content_length_utf16(&self) -> TextSize {
-    self.utf16_offsets.last().unwrap().clone()
+    *self.utf16_offsets.last().unwrap()
   }
 
   fn utf16_to_utf8_col(&self, line: u32, mut col: u32) -> TextSize {

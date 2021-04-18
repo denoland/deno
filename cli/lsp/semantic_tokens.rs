@@ -150,7 +150,7 @@ impl SemanticTokensBuilder {
 
     let mut push_line = line;
     let mut push_char = char;
-    if self.data_is_sorted_and_delta_encoded && self.data.len() > 0 {
+    if self.data_is_sorted_and_delta_encoded && !self.data.is_empty() {
       push_line -= self.prev_line;
       if push_line == 0 {
         push_char -= self.prev_char;
@@ -178,7 +178,7 @@ impl SemanticTokensBuilder {
       for i in 0..token_count {
         let src_offset = 5 * i;
         result.push(SemanticToken {
-          delta_line: data[src_offset + 0],
+          delta_line: data[src_offset],
           delta_start: data[src_offset + 1],
           length: data[src_offset + 2],
           token_type: data[src_offset + 3],
@@ -188,7 +188,7 @@ impl SemanticTokensBuilder {
       return result;
     }
 
-    let mut pos: Vec<usize> = (0..token_count).map(|i| i).collect();
+    let mut pos: Vec<usize> = (0..token_count).collect();
     pos.sort_by(|a, b| {
       let a_line = data[5 * a];
       let b_line = data[5 * b];
@@ -202,9 +202,9 @@ impl SemanticTokensBuilder {
 
     let mut prev_line = 0;
     let mut prev_char = 0;
-    for i in 0..token_count {
-      let src_offset = 5 * pos[i];
-      let line = data[src_offset + 0];
+    for i in pos.iter() {
+      let src_offset = 5 * i;
+      let line = data[src_offset];
       let char = data[src_offset + 1];
       let length = data[src_offset + 2];
       let token_type = data[src_offset + 3];

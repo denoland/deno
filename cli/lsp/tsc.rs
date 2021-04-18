@@ -869,7 +869,7 @@ impl Classifications {
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
       let src_offset = 3 * i;
-      let offset = self.spans[src_offset + 0];
+      let offset = self.spans[src_offset];
       let length = self.spans[src_offset + 1];
       let ts_classification = self.spans[src_offset + 2];
 
