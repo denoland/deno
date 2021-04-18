@@ -578,7 +578,7 @@
     return m;
   }
 
-  // "referrer", "referrerPolicy", "mode", "cache", "signal", and "cancelable" are all un-used in current implementation; the converters are commented until then
+  // RequestInit { referrer, referrerPolicy, mode, cache, signal, cancelable } are all un-used in current implementation; the converters are commented until then
 
   // https://fetch.spec.whatwg.org/#requestinfo
   // typedef (Request or USVString) RequestInfo;
@@ -607,7 +607,7 @@
 
   // https://fetch.spec.whatwg.org/#typedefdef-xmlhttprequestbodyinit
   // typedef (Blob or BufferSource or FormData or URLSearchParams or USVString) XMLHttpRequestBodyInit;
-  const XMLHttpRequestBodyInitConverter = (v) => {
+  function XMLHttpRequestBodyInitConverter(v) {
     if (
       v instanceof Blob ||
       isBufferSource(v) ||
@@ -619,7 +619,7 @@
       // default behavior
       return converters.USVString(v);
     }
-  };
+  }
 
   // https://fetch.spec.whatwg.org/#bodyinit
   // typedef (ReadableStream or XMLHttpRequestBodyInit) BodyInit;
