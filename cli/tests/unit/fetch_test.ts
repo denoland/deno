@@ -1016,10 +1016,8 @@ unitTest(
   { perms: { net: true } },
   async function fetchRequiresOneArgument(): Promise<void> {
     await assertThrowsAsync(
-      async (): Promise<void> => {
-        // @ts-expect-error call signature arity mismatch
-        await fetch();
-      },
+      fetch as unknown as () => Promise<void>,
+      TypeError,
     );
   },
 );
@@ -1054,6 +1052,7 @@ unitTest(
             // @ts-expect-error call signature mismatch
             await fetch(url, initializer);
           },
+          TypeError,
         );
       };
 
