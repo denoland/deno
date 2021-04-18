@@ -587,7 +587,7 @@
       return v;
     } else {
       // default behavior
-      converters.USVString(v);
+      return converters.USVString(v);
     }
   }
 
@@ -767,8 +767,8 @@
         [lazyHeaders]: false,
       };
       const symbols = {
-        dontValidateUrl: Boolean(_symbols[dontValidateUrl]),
-        lazyHeaders: Boolean(_symbols[lazyHeaders]),
+        dontValidateUrl: _symbols[dontValidateUrl] ?? false,
+        lazyHeaders: _symbols[lazyHeaders] ?? false,
       };
 
       input = requestInfoConverter(input);
