@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
@@ -64,10 +64,13 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
 });
 
 unitTest(function requiresOneArgument() {
-  assertThrows(() => {
-    // @ts-expect-error construct signature arity mismatch
-    new Request();
-  });
+  assertThrows(
+    () => {
+      // @ts-expect-error construct signature arity mismatch
+      new Request();
+    },
+    TypeError,
+  );
 });
 
 unitTest(function acceptsStringObjects() {
@@ -116,6 +119,7 @@ unitTest(function castsInitializerToDictionary(): void {
         // @ts-expect-error construct signature type mismatch
         new Request(url, requestInit);
       },
+      TypeError,
     );
   };
 
