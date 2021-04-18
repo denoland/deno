@@ -17,14 +17,14 @@ pub fn init(rt: &mut deno_core::JsRuntime, deno_dir: Option<PathBuf>) {
     let mut state = op_state.borrow_mut();
     state.put::<LocationDataDir>(LocationDataDir(deno_dir));
   }
-  super::reg_json_sync(rt, "op_webstorage_open", op_webstorage_open);
-  super::reg_json_sync(rt, "op_webstorage_length", op_webstorage_length);
-  super::reg_json_sync(rt, "op_webstorage_key", op_webstorage_key);
-  super::reg_json_sync(rt, "op_webstorage_set", op_webstorage_set);
-  super::reg_json_sync(rt, "op_webstorage_get", op_webstorage_get);
-  super::reg_json_sync(rt, "op_webstorage_remove", op_webstorage_remove);
-  super::reg_json_sync(rt, "op_webstorage_clear", op_webstorage_clear);
-  super::reg_json_sync(
+  super::reg_sync(rt, "op_webstorage_open", op_webstorage_open);
+  super::reg_sync(rt, "op_webstorage_length", op_webstorage_length);
+  super::reg_sync(rt, "op_webstorage_key", op_webstorage_key);
+  super::reg_sync(rt, "op_webstorage_set", op_webstorage_set);
+  super::reg_sync(rt, "op_webstorage_get", op_webstorage_get);
+  super::reg_sync(rt, "op_webstorage_remove", op_webstorage_remove);
+  super::reg_sync(rt, "op_webstorage_clear", op_webstorage_clear);
+  super::reg_sync(
     rt,
     "op_webstorage_iterate_keys",
     op_webstorage_iterate_keys,

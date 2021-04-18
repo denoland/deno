@@ -13,7 +13,7 @@
 
     get length() {
       webidl.assertBranded(this, Storage);
-      return core.jsonOpSync("op_webstorage_length", this[_rid]);
+      return core.opSync("op_webstorage_length", this[_rid]);
     }
 
     key(index) {
@@ -25,7 +25,7 @@
         context: "Argument 1",
       });
 
-      return core.jsonOpSync("op_webstorage_key", {
+      return core.opSync("op_webstorage_key", {
         rid: this[_rid],
         index,
       });
@@ -44,7 +44,7 @@
         context: "Argument 2",
       });
 
-      core.jsonOpSync("op_webstorage_set", {
+      core.opSync("op_webstorage_set", {
         rid: this[_rid],
         keyName: key,
         keyValue: value,
@@ -60,7 +60,7 @@
         context: "Argument 1",
       });
 
-      return core.jsonOpSync("op_webstorage_get", {
+      return core.opSync("op_webstorage_get", {
         rid: this[_rid],
         keyName: key,
       });
@@ -75,7 +75,7 @@
         context: "Argument 1",
       });
 
-      core.jsonOpSync("op_webstorage_remove", {
+      core.opSync("op_webstorage_remove", {
         rid: this[_rid],
         keyName: key,
       });
@@ -83,14 +83,14 @@
 
     clear() {
       webidl.assertBranded(this, Storage);
-      core.jsonOpSync("op_webstorage_clear", this[_rid]);
+      core.opSync("op_webstorage_clear", this[_rid]);
     }
   }
 
   function createStorage(persistent) {
     if (persistent) window.location;
 
-    const rid = core.jsonOpSync("op_webstorage_open", persistent);
+    const rid = core.opSync("op_webstorage_open", persistent);
 
     const storage = webidl.createBranded(Storage);
     storage[_rid] = rid;
@@ -135,7 +135,7 @@
         return (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
-        return core.jsonOpSync("op_webstorage_iterate_keys", rid);
+        return core.opSync("op_webstorage_iterate_keys", rid);
       },
       getOwnPropertyDescriptor(target, key) {
         if (arguments.length === 1) {
