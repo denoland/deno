@@ -5,6 +5,7 @@ use crate::metrics::RuntimeMetrics;
 use crate::ops::UnstableChecker;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
@@ -29,7 +30,9 @@ fn op_main_module(
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = deno_core::resolve_url_or_path(&main)?;
   if main_url.scheme() == "file" {
-    let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
+    let main_path = std::env::current_dir()
+      .context("Failed to get current working directory")?
+      .join(main_url.to_string());
     state
       .borrow_mut::<Permissions>()
       .read

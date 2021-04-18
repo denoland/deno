@@ -3,6 +3,7 @@ use crate::flags::Flags;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 use deno_core::url::Url;
 use log::Level;
 use regex::Regex;
@@ -175,7 +176,8 @@ pub fn install(
     let module_path = if module_path.is_absolute() {
       module_path
     } else {
-      let cwd = env::current_dir().unwrap();
+      let cwd = env::current_dir()
+        .context("Failed to get current working directory")?;
       cwd.join(module_path)
     };
     Url::from_file_path(module_path).expect("Path should be absolute")
