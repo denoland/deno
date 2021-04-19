@@ -736,6 +736,33 @@ delete Object.prototype.__proto__;
           ts.getSupportedCodeFixes(),
         );
       }
+      case "prepareCallHierarchy": {
+        return respond(
+          id,
+          languageService.prepareCallHierarchy(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyIncomingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyIncomingCalls(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyOutgoingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyOutgoingCalls(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never

@@ -5,6 +5,7 @@
 ///! language server, which helps determine what messages are sent from the
 ///! client.
 ///!
+use lspower::lsp::CallHierarchyServerCapability;
 use lspower::lsp::ClientCapabilities;
 use lspower::lsp::CodeActionKind;
 use lspower::lsp::CodeActionOptions;
@@ -119,7 +120,7 @@ pub fn server_capabilities(
     document_link_provider: None,
     color_provider: None,
     execute_command_provider: None,
-    call_hierarchy_provider: None,
+    call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
     semantic_tokens_provider: Some(
       SemanticTokensServerCapabilities::SemanticTokensOptions(
         SemanticTokensOptions {
