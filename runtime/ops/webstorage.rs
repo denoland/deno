@@ -24,9 +24,5 @@ pub fn init(rt: &mut deno_core::JsRuntime, deno_dir: Option<PathBuf>) {
   super::reg_sync(rt, "op_webstorage_get", op_webstorage_get);
   super::reg_sync(rt, "op_webstorage_remove", op_webstorage_remove);
   super::reg_sync(rt, "op_webstorage_clear", op_webstorage_clear);
-  super::reg_sync(
-    rt,
-    "op_webstorage_iterate_keys",
-    op_webstorage_iterate_keys,
-  );
+  super::reg_sync(rt, "op_webstorage_iterate_keys", op_webstorage_iterate_keys);
 }
