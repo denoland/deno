@@ -22,7 +22,7 @@
   const WindowsSignal = {
     2: "SIGINT",
     SIGINT: 2,
-  }
+  };
 
   // From `kill -l`
   const LinuxSignal = {

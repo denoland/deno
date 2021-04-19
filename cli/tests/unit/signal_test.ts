@@ -97,63 +97,63 @@ unitTest(
 );
 
 unitTest(
-    { ignore: Deno.build.os !== "windows", perms: { run: true, net: true }},
-    async function signalWindowsStreamTest(): Promise<void> {
-        const resolvable = deferred();
-        // This prevents the program from exiting.
-        const t = setInterval(() => {}, 1000);
+  { ignore: Deno.build.os !== "windows", perms: { run: true, net: true } },
+  async function signalWindowsStreamTest(): Promise<void> {
+    const resolvable = deferred();
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
 
-        let c = 0;
-        const sig = Deno.signal(Deno.Signal.SIGINT);
-        setTimeout(async () => {
-            await defer(20);
-            for (const _ of Array(3)) {
-                // Sends SIGUSR1 3 times.
-                Deno.kill(Deno.pid, Deno.Signal.SIGINT);
-                await defer(20);
-            }
-            sig.dispose();
-            resolvable.resolve();
-        });
+    let c = 0;
+    const sig = Deno.signal(Deno.Signal.SIGINT);
+    setTimeout(async () => {
+      await defer(20);
+      for (const _ of Array(3)) {
+        // Sends SIGUSR1 3 times.
+        Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+        await defer(20);
+      }
+      sig.dispose();
+      resolvable.resolve();
+    });
 
-        for await (const _ of sig) {
-            c += 1;
-        }
+    for await (const _ of sig) {
+      c += 1;
+    }
 
-        assertEquals(c, 3);
+    assertEquals(c, 3);
 
-        clearInterval(t);
-        await resolvable;
-    },
+    clearInterval(t);
+    await resolvable;
+  },
 );
 
 unitTest(
-    { ignore: Deno.build.os !== "windows", perms: { run: true } },
-    async function signalWindowsPromiseTest(): Promise<void> {
-        const resolvable = deferred();
-        // This prevents the program from exiting.
-        const t = setInterval(() => {}, 1000);
+  { ignore: Deno.build.os !== "windows", perms: { run: true } },
+  async function signalWindowsPromiseTest(): Promise<void> {
+    const resolvable = deferred();
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
 
-        const sig = Deno.signal(Deno.Signal.SIGINT);
-        setTimeout(() => {
-            Deno.kill(Deno.pid, Deno.Signal.SIGINT);
-            resolvable.resolve();
-        }, 20);
-        await sig;
-        sig.dispose();
+    const sig = Deno.signal(Deno.Signal.SIGINT);
+    setTimeout(() => {
+      Deno.kill(Deno.pid, Deno.Signal.SIGINT);
+      resolvable.resolve();
+    }, 20);
+    await sig;
+    sig.dispose();
 
-        clearInterval(t);
-        await resolvable;
-    },
+    clearInterval(t);
+    await resolvable;
+  },
 );
 
 unitTest(
-    { ignore: Deno.build.os !== "windows", perms: { run: true } },
-    function signalWindowsShorthandsTest(): void {
-        const s: Deno.SignalStream = Deno.signals.interrupt(); // for SIGINT
-        assert(s instanceof Deno.SignalStream);
-        s.dispose();
-    },
+  { ignore: Deno.build.os !== "windows", perms: { run: true } },
+  function signalWindowsShorthandsTest(): void {
+    const s: Deno.SignalStream = Deno.signals.interrupt(); // for SIGINT
+    assert(s instanceof Deno.SignalStream);
+    s.dispose();
+  },
 );
 
 unitTest(
