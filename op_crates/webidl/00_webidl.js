@@ -594,6 +594,14 @@
       return a.key < b.key ? -1 : 1;
     });
 
+    const defaultValues = {};
+    for (const member of allMembers) {
+      if ("defaultValue" in member) {
+        const idlMemberValue = member.defaultValue;
+        defaultValues[member.key] = idlMemberValue;
+      }
+    }
+
     return function (V, opts = {}) {
       const typeV = type(V);
       switch (typeV) {
@@ -610,7 +618,7 @@
       }
       const esDict = V;
 
-      const idlDict = {};
+      const idlDict = Object.assign({}, defaultValues);
 
       for (const member of allMembers) {
         const key = member.key;
@@ -622,20 +630,12 @@
           esMemberValue = esDict[key];
         }
 
-        const context = `'${key}' of '${name}'${
-          opts.context ? ` (${opts.context})` : ""
-        }`;
-
         if (esMemberValue !== undefined) {
+          const context = `'${key}' of '${name}'${
+            opts.context ? ` (${opts.context})` : ""
+          }`;
           const converter = member.converter;
-          const idlMemberValue = converter(esMemberValue, {
-            ...opts,
-            context,
-          });
-          idlDict[key] = idlMemberValue;
-        } else if ("defaultValue" in member) {
-          const defaultValue = member.defaultValue;
-          const idlMemberValue = defaultValue;
+          const idlMemberValue = converter(esMemberValue, { ...opts, context });
           idlDict[key] = idlMemberValue;
         } else if (member.required) {
           throw makeException(
