@@ -197,6 +197,10 @@ impl Sources {
     self.0.lock().unwrap().get_source(specifier)
   }
 
+  pub fn len(&self) -> usize {
+    self.0.lock().unwrap().metadata.len()
+  }
+
   pub fn resolve_import(
     &self,
     specifier: &str,
@@ -211,8 +215,8 @@ impl Sources {
       .lock()
       .unwrap()
       .metadata
-      .iter()
-      .map(|(s, _)| s.clone())
+      .keys()
+      .map(|s| s.clone())
       .collect()
   }
 }

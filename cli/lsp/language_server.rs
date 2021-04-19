@@ -2095,18 +2095,59 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
+      let mut documents_specifiers = self.documents.specifiers();
+      documents_specifiers.sort();
+      let mut sources_specifiers = self.sources.specifiers();
+      sources_specifiers.sort();
+      let measures = self.performance.to_vec();
 
       contents.push_str(&format!(
         r#"# Deno Language Server Status
 
-  - Documents in memory: {}
+  - <details><summary>Documents in memory: {}</summary>
+
+    - {}
+
+  </details>
+
+  - <details><summary>Sources in memory: {}</summary>
+
+    - {}
+  
+  </details>
+
+  - <details><summary>Performance measures: {}</summary>
+
+    - {}
+
+  </details>
 "#,
-        self.documents.len()
+        self.documents.len(),
+        documents_specifiers
+          .into_iter()
+          .map(|s| s.to_string())
+          .collect::<Vec<String>>()
+          .join("\n    - "),
+        self.sources.len(),
+        sources_specifiers
+          .into_iter()
+          .map(|s| s.to_string())
+          .collect::<Vec<String>>()
+          .join("\n    - "),
+        measures.len(),
+        measures
+          .iter()
+          .map(|m| m.to_string())
+          .collect::<Vec<String>>()
+          .join("\n    - ")
       ));
-      contents.push_str("\n## Performance\n\n");
-      for average in self.performance.averages() {
+      contents
+        .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
+      let mut averages = self.performance.averages();
+      averages.sort();
+      for average in averages {
         contents.push_str(&format!(
-          "  - {}: {}ms ({})\n",
+          "|{}|{}ms|{}|\n",
           average.name, average.average_duration, average.count
         ));
       }

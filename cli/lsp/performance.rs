@@ -2,19 +2,27 @@
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
   pub count: u32,
   pub average_duration: u32,
+}
+
+impl Ord for PerformanceAverage {
+  fn cmp(&self, other: &Self) -> cmp::Ordering {
+    self.name.cmp(&other.name)
+  }
 }
 
 /// A structure which serves as a start of a measurement span.
@@ -31,6 +39,12 @@ pub struct PerformanceMeasure {
   pub name: String,
   pub count: u32,
   pub duration: Duration,
+}
+
+impl fmt::Display for PerformanceMeasure {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{} ({}ms)", self.name, self.duration.as_millis())
+  }
 }
 
 impl From<PerformanceMark> for PerformanceMeasure {
@@ -131,11 +145,16 @@ impl Performance {
     let measure = PerformanceMeasure::from(mark);
     let duration = measure.duration;
     let mut measures = self.measures.lock().unwrap();
-    measures.push_back(measure);
+    measures.push_front(measure);
     while measures.len() > self.max_size {
-      measures.pop_front();
+      measures.pop_back();
     }
     duration
+  }
+
+  pub fn to_vec(&self) -> Vec<PerformanceMeasure> {
+    let measures = self.measures.lock().unwrap();
+    measures.iter().map(|m| m.clone()).collect()
   }
 }
 
