@@ -110,19 +110,23 @@
    * @returns {Promise<InnerResponse>}
    */
   async function mainFetch(req, recursive) {
-    // TODO(lucacasonato): fast-path statically known body (somehow skip stream)
     /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
     let reqBody = null;
     if (req.body !== null) {
-      if (req.body.length === null) {
-        reqBody = req.body.stream;
+      if (req.body.streamOrStatic instanceof ReadableStream) {
+        if (req.body.length === null) {
+          reqBody = req.body.stream;
+        } else {
+          const reader = req.body.stream.getReader();
+          const r1 = await reader.read();
+          if (r1.done) throw new TypeError("Unreachable");
+          reqBody = r1.value;
+          const r2 = await reader.read();
+          if (!r2.done) throw new TypeError("Unreachable");
+        }
       } else {
-        const reader = req.body.stream.getReader();
-        const r1 = await reader.read();
-        if (r1.done) throw new TypeError("Unreachable");
-        reqBody = r1.value;
-        const r2 = await reader.read();
-        if (!r2.done) throw new TypeError("Unreachable");
+        req.body.streamOrStatic.consumed = true;
+        reqBody = req.body.streamOrStatic.body;
       }
     }
 

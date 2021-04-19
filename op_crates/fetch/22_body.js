@@ -23,18 +23,35 @@
   const { isReadableStreamDisturbed } = globalThis.__bootstrap.streams;
 
   class InnerBody {
-    /** @type {ReadableStream<Uint8Array>} */
-    stream;
+    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
+    streamOrStatic;
     /** @type {null | Uint8Array | Blob | FormData} */
     source = null;
     /** @type {null | number} */
     length = null;
 
     /**
-     * @param {ReadableStream<Uint8Array>} stream
+     * @param {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} stream
      */
     constructor(stream) {
-      this.stream = stream ?? new ReadableStream();
+      this.streamOrStatic = stream ??
+        { body: new Uint8Array(), consumed: false };
+    }
+
+    get stream() {
+      if (!(this.streamOrStatic instanceof ReadableStream)) {
+        const { body, consumed } = this.streamOrStatic;
+        this.streamOrStatic = new ReadableStream({
+          start(controller) {
+            controller.enqueue(body);
+            controller.close();
+          },
+        });
+        if (consumed) {
+          this.streamOrStatic.cancel();
+        }
+      }
+      return this.streamOrStatic;
     }
 
     /**
@@ -42,7 +59,21 @@
      * @returns {boolean}
      */
     unusable() {
-      return this.stream.locked || isReadableStreamDisturbed(this.stream);
+      if (this.streamOrStatic instanceof ReadableStream) {
+        return this.streamOrStatic.locked ||
+          isReadableStreamDisturbed(this.streamOrStatic);
+      }
+      return this.streamOrStatic.consumed;
+    }
+
+    /**
+     * @returns {boolean}
+     */
+    consumed() {
+      if (this.streamOrStatic instanceof ReadableStream) {
+        return isReadableStreamDisturbed(this.streamOrStatic);
+      }
+      return this.streamOrStatic.consumed;
     }
 
     /**
@@ -51,23 +82,28 @@
      */
     async consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
-      const reader = this.stream.getReader();
-      /** @type {Uint8Array[]} */
-      const chunks = [];
-      let totalLength = 0;
-      while (true) {
-        const { value: chunk, done } = await reader.read();
-        if (done) break;
-        chunks.push(chunk);
-        totalLength += chunk.byteLength;
+      if (this.streamOrStatic instanceof ReadableStream) {
+        const reader = this.stream.getReader();
+        /** @type {Uint8Array[]} */
+        const chunks = [];
+        let totalLength = 0;
+        while (true) {
+          const { value: chunk, done } = await reader.read();
+          if (done) break;
+          chunks.push(chunk);
+          totalLength += chunk.byteLength;
+        }
+        const finalBuffer = new Uint8Array(totalLength);
+        let i = 0;
+        for (const chunk of chunks) {
+          finalBuffer.set(chunk, i);
+          i += chunk.byteLength;
+        }
+        return finalBuffer;
+      } else {
+        this.streamOrStatic.consumed = true;
+        return this.streamOrStatic.body;
       }
-      const finalBuffer = new Uint8Array(totalLength);
-      let i = 0;
-      for (const chunk of chunks) {
-        finalBuffer.set(chunk, i);
-        i += chunk.byteLength;
-      }
-      return finalBuffer;
     }
 
     /**
@@ -119,7 +155,7 @@
         get() {
           webidl.assertBranded(this, prototype);
           if (this[bodySymbol] !== null) {
-            return isReadableStreamDisturbed(this[bodySymbol].stream);
+            return this[bodySymbol].consumed();
           }
           return false;
         },
@@ -221,6 +257,7 @@
    * @returns {{body: InnerBody, contentType: string | null}}
    */
   function extractBody(object) {
+    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
     let stream;
     let source = null;
     let length = null;
@@ -244,12 +281,7 @@
       source = copy;
     } else if (object instanceof FormData) {
       const res = encodeFormData(object);
-      stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(res.body);
-          controller.close();
-        },
-      });
+      stream = { body: res.body, consumed: false };
       source = object;
       length = res.body.byteLength;
       contentType = res.contentType;
@@ -266,12 +298,7 @@
       }
     }
     if (source instanceof Uint8Array) {
-      stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(source);
-          controller.close();
-        },
-      });
+      stream = { body: source, consumed: false };
       length = source.byteLength;
     }
     const body = new InnerBody(stream);

@@ -123,19 +123,23 @@
       // If response body length is known, it will be sent synchronously in a
       // single op, in other case a "response body" resource will be created and
       // we'll be streaming it.
-      // TODO(lucacasonato): fast-path statically known body (somehow skip stream)
       /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
       let respBody = null;
       if (innerResp.body !== null) {
-        if (innerResp.body.length === null) {
-          respBody = innerResp.body.stream;
+        if (innerResp.body instanceof ReadableStream) {
+          if (innerResp.body.length === null) {
+            respBody = innerResp.body.stream;
+          } else {
+            const reader = innerResp.body.stream.getReader();
+            const r1 = await reader.read();
+            if (r1.done) throw new TypeError("Unreachable");
+            respBody = r1.value;
+            const r2 = await reader.read();
+            if (!r2.done) throw new TypeError("Unreachable");
+          }
         } else {
-          const reader = innerResp.body.stream.getReader();
-          const r1 = await reader.read();
-          if (r1.done) throw new TypeError("Unreachable");
-          respBody = r1.value;
-          const r2 = await reader.read();
-          if (!r2.done) throw new TypeError("Unreachable");
+          innerResp.body.streamOrStatic.consumed = true;
+          respBody = innerResp.body.streamOrStatic.body;
         }
       }
 
