@@ -18,12 +18,6 @@ unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
   listener.close();
 });
 
-unitTest({ perms: { net: true } }, function netListenPortType(): void {
-  const listener = Deno.listen({ port: 0, transport: "tcp" });
-  listener.addr.port;
-  listener.close();
-});
-
 unitTest(
   {
     perms: { net: true },

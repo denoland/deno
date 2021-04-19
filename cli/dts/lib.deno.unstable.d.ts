@@ -909,7 +909,7 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unix" },
-  ): Listener<UnixAddr>;
+  ): Listener;
 
   /** **UNSTABLE**: new API, yet to be vetted
    *
@@ -969,11 +969,8 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
-    options: ConnectOptions,
-  ): Promise<Conn<NetAddr>>;
-  export function connect(
-    options: UnixConnectOptions,
-  ): Promise<Conn<UnixAddr>>;
+    options: ConnectOptions | UnixConnectOptions,
+  ): Promise<Conn>;
 
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
@@ -1000,9 +997,9 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function startTls(
-    conn: Conn<NetAddr>,
+    conn: Conn,
     options?: StartTlsOptions,
-  ): Promise<Conn<NetAddr>>;
+  ): Promise<Conn>;
 
   export interface ListenTlsOptions {
     /** **UNSTABLE**: new API, yet to be vetted.
