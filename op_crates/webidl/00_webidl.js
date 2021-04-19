@@ -580,10 +580,19 @@
     }
   }
 
+  function isEmptyObject(V) {
+    for (const _ in V) return false;
+    return true;
+  }
+
   function createDictionaryConverter(name, ...dictionaries) {
+    let hasRequiredKey = false;
     const allMembers = [];
     for (const members of dictionaries) {
       for (const member of members) {
+        if (member.required) {
+          hasRequiredKey = true;
+        }
         allMembers.push(member);
       }
     }
@@ -597,8 +606,23 @@
     const defaultValues = {};
     for (const member of allMembers) {
       if ("defaultValue" in member) {
-        const idlMemberValue = member.defaultValue;
-        defaultValues[member.key] = idlMemberValue;
+        let idlMemberValue = member.defaultValue;
+        let imvType = typeof idlMemberValue;
+        // Copy by value types can be directly assigned, copy by reference types
+        // need to be re-created for each allocation.
+        if (
+          imvType === "number" || imvType === "boolean" ||
+          imvType === "string" || imvType === "bigint" ||
+          imvType === "undefined"
+        ) {
+          defaultValues[member.key] = idlMemberValue;
+        } else {
+          Object.defineProperty(defaultValues, member.key, {
+            get() {
+              return member.defaultValue;
+            },
+          });
+        }
       }
     }
 
@@ -619,6 +643,13 @@
       const esDict = V;
 
       const idlDict = Object.assign({}, defaultValues);
+
+      // NOTE: fast path Null and Undefined and empty objects.
+      if (
+        (V === undefined || V === null || isEmptyObject(V)) && !hasRequiredKey
+      ) {
+        return idlDict;
+      }
 
       for (const member of allMembers) {
         const key = member.key;
