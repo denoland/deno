@@ -11,12 +11,18 @@ use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
   pub count: u32,
   pub average_duration: u32,
+}
+
+impl PartialOrd for PerformanceAverage {
+  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+    Some(self.cmp(other))
+  }
 }
 
 impl Ord for PerformanceAverage {
@@ -154,7 +160,7 @@ impl Performance {
 
   pub fn to_vec(&self) -> Vec<PerformanceMeasure> {
     let measures = self.measures.lock().unwrap();
-    measures.iter().map(|m| m.clone()).collect()
+    measures.iter().cloned().collect()
   }
 }
 

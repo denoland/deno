@@ -203,7 +203,7 @@ impl DocumentCache {
   }
 
   pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
-    self.docs.keys().map(|s| s.clone()).collect()
+    self.docs.keys().cloned().collect()
   }
 
   pub fn version(&self, specifier: &ModuleSpecifier) -> Option<i32> {

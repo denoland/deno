@@ -210,14 +210,7 @@ impl Sources {
   }
 
   pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
-    self
-      .0
-      .lock()
-      .unwrap()
-      .metadata
-      .keys()
-      .map(|s| s.clone())
-      .collect()
+    self.0.lock().unwrap().metadata.keys().cloned().collect()
   }
 }
 
