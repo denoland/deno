@@ -883,25 +883,14 @@ impl Classifications {
       let start_pos = line_index.position_tsc(offset.into());
       let end_pos = line_index.position_tsc(TextSize::from(offset + length));
 
-      for line in start_pos.line..=end_pos.line {
-        let start_character = if line == start_pos.line {
-          start_pos.character
-        } else {
-          0
-        };
-        let end_character = if line == end_pos.line {
-          end_pos.character
-        } else {
-          line_index.line_length_utf16(line).unwrap().into()
-        };
-        builder.push(
-          line,
-          start_character,
-          end_character - start_character,
-          token_type,
-          token_modifiers,
-        );
-      }
+      // start_pos.line == end_pos.line is always true as there are no multiline tokens
+      builder.push(
+        start_pos.line,
+        start_pos.character,
+        end_pos.character - start_pos.character,
+        token_type,
+        token_modifiers,
+      );
     }
     builder.build(None)
   }

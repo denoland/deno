@@ -189,16 +189,6 @@ impl LineIndex {
     }
   }
 
-  pub fn line_length_utf16(&self, line: u32) -> Result<TextSize, AnyError> {
-    let line_offset = self.utf16_offsets.get(line as usize);
-    let next_line_offset = self.utf16_offsets.get((line + 1) as usize);
-    if line_offset.is_none() || next_line_offset.is_none() {
-      return Err(custom_error("OutOfRange", "The line is out of range."));
-    }
-
-    Ok(next_line_offset.unwrap() - line_offset.unwrap())
-  }
-
   pub fn text_content_length_utf16(&self) -> TextSize {
     *self.utf16_offsets.last().unwrap()
   }
