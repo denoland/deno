@@ -73,7 +73,7 @@ async function main() {
   const { 0: benchName, 1: benchFilter } = Deno.args;
   // Print usage if no bench specified
   if (!benchName) {
-    console.log("flamebench <bench_name> [bench_filter]");
+    console.log("flamebench.js <bench_name> [bench_filter]");
     // Also show available benches
     console.log("\nAvailable benches:");
     const benches = await availableBenches();
