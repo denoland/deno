@@ -874,26 +874,23 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
-  export interface DatagramConn<Address extends Addr = Addr>
-    extends AsyncIterable<[Uint8Array, Address]> {
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
-    receive(p?: Uint8Array): Promise<[Uint8Array, Address]>;
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: Address): Promise<number>;
+    send(p: Uint8Array, addr: Addr): Promise<number>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Close closes the socket. Any pending message promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `UDPConn`. */
-    readonly addr: Address;
-    [Symbol.asyncIterator](): AsyncIterableIterator<
-      [Uint8Array, Address]
-    >;
+    readonly addr: Addr;
+    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
   export interface UnixListenOptions {
@@ -933,7 +930,7 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listenDatagram(
     options: ListenOptions & { transport: "udp" },
-  ): DatagramConn<NetAddr>;
+  ): DatagramConn;
 
   /** **UNSTABLE**: new API, yet to be vetted
    *
@@ -949,7 +946,7 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
-  ): DatagramConn<UnixAddr>;
+  ): DatagramConn;
 
   export interface UnixConnectOptions {
     transport: "unix";
@@ -1003,7 +1000,7 @@ declare namespace Deno {
    * Requires `allow-net` permission.
    */
   export function startTls(
-    conn: Conn,
+    conn: Conn<NetAddr>,
     options?: StartTlsOptions,
   ): Promise<Conn<NetAddr>>;
 

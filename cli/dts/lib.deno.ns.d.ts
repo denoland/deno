@@ -1726,20 +1726,18 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface Addr {
-    transport: string;
-  }
-
-  export interface NetAddr extends Addr {
+  export interface NetAddr {
     transport: "tcp" | "udp";
     hostname: string;
     port: number;
   }
 
-  export interface UnixAddr extends Addr {
+  export interface UnixAddr {
     transport: "unix" | "unixpacket";
     path: string;
   }
+
+  export type Addr = NetAddr | UnixAddr;
 
   /** A generic network listener for stream-oriented protocols. */
   export interface Listener<Address extends Addr = Addr>
