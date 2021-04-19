@@ -54,7 +54,7 @@ function latestBenchBin(name) {
 
 function runFlamegraph(benchBin, benchFilter, outputFile) {
   return bashThrough(
-    `sudo -E flamegraph -o ${outputFile} ${benchBin} ${benchFilter}`,
+    `sudo -E flamegraph -o ${outputFile} ${benchBin} ${benchFilter ?? ""}`,
     // Set $PROFILING env so benches can improve their flamegraphs
     { env: { "PROFILING": "1" } },
   );
@@ -108,7 +108,7 @@ async function main() {
 
   // Run flamegraph
   const outputFile = join(ROOT, "flamebench.svg");
-  await runFlamegraph(benchBin, benchFilter ?? "", outputFile);
+  await runFlamegraph(benchBin, benchFilter, outputFile);
 
   // Open flamegraph (in your browser / SVG viewer)
   if (await binExists("open")) {
