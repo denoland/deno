@@ -104,7 +104,7 @@ async function main() {
 
   // Run flamegraph
   const outputFile = join(ROOT, "flamebench.svg");
-  await runFlamegraph(benchBin, benchFilter, outputFile);
+  await runFlamegraph(benchBin, benchFilter ?? "", outputFile);
 
   // Open flamegraph (in your browser / SVG viewer)
   if (await binExists("open")) {
