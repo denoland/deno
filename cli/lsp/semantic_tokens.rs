@@ -1,5 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// The logic of this module is heavily influenced by
+// https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts
+// and https://github.com/microsoft/vscode/blob/main/src/vs/workbench/api/common/extHostTypes.ts
+// for the SemanticTokensBuilder implementation.
+
 use lspower::lsp::SemanticToken;
 use lspower::lsp::SemanticTokenModifier;
 use lspower::lsp::SemanticTokenType;
