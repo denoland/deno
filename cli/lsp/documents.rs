@@ -202,6 +202,10 @@ impl DocumentCache {
     }
   }
 
+  pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
+    self.docs.keys().cloned().collect()
+  }
+
   pub fn version(&self, specifier: &ModuleSpecifier) -> Option<i32> {
     self.docs.get(specifier).and_then(|doc| doc.version)
   }
