@@ -32,6 +32,7 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -100,6 +101,7 @@ enum ConnType {
 struct ConnResource {
   hyper_connection: ConnType,
   deno_service: Service,
+  addr: SocketAddr,
 }
 
 impl ConnResource {
@@ -190,7 +192,23 @@ async fn op_http_request_next(
         headers.push((name, value));
       }
 
-      let url = req.uri().to_string();
+      let url = {
+        let scheme = {
+          match conn_resource.hyper_connection {
+            ConnType::Tcp(_) => "http",
+            ConnType::Tls(_) => "https",
+          }
+        };
+        let host: Cow<str> = if let Some(host) = req.uri().host() {
+          Cow::Borrowed(host)
+        } else if let Some(host) = req.headers().get("HOST") {
+          Cow::Borrowed(host.to_str()?)
+        } else {
+          Cow::Owned(conn_resource.addr.to_string())
+        };
+        let path = req.uri().path_and_query().unwrap();
+        format!("{}://{}{}", scheme, host, path)
+      };
 
       let has_body = if let Some(exact_size) = req.size_hint().exact() {
         exact_size > 0
@@ -267,12 +285,14 @@ fn op_http_start(
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
+    let addr = tcp_stream.local_addr()?;
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
       .serve_connection(tcp_stream, deno_service.clone());
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tcp(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
+      addr,
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);
@@ -286,6 +306,7 @@ fn op_http_start(
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.unsplit(write_half);
+    let addr = tls_stream.get_ref().0.local_addr()?;
 
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
@@ -293,6 +314,7 @@ fn op_http_start(
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tls(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
+      addr,
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);

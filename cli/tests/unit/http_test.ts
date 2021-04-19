@@ -12,6 +12,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
     for await (const conn of listener) {
       const httpConn = Deno.serveHttp(conn);
       for await (const { request, respondWith } of httpConn) {
+        assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
         assertEquals(await request.text(), "");
         respondWith(new Response("Hello World", { headers: { "foo": "bar" } }));
       }

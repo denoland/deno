@@ -37,10 +37,10 @@ use log::warn;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
 use std::{borrow::Cow, cmp};
+use std::{collections::HashMap, path::Path};
 use text_size::{TextRange, TextSize};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -283,6 +283,13 @@ fn replace_links(text: &str) -> String {
 fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
   let re = Regex::new(r",|\s+").unwrap();
   re.split(kind_modifiers).collect()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OneOrMany<T> {
+  One(T),
+  Many(Vec<T>),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1023,6 +1030,182 @@ impl ReferenceEntry {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyItem {
+  name: String,
+  kind: ScriptElementKind,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  kind_modifiers: Option<String>,
+  file: String,
+  span: TextSpan,
+  selection_span: TextSpan,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  container_name: Option<String>,
+}
+
+impl CallHierarchyItem {
+  pub(crate) async fn try_resolve_call_hierarchy_item(
+    &self,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyItem> {
+    let target_specifier = resolve_url(&self.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(self.to_call_hierarchy_item(
+      &target_line_index,
+      language_server,
+      maybe_root_path,
+    ))
+  }
+
+  pub(crate) fn to_call_hierarchy_item(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> lsp::CallHierarchyItem {
+    let target_specifier = resolve_url(&self.file).unwrap();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&target_specifier)
+      .unwrap();
+
+    let use_file_name = self.is_source_file_item();
+    let maybe_file_path = if uri.scheme() == "file" {
+      uri.to_file_path().ok()
+    } else {
+      None
+    };
+    let name = if use_file_name {
+      if let Some(file_path) = maybe_file_path.as_ref() {
+        file_path.file_name().unwrap().to_string_lossy().to_string()
+      } else {
+        uri.to_string()
+      }
+    } else {
+      self.name.clone()
+    };
+    let detail = if use_file_name {
+      if let Some(file_path) = maybe_file_path.as_ref() {
+        // TODO: update this to work with multi root workspaces
+        let parent_dir = file_path.parent().unwrap();
+        if let Some(root_path) = maybe_root_path {
+          parent_dir
+            .strip_prefix(root_path)
+            .unwrap_or(parent_dir)
+            .to_string_lossy()
+            .to_string()
+        } else {
+          parent_dir.to_string_lossy().to_string()
+        }
+      } else {
+        String::new()
+      }
+    } else {
+      self.container_name.as_ref().cloned().unwrap_or_default()
+    };
+
+    let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+    if let Some(modifiers) = self.kind_modifiers.as_ref() {
+      let kind_modifiers = parse_kind_modifier(modifiers);
+      if kind_modifiers.contains("deprecated") {
+        tags = Some(vec![lsp::SymbolTag::Deprecated]);
+      }
+    }
+
+    lsp::CallHierarchyItem {
+      name,
+      tags,
+      uri,
+      detail: Some(detail),
+      kind: self.kind.clone().into(),
+      range: self.span.to_range(line_index),
+      selection_range: self.selection_span.to_range(line_index),
+      data: None,
+    }
+  }
+
+  fn is_source_file_item(&self) -> bool {
+    self.kind == ScriptElementKind::ScriptElement
+      || self.kind == ScriptElementKind::ModuleElement
+        && self.selection_span.start == 0
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyIncomingCall {
+  from: CallHierarchyItem,
+  from_spans: Vec<TextSpan>,
+}
+
+impl CallHierarchyIncomingCall {
+  pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
+    &self,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyIncomingCall> {
+    let target_specifier = resolve_url(&self.from.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(lsp::CallHierarchyIncomingCall {
+      from: self.from.to_call_hierarchy_item(
+        &target_line_index,
+        language_server,
+        maybe_root_path,
+      ),
+      from_ranges: self
+        .from_spans
+        .iter()
+        .map(|span| span.to_range(&target_line_index))
+        .collect(),
+    })
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyOutgoingCall {
+  to: CallHierarchyItem,
+  from_spans: Vec<TextSpan>,
+}
+
+impl CallHierarchyOutgoingCall {
+  pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyOutgoingCall> {
+    let target_specifier = resolve_url(&self.to.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(lsp::CallHierarchyOutgoingCall {
+      to: self.to.to_call_hierarchy_item(
+        &target_line_index,
+        language_server,
+        maybe_root_path,
+      ),
+      from_ranges: self
+        .from_spans
+        .iter()
+        .map(|span| span.to_range(&line_index))
+        .collect(),
+    })
   }
 }
 
@@ -2065,6 +2248,12 @@ pub enum RequestMethod {
   GetSmartSelectionRange((ModuleSpecifier, u32)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
+  /// Resolve a call hierarchy item for a specific position.
+  PrepareCallHierarchy((ModuleSpecifier, u32)),
+  /// Resolve incoming call hierarchy items for a specific position.
+  ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
+  /// Resolve outgoing call hierarchy items for a specific position.
+  ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
 }
 
 impl RequestMethod {
@@ -2201,6 +2390,36 @@ impl RequestMethod {
         "id": id,
         "method": "getSupportedCodeFixes",
       }),
+      RequestMethod::PrepareCallHierarchy((specifier, position)) => {
+        json!({
+          "id": id,
+          "method": "prepareCallHierarchy",
+          "specifier": specifier,
+          "position": position
+        })
+      }
+      RequestMethod::ProvideCallHierarchyIncomingCalls((
+        specifier,
+        position,
+      )) => {
+        json!({
+          "id": id,
+          "method": "provideCallHierarchyIncomingCalls",
+          "specifier": specifier,
+          "position": position
+        })
+      }
+      RequestMethod::ProvideCallHierarchyOutgoingCalls((
+        specifier,
+        position,
+      )) => {
+        json!({
+          "id": id,
+          "method": "provideCallHierarchyOutgoingCalls",
+          "specifier": specifier,
+          "position": position
+        })
+      }
     }
   }
 }
