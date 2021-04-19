@@ -97,6 +97,7 @@ pub fn server_capabilities(
     )),
     references_provider: Some(OneOf::Left(true)),
     document_highlight_provider: Some(OneOf::Left(true)),
+    // TODO: Provide a label once https://github.com/gluon-lang/lsp-types/pull/207 is merged
     document_symbol_provider: Some(OneOf::Left(true)),
     workspace_symbol_provider: None,
     code_action_provider: Some(code_action_provider),
