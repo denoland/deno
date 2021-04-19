@@ -5,23 +5,23 @@
   const core = window.Deno.core;
 
   function loadavg() {
-    return core.jsonOpSync("op_loadavg");
+    return core.opSync("op_loadavg");
   }
 
   function hostname() {
-    return core.jsonOpSync("op_hostname");
+    return core.opSync("op_hostname");
   }
 
   function osRelease() {
-    return core.jsonOpSync("op_os_release");
+    return core.opSync("op_os_release");
   }
 
   function systemMemoryInfo() {
-    return core.jsonOpSync("op_system_memory_info");
+    return core.opSync("op_system_memory_info");
   }
 
   function systemCpuInfo() {
-    const { cores, speed } = core.jsonOpSync("op_system_cpu_info");
+    const { cores, speed } = core.opSync("op_system_cpu_info");
     // Map nulls to undefined for compatibility
     return {
       cores: cores ?? undefined,
@@ -49,33 +49,33 @@
       return;
     }
 
-    core.jsonOpSync("op_exit", code);
+    core.opSync("op_exit", code);
     throw new Error("Code not reachable");
   }
 
   function setEnv(key, value) {
-    core.jsonOpSync("op_set_env", { key, value });
+    core.opSync("op_set_env", { key, value });
   }
 
   function getEnv(key) {
-    return core.jsonOpSync("op_get_env", key) ?? undefined;
+    return core.opSync("op_get_env", key) ?? undefined;
   }
 
   function deleteEnv(key) {
-    core.jsonOpSync("op_delete_env", key);
+    core.opSync("op_delete_env", key);
   }
 
   const env = {
     get: getEnv,
     toObject() {
-      return core.jsonOpSync("op_env");
+      return core.opSync("op_env");
     },
     set: setEnv,
     delete: deleteEnv,
   };
 
   function execPath() {
-    return core.jsonOpSync("op_exec_path");
+    return core.opSync("op_exec_path");
   }
 
   window.__bootstrap.os = {

@@ -34,7 +34,7 @@ declare global {
 
   interface DenoCore {
     // deno-lint-ignore no-explicit-any
-    jsonOpSync<T>(name: string, params: T): any;
+    opSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
     registerErrorClass(

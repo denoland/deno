@@ -2,27 +2,45 @@
 "use strict";
 
 ((window) => {
-  const assert = window.__bootstrap.util.assert;
   const core = window.Deno.core;
 
+  // Shamelessly cribbed from op_crates/fetch/11_streams.js
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  /**
+   * @param {unknown} cond
+   * @param {string=} msg
+   * @returns {asserts cond}
+   */
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
+
   function opStopGlobalTimer() {
-    core.jsonOpSync("op_global_timer_stop");
+    core.opSync("op_global_timer_stop");
   }
 
   function opStartGlobalTimer(timeout) {
-    return core.jsonOpSync("op_global_timer_start", timeout);
+    return core.opSync("op_global_timer_start", timeout);
   }
 
   async function opWaitGlobalTimer() {
-    await core.jsonOpAsync("op_global_timer");
+    await core.opAsync("op_global_timer");
   }
 
   function opNow() {
-    return core.jsonOpSync("op_now");
+    return core.opSync("op_now");
   }
 
   function sleepSync(millis = 0) {
-    return core.jsonOpSync("op_sleep_sync", millis);
+    return core.opSync("op_sleep_sync", millis);
   }
 
   // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
@@ -442,7 +460,7 @@
     if ("function" === typeof callback) {
       callback();
     } else {
-      eval(callback);
+      (0, eval)(callback);
     }
   }
 
