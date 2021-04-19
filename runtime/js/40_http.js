@@ -60,7 +60,7 @@
 
       const innerRequest = newInnerRequest(
         method,
-        new URL(url),
+        url,
         headersList,
         body !== null ? new InnerBody(body) : null,
       );

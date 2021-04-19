@@ -259,7 +259,7 @@
       const res = extractBody(request.body.source);
       request.body = res.body;
     }
-    request.urlList.push(locationURL);
+    request.urlList.push(locationURL.href);
     return mainFetch(request, true);
   }
 

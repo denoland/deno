@@ -35,20 +35,20 @@
   /**
    * @typedef InnerRequest
    * @property {string} method
-   * @property {URL} url
-   * @property {URL} currentUrl
+   * @property {string} url
+   * @property {string} currentUrl
    * @property {[string, string][]} headerList
    * @property {null | InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
-   * @property {URL[]} urlList
+   * @property {string[]} urlList
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
    */
 
   /**
    * 
    * @param {string} method 
-   * @param {URL} url 
+   * @param {string} url 
    * @param {[string, string][]} headerList 
    * @param {InnerBody} body 
    * @returns 
@@ -206,7 +206,7 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL, [], null);
+        request = newInnerRequest("GET", parsedURL.href, [], null);
       } else { // 6.
         if (!(input instanceof Request)) throw new TypeError("Unreachable");
         request = input[_request];
@@ -302,7 +302,7 @@
 
     get url() {
       webidl.assertBranded(this, Request);
-      return this[_request].url.toString();
+      return this[_request].url;
     }
 
     get headers() {

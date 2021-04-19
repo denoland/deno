@@ -42,8 +42,8 @@
   /**
    * @typedef InnerResponse
    * @property {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"} type
-   * @property {URL | null} url
-   * @property {URL[]} urlList
+   * @property {string | null} url
+   * @property {string[]} urlList
    * @property {number} status
    * @property {string} statusMessage
    * @property {[string, string][]} headerList
@@ -74,7 +74,7 @@
    * @returns {InnerResponse}
    */
   function cloneInnerResponse(response) {
-    const urlList = response.urlList.map((url) => new URL(url.toString()));
+    const urlList = [...response.urlList];
     const headerList = [...response.headerList.map((x) => [x[0], x[1]])];
     let body = null;
     if (response.body !== null) {
@@ -208,7 +208,7 @@
       const inner = newInnerResponse();
       inner.type = "default";
       inner.status = status;
-      inner.headerList.push(["Location", parsedURL.toString()]);
+      inner.headerList.push(["Location", parsedURL.href]);
       const response = webidl.createBranded(Response);
       response[_response] = inner;
       response[_headers] = headersFromHeaderList(
@@ -287,7 +287,7 @@
       if (url === null) return "";
       const newUrl = new URL(url);
       newUrl.hash = "";
-      return newUrl.toString();
+      return newUrl.href;
     }
 
     /**
