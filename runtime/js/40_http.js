@@ -96,16 +96,6 @@
     );
   }
 
-  /** IMPORTANT: Equivalent to `Array.from(headers).flat()` but more performant.
-   * Please preserve. */
-  function flattenHeaders(headers) {
-    const array = [];
-    for (const pair of headers) {
-      array.push(pair[0], pair[1]);
-    }
-    return array;
-  }
-
   function createRespondWith(responseSenderRid) {
     return async function respondWith(resp) {
       if (resp instanceof Promise) {
@@ -145,8 +135,8 @@
 
       const responseBodyRid = await Deno.core.opAsync("op_http_response", [
         responseSenderRid,
-        resp.status ?? 200,
-        flattenHeaders(resp.headers),
+        innerResp.status ?? 200,
+        innerResp.headerList,
       ], respBody instanceof Uint8Array ? respBody : null);
 
       // If `respond` returns a responseBodyRid, we should stream the body

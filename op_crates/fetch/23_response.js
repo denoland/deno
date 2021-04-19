@@ -233,37 +233,33 @@
         context: "Argument 2",
       });
 
-      if (init["status"] < 200 || init["status"] > 599) {
+      if (init.status < 200 || init.status > 599) {
         throw new RangeError(
-          `The status provided (${
-            init["status"]
-          }) is outside the range [200, 599].`,
+          `The status provided (${init.status}) is outside the range [200, 599].`,
         );
       }
 
-      if (!REASON_PHRASE_RE.test(init["statusText"])) {
+      if (!REASON_PHRASE_RE.test(init.statusText)) {
         throw new TypeError("Status text is not valid.");
       }
 
       this[webidl.brand] = webidl.brand;
-      this[_response] = newInnerResponse();
-      this[_headers] = headersFromHeaderList(
-        this[_response].headerList,
-        "response",
-      );
-      this[_response].status = init["status"];
-      this[_response].statusMessage = init["statusText"];
-      if (init["headers"] !== undefined) {
-        fillHeaders(this[_headers], init["headers"]);
+      const response = newInnerResponse();
+      this[_response] = response;
+      this[_headers] = headersFromHeaderList(response.headerList, "response");
+      response.status = init.status;
+      response.statusMessage = init.statusText;
+      if (init.headers !== undefined) {
+        fillHeaders(this[_headers], init.headers);
       }
       if (body !== null) {
-        if (nullBodyStatus(this[_response].status)) {
+        if (nullBodyStatus(response.status)) {
           throw new TypeError(
             "Response with null body status cannot have body",
           );
         }
         const res = extractBody(body);
-        this[_response].body = res.body;
+        response.body = res.body;
         if (res.contentType !== null && !this[_headers].has("content-type")) {
           this[_headers].append("Content-Type", res.contentType);
         }

@@ -375,40 +375,12 @@
     return V;
   }
 
-  const abByteLengthGetter = Object.getOwnPropertyDescriptor(
-    ArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
   function isNonSharedArrayBuffer(V) {
-    try {
-      // This will throw on SharedArrayBuffers, but not detached ArrayBuffers.
-      // (The spec says it should throw, but the spec conflicts with implementations: https://github.com/tc39/ecma262/issues/678)
-      abByteLengthGetter.call(V);
-
-      return true;
-    } catch {
-      return false;
-    }
+    return V instanceof ArrayBuffer;
   }
 
-  let sabByteLengthGetter;
-
   function isSharedArrayBuffer(V) {
-    // TODO(lucacasonato): vulnerable to prototype pollution. Needs to happen
-    // here because SharedArrayBuffer is not available during snapshotting.
-    if (!sabByteLengthGetter) {
-      sabByteLengthGetter = Object.getOwnPropertyDescriptor(
-        SharedArrayBuffer.prototype,
-        "byteLength",
-      ).get;
-    }
-    try {
-      sabByteLengthGetter.call(V);
-      return true;
-    } catch {
-      return false;
-    }
+    return V instanceof SharedArrayBuffer;
   }
 
   function isArrayBufferDetached(V) {
@@ -439,14 +411,8 @@
     return V;
   };
 
-  const dvByteLengthGetter = Object.getOwnPropertyDescriptor(
-    DataView.prototype,
-    "byteLength",
-  ).get;
   converters.DataView = (V, opts = {}) => {
-    try {
-      dvByteLengthGetter.call(V);
-    } catch (e) {
+    if (!(V instanceof DataView)) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 

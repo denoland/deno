@@ -264,7 +264,7 @@
       // 33.
       if (
         (request.method === "GET" || request.method === "HEAD") &&
-        ((init["body"] !== undefined && init["body"] !== null) ||
+        ((init.body !== undefined && init.body !== null) ||
           inputBody !== null)
       ) {
         throw new TypeError("HEAD and GET requests may not have a body.");
@@ -274,8 +274,8 @@
       let initBody = null;
 
       // 35.
-      if (init["body"] !== undefined && init["body"] !== null) {
-        const res = extractBody(init["body"]);
+      if (init.body !== undefined && init.body !== null) {
+        const res = extractBody(init.body);
         initBody = res.body;
         if (res.contentType !== null && !this[_headers].has("content-type")) {
           this[_headers].append("Content-Type", res.contentType);
@@ -292,7 +292,7 @@
       // TODO(lucacasonato): implement this step. Is it needed?
 
       // 40.
-      this[_request].body = finalBody;
+      request.body = finalBody;
     }
 
     get method() {

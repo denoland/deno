@@ -331,7 +331,7 @@ struct RespondArgs(
   // status:
   u16,
   // headers:
-  Vec<String>,
+  Vec<(String, String)>,
 );
 
 async fn op_http_response(
@@ -358,11 +358,9 @@ async fn op_http_response(
 
   let mut builder = Response::builder().status(status);
 
-  debug_assert_eq!(headers.len() % 2, 0);
-  let headers_count = headers.len() / 2;
-  builder.headers_mut().unwrap().reserve(headers_count);
-  for i in 0..headers_count {
-    builder = builder.header(&headers[2 * i], &headers[2 * i + 1]);
+  builder.headers_mut().unwrap().reserve(headers.len());
+  for (key, value) in &headers {
+    builder = builder.header(key, value);
   }
 
   let res;
