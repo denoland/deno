@@ -14,10 +14,14 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const {
+    HTTP_TAB_OR_SPACE_PREFIX_RE,
+    HTTP_TAB_OR_SPACE_SUFFIX_RE,
     HTTP_WHITESPACE_PREFIX_RE,
     HTTP_WHITESPACE_SUFFIX_RE,
     HTTP_TOKEN_CODE_POINT_RE,
     byteLowerCase,
+    collectSequenceOfCodepoints,
+    collectHttpQuotedString,
   } = window.__bootstrap.infra;
 
   const _headerList = Symbol("header list");
@@ -35,7 +39,7 @@
    */
 
   /**
-   * @typedef {string} potentialValue 
+   * @param {string} potentialValue 
    * @returns {string}
    */
   function normalizeHeaderValue(potentialValue) {
@@ -118,10 +122,54 @@
     }
   }
 
+  /**
+   * @param {HeaderList} list
+   * @param {string} name
+   * @returns {string[] | null}
+   */
+  function getDecodeSplitHeader(list, name) {
+    const initialValue = getHeader(list, name);
+    if (initialValue === null) return null;
+    const input = initialValue;
+    let position = 0;
+    const values = [];
+    let value = "";
+    while (position < initialValue.length) {
+      const res = collectSequenceOfCodepoints(
+        initialValue,
+        position,
+        (c) => c !== "\u0022" && c !== "\u002C",
+      );
+      value += res.result;
+      position = res.position;
+
+      if (position < initialValue.length) {
+        if (input[position] === "\u0022") {
+          const res = collectHttpQuotedString(input, position, false);
+          value += res.result;
+          position = res.position;
+          if (position < initialValue.length) {
+            continue;
+          }
+        } else {
+          if (input[position] !== "\u002C") throw new TypeError("Unreachable");
+          position += 1;
+        }
+      }
+
+      value = value.replaceAll(HTTP_TAB_OR_SPACE_PREFIX_RE, "");
+      value = value.replaceAll(HTTP_TAB_OR_SPACE_SUFFIX_RE, "");
+
+      values.push(value);
+      value = "";
+    }
+    return values;
+  }
+
   class Headers {
     /** @type {HeaderList} */
     [_headerList] = [];
-    /** @type {"immutable"|  "request"|  "request-no-cors"|  "response" | "none"} */
+    /** @type {"immutable" | "request" | "request-no-cors" | "response" | "none"} */
     [_guard];
 
     get [_iterableHeaders]() {
@@ -359,7 +407,40 @@
     Headers,
   );
 
+  /**
+   * @param {HeaderList} list
+   * @param {"immutable" | "request" | "request-no-cors" | "response" | "none"} guard
+   * @returns {Headers}
+   */
+  function headersFromHeaderList(list, guard) {
+    const headers = webidl.createBranded(Headers);
+    headers[_headerList] = list;
+    headers[_guard] = guard;
+    return headers;
+  }
+
+  /**
+   * @param {Headers}
+   * @returns {HeaderList}
+   */
+  function headerListFromHeaders(headers) {
+    return headers[_headerList];
+  }
+
+  /**
+   * @param {Headers}
+   * @returns {"immutable" | "request" | "request-no-cors" | "response" | "none"}
+   */
+  function guardFromHeaders(headers) {
+    return headers[_guard];
+  }
+
   window.__bootstrap.headers = {
     Headers,
+    headersFromHeaderList,
+    headerListFromHeaders,
+    fillHeaders,
+    getDecodeSplitHeader,
+    guardFromHeaders,
   };
 })(this);

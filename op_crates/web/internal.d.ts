@@ -28,11 +28,21 @@ declare namespace globalThis {
       HTTP_TOKEN_CODE_POINT_RE: RegExp;
       HTTP_QUOTED_STRING_TOKEN_POINT: string[];
       HTTP_QUOTED_STRING_TOKEN_POINT_RE: RegExp;
+      HTTP_TAB_OR_SPACE_PREFIX_RE: RegExp;
+      HTTP_TAB_OR_SPACE_SUFFIX_RE: RegExp;
       HTTP_WHITESPACE_PREFIX_RE: RegExp;
       HTTP_WHITESPACE_SUFFIX_RE: RegExp;
       regexMatcher(chars: string[]): string;
       byteUpperCase(s: string): string;
       byteLowerCase(s: string): string;
+      collectHttpQuotedString(
+        input: string,
+        position: number,
+        extractValue: boolean,
+      ): {
+        result: string;
+        position: number;
+      };
     };
 
     declare namespace mimesniff {
@@ -42,6 +52,8 @@ declare namespace globalThis {
         parameters: Map<string, string>;
       }
       declare function parseMimeType(input: string): MimeType | null;
+      declare function essence(mimeType: MimeType): string;
+      declare function serializeMimeType(mimeType: MimeType): string;
     }
 
     declare var eventTarget: {

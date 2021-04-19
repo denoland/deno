@@ -2,9 +2,9 @@
 "use strict";
 
 ((window) => {
-  const { Request, dontValidateUrl, lazyHeaders, fastBody, Response } =
+  const { InnerBody } = window.__bootstrap.fetchBody;
+  const { Response, fromInnerRequest, toInnerResponse, newInnerRequest } =
     window.__bootstrap.fetch;
-  const { Headers } = window.__bootstrap.headers;
   const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
   const { ReadableStream } = window.__bootstrap.streams;
@@ -53,18 +53,18 @@
       ] = nextRequest;
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
-      let body = undefined;
+      let body = null;
       if (typeof requestBodyRid === "number") {
         body = createRequestBodyStream(requestBodyRid);
       }
 
-      const request = new Request(url, {
-        body,
+      const innerRequest = newInnerRequest(
         method,
-        headers: headersList,
-        [dontValidateUrl]: true,
-        [lazyHeaders]: true,
-      });
+        new URL(url),
+        headersList,
+        body !== null ? new InnerBody(body) : null,
+      );
+      const request = fromInnerRequest(innerRequest, "immutable");
 
       const respondWith = createRespondWith(responseSenderRid, this.#rid);
 
@@ -117,46 +117,59 @@
           "First argument to respondWith must be a Response or a promise resolving to a Response.",
         );
       }
-      // If response body is Uint8Array it will be sent synchronously
-      // in a single op, in other case a "response body" resource will be
-      // created and we'll be streaming it.
-      const body = resp[fastBody]();
-      let zeroCopyBuf;
-      if (body instanceof ArrayBuffer) {
-        zeroCopyBuf = new Uint8Array(body);
-      } else if (!body) {
-        zeroCopyBuf = new Uint8Array(0);
-      } else {
-        zeroCopyBuf = null;
+
+      const innerResp = toInnerResponse(resp);
+
+      // If response body length is known, it will be sent synchronously in a
+      // single op, in other case a "response body" resource will be created and
+      // we'll be streaming it.
+      // TODO(lucacasonato): fast-path statically known body (somehow skip stream)
+      /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
+      let respBody = null;
+      if (innerResp.body !== null) {
+        if (innerResp.body.length === null) {
+          respBody = innerResp.body.stream;
+        } else {
+          const reader = innerResp.body.stream.getReader();
+          const r1 = await reader.read();
+          if (r1.done) throw new TypeError("Unreachable");
+          respBody = r1.value;
+          const r2 = await reader.read();
+          if (!r2.done) throw new TypeError("Unreachable");
+        }
       }
 
       const responseBodyRid = await Deno.core.opAsync("op_http_response", [
         responseSenderRid,
         resp.status ?? 200,
         flattenHeaders(resp.headers),
-      ], zeroCopyBuf);
+      ], respBody instanceof Uint8Array ? respBody : null);
 
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
-      if (typeof responseBodyRid === "number") {
-        if (!body || !(body instanceof ReadableStream)) {
-          throw new Error(
-            "internal error: recieved responseBodyRid, but response has no body or is not a stream",
-          );
+      if (responseBodyRid !== null) {
+        if (respBody === null || !(respBody instanceof ReadableStream)) {
+          throw new TypeError("Unreachable");
         }
-        for await (const chunk of body) {
-          const data = new Uint8Array(
-            chunk.buffer,
-            chunk.byteOffset,
-            chunk.byteLength,
-          );
-          await Deno.core.opAsync(
-            "op_http_response_write",
-            responseBodyRid,
-            data,
-          );
+        const reader = respBody.getReader();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!(value instanceof Uint8Array)) {
+            await reader.cancel("value not a Uint8Array");
+            break;
+          }
+          try {
+            await Deno.core.opAsync(
+              "op_http_response_write",
+              responseBodyRid,
+              value,
+            );
+          } catch (err) {
+            await reader.cancel(err);
+            break;
+          }
         }
-
         // Once all chunks are sent, and the request body is closed, we can close
         // the response body.
         await Deno.core.opAsync("op_http_response_close", responseBodyRid);

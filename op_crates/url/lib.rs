@@ -118,14 +118,21 @@ pub fn op_url_parse(
 
 pub fn op_url_parse_search_params(
   _state: &mut deno_core::OpState,
-  args: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  args: Option<String>,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Vec<(String, String)>, AnyError> {
-  let search_params: Vec<_> = form_urlencoded::parse(args.as_bytes())
-    .into_iter()
-    .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
-    .collect();
-  Ok(search_params)
+  let params = match (args, zero_copy) {
+    (None, Some(zero_copy)) => form_urlencoded::parse(&zero_copy)
+      .into_iter()
+      .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
+      .collect(),
+    (Some(args), None) => form_urlencoded::parse(args.as_bytes())
+      .into_iter()
+      .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
+      .collect(),
+    _ => return Err(type_error("invalid parameters")),
+  };
+  Ok(params)
 }
 
 pub fn op_url_stringify_search_params(

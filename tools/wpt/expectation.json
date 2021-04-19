@@ -627,28 +627,7 @@
       "Setting pathname with trailing U+001F (wpt++:)"
     ],
     "url-tojson.any.js": true,
-    "urlencoded-parser.any.js": [
-      "request.formData() with input: ﻿test=﻿",
-      "response.formData() with input: ﻿test=﻿",
-      "request.formData() with input: †&†=x",
-      "response.formData() with input: †&†=x",
-      "request.formData() with input: _charset_=windows-1252&test=%C2x",
-      "response.formData() with input: _charset_=windows-1252&test=%C2x",
-      "request.formData() with input: %=a",
-      "response.formData() with input: %=a",
-      "request.formData() with input: %a=a",
-      "response.formData() with input: %a=a",
-      "request.formData() with input: %a_=a",
-      "response.formData() with input: %a_=a",
-      "request.formData() with input: id=0&value=%",
-      "response.formData() with input: id=0&value=%",
-      "request.formData() with input: b=%2sf%2a",
-      "response.formData() with input: b=%2sf%2a",
-      "request.formData() with input: b=%2%2af%2a",
-      "response.formData() with input: b=%2%2af%2a",
-      "request.formData() with input: b=%%2a",
-      "response.formData() with input: b=%%2a"
-    ],
+    "urlencoded-parser.any.js": true,
     "urlsearchparams-append.any.js": true,
     "urlsearchparams-constructor.any.js": [
       "Construct with 2 unpaired surrogates (no trailing)",
@@ -672,18 +651,16 @@
   "fetch": {
     "api": {
       "request": {
-        "request-structure.any.js": [
-          "Check destination attribute",
-          "Check referrer attribute",
-          "Check referrerPolicy attribute",
-          "Check mode attribute",
-          "Check credentials attribute",
-          "Check cache attribute",
-          "Check redirect attribute",
-          "Check integrity attribute",
-          "Check isReloadNavigation attribute",
-          "Check isHistoryNavigation attribute"
-        ]
+        "request-init-002.any.js": true,
+        "request-init-stream.any.js": [
+          "Constructing a Request with a Request on which body.getReader() is called",
+          "Constructing a Request with a Request on which body.getReader().read() is called",
+          "Constructing a Request with a Request on which read() and releaseLock() are called"
+        ],
+        "request-consume-empty.any.js": [
+          "Consume empty FormData request body as text"
+        ],
+        "request-consume.any.js": true
       },
       "headers": {
         "headers-basic.any.js": true,
@@ -693,12 +670,143 @@
         "headers-normalize.any.js": true,
         "headers-record.any.js": true,
         "headers-structure.any.js": true
+      },
+      "basic": {
+        "request-head.any.js": true,
+        "request-headers-case.any.js": false,
+        "request-headers-nonascii.any.js": false,
+        "request-headers.any.js": [
+          "Fetch with PUT without body",
+          "Fetch with PUT with body",
+          "Fetch with POST without body",
+          "Fetch with POST with text body",
+          "Fetch with POST with FormData body",
+          "Fetch with POST with URLSearchParams body",
+          "Fetch with POST with Blob body",
+          "Fetch with POST with ArrayBuffer body",
+          "Fetch with POST with Uint8Array body",
+          "Fetch with POST with Int8Array body",
+          "Fetch with POST with Float32Array body",
+          "Fetch with POST with Float64Array body",
+          "Fetch with POST with DataView body",
+          "Fetch with POST with Blob body with mime type",
+          "Fetch with Chicken",
+          "Fetch with Chicken with body",
+          "Fetch with POST and mode \"same-origin\" needs an Origin header",
+          "Fetch with POST and mode \"no-cors\" needs an Origin header",
+          "Fetch with PUT and mode \"same-origin\" needs an Origin header",
+          "Fetch with TacO and mode \"same-origin\" needs an Origin header",
+          "Fetch with TacO and mode \"cors\" needs an Origin header"
+        ],
+        "text-utf8.any.js": true,
+        "accept-header.any.js": [
+          "Request through fetch should have a 'accept-language' header"
+        ],
+        "conditional-get.any.js": false,
+        "error-after-response.any.js": false,
+        "header-value-combining.any.js": false,
+        "header-value-null-byte.any.js": true,
+        "historical.any.js": true,
+        "http-response-code.any.js": true,
+        "integrity.sub.any.js": [
+          "Invalid integrity",
+          "Multiple integrities: invalid stronger than valid",
+          "Multiple integrities: both are invalid",
+          "CORS invalid integrity",
+          "Empty string integrity for opaque response"
+        ],
+        "request-upload.any.js": [
+          "Fetch with POST with ReadableStream",
+          "Fetch with POST with ReadableStream containing String",
+          "Fetch with POST with ReadableStream containing null",
+          "Fetch with POST with ReadableStream containing number",
+          "Fetch with POST with ReadableStream containing ArrayBuffer",
+          "Fetch with POST with ReadableStream containing Blob",
+          "Fetch with POST with text body on 421 response should be retried once on new connection."
+        ],
+        "response-url.sub.any.js": true,
+        "scheme-about.any.js": true,
+        "scheme-blob.sub.any.js": true,
+        "scheme-data.any.js": false,
+        "scheme-others.sub.any.js": true,
+        "stream-response.any.js": true,
+        "stream-safe-creation.any.js": false
+      },
+      "response": {
+        "json.any.js": true,
+        "response-init-001.any.js": true,
+        "response-init-002.any.js": true,
+        "response-static-error.any.js": true,
+        "response-static-redirect.any.js": true,
+        "response-stream-disturbed-1.any.js": true,
+        "response-stream-disturbed-2.any.js": true,
+        "response-stream-disturbed-3.any.js": true,
+        "response-stream-disturbed-4.any.js": true,
+        "response-stream-disturbed-5.any.js": true,
+        "response-stream-disturbed-6.any.js": true,
+        "response-stream-disturbed-by-pipe.any.js": true,
+        "response-stream-with-broken-then.any.js": [
+          "Attempt to inject {done: false, value: bye} via Object.prototype.then.",
+          "Attempt to inject value: undefined via Object.prototype.then.",
+          "Attempt to inject undefined via Object.prototype.then.",
+          "Attempt to inject 8.2 via Object.prototype.then.",
+          "intercepting arraybuffer to text conversion via Object.prototype.then should not be possible"
+        ],
+        "response-error-from-stream.any.js": true,
+        "response-error.any.js": true,
+        "response-from-stream.any.js": true,
+        "response-cancel-stream.any.js": true,
+        "response-clone.any.js": [
+          "Check response clone use structureClone for teed ReadableStreams (Int8Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Int16Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Int32Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (ArrayBufferchunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Uint8Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Uint8ClampedArraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Uint16Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Uint32Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (DataViewchunk)"
+        ],
+        "response-consume-empty.any.js": [
+          "Consume empty FormData response body as text"
+        ],
+        "response-consume-stream.any.js": true
+      },
+      "body": {
+        "mime-type.any.js": true
+      },
+      "redirect": {
+        "redirect-count.any.js": true,
+        "redirect-empty-location.any.js": [
+          "redirect response with empty Location, manual mode"
+        ],
+        "redirect-location.any.js": [
+          "Redirect 301 in \"manual\" mode without location",
+          "Redirect 301 in \"manual\" mode with invalid location",
+          "Redirect 301 in \"manual\" mode with data location",
+          "Redirect 302 in \"manual\" mode without location",
+          "Redirect 302 in \"manual\" mode with invalid location",
+          "Redirect 302 in \"manual\" mode with data location",
+          "Redirect 303 in \"manual\" mode without location",
+          "Redirect 303 in \"manual\" mode with invalid location",
+          "Redirect 303 in \"manual\" mode with data location",
+          "Redirect 307 in \"manual\" mode without location",
+          "Redirect 307 in \"manual\" mode with invalid location",
+          "Redirect 307 in \"manual\" mode with data location",
+          "Redirect 308 in \"manual\" mode without location",
+          "Redirect 308 in \"manual\" mode with invalid location",
+          "Redirect 308 in \"manual\" mode with data location"
+        ],
+        "redirect-method.any.js": true,
+        "redirect-schemes.any.js": true,
+        "redirect-to-dataurl.any.js": true
       }
     },
     "data-urls": {
       "base64.any.js": true,
       "processing.any.js": [
-        "\"data://test:test/,X\"",
         "\"data:text/plain;a=\\\",\\\",X\""
       ]
     }

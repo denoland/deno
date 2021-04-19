@@ -7,6 +7,7 @@ function buildBody(body: any, headers?: Headers): Body {
   const stub = new Request("http://foo/", {
     body: body,
     headers,
+    method: "POST",
   });
   return stub as Body;
 }

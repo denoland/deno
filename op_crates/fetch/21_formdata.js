@@ -442,6 +442,11 @@
      * @returns {FormData}
      */
     parse() {
+      // Body must be at least 2 boundaries + \r\n + -- on the last boundary.
+      if (this.body.length < (this.boundary.length * 2) + 4) {
+        throw new TypeError("Form data too short to be valid.");
+      }
+
       const formData = new FormData();
       let headerText = "";
       let boundaryIndex = 0;
@@ -525,5 +530,23 @@
     return parser.parse();
   }
 
-  globalThis.__bootstrap.formData = { FormData, encodeFormData, parseFormData };
+  /**
+   * @param {FormDataEntry[]} entries
+   * @returns {FormData} 
+   */
+  function formDataFromEntries(entries) {
+    const fd = new FormData();
+    fd[entryList] = entries;
+    return fd;
+  }
+
+  webidl.converters["FormData"] = webidl
+    .createInterfaceConverter("FormData", FormData);
+
+  globalThis.__bootstrap.formData = {
+    FormData,
+    encodeFormData,
+    parseFormData,
+    formDataFromEntries,
+  };
 })(globalThis);
