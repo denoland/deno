@@ -781,10 +781,14 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
+    truncate(len?: number): void;
+    truncateSync(len?: number): Promise<void>;
     read(p: Uint8Array): Promise<number | null>;
     readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
+    stat(): Promise<FileInfo>;
+    statSync(): FileInfo;
     close(): void;
   }
 
@@ -1722,40 +1726,44 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface NetAddr {
+  export interface Addr {
+    transport: string;
+  }
+
+  export interface NetAddr extends Addr {
     transport: "tcp" | "udp";
     hostname: string;
     port: number;
   }
 
-  export interface UnixAddr {
+  export interface UnixAddr extends Addr {
     transport: "unix" | "unixpacket";
     path: string;
   }
 
-  export type Addr = NetAddr | UnixAddr;
-
   /** A generic network listener for stream-oriented protocols. */
-  export interface Listener extends AsyncIterable<Conn> {
+  export interface Listener<Address extends Addr = Addr>
+    extends AsyncIterable<Conn<Address>> {
     /** Waits for and resolves to the next connection to the `Listener`. */
-    accept(): Promise<Conn>;
+    accept(): Promise<Conn<Address>>;
     /** Close closes the listener. Any pending accept promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `Listener`. */
-    readonly addr: Addr;
+    readonly addr: Address;
 
     /** Return the rid of the `Listener`. */
     readonly rid: number;
 
-    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<Conn<Address>>;
   }
 
-  export interface Conn extends Reader, Writer, Closer {
+  export interface Conn<Address extends Addr = Addr>
+    extends Reader, Writer, Closer {
     /** The local address of the connection. */
-    readonly localAddr: Addr;
+    readonly localAddr: Address;
     /** The remote address of the connection. */
-    readonly remoteAddr: Addr;
+    readonly remoteAddr: Address;
     /** The resource ID of the connection. */
     readonly rid: number;
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
@@ -1783,7 +1791,7 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listen(
     options: ListenOptions & { transport?: "tcp" },
-  ): Listener;
+  ): Listener<NetAddr>;
 
   export interface ListenTlsOptions extends ListenOptions {
     /** Server certificate file. */
@@ -1802,7 +1810,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission. */
-  export function listenTls(options: ListenTlsOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): Listener<NetAddr>;
 
   export interface ConnectOptions {
     /** The port to connect to. */
@@ -1825,7 +1833,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission for "tcp". */
-  export function connect(options: ConnectOptions): Promise<Conn>;
+  export function connect(options: ConnectOptions): Promise<Conn<NetAddr>>;
 
   export interface ConnectTlsOptions {
     /** The port to connect to. */
@@ -1851,7 +1859,9 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(
+    options: ConnectTlsOptions,
+  ): Promise<Conn<NetAddr>>;
 
   /** Shutdown socket send operations.
    *
@@ -2160,6 +2170,7 @@ declare namespace Deno {
 
   export interface EnvPermissionDescriptor {
     name: "env";
+    variable?: string;
   }
 
   export interface PluginPermissionDescriptor {
@@ -2386,4 +2397,26 @@ declare namespace Deno {
    * ```
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /** 
+   * Synchronously returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstatSync(rid: number): FileInfo;
+
+  /**
+   * Returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { read: true });
+   * const fileInfo = await Deno.fstat(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstat(rid: number): Promise<FileInfo>;
 }

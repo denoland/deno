@@ -13,7 +13,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
       const httpConn = Deno.serveHttp(conn);
       for await (const { request, respondWith } of httpConn) {
         assertEquals(await request.text(), "");
-        respondWith(new Response("Hello World"));
+        respondWith(new Response("Hello World", { headers: { "foo": "bar" } }));
       }
       break;
     }
@@ -24,6 +24,7 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   });
   const text = await resp.text();
   assertEquals(text, "Hello World");
+  assertEquals(resp.headers.get("foo"), "bar");
   await promise;
 });
 
@@ -197,5 +198,32 @@ unitTest(
     assertEquals("Hello World", respBody);
     await promise;
     client.close();
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerRegressionHang() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const event = await httpConn.nextRequest();
+      assert(event);
+      const { request, respondWith } = event;
+      const reqBody = await request.text();
+      assertEquals("request", reqBody);
+      await respondWith(new Response("response"));
+      httpConn.close();
+      listener.close();
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      method: "POST",
+      body: "request",
+    });
+    const respBody = await resp.text();
+    assertEquals("response", respBody);
+    await promise;
   },
 );

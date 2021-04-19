@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
+use crate::permissions::EnvDescriptor;
 use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
@@ -80,15 +82,11 @@ pub fn init(
     let create_module_loader = CreateWebWorkerCbHolder(create_web_worker_cb);
     state.put::<CreateWebWorkerCbHolder>(create_module_loader);
   }
-  super::reg_json_sync(rt, "op_create_worker", op_create_worker);
-  super::reg_json_sync(
-    rt,
-    "op_host_terminate_worker",
-    op_host_terminate_worker,
-  );
-  super::reg_json_sync(rt, "op_host_post_message", op_host_post_message);
-  super::reg_json_async(rt, "op_host_get_message", op_host_get_message);
-  super::reg_json_sync(
+  super::reg_sync(rt, "op_create_worker", op_create_worker);
+  super::reg_sync(rt, "op_host_terminate_worker", op_host_terminate_worker);
+  super::reg_sync(rt, "op_host_post_message", op_host_post_message);
+  super::reg_async(rt, "op_host_get_message", op_host_get_message);
+  super::reg_sync(
     rt,
     "op_host_unhandled_error",
     move |_state, message: String, _zero_copy| {
@@ -190,6 +188,26 @@ fn merge_write_permission(
   Ok(main)
 }
 
+fn merge_env_permission(
+  mut main: UnaryPermission<EnvDescriptor>,
+  worker: Option<UnaryPermission<EnvDescriptor>>,
+) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
 fn merge_run_permission(
   mut main: UnaryPermission<RunDescriptor>,
   worker: Option<UnaryPermission<RunDescriptor>>,
@@ -215,7 +233,7 @@ fn create_worker_permissions(
   worker_perms: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
   Ok(Permissions {
-    env: merge_boolean_permission(main_perms.env, worker_perms.env)?,
+    env: merge_env_permission(main_perms.env, worker_perms.env)?,
     hrtime: merge_boolean_permission(main_perms.hrtime, worker_perms.hrtime)?,
     net: merge_net_permission(main_perms.net, worker_perms.net)?,
     plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
@@ -227,8 +245,8 @@ fn create_worker_permissions(
 
 #[derive(Debug, Deserialize)]
 struct PermissionsArg {
-  #[serde(default, deserialize_with = "as_permission_state")]
-  env: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_env_permission")]
+  env: Option<UnaryPermission<EnvDescriptor>>,
   #[serde(default, deserialize_with = "as_permission_state")]
   hrtime: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_net_permission")]
@@ -366,6 +384,26 @@ where
   Ok(Some(UnaryPermission::<WriteDescriptor> {
     global_state: value.global_state,
     granted_list: resolve_write_allowlist(&Some(paths)),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_env_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<EnvDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<EnvDescriptor> {
+    global_state: value.global_state,
+    granted_list: value
+      .paths
+      .into_iter()
+      .map(|env| EnvDescriptor(env.to_uppercase()))
+      .collect(),
     ..Default::default()
   }))
 }

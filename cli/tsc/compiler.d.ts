@@ -34,7 +34,7 @@ declare global {
 
   interface DenoCore {
     // deno-lint-ignore no-explicit-any
-    jsonOpSync<T>(name: string, params: T): any;
+    opSync<T>(name: string, params: T): any;
     ops(): void;
     print(msg: string, code?: number): void;
     registerErrorClass(
@@ -63,7 +63,10 @@ declare global {
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
-    | GetSupportedCodeFixes;
+    | GetSupportedCodeFixes
+    | PrepareCallHierarchy
+    | ProvideCallHierarchyIncomingCalls
+    | ProvideCallHierarchyOutgoingCalls;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -184,5 +187,25 @@ declare global {
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
     method: "getSupportedCodeFixes";
+  }
+
+  interface PrepareCallHierarchy extends BaseLanguageServerRequest {
+    method: "prepareCallHierarchy";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyIncomingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyIncomingCalls";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyOutgoingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyOutgoingCalls";
+    specifier: string;
+    position: number;
   }
 }

@@ -4,7 +4,6 @@ use crate::error::AnyError;
 use crate::serialize_op_result;
 use crate::Op;
 use crate::OpFn;
-use crate::OpPayload;
 use crate::OpState;
 use crate::ZeroCopyBuf;
 use serde::de::DeserializeOwned;
@@ -25,18 +24,18 @@ use std::rc::Rc;
 /// When registering an op like this...
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
-/// runtime.register_op("hello", deno_core::json_op_sync(Self::hello_op));
+/// runtime.register_op("hello", deno_core::op_sync(Self::hello_op));
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
 /// Deno.core.ops();
-/// let result = Deno.core.jsonOpSync("function_name", args);
+/// let result = Deno.core.opSync("function_name", args);
 /// ```
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
+pub fn op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
   V: DeserializeOwned,
@@ -63,51 +62,39 @@ where
 /// When registering an op like this...
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
-/// runtime.register_op("hello", deno_core::json_op_async(Self::hello_op));
+/// runtime.register_op("hello", deno_core::op_async(Self::hello_op));
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
 /// Deno.core.ops();
-/// let future = Deno.core.jsonOpAsync("function_name", args);
+/// let future = Deno.core.opAsync("function_name", args);
 /// ```
 ///
 /// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
 /// A more complete example is available in the examples directory.
-pub fn json_op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
+pub fn op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
   V: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
-  let try_dispatch_op = move |state: Rc<RefCell<OpState>>,
-                              p: OpPayload,
-                              buf: Option<ZeroCopyBuf>|
-        -> Result<Op, AnyError> {
-    let pid = p.promise_id;
-    // Parse args
-    let args = p.deserialize()?;
+  Box::new(move |state, payload, buf| -> Op {
+    let pid = payload.promise_id;
+    // Deserialize args, sync error on failure
+    let args = match payload.deserialize() {
+      Ok(args) => args,
+      Err(err) => {
+        return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+      }
+    };
 
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), args, buf)
       .map(move |result| (pid, serialize_op_result(result, state)));
-    Ok(Op::Async(Box::pin(fut)))
-  };
-
-  Box::new(
-    move |state: Rc<RefCell<OpState>>,
-          p: OpPayload,
-          b: Option<ZeroCopyBuf>|
-          -> Op {
-      match try_dispatch_op(state.clone(), p, b) {
-        Ok(op) => op,
-        Err(err) => {
-          Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
-        }
-      }
-    },
-  )
+    Op::Async(Box::pin(fut))
+  })
 }
 
 #[cfg(test)]
@@ -115,7 +102,7 @@ mod tests {
   use super::*;
 
   #[tokio::test]
-  async fn json_op_async_stack_trace() {
+  async fn op_async_stack_trace() {
     let mut runtime = crate::JsRuntime::new(Default::default());
 
     async fn op_throw(
@@ -128,7 +115,7 @@ mod tests {
       Err(crate::error::generic_error("foo"))
     }
 
-    runtime.register_op("op_throw", json_op_async(op_throw));
+    runtime.register_op("op_throw", op_async(op_throw));
     runtime
       .execute(
         "<init>",
@@ -139,7 +126,7 @@ mod tests {
     Deno.core.registerErrorClass('Error', Error);
 
     async function f1() {
-      await Deno.core.jsonOpAsync('op_throw', 'hello');
+      await Deno.core.opAsync('op_throw', 'hello');
     }
 
     async function f2() {

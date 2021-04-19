@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_file"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 description = "File API implementation for Deno"
 authors = ["the Deno authors"]
@@ -14,5 +14,5 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.83.0", path = "../../core" }
+deno_core = { version = "0.84.0", path = "../../core" }
 uuid = { version = "0.8.2", features = ["v4"] }

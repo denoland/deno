@@ -59,16 +59,16 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("01_fetch_util.js"),
     ),
     (
-      "deno:op_crates/fetch/03_dom_iterable.js",
-      include_str!("03_dom_iterable.js"),
-    ),
-    (
       "deno:op_crates/fetch/11_streams.js",
       include_str!("11_streams.js"),
     ),
     (
       "deno:op_crates/fetch/20_headers.js",
       include_str!("20_headers.js"),
+    ),
+    (
+      "deno:op_crates/fetch/21_formdata.js",
+      include_str!("21_formdata.js"),
     ),
     (
       "deno:op_crates/fetch/26_fetch.js",
@@ -86,19 +86,19 @@ pub struct HttpClientDefaults {
 }
 
 pub trait FetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError>;
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
 /// For use with `op_fetch` when the user does not want permissions.
 pub struct NoFetchPermissions;
 
 impl FetchPermissions for NoFetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError> {
     Ok(())
   }
 
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -161,7 +161,7 @@ where
   let scheme = url.scheme();
   let (request_rid, request_body_rid) = match scheme {
     "http" | "https" => {
-      let permissions = state.borrow::<FP>();
+      let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url)?;
 
       let mut request = client.request(method, url);
@@ -442,7 +442,7 @@ where
   FP: FetchPermissions + 'static,
 {
   if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow::<FP>();
+    let permissions = state.borrow_mut::<FP>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 

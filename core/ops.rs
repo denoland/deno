@@ -61,7 +61,7 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
 }
 
 pub enum OpResponse {
-  Value(Box<dyn serde_v8::Serializable>),
+  Value(OpResult),
   Buffer(Box<[u8]>),
 }
 
@@ -74,11 +74,21 @@ pub enum Op {
   NotFound,
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
-pub enum OpResult<R> {
-  Ok(R),
+pub enum OpResult {
+  Ok(serde_v8::SerializablePkg),
   Err(OpError),
+}
+
+impl OpResult {
+  pub fn to_v8<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, serde_v8::Error> {
+    match self {
+      Self::Ok(x) => x.to_v8(scope),
+      Self::Err(err) => serde_v8::to_v8(scope, err),
+    }
+  }
 }
 
 #[derive(Serialize)]
@@ -93,13 +103,13 @@ pub fn serialize_op_result<R: Serialize + 'static>(
   result: Result<R, AnyError>,
   state: Rc<RefCell<OpState>>,
 ) -> OpResponse {
-  OpResponse::Value(Box::new(match result {
-    Ok(v) => OpResult::Ok(v),
+  OpResponse::Value(match result {
+    Ok(v) => OpResult::Ok(v.into()),
     Err(err) => OpResult::Err(OpError {
       class_name: (state.borrow().get_error_class_fn)(&err),
       message: err.to_string(),
     }),
-  }))
+  })
 }
 
 /// Maintains the resources and ops inside a JS runtime.
@@ -188,7 +198,7 @@ impl Default for OpTable {
 /// Return map of resources with id as key
 /// and string representation as value.
 ///
-/// This op must be wrapped in `json_op_sync`.
+/// This op must be wrapped in `op_sync`.
 pub fn op_resources(
   state: &mut OpState,
   _args: (),
@@ -204,7 +214,7 @@ pub fn op_resources(
 
 /// Remove a resource from the resource table.
 ///
-/// This op must be wrapped in `json_op_sync`.
+/// This op must be wrapped in `op_sync`.
 pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
