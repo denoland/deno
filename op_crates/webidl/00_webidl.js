@@ -606,8 +606,8 @@
     const defaultValues = {};
     for (const member of allMembers) {
       if ("defaultValue" in member) {
-        let idlMemberValue = member.defaultValue;
-        let imvType = typeof idlMemberValue;
+        const idlMemberValue = member.defaultValue;
+        const imvType = typeof idlMemberValue;
         // Copy by value types can be directly assigned, copy by reference types
         // need to be re-created for each allocation.
         if (
