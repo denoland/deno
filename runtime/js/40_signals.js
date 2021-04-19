@@ -18,6 +18,12 @@
     core.opSync("op_signal_unbind", rid);
   }
 
+  // only support ctrl-c
+  const WindowsSignal = {
+    2: "SIGINT",
+    SIGINT: 2,
+  }
+
   // From `kill -l`
   const LinuxSignal = {
     1: "SIGHUP",
@@ -155,6 +161,8 @@
   function setSignals() {
     if (build.os === "darwin") {
       Object.assign(Signal, MacOSSignal);
+    } else if (build.os === "windows") {
+      Object.assign(Signal, WindowsSignal);
     } else {
       Object.assign(Signal, LinuxSignal);
     }
@@ -162,7 +170,7 @@
 
   function signal(signo) {
     if (build.os === "windows" && signo !== Signal.SIGINT) {
-      throw new Error("not implemented!");
+      throw new Error("Windows only supports ctrl-c(SIGINT)!");
     }
     return new SignalStream(signo);
   }
