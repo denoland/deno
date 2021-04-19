@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "textDocument/prepareCallHierarchy",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "position": {
+      "line": 5,
+      "character": 3
+    }
+  }
+}
