@@ -2357,6 +2357,7 @@ mod tests {
   use std::fs;
   use std::task::Poll;
   use std::time::Instant;
+  use tempfile::TempDir;
   use tower_test::mock::Spawn;
 
   enum LspResponse<V>
@@ -2371,7 +2372,13 @@ mod tests {
     RequestFixture(u64, String),
   }
 
-  type LspTestHarnessRequest = (&'static str, LspResponse<fn(Value)>);
+  enum LspFixture {
+    None,
+    Path(&'static str),
+    Value(Value),
+  }
+
+  type LspTestHarnessRequest = (LspFixture, LspResponse<fn(Value)>);
 
   struct LspTestHarness {
     requests: Vec<LspTestHarnessRequest>,
@@ -2386,19 +2393,25 @@ mod tests {
     }
 
     async fn run(&mut self) {
-      for (req_path_str, expected) in self.requests.iter() {
+      for (value_or_str, expected) in self.requests.iter() {
         assert_eq!(self.service.poll_ready(), Poll::Ready(Ok(())));
         let fixtures_path = test_util::root_path().join("cli/tests/lsp");
         assert!(fixtures_path.is_dir());
         let response: Result<Option<jsonrpc::Outgoing>, ExitedError> =
-          if req_path_str.is_empty() {
-            Ok(None)
-          } else {
-            let req_path = fixtures_path.join(req_path_str);
-            let req_str = fs::read_to_string(req_path).unwrap();
-            let req: jsonrpc::Incoming =
-              serde_json::from_str(&req_str).unwrap();
-            self.service.call(req).await
+          match value_or_str {
+            LspFixture::None => Ok(None),
+            LspFixture::Path(req_path_str) => {
+              let req_path = fixtures_path.join(req_path_str);
+              let req_str = fs::read_to_string(req_path).unwrap();
+              let req: jsonrpc::Incoming =
+                serde_json::from_str(&req_str).unwrap();
+              self.service.call(req).await
+            }
+            LspFixture::Value(value) => {
+              let req: jsonrpc::Incoming =
+                serde_json::from_value(value.clone()).unwrap();
+              self.service.call(req).await
+            }
           };
         match response {
           Ok(result) => match expected {
@@ -2446,13 +2459,22 @@ mod tests {
   #[tokio::test]
   async fn test_startup_shutdown() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "shutdown_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2460,11 +2482,20 @@ mod tests {
   #[tokio::test]
   async fn test_hover() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2489,10 +2520,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2500,16 +2534,28 @@ mod tests {
   #[tokio::test]
   async fn test_hover_asset() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_asset.json", LspResponse::None),
-      ("definition_request_asset.json", LspResponse::RequestAny),
       (
-        "virtual_text_document_request.json",
+        LspFixture::Path("initialize_request.json"),
         LspResponse::RequestAny,
       ),
       (
-        "hover_request_asset.json",
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_asset.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("definition_request_asset.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("virtual_text_document_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("hover_request_asset.json"),
         LspResponse::Request(
           5,
           json!({
@@ -2534,10 +2580,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2545,15 +2594,30 @@ mod tests {
   #[tokio::test]
   async fn test_hover_disabled() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request_disabled.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification.json", LspResponse::None),
-      ("hover_request.json", LspResponse::Request(2, json!(null))),
       (
-        "shutdown_request.json",
+        LspFixture::Path("initialize_request_disabled.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
+        LspResponse::Request(2, json!(null)),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2561,11 +2625,20 @@ mod tests {
   #[tokio::test]
   async fn test_hover_unstable_disabled() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_unstable.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_unstable.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2589,10 +2662,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2600,11 +2676,20 @@ mod tests {
   #[tokio::test]
   async fn test_hover_unstable_enabled() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request_unstable.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_unstable.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request_unstable.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_unstable.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2629,10 +2714,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2640,12 +2728,24 @@ mod tests {
   #[tokio::test]
   async fn test_hover_change_mbc() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_mbc.json", LspResponse::None),
-      ("did_change_notification_mbc.json", LspResponse::None),
       (
-        "hover_request_mbc.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_mbc.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_mbc.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request_mbc.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2670,10 +2770,190 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[derive(Deserialize)]
+  struct HoverResponse {
+    pub result: Option<Hover>,
+  }
+
+  #[tokio::test]
+  async fn test_hover_closed_document() {
+    let temp_dir = TempDir::new()
+      .expect("could not create temp dir")
+      .into_path();
+    let a_path = temp_dir.join("a.ts");
+    fs::write(a_path, r#"export const a = "a";"#)
+      .expect("could not write file");
+    let b_path = temp_dir.join("b.ts");
+    fs::write(&b_path, r#"export * from "./a.ts";"#)
+      .expect("could not write file");
+    let b_specifier =
+      Url::from_file_path(b_path).expect("could not convert path");
+    let c_path = temp_dir.join("c.ts");
+    fs::write(&c_path, "import { a } from \"./b.ts\";\nconsole.log(a);\n")
+      .expect("could not write file");
+    let c_specifier =
+      Url::from_file_path(c_path).expect("could not convert path");
+
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "method": "textDocument/didOpen",
+          "params": {
+            "textDocument": {
+              "uri": b_specifier,
+              "languageId": "typescript",
+              "version": 1,
+              "text": r#"export * from "./a.ts";"#
+            }
+          }
+        })),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "method": "textDocument/didOpen",
+          "params": {
+            "textDocument": {
+              "uri": c_specifier,
+              "languageId": "typescript",
+              "version": 1,
+              "text": "import { a } from \"./b.ts\";\nconsole.log(a);\n",
+            }
+          }
+        })),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "id": 2,
+          "method": "textDocument/hover",
+          "params": {
+            "textDocument": {
+              "uri": c_specifier,
+            },
+            "position": {
+              "line": 0,
+              "character": 10
+            }
+          }
+        })),
+        LspResponse::RequestAssert(|value| {
+          let resp: HoverResponse = serde_json::from_value(value).unwrap();
+          if let Some(hover) = resp.result {
+            assert_eq!(
+              hover,
+              Hover {
+                contents: HoverContents::Array(vec![
+                  MarkedString::LanguageString(LanguageString {
+                    language: "typescript".to_string(),
+                    value: "(alias) const a: \"a\"\nimport a".to_string()
+                  }),
+                  MarkedString::String("".to_string()),
+                ]),
+                range: Some(Range {
+                  start: Position {
+                    line: 0,
+                    character: 9,
+                  },
+                  end: Position {
+                    line: 0,
+                    character: 10,
+                  }
+                }),
+              }
+            );
+          } else {
+            panic!("no response");
+          }
+        }),
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "method": "textDocument/didClose",
+          "params": {
+            "textDocument": {
+              "uri": b_specifier,
+            }
+          }
+        })),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "id": 4,
+          "method": "textDocument/hover",
+          "params": {
+            "textDocument": {
+              "uri": c_specifier,
+            },
+            "position": {
+              "line": 0,
+              "character": 10
+            }
+          }
+        })),
+        LspResponse::RequestAssert(|value| {
+          let resp: HoverResponse = serde_json::from_value(value).unwrap();
+          if let Some(hover) = resp.result {
+            assert_eq!(
+              hover,
+              Hover {
+                contents: HoverContents::Array(vec![
+                  MarkedString::LanguageString(LanguageString {
+                    language: "typescript".to_string(),
+                    value: "(alias) const a: \"a\"\nimport a".to_string()
+                  }),
+                  MarkedString::String("".to_string()),
+                ]),
+                range: Some(Range {
+                  start: Position {
+                    line: 0,
+                    character: 9,
+                  },
+                  end: Position {
+                    line: 0,
+                    character: 10,
+                  }
+                }),
+              }
+            );
+          } else {
+            panic!("no response");
+          }
+        }),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2681,14 +2961,20 @@ mod tests {
   #[tokio::test]
   async fn test_call_hierarchy() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "prepare_call_hierarchy_did_open_notification.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "prepare_call_hierarchy_request.json",
+        LspFixture::Path("prepare_call_hierarchy_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("prepare_call_hierarchy_request.json"),
         LspResponse::Request(
           2,
           json!([
@@ -2722,7 +3008,7 @@ mod tests {
         ),
       ),
       (
-        "incoming_calls_request.json",
+        LspFixture::Path("incoming_calls_request.json"),
         LspResponse::Request(
           4,
           json!([
@@ -2770,7 +3056,7 @@ mod tests {
         ),
       ),
       (
-        "outgoing_calls_request.json",
+        LspFixture::Path("outgoing_calls_request.json"),
         LspResponse::Request(
           5,
           json!([
@@ -2818,10 +3104,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2829,11 +3118,20 @@ mod tests {
   #[tokio::test]
   async fn test_format_mbc() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_mbc_fmt.json", LspResponse::None),
       (
-        "formatting_request_mbc_fmt.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_mbc_fmt.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("formatting_request_mbc_fmt.json"),
         LspResponse::Request(
           2,
           json!([
@@ -2893,10 +3191,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2904,20 +3205,50 @@ mod tests {
   #[tokio::test]
   async fn test_large_doc_change() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_large.json", LspResponse::None),
-      ("did_change_notification_large.json", LspResponse::None),
-      ("did_change_notification_large_02.json", LspResponse::None),
-      ("did_change_notification_large_03.json", LspResponse::None),
-      ("hover_request_large_01.json", LspResponse::RequestAny),
-      ("hover_request_large_02.json", LspResponse::RequestAny),
-      ("hover_request_large_03.json", LspResponse::RequestAny),
       (
-        "shutdown_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_large.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_large.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_large_02.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_large_03.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request_large_01.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("hover_request_large_02.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("hover_request_large_03.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     let time = Instant::now();
     harness.run().await;
@@ -2930,14 +3261,20 @@ mod tests {
   #[tokio::test]
   async fn test_folding_range() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "folding_range_did_open_notification.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "folding_range_request.json",
+        LspFixture::Path("folding_range_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("folding_range_request.json"),
         LspResponse::Request(
           2,
           json!([
@@ -2967,10 +3304,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2978,11 +3318,20 @@ mod tests {
   #[tokio::test]
   async fn test_rename() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("rename_did_open_notification.json", LspResponse::None),
       (
-        "rename_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("rename_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("rename_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -3021,10 +3370,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3032,14 +3384,20 @@ mod tests {
   #[tokio::test]
   async fn test_selection_range() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "selection_range_did_open_notification.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "selection_range_request.json",
+        LspFixture::Path("selection_range_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("selection_range_request.json"),
         LspResponse::Request(
           2,
           json!([{
@@ -3129,10 +3487,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3140,14 +3501,20 @@ mod tests {
   #[tokio::test]
   async fn test_code_lens_request() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "did_open_notification_cl_references.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "code_lens_request.json",
+        LspFixture::Path("did_open_notification_cl_references.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("code_lens_request.json"),
         LspResponse::Request(
           2,
           json!([
@@ -3187,7 +3554,7 @@ mod tests {
         ),
       ),
       (
-        "code_lens_resolve_request.json",
+        LspFixture::Path("code_lens_resolve_request.json"),
         LspResponse::Request(
           4,
           json!({
@@ -3231,10 +3598,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3242,14 +3612,20 @@ mod tests {
   #[tokio::test]
   async fn test_signature_help() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "signature_help_did_open_notification.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "signature_help_request_01.json",
+        LspFixture::Path("signature_help_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("signature_help_request_01.json"),
         LspResponse::Request(
           1,
           json!({
@@ -3275,11 +3651,11 @@ mod tests {
         ),
       ),
       (
-        "signature_help_did_change_notification.json",
+        LspFixture::Path("signature_help_did_change_notification.json"),
         LspResponse::None,
       ),
       (
-        "signature_help_request_02.json",
+        LspFixture::Path("signature_help_request_02.json"),
         LspResponse::Request(
           2,
           json!({
@@ -3305,10 +3681,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3316,11 +3695,20 @@ mod tests {
   #[tokio::test]
   async fn test_code_lens_impl_request() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_cl_impl.json", LspResponse::None),
       (
-        "code_lens_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_cl_impl.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("code_lens_request.json"),
         LspResponse::Request(
           2,
           json!([
@@ -3376,7 +3764,7 @@ mod tests {
         ),
       ),
       (
-        "code_lens_resolve_request_impl.json",
+        LspFixture::Path("code_lens_resolve_request_impl.json"),
         LspResponse::Request(
           4,
           json!({
@@ -3420,10 +3808,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3441,16 +3832,28 @@ mod tests {
   #[tokio::test]
   async fn test_code_lens_non_doc_nav_tree() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_asset.json", LspResponse::None),
-      ("references_request_asset.json", LspResponse::RequestAny),
       (
-        "virtual_text_document_request.json",
+        LspFixture::Path("initialize_request.json"),
         LspResponse::RequestAny,
       ),
       (
-        "code_lens_request_asset.json",
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_asset.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("references_request_asset.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("virtual_text_document_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("code_lens_request_asset.json"),
         LspResponse::RequestAssert(|value| {
           let resp: CodeLensResponse = serde_json::from_value(value).unwrap();
           let lenses = resp.result.unwrap();
@@ -3458,7 +3861,7 @@ mod tests {
         }),
       ),
       (
-        "code_lens_resolve_request_asset.json",
+        LspFixture::Path("code_lens_resolve_request_asset.json"),
         LspResponse::RequestAssert(|value| {
           let resp: CodeLensResolveResponse =
             serde_json::from_value(value).unwrap();
@@ -3466,10 +3869,13 @@ mod tests {
         }),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3477,26 +3883,38 @@ mod tests {
   #[tokio::test]
   async fn test_code_actions() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_code_action.json", LspResponse::None),
-      ("", LspResponse::Delay(500)),
       (
-        "code_action_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_code_action.json"),
+        LspResponse::None,
+      ),
+      (LspFixture::None, LspResponse::Delay(500)),
+      (
+        LspFixture::Path("code_action_request.json"),
         LspResponse::RequestFixture(2, "code_action_response.json".to_string()),
       ),
       (
-        "code_action_resolve_request.json",
+        LspFixture::Path("code_action_resolve_request.json"),
         LspResponse::RequestFixture(
           4,
           "code_action_resolve_request_response.json".to_string(),
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3504,21 +3922,33 @@ mod tests {
   #[tokio::test]
   async fn test_code_actions_deno_cache() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_cache.json", LspResponse::None),
       (
-        "code_action_request_cache.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_cache.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("code_action_request_cache.json"),
         LspResponse::RequestFixture(
           2,
           "code_action_response_cache.json".to_string(),
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3531,11 +3961,20 @@ mod tests {
   #[tokio::test]
   async fn test_completions() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_completions.json", LspResponse::None),
       (
-        "completion_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_completions.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request.json"),
         LspResponse::RequestAssert(|value| {
           let response: CompletionResult =
             serde_json::from_value(value).unwrap();
@@ -3550,7 +3989,7 @@ mod tests {
         }),
       ),
       (
-        "completion_resolve_request.json",
+        LspFixture::Path("completion_resolve_request.json"),
         LspResponse::Request(
           4,
           json!({
@@ -3567,10 +4006,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3578,14 +4020,20 @@ mod tests {
   #[tokio::test]
   async fn test_completions_optional() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "did_open_notification_completion_optional.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "completion_request_optional.json",
+        LspFixture::Path("did_open_notification_completion_optional.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request_optional.json"),
         LspResponse::Request(
           2,
           json!({
@@ -3611,7 +4059,7 @@ mod tests {
         ),
       ),
       (
-        "completion_resolve_request_optional.json",
+        LspFixture::Path("completion_resolve_request_optional.json"),
         LspResponse::Request(
           4,
           json!({
@@ -3629,10 +4077,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3641,14 +4092,20 @@ mod tests {
   async fn test_completions_registry() {
     let _g = test_util::http_server();
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request_registry.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "did_open_notification_completion_registry.json",
+        LspFixture::Path("initialize_request_registry.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "completion_request_registry.json",
+        LspFixture::Path("did_open_notification_completion_registry.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request_registry.json"),
         LspResponse::RequestAssert(|value| {
           let response: CompletionResult =
             serde_json::from_value(value).unwrap();
@@ -3661,7 +4118,7 @@ mod tests {
         }),
       ),
       (
-        "completion_resolve_request_registry.json",
+        LspFixture::Path("completion_resolve_request_registry.json"),
         LspResponse::Request(
           4,
           json!({
@@ -3687,10 +4144,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3699,14 +4159,20 @@ mod tests {
   async fn test_completion_registry_empty_specifier() {
     let _g = test_util::http_server();
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request_registry.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "did_open_notification_completion_registry_02.json",
+        LspFixture::Path("initialize_request_registry.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "completion_request_registry_02.json",
+        LspFixture::Path("did_open_notification_completion_registry_02.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request_registry_02.json"),
         LspResponse::Request(
           2,
           json!({
@@ -3750,10 +4216,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3770,11 +4239,20 @@ mod tests {
   #[tokio::test]
   async fn test_deno_performance_request() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -3799,7 +4277,7 @@ mod tests {
         ),
       ),
       (
-        "performance_request.json",
+        LspFixture::Path("performance_request.json"),
         LspResponse::RequestAssert(|value| {
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
@@ -3810,10 +4288,13 @@ mod tests {
         }),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
