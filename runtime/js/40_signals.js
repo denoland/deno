@@ -22,6 +22,8 @@
   const WindowsSignal = {
     2: "SIGINT",
     SIGINT: 2,
+
+    SIGTERM: 15,
   };
 
   // From `kill -l`
