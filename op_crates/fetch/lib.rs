@@ -59,16 +59,16 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("01_fetch_util.js"),
     ),
     (
-      "deno:op_crates/fetch/03_dom_iterable.js",
-      include_str!("03_dom_iterable.js"),
-    ),
-    (
       "deno:op_crates/fetch/11_streams.js",
       include_str!("11_streams.js"),
     ),
     (
       "deno:op_crates/fetch/20_headers.js",
       include_str!("20_headers.js"),
+    ),
+    (
+      "deno:op_crates/fetch/21_formdata.js",
+      include_str!("21_formdata.js"),
     ),
     (
       "deno:op_crates/fetch/26_fetch.js",

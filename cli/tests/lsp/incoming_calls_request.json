@@ -1,0 +1,33 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "callHierarchy/incomingCalls",
+  "params": {
+    "item": {
+      "name": "baz",
+      "kind": 6,
+      "detail": "Bar",
+      "uri": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 2
+        },
+        "end": {
+          "line": 7,
+          "character": 3
+        }
+      },
+      "selectionRange": {
+        "start": {
+          "line": 5,
+          "character": 2
+        },
+        "end": {
+          "line": 5,
+          "character": 5
+        }
+      }
+    }
+  }
+}

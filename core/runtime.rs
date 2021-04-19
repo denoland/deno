@@ -156,7 +156,6 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
   v8::V8::initialize();
 
   let flags = concat!(
-    "--wasm-test-streaming",
     // TODO(ry) This makes WASM compile synchronously. Eventually we should
     // remove this to make it work asynchronously too. But that requires getting
     // PumpMessageLoop and RunMicrotasks setup correctly.

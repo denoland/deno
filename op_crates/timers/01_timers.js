@@ -2,8 +2,26 @@
 "use strict";
 
 ((window) => {
-  const assert = window.__bootstrap.util.assert;
   const core = window.Deno.core;
+
+  // Shamelessly cribbed from op_crates/fetch/11_streams.js
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  /**
+   * @param {unknown} cond
+   * @param {string=} msg
+   * @returns {asserts cond}
+   */
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
 
   function opStopGlobalTimer() {
     core.opSync("op_global_timer_stop");
