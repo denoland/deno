@@ -1,0 +1,14 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+  "-Clinker-plugin-lto",
+  "-Clinker=clang-11",
+  "-Clink-arg=-flto=thin",
+  "-Clink-arg=-fuse-ld=lld-11",
+  "-Clink-arg=-Wl,--thinlto-cache-dir=target/lto-cache"
+]
+
+[target.'cfg(all(target_arch = "x86_64", target_os = "linux", not(debug_assertions), not(proc_macro), not(test)']
+rustflags = ["-Clink-arg=-Wl,--plugin-opt=O2"]
