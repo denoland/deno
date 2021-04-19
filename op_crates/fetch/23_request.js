@@ -35,8 +35,8 @@
   /**
    * @typedef InnerRequest
    * @property {string} method
-   * @property {string} url
-   * @property {string} currentUrl
+   * @property {() => string} url
+   * @property {() => string} currentUrl
    * @property {[string, string][]} headerList
    * @property {null | InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
@@ -45,8 +45,19 @@
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
    */
 
+  const defaultInnerRequest = {
+    url() {
+      return this.urlList[0];
+    },
+    currentUrl() {
+      return this.urlList[this.urlList.length - 1];
+    },
+    redirectMode: "follow",
+    redirectCount: 0,
+    clientRid: null,
+  };
+
   /**
-   * 
    * @param {string} method 
    * @param {string} url 
    * @param {[string, string][]} headerList 
@@ -54,21 +65,12 @@
    * @returns 
    */
   function newInnerRequest(method, url, headerList = [], body = null) {
-    return {
+    return Object.assign({
       method: method,
-      get url() {
-        return this.urlList[0];
-      },
-      get currentUrl() {
-        return this.urlList[this.urlList.length - 1];
-      },
       headerList,
       body,
-      redirectMode: "follow",
-      redirectCount: 0,
       urlList: [url],
-      clientRid: null,
-    };
+    }, defaultInnerRequest);
   }
 
   /**
@@ -85,10 +87,10 @@
 
     return {
       method: request.method,
-      get url() {
+      url() {
         return this.urlList[0];
       },
-      get currentUrl() {
+      currentUrl() {
         return this.urlList[this.urlList.length - 1];
       },
       headerList,
@@ -302,7 +304,7 @@
 
     get url() {
       webidl.assertBranded(this, Request);
-      return this[_request].url;
+      return this[_request].url();
     }
 
     get headers() {
@@ -389,7 +391,7 @@
         headers: this.headers,
         method: this.method,
         redirect: this.redirect,
-        url: this.url,
+        url: this.url(),
       };
       return `Request ${inspect(inner)}`;
     }

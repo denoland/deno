@@ -132,7 +132,7 @@
 
     const { requestRid, requestBodyRid } = opFetch({
       method: req.method,
-      url: req.currentUrl.toString(),
+      url: req.currentUrl(),
       headers: req.headerList,
       clientRid: req.clientRid,
       hasBody: reqBody !== null,
@@ -170,7 +170,7 @@
       body: null,
       statusMessage: resp.statusText,
       type: "basic",
-      get url() {
+      url() {
         if (this.urlList.length == 0) return null;
         return this.urlList[this.urlList.length - 1];
       },
@@ -220,10 +220,10 @@
     }
     const locationURL = new URL(
       locationHeaders[0][1],
-      response.url ?? undefined,
+      response.url() ?? undefined,
     );
     if (locationURL.hash === "") {
-      locationURL.hash = request.url.hash;
+      locationURL.hash = request.currentUrl().hash;
     }
     if (locationURL.protocol !== "https:" && locationURL.protocol !== "http:") {
       return networkError("Can not redirect to a non HTTP(s) url");

@@ -42,7 +42,7 @@
   /**
    * @typedef InnerResponse
    * @property {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"} type
-   * @property {string | null} url
+   * @property {() => string | null} url
    * @property {string[]} urlList
    * @property {number} status
    * @property {string} statusMessage
@@ -85,7 +85,7 @@
       type: response.type,
       body,
       headerList,
-      get url() {
+      url() {
         if (this.urlList.length == 0) return null;
         return this.urlList[this.urlList.length - 1];
       },
@@ -95,22 +95,25 @@
     };
   }
 
+  const defaultInnerResponse = {
+    type: "default",
+    body: null,
+    url() {
+      if (this.urlList.length == 0) return null;
+      return this.urlList[this.urlList.length - 1];
+    },
+  };
+
   /**
    * @returns {InnerResponse}
    */
-  function newInnerResponse() {
-    return {
-      type: "default",
-      body: null,
+  function newInnerResponse(status = 200, statusMessage = "") {
+    return Object.assign({
       headerList: [],
-      get url() {
-        if (this.urlList.length == 0) return null;
-        return this.urlList[this.urlList.length - 1];
-      },
       urlList: [],
-      status: 200,
-      statusMessage: "",
-    };
+      status,
+      statusMessage,
+    }, defaultInnerResponse);
   }
 
   /**
@@ -118,8 +121,7 @@
    * @returns {InnerResponse}
    */
   function networkError(error) {
-    const resp = newInnerResponse();
-    resp.status = 0;
+    const resp = newInnerResponse(0);
     resp.type = "error";
     resp.error = error;
     return resp;
@@ -172,9 +174,8 @@
      * @returns {Response}
      */
     static error() {
-      const inner = newInnerResponse();
+      const inner = newInnerResponse(0);
       inner.type = "error";
-      inner.status = 0;
       const response = webidl.createBranded(Response);
       response[_response] = inner;
       response[_headers] = headersFromHeaderList(
@@ -205,9 +206,8 @@
       if (!redirectStatus(status)) {
         throw new RangeError("Invalid redirect status code.");
       }
-      const inner = newInnerResponse();
+      const inner = newInnerResponse(status);
       inner.type = "default";
-      inner.status = status;
       inner.headerList.push(["Location", parsedURL.href]);
       const response = webidl.createBranded(Response);
       response[_response] = inner;
@@ -244,11 +244,9 @@
       }
 
       this[webidl.brand] = webidl.brand;
-      const response = newInnerResponse();
+      const response = newInnerResponse(init.status, init.statusText);
       this[_response] = response;
       this[_headers] = headersFromHeaderList(response.headerList, "response");
-      response.status = init.status;
-      response.statusMessage = init.statusText;
       if (init.headers !== undefined) {
         fillHeaders(this[_headers], init.headers);
       }
@@ -279,7 +277,7 @@
      */
     get url() {
       webidl.assertBranded(this, Response);
-      const url = this[_response].url;
+      const url = this[_response].url();
       if (url === null) return "";
       const newUrl = new URL(url);
       newUrl.hash = "";
@@ -358,7 +356,7 @@
         redirected: this.redirected,
         status: this.status,
         statusText: this.statusText,
-        url: this.url,
+        url: this.url(),
       };
       return `Response ${inspect(inner)}`;
     }
