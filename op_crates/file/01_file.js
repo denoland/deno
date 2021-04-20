@@ -139,6 +139,10 @@
   const _byteSequence = Symbol("[[ByteSequence]]");
 
   class Blob {
+    get [Symbol.toStringTag]() {
+      return "Blob";
+    }
+
     /** @type {string} */
     #type;
 
@@ -286,10 +290,6 @@
       }
       return bytes.buffer;
     }
-
-    get [Symbol.toStringTag]() {
-      return "Blob";
-    }
   }
 
   webidl.converters["Blob"] = webidl.createInterfaceConverter("Blob", Blob);
@@ -336,6 +336,10 @@
   const _LastModfied = Symbol("[[LastModified]]");
 
   class File extends Blob {
+    get [Symbol.toStringTag]() {
+      return "File";
+    }
+
     /** @type {string} */
     [_Name];
     /** @type {number} */

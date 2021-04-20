@@ -764,12 +764,16 @@
           opts,
         );
       }
+      const keys = Reflect.ownKeys(V);
       const result = {};
-      for (const key of V) {
-        const typedKey = keyConverter(key, opts);
-        const value = V[key];
-        const typedValue = valueConverter(value, opts);
-        result[typedKey] = typedValue;
+      for (const key of keys) {
+        const desc = Object.getOwnPropertyDescriptor(V, key);
+        if (desc !== undefined && desc.enumerable === true) {
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
       }
       return result;
     };
@@ -802,6 +806,102 @@
     throw new TypeError("Illegal constructor");
   }
 
+  function define(target, source) {
+    for (const key of Reflect.ownKeys(source)) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
+      if (descriptor && !Reflect.defineProperty(target, key, descriptor)) {
+        throw new TypeError(`Cannot redefine property: ${String(key)}`);
+      }
+    }
+  }
+
+  const _iteratorInternal = Symbol("iterator internal");
+
+  const globalIteratorPrototype = Object.getPrototypeOf(Object.getPrototypeOf(
+    [][Symbol.iterator](),
+  ));
+
+  function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
+    const iteratorPrototype = Object.create(globalIteratorPrototype, {
+      [Symbol.toStringTag]: { configurable: true, value: `${name} Iterator` },
+    });
+    define(iteratorPrototype, {
+      next() {
+        const internal = this && this[_iteratorInternal];
+        if (!internal) {
+          throw new TypeError(
+            `next() called on a value that is not a ${name} iterator object`,
+          );
+        }
+        const { target, kind, index } = internal;
+        const values = target[dataSymbol];
+        const len = values.length;
+        if (index >= len) {
+          return { value: undefined, done: true };
+        }
+        const pair = values[index];
+        internal.index = index + 1;
+        let result;
+        switch (kind) {
+          case "key":
+            result = pair[keyKey];
+            break;
+          case "value":
+            result = pair[valueKey];
+            break;
+          case "key+value":
+            result = [pair[keyKey], pair[valueKey]];
+            break;
+        }
+        return { value: result, done: false };
+      },
+    });
+    function createDefaultIterator(target, kind) {
+      const iterator = Object.create(iteratorPrototype);
+      Object.defineProperty(iterator, _iteratorInternal, {
+        value: { target, kind, index: 0 },
+        configurable: true,
+      });
+      return iterator;
+    }
+
+    const methods = {
+      entries() {
+        assertBranded(this, prototype);
+        return createDefaultIterator(this, "key+value");
+      },
+      [Symbol.iterator]() {
+        assertBranded(this, prototype);
+        return createDefaultIterator(this, "key+value");
+      },
+      keys() {
+        assertBranded(this, prototype);
+        return createDefaultIterator(this, "key");
+      },
+      values() {
+        assertBranded(this, prototype);
+        return createDefaultIterator(this, "value");
+      },
+      forEach(idlCallback, thisArg) {
+        assertBranded(this, prototype);
+        const prefix = `Failed to execute 'forEach' on '${name}'`;
+        requiredArguments(arguments.length, 1, { prefix });
+        idlCallback = converters["Function"](idlCallback, {
+          prefix,
+          context: "Argument 1",
+        });
+        idlCallback = idlCallback.bind(thisArg ?? globalThis);
+        const pairs = this[dataSymbol];
+        for (let i = 0; i < pairs.length; i++) {
+          const entry = pairs[i];
+          idlCallback(entry[valueKey], entry[keyKey], this);
+        }
+      },
+    };
+
+    return Object.assign(prototype.prototype, methods);
+  }
+
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     makeException,
@@ -817,5 +917,6 @@
     createBranded,
     assertBranded,
     illegalConstructor,
+    mixinPairIterable,
   };
 })(this);

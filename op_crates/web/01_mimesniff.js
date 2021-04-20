@@ -8,42 +8,14 @@
 "use strict";
 
 ((window) => {
-  const { collectSequenceOfCodepoints } = window.__bootstrap.infra;
-
-  const HTTP_TAB_OR_SPACE = ["\u0009", "\u0020"];
-  const HTTP_WHITESPACE = ["\u000A", "\u000D", ...HTTP_TAB_OR_SPACE];
-
-  const ASCII_DIGIT = ["\u0030-\u0039"];
-  const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
-  const ASCII_LOWER_ALPHA = ["\u0061-\u007A"];
-  const ASCII_ALPHA = [...ASCII_UPPER_ALPHA, ...ASCII_LOWER_ALPHA];
-  const ASCII_ALPHANUMERIC = [...ASCII_DIGIT, ...ASCII_ALPHA];
-  const HTTP_TOKEN_CODE_POINT = [
-    "\u0021",
-    "\u0023",
-    "\u0025",
-    "\u0026",
-    "\u0027",
-    "\u002A",
-    "\u002B",
-    "\u002D",
-    "\u002E",
-    "\u005E",
-    "\u005F",
-    "\u0060",
-    "\u007C",
-    "\u007E",
-    ...ASCII_ALPHANUMERIC,
-  ];
-  const HTTP_TOKEN_CODE_POINT_RE = new RegExp(`^[${HTTP_TOKEN_CODE_POINT}]+$`);
-  const HTTP_QUOTED_STRING_TOKEN_POINT = [
-    "\u0009",
-    "\u0020-\u007E",
-    "\u0080-\u00FF",
-  ];
-  const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new RegExp(
-    `^[${HTTP_QUOTED_STRING_TOKEN_POINT}]+$`,
-  );
+  const {
+    collectSequenceOfCodepoints,
+    HTTP_WHITESPACE,
+    HTTP_WHITESPACE_PREFIX_RE,
+    HTTP_WHITESPACE_SUFFIX_RE,
+    HTTP_QUOTED_STRING_TOKEN_POINT_RE,
+    HTTP_TOKEN_CODE_POINT_RE,
+  } = window.__bootstrap.infra;
 
   /**
    * https://fetch.spec.whatwg.org/#collect-an-http-quoted-string
@@ -102,12 +74,20 @@
   }
 
   /**
+   * @typedef MimeType 
+   * @property {string} type
+   * @property {string} subtype
+   * @property {Map<string,string>} parameters
+   */
+
+  /**
    * @param {string} input
+   * @returns {MimeType | null}
    */
   function parseMimeType(input) {
     // 1.
-    input = input.replaceAll(new RegExp(`^[${HTTP_WHITESPACE}]+`, "g"), "");
-    input = input.replaceAll(new RegExp(`[${HTTP_WHITESPACE}]+$`, "g"), "");
+    input = input.replaceAll(HTTP_WHITESPACE_PREFIX_RE, "");
+    input = input.replaceAll(HTTP_WHITESPACE_SUFFIX_RE, "");
 
     // 2.
     let position = 0;
@@ -123,9 +103,7 @@
     position = res1.position;
 
     // 4.
-    if (type === "" || !HTTP_TOKEN_CODE_POINT_RE.test(type)) {
-      return null;
-    }
+    if (type === "" || !HTTP_TOKEN_CODE_POINT_RE.test(type)) return null;
 
     // 5.
     if (position >= endOfInput) return null;
@@ -143,12 +121,10 @@
     position = res2.position;
 
     // 8.
-    subtype = subtype.replaceAll(new RegExp(`[${HTTP_WHITESPACE}]+$`, "g"), "");
+    subtype = subtype.replaceAll(HTTP_WHITESPACE_SUFFIX_RE, "");
 
     // 9.
-    if (subtype === "" || !HTTP_TOKEN_CODE_POINT_RE.test(subtype)) {
-      return null;
-    }
+    if (subtype === "" || !HTTP_TOKEN_CODE_POINT_RE.test(subtype)) return null;
 
     // 10.
     const mimeType = {
@@ -216,7 +192,7 @@
 
         // 11.9.2.
         parameterValue = parameterValue.replaceAll(
-          new RegExp(`[${HTTP_WHITESPACE}]+$`, "g"),
+          HTTP_WHITESPACE_SUFFIX_RE,
           "",
         );
 
@@ -224,7 +200,7 @@
         if (parameterValue === "") continue;
       }
 
-      // 11.9.
+      // 11.10.
       if (
         parameterName !== "" && HTTP_TOKEN_CODE_POINT_RE.test(parameterName) &&
         HTTP_QUOTED_STRING_TOKEN_POINT_RE.test(parameterValue) &&

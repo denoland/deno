@@ -68,6 +68,12 @@
     conn,
     { hostname = "127.0.0.1", certFile } = {},
   ) {
+    if (
+      !(conn.localAddr.transport === "tcp" ||
+        conn.localAddr.transport === "udp")
+    ) {
+      throw new TypeError(`conn is not a valid network connection`);
+    }
     const res = await opStartTls({
       rid: conn.rid,
       hostname,
