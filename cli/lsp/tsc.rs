@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![allow(deprecated)]
-
 use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::analysis::ResolvedDependencyErr;
@@ -677,6 +675,10 @@ impl NavigationTree {
           None
         };
 
+        // The field `deprecated` is deprecated but DocumentSymbol does not have
+        // a default, therefore we have to supply the deprecated deprecated
+        // field. It is like a bad version of Inception.
+        #[allow(deprecated)]
         document_symbols.push(lsp::DocumentSymbol {
           name: self.text.clone(),
           kind: self.kind.clone().into(),
