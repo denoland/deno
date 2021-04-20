@@ -3352,14 +3352,20 @@ mod tests {
   #[tokio::test]
   async fn test_document_symbol() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "document_symbol_did_open_notification.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "document_symbol_request.json",
+        LspFixture::Path("document_symbol_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("document_symbol_request.json"),
         LspResponse::Request(
           2,
           json!([
@@ -3736,10 +3742,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
