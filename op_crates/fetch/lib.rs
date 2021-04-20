@@ -71,12 +71,28 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("21_formdata.js"),
     ),
     (
+      "deno:op_crates/fetch/22_body.js",
+      include_str!("22_body.js"),
+    ),
+    (
+      "deno:op_crates/fetch/22_http_client.js",
+      include_str!("22_http_client.js"),
+    ),
+    (
+      "deno:op_crates/fetch/23_request.js",
+      include_str!("23_request.js"),
+    ),
+    (
+      "deno:op_crates/fetch/23_response.js",
+      include_str!("23_response.js"),
+    ),
+    (
       "deno:op_crates/fetch/26_fetch.js",
       include_str!("26_fetch.js"),
     ),
   ];
   for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
+    isolate.execute(url, source_code).expect(url);
   }
 }
 
@@ -110,9 +126,8 @@ pub fn get_declaration() -> PathBuf {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchArgs {
-  method: Option<String>,
+  method: String,
   url: String,
-  base_url: Option<String>,
   headers: Vec<(String, String)>,
   client_rid: Option<u32>,
   has_body: bool,
@@ -144,18 +159,8 @@ where
     client.clone()
   };
 
-  let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
-    None => Method::GET,
-  };
-
-  let base_url = match args.base_url {
-    Some(base_url) => Some(Url::parse(&base_url)?),
-    _ => None,
-  };
-  let url = Url::options()
-    .base_url(base_url.as_ref())
-    .parse(&args.url)?;
+  let method = Method::from_bytes(args.method.as_bytes())?;
+  let url = Url::parse(&args.url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();

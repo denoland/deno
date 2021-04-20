@@ -100,6 +100,7 @@ export async function runSingleTest(
       reporter(result);
     } else {
       stderr += line + "\n";
+      console.error(stderr);
     }
   }
 

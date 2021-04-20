@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.84.0", path = "../../core" }
 idna = "0.2.2"
+percent-encoding = "2.1.0"
 serde = { version = "1.0.125", features = ["derive"] }
 
 [dev-dependencies]

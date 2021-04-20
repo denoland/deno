@@ -46,6 +46,15 @@
   const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new RegExp(
     `^[${regexMatcher(HTTP_QUOTED_STRING_TOKEN_POINT)}]+$`,
   );
+  const HTTP_TAB_OR_SPACE_MATCHER = regexMatcher(HTTP_TAB_OR_SPACE);
+  const HTTP_TAB_OR_SPACE_PREFIX_RE = new RegExp(
+    `^[${HTTP_TAB_OR_SPACE_MATCHER}]+`,
+    "g",
+  );
+  const HTTP_TAB_OR_SPACE_SUFFIX_RE = new RegExp(
+    `[${HTTP_TAB_OR_SPACE_MATCHER}]+$`,
+    "g",
+  );
   const HTTP_WHITESPACE_MATCHER = regexMatcher(HTTP_WHITESPACE);
   const HTTP_WHITESPACE_PREFIX_RE = new RegExp(
     `^[${HTTP_WHITESPACE_MATCHER}]+`,
@@ -113,6 +122,62 @@
     });
   }
 
+  /**
+   * https://fetch.spec.whatwg.org/#collect-an-http-quoted-string
+   * @param {string} input
+   * @param {number} position
+   * @param {boolean} extractValue
+   * @returns {{result: string, position: number}}
+   */
+  function collectHttpQuotedString(input, position, extractValue) {
+    // 1.
+    const positionStart = position;
+    // 2.
+    let value = "";
+    // 3.
+    if (input[position] !== "\u0022") throw new Error('must be "');
+    // 4.
+    position++;
+    // 5.
+    while (true) {
+      // 5.1.
+      const res = collectSequenceOfCodepoints(
+        input,
+        position,
+        (c) => c !== "\u0022" && c !== "\u005C",
+      );
+      value += res.result;
+      position = res.position;
+      // 5.2.
+      if (position >= input.length) break;
+      // 5.3.
+      const quoteOrBackslash = input[position];
+      // 5.4.
+      position++;
+      // 5.5.
+      if (quoteOrBackslash === "\u005C") {
+        // 5.5.1.
+        if (position >= input.length) {
+          value += "\u005C";
+          break;
+        }
+        // 5.5.2.
+        value += input[position];
+        // 5.5.3.
+        position++;
+      } else { // 5.6.
+        // 5.6.1
+        if (quoteOrBackslash !== "\u0022") throw new Error('must be "');
+        // 5.6.2
+        break;
+      }
+    }
+    // 6.
+    if (extractValue) return { result: value, position };
+    // 7.
+    return { result: input.substring(positionStart, position + 1), position };
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -126,10 +191,13 @@
     HTTP_TOKEN_CODE_POINT_RE,
     HTTP_QUOTED_STRING_TOKEN_POINT,
     HTTP_QUOTED_STRING_TOKEN_POINT_RE,
+    HTTP_TAB_OR_SPACE_PREFIX_RE,
+    HTTP_TAB_OR_SPACE_SUFFIX_RE,
     HTTP_WHITESPACE_PREFIX_RE,
     HTTP_WHITESPACE_SUFFIX_RE,
     regexMatcher,
     byteUpperCase,
     byteLowerCase,
+    collectHttpQuotedString,
   };
 })(globalThis);
