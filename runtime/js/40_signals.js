@@ -176,7 +176,7 @@
   }
 
   function signal(signo) {
-    if (build.os === "windows" && !signo in WindowsSignal) {
+    if (build.os === "windows" && !(signo === WindowsSignal.SIGINT || signo === WindowsSignal.SIGBREAK)) {
       throw new Error(
         "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
       );
