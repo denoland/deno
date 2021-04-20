@@ -1961,6 +1961,99 @@ impl Inner {
     Ok(Some(selection_ranges))
   }
 
+  async fn semantic_tokens_full(
+    &self,
+    params: SemanticTokensParams,
+  ) -> LspResult<Option<SemanticTokensResult>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("semantic_tokens_full");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
+      specifier.clone(),
+      tsc::TextSpan {
+        start: 0,
+        length: line_index.text_content_length_utf16().into(),
+      },
+    ));
+    let semantic_classification: tsc::Classifications = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let semantic_tokens: SemanticTokens =
+      semantic_classification.to_semantic_tokens(&line_index);
+    let response = if !semantic_tokens.data.is_empty() {
+      Some(SemanticTokensResult::Tokens(semantic_tokens))
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
+  async fn semantic_tokens_range(
+    &self,
+    params: SemanticTokensRangeParams,
+  ) -> LspResult<Option<SemanticTokensRangeResult>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("semantic_tokens_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let start = line_index.offset_tsc(params.range.start)?;
+    let length = line_index.offset_tsc(params.range.end)? - start;
+    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
+      specifier.clone(),
+      tsc::TextSpan { start, length },
+    ));
+    let semantic_classification: tsc::Classifications = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let semantic_tokens: SemanticTokens =
+      semantic_classification.to_semantic_tokens(&line_index);
+    let response = if !semantic_tokens.data.is_empty() {
+      Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
@@ -2198,6 +2291,20 @@ impl lspower::LanguageServer for LanguageServer {
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     self.0.lock().await.selection_range(params).await
+  }
+
+  async fn semantic_tokens_full(
+    &self,
+    params: SemanticTokensParams,
+  ) -> LspResult<Option<SemanticTokensResult>> {
+    self.0.lock().await.semantic_tokens_full(params).await
+  }
+
+  async fn semantic_tokens_range(
+    &self,
+    params: SemanticTokensRangeParams,
+  ) -> LspResult<Option<SemanticTokensRangeResult>> {
+    self.0.lock().await.semantic_tokens_range(params).await
   }
 
   async fn signature_help(
@@ -3535,6 +3642,43 @@ mod tests {
         LspFixture::Path("exit_notification.json"),
         LspResponse::None,
       ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  #[rustfmt::skip]
+  async fn test_semantic_tokens() {
+    let mut harness = LspTestHarness::new(vec![
+      (LspFixture::Path("initialize_request.json"), LspResponse::RequestAny),
+      (LspFixture::Path("initialized_notification.json"), LspResponse::None),
+      (
+        LspFixture::Path("semantic_tokens_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("semantic_tokens_full_request.json"),
+        LspResponse::Request(
+          2,
+          json!({
+            "data": [0, 5, 6, 1, 1, 0, 9, 6, 8, 9, 0, 8, 6, 8, 9, 2, 15 ,3, 10 ,5, 0, 4, 1, 6, 1, 0, 12 ,7, 2, 16 ,1, 8, 1, 7, 41 ,0, 4, 1, 6, 0, 0, 2, 5, 11 ,16 ,1, 9, 1, 7, 40 ,3, 10 ,4, 2, 1, 1, 11 ,1, 9, 9, 1, 2, 3, 11 ,1, 3, 6, 3, 0, 1, 0, 15 ,4, 2, 0, 1, 30 ,1, 6, 9, 1, 2, 3, 11 ,1, 1, 9, 9, 9, 3, 0, 16 ,3, 0, 0, 1, 17 ,12 ,11 ,3, 0, 24 ,3, 0, 0, 0, 4, 9, 9, 2]
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("semantic_tokens_range_request.json"),
+        LspResponse::Request(
+          4,
+          json!({
+            "data": [0, 5, 6, 1, 1, 0, 9, 6, 8, 9, 0, 8, 6, 8, 9, 2, 15 ,3, 10 ,5, 0, 4, 1, 6, 1, 0, 12 ,7, 2, 16 ,1, 8, 1, 7, 41 ,0, 4, 1, 6, 0, 0, 2, 5, 11 ,16 ,1, 9, 1, 7, 40]
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (LspFixture::Path("exit_notification.json"), LspResponse::None),
     ]);
     harness.run().await;
   }

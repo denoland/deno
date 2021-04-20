@@ -56,6 +56,7 @@ declare global {
     | GetDefinitionRequest
     | GetDiagnosticsRequest
     | GetDocumentHighlightsRequest
+    | GetEncodedSemanticClassifications
     | GetImplementationRequest
     | GetNavigationTree
     | GetOutliningSpans
@@ -142,6 +143,13 @@ declare global {
     specifier: string;
     position: number;
     filesToSearch: string[];
+  }
+
+  interface GetEncodedSemanticClassifications
+    extends BaseLanguageServerRequest {
+    method: "getEncodedSemanticClassifications";
+    specifier: string;
+    span: ts.TextSpan;
   }
 
   interface GetImplementationRequest extends BaseLanguageServerRequest {
