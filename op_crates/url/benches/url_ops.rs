@@ -16,7 +16,22 @@ fn create_js_runtime() -> JsRuntime {
     op_sync(deno_url::op_url_stringify_search_params),
   );
 
+  runtime
+    .execute(
+      "bootstrap",
+      "globalThis.__bootstrap = (globalThis.__bootstrap || {});",
+    )
+    .unwrap();
   deno_url::init(&mut runtime);
+  runtime
+    .execute(
+      "init",
+      r#"
+      Deno.core.ops();
+      Deno.core.registerErrorClass('Error', Error);
+    "#,
+    )
+    .unwrap();
   runtime
     .execute("setup", "const { URL } = globalThis.__bootstrap.url;")
     .unwrap();
@@ -36,7 +51,7 @@ pub fn bench_runtime_js(b: &mut Bencher, src: &str) {
 }
 
 fn bench_url_parse(b: &mut Bencher) {
-  bench_runtime_js(b, r#"new URL(`http://www.google.com/${i}`);"#);
+  bench_runtime_js(b, r#"new URL(`http://www.google.com/`);"#);
 }
 
 benchmark_group!(benches, bench_url_parse,);
