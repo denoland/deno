@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use bencher::{DynBenchFn, StaticBenchFn, TestDescAndFn, TestOpts};
 
 pub fn is_profiling() -> bool {

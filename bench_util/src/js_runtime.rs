@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use bencher::Bencher;
 use deno_core::v8;
 use deno_core::JsRuntime;
