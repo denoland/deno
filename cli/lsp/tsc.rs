@@ -6,6 +6,8 @@ use super::analysis::ResolvedDependencyErr;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::semantic_tokens::SemanticTokensBuilder;
+use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
 use super::text::LineIndex;
 
@@ -35,11 +37,11 @@ use log::warn;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
 use std::{borrow::Cow, cmp};
-use text_size::TextSize;
+use std::{collections::HashMap, path::Path};
+use text_size::{TextRange, TextSize};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -283,6 +285,13 @@ fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
   re.split(kind_modifiers).collect()
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OneOrMany<T> {
+  One(T),
+  Many(Vec<T>),
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
@@ -407,6 +416,33 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
       ScriptElementKind::Directory => lsp::CompletionItemKind::Folder,
       ScriptElementKind::String => lsp::CompletionItemKind::Constant,
       _ => lsp::CompletionItemKind::Property,
+    }
+  }
+}
+
+impl From<ScriptElementKind> for lsp::SymbolKind {
+  fn from(kind: ScriptElementKind) -> Self {
+    match kind {
+      ScriptElementKind::ModuleElement => lsp::SymbolKind::Module,
+      ScriptElementKind::ClassElement => lsp::SymbolKind::Class,
+      ScriptElementKind::EnumElement => lsp::SymbolKind::Enum,
+      ScriptElementKind::InterfaceElement => lsp::SymbolKind::Interface,
+      ScriptElementKind::MemberFunctionElement => lsp::SymbolKind::Method,
+      ScriptElementKind::MemberVariableElement => lsp::SymbolKind::Property,
+      ScriptElementKind::MemberGetAccessorElement => lsp::SymbolKind::Property,
+      ScriptElementKind::MemberSetAccessorElement => lsp::SymbolKind::Property,
+      ScriptElementKind::VariableElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::ConstElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::LocalVariableElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::FunctionElement => lsp::SymbolKind::Function,
+      ScriptElementKind::LocalFunctionElement => lsp::SymbolKind::Function,
+      ScriptElementKind::ConstructSignatureElement => {
+        lsp::SymbolKind::Constructor
+      }
+      ScriptElementKind::ConstructorImplementationElement => {
+        lsp::SymbolKind::Constructor
+      }
+      _ => lsp::SymbolKind::Variable,
     }
   }
 }
@@ -583,6 +619,90 @@ impl NavigationTree {
         "source": source
       })),
     }
+  }
+
+  pub fn collect_document_symbols(
+    &self,
+    line_index: &LineIndex,
+    document_symbols: &mut Vec<lsp::DocumentSymbol>,
+  ) -> bool {
+    let mut should_include = self.should_include_entry();
+    if !should_include
+      && self.child_items.as_ref().map_or(true, |v| v.is_empty())
+    {
+      return false;
+    }
+
+    let children = self
+      .child_items
+      .as_ref()
+      .map_or(&[] as &[NavigationTree], |v| v.as_slice());
+    for span in self.spans.iter() {
+      let range = TextRange::at(span.start.into(), span.length.into());
+      let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
+      for child in children.iter() {
+        let should_traverse_child = child
+          .spans
+          .iter()
+          .map(|child_span| {
+            TextRange::at(child_span.start.into(), child_span.length.into())
+          })
+          .any(|child_range| range.intersect(child_range).is_some());
+        if should_traverse_child {
+          let included_child =
+            child.collect_document_symbols(line_index, &mut symbol_children);
+          should_include = should_include || included_child;
+        }
+      }
+
+      if should_include {
+        let mut selection_span = span;
+        if let Some(name_span) = self.name_span.as_ref() {
+          let name_range =
+            TextRange::at(name_span.start.into(), name_span.length.into());
+          if range.contains_range(name_range) {
+            selection_span = name_span;
+          }
+        }
+
+        let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+        let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
+        if kind_modifiers.contains("deprecated") {
+          tags = Some(vec![lsp::SymbolTag::Deprecated]);
+        }
+
+        let children = if !symbol_children.is_empty() {
+          Some(symbol_children)
+        } else {
+          None
+        };
+
+        // The field `deprecated` is deprecated but DocumentSymbol does not have
+        // a default, therefore we have to supply the deprecated deprecated
+        // field. It is like a bad version of Inception.
+        #[allow(deprecated)]
+        document_symbols.push(lsp::DocumentSymbol {
+          name: self.text.clone(),
+          kind: self.kind.clone().into(),
+          range: span.to_range(line_index),
+          selection_range: selection_span.to_range(line_index),
+          tags,
+          children,
+          detail: None,
+          deprecated: None,
+        })
+      }
+    }
+
+    should_include
+  }
+
+  fn should_include_entry(&self) -> bool {
+    if let ScriptElementKind::Alias = self.kind {
+      return false;
+    }
+
+    !self.text.is_empty() && self.text != "<function>" && self.text != "<class>"
   }
 
   pub fn walk<F>(&self, callback: &F)
@@ -854,6 +974,56 @@ impl FileTextChanges {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Classifications {
+  spans: Vec<u32>,
+}
+
+impl Classifications {
+  pub fn to_semantic_tokens(
+    &self,
+    line_index: &LineIndex,
+  ) -> lsp::SemanticTokens {
+    let token_count = self.spans.len() / 3;
+    let mut builder = SemanticTokensBuilder::new();
+    for i in 0..token_count {
+      let src_offset = 3 * i;
+      let offset = self.spans[src_offset];
+      let length = self.spans[src_offset + 1];
+      let ts_classification = self.spans[src_offset + 2];
+
+      let token_type =
+        Classifications::get_token_type_from_classification(ts_classification);
+      let token_modifiers =
+        Classifications::get_token_modifier_from_classification(
+          ts_classification,
+        );
+
+      let start_pos = line_index.position_tsc(offset.into());
+      let end_pos = line_index.position_tsc(TextSize::from(offset + length));
+
+      // start_pos.line == end_pos.line is always true as there are no multiline tokens
+      builder.push(
+        start_pos.line,
+        start_pos.character,
+        end_pos.character - start_pos.character,
+        token_type,
+        token_modifiers,
+      );
+    }
+    builder.build(None)
+  }
+
+  fn get_token_type_from_classification(ts_classification: u32) -> u32 {
+    (ts_classification >> (TsTokenEncodingConsts::TypeOffset as u32)) - 1
+  }
+
+  fn get_token_modifier_from_classification(ts_classification: u32) -> u32 {
+    ts_classification & (TsTokenEncodingConsts::ModifierMask as u32)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CodeAction {
   description: String,
   changes: Vec<FileTextChanges>,
@@ -914,6 +1084,182 @@ impl ReferenceEntry {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyItem {
+  name: String,
+  kind: ScriptElementKind,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  kind_modifiers: Option<String>,
+  file: String,
+  span: TextSpan,
+  selection_span: TextSpan,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  container_name: Option<String>,
+}
+
+impl CallHierarchyItem {
+  pub(crate) async fn try_resolve_call_hierarchy_item(
+    &self,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyItem> {
+    let target_specifier = resolve_url(&self.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(self.to_call_hierarchy_item(
+      &target_line_index,
+      language_server,
+      maybe_root_path,
+    ))
+  }
+
+  pub(crate) fn to_call_hierarchy_item(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> lsp::CallHierarchyItem {
+    let target_specifier = resolve_url(&self.file).unwrap();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&target_specifier)
+      .unwrap();
+
+    let use_file_name = self.is_source_file_item();
+    let maybe_file_path = if uri.scheme() == "file" {
+      uri.to_file_path().ok()
+    } else {
+      None
+    };
+    let name = if use_file_name {
+      if let Some(file_path) = maybe_file_path.as_ref() {
+        file_path.file_name().unwrap().to_string_lossy().to_string()
+      } else {
+        uri.to_string()
+      }
+    } else {
+      self.name.clone()
+    };
+    let detail = if use_file_name {
+      if let Some(file_path) = maybe_file_path.as_ref() {
+        // TODO: update this to work with multi root workspaces
+        let parent_dir = file_path.parent().unwrap();
+        if let Some(root_path) = maybe_root_path {
+          parent_dir
+            .strip_prefix(root_path)
+            .unwrap_or(parent_dir)
+            .to_string_lossy()
+            .to_string()
+        } else {
+          parent_dir.to_string_lossy().to_string()
+        }
+      } else {
+        String::new()
+      }
+    } else {
+      self.container_name.as_ref().cloned().unwrap_or_default()
+    };
+
+    let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+    if let Some(modifiers) = self.kind_modifiers.as_ref() {
+      let kind_modifiers = parse_kind_modifier(modifiers);
+      if kind_modifiers.contains("deprecated") {
+        tags = Some(vec![lsp::SymbolTag::Deprecated]);
+      }
+    }
+
+    lsp::CallHierarchyItem {
+      name,
+      tags,
+      uri,
+      detail: Some(detail),
+      kind: self.kind.clone().into(),
+      range: self.span.to_range(line_index),
+      selection_range: self.selection_span.to_range(line_index),
+      data: None,
+    }
+  }
+
+  fn is_source_file_item(&self) -> bool {
+    self.kind == ScriptElementKind::ScriptElement
+      || self.kind == ScriptElementKind::ModuleElement
+        && self.selection_span.start == 0
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyIncomingCall {
+  from: CallHierarchyItem,
+  from_spans: Vec<TextSpan>,
+}
+
+impl CallHierarchyIncomingCall {
+  pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
+    &self,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyIncomingCall> {
+    let target_specifier = resolve_url(&self.from.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(lsp::CallHierarchyIncomingCall {
+      from: self.from.to_call_hierarchy_item(
+        &target_line_index,
+        language_server,
+        maybe_root_path,
+      ),
+      from_ranges: self
+        .from_spans
+        .iter()
+        .map(|span| span.to_range(&target_line_index))
+        .collect(),
+    })
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyOutgoingCall {
+  to: CallHierarchyItem,
+  from_spans: Vec<TextSpan>,
+}
+
+impl CallHierarchyOutgoingCall {
+  pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyOutgoingCall> {
+    let target_specifier = resolve_url(&self.to.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(lsp::CallHierarchyOutgoingCall {
+      to: self.to.to_call_hierarchy_item(
+        &target_line_index,
+        language_server,
+        maybe_root_path,
+      ),
+      from_ranges: self
+        .from_spans
+        .iter()
+        .map(|span| span.to_range(&line_index))
+        .collect(),
+    })
   }
 }
 
@@ -1940,6 +2286,8 @@ pub enum RequestMethod {
   GetDiagnostics(Vec<ModuleSpecifier>),
   /// Return document highlights at position.
   GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
+  /// Get semantic highlights information for a particular file.
+  GetEncodedSemanticClassifications((ModuleSpecifier, TextSpan)),
   /// Get implementation information for a specific position.
   GetImplementation((ModuleSpecifier, u32)),
   /// Get a "navigation tree" for a specifier.
@@ -1956,6 +2304,12 @@ pub enum RequestMethod {
   GetSmartSelectionRange((ModuleSpecifier, u32)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
+  /// Resolve a call hierarchy item for a specific position.
+  PrepareCallHierarchy((ModuleSpecifier, u32)),
+  /// Resolve incoming call hierarchy items for a specific position.
+  ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
+  /// Resolve outgoing call hierarchy items for a specific position.
+  ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
 }
 
 impl RequestMethod {
@@ -2043,6 +2397,14 @@ impl RequestMethod {
         "position": position,
         "filesToSearch": files_to_search,
       }),
+      RequestMethod::GetEncodedSemanticClassifications((specifier, span)) => {
+        json!({
+          "id": id,
+          "method": "getEncodedSemanticClassifications",
+          "specifier": specifier,
+          "span": span,
+        })
+      }
       RequestMethod::GetImplementation((specifier, position)) => json!({
         "id": id,
         "method": "getImplementation",
@@ -2092,6 +2454,36 @@ impl RequestMethod {
         "id": id,
         "method": "getSupportedCodeFixes",
       }),
+      RequestMethod::PrepareCallHierarchy((specifier, position)) => {
+        json!({
+          "id": id,
+          "method": "prepareCallHierarchy",
+          "specifier": specifier,
+          "position": position
+        })
+      }
+      RequestMethod::ProvideCallHierarchyIncomingCalls((
+        specifier,
+        position,
+      )) => {
+        json!({
+          "id": id,
+          "method": "provideCallHierarchyIncomingCalls",
+          "specifier": specifier,
+          "position": position
+        })
+      }
+      RequestMethod::ProvideCallHierarchyOutgoingCalls((
+        specifier,
+        position,
+      )) => {
+        json!({
+          "id": id,
+          "method": "provideCallHierarchyOutgoingCalls",
+          "specifier": specifier,
+          "position": position
+        })
+      }
     }
   }
 }

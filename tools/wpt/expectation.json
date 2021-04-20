@@ -684,6 +684,15 @@
           "Check isReloadNavigation attribute",
           "Check isHistoryNavigation attribute"
         ]
+      },
+      "headers": {
+        "headers-basic.any.js": true,
+        "headers-casing.any.js": true,
+        "headers-combine.any.js": true,
+        "headers-errors.any.js": true,
+        "headers-normalize.any.js": true,
+        "headers-record.any.js": true,
+        "headers-structure.any.js": true
       }
     },
     "data-urls": {

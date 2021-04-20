@@ -874,26 +874,23 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
-  export interface DatagramConn<Address extends Addr = Addr>
-    extends AsyncIterable<[Uint8Array, Address]> {
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Waits for and resolves to the next message to the `UDPConn`. */
-    receive(p?: Uint8Array): Promise<[Uint8Array, Address]>;
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: Address): Promise<number>;
+    send(p: Uint8Array, addr: Addr): Promise<number>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Close closes the socket. Any pending message promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `UDPConn`. */
-    readonly addr: Address;
-    [Symbol.asyncIterator](): AsyncIterableIterator<
-      [Uint8Array, Address]
-    >;
+    readonly addr: Addr;
+    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
   export interface UnixListenOptions {
@@ -912,7 +909,7 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function listen(
     options: UnixListenOptions & { transport: "unix" },
-  ): Listener<UnixAddr>;
+  ): Listener;
 
   /** **UNSTABLE**: new API, yet to be vetted
    *
@@ -933,7 +930,7 @@ declare namespace Deno {
    * Requires `allow-net` permission. */
   export function listenDatagram(
     options: ListenOptions & { transport: "udp" },
-  ): DatagramConn<NetAddr>;
+  ): DatagramConn;
 
   /** **UNSTABLE**: new API, yet to be vetted
    *
@@ -949,7 +946,7 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permission. */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
-  ): DatagramConn<UnixAddr>;
+  ): DatagramConn;
 
   export interface UnixConnectOptions {
     transport: "unix";
@@ -972,11 +969,8 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
-    options: ConnectOptions,
-  ): Promise<Conn<NetAddr>>;
-  export function connect(
-    options: UnixConnectOptions,
-  ): Promise<Conn<UnixAddr>>;
+    options: ConnectOptions | UnixConnectOptions,
+  ): Promise<Conn>;
 
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
@@ -1005,7 +999,7 @@ declare namespace Deno {
   export function startTls(
     conn: Conn,
     options?: StartTlsOptions,
-  ): Promise<Conn<NetAddr>>;
+  ): Promise<Conn>;
 
   export interface ListenTlsOptions {
     /** **UNSTABLE**: new API, yet to be vetted.

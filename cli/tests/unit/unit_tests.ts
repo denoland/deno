@@ -35,7 +35,6 @@ import "./io_test.ts";
 import "./link_test.ts";
 import "./make_temp_test.ts";
 import "./metrics_test.ts";
-import "./dom_iterable_test.ts";
 import "./mkdir_test.ts";
 import "./net_test.ts";
 import "./os_test.ts";

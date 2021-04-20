@@ -8,72 +8,14 @@
 "use strict";
 
 ((window) => {
-  const { collectSequenceOfCodepoints } = window.__bootstrap.infra;
-
-  /**
-   * @param {string[]} chars 
-   * @returns {string}
-   */
-  function regexMatcher(chars) {
-    const matchers = chars.map((char) => {
-      if (char.length === 1) {
-        return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
-      } else if (char.length === 3 && char[1] === "-") {
-        return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}-\\u${
-          char.charCodeAt(2).toString(16).padStart(4, "0")
-        }`;
-      } else {
-        throw TypeError("unreachable");
-      }
-    });
-    return matchers.join("");
-  }
-
-  const HTTP_TAB_OR_SPACE = ["\u0009", "\u0020"];
-  const HTTP_WHITESPACE = ["\u000A", "\u000D", ...HTTP_TAB_OR_SPACE];
-
-  const ASCII_DIGIT = ["\u0030-\u0039"];
-  const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
-  const ASCII_LOWER_ALPHA = ["\u0061-\u007A"];
-  const ASCII_ALPHA = [...ASCII_UPPER_ALPHA, ...ASCII_LOWER_ALPHA];
-  const ASCII_ALPHANUMERIC = [...ASCII_DIGIT, ...ASCII_ALPHA];
-  const HTTP_TOKEN_CODE_POINT = [
-    "\u0021",
-    "\u0023",
-    "\u0025",
-    "\u0026",
-    "\u0027",
-    "\u002A",
-    "\u002B",
-    "\u002D",
-    "\u002E",
-    "\u005E",
-    "\u005F",
-    "\u0060",
-    "\u007C",
-    "\u007E",
-    ...ASCII_ALPHANUMERIC,
-  ];
-  const HTTP_TOKEN_CODE_POINT_RE = new RegExp(
-    `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`,
-  );
-  const HTTP_QUOTED_STRING_TOKEN_POINT = [
-    "\u0009",
-    "\u0020-\u007E",
-    "\u0080-\u00FF",
-  ];
-  const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new RegExp(
-    `^[${regexMatcher(HTTP_QUOTED_STRING_TOKEN_POINT)}]+$`,
-  );
-  const HTTP_WHITESPACE_MATCHER = regexMatcher(HTTP_WHITESPACE);
-  const HTTP_WHITESPACE_PREFIX_RE = new RegExp(
-    `^[${HTTP_WHITESPACE_MATCHER}]+`,
-    "g",
-  );
-  const HTTP_WHITESPACE_SUFFIX_RE = new RegExp(
-    `[${HTTP_WHITESPACE_MATCHER}]+$`,
-    "g",
-  );
+  const {
+    collectSequenceOfCodepoints,
+    HTTP_WHITESPACE,
+    HTTP_WHITESPACE_PREFIX_RE,
+    HTTP_WHITESPACE_SUFFIX_RE,
+    HTTP_QUOTED_STRING_TOKEN_POINT_RE,
+    HTTP_TOKEN_CODE_POINT_RE,
+  } = window.__bootstrap.infra;
 
   /**
    * https://fetch.spec.whatwg.org/#collect-an-http-quoted-string
@@ -132,7 +74,15 @@
   }
 
   /**
+   * @typedef MimeType 
+   * @property {string} type
+   * @property {string} subtype
+   * @property {Map<string,string>} parameters
+   */
+
+  /**
    * @param {string} input
+   * @returns {MimeType | null}
    */
   function parseMimeType(input) {
     // 1.

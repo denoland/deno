@@ -1,10 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertStringIncludes,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 const {
   inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
@@ -25,10 +20,7 @@ unitTest(function newHeaderTest(): void {
     // deno-lint-ignore no-explicit-any
     new Headers(null as any);
   } catch (e) {
-    assertEquals(
-      e.message,
-      "Failed to construct 'Headers'; The provided value was not valid",
-    );
+    assert(e instanceof TypeError);
   }
 });
 
@@ -271,13 +263,11 @@ unitTest(function headerParamsArgumentsCheck(): void {
   methodRequireOneParam.forEach((method): void => {
     const headers = new Headers();
     let hasThrown = 0;
-    let errMsg = "";
     try {
       // deno-lint-ignore no-explicit-any
       (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
-      errMsg = err.message;
       if (err instanceof TypeError) {
         hasThrown = 2;
       } else {
@@ -285,23 +275,17 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringIncludes(
-      errMsg,
-      `${method} requires at least 1 argument, but only 0 present`,
-    );
   });
 
   methodRequireTwoParams.forEach((method): void => {
     const headers = new Headers();
     let hasThrown = 0;
-    let errMsg = "";
 
     try {
       // deno-lint-ignore no-explicit-any
       (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
-      errMsg = err.message;
       if (err instanceof TypeError) {
         hasThrown = 2;
       } else {
@@ -309,19 +293,13 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringIncludes(
-      errMsg,
-      `${method} requires at least 2 arguments, but only 0 present`,
-    );
 
     hasThrown = 0;
-    errMsg = "";
     try {
       // deno-lint-ignore no-explicit-any
       (headers as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
-      errMsg = err.message;
       if (err instanceof TypeError) {
         hasThrown = 2;
       } else {
@@ -329,10 +307,6 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStringIncludes(
-      errMsg,
-      `${method} requires at least 2 arguments, but only 1 present`,
-    );
   });
 });
 
@@ -361,8 +335,8 @@ unitTest(function headersAppendMultiple(): void {
   const actual = [...headers];
   assertEquals(actual, [
     ["set-cookie", "foo=bar"],
-    ["x-deno", "foo, bar"],
     ["set-cookie", "bar=baz"],
+    ["x-deno", "foo, bar"],
   ]);
 });
 
@@ -372,19 +346,9 @@ unitTest(function headersAppendDuplicateSetCookieKey(): void {
   headers.append("Set-cookie", "baz=bar");
   const actual = [...headers];
   assertEquals(actual, [
+    ["set-cookie", "foo=bar"],
     ["set-cookie", "foo=baz"],
     ["set-cookie", "baz=bar"],
-  ]);
-});
-
-unitTest(function headersSetDuplicateCookieKey(): void {
-  const headers = new Headers([["Set-Cookie", "foo=bar"]]);
-  headers.set("set-Cookie", "foo=baz");
-  headers.set("set-cookie", "bar=qat");
-  const actual = [...headers];
-  assertEquals(actual, [
-    ["set-cookie", "foo=baz"],
-    ["set-cookie", "bar=qat"],
   ]);
 });
 
@@ -411,7 +375,7 @@ unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
   const singleHeader = new Headers([["Content-Type", "application/json"]]);
   assertEquals(
     stringify(singleHeader),
-    "Headers { content-type: application/json }",
+    `Headers { "content-type": "application/json" }`,
   );
   const multiParamHeader = new Headers([
     ["Content-Type", "application/json"],
@@ -419,6 +383,6 @@ unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
   ]);
   assertEquals(
     stringify(multiParamHeader),
-    "Headers { content-type: application/json, content-length: 1337 }",
+    `Headers { "content-length": "1337", "content-type": "application/json" }`,
   );
 });
