@@ -3650,14 +3650,14 @@ mod tests {
   #[rustfmt::skip]
   async fn test_semantic_tokens() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
+      (LspFixture::Path("initialize_request.json"), LspResponse::RequestAny),
+      (LspFixture::Path("initialized_notification.json"), LspResponse::None),
       (
-        "semantic_tokens_did_open_notification.json",
+        LspFixture::Path("semantic_tokens_did_open_notification.json"),
         LspResponse::None,
       ),
       (
-        "semantic_tokens_full_request.json",
+        LspFixture::Path("semantic_tokens_full_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -3666,7 +3666,7 @@ mod tests {
         ),
       ),
       (
-        "semantic_tokens_range_request.json",
+        LspFixture::Path("semantic_tokens_range_request.json"),
         LspResponse::Request(
           4,
           json!({
@@ -3675,10 +3675,10 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (LspFixture::Path("exit_notification.json"), LspResponse::None),
     ]);
     harness.run().await;
   }
