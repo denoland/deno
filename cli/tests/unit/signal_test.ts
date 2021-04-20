@@ -108,7 +108,7 @@ unitTest(
     setTimeout(async () => {
       await defer(20);
       for (const _ of Array(3)) {
-        // Sends SIGUSR1 3 times.
+        // Sends SIGINT 3 times.
         Deno.kill(Deno.pid, Deno.Signal.SIGINT);
         await defer(20);
       }

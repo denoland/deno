@@ -1,26 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::AnyError;
-use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[cfg(any(unix, windows))]
 use deno_core::error::bad_resource_id;
-#[cfg(any(unix, windows))]
+use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
-#[cfg(any(unix, windows))]
 use deno_core::CancelFuture;
-#[cfg(any(unix, windows))]
 use deno_core::CancelHandle;
-#[cfg(any(unix, windows))]
+use deno_core::OpState;
 use deno_core::RcRef;
-#[cfg(any(unix, windows))]
 use deno_core::Resource;
-#[cfg(any(unix, windows))]
 use deno_core::ResourceId;
-#[cfg(any(unix, windows))]
-use std::borrow::Cow;
+use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 #[cfg(windows)]
