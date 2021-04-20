@@ -181,10 +181,9 @@ if (diagnostics.length) {
 ### Bundling
 
 `Deno.emit()` is also capable of providing output similar to `deno bundle` on
-the command line. This is enabled by setting the _bundle_ option to `"esm"`.
-(Currently Deno supports bundling as a single file ES modulee (`"esm"`) or a
-single file self contained script we executes in an immediately invoked function
-when loaded (`"iife"`))
+the command line. This is enabled by setting the _bundle_ option to `"esm"` or
+`"iife"`. Currently Deno supports bundling as a single file ES modulee (`"esm"`)
+or a single file self contained legacy script (`"iife"`).
 
 ```ts
 const { files, diagnostics } = await Deno.emit("./mod.ts", {
