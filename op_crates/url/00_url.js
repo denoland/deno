@@ -28,7 +28,7 @@
           init = init.slice(1);
         }
 
-        this.#params = core.jsonOpSync("op_url_parse_search_params", init);
+        this.#params = core.opSync("op_url_parse_search_params", init);
       } else if (
         Array.isArray(init) ||
         typeof init?.[Symbol.iterator] == "function"
@@ -64,7 +64,7 @@
         return;
       }
       const parseArgs = { href: url.href, setSearch: this.toString() };
-      parts.set(url, core.jsonOpSync("op_url_parse", parseArgs));
+      parts.set(url, core.opSync("op_url_parse", parseArgs));
     };
 
     append(name, value) {
@@ -189,7 +189,7 @@
     }
 
     toString() {
-      return core.jsonOpSync("op_url_stringify_search_params", this.#params);
+      return core.opSync("op_url_stringify_search_params", this.#params);
     }
   }
 
@@ -206,7 +206,7 @@
       } else {
         base = base !== undefined ? String(base) : base;
         const parseArgs = { href: String(url), baseHref: base };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       }
     }
 
@@ -230,7 +230,7 @@
     #updateSearchParams = () => {
       if (this.#searchParams != null) {
         const params = paramLists.get(this.#searchParams);
-        const newParams = core.jsonOpSync(
+        const newParams = core.opSync(
           "op_url_parse_search_params",
           this.search.slice(1),
         );
@@ -245,7 +245,7 @@
     set hash(value) {
       try {
         const parseArgs = { href: this.href, setHash: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }
@@ -258,7 +258,7 @@
     set host(value) {
       try {
         const parseArgs = { href: this.href, setHost: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }
@@ -271,7 +271,7 @@
     set hostname(value) {
       try {
         const parseArgs = { href: this.href, setHostname: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }
@@ -284,7 +284,7 @@
     set href(value) {
       try {
         const parseArgs = { href: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         throw new TypeError("Invalid URL");
       }
@@ -302,7 +302,7 @@
     set password(value) {
       try {
         const parseArgs = { href: this.href, setPassword: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }
@@ -315,7 +315,7 @@
     set pathname(value) {
       try {
         const parseArgs = { href: this.href, setPathname: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }
@@ -328,7 +328,7 @@
     set port(value) {
       try {
         const parseArgs = { href: this.href, setPort: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }
@@ -341,7 +341,7 @@
     set protocol(value) {
       try {
         const parseArgs = { href: this.href, setProtocol: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }
@@ -354,7 +354,7 @@
     set search(value) {
       try {
         const parseArgs = { href: this.href, setSearch: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
         this.#updateSearchParams();
       } catch {
         /* pass */
@@ -368,7 +368,7 @@
     set username(value) {
       try {
         const parseArgs = { href: this.href, setUsername: String(value) };
-        parts.set(this, core.jsonOpSync("op_url_parse", parseArgs));
+        parts.set(this, core.opSync("op_url_parse", parseArgs));
       } catch {
         /* pass */
       }

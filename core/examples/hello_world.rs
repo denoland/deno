@@ -2,7 +2,7 @@
 //!  This example shows you how to define ops in Rust and then call them from
 //!  JavaScript.
 
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::JsRuntime;
 use std::io::Write;
 
@@ -26,7 +26,7 @@ fn main() {
     // The op_fn callback takes a state object OpState,
     // a structured arg of type `T` and an optional ZeroCopyBuf,
     // a mutable reference to a JavaScript ArrayBuffer
-    json_op_sync(|_state, msg: Option<String>, zero_copy| {
+    op_sync(|_state, msg: Option<String>, zero_copy| {
       let mut out = std::io::stdout();
 
       // Write msg to stdout
@@ -46,10 +46,10 @@ fn main() {
   // Register the JSON op for summing a number array.
   runtime.register_op(
     "op_sum",
-    // The json_op_sync function automatically deserializes
+    // The op_sync function automatically deserializes
     // the first ZeroCopyBuf and serializes the return value
     // to reduce boilerplate
-    json_op_sync(|_state, nums: Vec<f64>, _| {
+    op_sync(|_state, nums: Vec<f64>, _| {
       // Sum inputs
       let sum = nums.iter().fold(0.0, |a, v| a + v);
       // return as a Result<f64, AnyError>
@@ -91,11 +91,11 @@ const arr = [1, 2, 3];
 print("The sum of");
 print(arr);
 print("is");
-print(Deno.core.jsonOpSync('op_sum', arr));
+print(Deno.core.opSync('op_sum', arr));
 
 // And incorrect usage
 try {
-  print(Deno.core.jsonOpSync('op_sum', 0));
+  print(Deno.core.opSync('op_sum', 0));
 } catch(e) {
   print('Exception:');
   print(e);

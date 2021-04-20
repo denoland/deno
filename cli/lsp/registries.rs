@@ -347,7 +347,7 @@ impl ModuleRegistry {
     let specifier = origin_url.join(CONFIG_PATH)?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
@@ -493,8 +493,8 @@ impl ModuleRegistry {
                               label,
                               kind,
                               detail,
-                              filter_text,
                               sort_text,
+                              filter_text,
                               text_edit,
                               command,
                               ..Default::default()
@@ -609,7 +609,7 @@ impl ModuleRegistry {
       .ok()?;
     let file = self
       .file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await
       .map_err(|err| {
         error!(
@@ -958,7 +958,7 @@ mod tests {
     let actual = parse_replacement_variables(
       "https://deno.land/_vsc1/modules/${module}/v/${{version}}",
     );
-    assert_eq!(actual.iter().count(), 2);
+    assert_eq!(actual.len(), 2);
     assert!(actual.contains(&"module".to_owned()));
     assert!(actual.contains(&"version".to_owned()));
   }

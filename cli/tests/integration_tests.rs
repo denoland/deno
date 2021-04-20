@@ -2497,6 +2497,12 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(nonexistent_worker {
+    args: "run --allow-read workers/nonexistent_worker.ts",
+    output: "workers/nonexistent_worker.out",
+    exit_code: 1,
+  });
+
   #[test]
   fn compiler_api() {
     let status = util::deno_cmd()
@@ -3250,7 +3256,7 @@ console.log("finish");
   });
 
   itest!(heapstats {
-    args: "run --quiet --v8-flags=--expose-gc heapstats.js",
+    args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
     output: "heapstats.js.out",
   });
 
@@ -3431,11 +3437,6 @@ console.log("finish");
   itest!(wasm_async {
     args: "run wasm_async.js",
     output: "wasm_async.out",
-  });
-
-  itest!(wasm_streaming {
-    args: "run wasm_streaming.js",
-    output: "wasm_streaming.out",
   });
 
   itest!(wasm_unreachable {

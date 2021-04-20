@@ -5,6 +5,7 @@
 mod colors;
 mod standalone;
 mod tokio_util;
+mod unix_util;
 mod version;
 
 use deno_core::error::anyhow;
@@ -14,6 +15,7 @@ use std::env;
 pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
+  unix_util::raise_fd_limit();
 
   let args: Vec<String> = env::args().collect();
   if let Err(err) = run(args) {

@@ -21,13 +21,13 @@ pub fn init(
       state.put::<WsCaData>(WsCaData(ca_data));
     }
   }
-  super::reg_json_sync(
+  super::reg_sync(
     rt,
     "op_ws_check_permission",
     op_ws_check_permission::<Permissions>,
   );
-  super::reg_json_async(rt, "op_ws_create", op_ws_create::<Permissions>);
-  super::reg_json_async(rt, "op_ws_send", op_ws_send);
-  super::reg_json_async(rt, "op_ws_close", op_ws_close);
-  super::reg_json_async(rt, "op_ws_next_event", op_ws_next_event);
+  super::reg_async(rt, "op_ws_create", op_ws_create::<Permissions>);
+  super::reg_async(rt, "op_ws_send", op_ws_send);
+  super::reg_async(rt, "op_ws_close", op_ws_close);
+  super::reg_async(rt, "op_ws_next_event", op_ws_next_event);
 }

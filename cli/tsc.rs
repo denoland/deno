@@ -10,7 +10,7 @@ use deno_core::error::anyhow;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -227,7 +227,7 @@ fn op<F>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut State, Value) -> Result<Value, AnyError> + 'static,
 {
-  json_op_sync(move |s, args, _bufs| {
+  op_sync(move |s, args, _bufs| {
     let state = s.borrow_mut::<State>();
     op_fn(state, args)
   })
