@@ -3,7 +3,10 @@ use rusty_v8 as v8;
 
 /// Deserializable allows custom v8 deserializables beyond `serde::Deserializable`s,
 /// enabling things such as deserializing `v8::Value`s to value serialized buffers
-pub trait Deserializable where Self: Sized {
+pub trait Deserializable
+where
+  Self: Sized,
+{
   fn from_v8(
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
