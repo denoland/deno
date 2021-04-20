@@ -13,6 +13,7 @@ mod ops_json;
 pub mod plugin_api;
 mod resources;
 mod runtime;
+mod serialized_value;
 mod zero_copy_buf;
 
 // Re-exports
