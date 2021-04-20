@@ -21,77 +21,77 @@ unitTest(
         Deno.signal(1);
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.alarm(); // for SIGALRM
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.child(); // for SIGCHLD
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.hungup(); // for SIGHUP
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.io(); // for SIGIO
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.pipe(); // for SIGPIPE
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.quit(); // for SIGQUIT
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.terminate(); // for SIGTERM
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.userDefined1(); // for SIGUSR1
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.userDefined2(); // for SIGURS2
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
     assertThrows(
       () => {
         Deno.signals.windowChange(); // for SIGWINCH
       },
       Error,
-      "Windows only supports ctrl-c(SIGINT)!",
+      "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
     );
   },
 );
@@ -150,7 +150,11 @@ unitTest(
 unitTest(
   { ignore: Deno.build.os !== "windows", perms: { run: true } },
   function signalWindowsShorthandsTest(): void {
-    const s: Deno.SignalStream = Deno.signals.interrupt(); // for SIGINT
+    let s: Deno.SignalStream;
+    s = Deno.signals.interrupt(); // for SIGINT
+    assert(s instanceof Deno.SignalStream);
+    s.dispose();
+    s = Deno.signal(Deno.Signal.SIGBREAK); // for SIGBREAK
     assert(s instanceof Deno.SignalStream);
     s.dispose();
   },

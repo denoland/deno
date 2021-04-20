@@ -18,11 +18,16 @@
     core.opSync("op_signal_unbind", rid);
   }
 
-  // only support ctrl-c
+  // only support ctrl-c/ctrl-break
   const WindowsSignal = {
     2: "SIGINT",
     SIGINT: 2,
+    // https://github.com/libuv/libuv/blob/v1.x/include/uv/win.h#L80
+    21: "SIGBREAK",
+    SIGBREAK: 21,
 
+    // Solve the error because of runKillAfterStatus test. It requires SIGTERM!
+    15: "SIGTERM",
     SIGTERM: 15,
   };
 
@@ -171,8 +176,10 @@
   }
 
   function signal(signo) {
-    if (build.os === "windows" && signo !== Signal.SIGINT) {
-      throw new Error("Windows only supports ctrl-c(SIGINT)!");
+    if (build.os === "windows" && !signo in WindowsSignal) {
+      throw new Error(
+        "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
+      );
     }
     return new SignalStream(signo);
   }

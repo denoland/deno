@@ -24,7 +24,7 @@ use std::borrow::Cow;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 #[cfg(windows)]
-use tokio::signal::windows::{ctrl_c, CtrlC};
+use tokio::signal::windows::{ctrl_break, ctrl_c, CtrlBreak, CtrlC};
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_signal_bind", op_signal_bind);
@@ -104,15 +104,45 @@ pub fn op_signal_unbind(
 }
 
 #[cfg(windows)]
+enum WindowsSignal {
+  SIGINT(CtrlC),
+  SIGBREAK(CtrlBreak),
+}
+
+#[cfg(windows)]
+impl From<CtrlC> for WindowsSignal {
+  fn from(ctrl_c: CtrlC) -> Self {
+    WindowsSignal::SIGINT(ctrl_c)
+  }
+}
+
+#[cfg(windows)]
+impl From<CtrlBreak> for WindowsSignal {
+  fn from(ctrl_break: CtrlBreak) -> Self {
+    WindowsSignal::SIGBREAK(ctrl_break)
+  }
+}
+
+#[cfg(windows)]
+impl WindowsSignal {
+  pub async fn recv(&mut self) -> Option<()> {
+    match self {
+      WindowsSignal::SIGINT(ctrl_c) => ctrl_c.recv().await,
+      WindowsSignal::SIGBREAK(ctrl_break) => ctrl_break.recv().await,
+    }
+  }
+}
+
+#[cfg(windows)]
 struct SignalStreamResource {
-  signal: AsyncRefCell<CtrlC>,
+  signal: AsyncRefCell<WindowsSignal>,
   cancel: CancelHandle,
 }
 
 #[cfg(windows)]
 impl Resource for SignalStreamResource {
   fn name(&self) -> Cow<str> {
-    "ctrlc".into()
+    "signal".into()
   }
 
   fn close(self: Rc<Self>) {
@@ -126,13 +156,15 @@ pub fn op_signal_bind(
   signo: i32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ResourceId, AnyError> {
-  // SIGINT
-  if signo != 2 {
-    unimplemented!()
-  }
   super::check_unstable(state, "Deno.signal");
   let resource = SignalStreamResource {
-    signal: AsyncRefCell::new(ctrl_c().expect("")),
+    signal: AsyncRefCell::new(match signo {
+      // SIGINT
+      2 => ctrl_c().expect("").into(),
+      // SIGBREAK
+      21 => ctrl_break().expect("").into(),
+      _ => unimplemented!(),
+    }),
     cancel: Default::default(),
   };
   let rid = state.resource_table.add(resource);
