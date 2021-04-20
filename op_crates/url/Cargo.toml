@@ -20,7 +20,7 @@ percent-encoding = "2.1.0"
 serde = { version = "1.0.125", features = ["derive"] }
 
 [dev-dependencies]
-bench_util = { version = "0.0.0", path = "../../bench_util" }
+bencher = "0.1"
 
 [[bench]]
 name = "url_ops"
