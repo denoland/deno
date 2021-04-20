@@ -23,8 +23,6 @@ console.log(main().toString());
 
 And for files:
 
-<!-- deno-fmt-ignore -->
-
 ```ts
 import { readAll } from "https://deno.land/std@0.93.0/io/util.ts";
 
