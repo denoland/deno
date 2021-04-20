@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 mod de;
+mod deserializable;
 mod error;
 mod keys;
 mod magic;
@@ -9,6 +10,7 @@ mod serializable;
 pub mod utils;
 
 pub use de::{from_v8, from_v8_cached, Deserializer};
+pub use deserializable::Deserializable;
 pub use error::{Error, Result};
 pub use keys::KeyCache;
 pub use magic::Value;
