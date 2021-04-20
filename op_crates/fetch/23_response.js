@@ -108,12 +108,13 @@
    * @returns {InnerResponse}
    */
   function newInnerResponse(status = 200, statusMessage = "") {
-    return Object.assign({
+    return {
       headerList: [],
       urlList: [],
       status,
       statusMessage,
-    }, defaultInnerResponse);
+      ...defaultInnerResponse,
+    };
   }
 
   /**

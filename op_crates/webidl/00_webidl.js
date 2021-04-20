@@ -642,7 +642,7 @@
       }
       const esDict = V;
 
-      const idlDict = Object.assign({}, defaultValues);
+      const idlDict = { ...defaultValues };
 
       // NOTE: fast path Null and Undefined and empty objects.
       if (

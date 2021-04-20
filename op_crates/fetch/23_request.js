@@ -65,12 +65,13 @@
    * @returns 
    */
   function newInnerRequest(method, url, headerList = [], body = null) {
-    return Object.assign({
+    return {
       method: method,
       headerList,
       body,
       urlList: [url],
-    }, defaultInnerRequest);
+      ...defaultInnerRequest,
+    };
   }
 
   /**
