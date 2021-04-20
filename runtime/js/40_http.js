@@ -116,7 +116,8 @@
       /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
       let respBody = null;
       if (innerResp.body !== null) {
-        if (innerResp.body instanceof ReadableStream) {
+        if (innerResp.body.unusable()) throw new TypeError("Body is unusable.");
+        if (innerResp.body.streamOrStatic instanceof ReadableStream) {
           if (innerResp.body.length === null) {
             respBody = innerResp.body.stream;
           } else {
@@ -131,6 +132,8 @@
           innerResp.body.streamOrStatic.consumed = true;
           respBody = innerResp.body.streamOrStatic.body;
         }
+      } else {
+        respBody = new Uint8Array(0);
       }
 
       const responseBodyRid = await Deno.core.opAsync("op_http_response", [
