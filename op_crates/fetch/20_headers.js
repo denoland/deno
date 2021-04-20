@@ -107,6 +107,7 @@
   }
 
   /**
+   * https://fetch.spec.whatwg.org/#concept-header-list-get
    * @param {HeaderList} list
    * @param {string} name
    */
@@ -123,6 +124,7 @@
   }
 
   /**
+   * https://fetch.spec.whatwg.org/#concept-header-list-get-decode-split
    * @param {HeaderList} list
    * @param {string} name
    * @returns {string[] | null}
@@ -135,6 +137,7 @@
     const values = [];
     let value = "";
     while (position < initialValue.length) {
+      // 7.1. collect up to " or ,
       const res = collectSequenceOfCodepoints(
         initialValue,
         position,
