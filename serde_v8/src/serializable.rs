@@ -83,7 +83,7 @@ impl serde::Serialize for Primitive {
   }
 }
 
-impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
+impl<T: Serializable + 'static> From<T> for SerializablePkg {
   fn from(x: T) -> Self {
     let tid = TypeId::of::<T>();
 

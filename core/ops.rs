@@ -11,7 +11,6 @@ use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
 use rusty_v8 as v8;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::iter::once;
@@ -53,8 +52,8 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
     }
   }
 
-  pub fn deserialize<T: DeserializeOwned>(self) -> Result<T, AnyError> {
-    serde_v8::from_v8(self.scope.unwrap(), self.value.unwrap())
+  pub fn deserialize<T: serde_v8::Deserializable>(self) -> Result<T, AnyError> {
+    T::from_v8(self.scope.unwrap(), self.value.unwrap())
       .map_err(AnyError::from)
       .map_err(|e| type_error(format!("Error parsing args: {}", e)))
   }
@@ -99,7 +98,7 @@ pub struct OpError {
   message: String,
 }
 
-pub fn serialize_op_result<R: Serialize + 'static>(
+pub fn serialize_op_result<R: serde_v8::Serializable + 'static>(
   result: Result<R, AnyError>,
   state: Rc<RefCell<OpState>>,
 ) -> OpResponse {

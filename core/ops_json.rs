@@ -6,8 +6,6 @@ use crate::Op;
 use crate::OpFn;
 use crate::OpState;
 use crate::ZeroCopyBuf;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
@@ -38,8 +36,8 @@ use std::rc::Rc;
 pub fn op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
-  V: DeserializeOwned,
-  R: Serialize + 'static,
+  V: serde_v8::Deserializable,
+  R: serde_v8::Serializable + 'static,
 {
   Box::new(move |state, payload, buf| -> Op {
     let result = payload
@@ -76,9 +74,9 @@ where
 pub fn op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
-  V: DeserializeOwned,
+  V: serde_v8::Deserializable,
   R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: Serialize + 'static,
+  RV: serde_v8::Serializable + 'static,
 {
   Box::new(move |state, payload, buf| -> Op {
     let pid = payload.promise_id;
