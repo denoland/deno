@@ -1398,14 +1398,7 @@ impl JsRuntime {
       return Ok(());
     }
 
-    // FIXME(bartlomieju): without check above this call would panic
-    // because of lazy initialization in core.js. It seems this lazy initialization
-    // hides unnecessary complexity.
-    let js_recv_cb_handle = state_rc
-      .borrow()
-      .js_recv_cb
-      .clone()
-      .expect("Deno.core.recv has not been called.");
+    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
 
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
