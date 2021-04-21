@@ -356,6 +356,7 @@ jobs:
           draft: true
 
       - name: Clean before cache
+        shell: bash
         run: |
           rm -f target/*/deno target/*/denort target/*/test_server
           rm -rf target/*/examples/
