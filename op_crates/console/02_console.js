@@ -1614,20 +1614,12 @@
         return this.log(data);
       }
 
-      const objectValues = {};
-      const indexKeys = [];
-      const values = [];
-
       const stringifyValue = (value) =>
         inspectValueWithQuotes(value, new Set(), 0, {
           ...DEFAULT_INSPECT_OPTIONS,
           depth: 1,
         });
       const toTable = (header, body) => this.log(cliTable(header, body));
-      const createColumn = (value, shift) => [
-        ...(shift ? [...new Array(shift)].map(() => "") : []),
-        stringifyValue(value),
-      ];
 
       let resultData;
       const isSet = data instanceof Set;
@@ -1649,8 +1641,19 @@
         resultData = data;
       }
 
+      const keys = Object.keys(resultData);
+      const numRows = keys.length;
+
+      const objectValues = properties
+        ? Object.fromEntries(
+          properties.map((name) => [name, new Array(numRows).fill("")]),
+        )
+        : {};
+      const indexKeys = [];
+      const values = [];
+
       let hasPrimitives = false;
-      Object.keys(resultData).forEach((k, idx) => {
+      keys.forEach((k, idx) => {
         const value = resultData[k];
         const primitive = value === null ||
           (typeof value !== "function" && typeof value !== "object");
@@ -1661,17 +1664,11 @@
           const valueObj = value || {};
           const keys = properties || Object.keys(valueObj);
           for (const k of keys) {
-            if (primitive || !valueObj.hasOwnProperty(k)) {
-              if (objectValues[k]) {
-                // fill with blanks for idx to avoid misplacing from later values
-                objectValues[k].push("");
+            if (!primitive && k in valueObj) {
+              if (!(k in objectValues)) {
+                objectValues[k] = new Array(numRows).fill("");
               }
-            } else {
-              if (objectValues[k]) {
-                objectValues[k].push(stringifyValue(valueObj[k]));
-              } else {
-                objectValues[k] = createColumn(valueObj[k], idx);
-              }
+              objectValues[k][idx] = stringifyValue(valueObj[k]);
             }
           }
           values.push("");

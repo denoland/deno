@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::ops::io::TcpStreamResource;
 use crate::permissions::Permissions;
 use crate::resolve_addr::resolve_addr;
@@ -7,13 +6,10 @@ use crate::resolve_addr::resolve_addr_sync;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
@@ -21,6 +17,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -46,12 +43,45 @@ use crate::ops::io::UnixStreamResource;
 use std::path::Path;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_accept", op_accept);
-  super::reg_json_async(rt, "op_connect", op_connect);
-  super::reg_json_sync(rt, "op_listen", op_listen);
-  super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
-  super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
-  super::reg_json_async(rt, "op_dns_resolve", op_dns_resolve);
+  super::reg_async(rt, "op_accept", op_accept);
+  super::reg_async(rt, "op_connect", op_connect);
+  super::reg_sync(rt, "op_listen", op_listen);
+  super::reg_async(rt, "op_datagram_receive", op_datagram_receive);
+  super::reg_async(rt, "op_datagram_send", op_datagram_send);
+  super::reg_async(rt, "op_dns_resolve", op_dns_resolve);
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpConn {
+  pub rid: ResourceId,
+  pub remote_addr: Option<OpAddr>,
+  pub local_addr: Option<OpAddr>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "transport", rename_all = "lowercase")]
+pub enum OpAddr {
+  Tcp(IpAddr),
+  Udp(IpAddr),
+  #[cfg(unix)]
+  Unix(net_unix::UnixAddr),
+  #[cfg(unix)]
+  UnixPacket(net_unix::UnixAddr),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+/// A received datagram packet (from udp or unixpacket)
+pub struct OpPacket {
+  pub size: usize,
+  pub remote_addr: OpAddr,
+}
+
+#[derive(Serialize)]
+pub struct IpAddr {
+  pub hostname: String,
+  pub port: u16,
 }
 
 #[derive(Deserialize)]
@@ -63,8 +93,8 @@ pub(crate) struct AcceptArgs {
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
   let rid = args.rid;
 
   let resource = state
@@ -92,36 +122,34 @@ async fn accept_tcp(
   let rid = state
     .resource_table
     .add(TcpStreamResource::new(tcp_stream.into_split()));
-  Ok(json!({
-    "rid": rid,
-    "localAddr": {
-      "hostname": local_addr.ip().to_string(),
-      "port": local_addr.port(),
-      "transport": "tcp",
-    },
-    "remoteAddr": {
-      "hostname": remote_addr.ip().to_string(),
-      "port": remote_addr.port(),
-      "transport": "tcp",
-    }
-  }))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    })),
+  })
 }
 
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  bufs: BufVec,
-) -> Result<Value, AnyError> {
-  let args: AcceptArgs = serde_json::from_value(args)?;
+  args: AcceptArgs,
+  _buf: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
-    "tcp" => accept_tcp(state, args, bufs).await,
+    "tcp" => accept_tcp(state, args, _buf).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(state, args, bufs).await,
-    _ => Err(generic_error(format!(
-      "Unsupported transport protocol {}",
-      args.transport
-    ))),
+    "unix" => net_unix::accept_unix(state, args, _buf).await,
+    other => Err(bad_transport(other)),
   }
+}
+
+fn bad_transport(transport: &str) -> AnyError {
+  generic_error(format!("Unsupported transport protocol {}", transport))
 }
 
 #[derive(Deserialize)]
@@ -133,10 +161,10 @@ pub(crate) struct ReceiveArgs {
 async fn receive_udp(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-  let mut zero_copy = zero_copy[0].clone();
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpPacket, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let mut zero_copy = zero_copy.clone();
 
   let rid = args.rid;
 
@@ -151,32 +179,25 @@ async fn receive_udp(
     .recv_from(&mut zero_copy)
     .try_or_cancel(cancel_handle)
     .await?;
-  Ok(json!({
-    "size": size,
-    "remoteAddr": {
-      "hostname": remote_addr.ip().to_string(),
-      "port": remote_addr.port(),
-      "transport": "udp",
-    }
-  }))
+  Ok(OpPacket {
+    size,
+    remote_addr: OpAddr::Udp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    }),
+  })
 }
 
 async fn op_datagram_receive(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-
-  let args: ReceiveArgs = serde_json::from_value(args)?;
+  args: ReceiveArgs,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpPacket, AnyError> {
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
     #[cfg(unix)]
     "unixpacket" => net_unix::receive_unix_packet(state, args, zero_copy).await,
-    _ => Err(generic_error(format!(
-      "Unsupported transport protocol {}",
-      args.transport
-    ))),
+    other => Err(bad_transport(other)),
   }
 }
 
@@ -190,21 +211,21 @@ struct SendArgs {
 
 async fn op_datagram_send(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
-  let zero_copy = zero_copy[0].clone();
+  args: SendArgs,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<usize, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let zero_copy = zero_copy.clone();
 
-  match serde_json::from_value(args)? {
+  match args {
     SendArgs {
       rid,
       transport,
       transport_args: ArgsEnum::Ip(args),
     } if transport == "udp" => {
       {
-        let s = state.borrow();
-        s.borrow::<Permissions>()
+        let mut s = state.borrow_mut();
+        s.borrow_mut::<Permissions>()
           .net
           .check(&(&args.hostname, Some(args.port)))?;
       }
@@ -220,7 +241,7 @@ async fn op_datagram_send(
         .ok_or_else(|| bad_resource("Socket has been closed"))?;
       let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
       let byte_length = socket.send_to(&zero_copy, &addr).await?;
-      Ok(json!(byte_length))
+      Ok(byte_length)
     }
     #[cfg(unix)]
     SendArgs {
@@ -230,8 +251,8 @@ async fn op_datagram_send(
     } if transport == "unixpacket" => {
       let address_path = Path::new(&args.path);
       {
-        let s = state.borrow();
-        s.borrow::<Permissions>().write.check(&address_path)?;
+        let mut s = state.borrow_mut();
+        s.borrow_mut::<Permissions>().write.check(&address_path)?;
       }
       let resource = state
         .borrow()
@@ -244,7 +265,7 @@ async fn op_datagram_send(
         .try_borrow_mut()
         .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
       let byte_length = socket.send_to(&zero_copy, address_path).await?;
-      Ok(json!(byte_length))
+      Ok(byte_length)
     }
     _ => Err(type_error("Wrong argument format!")),
   }
@@ -259,18 +280,18 @@ struct ConnectArgs {
 
 async fn op_connect(
   state: Rc<RefCell<OpState>>,
-  args: Value,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  match serde_json::from_value(args)? {
+  args: ConnectArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
+  match args {
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
     } if transport == "tcp" => {
       {
-        let state_ = state.borrow();
+        let mut state_ = state.borrow_mut();
         state_
-          .borrow::<Permissions>()
+          .borrow_mut::<Permissions>()
           .net
           .check(&(&args.hostname, Some(args.port)))?;
       }
@@ -286,19 +307,17 @@ async fn op_connect(
       let rid = state_
         .resource_table
         .add(TcpStreamResource::new(tcp_stream.into_split()));
-      Ok(json!({
-        "rid": rid,
-        "localAddr": {
-          "hostname": local_addr.ip().to_string(),
-          "port": local_addr.port(),
-          "transport": transport,
-        },
-        "remoteAddr": {
-          "hostname": remote_addr.ip().to_string(),
-          "port": remote_addr.port(),
-          "transport": transport,
-        }
-      }))
+      Ok(OpConn {
+        rid,
+        local_addr: Some(OpAddr::Tcp(IpAddr {
+          hostname: local_addr.ip().to_string(),
+          port: local_addr.port(),
+        })),
+        remote_addr: Some(OpAddr::Tcp(IpAddr {
+          hostname: remote_addr.ip().to_string(),
+          port: remote_addr.port(),
+        })),
+      })
     }
     #[cfg(unix)]
     ConnectArgs {
@@ -308,9 +327,15 @@ async fn op_connect(
       let address_path = Path::new(&args.path);
       super::check_unstable2(&state, "Deno.connect");
       {
-        let state_ = state.borrow();
-        state_.borrow::<Permissions>().read.check(&address_path)?;
-        state_.borrow::<Permissions>().write.check(&address_path)?;
+        let mut state_ = state.borrow_mut();
+        state_
+          .borrow_mut::<Permissions>()
+          .read
+          .check(&address_path)?;
+        state_
+          .borrow_mut::<Permissions>()
+          .write
+          .check(&address_path)?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
@@ -320,25 +345,23 @@ async fn op_connect(
       let mut state_ = state.borrow_mut();
       let resource = UnixStreamResource::new(unix_stream.into_split());
       let rid = state_.resource_table.add(resource);
-      Ok(json!({
-        "rid": rid,
-        "localAddr": {
-          "path": local_addr.as_pathname(),
-          "transport": transport,
-        },
-        "remoteAddr": {
-          "path": remote_addr.as_pathname(),
-          "transport": transport,
-        }
-      }))
+      Ok(OpConn {
+        rid,
+        local_addr: Some(OpAddr::Unix(net_unix::UnixAddr {
+          path: local_addr.as_pathname().and_then(net_unix::pathstring),
+        })),
+        remote_addr: Some(OpAddr::Unix(net_unix::UnixAddr {
+          path: remote_addr.as_pathname().and_then(net_unix::pathstring),
+        })),
+      })
     }
     _ => Err(type_error("Wrong argument format!")),
   }
 }
 
-struct TcpListenerResource {
-  listener: AsyncRefCell<TcpListener>,
-  cancel: CancelHandle,
+pub struct TcpListenerResource {
+  pub listener: AsyncRefCell<TcpListener>,
+  pub cancel: CancelHandle,
 }
 
 impl Resource for TcpListenerResource {
@@ -423,11 +446,10 @@ fn listen_udp(
 
 fn op_listen(
   state: &mut OpState,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let permissions = state.borrow::<Permissions>();
-  match serde_json::from_value(args)? {
+  args: ListenArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<OpConn, AnyError> {
+  match args {
     ListenArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
@@ -436,7 +458,10 @@ fn op_listen(
         if transport == "udp" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        permissions.net.check(&(&args.hostname, Some(args.port)))?;
+        state
+          .borrow_mut::<Permissions>()
+          .net
+          .check(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
@@ -452,14 +477,20 @@ fn op_listen(
         local_addr.ip().to_string(),
         local_addr.port()
       );
-      Ok(json!({
-      "rid": rid,
-      "localAddr": {
-        "hostname": local_addr.ip().to_string(),
-        "port": local_addr.port(),
-        "transport": transport,
-      },
-      }))
+      let ip_addr = IpAddr {
+        hostname: local_addr.ip().to_string(),
+        port: local_addr.port(),
+      };
+      Ok(OpConn {
+        rid,
+        local_addr: Some(match transport.as_str() {
+          "udp" => OpAddr::Udp(ip_addr),
+          "tcp" => OpAddr::Tcp(ip_addr),
+          // NOTE: This could be unreachable!()
+          other => return Err(bad_transport(other)),
+        }),
+        remote_addr: None,
+      })
     }
     #[cfg(unix)]
     ListenArgs {
@@ -474,6 +505,7 @@ fn op_listen(
         if transport == "unixpacket" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
+        let permissions = state.borrow_mut::<Permissions>();
         permissions.read.check(&address_path)?;
         permissions.write.check(&address_path)?;
       }
@@ -487,13 +519,19 @@ fn op_listen(
         rid,
         local_addr.as_pathname().unwrap().display(),
       );
-      Ok(json!({
-      "rid": rid,
-      "localAddr": {
-        "path": local_addr.as_pathname(),
-        "transport": transport,
-      },
-      }))
+      let unix_addr = net_unix::UnixAddr {
+        path: local_addr.as_pathname().and_then(net_unix::pathstring),
+      };
+
+      Ok(OpConn {
+        rid,
+        local_addr: Some(match transport.as_str() {
+          "unix" => OpAddr::Unix(unix_addr),
+          "unixpacket" => OpAddr::UnixPacket(unix_addr),
+          other => return Err(bad_transport(other)),
+        }),
+        remote_addr: None,
+      })
     }
     #[cfg(unix)]
     _ => Err(type_error("Wrong argument format!")),
@@ -504,21 +542,21 @@ fn op_listen(
 #[serde(untagged)]
 enum DnsReturnRecord {
   A(String),
-  AAAA(String),
-  ANAME(String),
-  CNAME(String),
-  MX {
+  Aaaa(String),
+  Aname(String),
+  Cname(String),
+  Mx {
     preference: u16,
     exchange: String,
   },
-  PTR(String),
-  SRV {
+  Ptr(String),
+  Srv {
     priority: u16,
     weight: u16,
     port: u16,
     target: String,
   },
-  TXT(Vec<String>),
+  Txt(Vec<String>),
 }
 
 #[derive(Deserialize)]
@@ -550,8 +588,8 @@ pub struct NameServer {
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<Vec<DnsReturnRecord>, AnyError> {
   let ResolveAddrArgs {
     query,
     record_type,
@@ -575,8 +613,8 @@ async fn op_dns_resolve(
   };
 
   {
-    let s = state.borrow();
-    let perm = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let perm = s.borrow_mut::<Permissions>();
 
     // Checks permission against the name servers which will be actually queried.
     for ns in config.name_servers() {
@@ -589,7 +627,7 @@ async fn op_dns_resolve(
 
   let resolver = AsyncResolver::tokio(config, opts)?;
 
-  let results: Vec<DnsReturnRecord> = resolver
+  let results = resolver
     .lookup(query, record_type, Default::default())
     .await
     .map_err(|e| generic_error(format!("{}", e)))?
@@ -597,7 +635,7 @@ async fn op_dns_resolve(
     .filter_map(rdata_to_return_record(record_type))
     .collect();
 
-  Ok(json!(results))
+  Ok(results)
 }
 
 fn rdata_to_return_record(
@@ -610,24 +648,24 @@ fn rdata_to_return_record(
       AAAA => r
         .as_aaaa()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::AAAA),
+        .map(DnsReturnRecord::Aaaa),
       ANAME => r
         .as_aname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::ANAME),
+        .map(DnsReturnRecord::Aname),
       CNAME => r
         .as_cname()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::CNAME),
-      MX => r.as_mx().map(|mx| DnsReturnRecord::MX {
+        .map(DnsReturnRecord::Cname),
+      MX => r.as_mx().map(|mx| DnsReturnRecord::Mx {
         preference: mx.preference(),
         exchange: mx.exchange().to_string(),
       }),
       PTR => r
         .as_ptr()
         .map(ToString::to_string)
-        .map(DnsReturnRecord::PTR),
-      SRV => r.as_srv().map(|srv| DnsReturnRecord::SRV {
+        .map(DnsReturnRecord::Ptr),
+      SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
         priority: srv.priority(),
         weight: srv.weight(),
         port: srv.port(),
@@ -641,7 +679,7 @@ fn rdata_to_return_record(
             bytes.iter().map(|&b| b as char).collect::<String>()
           })
           .collect();
-        DnsReturnRecord::TXT(texts)
+        DnsReturnRecord::Txt(texts)
       }),
       // TODO(magurotuna): Other record types are not supported
       _ => todo!(),
@@ -674,21 +712,21 @@ mod tests {
   fn rdata_to_return_record_aaaa() {
     let func = rdata_to_return_record(RecordType::AAAA);
     let rdata = RData::AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::AAAA("::1".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aaaa("::1".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
     let func = rdata_to_return_record(RecordType::ANAME);
     let rdata = RData::ANAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::ANAME("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Aname("".to_string())));
   }
 
   #[test]
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::CNAME("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Cname("".to_string())));
   }
 
   #[test]
@@ -697,7 +735,7 @@ mod tests {
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::MX {
+      Some(DnsReturnRecord::Mx {
         preference: 10,
         exchange: "".to_string()
       })
@@ -708,7 +746,7 @@ mod tests {
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
-    assert_eq!(func(&rdata), Some(DnsReturnRecord::PTR("".to_string())));
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ptr("".to_string())));
   }
 
   #[test]
@@ -717,7 +755,7 @@ mod tests {
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::SRV {
+      Some(DnsReturnRecord::Srv {
         priority: 1,
         weight: 2,
         port: 3,
@@ -737,7 +775,7 @@ mod tests {
     ]));
     assert_eq!(
       func(&rdata),
-      Some(DnsReturnRecord::TXT(vec![
+      Some(DnsReturnRecord::Txt(vec![
         "foo".to_string(),
         "bar".to_string(),
         "£".to_string(),

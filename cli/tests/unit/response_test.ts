@@ -37,7 +37,8 @@ unitTest(async function responseBlob() {
   assertEquals(blob, new Blob([new Uint8Array([1, 2, 3])]));
 });
 
-unitTest(async function responseFormData() {
+// TODO(lucacasonato): re-enable test once #10002 is fixed.
+unitTest({ ignore: true }, async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
   const response = new Response(input, {

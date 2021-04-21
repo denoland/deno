@@ -2,12 +2,12 @@
 import {
   assert,
   assertEquals,
-  assertThrows,
   assertThrowsAsync,
   fail,
   unimplemented,
   unitTest,
 } from "./test_util.ts";
+import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
@@ -35,7 +35,7 @@ function findClosedPortInRange(
       const listener = Deno.listen({ port });
       listener.close();
       return port;
-    } catch (e) {
+    } catch (_e) {
       port++;
     }
   }
@@ -79,7 +79,7 @@ unitTest(
       async (): Promise<void> => {
         await fetch("http://<invalid>/");
       },
-      URIError,
+      TypeError,
     );
   },
 );
@@ -127,18 +127,6 @@ unitTest({ perms: { net: true } }, async function fetchBlob(): Promise<void> {
   const blob = await response.blob();
   assertEquals(blob.type, headers.get("Content-Type"));
   assertEquals(blob.size, Number(headers.get("Content-Length")));
-});
-
-unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
-  void
-> {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
-  assertEquals(response.bodyUsed, false);
-  // deno-lint-ignore no-explicit-any
-  (response as any).bodyUsed = true;
-  assertEquals(response.bodyUsed, false);
-  await response.blob();
-  assertEquals(response.bodyUsed, true);
 });
 
 unitTest(
@@ -278,7 +266,6 @@ unitTest(
       TypeError,
       "Invalid form data",
     );
-    await response.body.cancel();
   },
 );
 
@@ -424,10 +411,11 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithInfRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
-    assertEquals(response.status, 0); // network error
-    assertEquals(response.type, "error");
-    assertEquals(response.ok, false);
+    await assertThrowsAsync(
+      () => fetch("http://localhost:4549/cli/tests"),
+      TypeError,
+      "redirect",
+    );
   },
 );
 
@@ -613,13 +601,13 @@ unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
 //     at Object.assertEquals (file:///C:/deno/js/testing/util.ts:29:11)
 //     at fetchPostBodyString (file
 
-function bufferServer(addr: string): Deno.Buffer {
+function bufferServer(addr: string): Buffer {
   const [hostname, port] = addr.split(":");
   const listener = Deno.listen({
     hostname,
     port: Number(port),
   }) as Deno.Listener;
-  const buf = new Deno.Buffer();
+  const buf = new Buffer();
   listener.accept().then(async (conn: Deno.Conn) => {
     const p1 = buf.readFrom(conn);
     const p2 = conn.write(
@@ -770,8 +758,9 @@ unitTest(
     }); // will redirect to http://localhost:4545/
     assertEquals(response.status, 301);
     assertEquals(response.url, "http://localhost:4546/");
-    assertEquals(response.type, "default");
+    assertEquals(response.type, "basic");
     assertEquals(response.headers.get("Location"), "http://localhost:4545/");
+    await response.body!.cancel();
   },
 );
 
@@ -780,21 +769,14 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithErrorRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4546/", {
-      redirect: "error",
-    }); // will redirect to http://localhost:4545/
-    assertEquals(response.status, 0);
-    assertEquals(response.statusText, "");
-    assertEquals(response.url, "");
-    assertEquals(response.type, "error");
-    try {
-      await response.text();
-      fail(
-        "Response.text() didn't throw on a filtered response without a body (type error)",
-      );
-    } catch (e) {
-      return;
-    }
+    await assertThrowsAsync(
+      () =>
+        fetch("http://localhost:4546/", {
+          redirect: "error",
+        }),
+      TypeError,
+      "redirect",
+    );
   },
 );
 
@@ -803,7 +785,10 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
   assertEquals(redir.url, "");
-  assertEquals(redir.headers.get("Location"), "example.com/newLocation");
+  assertEquals(
+    redir.headers.get("Location"),
+    "http://js-unit-tests/foo/example.com/newLocation",
+  );
   assertEquals(redir.type, "default");
 });
 
@@ -1004,10 +989,7 @@ unitTest(function fetchResponseConstructorInvalidStatus(): void {
       fail(`Invalid status: ${status}`);
     } catch (e) {
       assert(e instanceof RangeError);
-      assertEquals(
-        e.message,
-        `The status provided (${status}) is outside the range [200, 599]`,
-      );
+      assert(e.message.endsWith("is outside the range [200, 599]."));
     }
   }
 });
@@ -1024,8 +1006,9 @@ unitTest(function fetchResponseEmptyConstructor(): void {
   assertEquals([...response.headers], []);
 });
 
+// TODO(lucacasonato): reenable this test
 unitTest(
-  { perms: { net: true } },
+  { perms: { net: true }, ignore: true },
   async function fetchCustomHttpClientParamCertificateSuccess(): Promise<
     void
   > {

@@ -1,12 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::bindings;
 use rusty_v8 as v8;
-use smallvec::SmallVec;
+use std::cell::Cell;
 use std::ops::Deref;
 use std::ops::DerefMut;
-
-pub type BufVec = SmallVec<[ZeroCopyBuf; 2]>;
 
 /// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
@@ -48,7 +45,7 @@ impl Deref for ZeroCopyBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
     unsafe {
-      bindings::get_backing_store_slice(
+      get_backing_store_slice(
         &self.backing_store,
         self.byte_offset,
         self.byte_length,
@@ -60,7 +57,7 @@ impl Deref for ZeroCopyBuf {
 impl DerefMut for ZeroCopyBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
     unsafe {
-      bindings::get_backing_store_slice_mut(
+      get_backing_store_slice_mut(
         &self.backing_store,
         self.byte_offset,
         self.byte_length,
@@ -79,4 +76,27 @@ impl AsMut<[u8]> for ZeroCopyBuf {
   fn as_mut(&mut self) -> &mut [u8] {
     &mut *self
   }
+}
+
+unsafe fn get_backing_store_slice(
+  backing_store: &v8::SharedRef<v8::BackingStore>,
+  byte_offset: usize,
+  byte_length: usize,
+) -> &[u8] {
+  let cells: *const [Cell<u8>] =
+    &backing_store[byte_offset..byte_offset + byte_length];
+  let bytes = cells as *const [u8];
+  &*bytes
+}
+
+#[allow(clippy::mut_from_ref)]
+unsafe fn get_backing_store_slice_mut(
+  backing_store: &v8::SharedRef<v8::BackingStore>,
+  byte_offset: usize,
+  byte_length: usize,
+) -> &mut [u8] {
+  let cells: *const [Cell<u8>] =
+    &backing_store[byte_offset..byte_offset + byte_length];
+  let bytes = cells as *const _ as *mut [u8];
+  &mut *bytes
 }

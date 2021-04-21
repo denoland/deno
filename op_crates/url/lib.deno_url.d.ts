@@ -155,8 +155,8 @@ declare class URLSearchParams {
 /** The URL interface represents an object providing static methods used for creating object URLs. */
 declare class URL {
   constructor(url: string, base?: string | URL);
-  createObjectURL(object: any): string;
-  revokeObjectURL(url: string): void;
+  static createObjectURL(blob: Blob): string;
+  static revokeObjectURL(url: string): void;
 
   hash: string;
   host: string;

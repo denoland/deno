@@ -1,10 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
-
-#[macro_use]
-extern crate lazy_static;
-
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -16,9 +12,8 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use lazy_static::lazy_static;
 use os_pipe::pipe;
-#[cfg(unix)]
-pub use pty;
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -47,6 +42,9 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
+
+#[cfg(unix)]
+pub use pty;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -616,6 +614,18 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
+    (_, "/.well-known/deno-import-intellisense.json") => {
+      let file_path = root_path()
+        .join("cli/tests/lsp/registries/deno-import-intellisense.json");
+      if let Ok(body) = tokio::fs::read(file_path).await {
+        Ok(custom_headers(
+          "/.well-known/deno-import-intellisense.json",
+          body,
+        ))
+      } else {
+        Ok(Response::new(Body::empty()))
+      }
+    }
     _ => {
       let mut file_path = root_path();
       file_path.push(&req.uri().path()[1..]);
@@ -964,7 +974,7 @@ impl HttpServerCount {
             break;
           }
         } else {
-          panic!(maybe_line.unwrap_err());
+          panic!("{}", maybe_line.unwrap_err());
         }
       }
       self.test_server = Some(test_server);

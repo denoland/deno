@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::ops::UnstableChecker;
 use deno_core::error::AnyError;
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -12,7 +12,7 @@ use deno_core::ZeroCopyBuf;
 pub fn init() -> Extension {
   Extension::new(
     None,
-    Some(vec![("op_metrics", json_op_sync(op_metrics))]),
+    Some(vec![("op_metrics", op_sync(op_metrics))]),
     Some(Box::new(|state| {
       state.put(RuntimeMetrics::default());
       Ok(())
@@ -138,26 +138,27 @@ impl OpMetrics {
   }
 }
 
-use deno_core::BufVec;
 use deno_core::Op;
 use deno_core::OpFn;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
-  Box::new(move |op_state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
+  Box::new(move |op_state, payload, buf| -> Op {
     // TODOs:
     // * The 'bytes' metrics seem pretty useless, especially now that the
     //   distinction between 'control' and 'data' buffers has become blurry.
     // * Tracking completion of async ops currently makes us put the boxed
     //   future into _another_ box. Keeping some counters may not be expensive
     //   in itself, but adding a heap allocation for every metric seems bad.
-    let mut buf_len_iter = bufs.iter().map(|buf| buf.len());
-    let bytes_sent_control = buf_len_iter.next().unwrap_or(0);
-    let bytes_sent_data = buf_len_iter.sum();
 
-    let op = (op_fn)(op_state.clone(), bufs);
+    // TODO: remove this, doesn't make a ton of sense
+    let bytes_sent_control = 0;
+    let bytes_sent_data = match buf {
+      Some(ref b) => b.len(),
+      None => 0,
+    };
+
+    let op = (op_fn)(op_state.clone(), payload, buf);
 
     let op_state_ = op_state.clone();
     let mut s = op_state.borrow_mut();
@@ -174,17 +175,17 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
 
     match op {
       Op::Sync(buf) => {
-        metrics.op_sync(bytes_sent_control, bytes_sent_data, buf.len());
+        metrics.op_sync(bytes_sent_control, bytes_sent_data, 0);
         Op::Sync(buf)
       }
       Op::Async(fut) => {
         metrics.op_dispatched_async(bytes_sent_control, bytes_sent_data);
         let fut = fut
-          .inspect(move |buf| {
+          .inspect(move |_resp| {
             let mut s = op_state_.borrow_mut();
             let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
             let metrics = runtime_metrics.ops.get_mut(name).unwrap();
-            metrics.op_completed_async(buf.len());
+            metrics.op_completed_async(0);
           })
           .boxed_local();
         Op::Async(fut)
@@ -192,11 +193,11 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
       Op::AsyncUnref(fut) => {
         metrics.op_dispatched_async_unref(bytes_sent_control, bytes_sent_data);
         let fut = fut
-          .inspect(move |buf| {
+          .inspect(move |_resp| {
             let mut s = op_state_.borrow_mut();
             let runtime_metrics = s.borrow_mut::<RuntimeMetrics>();
             let metrics = runtime_metrics.ops.get_mut(name).unwrap();
-            metrics.op_completed_async_unref(buf.len());
+            metrics.op_completed_async_unref(0);
           })
           .boxed_local();
         Op::AsyncUnref(fut)

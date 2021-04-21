@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 pub use deno_core::normalize_path;
 use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
@@ -81,7 +82,8 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = current_dir().unwrap();
+    let cwd =
+      current_dir().context("Failed to get current working directory")?;
     cwd.join(path)
   };
 
@@ -248,7 +250,7 @@ mod tests {
 
   #[test]
   fn test_collect_files() {
-    fn create_files(dir_path: &PathBuf, files: &[&str]) {
+    fn create_files(dir_path: &Path, files: &[&str]) {
       std::fs::create_dir(dir_path).expect("Failed to create directory");
       for f in files {
         let path = dir_path.join(f);

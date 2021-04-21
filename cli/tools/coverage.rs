@@ -157,11 +157,8 @@ impl CoverageReporter for LcovCoverageReporter {
   ) {
     // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
     // elsewhere.
-    let maybe_source_map = if let Some(source_map) = maybe_source_map {
-      Some(SourceMap::from_slice(&source_map).unwrap())
-    } else {
-      None
-    };
+    let maybe_source_map = maybe_source_map
+      .map(|source_map| SourceMap::from_slice(&source_map).unwrap());
 
     let url = Url::parse(&script_coverage.url).unwrap();
     let file_path = url.to_file_path().unwrap();
@@ -374,11 +371,8 @@ impl CoverageReporter for PrettyCoverageReporter {
     maybe_source_map: Option<Vec<u8>>,
     maybe_original_source: Option<String>,
   ) {
-    let maybe_source_map = if let Some(source_map) = maybe_source_map {
-      Some(SourceMap::from_slice(&source_map).unwrap())
-    } else {
-      None
-    };
+    let maybe_source_map = maybe_source_map
+      .map(|source_map| SourceMap::from_slice(&source_map).unwrap());
 
     let mut ignored_spans: Vec<Span> = Vec::new();
     for item in ast::lex("", script_source, &MediaType::JavaScript) {

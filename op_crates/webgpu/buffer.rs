@@ -1,32 +1,31 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_core::{BufVec, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use super::error::DOMExceptionOperationError;
-use super::error::WebGPUError;
+use super::error::DomExceptionOperationError;
+use super::error::WebGpuResult;
 
-pub(crate) struct WebGPUBuffer(pub(crate) wgpu_core::id::BufferId);
-impl Resource for WebGPUBuffer {
+pub(crate) struct WebGpuBuffer(pub(crate) wgpu_core::id::BufferId);
+impl Resource for WebGpuBuffer {
   fn name(&self) -> Cow<str> {
     "webGPUBuffer".into()
   }
 }
 
-struct WebGPUBufferMapped(*mut u8, usize);
-impl Resource for WebGPUBufferMapped {
+struct WebGpuBufferMapped(*mut u8, usize);
+impl Resource for WebGpuBufferMapped {
   fn name(&self) -> Cow<str> {
     "webGPUBufferMapped".into()
   }
@@ -45,12 +44,12 @@ pub struct CreateBufferArgs {
 pub fn op_webgpu_create_buffer(
   state: &mut OpState,
   args: CreateBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
 
@@ -67,12 +66,9 @@ pub fn op_webgpu_create_buffer(
     std::marker::PhantomData
   ));
 
-  let rid = state.resource_table.add(WebGPUBuffer(buffer));
+  let rid = state.resource_table.add(WebGpuBuffer(buffer));
 
-  Ok(json!({
-    "rid": rid,
-    "err": maybe_err.map(WebGPUError::from)
-  }))
+  Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -88,8 +84,8 @@ pub struct BufferGetMapAsyncArgs {
 pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
   args: BufferGetMapAsyncArgs,
-  _bufs: BufVec,
-) -> Result<Value, AnyError> {
+  _bufs: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let (sender, receiver) = oneshot::channel::<Result<(), AnyError>>();
 
   let device;
@@ -98,12 +94,12 @@ pub async fn op_webgpu_buffer_get_map_async(
     let instance = state_.borrow::<super::Instance>();
     let buffer_resource = state_
       .resource_table
-      .get::<WebGPUBuffer>(args.buffer_rid)
+      .get::<WebGpuBuffer>(args.buffer_rid)
       .ok_or_else(bad_resource_id)?;
     let buffer = buffer_resource.0;
     let device_resource = state_
       .resource_table
-      .get::<super::WebGPUDevice>(args.device_rid)
+      .get::<super::WebGpuDevice>(args.device_rid)
       .ok_or_else(bad_resource_id)?;
     device = device_resource.0;
 
@@ -163,7 +159,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 
   tokio::try_join!(device_poll_fut, receiver_fut)?;
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -177,12 +173,13 @@ pub struct BufferGetMappedRangeArgs {
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: BufferGetMappedRangeArgs,
-  zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
+  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
-    .get::<WebGPUBuffer>(args.buffer_rid)
+    .get::<WebGpuBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
   let buffer = buffer_resource.0;
 
@@ -191,20 +188,18 @@ pub fn op_webgpu_buffer_get_mapped_range(
     args.offset,
     std::num::NonZeroU64::new(args.size)
   ))
-  .map_err(|e| DOMExceptionOperationError::new(&e.to_string()))?;
+  .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
 
   let slice = unsafe {
     std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
   };
-  zero_copy[0].copy_from_slice(slice);
+  zero_copy.copy_from_slice(slice);
 
   let rid = state
     .resource_table
-    .add(WebGPUBufferMapped(slice_pointer, args.size as usize));
+    .add(WebGpuBufferMapped(slice_pointer, args.size as usize));
 
-  Ok(json!({
-    "rid": rid,
-  }))
+  Ok(WebGpuResult::rid(rid))
 }
 
 #[derive(Deserialize)]
@@ -217,28 +212,28 @@ pub struct BufferUnmapArgs {
 pub fn op_webgpu_buffer_unmap(
   state: &mut OpState,
   args: BufferUnmapArgs,
-  zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let mapped_resource = state
     .resource_table
-    .take::<WebGPUBufferMapped>(args.mapped_rid)
+    .take::<WebGpuBufferMapped>(args.mapped_rid)
     .ok_or_else(bad_resource_id)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
-    .get::<WebGPUBuffer>(args.buffer_rid)
+    .get::<WebGpuBuffer>(args.buffer_rid)
     .ok_or_else(bad_resource_id)?;
   let buffer = buffer_resource.0;
 
   let slice_pointer = mapped_resource.0;
   let size = mapped_resource.1;
 
-  if let Some(buffer) = zero_copy.get(0) {
+  if let Some(buffer) = zero_copy {
     let slice = unsafe { std::slice::from_raw_parts_mut(slice_pointer, size) };
     slice.copy_from_slice(&buffer);
   }
 
   let maybe_err = gfx_select!(buffer => instance.buffer_unmap(buffer)).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGPUError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }

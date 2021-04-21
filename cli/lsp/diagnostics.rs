@@ -15,6 +15,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use log::error;
 use lspower::lsp;
 use lspower::Client;
 use std::collections::HashMap;
@@ -461,31 +462,27 @@ fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
 fn to_lsp_related_information(
   related_information: &Option<Vec<diagnostics::Diagnostic>>,
 ) -> Option<Vec<lsp::DiagnosticRelatedInformation>> {
-  if let Some(related) = related_information {
-    Some(
-      related
-        .iter()
-        .filter_map(|ri| {
-          if let (Some(source), Some(start), Some(end)) =
-            (&ri.source, &ri.start, &ri.end)
-          {
-            let uri = lsp::Url::parse(&source).unwrap();
-            Some(lsp::DiagnosticRelatedInformation {
-              location: lsp::Location {
-                uri,
-                range: to_lsp_range(start, end),
-              },
-              message: get_diagnostic_message(&ri),
-            })
-          } else {
-            None
-          }
-        })
-        .collect(),
-    )
-  } else {
-    None
-  }
+  related_information.as_ref().map(|related| {
+    related
+      .iter()
+      .filter_map(|ri| {
+        if let (Some(source), Some(start), Some(end)) =
+          (&ri.source, &ri.start, &ri.end)
+        {
+          let uri = lsp::Url::parse(&source).unwrap();
+          Some(lsp::DiagnosticRelatedInformation {
+            location: lsp::Location {
+              uri,
+              range: to_lsp_range(start, end),
+            },
+            message: get_diagnostic_message(&ri),
+          })
+        } else {
+          None
+        }
+      })
+      .collect()
+  })
 }
 
 fn ts_json_to_diagnostics(

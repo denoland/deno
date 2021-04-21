@@ -8,13 +8,14 @@ use std::path::PathBuf;
 pub fn init() -> Extension {
   Extension::pure_js(include_js_files!(
     prefix "deno:op_crates/web",
+    "00_infra.js",
     "01_dom_exception.js",
+    "01_mimesniff.js",
     "02_event.js",
     "03_abort_signal.js",
     "04_global_interfaces.js",
     "08_text_encoding.js",
-    "12_location.js",
-    "21_filereader.js",
+    "12_location.js    ",
   ))
 }
 

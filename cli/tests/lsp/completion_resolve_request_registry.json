@@ -1,0 +1,25 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "completionItem/resolve",
+  "params": {
+    "label": "v2.0.0",
+    "kind": 19,
+    "detail": "(version)",
+    "sortText": "0000000003",
+    "filterText": "http://localhost:4545/x/a@v2.0.0",
+    "textEdit": {
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 20
+        },
+        "end": {
+          "line": 0,
+          "character": 46
+        }
+      },
+      "newText": "http://localhost:4545/x/a@v2.0.0"
+    }
+  }
+}
