@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors::cyan;
-use crate::colors::gray;
 use crate::colors::italic_bold;
 use crate::colors::red;
 use crate::colors::yellow;
@@ -50,7 +49,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
     !(frame.is_top_level.unwrap_or_default() || frame.is_constructor);
   let mut result = String::new();
   if frame.is_async {
-    result += &gray("async ").to_string();
+    result += "async ";
   }
   if frame.is_promise_all {
     result += &italic_bold(&format!(
@@ -86,7 +85,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
     }
     result += &italic_bold(&formatted_method).to_string();
   } else if frame.is_constructor {
-    result += &gray("new ").to_string();
+    result += "new ";
     if let Some(function_name) = &frame.function_name {
       result += &italic_bold(&function_name).to_string();
     } else {
