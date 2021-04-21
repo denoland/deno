@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_timers"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 description = "Timers API implementation for Deno"
 authors = ["the Deno authors"]
@@ -14,5 +14,5 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.84.0", path = "../../core" }
+deno_core = { version = "0.85.0", path = "../../core" }
 tokio = { version = "1.4.0", features = ["full"] }

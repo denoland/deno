@@ -391,8 +391,19 @@
     }
   }
 
+  /**
+   * This function implements application/x-www-form-urlencoded parsing.
+   * https://url.spec.whatwg.org/#concept-urlencoded-parser
+   * @param {Uint8Array} bytes
+   * @returns {[string, string][]} 
+   */
+  function parseUrlEncoded(bytes) {
+    return core.opSync("op_url_parse_search_params", null, bytes);
+  }
+
   window.__bootstrap.url = {
     URL,
     URLSearchParams,
+    parseUrlEncoded,
   };
 })(this);

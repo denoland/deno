@@ -135,7 +135,9 @@
       converter: webidl.createSequenceConverter(
         webidl.converters["GPUFeatureName"],
       ),
-      defaultValue: [],
+      get defaultValue() {
+        return [];
+      },
     },
     {
       key: "nonGuaranteedLimits",
@@ -143,7 +145,9 @@
         webidl.converters["DOMString"],
         webidl.converters["GPUSize32"],
       ),
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
   ];
   webidl.converters["GPUDeviceDescriptor"] = webidl.createDictionaryConverter(
@@ -1046,7 +1050,9 @@
           webidl.converters["GPUVertexBufferLayout"],
         ),
       ),
-      defaultValue: [],
+      get defaultValue() {
+        return [];
+      },
     },
   ];
   webidl.converters["GPUVertexState"] = webidl.createDictionaryConverter(
@@ -1187,12 +1193,16 @@
     {
       key: "stencilFront",
       converter: webidl.converters["GPUStencilFaceState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "stencilBack",
       converter: webidl.converters["GPUStencilFaceState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "stencilReadMask",
@@ -1379,7 +1389,9 @@
     {
       key: "primitive",
       converter: webidl.converters["GPUPrimitiveState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "depthStencil",
@@ -1388,7 +1400,9 @@
     {
       key: "multisample",
       converter: webidl.converters["GPUMultisampleState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     { key: "fragment", converter: webidl.converters["GPUFragmentState"] },
   ];
@@ -1530,7 +1544,9 @@
     {
       key: "origin",
       converter: webidl.converters["GPUOrigin3D"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "aspect",
@@ -1793,7 +1809,9 @@
       converter: webidl.createSequenceConverter(
         webidl.converters["GPUPipelineStatisticName"],
       ),
-      defaultValue: [],
+      get defaultValue() {
+        return [];
+      },
     },
   ];
   webidl.converters["GPUQuerySetDescriptor"] = webidl.createDictionaryConverter(

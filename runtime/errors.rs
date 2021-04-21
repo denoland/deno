@@ -78,6 +78,7 @@ fn get_notify_error_class(error: &notify::Error) -> &'static str {
     PathNotFound => "NotFound",
     WatchNotFound => "NotFound",
     InvalidConfig(_) => "InvalidData",
+    MaxFilesWatch => "Error",
   }
 }
 
