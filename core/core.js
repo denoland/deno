@@ -14,10 +14,6 @@
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
 
-  function init() {
-    recv(handleAsyncMsgFromRust);
-  }
-
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
     // Move old promise from ring to map
@@ -131,6 +127,6 @@
     close,
     resources,
     registerErrorClass,
-    init,
+    handleAsyncMsgFromRust,
   });
 })(this);
