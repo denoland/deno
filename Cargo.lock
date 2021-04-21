@@ -902,7 +902,7 @@ checksum = "eb20b44f890c460fe78e04c13ea49e69821b58b7a36e7905f43719f6dd9badfa"
 dependencies = [
  "bumpalo",
  "fnv",
- "num-bigint",
+ "num-bigint 0.2.6",
  "swc_atoms",
  "swc_common",
  "swc_ecmascript",
