@@ -3,8 +3,7 @@
 
 ((window) => {
   // Available on start due to bindings.
-  const core = window.Deno.core;
-  const { recv, send } = core;
+  const { send } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {};
