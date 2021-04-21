@@ -252,11 +252,6 @@ impl WebWorker {
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module.clone());
-      ops::fetch::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
       ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
@@ -265,7 +260,6 @@ impl WebWorker {
       );
       ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::url::init(js_runtime);
       ops::file::init(
         js_runtime,
         options.blob_url_store.clone(),
