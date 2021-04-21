@@ -5,20 +5,18 @@ use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 
 fn create_js_runtime() -> JsRuntime {
-  let mut runtime = JsRuntime::new(RuntimeOptions{
-    extensions: vec![
-      deno_url::init(),
-    ],
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![deno_url::init()],
     ..Default::default()
   });
-  
+
   runtime
     .execute(
       "bootstrap",
       "globalThis.__bootstrap = (globalThis.__bootstrap || {});",
     )
     .unwrap();
-  
+
   runtime.init_extension_js().unwrap();
   runtime.init_extension_ops().unwrap();
 
