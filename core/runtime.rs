@@ -305,7 +305,9 @@ impl JsRuntime {
     if !has_startup_snapshot {
       js_runtime.js_init();
     }
-    js_runtime.init_recv_cb();
+    if !options.will_snapshot {
+      js_runtime.init_recv_cb();
+    }
 
     js_runtime
   }
