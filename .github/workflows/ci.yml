@@ -354,3 +354,11 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
+
+      - name: Clean before cache
+        run: |
+          rm -f target/*/deno target/*/denort target/*/test_server
+          rm -rf target/*/examples/
+          rm -rf target/*/gn_out/
+          rm -rf target/*/*.zip
+
