@@ -25,7 +25,6 @@ use crate::OpPayload;
 use crate::OpRegistrar;
 use crate::OpResponse;
 use crate::OpState;
-use crate::OpState;
 use crate::PromiseId;
 use crate::RcOpRegistrar;
 use crate::ZeroCopyBuf;
