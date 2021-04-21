@@ -183,6 +183,7 @@ impl WebWorker {
       deno_console::init(),
       deno_url::init(),
       deno_web::init(),
+      deno_file::init(options.blob_url_store.clone(), Some(main_module)),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
@@ -260,11 +261,6 @@ impl WebWorker {
       );
       ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::file::init(
-        js_runtime,
-        options.blob_url_store.clone(),
-        Some(main_module),
-      );
       ops::io::init(js_runtime);
 
       if options.use_deno_namespace {
